@@ -11,6 +11,7 @@ import type {
   IngestSourceEntryResult,
   OperationDetailState,
   WorkspaceDocumentState,
+  WorkspaceSearchResultState,
   WorkspaceService
 } from "./service-contract";
 
@@ -51,6 +52,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState> {
     return invoke<WorkspaceDocumentState>("get_workspace_document", { documentRef });
+  }
+
+  async searchWorkspace(query: string): Promise<WorkspaceSearchResultState[]> {
+    return invoke<WorkspaceSearchResultState[]>("search_workspace", { query });
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {

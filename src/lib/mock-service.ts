@@ -21,6 +21,7 @@ import type {
   OperationDetailState,
   WorkspaceCatalogEntry,
   WorkspaceDocumentState,
+  WorkspaceSearchResultState,
   WorkspaceIndexState,
   WorkspaceService
 } from "./service-contract";
@@ -786,6 +787,68 @@ class MockWorkspaceService implements WorkspaceService {
       lineCount: contentText.split("\n").length,
       contentText
     };
+  }
+
+  async searchWorkspace(query: string): Promise<WorkspaceSearchResultState[]> {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return [];
+    }
+
+    const documentCatalog = buildDocumentCatalog(
+      this.state.assetInspector.currentCheckpointRef,
+      this.state.assetInspector.latestExportBundleRef
+    );
+    const results: WorkspaceSearchResultState[] = [];
+
+    for (const document of documentCatalog) {
+      const metadataHaystack = [
+        document.label,
+        document.description,
+        document.pathRef,
+        document.category
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (metadataHaystack.includes(normalized)) {
+        results.push({
+          id: document.id,
+          category: document.category,
+          label: document.label,
+          description: document.description,
+          pathRef: document.pathRef,
+          matchKind: "metadata"
+        });
+        continue;
+      }
+
+      const contentText = this.resolveDocumentContent(document.pathRef);
+      const excerpt = contentText
+        .split("\n")
+        .find((line) => line.toLowerCase().includes(normalized))
+        ?.trim()
+        .slice(0, 180);
+      if (!excerpt) {
+        continue;
+      }
+
+      results.push({
+        id: document.id,
+        category: document.category,
+        label: document.label,
+        description: document.description,
+        pathRef: document.pathRef,
+        matchKind: "content",
+        excerpt
+      });
+    }
+
+    results.sort((left, right) => {
+      const rank = (matchKind: "metadata" | "content") => (matchKind === "metadata" ? 2 : 1);
+      return rank(right.matchKind) - rank(left.matchKind) || left.label.localeCompare(right.label);
+    });
+
+    return results.slice(0, 24);
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {

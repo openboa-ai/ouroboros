@@ -87,6 +87,8 @@
 - Recorded the official desktop-client stack direction as `Tauri 2 + React + Vite + Tailwind CSS`, with `shadcn/ui`-oriented component boundaries.
 - Recorded that the official client should remain dashboard-first, with charts treated as first-class trading surfaces rather than decorative widgets.
 - Recorded that the official client must continue to consume a service layer rather than treating the workspace contract as a direct machine API.
+- Recorded that workspace search should remain service-owned and be able to match both catalog metadata and actual document content.
+- Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
 - Added a stable workspace-asset model doc and a first JSON schema for `strategy.json` so the workspace contract now exists in both markdown and code-facing form.
 - Added a first end-to-end service boundary for the desktop scaffold: the React client now talks to a workspace-service interface, with a Tauri command path and a local mock path sharing the same contract.
 - Wired the mock client state back to the strategy-workspace template so `strategy.json`, checkpoint aliases, and export policy are no longer duplicated by hand in the frontend scaffold.

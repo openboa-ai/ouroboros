@@ -93,3 +93,5 @@ The current minimum direction is:
 - `imports/items/<import_id>/` stores staged sanitized bundles without mutating the active live lane
 - `operations/items/<operation_id>.json` stores addressable service-operation records
 - the official client should browse workspace documents through a service-owned catalog instead of hard-coding file paths
+- workspace search should also stay service-owned so the client queries searchable documents and content through the same boundary
+- individual operation records should be addressable workspace documents, not just rows in an operations summary list

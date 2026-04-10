@@ -5,6 +5,7 @@ use crate::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
         CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
         IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
+        WorkspaceSearchResultState,
     },
     state::AppState,
 };
@@ -69,6 +70,14 @@ pub fn get_workspace_document(
     state: State<'_, AppState>,
 ) -> Result<WorkspaceDocumentState, String> {
     state.workspace_document(&document_ref)
+}
+
+#[tauri::command]
+pub fn search_workspace(
+    query: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkspaceSearchResultState>, String> {
+    state.search_workspace(&query)
 }
 
 #[tauri::command]

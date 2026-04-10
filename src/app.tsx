@@ -28,7 +28,8 @@ import type {
   ImportDetailState,
   OperationDetailState,
   WorkspaceCatalogEntry,
-  WorkspaceDocumentState
+  WorkspaceDocumentState,
+  WorkspaceSearchResultState
 } from "./lib/service-contract";
 import { workspaceService } from "./lib/service-gateway";
 import { CollectionsPanel } from "./components/collections-panel";
@@ -59,6 +60,10 @@ export function App() {
   const [selectedDocumentDetail, setSelectedDocumentDetail] = useState<WorkspaceDocumentState | null>(
     null
   );
+  const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState("");
+  const [workspaceSearchResults, setWorkspaceSearchResults] = useState<
+    WorkspaceSearchResultState[] | null
+  >(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -254,6 +259,30 @@ export function App() {
     };
   }, [selectedDocumentRef]);
 
+  useEffect(() => {
+    const normalized = workspaceSearchQuery.trim();
+    if (!normalized) {
+      setWorkspaceSearchResults(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.searchWorkspace(normalized).then((results) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setWorkspaceSearchResults(results);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceSearchQuery, state]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-shell-950 text-ink-50">
@@ -319,6 +348,7 @@ export function App() {
       setSelectedDocumentId(nextDocumentId);
       setSelectedDocumentRef(nextDocumentRef);
       setSelectedDocumentDetail(null);
+      setWorkspaceSearchResults(null);
     });
   }
 
@@ -635,8 +665,11 @@ export function App() {
 
         <WorkspaceDocumentPanel
           documents={workspaceDocuments}
+          searchQuery={workspaceSearchQuery}
+          searchResults={workspaceSearchResults}
           selectedDocumentId={selectedDocumentId}
           documentDetail={selectedDocumentDetail}
+          onSearchQueryChange={setWorkspaceSearchQuery}
           onSelectDocument={(documentId, pathRef) => {
             setSelectedDocumentId(documentId);
             setSelectedDocumentRef(pathRef);

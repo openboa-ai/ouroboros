@@ -264,6 +264,18 @@ pub struct WorkspaceDocumentState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceSearchResultState {
+    pub id: String,
+    pub category: String,
+    pub label: String,
+    pub description: String,
+    pub path_ref: String,
+    pub match_kind: String,
+    pub excerpt: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IngestSourceEntryInput {
     pub kind: String,
     pub source_ref: String,

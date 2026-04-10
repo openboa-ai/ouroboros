@@ -5,6 +5,7 @@ use crate::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
         CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
         IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
+        WorkspaceSearchResultState,
     },
     workspace::WorkspaceRepository,
 };
@@ -85,6 +86,13 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .load_workspace_document(document_ref)
+    }
+
+    pub fn search_workspace(&self, query: &str) -> Result<Vec<WorkspaceSearchResultState>, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .search_workspace(query)
     }
 
     pub fn pause_global_automation(&self) -> Result<BootstrapState, String> {

@@ -164,6 +164,16 @@ export type WorkspaceDocumentState = {
   contentText: string;
 };
 
+export type WorkspaceSearchResultState = {
+  id: string;
+  category: WorkspaceCatalogEntry["category"];
+  label: string;
+  description: string;
+  pathRef: string;
+  matchKind: "metadata" | "content";
+  excerpt?: string;
+};
+
 export type ImportSummaryState = {
   id: string;
   importedAt: string;
@@ -385,6 +395,7 @@ export interface WorkspaceService {
   getBlobDetail(blobId: string): Promise<BlobDetailState>;
   getOperationDetail(operationId: string): Promise<OperationDetailState>;
   getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState>;
+  searchWorkspace(query: string): Promise<WorkspaceSearchResultState[]>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;

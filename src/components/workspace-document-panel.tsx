@@ -1,35 +1,42 @@
-import { useMemo, useState } from "react";
-import type { WorkspaceCatalogEntry, WorkspaceDocumentState } from "../lib/service-contract";
+import type {
+  WorkspaceCatalogEntry,
+  WorkspaceDocumentState,
+  WorkspaceSearchResultState
+} from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
 type WorkspaceDocumentPanelProps = {
   documents: WorkspaceCatalogEntry[];
+  searchQuery: string;
+  searchResults: WorkspaceSearchResultState[] | null;
   selectedDocumentId: string | null;
   documentDetail: WorkspaceDocumentState | null;
+  onSearchQueryChange: (query: string) => void;
   onSelectDocument: (documentId: string, pathRef: string) => void;
 };
 
 export function WorkspaceDocumentPanel({
   documents,
+  searchQuery,
+  searchResults,
   selectedDocumentId,
   documentDetail,
+  onSearchQueryChange,
   onSelectDocument
 }: WorkspaceDocumentPanelProps) {
-  const [query, setQuery] = useState("");
-  const filteredDocuments = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) {
-      return documents;
-    }
-
-    return documents.filter((document) =>
-      [document.label, document.description, document.pathRef, document.category]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalized)
-    );
-  }, [documents, query]);
+  const filteredDocuments =
+    searchQuery.trim().length > 0 && searchResults
+      ? searchResults.map((result) => ({
+          id: result.id,
+          category: result.category,
+          label: result.label,
+          description: result.excerpt
+            ? `${result.description} Match: ${result.excerpt}`
+            : result.description,
+          pathRef: result.pathRef
+        }))
+      : documents;
 
   const selected =
     filteredDocuments.find((item) => item.id === selectedDocumentId) ??
@@ -46,8 +53,8 @@ export function WorkspaceDocumentPanel({
       <div className="grid gap-5 xl:grid-cols-[minmax(0,280px)_1fr]">
         <div className="space-y-3">
           <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
             placeholder="Search workspace docs"
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-ink-50 outline-none transition placeholder:text-ink-400 focus:border-accent-teal/40"
           />

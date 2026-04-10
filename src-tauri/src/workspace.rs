@@ -17,7 +17,8 @@ use crate::models::{
     LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
     MetricCardData, OperationDetailState, OperationRelatedDocumentState, OperationSummaryState,
     PricePoint, ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
-    WorkspaceCatalogEntryState, WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
+    WorkspaceCatalogEntryState, WorkspaceDocumentState, WorkspaceIndexState,
+    WorkspaceSearchResultState, WorkspaceSummary,
 };
 use crate::storage::{
     copy_missing_template_tree, copy_template_tree, copy_tree, list_relative_files, remove_path,
@@ -582,6 +583,63 @@ impl WorkspaceRepository {
             line_count: content_text.lines().count(),
             content_text,
         })
+    }
+
+    pub fn search_workspace(&self, query: &str) -> Result<Vec<WorkspaceSearchResultState>, String> {
+        let normalized = query.trim().to_lowercase();
+        if normalized.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let bootstrap = self.load_bootstrap_state()?;
+        let mut results = Vec::new();
+
+        for document in bootstrap.document_catalog {
+            let metadata_haystack = [
+                document.label.as_str(),
+                document.description.as_str(),
+                document.path_ref.as_str(),
+                document.category.as_str(),
+            ]
+            .join(" ")
+            .to_lowercase();
+
+            if metadata_haystack.contains(&normalized) {
+                results.push(WorkspaceSearchResultState {
+                    id: document.id,
+                    category: document.category,
+                    label: document.label,
+                    description: document.description,
+                    path_ref: document.path_ref,
+                    match_kind: "metadata".into(),
+                    excerpt: None,
+                });
+                continue;
+            }
+
+            if let Ok(document_state) = self.load_workspace_document(&document.path_ref) {
+                if let Some(excerpt) = search_excerpt(&document_state.content_text, &normalized) {
+                    results.push(WorkspaceSearchResultState {
+                        id: document.id,
+                        category: document.category,
+                        label: document.label,
+                        description: document.description,
+                        path_ref: document.path_ref,
+                        match_kind: "content".into(),
+                        excerpt: Some(excerpt),
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|left, right| {
+            search_match_rank(&right.match_kind)
+                .cmp(&search_match_rank(&left.match_kind))
+                .then_with(|| left.label.cmp(&right.label))
+        });
+        results.truncate(24);
+
+        Ok(results)
     }
 
     pub fn ingest_source_entry(
@@ -2337,6 +2395,22 @@ fn path_leaf_label(path_ref: &str) -> String {
         .to_string()
 }
 
+fn search_excerpt(content: &str, query: &str) -> Option<String> {
+    content
+        .lines()
+        .find(|line| line.to_lowercase().contains(query))
+        .map(|line| line.trim().chars().take(180).collect::<String>())
+        .filter(|line| !line.is_empty())
+}
+
+fn search_match_rank(kind: &str) -> u8 {
+    match kind {
+        "metadata" => 2,
+        "content" => 1,
+        _ => 0,
+    }
+}
+
 fn summary_position_hash(summary: &EvalSummaryRecord) -> String {
     let seed = summary
         .headline
@@ -2654,6 +2728,33 @@ mod tests {
                 .iter()
                 .any(|document| document.id == format!("operation-{}", operation.id)),
             "document catalog should expose individual operation documents"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn search_workspace_matches_metadata_and_content() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let metadata_results = repo.search_workspace("live lane").expect("metadata search");
+        assert!(
+            metadata_results
+                .iter()
+                .any(|result| result.path_ref.ends_with("live/live-lane.json")),
+            "metadata search should find the live lane document"
+        );
+
+        let content_results = repo
+            .search_workspace("model cost and slippage")
+            .expect("content search");
+        assert!(
+            content_results
+                .iter()
+                .any(|result| result.match_kind == "content"),
+            "content search should surface excerpt-backed matches"
         );
 
         let _ = fs::remove_dir_all(&root);
