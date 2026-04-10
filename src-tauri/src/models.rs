@@ -98,6 +98,22 @@ pub struct CheckpointSummary {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CheckpointDetailState {
+    pub id: String,
+    pub alias: String,
+    pub r#type: String,
+    pub type_tone: String,
+    pub summary: String,
+    pub created_at: String,
+    pub performance: String,
+    pub checkpoint_ref: String,
+    pub snapshot_workspace_ref: String,
+    pub workspace_file_refs: Vec<String>,
+    pub export_bundle: Option<ExportBundleState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub artifact_id: String,
     pub slug: String,

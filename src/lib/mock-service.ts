@@ -1,6 +1,7 @@
 import type {
   AssetInspectorState,
   BootstrapState,
+  CheckpointDetailState,
   CheckpointSummary,
   DecisionEntry,
   ExportBundleState,
@@ -226,6 +227,28 @@ class MockWorkspaceService implements WorkspaceService {
 
   async getBootstrapState(): Promise<BootstrapState> {
     return structuredClone(this.state);
+  }
+
+  async getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState> {
+    const checkpoint =
+      this.state.checkpoints.find((item) => item.id === checkpointId) ?? this.state.checkpoints[0];
+
+    return {
+      id: checkpoint.id,
+      alias: checkpoint.alias,
+      type: checkpoint.type,
+      typeTone: checkpoint.typeTone,
+      summary: checkpoint.summary,
+      createdAt: checkpoint.createdAt,
+      performance: checkpoint.performance,
+      checkpointRef: checkpoint.pathRef,
+      snapshotWorkspaceRef: `${WORKSPACE_ROOT}/checkpoints/items/${checkpoint.id}/workspace`,
+      workspaceFileRefs: DEFAULT_INCLUDED_REFS.map((path) =>
+        path.replace("./workspace", `${WORKSPACE_ROOT}/checkpoints/items/${checkpoint.id}/workspace`)
+      ),
+      exportBundle:
+        checkpoint.type === "export" && checkpoint.exportBundleRef ? buildExportBundle(checkpoint) : null
+    };
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::{
-    AssetInspectorState, BootstrapState, CheckpointSummary, DecisionEntry, EquityPoint,
-    ExportBundleState, ExportInspectorState, ExposurePoint, LiveContextState, LiveOrder,
+    AssetInspectorState, BootstrapState, CheckpointDetailState, CheckpointSummary, DecisionEntry,
+    EquityPoint, ExportBundleState, ExportInspectorState, ExposurePoint, LiveContextState, LiveOrder,
     LivePosition, MetricCardData, PricePoint, ProviderStatus, StrategyActiveIndexState,
     StrategyIndexesState, TradingMode, WorkspaceIndexState, WorkspaceSummary,
 };
@@ -167,6 +167,44 @@ impl WorkspaceRepository {
                     }
                 })
                 .collect(),
+        })
+    }
+
+    pub fn load_checkpoint_detail(
+        &self,
+        checkpoint_id: &str,
+    ) -> Result<CheckpointDetailState, String> {
+        let checkpoint_path = self.checkpoint_file_path(checkpoint_id);
+        let checkpoint = self.read_json_path::<CheckpointRecordFile>(&checkpoint_path)?;
+        let snapshot_workspace = self
+            .root
+            .join("checkpoints")
+            .join("items")
+            .join(checkpoint_id)
+            .join("workspace");
+        let workspace_file_refs = if snapshot_workspace.exists() {
+            list_relative_files(&snapshot_workspace, "./workspace")?
+        } else {
+            Vec::new()
+        };
+        let export_bundle = if checkpoint.r#type == "export" {
+            self.load_export_bundle_for_checkpoint(&checkpoint)?
+        } else {
+            None
+        };
+
+        Ok(CheckpointDetailState {
+            id: checkpoint.checkpoint_id.clone(),
+            alias: checkpoint.alias,
+            r#type: checkpoint.r#type,
+            type_tone: checkpoint.type_tone,
+            summary: checkpoint.summary,
+            created_at: checkpoint.created_at,
+            performance: checkpoint.performance,
+            checkpoint_ref: self.display_path(&checkpoint_path),
+            snapshot_workspace_ref: self.display_path(&snapshot_workspace),
+            workspace_file_refs,
+            export_bundle,
         })
     }
 
@@ -516,37 +554,46 @@ impl WorkspaceRepository {
         checkpoints: &[CheckpointRecordFile],
     ) -> Result<Option<ExportBundleState>, String> {
         for checkpoint in checkpoints.iter().filter(|item| item.r#type == "export") {
-            let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
-            if !export_path.exists() {
-                continue;
+            if let Some(bundle) = self.load_export_bundle_for_checkpoint(checkpoint)? {
+                return Ok(Some(bundle));
             }
-
-            let export_bundle = self.read_json_path::<ExportBundleFile>(&export_path)?;
-            let workspace_path = self.export_workspace_path(&checkpoint.checkpoint_id);
-            let included_refs = if export_bundle.included_refs.is_empty() && workspace_path.exists() {
-                list_relative_files(&workspace_path, "./workspace")?
-            } else {
-                export_bundle.included_refs.clone()
-            };
-
-            return Ok(Some(ExportBundleState {
-                export_id: export_bundle.export_id,
-                created_at: export_bundle.created_at,
-                policy_id: export_bundle.policy_id,
-                checkpoint_ref: self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
-                workspace_ref: if export_bundle.workspace_ref.is_empty() {
-                    self.display_path(&workspace_path)
-                } else {
-                    export_bundle.workspace_ref
-                },
-                bundle_ref: self.display_path(&export_path),
-                included_refs,
-                excluded_paths: export_bundle.excluded_paths,
-                sanitized: export_bundle.sanitized,
-            }));
         }
 
         Ok(None)
+    }
+
+    fn load_export_bundle_for_checkpoint(
+        &self,
+        checkpoint: &CheckpointRecordFile,
+    ) -> Result<Option<ExportBundleState>, String> {
+        let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
+        if !export_path.exists() {
+            return Ok(None);
+        }
+
+        let export_bundle = self.read_json_path::<ExportBundleFile>(&export_path)?;
+        let workspace_path = self.export_workspace_path(&checkpoint.checkpoint_id);
+        let included_refs = if export_bundle.included_refs.is_empty() && workspace_path.exists() {
+            list_relative_files(&workspace_path, "./workspace")?
+        } else {
+            export_bundle.included_refs.clone()
+        };
+
+        Ok(Some(ExportBundleState {
+            export_id: export_bundle.export_id,
+            created_at: export_bundle.created_at,
+            policy_id: export_bundle.policy_id,
+            checkpoint_ref: self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
+            workspace_ref: if export_bundle.workspace_ref.is_empty() {
+                self.display_path(&workspace_path)
+            } else {
+                export_bundle.workspace_ref
+            },
+            bundle_ref: self.display_path(&export_path),
+            included_refs,
+            excluded_paths: export_bundle.excluded_paths,
+            sanitized: export_bundle.sanitized,
+        }))
     }
 
     fn export_bundle_display_ref(&self, checkpoint: &CheckpointRecordFile) -> Option<String> {

@@ -1,14 +1,16 @@
-import type { CheckpointSummary } from "../lib/service-contract";
+import type { CheckpointDetailState, CheckpointSummary } from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
 type StrategyTimelineProps = {
   checkpoints: CheckpointSummary[];
+  checkpointDetail: CheckpointDetailState | null;
   selectedCheckpointId: string | null;
   onSelectCheckpoint: (checkpointId: string) => void;
 };
 
 export function StrategyTimeline({
+  checkpointDetail,
   checkpoints,
   onSelectCheckpoint,
   selectedCheckpointId
@@ -78,11 +80,75 @@ export function StrategyTimeline({
                 <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Checkpoint ref</dt>
                 <dd className="mt-1 break-all text-ink-50">{selectedCheckpoint.pathRef}</dd>
               </div>
+              {checkpointDetail ? (
+                <>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                      Snapshot workspace
+                    </dt>
+                    <dd className="mt-1 break-all text-ink-50">
+                      {checkpointDetail.snapshotWorkspaceRef}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                      Snapshot files
+                    </dt>
+                    <dd className="mt-2 space-y-2">
+                      {checkpointDetail.workspaceFileRefs.slice(0, 6).map((fileRef) => (
+                        <div
+                          key={fileRef}
+                          className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm leading-6 text-ink-50"
+                        >
+                          {fileRef}
+                        </div>
+                      ))}
+                      {checkpointDetail.workspaceFileRefs.length > 6 ? (
+                        <p className="text-xs uppercase tracking-[0.16em] text-ink-300">
+                          +{checkpointDetail.workspaceFileRefs.length - 6} more files
+                        </p>
+                      ) : null}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
               {selectedCheckpoint.exportBundleRef ? (
                 <div>
                   <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Export bundle</dt>
                   <dd className="mt-1 break-all text-ink-50">{selectedCheckpoint.exportBundleRef}</dd>
                 </div>
+              ) : null}
+              {checkpointDetail?.exportBundle ? (
+                <>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                      Bundle workspace
+                    </dt>
+                    <dd className="mt-1 break-all text-ink-50">
+                      {checkpointDetail.exportBundle.workspaceRef}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                      Bundle includes
+                    </dt>
+                    <dd className="mt-2 space-y-2">
+                      {checkpointDetail.exportBundle.includedRefs.slice(0, 4).map((includedRef) => (
+                        <div
+                          key={includedRef}
+                          className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm leading-6 text-ink-50"
+                        >
+                          {includedRef}
+                        </div>
+                      ))}
+                      {checkpointDetail.exportBundle.includedRefs.length > 4 ? (
+                        <p className="text-xs uppercase tracking-[0.16em] text-ink-300">
+                          +{checkpointDetail.exportBundle.includedRefs.length - 4} more refs
+                        </p>
+                      ) : null}
+                    </dd>
+                  </div>
+                </>
               ) : null}
             </dl>
           </div>

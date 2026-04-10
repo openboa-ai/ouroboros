@@ -1,10 +1,18 @@
 use tauri::State;
 
-use crate::{models::BootstrapState, state::AppState};
+use crate::{models::{BootstrapState, CheckpointDetailState}, state::AppState};
 
 #[tauri::command]
 pub fn get_bootstrap_state(state: State<'_, AppState>) -> Result<BootstrapState, String> {
     state.snapshot()
+}
+
+#[tauri::command]
+pub fn get_checkpoint_detail(
+    checkpoint_id: String,
+    state: State<'_, AppState>,
+) -> Result<CheckpointDetailState, String> {
+    state.checkpoint_detail(&checkpoint_id)
 }
 
 #[tauri::command]

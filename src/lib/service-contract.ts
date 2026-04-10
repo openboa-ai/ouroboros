@@ -70,6 +70,20 @@ export type CheckpointSummary = {
   exportBundleRef?: string;
 };
 
+export type CheckpointDetailState = {
+  id: string;
+  alias: string;
+  type: "promotion" | "export" | "incident";
+  typeTone: "positive" | "warning" | "danger";
+  summary: string;
+  createdAt: string;
+  performance: string;
+  checkpointRef: string;
+  snapshotWorkspaceRef: string;
+  workspaceFileRefs: string[];
+  exportBundle: ExportBundleState | null;
+};
+
 export type WorkspaceSummary = {
   artifactId: string;
   slug: string;
@@ -157,6 +171,7 @@ export type BootstrapState = {
 
 export interface WorkspaceService {
   getBootstrapState(): Promise<BootstrapState>;
+  getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;

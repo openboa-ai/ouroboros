@@ -15,12 +15,15 @@ import { WorkspaceIndexPanel } from "./components/workspace-index-panel";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
-import type { BootstrapState } from "./lib/service-contract";
+import type { BootstrapState, CheckpointDetailState } from "./lib/service-contract";
 import { workspaceService } from "./lib/service-gateway";
 
 export function App() {
   const [state, setState] = useState<BootstrapState | null>(null);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
+  const [selectedCheckpointDetail, setSelectedCheckpointDetail] = useState<CheckpointDetailState | null>(
+    null
+  );
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,6 +42,29 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedCheckpointId) {
+      setSelectedCheckpointDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.getCheckpointDetail(selectedCheckpointId).then((detail) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedCheckpointDetail(detail);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCheckpointId]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-shell-950 text-ink-50">
@@ -56,6 +82,7 @@ export function App() {
     startTransition(() => {
       setState(nextState);
       setSelectedCheckpointId(nextState.checkpoints[0]?.id ?? null);
+      setSelectedCheckpointDetail(null);
     });
   }
 
@@ -180,6 +207,7 @@ export function App() {
             <EquityAreaPanel series={state.equitySeries} />
             <StrategyTimeline
               checkpoints={state.checkpoints}
+              checkpointDetail={selectedCheckpointDetail}
               selectedCheckpointId={selectedCheckpointId}
               onSelectCheckpoint={setSelectedCheckpointId}
             />
