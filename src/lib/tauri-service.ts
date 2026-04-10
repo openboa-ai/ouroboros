@@ -40,6 +40,10 @@ class TauriWorkspaceService implements WorkspaceService {
   async createExportCheckpoint(): Promise<BootstrapState> {
     return invoke<BootstrapState>("create_export_checkpoint");
   }
+
+  async restoreCheckpoint(checkpointId: string): Promise<BootstrapState> {
+    return invoke<BootstrapState>("restore_checkpoint", { checkpointId });
+  }
 }
 
 export const tauriWorkspaceService = new TauriWorkspaceService();

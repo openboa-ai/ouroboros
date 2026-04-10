@@ -1,18 +1,23 @@
 import type { CheckpointDetailState, CheckpointSummary } from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
+import { Button } from "./ui/button";
 
 type StrategyTimelineProps = {
   checkpoints: CheckpointSummary[];
   checkpointDetail: CheckpointDetailState | null;
   selectedCheckpointId: string | null;
   onSelectCheckpoint: (checkpointId: string) => void;
+  onRestoreCheckpoint: (checkpointId: string) => void;
+  onOpenWorkspaceDocument: (documentRef: string) => void;
 };
 
 export function StrategyTimeline({
   checkpointDetail,
   checkpoints,
+  onOpenWorkspaceDocument,
   onSelectCheckpoint,
+  onRestoreCheckpoint,
   selectedCheckpointId
 }: StrategyTimelineProps) {
   const selectedCheckpoint =
@@ -65,6 +70,11 @@ export function StrategyTimeline({
                 <Badge tone="neutral">{selectedCheckpoint.alias}</Badge>
               </div>
               <p className="text-sm leading-6 text-ink-200">{selectedCheckpoint.summary}</p>
+              <div className="pt-2">
+                <Button variant="secondary" onClick={() => onRestoreCheckpoint(selectedCheckpoint.id)}>
+                  Restore This Checkpoint
+                </Button>
+              </div>
             </div>
 
             <dl className="space-y-3 text-sm">
@@ -91,17 +101,19 @@ export function StrategyTimeline({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                      <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
                       Snapshot files
                     </dt>
                     <dd className="mt-2 space-y-2">
                       {checkpointDetail.workspaceFileRefs.slice(0, 6).map((fileRef) => (
-                        <div
+                        <button
                           key={fileRef}
-                          className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm leading-6 text-ink-50"
+                          type="button"
+                          onClick={() => onOpenWorkspaceDocument(fileRef)}
+                          className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm leading-6 text-ink-50 transition hover:border-white/20 hover:bg-white/[0.05]"
                         >
                           {fileRef}
-                        </div>
+                        </button>
                       ))}
                       {checkpointDetail.workspaceFileRefs.length > 6 ? (
                         <p className="text-xs uppercase tracking-[0.16em] text-ink-300">
@@ -134,12 +146,14 @@ export function StrategyTimeline({
                     </dt>
                     <dd className="mt-2 space-y-2">
                       {checkpointDetail.exportBundle.includedRefs.slice(0, 4).map((includedRef) => (
-                        <div
+                        <button
                           key={includedRef}
-                          className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm leading-6 text-ink-50"
+                          type="button"
+                          onClick={() => onOpenWorkspaceDocument(includedRef)}
+                          className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm leading-6 text-ink-50 transition hover:border-white/20 hover:bg-white/[0.05]"
                         >
                           {includedRef}
-                        </div>
+                        </button>
                       ))}
                       {checkpointDetail.exportBundle.includedRefs.length > 4 ? (
                         <p className="text-xs uppercase tracking-[0.16em] text-ink-300">

@@ -176,9 +176,14 @@ export function App() {
   }
 
   function applyNextState(nextState: BootstrapState) {
+    const activeCheckpointId =
+      nextState.checkpoints.find(
+        (checkpoint) => checkpoint.pathRef === nextState.assetInspector.currentCheckpointRef
+      )?.id ?? nextState.checkpoints[0]?.id ?? null;
+
     startTransition(() => {
       setState(nextState);
-      setSelectedCheckpointId(nextState.checkpoints[0]?.id ?? null);
+      setSelectedCheckpointId(activeCheckpointId);
       setSelectedCheckpointDetail(null);
       setSelectedCollectionId(nextState.collections[0]?.id ?? null);
       setSelectedCollectionDetail(null);
@@ -395,6 +400,26 @@ export function App() {
               checkpointDetail={selectedCheckpointDetail}
               selectedCheckpointId={selectedCheckpointId}
               onSelectCheckpoint={setSelectedCheckpointId}
+              onOpenWorkspaceDocument={(documentRef) => {
+                setSelectedDocumentId(`ref:${documentRef}`);
+                setSelectedDocumentRef(documentRef);
+              }}
+              onRestoreCheckpoint={(checkpointId) => {
+                const checkpoint = state.checkpoints.find((item) => item.id === checkpointId);
+                setCommandStatus(
+                  checkpoint
+                    ? `Restoring checkpoint ${checkpoint.alias}...`
+                    : "Restoring checkpoint..."
+                );
+                void workspaceService.restoreCheckpoint(checkpointId).then((nextState) => {
+                  applyNextState(nextState);
+                  setCommandStatus(
+                    checkpoint
+                      ? `Live workspace restored from checkpoint ${checkpoint.alias}.`
+                      : "Live workspace restored from checkpoint."
+                  );
+                });
+              }}
             />
           </div>
           <div className="space-y-6">

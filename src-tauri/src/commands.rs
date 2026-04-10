@@ -59,3 +59,11 @@ pub fn flatten_all_positions(state: State<'_, AppState>) -> Result<BootstrapStat
 pub fn create_export_checkpoint(state: State<'_, AppState>) -> Result<BootstrapState, String> {
     state.create_export_checkpoint()
 }
+
+#[tauri::command]
+pub fn restore_checkpoint(
+    checkpoint_id: String,
+    state: State<'_, AppState>,
+) -> Result<BootstrapState, String> {
+    state.restore_checkpoint(&checkpoint_id)
+}

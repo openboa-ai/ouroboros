@@ -244,14 +244,15 @@ function buildLiveContext(): LiveContextState {
 }
 
 function buildExportBundle(checkpoint: CheckpointSummary): ExportBundleState {
+  const workspaceRef = `${WORKSPACE_ROOT}/exports/generated/${checkpoint.id}/workspace`;
   return {
     exportId: checkpoint.id,
     createdAt: checkpoint.createdAt,
     policyId: exportPolicy.policy_id,
     checkpointRef: checkpoint.pathRef,
-    workspaceRef: "./workspace",
+    workspaceRef,
     bundleRef: exportBundlePath(checkpoint.id),
-    includedRefs: DEFAULT_INCLUDED_REFS,
+    includedRefs: DEFAULT_INCLUDED_REFS.map((path) => path.replace("./workspace", workspaceRef)),
     excludedPaths: DEFAULT_EXCLUDED_PATHS,
     sanitized: true
   };
@@ -518,6 +519,59 @@ class MockWorkspaceService implements WorkspaceService {
     return structuredClone(this.state);
   }
 
+  async restoreCheckpoint(checkpointId: string): Promise<BootstrapState> {
+    const target = this.state.checkpoints.find((checkpoint) => checkpoint.id === checkpointId);
+    if (!target) {
+      throw new Error(`unknown checkpoint: ${checkpointId}`);
+    }
+
+    const anchorId = crypto.randomUUID();
+    this.state = {
+      ...this.state,
+      workspace: {
+        ...this.state.workspace,
+        currentCheckpointAlias: target.alias
+      },
+      statusNote: `Live workspace restored from checkpoint ${target.alias}.`,
+      laneEvents: this.state.laneEvents,
+      checkpoints: [
+        {
+          id: anchorId,
+          alias: `incident-restore-anchor-${anchorId.slice(0, 8)}`,
+          type: "incident",
+          typeTone: "danger",
+          summary: `Automatic pre-restore checkpoint created before restoring ${target.alias}.`,
+          createdAt: this.nowLabel(),
+          performance: "Rollback anchor for live workspace restore",
+          pathRef: checkpointPath(anchorId)
+        },
+        ...this.state.checkpoints
+      ]
+    };
+
+    this.prependDecision({
+      id: this.nextId("decision"),
+      kind: "Restore",
+      tone: "warning",
+      headline: `Restored live workspace from ${target.alias}`,
+      reason:
+        "The service layer reapplied the selected checkpoint snapshot as the active live workspace while preserving checkpoint and export history.",
+      timestamp: this.nowLabel()
+    });
+
+    this.state = {
+      ...this.state,
+      assetInspector: {
+        ...this.state.assetInspector,
+        currentCheckpointRef: target.pathRef,
+        checkpointCount: this.state.checkpoints.length
+      }
+    };
+    this.syncDerivedState(target.pathRef, target.alias);
+
+    return structuredClone(this.state);
+  }
+
   private prependCheckpoint(checkpoint: CheckpointSummary) {
     this.state = {
       ...this.state,
@@ -549,13 +603,20 @@ class MockWorkspaceService implements WorkspaceService {
     };
   }
 
-  private syncDerivedState() {
-    const currentCheckpointRef = this.state.checkpoints[0]?.pathRef ?? checkpointPath(checkpointIndex.current.checkpoint_id);
+  private syncDerivedState(currentCheckpointRef?: string, currentCheckpointAlias?: string) {
+    const resolvedCheckpointRef =
+      currentCheckpointRef ?? this.state.checkpoints[0]?.pathRef ?? checkpointPath(checkpointIndex.current.checkpoint_id);
+    const resolvedCheckpointAlias =
+      currentCheckpointAlias ?? this.state.workspace.currentCheckpointAlias ?? checkpointIndex.current.alias;
 
     this.state = {
       ...this.state,
-      assetInspector: buildAssetInspector(this.state.checkpoints, currentCheckpointRef),
-      workspaceIndex: buildWorkspaceIndex(currentCheckpointRef),
+      workspace: {
+        ...this.state.workspace,
+        currentCheckpointAlias: resolvedCheckpointAlias
+      },
+      assetInspector: buildAssetInspector(this.state.checkpoints, resolvedCheckpointRef),
+      workspaceIndex: buildWorkspaceIndex(resolvedCheckpointRef),
       exportInspector: buildExportInspector(this.state.checkpoints)
     };
   }
@@ -568,7 +629,21 @@ class MockWorkspaceService implements WorkspaceService {
     return `UTC ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
   }
 
-  private resolveDocumentContent(documentRef: string) {
+  private resolveDocumentContent(documentRef: string): string {
+    const checkpointWorkspaceMatch = documentRef.match(
+      /var\/dev-workspace\/checkpoints\/items\/([^/]+)\/workspace\/(.+)$/
+    );
+    if (checkpointWorkspaceMatch) {
+      return this.resolveDocumentContent(`${WORKSPACE_ROOT}/${checkpointWorkspaceMatch[2]}`);
+    }
+
+    const exportWorkspaceMatch = documentRef.match(
+      /var\/dev-workspace\/exports\/generated\/([^/]+)\/workspace\/(.+)$/
+    );
+    if (exportWorkspaceMatch) {
+      return this.resolveDocumentContent(`${WORKSPACE_ROOT}/${exportWorkspaceMatch[2]}`);
+    }
+
     if (documentRef === `${WORKSPACE_ROOT}/strategy.json`) {
       return JSON.stringify(mockStrategyManifest, null, 2);
     }

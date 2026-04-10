@@ -199,7 +199,7 @@ impl WorkspaceRepository {
             .join(checkpoint_id)
             .join("workspace");
         let workspace_file_refs = if snapshot_workspace.exists() {
-            list_relative_files(&snapshot_workspace, "./workspace")?
+            self.list_display_files(&snapshot_workspace)?
         } else {
             Vec::new()
         };
@@ -452,14 +452,36 @@ impl WorkspaceRepository {
         self.load_bootstrap_state()
     }
 
+    pub fn restore_checkpoint(&self, checkpoint_id: &str) -> Result<BootstrapState, String> {
+        let target_checkpoint_path = self.checkpoint_file_path(checkpoint_id);
+        let target_checkpoint = self.read_json_path::<CheckpointRecordFile>(&target_checkpoint_path)?;
+        let target_alias = target_checkpoint.alias.clone();
+
+        self.create_checkpoint(
+            "incident",
+            format!("incident-restore-anchor-{}", short_alias_suffix()),
+            format!(
+                "Automatic pre-restore checkpoint created before restoring {}.",
+                target_alias
+            ),
+            "Rollback anchor for live workspace restore".into(),
+        )?;
+
+        self.restore_workspace_snapshot(checkpoint_id)?;
+        self.set_current_checkpoint(&target_checkpoint)?;
+        self.record_restore_decision(&target_alias)?;
+
+        self.load_bootstrap_state()
+    }
+
     fn ensure_ready(&self) -> Result<(), String> {
         if self.root.join("strategy.json").exists() {
-            copy_missing_tree(&self.template_root, &self.root, &PathBuf::new())?;
+            copy_missing_template_tree(&self.template_root, &self.root)?;
             self.normalize_workspace()?;
             return Ok(());
         }
 
-        copy_tree(&self.template_root, &self.root, &PathBuf::new())?;
+        copy_template_tree(&self.template_root, &self.root)?;
         self.normalize_workspace()?;
         Ok(())
     }
@@ -487,6 +509,18 @@ impl WorkspaceRepository {
             self.write_json_path(&strategy_path, &strategy)?;
         }
 
+        for checkpoint in &checkpoints_index.items {
+            let snapshot_root = self
+                .root
+                .join("checkpoints")
+                .join("items")
+                .join(&checkpoint.checkpoint_id)
+                .join("workspace");
+            if !snapshot_root.exists() {
+                self.materialize_checkpoint_snapshot(checkpoint)?;
+            }
+        }
+
         Ok(())
     }
 
@@ -496,6 +530,18 @@ impl WorkspaceRepository {
         strategy.active.current_checkpoint_ref =
             format!("./checkpoints/items/{checkpoint_id}/checkpoint.json");
         self.write_json_path(&strategy_path, &strategy)
+    }
+
+    fn set_current_checkpoint(&self, checkpoint: &CheckpointRecordFile) -> Result<(), String> {
+        let checkpoints_index_path = self.root.join("checkpoints/index.json");
+        let mut index = self.read_json_path::<CheckpointIndexFile>(&checkpoints_index_path)?;
+        index.current = CheckpointPointerFile {
+            checkpoint_id: checkpoint.checkpoint_id.clone(),
+            alias: checkpoint.alias.clone(),
+            r#type: checkpoint.r#type.clone(),
+        };
+        self.write_json_path(&checkpoints_index_path, &index)?;
+        self.update_active_checkpoint_ref(&checkpoint.checkpoint_id)
     }
 
     fn create_checkpoint(
@@ -520,17 +566,115 @@ impl WorkspaceRepository {
 
         self.materialize_checkpoint_snapshot(&checkpoint)?;
 
-        let mut index = self.read_json_path::<CheckpointIndexFile>(&self.root.join("checkpoints/index.json"))?;
-        index.current = CheckpointPointerFile {
-            checkpoint_id: checkpoint_id.clone(),
-            alias,
-            r#type: checkpoint_type.into(),
-        };
+        let mut index =
+            self.read_json_path::<CheckpointIndexFile>(&self.root.join("checkpoints/index.json"))?;
         index.items.insert(0, checkpoint.clone());
         self.write_json_path(&self.root.join("checkpoints/index.json"), &index)?;
-        self.update_active_checkpoint_ref(&checkpoint_id)?;
+        self.set_current_checkpoint(&checkpoint)?;
 
         Ok(checkpoint)
+    }
+
+    fn restore_workspace_snapshot(&self, checkpoint_id: &str) -> Result<(), String> {
+        let snapshot_root = self
+            .root
+            .join("checkpoints")
+            .join("items")
+            .join(checkpoint_id)
+            .join("workspace");
+
+        if !snapshot_root.exists() {
+            return Err(format!(
+                "checkpoint snapshot workspace does not exist: {}",
+                snapshot_root.display()
+            ));
+        }
+
+        self.clear_workspace_for_restore()?;
+
+        for entry in fs::read_dir(&snapshot_root)
+            .map_err(|error| format!("failed to read {}: {error}", snapshot_root.display()))?
+        {
+            let entry = entry.map_err(|error| format!("failed to read snapshot entry: {error}"))?;
+            let name = entry.file_name();
+            let destination = self.root.join(&name);
+            let relative = PathBuf::from(&name);
+            copy_tree(&entry.path(), &destination, &relative)?;
+        }
+
+        Ok(())
+    }
+
+    fn clear_workspace_for_restore(&self) -> Result<(), String> {
+        for entry in fs::read_dir(&self.root)
+            .map_err(|error| format!("failed to read workspace root: {error}"))?
+        {
+            let entry = entry.map_err(|error| format!("failed to read workspace entry: {error}"))?;
+            let name = entry.file_name();
+            let path = entry.path();
+
+            if name == "checkpoints" {
+                continue;
+            }
+
+            if name == "exports" {
+                self.clear_exports_for_restore(&path)?;
+                continue;
+            }
+
+            remove_path(&path)?;
+        }
+
+        Ok(())
+    }
+
+    fn clear_exports_for_restore(&self, exports_root: &Path) -> Result<(), String> {
+        if !exports_root.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(exports_root)
+            .map_err(|error| format!("failed to read exports root: {error}"))?
+        {
+            let entry = entry.map_err(|error| format!("failed to read exports entry: {error}"))?;
+            if entry.file_name() == "generated" {
+                continue;
+            }
+            remove_path(&entry.path())?;
+        }
+
+        Ok(())
+    }
+
+    fn record_restore_decision(&self, checkpoint_alias: &str) -> Result<(), String> {
+        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
+
+        let mut dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let mut decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+
+        dashboard.status_note = Some(format!(
+            "Live workspace restored from checkpoint {} through the service layer.",
+            checkpoint_alias
+        ));
+        prepend_decision(
+            &mut decisions.decisions,
+            DecisionEntry {
+                id: uuid_v7_string(),
+                kind: "Restore".into(),
+                tone: "warning".into(),
+                headline: format!("Restored live workspace from {}", checkpoint_alias),
+                reason: "The service layer reapplied the selected checkpoint snapshot as the active live workspace while preserving checkpoint and export history.".into(),
+                timestamp: now_label(),
+            },
+        );
+
+        self.write_json_path(&dashboard_path, &dashboard)?;
+        self.write_json_path(&decisions_path, &decisions)?;
+        Ok(())
     }
 
     fn materialize_checkpoint_snapshot(
@@ -665,9 +809,19 @@ impl WorkspaceRepository {
         let export_bundle = self.read_json_path::<ExportBundleFile>(&export_path)?;
         let workspace_path = self.export_workspace_path(&checkpoint.checkpoint_id);
         let included_refs = if export_bundle.included_refs.is_empty() && workspace_path.exists() {
-            list_relative_files(&workspace_path, "./workspace")?
+            self.list_display_files(&workspace_path)?
         } else {
-            export_bundle.included_refs.clone()
+            export_bundle
+                .included_refs
+                .iter()
+                .map(|reference| {
+                    let relative = reference
+                        .strip_prefix("./workspace/")
+                        .or_else(|| reference.strip_prefix("./workspace"))
+                        .unwrap_or(reference);
+                    self.display_path(&workspace_path.join(relative))
+                })
+                .collect()
         };
 
         Ok(Some(ExportBundleState {
@@ -675,11 +829,7 @@ impl WorkspaceRepository {
             created_at: export_bundle.created_at,
             policy_id: export_bundle.policy_id,
             checkpoint_ref: self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
-            workspace_ref: if export_bundle.workspace_ref.is_empty() {
-                self.display_path(&workspace_path)
-            } else {
-                export_bundle.workspace_ref
-            },
+            workspace_ref: self.display_path(&workspace_path),
             bundle_ref: self.display_path(&export_path),
             included_refs,
             excluded_paths: export_bundle.excluded_paths,
@@ -763,6 +913,29 @@ impl WorkspaceRepository {
         path.strip_prefix(&project_root)
             .map(|relative| relative.to_string_lossy().replace('\\', "/"))
             .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
+    }
+
+    fn list_display_files(&self, root: &Path) -> Result<Vec<String>, String> {
+        let mut items = Vec::new();
+        self.collect_display_files(root, &mut items)?;
+        items.sort();
+        Ok(items)
+    }
+
+    fn collect_display_files(&self, current: &Path, items: &mut Vec<String>) -> Result<(), String> {
+        for entry in fs::read_dir(current)
+            .map_err(|error| format!("failed to read {}: {error}", current.display()))?
+        {
+            let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.collect_display_files(&path, items)?;
+                continue;
+            }
+            items.push(self.display_path(&path));
+        }
+
+        Ok(())
     }
 
     fn project_root(&self) -> PathBuf {
@@ -1100,6 +1273,16 @@ fn collect_relative_files(
     Ok(())
 }
 
+fn remove_path(path: &Path) -> Result<(), String> {
+    if path.is_dir() {
+        fs::remove_dir_all(path)
+            .map_err(|error| format!("failed to remove {}: {error}", path.display()))
+    } else {
+        fs::remove_file(path)
+            .map_err(|error| format!("failed to remove {}: {error}", path.display()))
+    }
+}
+
 fn copy_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), String> {
     if should_skip_snapshot_path(relative) {
         return Ok(());
@@ -1137,11 +1320,7 @@ fn copy_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), S
     Ok(())
 }
 
-fn copy_missing_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), String> {
-    if should_skip_snapshot_path(relative) {
-        return Ok(());
-    }
-
+fn copy_template_tree(source: &Path, destination: &Path) -> Result<(), String> {
     if source.is_dir() {
         fs::create_dir_all(destination)
             .map_err(|error| format!("failed to create {}: {error}", destination.display()))?;
@@ -1150,12 +1329,35 @@ fn copy_missing_tree(source: &Path, destination: &Path, relative: &Path) -> Resu
         {
             let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
             let name = entry.file_name();
-            let child_relative = if relative.as_os_str().is_empty() {
-                PathBuf::from(&name)
-            } else {
-                relative.join(&name)
-            };
-            copy_missing_tree(&entry.path(), &destination.join(name), &child_relative)?;
+            copy_template_tree(&entry.path(), &destination.join(name))?;
+        }
+        return Ok(());
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::copy(source, destination).map_err(|error| {
+        format!(
+            "failed to copy {} to {}: {error}",
+            source.display(),
+            destination.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn copy_missing_template_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    if source.is_dir() {
+        fs::create_dir_all(destination)
+            .map_err(|error| format!("failed to create {}: {error}", destination.display()))?;
+        for entry in fs::read_dir(source)
+            .map_err(|error| format!("failed to read {}: {error}", source.display()))?
+        {
+            let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
+            let name = entry.file_name();
+            copy_missing_template_tree(&entry.path(), &destination.join(name))?;
         }
         return Ok(());
     }
@@ -1197,4 +1399,79 @@ fn now_label() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("UTC epoch {seconds}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_root() -> PathBuf {
+        std::env::temp_dir().join(format!("autokairos-workspace-test-{}", uuid_v7_string()))
+    }
+
+    #[test]
+    fn restore_checkpoint_replays_snapshot_without_losing_generated_exports() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let export_state = repo.create_export_checkpoint().expect("export checkpoint");
+        let target_checkpoint_id = export_state
+            .checkpoints
+            .first()
+            .map(|checkpoint| checkpoint.id.clone())
+            .expect("new export checkpoint id");
+        let target_alias = export_state
+            .checkpoints
+            .first()
+            .map(|checkpoint| checkpoint.alias.clone())
+            .expect("new export checkpoint alias");
+        let export_bundle_ref = export_state
+            .asset_inspector
+            .latest_export_bundle_ref
+            .clone()
+            .expect("latest export bundle");
+        let export_bundle_path = repo.project_root().join(&export_bundle_ref);
+        assert!(export_bundle_path.exists(), "export bundle should exist before restore");
+
+        let flattened = repo.flatten_all_positions().expect("flatten");
+        assert!(flattened.positions.is_empty(), "flatten should clear live positions");
+
+        let restored = repo
+            .restore_checkpoint(&target_checkpoint_id)
+            .expect("restore checkpoint");
+        assert_eq!(restored.workspace.current_checkpoint_alias, target_alias);
+        assert!(
+            restored
+                .status_note
+                .as_deref()
+                .unwrap_or_default()
+                .contains("restored from checkpoint"),
+            "restore should leave a status note"
+        );
+        assert!(
+            !restored.positions.is_empty(),
+            "restoring the promotion snapshot should bring positions back"
+        );
+        assert!(
+            export_bundle_path.exists(),
+            "generated export bundles should survive restore"
+        );
+
+        let checkpoints_index = repo
+            .read_json_path::<CheckpointIndexFile>(&root.join("checkpoints/index.json"))
+            .expect("checkpoint index");
+        assert_eq!(checkpoints_index.current.checkpoint_id, target_checkpoint_id);
+        assert_eq!(checkpoints_index.current.alias, target_alias);
+        assert!(
+            checkpoints_index
+                .items
+                .first()
+                .map(|item| item.alias.starts_with("incident-restore-anchor-"))
+                .unwrap_or(false),
+            "restore should prepend an incident rollback anchor"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }

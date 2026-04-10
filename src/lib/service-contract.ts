@@ -240,4 +240,5 @@ export interface WorkspaceService {
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;
+  restoreCheckpoint(checkpointId: string): Promise<BootstrapState>;
 }
