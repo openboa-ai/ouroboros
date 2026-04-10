@@ -198,6 +198,17 @@ export type ImportDetailState = ImportSummaryState & {
   workspaceFileRefs: string[];
 };
 
+export type ImportComparisonState = {
+  importId: string;
+  sourceBundleRef: string;
+  comparedFileCount: number;
+  changedCount: number;
+  addedCount: number;
+  removedCount: number;
+  summary: string;
+  files: CheckpointComparisonFileState[];
+};
+
 export type IngestSourceEntryInput = {
   kind: "raw" | "canonical";
   sourceRef: string;
@@ -400,6 +411,7 @@ export interface WorkspaceService {
   ): Promise<CheckpointComparisonState>;
   getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
   getImportDetail(importId: string): Promise<ImportDetailState>;
+  getImportComparison(importId: string): Promise<ImportComparisonState>;
   getBlobDetail(blobId: string): Promise<BlobDetailState>;
   getOperationDetail(operationId: string): Promise<OperationDetailState>;
   getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState>;

@@ -1,4 +1,8 @@
-import type { ImportDetailState, ImportSummaryState } from "../lib/service-contract";
+import type {
+  ImportComparisonState,
+  ImportDetailState,
+  ImportSummaryState
+} from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -7,12 +11,14 @@ type ImportsPanelProps = {
   imports: ImportSummaryState[];
   selectedImportId: string | null;
   importDetail: ImportDetailState | null;
+  importComparison: ImportComparisonState | null;
   onSelectImport: (importId: string) => void;
   onOpenWorkspaceDocument: (documentRef: string) => void;
 };
 
 export function ImportsPanel({
   imports,
+  importComparison,
   selectedImportId,
   importDetail,
   onOpenWorkspaceDocument,
@@ -91,6 +97,40 @@ export function ImportsPanel({
               <ImportRow label="Workspace root" value={importDetail.workspaceRef} />
               <ImportRow label="Checkpoint ref" value={importDetail.checkpointRef} />
             </dl>
+
+            {importComparison ? (
+              <section className="space-y-2">
+                <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                  Current Live vs Import
+                </h3>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="warning">{importComparison.changedCount} changed</Badge>
+                    <Badge tone="positive">{importComparison.addedCount} added</Badge>
+                    <Badge tone="danger">{importComparison.removedCount} removed</Badge>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-ink-200">{importComparison.summary}</p>
+                  <div className="mt-3 space-y-2">
+                    {importComparison.files.slice(0, 6).map((file) => (
+                      <button
+                        key={`${file.relativePath}-${file.status}`}
+                        type="button"
+                        onClick={() => onOpenWorkspaceDocument(file.targetRef ?? file.baseRef ?? importDetail.importRef)}
+                        className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.05]"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone="neutral">{file.status}</Badge>
+                          <p className="text-sm font-medium text-ink-50">{file.relativePath}</p>
+                        </div>
+                        <p className="mt-2 break-all text-xs leading-5 text-ink-300">
+                          {file.targetRef ?? file.baseRef}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            ) : null}
 
             <section className="space-y-2">
               <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Workspace files</h3>

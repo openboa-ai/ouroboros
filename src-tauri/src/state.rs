@@ -3,8 +3,9 @@ use std::sync::Mutex;
 use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
-        CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
-        IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
+        CollectionDetailState, ImportBundleState, ImportComparisonState, ImportDetailState,
+        IngestSourceEntryInput, IngestSourceEntryResult, OperationDetailState,
+        WorkspaceDocumentState,
         WorkspaceSearchResultState,
     },
     workspace::WorkspaceRepository,
@@ -62,6 +63,13 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .load_import_detail(import_id)
+    }
+
+    pub fn import_comparison(&self, import_id: &str) -> Result<ImportComparisonState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .compare_import(import_id)
     }
 
     pub fn blob_detail(&self, blob_id: &str) -> Result<BlobDetailState, String> {

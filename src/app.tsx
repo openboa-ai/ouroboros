@@ -26,6 +26,7 @@ import type {
   CheckpointDetailState,
   CollectionDetailState,
   ImportDetailState,
+  ImportComparisonState,
   OperationDetailState,
   WorkspaceCatalogEntry,
   WorkspaceDocumentState,
@@ -49,6 +50,9 @@ export function App() {
   );
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [selectedImportDetail, setSelectedImportDetail] = useState<ImportDetailState | null>(null);
+  const [selectedImportComparison, setSelectedImportComparison] = useState<ImportComparisonState | null>(
+    null
+  );
   const [selectedBlobId, setSelectedBlobId] = useState<string | null>(null);
   const [selectedBlobDetail, setSelectedBlobDetail] = useState<BlobDetailState | null>(null);
   const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
@@ -164,6 +168,7 @@ export function App() {
   useEffect(() => {
     if (!selectedImportId) {
       setSelectedImportDetail(null);
+      setSelectedImportComparison(null);
       return;
     }
 
@@ -176,6 +181,16 @@ export function App() {
 
       startTransition(() => {
         setSelectedImportDetail(detail);
+      });
+    });
+
+    void workspaceService.getImportComparison(selectedImportId).then((comparison) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedImportComparison(comparison);
       });
     });
 
@@ -341,6 +356,7 @@ export function App() {
       setSelectedCollectionDetail(null);
       setSelectedImportId(nextImportId);
       setSelectedImportDetail(null);
+      setSelectedImportComparison(null);
       setSelectedBlobId(null);
       setSelectedBlobDetail(null);
       setSelectedOperationId(nextOperationId);
@@ -645,6 +661,7 @@ export function App() {
           imports={state.imports}
           selectedImportId={selectedImportId}
           importDetail={selectedImportDetail}
+          importComparison={selectedImportComparison}
           onSelectImport={setSelectedImportId}
           onOpenWorkspaceDocument={(documentRef) => {
             setSelectedDocumentId(`ref:${documentRef}`);

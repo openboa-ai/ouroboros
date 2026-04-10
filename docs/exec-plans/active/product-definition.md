@@ -88,6 +88,8 @@ These decisions are current, not final.
 - The desktop client should obtain its workspace-document browser/catalog from the service layer rather than hard-coding workspace file paths into the UI.
 - Live sessions and evaluation summaries should be materialized as addressable workspace documents rather than staying only as inline labels inside dashboard state.
 - Those live-evidence documents should appear in the service-owned workspace document catalog so inspection continues to flow through the service boundary.
+- Workspace document inspection should surface backlinks through the service layer so the asset remains explorable as a graph instead of a flat file list.
+- Staged imports should not only be inspectable; they should also be diffable against the current live workspace before any future promotion or activation path is introduced.
 - Durable operation records should also be addressable workspace documents, and operation drill-down should resolve linked workspace refs through the same service-owned catalog.
 - Workspace search should run through the service layer and be able to match both document metadata and document content.
 - Mutable local memory should keep flowing, but each promotion should create an immutable checkpoint snapshot inside the strategy asset.

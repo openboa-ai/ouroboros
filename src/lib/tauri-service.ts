@@ -6,6 +6,7 @@ import type {
   CheckpointDetailState,
   CollectionDetailState,
   ImportBundleState,
+  ImportComparisonState,
   ImportDetailState,
   IngestSourceEntryInput,
   IngestSourceEntryResult,
@@ -40,6 +41,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getImportDetail(importId: string): Promise<ImportDetailState> {
     return invoke<ImportDetailState>("get_import_detail", { importId });
+  }
+
+  async getImportComparison(importId: string): Promise<ImportComparisonState> {
+    return invoke<ImportComparisonState>("get_import_comparison", { importId });
   }
 
   async getBlobDetail(blobId: string): Promise<BlobDetailState> {

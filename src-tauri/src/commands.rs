@@ -3,8 +3,8 @@ use tauri::State;
 use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
-        CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
-        IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
+        CollectionDetailState, ImportBundleState, ImportComparisonState, ImportDetailState,
+        IngestSourceEntryInput, IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
         WorkspaceSearchResultState,
     },
     state::AppState,
@@ -46,6 +46,14 @@ pub fn get_import_detail(
     state: State<'_, AppState>,
 ) -> Result<ImportDetailState, String> {
     state.import_detail(&import_id)
+}
+
+#[tauri::command]
+pub fn get_import_comparison(
+    import_id: String,
+    state: State<'_, AppState>,
+) -> Result<ImportComparisonState, String> {
+    state.import_comparison(&import_id)
 }
 
 #[tauri::command]

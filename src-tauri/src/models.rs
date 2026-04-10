@@ -218,6 +218,19 @@ pub struct ImportDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportComparisonState {
+    pub import_id: String,
+    pub source_bundle_ref: String,
+    pub compared_file_count: usize,
+    pub changed_count: usize,
+    pub added_count: usize,
+    pub removed_count: usize,
+    pub summary: String,
+    pub files: Vec<CheckpointComparisonFileState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlobDetailState {
     pub id: String,
     pub blob_path_ref: String,

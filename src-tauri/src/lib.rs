@@ -17,6 +17,7 @@ pub fn run() {
             commands::get_checkpoint_comparison,
             commands::get_collection_detail,
             commands::get_import_detail,
+            commands::get_import_comparison,
             commands::get_blob_detail,
             commands::get_operation_detail,
             commands::get_workspace_document,

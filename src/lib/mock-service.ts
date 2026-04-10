@@ -11,6 +11,7 @@ import type {
   ExportBundleState,
   ExportInspectorState,
   ImportBundleState,
+  ImportComparisonState,
   ImportDetailState,
   ImportSummaryState,
   IngestSourceEntryInput,
@@ -210,6 +211,9 @@ const DEFAULT_INCLUDED_REFS = [
   "./workspace/sessions/items/01962740-2f14-7f37-a9a5-1d3c5d9f1a01/session.json",
   "./workspace/eval-summaries/items/0196274f-40c8-73be-9f42-f5cf61951b44/summary.json"
 ];
+const CURRENT_WORKSPACE_FILE_REFS = DEFAULT_INCLUDED_REFS.map((path) =>
+  path.replace("./workspace", WORKSPACE_ROOT)
+);
 
 function buildLaneEvents(): LaneEventState[] {
   return [
@@ -595,6 +599,42 @@ function buildDocumentBacklinks(
   return backlinks;
 }
 
+function compareWorkspaceRefs(
+  baseRefs: string[],
+  targetRefs: string[],
+  baseRoot: string,
+  targetRoot: string
+): ImportComparisonState["files"] {
+  const toRelativeMap = (refs: string[], root: string) =>
+    new Map(
+      refs.map((pathRef) => [
+        pathRef.startsWith(`${root}/`) ? pathRef.slice(root.length + 1) : pathRef,
+        pathRef
+      ])
+    );
+
+  const base = toRelativeMap(baseRefs, baseRoot);
+  const target = toRelativeMap(targetRefs, targetRoot);
+  const keys = Array.from(new Set([...base.keys(), ...target.keys()])).sort();
+
+  return keys.flatMap((relativePath) => {
+    const baseRef = base.get(relativePath);
+    const targetRef = target.get(relativePath);
+    if (baseRef && targetRef) {
+      return [];
+    }
+
+    return [
+      {
+        relativePath,
+        status: baseRef ? "removed" : "added",
+        baseRef,
+        targetRef
+      }
+    ];
+  });
+}
+
 function toUtcHourBucket(eventTime: string) {
   return `${eventTime.slice(0, 13)}:00:00Z`;
 }
@@ -805,6 +845,29 @@ class MockWorkspaceService implements WorkspaceService {
       sanitized: record.sanitized,
       bundleRef: `${WORKSPACE_ROOT}/imports/items/${record.import_id}/bundle/export.json`,
       workspaceFileRefs: DEFAULT_INCLUDED_REFS.map((path) => path.replace("./workspace", workspaceRef))
+    };
+  }
+
+  async getImportComparison(importId: string): Promise<ImportComparisonState> {
+    const detail = await this.getImportDetail(importId);
+    const files = compareWorkspaceRefs(
+      CURRENT_WORKSPACE_FILE_REFS,
+      detail.workspaceFileRefs,
+      WORKSPACE_ROOT,
+      detail.workspaceRef
+    );
+    const addedCount = files.filter((file) => file.status === "added").length;
+    const removedCount = files.filter((file) => file.status === "removed").length;
+
+    return {
+      importId: detail.id,
+      sourceBundleRef: detail.sourceBundleRef,
+      comparedFileCount: files.length,
+      changedCount: 0,
+      addedCount,
+      removedCount,
+      summary: `${0} changed, ${addedCount} added, ${removedCount} removed between the current workspace and import ${detail.id}.`,
+      files
     };
   }
 

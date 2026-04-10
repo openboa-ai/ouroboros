@@ -88,6 +88,8 @@
 - Recorded that the official client should remain dashboard-first, with charts treated as first-class trading surfaces rather than decorative widgets.
 - Recorded that the official client must continue to consume a service layer rather than treating the workspace contract as a direct machine API.
 - Recorded that workspace search should remain service-owned and be able to match both catalog metadata and actual document content.
+- Added service-owned workspace document backlinks so strategy.json, indexes, operation refs, and export refs can be navigated as an asset graph.
+- Added staged import comparison against the current live workspace so imported sanitized bundles can be evaluated as candidates instead of only being stored.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
 - Added a stable workspace-asset model doc and a first JSON schema for `strategy.json` so the workspace contract now exists in both markdown and code-facing form.
 - Added a first end-to-end service boundary for the desktop scaffold: the React client now talks to a workspace-service interface, with a Tauri command path and a local mock path sharing the same contract.

@@ -12,7 +12,7 @@ use crate::models::{
     AssetInspectorState, BlobDetailState, BootstrapState, CheckpointComparisonFileState,
     CheckpointComparisonState, CheckpointDetailState, CheckpointSummary, CollectionDetailState,
     CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint, ExportBundleState,
-    ExportInspectorState, ExposurePoint, ImportDetailState, ImportSummaryState,
+    ExportInspectorState, ExposurePoint, ImportComparisonState, ImportDetailState, ImportSummaryState,
     IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
     LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
     MetricCardData, OperationDetailState, OperationRelatedDocumentState, OperationSummaryState,
@@ -354,76 +354,26 @@ impl WorkspaceRepository {
             self.read_json_path::<CheckpointRecordFile>(&target_checkpoint_path)?;
         let base_root = self.checkpoint_snapshot_path(base_checkpoint_id);
         let target_root = self.checkpoint_snapshot_path(target_checkpoint_id);
-
-        let base_files = list_relative_files(&base_root, ".")?;
-        let target_files = list_relative_files(&target_root, ".")?;
-        let mut file_keys = BTreeSet::new();
-        for file in &base_files {
-            file_keys.insert(file.clone());
-        }
-        for file in &target_files {
-            file_keys.insert(file.clone());
-        }
-
-        let mut files = Vec::new();
-        let mut changed_count = 0;
-        let mut added_count = 0;
-        let mut removed_count = 0;
-
-        for relative_path in file_keys {
-            let base_rel = relative_path.trim_start_matches("./");
-            let base_path = base_root.join(base_rel);
-            let target_path = target_root.join(base_rel);
-            let base_exists = base_path.exists();
-            let target_exists = target_path.exists();
-
-            let status = match (base_exists, target_exists) {
-                (true, true) => {
-                    let left = fs::read(&base_path).map_err(|error| {
-                        format!("failed to read {}: {error}", base_path.display())
-                    })?;
-                    let right = fs::read(&target_path).map_err(|error| {
-                        format!("failed to read {}: {error}", target_path.display())
-                    })?;
-                    if left == right {
-                        continue;
-                    }
-                    changed_count += 1;
-                    "changed"
-                }
-                (true, false) => {
-                    removed_count += 1;
-                    "removed"
-                }
-                (false, true) => {
-                    added_count += 1;
-                    "added"
-                }
-                (false, false) => continue,
-            };
-
-            files.push(CheckpointComparisonFileState {
-                relative_path: base_rel.into(),
-                status: status.into(),
-                base_ref: base_exists.then(|| self.display_path(&base_path)),
-                target_ref: target_exists.then(|| self.display_path(&target_path)),
-            });
-        }
+        let comparison = self.compare_workspace_roots(&base_root, &target_root)?;
 
         Ok(CheckpointComparisonState {
             base_checkpoint_id: base_checkpoint.checkpoint_id,
             base_alias: base_checkpoint.alias,
             target_checkpoint_id: target_checkpoint.checkpoint_id,
             target_alias: target_checkpoint.alias,
-            compared_file_count: files.len(),
-            changed_count,
-            added_count,
-            removed_count,
+            compared_file_count: comparison.files.len(),
+            changed_count: comparison.changed_count,
+            added_count: comparison.added_count,
+            removed_count: comparison.removed_count,
             summary: format!(
                 "{} changed, {} added, {} removed between {} and {}.",
-                changed_count, added_count, removed_count, base_checkpoint_id, target_checkpoint_id
+                comparison.changed_count,
+                comparison.added_count,
+                comparison.removed_count,
+                base_checkpoint_id,
+                target_checkpoint_id
             ),
-            files,
+            files: comparison.files,
         })
     }
 
@@ -489,6 +439,27 @@ impl WorkspaceRepository {
             sanitized: import_record.sanitized,
             bundle_ref: self.display_path(&bundle_path),
             workspace_file_refs,
+        })
+    }
+
+    pub fn compare_import(&self, import_id: &str) -> Result<ImportComparisonState, String> {
+        let import_path = self.import_file_path(import_id);
+        let import_record = self.read_json_path::<ImportRecordFile>(&import_path)?;
+        let import_workspace = self.resolve_ref(&import_path, &import_record.workspace_ref);
+        let comparison = self.compare_workspace_roots(&self.root, &import_workspace)?;
+
+        Ok(ImportComparisonState {
+            import_id: import_record.import_id,
+            source_bundle_ref: import_record.source_bundle_ref,
+            compared_file_count: comparison.files.len(),
+            changed_count: comparison.changed_count,
+            added_count: comparison.added_count,
+            removed_count: comparison.removed_count,
+            summary: format!(
+                "{} changed, {} added, {} removed between the current workspace and import {}.",
+                comparison.changed_count, comparison.added_count, comparison.removed_count, import_id
+            ),
+            files: comparison.files,
         })
     }
 
@@ -2108,6 +2079,73 @@ impl WorkspaceRepository {
             .unwrap_or(false)
     }
 
+    fn compare_workspace_roots(
+        &self,
+        base_root: &Path,
+        target_root: &Path,
+    ) -> Result<WorkspaceDiffState, String> {
+        let base_files = list_relative_files(base_root, ".")?;
+        let target_files = list_relative_files(target_root, ".")?;
+        let mut file_keys = BTreeSet::new();
+        for file in &base_files {
+            file_keys.insert(file.clone());
+        }
+        for file in &target_files {
+            file_keys.insert(file.clone());
+        }
+
+        let mut files = Vec::new();
+        let mut changed_count = 0;
+        let mut added_count = 0;
+        let mut removed_count = 0;
+
+        for relative_path in file_keys {
+            let relative = relative_path.trim_start_matches("./");
+            let base_path = base_root.join(relative);
+            let target_path = target_root.join(relative);
+            let base_exists = base_path.exists();
+            let target_exists = target_path.exists();
+
+            let status = match (base_exists, target_exists) {
+                (true, true) => {
+                    let left = fs::read(&base_path)
+                        .map_err(|error| format!("failed to read {}: {error}", base_path.display()))?;
+                    let right = fs::read(&target_path).map_err(|error| {
+                        format!("failed to read {}: {error}", target_path.display())
+                    })?;
+                    if left == right {
+                        continue;
+                    }
+                    changed_count += 1;
+                    "changed"
+                }
+                (true, false) => {
+                    removed_count += 1;
+                    "removed"
+                }
+                (false, true) => {
+                    added_count += 1;
+                    "added"
+                }
+                (false, false) => continue,
+            };
+
+            files.push(CheckpointComparisonFileState {
+                relative_path: relative.into(),
+                status: status.into(),
+                base_ref: base_exists.then(|| self.display_path(&base_path)),
+                target_ref: target_exists.then(|| self.display_path(&target_path)),
+            });
+        }
+
+        Ok(WorkspaceDiffState {
+            files,
+            changed_count,
+            added_count,
+            removed_count,
+        })
+    }
+
     fn append_operation(
         &self,
         kind: &str,
@@ -2437,6 +2475,13 @@ struct ExportBundleFile {
 struct ExportInventory {
     count: usize,
     latest_ref: Option<String>,
+}
+
+struct WorkspaceDiffState {
+    files: Vec<CheckpointComparisonFileState>,
+    changed_count: usize,
+    added_count: usize,
+    removed_count: usize,
 }
 
 fn prepend_decision(decisions: &mut Vec<DecisionEntry>, decision: DecisionEntry) {
@@ -2853,6 +2898,14 @@ mod tests {
                 .iter()
                 .any(|path| path.ends_with("strategy.json")),
             "staged import should expose workspace files for inspection"
+        );
+        let import_comparison = repo
+            .compare_import(&imported.import_id)
+            .expect("import comparison");
+        assert_eq!(import_comparison.import_id, imported.import_id);
+        assert!(
+            import_comparison.summary.contains("current workspace"),
+            "import comparison should describe the current workspace as the baseline"
         );
 
         let _ = fs::remove_dir_all(&root);
