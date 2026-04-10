@@ -93,8 +93,33 @@ export function WorkspaceDocumentPanel({
               <Badge tone="neutral">{documentDetail.format}</Badge>
               <Badge tone="neutral">{documentDetail.lineCount} lines</Badge>
               <Badge tone="neutral">{documentDetail.byteLength} bytes</Badge>
+              <Badge tone="neutral">{documentDetail.backlinks.length} backlinks</Badge>
             </div>
             <p className="break-all text-xs leading-5 text-ink-300">{documentDetail.pathRef}</p>
+            {documentDetail.backlinks.length > 0 ? (
+              <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-ink-300">Referenced By</p>
+                {documentDetail.backlinks.map((backlink) => (
+                  <button
+                    key={`${backlink.pathRef}-${backlink.reason}`}
+                    type="button"
+                    onClick={() =>
+                      onSelectDocument(`ref:${backlink.pathRef}`, backlink.pathRef)
+                    }
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.05]"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="neutral">{backlink.category}</Badge>
+                      <p className="text-sm font-medium text-ink-50">{backlink.label}</p>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-ink-300">{backlink.reason}</p>
+                    <p className="mt-2 break-all text-[11px] leading-5 text-ink-400">
+                      {backlink.pathRef}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <pre className="max-h-96 overflow-auto rounded-xl bg-shell-950/80 p-3 text-xs leading-6 text-ink-100">
               {documentDetail.contentText}
             </pre>

@@ -162,6 +162,7 @@ export type WorkspaceDocumentState = {
   byteLength: number;
   lineCount: number;
   contentText: string;
+  backlinks: WorkspaceDocumentBacklinkState[];
 };
 
 export type WorkspaceSearchResultState = {
@@ -172,6 +173,13 @@ export type WorkspaceSearchResultState = {
   pathRef: string;
   matchKind: "metadata" | "content";
   excerpt?: string;
+};
+
+export type WorkspaceDocumentBacklinkState = {
+  label: string;
+  pathRef: string;
+  category: WorkspaceCatalogEntry["category"] | "reference";
+  reason: string;
 };
 
 export type ImportSummaryState = {

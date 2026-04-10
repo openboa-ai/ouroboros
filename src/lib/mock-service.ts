@@ -494,6 +494,107 @@ function buildDocumentCatalog(
   return items;
 }
 
+function buildDocumentBacklinks(
+  state: BootstrapState,
+  documentRef: string
+): WorkspaceDocumentState["backlinks"] {
+  const backlinks: WorkspaceDocumentState["backlinks"] = [];
+  const seen = new Set<string>();
+  const pushBacklink = (
+    label: string,
+    pathRef: string,
+    category: WorkspaceDocumentState["backlinks"][number]["category"],
+    reason: string
+  ) => {
+    const key = `${pathRef}|${reason}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    backlinks.push({ label, pathRef, category, reason });
+  };
+
+  if (state.assetInspector.liveLaneRef === documentRef) {
+    pushBacklink("strategy.json", state.assetInspector.strategyRef, "entrypoint", "active.live_lane_ref");
+  }
+  if (state.assetInspector.currentCheckpointRef === documentRef) {
+    pushBacklink(
+      "strategy.json",
+      state.assetInspector.strategyRef,
+      "entrypoint",
+      "active.current_checkpoint_ref"
+    );
+  }
+  if (state.assetInspector.exportPolicyRef === documentRef) {
+    pushBacklink(
+      "strategy.json",
+      state.assetInspector.strategyRef,
+      "entrypoint",
+      "active.export_policy_ref"
+    );
+  }
+
+  const indexRefs = [
+    [state.workspaceIndex.indexes.checkpointsRef, "indexes.checkpoints_ref"],
+    [state.workspaceIndex.indexes.collectionsRef, "indexes.collections_ref"],
+    [state.workspaceIndex.indexes.importsRef, "indexes.imports_ref"],
+    [state.workspaceIndex.indexes.operationsRef, "indexes.operations_ref"],
+    [state.workspaceIndex.indexes.sessionsRef, "indexes.sessions_ref"]
+  ] as const;
+  for (const [pathRef, reason] of indexRefs) {
+    if (pathRef === documentRef) {
+      pushBacklink("strategy.json", state.assetInspector.strategyRef, "entrypoint", reason);
+    }
+  }
+
+  if (state.liveContext.sessions.some((session) => session.pathRef === documentRef)) {
+    pushBacklink(
+      "sessions index",
+      state.workspaceIndex.indexes.sessionsRef,
+      "index",
+      "session catalog entry"
+    );
+  }
+
+  if (state.liveContext.evaluationSummaries.some((summary) => summary.pathRef === documentRef)) {
+    pushBacklink(
+      "eval summaries",
+      `${WORKSPACE_ROOT}/state/eval-summaries.json`,
+      "index",
+      "evaluation summary entry"
+    );
+  }
+
+  for (const operation of state.operations) {
+    if (operation.operationRef === documentRef) {
+      pushBacklink(
+        "operations index",
+        state.workspaceIndex.indexes.operationsRef,
+        "index",
+        "operation catalog entry"
+      );
+    }
+    if (operation.relatedRefs.includes(documentRef)) {
+      pushBacklink(
+        `${operation.kind} · ${operation.createdAt}`,
+        operation.operationRef,
+        "operation",
+        "operation related ref"
+      );
+    }
+  }
+
+  const latestBundle = state.exportInspector.latestBundle;
+  if (latestBundle?.bundleRef === documentRef) {
+    pushBacklink("latest export checkpoint", latestBundle.checkpointRef, "checkpoint", "latest export bundle");
+  }
+  if (latestBundle?.includedRefs.includes(documentRef)) {
+    pushBacklink("latest export bundle", latestBundle.bundleRef, "export", "sanitized export includes ref");
+  }
+
+  return backlinks;
+}
+
 function toUtcHourBucket(eventTime: string) {
   return `${eventTime.slice(0, 13)}:00:00Z`;
 }
@@ -785,7 +886,8 @@ class MockWorkspaceService implements WorkspaceService {
       format,
       byteLength: new TextEncoder().encode(contentText).length,
       lineCount: contentText.split("\n").length,
-      contentText
+      contentText,
+      backlinks: buildDocumentBacklinks(this.state, documentRef)
     };
   }
 

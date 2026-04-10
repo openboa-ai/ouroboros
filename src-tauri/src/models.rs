@@ -260,6 +260,7 @@ pub struct WorkspaceDocumentState {
     pub byte_length: usize,
     pub line_count: usize,
     pub content_text: String,
+    pub backlinks: Vec<WorkspaceDocumentBacklinkState>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -272,6 +273,15 @@ pub struct WorkspaceSearchResultState {
     pub path_ref: String,
     pub match_kind: String,
     pub excerpt: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDocumentBacklinkState {
+    pub label: String,
+    pub path_ref: String,
+    pub category: String,
+    pub reason: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

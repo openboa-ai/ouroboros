@@ -17,7 +17,7 @@ use crate::models::{
     LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
     MetricCardData, OperationDetailState, OperationRelatedDocumentState, OperationSummaryState,
     PricePoint, ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
-    WorkspaceCatalogEntryState, WorkspaceDocumentState, WorkspaceIndexState,
+    WorkspaceCatalogEntryState, WorkspaceDocumentBacklinkState, WorkspaceDocumentState, WorkspaceIndexState,
     WorkspaceSearchResultState, WorkspaceSummary,
 };
 use crate::storage::{
@@ -570,6 +570,7 @@ impl WorkspaceRepository {
         let document_path = self.resolve_workspace_document_ref(document_ref)?;
         let content_text = fs::read_to_string(&document_path)
             .map_err(|error| format!("failed to read {}: {error}", document_path.display()))?;
+        let bootstrap = self.load_bootstrap_state()?;
         let format = match document_path.extension().and_then(|ext| ext.to_str()) {
             Some("json") => "json",
             Some("ndjson") => "ndjson",
@@ -582,6 +583,7 @@ impl WorkspaceRepository {
             byte_length: content_text.as_bytes().len(),
             line_count: content_text.lines().count(),
             content_text,
+            backlinks: self.collect_document_backlinks(&document_path, &bootstrap),
         })
     }
 
@@ -1920,6 +1922,192 @@ impl WorkspaceRepository {
         items
     }
 
+    fn collect_document_backlinks(
+        &self,
+        document_path: &Path,
+        bootstrap: &BootstrapState,
+    ) -> Vec<WorkspaceDocumentBacklinkState> {
+        let target_ref = self.display_path(document_path);
+        let target_path = canonicalize_or_clone(document_path);
+        let mut seen = BTreeSet::new();
+        let mut backlinks = Vec::new();
+
+        let mut push_backlink = |label: String, path_ref: String, category: String, reason: String| {
+            let key = format!("{path_ref}|{reason}");
+            if seen.insert(key) {
+                backlinks.push(WorkspaceDocumentBacklinkState {
+                    label,
+                    path_ref,
+                    category,
+                    reason,
+                });
+            }
+        };
+
+        if self.document_ref_matches_target(
+            &bootstrap.asset_inspector.live_lane_ref,
+            &target_ref,
+            &target_path,
+        ) {
+            push_backlink(
+                "strategy.json".into(),
+                bootstrap.asset_inspector.strategy_ref.clone(),
+                "entrypoint".into(),
+                "active.live_lane_ref".into(),
+            );
+        }
+        if self.document_ref_matches_target(
+            &bootstrap.asset_inspector.current_checkpoint_ref,
+            &target_ref,
+            &target_path,
+        ) {
+            push_backlink(
+                "strategy.json".into(),
+                bootstrap.asset_inspector.strategy_ref.clone(),
+                "entrypoint".into(),
+                "active.current_checkpoint_ref".into(),
+            );
+        }
+        if self.document_ref_matches_target(
+            &bootstrap.asset_inspector.export_policy_ref,
+            &target_ref,
+            &target_path,
+        ) {
+            push_backlink(
+                "strategy.json".into(),
+                bootstrap.asset_inspector.strategy_ref.clone(),
+                "entrypoint".into(),
+                "active.export_policy_ref".into(),
+            );
+        }
+
+        let index_refs = [
+            (
+                bootstrap.workspace_index.indexes.checkpoints_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.checkpoints_ref".to_string(),
+            ),
+            (
+                bootstrap.workspace_index.indexes.collections_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.collections_ref".to_string(),
+            ),
+            (
+                bootstrap.workspace_index.indexes.imports_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.imports_ref".to_string(),
+            ),
+            (
+                bootstrap.workspace_index.indexes.operations_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.operations_ref".to_string(),
+            ),
+            (
+                bootstrap.workspace_index.indexes.sessions_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.sessions_ref".to_string(),
+            ),
+        ];
+        for (path_ref, label, category, reason) in index_refs {
+            if self.document_ref_matches_target(&path_ref, &target_ref, &target_path) {
+                push_backlink(label, bootstrap.asset_inspector.strategy_ref.clone(), category, reason);
+            }
+        }
+
+        for session in &bootstrap.live_context.sessions {
+            if self.document_ref_matches_target(&session.path_ref, &target_ref, &target_path) {
+                push_backlink(
+                    "sessions index".into(),
+                    bootstrap.workspace_index.indexes.sessions_ref.clone(),
+                    "index".into(),
+                    "session catalog entry".into(),
+                );
+            }
+        }
+
+        if bootstrap
+            .live_context
+            .evaluation_summaries
+            .iter()
+            .any(|summary| self.document_ref_matches_target(&summary.path_ref, &target_ref, &target_path))
+        {
+            push_backlink(
+                "eval summaries".into(),
+                format!("{}/state/eval-summaries.json", self.display_path(&self.root)),
+                "index".into(),
+                "evaluation summary entry".into(),
+            );
+        }
+
+        for operation in &bootstrap.operations {
+            if self.document_ref_matches_target(&operation.operation_ref, &target_ref, &target_path) {
+                push_backlink(
+                    "operations index".into(),
+                    bootstrap.workspace_index.indexes.operations_ref.clone(),
+                    "index".into(),
+                    "operation catalog entry".into(),
+                );
+            }
+            if operation
+                .related_refs
+                .iter()
+                .any(|reference| self.document_ref_matches_target(reference, &target_ref, &target_path))
+            {
+                push_backlink(
+                    format!("{} · {}", operation.kind, operation.created_at),
+                    operation.operation_ref.clone(),
+                    "operation".into(),
+                    "operation related ref".into(),
+                );
+            }
+        }
+
+        if let Some(bundle) = &bootstrap.export_inspector.latest_bundle {
+            if self.document_ref_matches_target(&bundle.bundle_ref, &target_ref, &target_path) {
+                push_backlink(
+                    "latest export checkpoint".into(),
+                    bundle.checkpoint_ref.clone(),
+                    "checkpoint".into(),
+                    "latest export bundle".into(),
+                );
+            }
+            if bundle
+                .included_refs
+                .iter()
+                .any(|reference| self.document_ref_matches_target(reference, &target_ref, &target_path))
+            {
+                push_backlink(
+                    "latest export bundle".into(),
+                    bundle.bundle_ref.clone(),
+                    "export".into(),
+                    "sanitized export includes ref".into(),
+                );
+            }
+        }
+
+        backlinks
+    }
+
+    fn document_ref_matches_target(
+        &self,
+        reference: &str,
+        target_display_ref: &str,
+        target_path: &Path,
+    ) -> bool {
+        if reference == target_display_ref {
+            return true;
+        }
+
+        self.resolve_workspace_document_ref(reference)
+            .map(|path| canonicalize_or_clone(&path) == target_path)
+            .unwrap_or(false)
+    }
+
     fn append_operation(
         &self,
         kind: &str,
@@ -2395,6 +2583,10 @@ fn path_leaf_label(path_ref: &str) -> String {
         .to_string()
 }
 
+fn canonicalize_or_clone(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
 fn search_excerpt(content: &str, query: &str) -> Option<String> {
     content
         .lines()
@@ -2755,6 +2947,27 @@ mod tests {
                 .iter()
                 .any(|result| result.match_kind == "content"),
             "content search should surface excerpt-backed matches"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_workspace_document_reports_backlinks() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
+
+        let document = repo
+            .load_workspace_document(&bootstrap.asset_inspector.live_lane_ref)
+            .expect("workspace document");
+        assert!(
+            document
+                .backlinks
+                .iter()
+                .any(|backlink| backlink.reason == "active.live_lane_ref"),
+            "live lane document should report a backlink from strategy.json"
         );
 
         let _ = fs::remove_dir_all(&root);
