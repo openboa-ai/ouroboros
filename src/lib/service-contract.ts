@@ -420,6 +420,7 @@ export interface WorkspaceService {
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;
   restoreCheckpoint(checkpointId: string): Promise<BootstrapState>;
+  activateImportAsLive(importId: string): Promise<BootstrapState>;
   ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult>;
   importExportBundle(bundleRef: string): Promise<ImportBundleState>;
 }

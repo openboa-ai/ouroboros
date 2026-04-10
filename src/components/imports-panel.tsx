@@ -13,6 +13,7 @@ type ImportsPanelProps = {
   importDetail: ImportDetailState | null;
   importComparison: ImportComparisonState | null;
   onSelectImport: (importId: string) => void;
+  onActivateImport: (importId: string) => void;
   onOpenWorkspaceDocument: (documentRef: string) => void;
 };
 
@@ -21,6 +22,7 @@ export function ImportsPanel({
   importComparison,
   selectedImportId,
   importDetail,
+  onActivateImport,
   onOpenWorkspaceDocument,
   onSelectImport
 }: ImportsPanelProps) {
@@ -97,6 +99,18 @@ export function ImportsPanel({
               <ImportRow label="Workspace root" value={importDetail.workspaceRef} />
               <ImportRow label="Checkpoint ref" value={importDetail.checkpointRef} />
             </dl>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => onActivateImport(importDetail.id)}>
+                Activate As Live
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => onOpenWorkspaceDocument(importDetail.importRef)}
+              >
+                Open Import Manifest
+              </Button>
+            </div>
 
             {importComparison ? (
               <section className="space-y-2">

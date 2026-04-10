@@ -112,6 +112,14 @@ pub fn restore_checkpoint(
 }
 
 #[tauri::command]
+pub fn activate_import_as_live(
+    import_id: String,
+    state: State<'_, AppState>,
+) -> Result<BootstrapState, String> {
+    state.activate_import_as_live(&import_id)
+}
+
+#[tauri::command]
 pub fn ingest_source_entry(
     input: IngestSourceEntryInput,
     state: State<'_, AppState>,

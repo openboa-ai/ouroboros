@@ -131,6 +131,13 @@ impl AppState {
             .restore_checkpoint(checkpoint_id)
     }
 
+    pub fn activate_import_as_live(&self, import_id: &str) -> Result<BootstrapState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .activate_import_as_live(import_id)
+    }
+
     pub fn ingest_source_entry(
         &self,
         input: IngestSourceEntryInput,

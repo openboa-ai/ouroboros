@@ -1303,6 +1303,72 @@ class MockWorkspaceService implements WorkspaceService {
     return structuredClone(this.state);
   }
 
+  async activateImportAsLive(importId: string): Promise<BootstrapState> {
+    const record = importsState.items.find((item) => item.import_id === importId);
+    if (!record) {
+      throw new Error(`unknown import: ${importId}`);
+    }
+
+    const timestamp = this.nowLabel();
+    const rollbackAnchorId = crypto.randomUUID();
+    const targetCheckpoint =
+      this.state.checkpoints.find((checkpoint) => checkpoint.pathRef === record.checkpoint_ref) ?? null;
+
+    this.state = {
+      ...this.state,
+      checkpoints: [
+        {
+          id: rollbackAnchorId,
+          alias: `incident-import-activation-anchor-${rollbackAnchorId.slice(0, 8)}`,
+          type: "incident",
+          typeTone: "danger",
+          summary: `Automatic pre-activation checkpoint created before activating import ${importId}.`,
+          createdAt: timestamp,
+          performance: "Rollback anchor for staged import activation",
+          pathRef: checkpointPath(rollbackAnchorId)
+        },
+        ...this.state.checkpoints
+      ],
+      statusNote: targetCheckpoint
+        ? `Staged import ${importId} is now live and anchored at checkpoint ${targetCheckpoint.alias}.`
+        : `Staged import ${importId} is now live.`
+    };
+
+    this.prependDecision({
+      id: this.nextId("decision"),
+      kind: "Import",
+      tone: "neutral",
+      headline: `Activated import ${importId} as live`,
+      reason:
+        "The service layer promoted a staged import into the live workspace while preserving checkpoint and operation history inside the mock runtime.",
+      timestamp
+    });
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "activate_import_as_live",
+      scope: "live",
+      status: "succeeded",
+      summary: `Activated staged import ${importId} as the current live workspace.`,
+      details:
+        "The service layer replaced live-facing workspace state with the staged import and kept service-owned roots intact.",
+      created_at: timestamp,
+      related_refs: [
+        `imports/items/${importId}/import.json`,
+        targetCheckpoint?.pathRef.replace(`${WORKSPACE_ROOT}/`, "") ?? "strategy.json",
+        "strategy.json",
+        checkpointPath(rollbackAnchorId).replace(`${WORKSPACE_ROOT}/`, "")
+      ]
+    });
+
+    if (targetCheckpoint) {
+      this.syncDerivedState(targetCheckpoint.pathRef, targetCheckpoint.alias);
+    } else {
+      this.syncDerivedState();
+    }
+
+    return structuredClone(this.state);
+  }
+
   async ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult> {
     const payload = input.bodyText ?? input.preview;
     if (!payload) {

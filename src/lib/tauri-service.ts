@@ -79,6 +79,10 @@ class TauriWorkspaceService implements WorkspaceService {
     return invoke<BootstrapState>("restore_checkpoint", { checkpointId });
   }
 
+  async activateImportAsLive(importId: string): Promise<BootstrapState> {
+    return invoke<BootstrapState>("activate_import_as_live", { importId });
+  }
+
   async ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult> {
     return invoke<IngestSourceEntryResult>("ingest_source_entry", { input });
   }

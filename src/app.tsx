@@ -627,6 +627,26 @@ export function App() {
           importDetail={selectedImportDetail}
           importComparison={selectedImportComparison}
           onSelectImport={setSelectedImportId}
+          onActivateImport={(importId) => {
+            const selectedImport = state.imports.find((item) => item.id === importId);
+            setCommandStatus(
+              selectedImport
+                ? `Activating import ${selectedImport.id} as the live workspace...`
+                : "Activating staged import as the live workspace..."
+            );
+            void workspaceService.activateImportAsLive(importId).then((nextState) => {
+              applyNextState(nextState, {
+                selectedImportId: importId,
+                selectedDocumentId: "strategy",
+                selectedDocumentRef: nextState.assetInspector.strategyRef
+              });
+              setCommandStatus(
+                selectedImport
+                  ? `Import ${selectedImport.id} is now the active live workspace.`
+                  : "Staged import activated as the live workspace."
+              );
+            });
+          }}
           onOpenWorkspaceDocument={(documentRef) => {
             setSelectedDocumentId(`ref:${documentRef}`);
             setSelectedDocumentRef(documentRef);
