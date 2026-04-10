@@ -109,7 +109,9 @@ impl WorkspaceRepository {
             &current_checkpoint_path,
             &checkpoints_index_path,
             &collections_index_path,
+            &collections_index,
             &imports_index_path,
+            &imports_index,
             &operations_index_path,
             &operations_index,
             &sessions_path,
@@ -1736,7 +1738,9 @@ impl WorkspaceRepository {
         current_checkpoint_path: &Path,
         checkpoints_index_path: &Path,
         collections_index_path: &Path,
+        collections: &CollectionsIndexFile,
         imports_index_path: &Path,
+        imports: &ImportsIndexFile,
         operations_index_path: &Path,
         operations: &OperationsIndexFile,
         sessions_path: &Path,
@@ -1875,6 +1879,61 @@ impl WorkspaceRepository {
                 label: format!("{} · {}", operation.kind, operation.created_at),
                 description: operation.summary.clone(),
                 path_ref: self.display_path(&self.operation_file_path(&operation.operation_id)),
+            });
+        }
+
+        for collection in &collections.items {
+            let collection_path = self.resolve_ref(collections_index_path, &collection.path_ref);
+            let collection_record = self.read_json_path::<CollectionRecordFile>(&collection_path).ok();
+            let entry_shard_path = collection_record
+                .as_ref()
+                .map(|record| self.resolve_ref(&collection_path, &record.entry_shard_ref));
+
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("collection-{}", collection.collection_id),
+                category: "collection".into(),
+                label: format!("{} · {}", collection.source_ref, collection.time_bucket),
+                description: format!(
+                    "{} collection with {} entries.",
+                    collection.kind, collection.entry_count
+                ),
+                path_ref: self.display_path(&collection_path),
+            });
+
+            if let Some(entry_shard_path) = entry_shard_path {
+                items.push(WorkspaceCatalogEntryState {
+                    id: format!("collection-entries-{}", collection.collection_id),
+                    category: "collection".into(),
+                    label: format!("{} entry shard", collection.source_ref),
+                    description: "Append-friendly NDJSON shard backing this source collection."
+                        .into(),
+                    path_ref: self.display_path(&entry_shard_path),
+                });
+            }
+        }
+
+        for import in &imports.items {
+            let import_path = self.import_file_path(&import.import_id);
+            let bundle_path = self.resolve_ref(&import_path, &import.bundle_ref);
+
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("import-{}", import.import_id),
+                category: "import".into(),
+                label: format!("import {}", import.imported_at),
+                description: format!(
+                    "Sanitized import staged from bundle {}.",
+                    import.source_bundle_ref
+                ),
+                path_ref: self.display_path(&import_path),
+            });
+
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("import-bundle-{}", import.import_id),
+                category: "import".into(),
+                label: format!("import bundle {}", import.import_id),
+                description: "Copied sanitized export manifest staged alongside the imported workspace."
+                    .into(),
+                path_ref: self.display_path(&bundle_path),
             });
         }
 
@@ -2034,6 +2093,38 @@ impl WorkspaceRepository {
                     operation.operation_ref.clone(),
                     "operation".into(),
                     "operation related ref".into(),
+                );
+            }
+        }
+
+        for document in &bootstrap.document_catalog {
+            if !self.document_ref_matches_target(&document.path_ref, &target_ref, &target_path) {
+                continue;
+            }
+
+            if document.id.starts_with("collection-") {
+                push_backlink(
+                    "collections index".into(),
+                    bootstrap.workspace_index.indexes.collections_ref.clone(),
+                    "index".into(),
+                    if document.id.starts_with("collection-entries-") {
+                        "collection entry shard".into()
+                    } else {
+                        "collection catalog entry".into()
+                    },
+                );
+            }
+
+            if document.id.starts_with("import-") {
+                push_backlink(
+                    "imports index".into(),
+                    bootstrap.workspace_index.indexes.imports_ref.clone(),
+                    "index".into(),
+                    if document.id.starts_with("import-bundle-") {
+                        "staged import bundle".into()
+                    } else {
+                        "import catalog entry".into()
+                    },
                 );
             }
         }
@@ -2887,6 +2978,20 @@ mod tests {
         let bootstrap = repo.load_bootstrap_state().expect("bootstrap with imports");
         assert_eq!(bootstrap.imports.len(), 1);
         assert_eq!(bootstrap.imports[0].id, imported.import_id);
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
+                .any(|document| document.id == format!("import-{}", imported.import_id)),
+            "document catalog should expose staged import manifests"
+        );
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
+                .any(|document| document.id == format!("import-bundle-{}", imported.import_id)),
+            "document catalog should expose staged import bundle manifests"
+        );
 
         let import_detail = repo
             .load_import_detail(&imported.import_id)

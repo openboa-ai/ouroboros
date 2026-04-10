@@ -485,6 +485,44 @@ function buildDocumentCatalog(
     }))
   );
 
+  items.push(
+    ...collectionsState.items.flatMap((collection) => [
+      {
+        id: `collection-${collection.collection_id}`,
+        category: "collection" as const,
+        label: `${collection.source_ref} · ${collection.time_bucket}`,
+        description: `${collection.kind} collection with ${collection.entry_count} entries.`,
+        pathRef: `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/collection.json`
+      },
+      {
+        id: `collection-entries-${collection.collection_id}`,
+        category: "collection" as const,
+        label: `${collection.source_ref} entry shard`,
+        description: "Append-friendly NDJSON shard backing this source collection.",
+        pathRef: `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/entries.ndjson`
+      }
+    ])
+  );
+
+  items.push(
+    ...importsState.items.flatMap((item) => [
+      {
+        id: `import-${item.import_id}`,
+        category: "import" as const,
+        label: `import ${item.imported_at}`,
+        description: `Sanitized import staged from bundle ${item.source_bundle_ref}.`,
+        pathRef: `${WORKSPACE_ROOT}/imports/items/${item.import_id}/import.json`
+      },
+      {
+        id: `import-bundle-${item.import_id}`,
+        category: "import" as const,
+        label: `import bundle ${item.import_id}`,
+        description: "Copied sanitized export manifest staged alongside the imported workspace.",
+        pathRef: `${WORKSPACE_ROOT}/imports/items/${item.import_id}/bundle/export.json`
+      }
+    ])
+  );
+
   if (latestExportBundleRef) {
     items.push({
       id: "latest-export-bundle",
@@ -584,6 +622,32 @@ function buildDocumentBacklinks(
         operation.operationRef,
         "operation",
         "operation related ref"
+      );
+    }
+  }
+
+  for (const document of state.documentCatalog) {
+    if (document.pathRef !== documentRef) {
+      continue;
+    }
+
+    if (document.id.startsWith("collection-")) {
+      pushBacklink(
+        "collections index",
+        state.workspaceIndex.indexes.collectionsRef,
+        "index",
+        document.id.startsWith("collection-entries-")
+          ? "collection entry shard"
+          : "collection catalog entry"
+      );
+    }
+
+    if (document.id.startsWith("import-")) {
+      pushBacklink(
+        "imports index",
+        state.workspaceIndex.indexes.importsRef,
+        "index",
+        document.id.startsWith("import-bundle-") ? "staged import bundle" : "import catalog entry"
       );
     }
   }

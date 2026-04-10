@@ -370,24 +370,6 @@ export function App() {
 
   const workspaceDocuments: WorkspaceCatalogEntry[] = [
     ...state.documentCatalog,
-    ...(selectedCollectionDetail
-      ? [
-          {
-            id: "selected-collection",
-            category: "collection" as const,
-            label: "selected collection",
-            description: "Current source collection metadata inside the workspace asset.",
-            pathRef: selectedCollectionDetail.collectionRef
-          },
-          {
-            id: "selected-collection-entries",
-            category: "collection" as const,
-            label: "selected entry shard",
-            description: "Append-friendly NDJSON shard backing the selected collection.",
-            pathRef: selectedCollectionDetail.entryShardRef
-          }
-        ]
-      : []),
     ...(selectedBlobDetail
       ? [
           {
@@ -396,24 +378,6 @@ export function App() {
             label: "selected blob",
             description: "Immutable source body resolved from the selected entry.",
             pathRef: selectedBlobDetail.blobPathRef
-          }
-        ]
-      : []),
-    ...(selectedImportDetail
-      ? [
-          {
-            id: "selected-import",
-            category: "import" as const,
-            label: "selected import",
-            description: "Import manifest for a staged sanitized bundle.",
-            pathRef: selectedImportDetail.importRef
-          },
-          {
-            id: "selected-import-bundle",
-            category: "import" as const,
-            label: "selected import bundle",
-            description: "Imported sanitized export manifest staged inside the workspace.",
-            pathRef: selectedImportDetail.bundleRef
           }
         ]
       : [])

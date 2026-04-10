@@ -96,4 +96,5 @@ The current minimum direction is:
 - workspace search should also stay service-owned so the client queries searchable documents and content through the same boundary
 - workspace documents should expose service-owned backlinks so the asset graph stays navigable without the client reading storage directly
 - staged imports should be comparable against the current live workspace through the same service boundary before any future activation flow exists
+- collection manifests, entry shards, staged import manifests, and staged import bundle manifests should appear in the service-owned workspace document catalog instead of being client-side ad hoc additions
 - individual operation records should be addressable workspace documents, not just rows in an operations summary list
