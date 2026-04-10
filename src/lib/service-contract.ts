@@ -120,6 +120,14 @@ export type CollectionDetailState = {
   entries: CollectionEntryState[];
 };
 
+export type BlobDetailState = {
+  id: string;
+  blobPathRef: string;
+  byteLength: number;
+  lineCount: number;
+  contentText: string;
+};
+
 export type WorkspaceSummary = {
   artifactId: string;
   slug: string;
@@ -210,6 +218,7 @@ export interface WorkspaceService {
   getBootstrapState(): Promise<BootstrapState>;
   getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState>;
   getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
+  getBlobDetail(blobId: string): Promise<BlobDetailState>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;

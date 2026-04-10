@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use crate::{
-    models::{BootstrapState, CheckpointDetailState, CollectionDetailState},
+    models::{BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState},
     workspace::WorkspaceRepository,
 };
 
@@ -39,6 +39,13 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .load_collection_detail(collection_id)
+    }
+
+    pub fn blob_detail(&self, blob_id: &str) -> Result<BlobDetailState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .load_blob_detail(blob_id)
     }
 
     pub fn pause_global_automation(&self) -> Result<BootstrapState, String> {

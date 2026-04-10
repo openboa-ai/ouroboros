@@ -156,6 +156,16 @@ pub struct CollectionDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BlobDetailState {
+    pub id: String,
+    pub blob_path_ref: String,
+    pub byte_length: usize,
+    pub line_count: usize,
+    pub content_text: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub artifact_id: String,
     pub slug: String,

@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::{
-    models::{BootstrapState, CheckpointDetailState, CollectionDetailState},
+    models::{BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState},
     state::AppState,
 };
 
@@ -24,6 +24,14 @@ pub fn get_collection_detail(
     state: State<'_, AppState>,
 ) -> Result<CollectionDetailState, String> {
     state.collection_detail(&collection_id)
+}
+
+#[tauri::command]
+pub fn get_blob_detail(
+    blob_id: String,
+    state: State<'_, AppState>,
+) -> Result<BlobDetailState, String> {
+    state.blob_detail(&blob_id)
 }
 
 #[tauri::command]

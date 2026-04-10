@@ -16,6 +16,7 @@ import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import type {
+  BlobDetailState,
   BootstrapState,
   CheckpointDetailState,
   CollectionDetailState
@@ -33,6 +34,8 @@ export function App() {
   const [selectedCollectionDetail, setSelectedCollectionDetail] = useState<CollectionDetailState | null>(
     null
   );
+  const [selectedBlobId, setSelectedBlobId] = useState<string | null>(null);
+  const [selectedBlobDetail, setSelectedBlobDetail] = useState<BlobDetailState | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +100,35 @@ export function App() {
     };
   }, [selectedCollectionId]);
 
+  useEffect(() => {
+    const nextBlobId = selectedCollectionDetail?.entries.find((entry) => entry.blobRef)?.blobRef ?? null;
+    setSelectedBlobId((current) => (current === nextBlobId ? current : nextBlobId));
+    setSelectedBlobDetail(null);
+  }, [selectedCollectionDetail]);
+
+  useEffect(() => {
+    if (!selectedBlobId) {
+      setSelectedBlobDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.getBlobDetail(selectedBlobId).then((detail) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedBlobDetail(detail);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBlobId]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-shell-950 text-ink-50">
@@ -117,6 +149,8 @@ export function App() {
       setSelectedCheckpointDetail(null);
       setSelectedCollectionId(nextState.collections[0]?.id ?? null);
       setSelectedCollectionDetail(null);
+      setSelectedBlobId(null);
+      setSelectedBlobDetail(null);
     });
   }
 
@@ -269,7 +303,10 @@ export function App() {
           collections={state.collections}
           selectedCollectionId={selectedCollectionId}
           collectionDetail={selectedCollectionDetail}
+          selectedBlobId={selectedBlobId}
+          blobDetail={selectedBlobDetail}
           onSelectCollection={setSelectedCollectionId}
+          onSelectBlob={setSelectedBlobId}
         />
       </section>
     </AppShell>

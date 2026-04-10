@@ -1,4 +1,8 @@
-import type { CollectionDetailState, CollectionSummaryState } from "../lib/service-contract";
+import type {
+  BlobDetailState,
+  CollectionDetailState,
+  CollectionSummaryState
+} from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
@@ -6,13 +10,19 @@ type CollectionsPanelProps = {
   collections: CollectionSummaryState[];
   selectedCollectionId: string | null;
   collectionDetail: CollectionDetailState | null;
+  selectedBlobId: string | null;
+  blobDetail: BlobDetailState | null;
   onSelectCollection: (collectionId: string) => void;
+  onSelectBlob: (blobId: string | null) => void;
 };
 
 export function CollectionsPanel({
+  blobDetail,
   collections,
   collectionDetail,
   onSelectCollection,
+  onSelectBlob,
+  selectedBlobId,
   selectedCollectionId
 }: CollectionsPanelProps) {
   const selected = collections.find((item) => item.id === selectedCollectionId) ?? collections[0] ?? null;
@@ -22,7 +32,7 @@ export function CollectionsPanel({
       title="Collections"
       description="Source-centered collections are persisted as UTC-hour shards and browsed through the service layer."
     >
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="space-y-4">
           {collections.map((collection) => {
             const isSelected = collection.id === selected?.id;
@@ -79,9 +89,16 @@ export function CollectionsPanel({
               <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Entries</h3>
               <div className="space-y-2">
                 {collectionDetail.entries.slice(0, 5).map((entry) => (
-                  <div
+                  <button
                     key={entry.id}
-                    className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3"
+                    type="button"
+                    onClick={() => onSelectBlob(entry.blobRef ?? null)}
+                    className={[
+                      "w-full rounded-2xl border px-3 py-3 text-left transition",
+                      entry.blobRef && entry.blobRef === selectedBlobId
+                        ? "border-accent-teal/40 bg-accent-teal/10"
+                        : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]"
+                    ].join(" ")}
                   >
                     <p className="text-xs uppercase tracking-[0.16em] text-ink-300">
                       {entry.eventTime}
@@ -90,10 +107,26 @@ export function CollectionsPanel({
                     {entry.blobPathRef ? (
                       <p className="mt-2 break-all text-xs leading-5 text-ink-300">{entry.blobPathRef}</p>
                     ) : null}
-                  </div>
+                  </button>
                 ))}
               </div>
             </section>
+
+            {blobDetail ? (
+              <section className="space-y-2">
+                <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Blob body</h3>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="neutral">{blobDetail.lineCount} lines</Badge>
+                    <Badge tone="neutral">{blobDetail.byteLength} bytes</Badge>
+                  </div>
+                  <p className="mt-3 break-all text-xs leading-5 text-ink-300">{blobDetail.blobPathRef}</p>
+                  <pre className="mt-3 max-h-64 overflow-auto rounded-xl bg-shell-950/80 p-3 text-xs leading-6 text-ink-100">
+                    {blobDetail.contentText}
+                  </pre>
+                </div>
+              </section>
+            ) : null}
           </div>
         ) : null}
       </div>

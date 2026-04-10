@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  BlobDetailState,
   BootstrapState,
   CheckpointDetailState,
   CollectionDetailState,
@@ -17,6 +18,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getCollectionDetail(collectionId: string): Promise<CollectionDetailState> {
     return invoke<CollectionDetailState>("get_collection_detail", { collectionId });
+  }
+
+  async getBlobDetail(blobId: string): Promise<BlobDetailState> {
+    return invoke<BlobDetailState>("get_blob_detail", { blobId });
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {

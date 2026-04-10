@@ -1,5 +1,6 @@
 import type {
   AssetInspectorState,
+  BlobDetailState,
   BootstrapState,
   CollectionDetailState,
   CollectionSummaryState,
@@ -18,6 +19,11 @@ import exportPolicyTemplate from "../../templates/strategy-workspace/exports/pol
 import collectionsTemplate from "../../templates/strategy-workspace/indexes/collections.json";
 import btcAggEntriesRaw from "../../templates/strategy-workspace/collections/items/019626b0-4d0a-7a72-9b4e-9d8e11d0f901/entries.ndjson?raw";
 import macroNewsEntriesRaw from "../../templates/strategy-workspace/collections/items/019626b6-c73a-7fe6-b0a5-64ac631d5102/entries.ndjson?raw";
+import btcAggBlobOneRaw from "../../templates/strategy-workspace/blobs/sha256/cd36e47d463d9e2efe3e2030670ca7694a9f303a8837cad4e4e5135c427f945f.txt?raw";
+import btcAggBlobTwoRaw from "../../templates/strategy-workspace/blobs/sha256/aef3c2aa9075dc26b7484d71d06d10c152f5310cd34d5eb2b3b3b6fa915e4b3c.txt?raw";
+import btcAggBlobThreeRaw from "../../templates/strategy-workspace/blobs/sha256/7bbdd0eec8d01854af7185348af542fb665987debe396f2ce2e88f4e35f8af0e.txt?raw";
+import macroNewsBlobOneRaw from "../../templates/strategy-workspace/blobs/sha256/2b0f06db4a1f0530763ad7aa5a10bc2e47017dcaf4f79f8fa0e6a5819d57081f.txt?raw";
+import macroNewsBlobTwoRaw from "../../templates/strategy-workspace/blobs/sha256/e2d312f2f5767f7334ba8d3fa90fc2c9d66b2d05d4c77db8bc8d289d5fc5f7ec.txt?raw";
 import liveLaneTemplate from "../../templates/strategy-workspace/live/live-lane.json";
 import strategyTemplate from "../../templates/strategy-workspace/strategy.json";
 import dashboardTemplate from "../../templates/strategy-workspace/state/dashboard.json";
@@ -120,6 +126,14 @@ const entriesByCollection = {
   "019626b0-4d0a-7a72-9b4e-9d8e11d0f901": parseEntries(btcAggEntriesRaw),
   "019626b6-c73a-7fe6-b0a5-64ac631d5102": parseEntries(macroNewsEntriesRaw)
 } satisfies Record<string, CollectionEntryRecord[]>;
+
+const blobContents = {
+  "sha256:cd36e47d463d9e2efe3e2030670ca7694a9f303a8837cad4e4e5135c427f945f": btcAggBlobOneRaw,
+  "sha256:aef3c2aa9075dc26b7484d71d06d10c152f5310cd34d5eb2b3b3b6fa915e4b3c": btcAggBlobTwoRaw,
+  "sha256:7bbdd0eec8d01854af7185348af542fb665987debe396f2ce2e88f4e35f8af0e": btcAggBlobThreeRaw,
+  "sha256:2b0f06db4a1f0530763ad7aa5a10bc2e47017dcaf4f79f8fa0e6a5819d57081f": macroNewsBlobOneRaw,
+  "sha256:e2d312f2f5767f7334ba8d3fa90fc2c9d66b2d05d4c77db8bc8d289d5fc5f7ec": macroNewsBlobTwoRaw
+} satisfies Record<string, string>;
 const DEFAULT_INCLUDED_REFS = [
   "./workspace/strategy.json",
   "./workspace/live/live-lane.json",
@@ -326,6 +340,19 @@ class MockWorkspaceService implements WorkspaceService {
           ? `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt`
           : undefined
       }))
+    };
+  }
+
+  async getBlobDetail(blobId: string): Promise<BlobDetailState> {
+    const contentText =
+      blobContents[blobId as keyof typeof blobContents] ?? "Blob content is unavailable in the mock service.";
+
+    return {
+      id: blobId,
+      blobPathRef: `${WORKSPACE_ROOT}/blobs/${blobId.replace(":", "/")}.txt`,
+      byteLength: new TextEncoder().encode(contentText).length,
+      lineCount: contentText.split("\n").length,
+      contentText
     };
   }
 
