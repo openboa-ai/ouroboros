@@ -92,6 +92,8 @@ pub struct CheckpointSummary {
     pub summary: String,
     pub created_at: String,
     pub performance: String,
+    pub path_ref: String,
+    pub export_bundle_ref: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -106,11 +108,36 @@ pub struct WorkspaceSummary {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AssetInspectorState {
+    pub workspace_root: String,
+    pub strategy_ref: String,
+    pub live_lane_ref: String,
+    pub current_checkpoint_ref: String,
+    pub export_policy_ref: String,
+    pub latest_export_bundle_ref: Option<String>,
+    pub checkpoint_count: usize,
+    pub export_count: usize,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveContextState {
+    pub memory_notes: Vec<String>,
+    pub session_labels: Vec<String>,
+    pub eval_evidence_refs: Vec<String>,
+    pub position_event_count: usize,
+    pub order_event_count: usize,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BootstrapState {
     pub mode: TradingMode,
     pub automation_status: String,
     pub status_note: Option<String>,
     pub workspace: WorkspaceSummary,
+    pub asset_inspector: AssetInspectorState,
+    pub live_context: LiveContextState,
     pub providers: Vec<ProviderStatus>,
     pub metrics: Vec<MetricCardData>,
     pub price_series: Vec<PricePoint>,

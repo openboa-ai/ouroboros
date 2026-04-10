@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::{
-    BootstrapState, CheckpointSummary, DecisionEntry, EquityPoint, ExposurePoint, LiveOrder,
-    LivePosition, MetricCardData, PricePoint, ProviderStatus, TradingMode, WorkspaceSummary,
+    AssetInspectorState, BootstrapState, CheckpointSummary, DecisionEntry, EquityPoint,
+    ExposurePoint, LiveContextState, LiveOrder, LivePosition, MetricCardData, PricePoint,
+    ProviderStatus, TradingMode, WorkspaceSummary,
 };
 
 #[derive(Clone)]
@@ -49,13 +50,26 @@ impl WorkspaceRepository {
 
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
+        let memory_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref);
+        let sessions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.sessions_ref);
         let positions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref);
         let orders_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref);
+        let eval_summaries_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.eval_summaries_ref);
 
         let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
         let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let live_memory = self.read_json_path::<LiveMemoryFile>(&memory_path)?;
+        let sessions = self.read_json_path::<SessionsIndexFile>(&sessions_path)?;
         let positions = self.read_json_path::<PositionsStateFile>(&positions_path)?;
         let orders = self.read_json_path::<OrdersStateFile>(&orders_path)?;
+        let eval_summaries = self.read_json_path::<EvalSummariesFile>(&eval_summaries_path)?;
+        let current_checkpoint_path = self.resolve_current_checkpoint_path(
+            &strategy_path,
+            &strategy.active.current_checkpoint_ref,
+            &checkpoints_index,
+        );
+        let export_inventory = self.export_inventory(&checkpoints_index.items);
 
         Ok(BootstrapState {
             mode: live_lane.mode,
@@ -67,6 +81,35 @@ impl WorkspaceRepository {
                 live_lane_label: live_lane.label,
                 current_checkpoint_alias: checkpoints_index.current.alias,
                 export_policy_label: export_policy.policy_id,
+            },
+            asset_inspector: AssetInspectorState {
+                workspace_root: self.display_path(&self.root),
+                strategy_ref: self.display_path(&strategy_path),
+                live_lane_ref: self.display_path(&live_lane_path),
+                current_checkpoint_ref: self.display_path(&current_checkpoint_path),
+                export_policy_ref: self.display_path(&export_policy_path),
+                latest_export_bundle_ref: export_inventory.latest_ref,
+                checkpoint_count: checkpoints_index.items.len(),
+                export_count: export_inventory.count,
+            },
+            live_context: LiveContextState {
+                memory_notes: live_memory
+                    .notes
+                    .into_iter()
+                    .map(|note| note.summary)
+                    .collect(),
+                session_labels: sessions
+                    .sessions
+                    .into_iter()
+                    .map(|session| session.label)
+                    .collect(),
+                eval_evidence_refs: eval_summaries
+                    .summaries
+                    .into_iter()
+                    .flat_map(|summary| summary.evidence_refs)
+                    .collect(),
+                position_event_count: positions.events.len(),
+                order_event_count: orders.events.len(),
             },
             providers: dashboard.providers,
             metrics: dashboard.metrics,
@@ -80,13 +123,15 @@ impl WorkspaceRepository {
                 .items
                 .into_iter()
                 .map(|item| CheckpointSummary {
-                    id: item.checkpoint_id,
+                    id: item.checkpoint_id.clone(),
                     alias: item.alias,
                     r#type: item.r#type,
                     type_tone: item.type_tone,
                     summary: item.summary,
                     created_at: item.created_at,
                     performance: item.performance,
+                    path_ref: self.display_path(&self.checkpoint_file_path(&item.checkpoint_id)),
+                    export_bundle_ref: self.export_bundle_display_ref(&item),
                 })
                 .collect(),
         })
@@ -247,11 +292,48 @@ impl WorkspaceRepository {
 
     fn ensure_ready(&self) -> Result<(), String> {
         if self.root.join("strategy.json").exists() {
+            copy_missing_tree(&self.template_root, &self.root, &PathBuf::new())?;
+            self.normalize_workspace()?;
             return Ok(());
         }
 
         copy_tree(&self.template_root, &self.root, &PathBuf::new())?;
+        self.normalize_workspace()?;
         Ok(())
+    }
+
+    fn normalize_workspace(&self) -> Result<(), String> {
+        let strategy_path = self.root.join("strategy.json");
+        if !strategy_path.exists() {
+            return Ok(());
+        }
+
+        let mut strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
+        let checkpoints_index_path =
+            self.resolve_ref(&strategy_path, &strategy.indexes.checkpoints_ref);
+        if !checkpoints_index_path.exists() {
+            return Ok(());
+        }
+
+        let checkpoints_index = self.read_json_path::<CheckpointIndexFile>(&checkpoints_index_path)?;
+        let desired_ref = format!(
+            "./checkpoints/items/{}/checkpoint.json",
+            checkpoints_index.current.checkpoint_id
+        );
+        if strategy.active.current_checkpoint_ref != desired_ref {
+            strategy.active.current_checkpoint_ref = desired_ref;
+            self.write_json_path(&strategy_path, &strategy)?;
+        }
+
+        Ok(())
+    }
+
+    fn update_active_checkpoint_ref(&self, checkpoint_id: &str) -> Result<(), String> {
+        let strategy_path = self.root.join("strategy.json");
+        let mut strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
+        strategy.active.current_checkpoint_ref =
+            format!("./checkpoints/items/{checkpoint_id}/checkpoint.json");
+        self.write_json_path(&strategy_path, &strategy)
     }
 
     fn create_checkpoint(
@@ -284,6 +366,7 @@ impl WorkspaceRepository {
         };
         index.items.insert(0, checkpoint.clone());
         self.write_json_path(&self.root.join("checkpoints/index.json"), &index)?;
+        self.update_active_checkpoint_ref(&checkpoint_id)?;
 
         Ok(checkpoint)
     }
@@ -353,6 +436,74 @@ impl WorkspaceRepository {
         )?;
 
         Ok(())
+    }
+
+    fn resolve_current_checkpoint_path(
+        &self,
+        strategy_path: &Path,
+        current_checkpoint_ref: &str,
+        checkpoints_index: &CheckpointIndexFile,
+    ) -> PathBuf {
+        let clean_reference = current_checkpoint_ref
+            .split('#')
+            .next()
+            .unwrap_or(current_checkpoint_ref);
+        if current_checkpoint_ref.contains("#current")
+            || clean_reference.ends_with("checkpoints/index.json")
+        {
+            return self.checkpoint_file_path(&checkpoints_index.current.checkpoint_id);
+        }
+
+        self.resolve_ref(strategy_path, clean_reference)
+    }
+
+    fn export_inventory(&self, checkpoints: &[CheckpointRecordFile]) -> ExportInventory {
+        let mut count = 0usize;
+        let mut latest_ref = None;
+
+        for checkpoint in checkpoints.iter().filter(|item| item.r#type == "export") {
+            let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
+            if export_path.exists() {
+                count += 1;
+                if latest_ref.is_none() {
+                    latest_ref = Some(self.display_path(&export_path));
+                }
+            }
+        }
+
+        ExportInventory { count, latest_ref }
+    }
+
+    fn export_bundle_display_ref(&self, checkpoint: &CheckpointRecordFile) -> Option<String> {
+        if checkpoint.r#type != "export" {
+            return None;
+        }
+
+        let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
+        export_path.exists().then(|| self.display_path(&export_path))
+    }
+
+    fn checkpoint_file_path(&self, checkpoint_id: &str) -> PathBuf {
+        self.root
+            .join("checkpoints")
+            .join("items")
+            .join(checkpoint_id)
+            .join("checkpoint.json")
+    }
+
+    fn export_bundle_path(&self, checkpoint_id: &str) -> PathBuf {
+        self.root
+            .join("exports")
+            .join("generated")
+            .join(checkpoint_id)
+            .join("export.json")
+    }
+
+    fn display_path(&self, path: &Path) -> String {
+        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        path.strip_prefix(&project_root)
+            .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
     }
 
     fn resolve_ref(&self, base_file: &Path, reference: &str) -> PathBuf {
@@ -464,6 +615,37 @@ struct LaneEvent {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+struct LiveMemoryFile {
+    notes: Vec<LiveMemoryNote>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct LiveMemoryNote {
+    summary: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct SessionsIndexFile {
+    sessions: Vec<SessionRecordFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct SessionRecordFile {
+    label: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct EvalSummariesFile {
+    summaries: Vec<EvalSummaryRecord>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct EvalSummaryRecord {
+    #[serde(default)]
+    evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 struct ExportPolicyFile {
     policy_id: String,
     description: String,
@@ -503,6 +685,11 @@ struct ExportBundleFile {
     sanitized: bool,
 }
 
+struct ExportInventory {
+    count: usize,
+    latest_ref: Option<String>,
+}
+
 fn prepend_decision(decisions: &mut Vec<DecisionEntry>, decision: DecisionEntry) {
     decisions.insert(0, decision);
 }
@@ -539,6 +726,47 @@ fn copy_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), S
             };
             copy_tree(&entry.path(), &destination.join(name), &child_relative)?;
         }
+        return Ok(());
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    }
+    fs::copy(source, destination).map_err(|error| {
+        format!(
+            "failed to copy {} to {}: {error}",
+            source.display(),
+            destination.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn copy_missing_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), String> {
+    if should_skip_snapshot_path(relative) {
+        return Ok(());
+    }
+
+    if source.is_dir() {
+        fs::create_dir_all(destination)
+            .map_err(|error| format!("failed to create {}: {error}", destination.display()))?;
+        for entry in fs::read_dir(source)
+            .map_err(|error| format!("failed to read {}: {error}", source.display()))?
+        {
+            let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
+            let name = entry.file_name();
+            let child_relative = if relative.as_os_str().is_empty() {
+                PathBuf::from(&name)
+            } else {
+                relative.join(&name)
+            };
+            copy_missing_tree(&entry.path(), &destination.join(name), &child_relative)?;
+        }
+        return Ok(());
+    }
+
+    if destination.exists() {
         return Ok(());
     }
 

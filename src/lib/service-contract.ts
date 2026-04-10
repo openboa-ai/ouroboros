@@ -66,6 +66,8 @@ export type CheckpointSummary = {
   summary: string;
   createdAt: string;
   performance: string;
+  pathRef: string;
+  exportBundleRef?: string;
 };
 
 export type WorkspaceSummary = {
@@ -76,11 +78,32 @@ export type WorkspaceSummary = {
   exportPolicyLabel: string;
 };
 
+export type AssetInspectorState = {
+  workspaceRoot: string;
+  strategyRef: string;
+  liveLaneRef: string;
+  currentCheckpointRef: string;
+  exportPolicyRef: string;
+  latestExportBundleRef?: string;
+  checkpointCount: number;
+  exportCount: number;
+};
+
+export type LiveContextState = {
+  memoryNotes: string[];
+  sessionLabels: string[];
+  evalEvidenceRefs: string[];
+  positionEventCount: number;
+  orderEventCount: number;
+};
+
 export type BootstrapState = {
   mode: TradingMode;
   automationStatus: "active" | "paused";
   statusNote?: string;
   workspace: WorkspaceSummary;
+  assetInspector: AssetInspectorState;
+  liveContext: LiveContextState;
   providers: ProviderStatus[];
   metrics: MetricCardData[];
   priceSeries: PricePoint[];

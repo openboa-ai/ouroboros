@@ -4,33 +4,89 @@ import { Card } from "./ui/card";
 
 type StrategyTimelineProps = {
   checkpoints: CheckpointSummary[];
+  selectedCheckpointId: string | null;
+  onSelectCheckpoint: (checkpointId: string) => void;
 };
 
-export function StrategyTimeline({ checkpoints }: StrategyTimelineProps) {
+export function StrategyTimeline({
+  checkpoints,
+  onSelectCheckpoint,
+  selectedCheckpointId
+}: StrategyTimelineProps) {
+  const selectedCheckpoint =
+    checkpoints.find((checkpoint) => checkpoint.id === selectedCheckpointId) ?? checkpoints[0] ?? null;
+
   return (
     <Card
       title="Checkpoint Timeline"
-      description="Promotion, export, and incident checkpoints remain first-class addressable entities."
+      description="Promotion, export, and incident checkpoints remain first-class addressable entities with drill-down refs."
     >
-      <div className="space-y-4">
-        {checkpoints.map((checkpoint) => (
-          <div
-            key={checkpoint.id}
-            className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 lg:grid-cols-[1fr_auto]"
-          >
-            <div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_320px]">
+        <div className="space-y-4">
+          {checkpoints.map((checkpoint) => {
+            const selected = checkpoint.id === selectedCheckpoint?.id;
+            return (
+              <button
+                key={checkpoint.id}
+                type="button"
+                onClick={() => onSelectCheckpoint(checkpoint.id)}
+                className={[
+                  "grid w-full gap-3 rounded-2xl border p-4 text-left transition",
+                  "lg:grid-cols-[1fr_auto]",
+                  selected
+                    ? "border-accent-teal/40 bg-accent-teal/10 shadow-panel"
+                    : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]"
+                ].join(" ")}
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium text-ink-50">{checkpoint.alias}</p>
+                    <Badge tone={checkpoint.typeTone}>{checkpoint.type}</Badge>
+                    {selected ? <Badge tone="positive">Selected</Badge> : null}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-ink-200">{checkpoint.summary}</p>
+                </div>
+                <div className="text-right text-xs uppercase tracking-[0.16em] text-ink-300">
+                  <p>{checkpoint.createdAt}</p>
+                  <p className="mt-2">{checkpoint.performance}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedCheckpoint ? (
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-ink-50">{checkpoint.alias}</p>
-                <Badge tone={checkpoint.typeTone}>{checkpoint.type}</Badge>
+                <Badge tone={selectedCheckpoint.typeTone}>{selectedCheckpoint.type}</Badge>
+                <Badge tone="neutral">{selectedCheckpoint.alias}</Badge>
               </div>
-              <p className="mt-2 text-sm leading-6 text-ink-200">{checkpoint.summary}</p>
+              <p className="text-sm leading-6 text-ink-200">{selectedCheckpoint.summary}</p>
             </div>
-            <div className="text-right text-xs uppercase tracking-[0.16em] text-ink-300">
-              <p>{checkpoint.createdAt}</p>
-              <p className="mt-2">{checkpoint.performance}</p>
-            </div>
+
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Performance</dt>
+                <dd className="mt-1 text-ink-50">{selectedCheckpoint.performance}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Created</dt>
+                <dd className="mt-1 text-ink-50">{selectedCheckpoint.createdAt}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Checkpoint ref</dt>
+                <dd className="mt-1 break-all text-ink-50">{selectedCheckpoint.pathRef}</dd>
+              </div>
+              {selectedCheckpoint.exportBundleRef ? (
+                <div>
+                  <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Export bundle</dt>
+                  <dd className="mt-1 break-all text-ink-50">{selectedCheckpoint.exportBundleRef}</dd>
+                </div>
+              ) : null}
+            </dl>
           </div>
-        ))}
+        ) : null}
       </div>
     </Card>
   );

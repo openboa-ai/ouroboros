@@ -1,7 +1,9 @@
 import type {
+  AssetInspectorState,
   BootstrapState,
   CheckpointSummary,
   DecisionEntry,
+  LiveContextState,
   WorkspaceService
 } from "./service-contract";
 import type { LiveLaneState, StrategyManifest } from "./workspace-contract";
@@ -11,8 +13,11 @@ import liveLaneTemplate from "../../templates/strategy-workspace/live/live-lane.
 import strategyTemplate from "../../templates/strategy-workspace/strategy.json";
 import dashboardTemplate from "../../templates/strategy-workspace/state/dashboard.json";
 import decisionsTemplate from "../../templates/strategy-workspace/state/decisions.json";
+import evalSummariesTemplate from "../../templates/strategy-workspace/state/eval-summaries.json";
+import liveMemoryTemplate from "../../templates/strategy-workspace/state/live-memory.json";
 import ordersTemplate from "../../templates/strategy-workspace/state/orders.json";
 import positionsTemplate from "../../templates/strategy-workspace/state/positions.json";
+import sessionsTemplate from "../../templates/strategy-workspace/indexes/sessions.json";
 
 export const mockStrategyManifest = strategyTemplate as StrategyManifest;
 const liveLane = liveLaneTemplate as LiveLaneState;
@@ -31,6 +36,7 @@ const checkpointIndex = checkpointIndexTemplate as {
     summary?: string;
     created_at?: string;
     performance?: string;
+    path_ref?: string;
   }>;
 };
 
@@ -49,11 +55,58 @@ const decisionsState = decisionsTemplate as {
 
 const ordersState = ordersTemplate as {
   current: BootstrapState["orders"];
+  events: Array<{ event_id: string }>;
 };
 
 const positionsState = positionsTemplate as {
   current: BootstrapState["positions"];
+  events: Array<{ event_id: string }>;
 };
+
+const liveMemoryState = liveMemoryTemplate as {
+  notes: Array<{ summary: string }>;
+};
+
+const sessionsState = sessionsTemplate as {
+  sessions: Array<{ label: string }>;
+};
+
+const evalSummariesState = evalSummariesTemplate as {
+  summaries: Array<{ evidence_refs?: string[] }>;
+};
+
+const WORKSPACE_ROOT = "var/dev-workspace";
+
+function checkpointPath(checkpointId: string) {
+  return `${WORKSPACE_ROOT}/checkpoints/items/${checkpointId}/checkpoint.json`;
+}
+
+function exportBundlePath(checkpointId: string) {
+  return `${WORKSPACE_ROOT}/exports/generated/${checkpointId}/export.json`;
+}
+
+function buildAssetInspector(): AssetInspectorState {
+  return {
+    workspaceRoot: WORKSPACE_ROOT,
+    strategyRef: `${WORKSPACE_ROOT}/strategy.json`,
+    liveLaneRef: `${WORKSPACE_ROOT}/live/live-lane.json`,
+    currentCheckpointRef: checkpointPath(checkpointIndex.current.checkpoint_id),
+    exportPolicyRef: `${WORKSPACE_ROOT}/exports/policy.json`,
+    latestExportBundleRef: undefined,
+    checkpointCount: checkpointIndex.items.length,
+    exportCount: 0
+  };
+}
+
+function buildLiveContext(): LiveContextState {
+  return {
+    memoryNotes: liveMemoryState.notes.map((note) => note.summary),
+    sessionLabels: sessionsState.sessions.map((session) => session.label),
+    evalEvidenceRefs: evalSummariesState.summaries.flatMap((summary) => summary.evidence_refs ?? []),
+    positionEventCount: positionsState.events.length,
+    orderEventCount: ordersState.events.length
+  };
+}
 
 function buildTemplateBootstrapState(): BootstrapState {
   return {
@@ -65,6 +118,8 @@ function buildTemplateBootstrapState(): BootstrapState {
       currentCheckpointAlias: checkpointIndex.current.alias,
       exportPolicyLabel: exportPolicy.policy_id
     },
+    assetInspector: buildAssetInspector(),
+    liveContext: buildLiveContext(),
     positions: positionsState.current,
     orders: ordersState.current,
     decisions: decisionsState.decisions,
@@ -75,7 +130,9 @@ function buildTemplateBootstrapState(): BootstrapState {
       typeTone: item.type_tone ?? "warning",
       summary: item.summary ?? "Checkpoint captured.",
       createdAt: item.created_at ?? "UTC unknown",
-      performance: item.performance ?? "No summary"
+      performance: item.performance ?? "No summary",
+      pathRef: item.path_ref ? checkpointPath(item.checkpoint_id) : checkpointPath(item.checkpoint_id),
+      exportBundleRef: undefined
     }))
   };
 }
@@ -110,6 +167,7 @@ class MockWorkspaceService implements WorkspaceService {
   }
 
   async flattenAllPositions(): Promise<BootstrapState> {
+    const checkpointId = crypto.randomUUID();
     this.state = {
       ...this.state,
       statusNote: "Service-layer intervention flattened all live positions in the mock runtime.",
@@ -137,19 +195,21 @@ class MockWorkspaceService implements WorkspaceService {
     });
 
     this.prependCheckpoint({
-      id: this.nextId("checkpoint"),
+      id: checkpointId,
       alias: "incident-flatten-all",
       type: "incident",
       typeTone: "danger",
       summary: "Client-triggered flatten-all command captured as an incident checkpoint.",
       createdAt: this.nowLabel(),
-      performance: "Live risk reset to flat"
+      performance: "Live risk reset to flat",
+      pathRef: checkpointPath(checkpointId)
     });
 
     return structuredClone(this.state);
   }
 
   async createExportCheckpoint(): Promise<BootstrapState> {
+    const checkpointId = crypto.randomUUID();
     const alias = `export-${new Date().toISOString().slice(11, 16).replace(":", "")}`;
 
     this.state = {
@@ -158,13 +218,15 @@ class MockWorkspaceService implements WorkspaceService {
     };
 
     this.prependCheckpoint({
-      id: this.nextId("checkpoint"),
+      id: checkpointId,
       alias,
       type: "export",
       typeTone: "warning",
       summary: "Fresh export checkpoint created before generating a sanitized live-centered bundle.",
       createdAt: this.nowLabel(),
-      performance: "Export policy sanitized-live-centered"
+      performance: "Export policy sanitized-live-centered",
+      pathRef: checkpointPath(checkpointId),
+      exportBundleRef: exportBundlePath(checkpointId)
     });
 
     this.prependDecision({
@@ -186,6 +248,19 @@ class MockWorkspaceService implements WorkspaceService {
       workspace: {
         ...this.state.workspace,
         currentCheckpointAlias: checkpoint.alias
+      },
+      assetInspector: {
+        ...this.state.assetInspector,
+        currentCheckpointRef: checkpoint.pathRef,
+        latestExportBundleRef:
+          checkpoint.type === "export"
+            ? checkpoint.exportBundleRef ?? this.state.assetInspector.latestExportBundleRef
+            : this.state.assetInspector.latestExportBundleRef,
+        checkpointCount: this.state.assetInspector.checkpointCount + 1,
+        exportCount:
+          checkpoint.type === "export"
+            ? this.state.assetInspector.exportCount + 1
+            : this.state.assetInspector.exportCount
       },
       checkpoints: [checkpoint, ...this.state.checkpoints]
     };

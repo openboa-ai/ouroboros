@@ -1,10 +1,12 @@
 import { startTransition, useEffect, useState } from "react";
 import { Activity, AlertTriangle, Bot, CandlestickChart, ShieldCheck } from "lucide-react";
 import { AppShell } from "./components/app-shell";
+import { AssetInspectorPanel } from "./components/asset-inspector-panel";
 import { DashboardGrid } from "./components/dashboard-grid";
 import { DecisionFeed } from "./components/decision-feed";
 import { EquityAreaPanel } from "./components/equity-area-panel";
 import { ExposurePanel } from "./components/exposure-panel";
+import { LiveContextPanel } from "./components/live-context-panel";
 import { PositionsPanel } from "./components/positions-panel";
 import { PriceContextPanel } from "./components/price-context-panel";
 import { StrategyTimeline } from "./components/strategy-timeline";
@@ -16,6 +18,7 @@ import { workspaceService } from "./lib/service-gateway";
 
 export function App() {
   const [state, setState] = useState<BootstrapState | null>(null);
+  const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,9 +29,7 @@ export function App() {
         return;
       }
 
-      startTransition(() => {
-        setState(nextState);
-      });
+      applyNextState(nextState);
     });
 
     return () => {
@@ -49,6 +50,13 @@ export function App() {
     );
   }
 
+  function applyNextState(nextState: BootstrapState) {
+    startTransition(() => {
+      setState(nextState);
+      setSelectedCheckpointId(nextState.checkpoints[0]?.id ?? null);
+    });
+  }
+
   return (
     <AppShell
       title="AutoKairos"
@@ -62,10 +70,8 @@ export function App() {
                 onClick={() => {
                   setCommandStatus("Flattening positions...");
                   void workspaceService.flattenAllPositions().then((nextState) => {
-                    startTransition(() => {
-                      setState(nextState);
-                      setCommandStatus("All positions flattened through the service layer.");
-                    });
+                    applyNextState(nextState);
+                    setCommandStatus("All positions flattened through the service layer.");
                   });
                 }}
               >
@@ -76,10 +82,8 @@ export function App() {
                 onClick={() => {
                   setCommandStatus("Pausing automation...");
                   void workspaceService.pauseGlobalAutomation().then((nextState) => {
-                    startTransition(() => {
-                      setState(nextState);
-                      setCommandStatus("Global automation paused. Client is now in observer mode.");
-                    });
+                    applyNextState(nextState);
+                    setCommandStatus("Global automation paused. Client is now in observer mode.");
                   });
                 }}
               >
@@ -90,10 +94,8 @@ export function App() {
                 onClick={() => {
                   setCommandStatus("Creating export checkpoint...");
                   void workspaceService.createExportCheckpoint().then((nextState) => {
-                    startTransition(() => {
-                      setState(nextState);
-                      setCommandStatus("Fresh export checkpoint created from the live-centered asset.");
-                    });
+                    applyNextState(nextState);
+                    setCommandStatus("Fresh export checkpoint created from the live-centered asset.");
                   });
                 }}
               >
@@ -104,30 +106,8 @@ export function App() {
               <p className="mt-4 text-sm leading-6 text-ink-200">{commandStatus}</p>
             ) : null}
           </Card>
-          <Card title="Active Context" description="Everything here materially influences live trading and export.">
-            <ul className="space-y-2 text-sm text-ink-200">
-              <li className="flex items-center justify-between">
-                <span>Workspace</span>
-                <span className="font-medium text-ink-50">{state.workspace.slug}</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Current checkpoint</span>
-                <span className="font-medium text-ink-50">{state.workspace.currentCheckpointAlias}</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Export policy</span>
-                <span className="font-medium text-ink-50">{state.workspace.exportPolicyLabel}</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Live lane</span>
-                <span className="font-medium text-ink-50">{state.workspace.liveLaneLabel}</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span>Automation</span>
-                <span className="font-medium text-ink-50">{state.automationStatus}</span>
-              </li>
-            </ul>
-          </Card>
+          <AssetInspectorPanel assetInspector={state.assetInspector} />
+          <LiveContextPanel liveContext={state.liveContext} />
         </div>
       }
     >
@@ -194,7 +174,11 @@ export function App() {
           <div className="space-y-6">
             <PriceContextPanel series={state.priceSeries} />
             <EquityAreaPanel series={state.equitySeries} />
-            <StrategyTimeline checkpoints={state.checkpoints} />
+            <StrategyTimeline
+              checkpoints={state.checkpoints}
+              selectedCheckpointId={selectedCheckpointId}
+              onSelectCheckpoint={setSelectedCheckpointId}
+            />
           </div>
           <div className="space-y-6">
             <ExposurePanel series={state.exposureSeries} />
