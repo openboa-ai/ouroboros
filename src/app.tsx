@@ -24,10 +24,12 @@ import type {
   BootstrapState,
   CheckpointDetailState,
   CollectionDetailState,
+  ImportDetailState,
   WorkspaceDocumentState
 } from "./lib/service-contract";
 import { workspaceService } from "./lib/service-gateway";
 import { CollectionsPanel } from "./components/collections-panel";
+import { ImportsPanel } from "./components/imports-panel";
 
 export function App() {
   const [state, setState] = useState<BootstrapState | null>(null);
@@ -39,6 +41,8 @@ export function App() {
   const [selectedCollectionDetail, setSelectedCollectionDetail] = useState<CollectionDetailState | null>(
     null
   );
+  const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
+  const [selectedImportDetail, setSelectedImportDetail] = useState<ImportDetailState | null>(null);
   const [selectedBlobId, setSelectedBlobId] = useState<string | null>(null);
   const [selectedBlobDetail, setSelectedBlobDetail] = useState<BlobDetailState | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
@@ -111,6 +115,29 @@ export function App() {
   }, [selectedCollectionId]);
 
   useEffect(() => {
+    if (!selectedImportId) {
+      setSelectedImportDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.getImportDetail(selectedImportId).then((detail) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedImportDetail(detail);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedImportId]);
+
+  useEffect(() => {
     const nextBlobId = selectedCollectionDetail?.entries.find((entry) => entry.blobRef)?.blobRef ?? null;
     setSelectedBlobId((current) => (current === nextBlobId ? current : nextBlobId));
     setSelectedBlobDetail(null);
@@ -175,22 +202,48 @@ export function App() {
     );
   }
 
-  function applyNextState(nextState: BootstrapState) {
-    const activeCheckpointId =
+  function applyNextState(
+    nextState: BootstrapState,
+    options?: {
+      selectedCheckpointId?: string | null;
+      selectedCollectionId?: string | null;
+      selectedImportId?: string | null;
+      selectedDocumentId?: string | null;
+      selectedDocumentRef?: string | null;
+    }
+  ) {
+    const nextCheckpointId =
+      options?.selectedCheckpointId ??
       nextState.checkpoints.find(
         (checkpoint) => checkpoint.pathRef === nextState.assetInspector.currentCheckpointRef
-      )?.id ?? nextState.checkpoints[0]?.id ?? null;
+      )?.id ??
+      nextState.checkpoints[0]?.id ??
+      null;
+    const nextCollectionId =
+      options?.selectedCollectionId ??
+      nextState.collections.find((collection) => collection.id === selectedCollectionId)?.id ??
+      nextState.collections[0]?.id ??
+      null;
+    const nextImportId =
+      options?.selectedImportId ??
+      nextState.imports.find((item) => item.id === selectedImportId)?.id ??
+      nextState.imports[0]?.id ??
+      null;
+    const nextDocumentId = options?.selectedDocumentId ?? "strategy";
+    const nextDocumentRef = options?.selectedDocumentRef ?? nextState.assetInspector.strategyRef;
 
     startTransition(() => {
       setState(nextState);
-      setSelectedCheckpointId(activeCheckpointId);
+      setSelectedCheckpointId(nextCheckpointId);
       setSelectedCheckpointDetail(null);
-      setSelectedCollectionId(nextState.collections[0]?.id ?? null);
+      setSelectedCollectionId(nextCollectionId);
       setSelectedCollectionDetail(null);
+      setSelectedImportId(nextImportId);
+      setSelectedImportDetail(null);
       setSelectedBlobId(null);
       setSelectedBlobDetail(null);
-      setSelectedDocumentId("strategy");
-      setSelectedDocumentRef(nextState.assetInspector.strategyRef);
+      setSelectedDocumentId(nextDocumentId);
+      setSelectedDocumentRef(nextDocumentRef);
       setSelectedDocumentDetail(null);
     });
   }
@@ -233,6 +286,12 @@ export function App() {
       pathRef: state.workspaceIndex.indexes.collectionsRef
     },
     {
+      id: "imports-index",
+      label: "imports index",
+      description: "Sanitized import staging catalog kept inside the workspace asset.",
+      pathRef: state.workspaceIndex.indexes.importsRef
+    },
+    {
       id: "sessions-index",
       label: "sessions index",
       description: "Durable session references that shape current live context.",
@@ -271,6 +330,22 @@ export function App() {
             label: "selected blob",
             description: "Immutable source body resolved from the selected entry.",
             pathRef: selectedBlobDetail.blobPathRef
+          }
+        ]
+      : []),
+    ...(selectedImportDetail
+      ? [
+          {
+            id: "selected-import",
+            label: "selected import",
+            description: "Import manifest for a staged sanitized bundle.",
+            pathRef: selectedImportDetail.importRef
+          },
+          {
+            id: "selected-import-bundle",
+            label: "selected import bundle",
+            description: "Imported sanitized export manifest staged inside the workspace.",
+            pathRef: selectedImportDetail.bundleRef
           }
         ]
       : [])
@@ -319,6 +394,58 @@ export function App() {
                 }}
               >
                 Create Export Checkpoint
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  const bundleRef =
+                    state.assetInspector.latestExportBundleRef ?? state.exportInspector.latestBundle?.bundleRef;
+                  if (!bundleRef) {
+                    setCommandStatus("Create an export checkpoint before staging an import.");
+                    return;
+                  }
+
+                  setCommandStatus("Staging latest sanitized export...");
+                  void workspaceService.importExportBundle(bundleRef).then(async (imported) => {
+                    const nextState = await workspaceService.getBootstrapState();
+                    applyNextState(nextState, {
+                      selectedImportId: imported.importId,
+                      selectedDocumentId: "selected-import",
+                      selectedDocumentRef: imported.importRef
+                    });
+                    setCommandStatus("Latest sanitized export staged into workspace imports.");
+                  });
+                }}
+              >
+                Stage Latest Export
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const eventTime = new Date().toISOString();
+                  const preview = `Operator note captured at ${eventTime}`;
+                  setCommandStatus("Ingesting sample source entry...");
+                  void workspaceService
+                    .ingestSourceEntry({
+                      kind: "raw",
+                      sourceRef: "notes:operator:runtime",
+                      eventTime,
+                      ingestedAt: eventTime,
+                      preview,
+                      bodyText: `${preview}\n\nReason: keep the source pipeline visible inside the workspace asset.`
+                    })
+                    .then(async (result) => {
+                      const nextState = await workspaceService.getBootstrapState();
+                      applyNextState(nextState, {
+                        selectedCollectionId: result.collectionId,
+                        selectedDocumentId: "collections-index",
+                        selectedDocumentRef: nextState.workspaceIndex.indexes.collectionsRef
+                      });
+                      setCommandStatus("Sample source entry ingested into the current workspace.");
+                    });
+                }}
+              >
+                Ingest Sample Source
               </Button>
             </div>
             {commandStatus ? (
@@ -453,6 +580,17 @@ export function App() {
           blobDetail={selectedBlobDetail}
           onSelectCollection={setSelectedCollectionId}
           onSelectBlob={setSelectedBlobId}
+        />
+
+        <ImportsPanel
+          imports={state.imports}
+          selectedImportId={selectedImportId}
+          importDetail={selectedImportDetail}
+          onSelectImport={setSelectedImportId}
+          onOpenWorkspaceDocument={(documentRef) => {
+            setSelectedDocumentId(`ref:${documentRef}`);
+            setSelectedDocumentRef(documentRef);
+          }}
         />
 
         <WorkspaceDocumentPanel

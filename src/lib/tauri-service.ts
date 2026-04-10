@@ -4,6 +4,10 @@ import type {
   BootstrapState,
   CheckpointDetailState,
   CollectionDetailState,
+  ImportBundleState,
+  ImportDetailState,
+  IngestSourceEntryInput,
+  IngestSourceEntryResult,
   WorkspaceDocumentState,
   WorkspaceService
 } from "./service-contract";
@@ -19,6 +23,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getCollectionDetail(collectionId: string): Promise<CollectionDetailState> {
     return invoke<CollectionDetailState>("get_collection_detail", { collectionId });
+  }
+
+  async getImportDetail(importId: string): Promise<ImportDetailState> {
+    return invoke<ImportDetailState>("get_import_detail", { importId });
   }
 
   async getBlobDetail(blobId: string): Promise<BlobDetailState> {
@@ -43,6 +51,14 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async restoreCheckpoint(checkpointId: string): Promise<BootstrapState> {
     return invoke<BootstrapState>("restore_checkpoint", { checkpointId });
+  }
+
+  async ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult> {
+    return invoke<IngestSourceEntryResult>("ingest_source_entry", { input });
+  }
+
+  async importExportBundle(bundleRef: string): Promise<ImportBundleState> {
+    return invoke<ImportBundleState>("import_export_bundle", { bundleRef });
   }
 }
 

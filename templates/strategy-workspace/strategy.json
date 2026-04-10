@@ -10,6 +10,7 @@
   "indexes": {
     "checkpoints_ref": "./checkpoints/index.json",
     "collections_ref": "./indexes/collections.json",
+    "imports_ref": "./imports/index.json",
     "sessions_ref": "./indexes/sessions.json"
   }
 }

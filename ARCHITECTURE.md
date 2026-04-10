@@ -12,7 +12,7 @@ The runtime should feel alive by default, but the live-trading path must remain 
 - `client service layer`
   The boundary the official client uses instead of mutating workspace state directly.
 - `workspace asset`
-  The local strategy workspace the service layer owns, seeds, checkpoints, and exports.
+  The local strategy workspace the service layer owns, seeds, checkpoints, exports, and stages sanitized imports into.
 - `resident supervisor`
   The always-on orchestration layer that owns threads, turns, logs, and background work.
 - `research runtime`

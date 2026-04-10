@@ -166,6 +166,34 @@ pub struct CollectionDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportSummaryState {
+    pub id: String,
+    pub imported_at: String,
+    pub source_bundle_ref: String,
+    pub import_ref: String,
+    pub workspace_ref: String,
+    pub checkpoint_ref: String,
+    pub policy_id: String,
+    pub sanitized: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportDetailState {
+    pub id: String,
+    pub imported_at: String,
+    pub source_bundle_ref: String,
+    pub import_ref: String,
+    pub workspace_ref: String,
+    pub checkpoint_ref: String,
+    pub policy_id: String,
+    pub sanitized: bool,
+    pub bundle_ref: String,
+    pub workspace_file_refs: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlobDetailState {
     pub id: String,
     pub blob_path_ref: String,
@@ -182,6 +210,43 @@ pub struct WorkspaceDocumentState {
     pub byte_length: usize,
     pub line_count: usize,
     pub content_text: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestSourceEntryInput {
+    pub kind: String,
+    pub source_ref: String,
+    pub event_time: String,
+    pub ingested_at: String,
+    pub preview: Option<String>,
+    pub body_text: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestSourceEntryResult {
+    pub collection_id: String,
+    pub collection_ref: String,
+    pub entry_id: String,
+    pub entry_shard_ref: String,
+    pub time_bucket: String,
+    pub entry_count: usize,
+    pub blob_id: Option<String>,
+    pub created_collection: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportBundleState {
+    pub import_id: String,
+    pub imported_at: String,
+    pub source_bundle_ref: String,
+    pub import_ref: String,
+    pub workspace_ref: String,
+    pub checkpoint_ref: String,
+    pub policy_id: String,
+    pub sanitized: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -220,6 +285,7 @@ pub struct StrategyActiveIndexState {
 pub struct StrategyIndexesState {
     pub checkpoints_ref: String,
     pub collections_ref: String,
+    pub imports_ref: String,
     pub sessions_ref: String,
 }
 
@@ -287,4 +353,5 @@ pub struct BootstrapState {
     pub decisions: Vec<DecisionEntry>,
     pub checkpoints: Vec<CheckpointSummary>,
     pub collections: Vec<CollectionSummaryState>,
+    pub imports: Vec<ImportSummaryState>,
 }

@@ -9,6 +9,11 @@ import type {
   DecisionEntry,
   ExportBundleState,
   ExportInspectorState,
+  ImportBundleState,
+  ImportDetailState,
+  ImportSummaryState,
+  IngestSourceEntryInput,
+  IngestSourceEntryResult,
   LaneEventState,
   LiveContextState,
   WorkspaceDocumentState,
@@ -19,6 +24,7 @@ import type { LiveLaneState, StrategyManifest } from "./workspace-contract";
 import checkpointIndexTemplate from "../../templates/strategy-workspace/checkpoints/index.json";
 import exportPolicyTemplate from "../../templates/strategy-workspace/exports/policy.json";
 import collectionsTemplate from "../../templates/strategy-workspace/indexes/collections.json";
+import importsTemplate from "../../templates/strategy-workspace/imports/index.json";
 import btcAggEntriesRaw from "../../templates/strategy-workspace/collections/items/019626b0-4d0a-7a72-9b4e-9d8e11d0f901/entries.ndjson?raw";
 import macroNewsEntriesRaw from "../../templates/strategy-workspace/collections/items/019626b6-c73a-7fe6-b0a5-64ac631d5102/entries.ndjson?raw";
 import btcAggBlobOneRaw from "../../templates/strategy-workspace/blobs/sha256/cd36e47d463d9e2efe3e2030670ca7694a9f303a8837cad4e4e5135c427f945f.txt?raw";
@@ -75,9 +81,24 @@ const collectionsState = collectionsTemplate as {
   }>;
 };
 
+const importsState = structuredClone(
+  importsTemplate as {
+    items: Array<{
+      import_id: string;
+      imported_at: string;
+      source_bundle_ref: string;
+      bundle_ref: string;
+      workspace_ref: string;
+      checkpoint_ref: string;
+      policy_id: string;
+      sanitized: boolean;
+    }>;
+  }
+);
+
 const dashboardState = dashboardTemplate as Omit<
   BootstrapState,
-  "workspace" | "positions" | "orders" | "decisions" | "checkpoints"
+  "workspace" | "positions" | "orders" | "decisions" | "checkpoints" | "imports"
 >;
 
 const decisionsState = decisionsTemplate as {
@@ -131,18 +152,18 @@ type LaneEventRecord = {
   summary: string;
 };
 
-const entriesByCollection = {
+const entriesByCollection: Record<string, CollectionEntryRecord[]> = {
   "019626b0-4d0a-7a72-9b4e-9d8e11d0f901": parseEntries(btcAggEntriesRaw),
   "019626b6-c73a-7fe6-b0a5-64ac631d5102": parseEntries(macroNewsEntriesRaw)
-} satisfies Record<string, CollectionEntryRecord[]>;
+};
 
-const blobContents = {
+const blobContents: Record<string, string> = {
   "sha256:cd36e47d463d9e2efe3e2030670ca7694a9f303a8837cad4e4e5135c427f945f": btcAggBlobOneRaw,
   "sha256:aef3c2aa9075dc26b7484d71d06d10c152f5310cd34d5eb2b3b3b6fa915e4b3c": btcAggBlobTwoRaw,
   "sha256:7bbdd0eec8d01854af7185348af542fb665987debe396f2ce2e88f4e35f8af0e": btcAggBlobThreeRaw,
   "sha256:2b0f06db4a1f0530763ad7aa5a10bc2e47017dcaf4f79f8fa0e6a5819d57081f": macroNewsBlobOneRaw,
   "sha256:e2d312f2f5767f7334ba8d3fa90fc2c9d66b2d05d4c77db8bc8d289d5fc5f7ec": macroNewsBlobTwoRaw
-} satisfies Record<string, string>;
+};
 const DEFAULT_INCLUDED_REFS = [
   "./workspace/strategy.json",
   "./workspace/live/live-lane.json",
@@ -213,6 +234,7 @@ function buildWorkspaceIndex(currentCheckpointRef: string): WorkspaceIndexState 
     indexes: {
       checkpointsRef: `${WORKSPACE_ROOT}/checkpoints/index.json`,
       collectionsRef: `${WORKSPACE_ROOT}/indexes/collections.json`,
+      importsRef: `${WORKSPACE_ROOT}/imports/index.json`,
       sessionsRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
     },
     collectionCount: collectionsState.items.length,
@@ -230,6 +252,19 @@ function buildCollections(): CollectionSummaryState[] {
     entryCount: item.entry_count,
     contentHash: item.content_hash,
     collectionRef: `${WORKSPACE_ROOT}/collections/items/${item.collection_id}/collection.json`
+  }));
+}
+
+function buildImports(): ImportSummaryState[] {
+  return importsState.items.map((item) => ({
+    id: item.import_id,
+    importedAt: item.imported_at,
+    sourceBundleRef: item.source_bundle_ref,
+    importRef: `${WORKSPACE_ROOT}/imports/items/${item.import_id}/import.json`,
+    workspaceRef: `${WORKSPACE_ROOT}/imports/items/${item.import_id}/workspace`,
+    checkpointRef: item.checkpoint_ref,
+    policyId: item.policy_id,
+    sanitized: item.sanitized
   }));
 }
 
@@ -270,6 +305,19 @@ function buildExportInspector(checkpoints: CheckpointSummary[]): ExportInspector
   };
 }
 
+function toUtcHourBucket(eventTime: string) {
+  return `${eventTime.slice(0, 13)}:00:00Z`;
+}
+
+function mockBlobIdFromText(content: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sha256:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 function buildTemplateBootstrapState(): BootstrapState {
   const checkpoints = checkpointIndex.items.map((item) => ({
     id: item.checkpoint_id,
@@ -302,7 +350,8 @@ function buildTemplateBootstrapState(): BootstrapState {
     laneEvents: buildLaneEvents(),
     decisions: decisionsState.decisions,
     checkpoints,
-    collections: buildCollections()
+    collections: buildCollections(),
+    imports: buildImports()
   };
 }
 
@@ -370,6 +419,27 @@ class MockWorkspaceService implements WorkspaceService {
           ? `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt`
           : undefined
       }))
+    };
+  }
+
+  async getImportDetail(importId: string): Promise<ImportDetailState> {
+    const record = importsState.items.find((item) => item.import_id === importId);
+    if (!record) {
+      throw new Error(`unknown import: ${importId}`);
+    }
+
+    const workspaceRef = `${WORKSPACE_ROOT}/imports/items/${record.import_id}/workspace`;
+    return {
+      id: record.import_id,
+      importedAt: record.imported_at,
+      sourceBundleRef: record.source_bundle_ref,
+      importRef: `${WORKSPACE_ROOT}/imports/items/${record.import_id}/import.json`,
+      workspaceRef,
+      checkpointRef: record.checkpoint_ref,
+      policyId: record.policy_id,
+      sanitized: record.sanitized,
+      bundleRef: `${WORKSPACE_ROOT}/imports/items/${record.import_id}/bundle/export.json`,
+      workspaceFileRefs: DEFAULT_INCLUDED_REFS.map((path) => path.replace("./workspace", workspaceRef))
     };
   }
 
@@ -572,6 +642,117 @@ class MockWorkspaceService implements WorkspaceService {
     return structuredClone(this.state);
   }
 
+  async ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult> {
+    const payload = input.bodyText ?? input.preview;
+    if (!payload) {
+      throw new Error("Mock ingest requires bodyText or preview");
+    }
+
+    const timeBucket = toUtcHourBucket(input.eventTime);
+    const existing = collectionsState.items.find(
+      (item) =>
+        item.kind === input.kind &&
+        item.source_ref === input.sourceRef &&
+        item.time_bucket === timeBucket
+    );
+    const collectionId = existing?.collection_id ?? `mock-${crypto.randomUUID()}`;
+    const createdCollection = !existing;
+    const blobId = mockBlobIdFromText(payload);
+
+    if (!blobContents[blobId]) {
+      blobContents[blobId] = payload;
+    }
+
+    if (!entriesByCollection[collectionId]) {
+      entriesByCollection[collectionId] = [];
+    }
+
+    const entry = {
+      entry_id: crypto.randomUUID(),
+      source_ref: input.sourceRef,
+      event_time: input.eventTime,
+      ingested_at: input.ingestedAt,
+      content_hash: blobId,
+      blob_ref: blobId,
+      preview: input.preview
+    };
+    entriesByCollection[collectionId].push(entry);
+
+    const nextTimeRange = {
+      start: entriesByCollection[collectionId][0]?.event_time ?? input.eventTime,
+      end: entriesByCollection[collectionId][entriesByCollection[collectionId].length - 1]?.event_time ?? input.eventTime
+    };
+
+    if (existing) {
+      existing.entry_count = entriesByCollection[collectionId].length;
+      existing.content_hash = blobId;
+      existing.time_range = nextTimeRange;
+    } else {
+      collectionsState.items.unshift({
+        collection_id: collectionId,
+        kind: input.kind,
+        source_ref: input.sourceRef,
+        time_bucket: timeBucket,
+        time_range: nextTimeRange,
+        entry_count: 1,
+        content_hash: blobId,
+        path_ref: `./items/${collectionId}/collection.json`
+      });
+    }
+
+    this.state.collections = buildCollections();
+    this.state.workspaceIndex.collectionCount = collectionsState.items.length;
+
+    return {
+      collectionId,
+      collectionRef: `${WORKSPACE_ROOT}/collections/items/${collectionId}/collection.json`,
+      entryId: entry.entry_id,
+      entryShardRef: `${WORKSPACE_ROOT}/collections/items/${collectionId}/entries.ndjson`,
+      timeBucket,
+      entryCount: entriesByCollection[collectionId].length,
+      blobId,
+      createdCollection
+    };
+  }
+
+  async importExportBundle(bundleRef: string): Promise<ImportBundleState> {
+    const importId = crypto.randomUUID();
+    const importedAt = this.nowLabel();
+    const record = {
+      import_id: importId,
+      imported_at: importedAt,
+      source_bundle_ref: bundleRef,
+      bundle_ref: "./bundle/export.json",
+      workspace_ref: "./workspace",
+      checkpoint_ref: this.state.assetInspector.currentCheckpointRef,
+      policy_id: exportPolicy.policy_id,
+      sanitized: true
+    };
+
+    importsState.items.unshift(record);
+    this.prependDecision({
+      id: this.nextId("decision"),
+      kind: "Import",
+      tone: "neutral",
+      headline: "Sanitized export staged as import",
+      reason:
+        "The service layer staged a sanitized export bundle into the workspace imports area without mutating the active live workspace.",
+      timestamp: importedAt
+    });
+    this.syncDerivedState();
+
+    return {
+      importId,
+      importedAt,
+      sourceBundleRef: bundleRef,
+      importRef: `${WORKSPACE_ROOT}/imports/items/${importId}/import.json`,
+      workspaceRef: `${WORKSPACE_ROOT}/imports/items/${importId}/workspace`,
+      checkpointRef: record.checkpoint_ref,
+      policyId: record.policy_id,
+      sanitized: record.sanitized
+    };
+  }
+
   private prependCheckpoint(checkpoint: CheckpointSummary) {
     this.state = {
       ...this.state,
@@ -617,7 +798,9 @@ class MockWorkspaceService implements WorkspaceService {
       },
       assetInspector: buildAssetInspector(this.state.checkpoints, resolvedCheckpointRef),
       workspaceIndex: buildWorkspaceIndex(resolvedCheckpointRef),
-      exportInspector: buildExportInspector(this.state.checkpoints)
+      exportInspector: buildExportInspector(this.state.checkpoints),
+      collections: buildCollections(),
+      imports: buildImports()
     };
   }
 
@@ -644,6 +827,13 @@ class MockWorkspaceService implements WorkspaceService {
       return this.resolveDocumentContent(`${WORKSPACE_ROOT}/${exportWorkspaceMatch[2]}`);
     }
 
+    const importWorkspaceMatch = documentRef.match(
+      /var\/dev-workspace\/imports\/items\/([^/]+)\/workspace\/(.+)$/
+    );
+    if (importWorkspaceMatch) {
+      return this.resolveDocumentContent(`${WORKSPACE_ROOT}/${importWorkspaceMatch[2]}`);
+    }
+
     if (documentRef === `${WORKSPACE_ROOT}/strategy.json`) {
       return JSON.stringify(mockStrategyManifest, null, 2);
     }
@@ -652,6 +842,9 @@ class MockWorkspaceService implements WorkspaceService {
     }
     if (documentRef === `${WORKSPACE_ROOT}/exports/policy.json`) {
       return JSON.stringify(exportPolicyTemplate, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/imports/index.json`) {
+      return JSON.stringify(importsState, null, 2);
     }
     if (documentRef === `${WORKSPACE_ROOT}/checkpoints/index.json`) {
       return JSON.stringify(
@@ -677,7 +870,7 @@ class MockWorkspaceService implements WorkspaceService {
       );
     }
     if (documentRef === `${WORKSPACE_ROOT}/indexes/collections.json`) {
-      return JSON.stringify(collectionsTemplate, null, 2);
+      return JSON.stringify({ items: collectionsState.items }, null, 2);
     }
     if (documentRef === `${WORKSPACE_ROOT}/indexes/sessions.json`) {
       return JSON.stringify(sessionsTemplate, null, 2);
@@ -709,6 +902,27 @@ class MockWorkspaceService implements WorkspaceService {
       const checkpoint = this.state.checkpoints.find((item) => item.id === exportMatch[1]);
       if (checkpoint) {
         return JSON.stringify(buildExportBundle(checkpoint), null, 2);
+      }
+    }
+
+    const importManifestMatch = documentRef.match(/imports\/items\/([^/]+)\/import\.json$/);
+    if (importManifestMatch) {
+      const imported = importsState.items.find((item) => item.import_id === importManifestMatch[1]);
+      if (imported) {
+        return JSON.stringify(imported, null, 2);
+      }
+    }
+
+    const importBundleMatch = documentRef.match(/imports\/items\/([^/]+)\/bundle\/export\.json$/);
+    if (importBundleMatch) {
+      const imported = importsState.items.find((item) => item.import_id === importBundleMatch[1]);
+      if (imported) {
+        const matchingCheckpoint = this.state.checkpoints.find(
+          (checkpoint) => checkpoint.pathRef === imported.checkpoint_ref
+        );
+        if (matchingCheckpoint) {
+          return JSON.stringify(buildExportBundle(matchingCheckpoint), null, 2);
+        }
       }
     }
 

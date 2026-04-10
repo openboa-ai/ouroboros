@@ -36,6 +36,7 @@ export function WorkspaceIndexPanel({ workspaceIndex }: WorkspaceIndexPanelProps
           <dl className="space-y-3">
             <IndexRow label="Checkpoints" value={workspaceIndex.indexes.checkpointsRef} />
             <IndexRow label="Collections" value={workspaceIndex.indexes.collectionsRef} />
+            <IndexRow label="Imports" value={workspaceIndex.indexes.importsRef} />
             <IndexRow label="Sessions" value={workspaceIndex.indexes.sessionsRef} />
           </dl>
         </section>

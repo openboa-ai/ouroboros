@@ -144,6 +144,53 @@ export type WorkspaceDocumentState = {
   contentText: string;
 };
 
+export type ImportSummaryState = {
+  id: string;
+  importedAt: string;
+  sourceBundleRef: string;
+  importRef: string;
+  workspaceRef: string;
+  checkpointRef: string;
+  policyId: string;
+  sanitized: boolean;
+};
+
+export type ImportDetailState = ImportSummaryState & {
+  bundleRef: string;
+  workspaceFileRefs: string[];
+};
+
+export type IngestSourceEntryInput = {
+  kind: "raw" | "canonical";
+  sourceRef: string;
+  eventTime: string;
+  ingestedAt: string;
+  preview?: string;
+  bodyText?: string;
+};
+
+export type IngestSourceEntryResult = {
+  collectionId: string;
+  collectionRef: string;
+  entryId: string;
+  entryShardRef: string;
+  timeBucket: string;
+  entryCount: number;
+  blobId?: string;
+  createdCollection: boolean;
+};
+
+export type ImportBundleState = {
+  importId: string;
+  importedAt: string;
+  sourceBundleRef: string;
+  importRef: string;
+  workspaceRef: string;
+  checkpointRef: string;
+  policyId: string;
+  sanitized: boolean;
+};
+
 export type WorkspaceSummary = {
   artifactId: string;
   slug: string;
@@ -172,6 +219,7 @@ export type StrategyActiveIndexState = {
 export type StrategyIndexesState = {
   checkpointsRef: string;
   collectionsRef: string;
+  importsRef: string;
   sessionsRef: string;
 };
 
@@ -229,16 +277,20 @@ export type BootstrapState = {
   decisions: DecisionEntry[];
   checkpoints: CheckpointSummary[];
   collections: CollectionSummaryState[];
+  imports: ImportSummaryState[];
 };
 
 export interface WorkspaceService {
   getBootstrapState(): Promise<BootstrapState>;
   getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState>;
   getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
+  getImportDetail(importId: string): Promise<ImportDetailState>;
   getBlobDetail(blobId: string): Promise<BlobDetailState>;
   getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;
   restoreCheckpoint(checkpointId: string): Promise<BootstrapState>;
+  ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult>;
+  importExportBundle(bundleRef: string): Promise<ImportBundleState>;
 }

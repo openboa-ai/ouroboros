@@ -3,6 +3,7 @@ use tauri::State;
 use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState,
+        ImportBundleState, ImportDetailState, IngestSourceEntryInput, IngestSourceEntryResult,
         WorkspaceDocumentState,
     },
     state::AppState,
@@ -27,6 +28,14 @@ pub fn get_collection_detail(
     state: State<'_, AppState>,
 ) -> Result<CollectionDetailState, String> {
     state.collection_detail(&collection_id)
+}
+
+#[tauri::command]
+pub fn get_import_detail(
+    import_id: String,
+    state: State<'_, AppState>,
+) -> Result<ImportDetailState, String> {
+    state.import_detail(&import_id)
 }
 
 #[tauri::command]
@@ -66,4 +75,20 @@ pub fn restore_checkpoint(
     state: State<'_, AppState>,
 ) -> Result<BootstrapState, String> {
     state.restore_checkpoint(&checkpoint_id)
+}
+
+#[tauri::command]
+pub fn ingest_source_entry(
+    input: IngestSourceEntryInput,
+    state: State<'_, AppState>,
+) -> Result<IngestSourceEntryResult, String> {
+    state.ingest_source_entry(input)
+}
+
+#[tauri::command]
+pub fn import_export_bundle(
+    bundle_ref: String,
+    state: State<'_, AppState>,
+) -> Result<ImportBundleState, String> {
+    state.import_export_bundle(&bundle_ref)
 }

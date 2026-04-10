@@ -68,6 +68,11 @@ These decisions are current, not final.
   - `live_lane_ref`
   - `current_checkpoint_ref`
   - `export_policy_ref`
+- The minimum `strategy.json.indexes` set should include:
+  - `checkpoints_ref`
+  - `collections_ref`
+  - `imports_ref`
+  - `sessions_ref`
 - The current live-lane state refs should also expose:
   - `dashboard_ref`
   - `decisions_ref`
@@ -208,6 +213,8 @@ These decisions are current, not final.
 - Export checkpoint creation should materialize both:
   - a checkpoint snapshot under `checkpoints/items/<checkpoint_id>/`
   - a live-centered export bundle under `exports/generated/<checkpoint_id>/`
+- Sanitized export bundles should also be stageable back into the workspace under `imports/items/<import_id>/` without mutating the active live lane.
+- Source ingestion should materialize source-centered `collection` shards and immutable `blob` bodies through the same workspace/service contract.
 
 ## Open Decisions
 

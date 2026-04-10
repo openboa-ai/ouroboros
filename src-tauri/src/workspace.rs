@@ -4,14 +4,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::models::{
     AssetInspectorState, BlobDetailState, BootstrapState, CheckpointDetailState, CheckpointSummary,
-    CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint,
-    ExportBundleState, ExportInspectorState, ExposurePoint, LaneEventState, LiveContextState,
-    LiveOrder, LivePosition, MetricCardData, PricePoint, ProviderStatus, StrategyActiveIndexState,
-    StrategyIndexesState, TradingMode, WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
+    CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry,
+    EquityPoint, ExportBundleState, ExportInspectorState, ExposurePoint, ImportDetailState,
+    ImportSummaryState, IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState,
+    LaneEventState, LiveContextState, LiveOrder, LivePosition, MetricCardData, PricePoint,
+    ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
+    WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
+};
+use crate::storage::{
+    copy_missing_template_tree, copy_template_tree, copy_tree, list_relative_files, remove_path,
+    FileWorkspaceStore,
 };
 
 #[derive(Clone)]
@@ -46,6 +53,7 @@ impl WorkspaceRepository {
             self.resolve_ref(&strategy_path, &strategy.indexes.checkpoints_ref);
         let collections_index_path =
             self.resolve_ref(&strategy_path, &strategy.indexes.collections_ref);
+        let imports_index_path = self.resolve_ref(&strategy_path, &strategy.indexes.imports_ref);
 
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&export_policy_path)?;
@@ -53,6 +61,11 @@ impl WorkspaceRepository {
             self.read_json_path::<CheckpointIndexFile>(&checkpoints_index_path)?;
         let collections_index =
             self.read_json_path::<CollectionsIndexFile>(&collections_index_path)?;
+        let imports_index = if imports_index_path.exists() {
+            self.read_json_path::<ImportsIndexFile>(&imports_index_path)?
+        } else {
+            ImportsIndexFile { items: Vec::new() }
+        };
 
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
@@ -110,6 +123,7 @@ impl WorkspaceRepository {
                 indexes: StrategyIndexesState {
                     checkpoints_ref: self.display_path(&checkpoints_index_path),
                     collections_ref: self.display_path(&collections_index_path),
+                    imports_ref: self.display_path(&imports_index_path),
                     sessions_ref: self.display_path(&sessions_path),
                 },
                 collection_count: collections_index.items.len(),
@@ -181,6 +195,23 @@ impl WorkspaceRepository {
                     entry_count: item.entry_count,
                     content_hash: item.content_hash,
                     collection_ref: self.display_path(&self.collection_file_path(&item.collection_id)),
+                })
+                .collect(),
+            imports: imports_index
+                .items
+                .into_iter()
+                .map(|item| {
+                    let import_root = self.import_root_path(&item.import_id);
+                    ImportSummaryState {
+                        id: item.import_id,
+                        imported_at: item.imported_at,
+                        source_bundle_ref: item.source_bundle_ref,
+                        import_ref: self.display_path(&import_root.join("import.json")),
+                        workspace_ref: self.display_path(&import_root.join("workspace")),
+                        checkpoint_ref: item.checkpoint_ref,
+                        policy_id: item.policy_id,
+                        sanitized: item.sanitized,
+                    }
                 })
                 .collect(),
         })
@@ -263,6 +294,32 @@ impl WorkspaceRepository {
         })
     }
 
+    pub fn load_import_detail(&self, import_id: &str) -> Result<ImportDetailState, String> {
+        let import_path = self.import_file_path(import_id);
+        let import_record = self.read_json_path::<ImportRecordFile>(&import_path)?;
+        let import_root = self.import_root_path(import_id);
+        let bundle_path = self.resolve_ref(&import_path, &import_record.bundle_ref);
+        let workspace_path = self.resolve_ref(&import_path, &import_record.workspace_ref);
+        let workspace_file_refs = if workspace_path.exists() {
+            self.list_display_files(&workspace_path)?
+        } else {
+            Vec::new()
+        };
+
+        Ok(ImportDetailState {
+            id: import_record.import_id,
+            imported_at: import_record.imported_at,
+            source_bundle_ref: import_record.source_bundle_ref,
+            import_ref: self.display_path(&import_root.join("import.json")),
+            workspace_ref: self.display_path(&workspace_path),
+            checkpoint_ref: import_record.checkpoint_ref,
+            policy_id: import_record.policy_id,
+            sanitized: import_record.sanitized,
+            bundle_ref: self.display_path(&bundle_path),
+            workspace_file_refs,
+        })
+    }
+
     pub fn load_blob_detail(&self, blob_id: &str) -> Result<BlobDetailState, String> {
         let blob_path = self.blob_path(blob_id);
         let content_text = fs::read_to_string(&blob_path)
@@ -296,6 +353,176 @@ impl WorkspaceRepository {
             byte_length: content_text.as_bytes().len(),
             line_count: content_text.lines().count(),
             content_text,
+        })
+    }
+
+    pub fn ingest_source_entry(
+        &self,
+        input: IngestSourceEntryInput,
+    ) -> Result<IngestSourceEntryResult, String> {
+        let payload = input
+            .body_text
+            .clone()
+            .or_else(|| input.preview.clone())
+            .ok_or_else(|| "ingest source entry requires body_text or preview".to_string())?;
+        let time_bucket = utc_hour_bucket(&input.event_time)?;
+
+        let mut collections_index =
+            self.read_json_path::<CollectionsIndexFile>(&self.root.join("indexes/collections.json"))?;
+        let existing_index = collections_index
+            .items
+            .iter()
+            .position(|item| {
+                item.kind == input.kind
+                    && item.source_ref == input.source_ref
+                    && item.time_bucket == time_bucket
+            });
+
+        let (collection_id, created_collection) = match existing_index {
+            Some(index) => (collections_index.items[index].collection_id.clone(), false),
+            None => (uuid_v7_string(), true),
+        };
+
+        let collection_path = self.collection_file_path(&collection_id);
+        let entry_shard_path = self.collection_entries_path(&collection_id);
+        let mut entries = if entry_shard_path.exists() {
+            self.read_ndjson_path::<CollectionEntryFile>(&entry_shard_path)?
+        } else {
+            Vec::new()
+        };
+
+        let blob_id = blob_id_for_contents(&payload);
+        let blob_path = self.blob_path(&blob_id);
+        FileWorkspaceStore::write_text_if_missing(&blob_path, &payload)?;
+
+        let entry = CollectionEntryFile {
+            entry_id: uuid_v7_string(),
+            source_ref: input.source_ref.clone(),
+            event_time: input.event_time.clone(),
+            ingested_at: input.ingested_at.clone(),
+            content_hash: blob_id.clone(),
+            blob_ref: Some(blob_id.clone()),
+            preview: input.preview.clone(),
+        };
+        entries.push(entry.clone());
+        FileWorkspaceStore::write_ndjson_path(&entry_shard_path, &entries)?;
+
+        let time_range = merge_time_range(entries.iter().map(|item| item.event_time.as_str()))?;
+        let collection_content_hash = collection_entries_hash(&entries)?;
+        let collection_record = CollectionRecordFile {
+            collection_id: collection_id.clone(),
+            kind: input.kind.clone(),
+            source_ref: input.source_ref.clone(),
+            time_bucket: time_bucket.clone(),
+            time_range: time_range.clone(),
+            entry_count: entries.len(),
+            content_hash: collection_content_hash.clone(),
+            entry_shard_ref: "./entries.ndjson".into(),
+            notes: if created_collection {
+                Some("Generated by workspace ingestion".into())
+            } else {
+                None
+            },
+        };
+        self.write_json_path(&collection_path, &collection_record)?;
+
+        let index_item = CollectionIndexItemFile {
+            collection_id: collection_id.clone(),
+            kind: input.kind,
+            source_ref: input.source_ref,
+            time_bucket: time_bucket.clone(),
+            time_range,
+            entry_count: entries.len(),
+            content_hash: collection_content_hash,
+            path_ref: format!("./items/{collection_id}/collection.json"),
+        };
+
+        match existing_index {
+            Some(index) => collections_index.items[index] = index_item,
+            None => collections_index.items.push(index_item),
+        }
+        collections_index.items.sort_by(|left, right| {
+            right
+                .time_bucket
+                .cmp(&left.time_bucket)
+                .then_with(|| left.source_ref.cmp(&right.source_ref))
+        });
+        self.write_json_path(&self.root.join("indexes/collections.json"), &collections_index)?;
+
+        Ok(IngestSourceEntryResult {
+            collection_id,
+            collection_ref: self.display_path(&collection_path),
+            entry_id: entry.entry_id,
+            entry_shard_ref: self.display_path(&entry_shard_path),
+            time_bucket,
+            entry_count: entries.len(),
+            blob_id: Some(blob_id),
+            created_collection,
+        })
+    }
+
+    pub fn import_export_bundle(&self, bundle_ref: &str) -> Result<ImportBundleState, String> {
+        let source_bundle_path = self.resolve_import_bundle_ref(bundle_ref)?;
+        let export_bundle = self.read_json_path::<ExportBundleFile>(&source_bundle_path)?;
+        if !export_bundle.sanitized {
+            return Err(format!(
+                "refusing to import non-sanitized export bundle: {}",
+                source_bundle_path.display()
+            ));
+        }
+
+        let source_root = source_bundle_path
+            .parent()
+            .ok_or_else(|| format!("export bundle has no parent directory: {}", source_bundle_path.display()))?;
+        let source_workspace = source_root.join("workspace");
+        if !source_workspace.exists() {
+            return Err(format!(
+                "export bundle workspace is missing: {}",
+                source_workspace.display()
+            ));
+        }
+
+        let import_id = uuid_v7_string();
+        let import_root = self.import_root_path(&import_id);
+        let import_workspace = import_root.join("workspace");
+        fs::create_dir_all(&import_root)
+            .map_err(|error| format!("failed to create {}: {error}", import_root.display()))?;
+        copy_tree(&source_workspace, &import_workspace, &PathBuf::new())?;
+
+        let metadata = ImportRecordFile {
+            import_id: import_id.clone(),
+            imported_at: now_label(),
+            source_bundle_ref: source_bundle_path.to_string_lossy().replace('\\', "/"),
+            bundle_ref: "./bundle/export.json".into(),
+            workspace_ref: "./workspace".into(),
+            checkpoint_ref: export_bundle.checkpoint_ref.clone(),
+            policy_id: export_bundle.policy_id.clone(),
+            sanitized: export_bundle.sanitized,
+        };
+        self.write_json_path(&import_root.join("import.json"), &metadata)?;
+
+        let bundle_destination = import_root.join("bundle");
+        fs::create_dir_all(&bundle_destination)
+            .map_err(|error| format!("failed to create {}: {error}", bundle_destination.display()))?;
+        copy_tree(&source_bundle_path, &bundle_destination.join("export.json"), &PathBuf::from("export.json"))?;
+
+        let mut imports_index = if self.imports_index_path().exists() {
+            self.read_json_path::<ImportsIndexFile>(&self.imports_index_path())?
+        } else {
+            ImportsIndexFile { items: Vec::new() }
+        };
+        imports_index.items.insert(0, metadata.clone());
+        self.write_json_path(&self.imports_index_path(), &imports_index)?;
+
+        Ok(ImportBundleState {
+            import_id,
+            imported_at: metadata.imported_at,
+            source_bundle_ref: self.display_path(&source_bundle_path),
+            import_ref: self.display_path(&import_root.join("import.json")),
+            workspace_ref: self.display_path(&import_workspace),
+            checkpoint_ref: metadata.checkpoint_ref,
+            policy_id: metadata.policy_id,
+            sanitized: metadata.sanitized,
         })
     }
 
@@ -504,8 +731,17 @@ impl WorkspaceRepository {
             "./checkpoints/items/{}/checkpoint.json",
             checkpoints_index.current.checkpoint_id
         );
+        let desired_imports_ref = default_imports_ref();
+        let mut strategy_dirty = false;
         if strategy.active.current_checkpoint_ref != desired_ref {
             strategy.active.current_checkpoint_ref = desired_ref;
+            strategy_dirty = true;
+        }
+        if strategy.indexes.imports_ref != desired_imports_ref {
+            strategy.indexes.imports_ref = desired_imports_ref;
+            strategy_dirty = true;
+        }
+        if strategy_dirty {
             self.write_json_path(&strategy_path, &strategy)?;
         }
 
@@ -696,9 +932,6 @@ impl WorkspaceRepository {
             let entry = entry.map_err(|error| format!("failed to read workspace entry: {error}"))?;
             let name = entry.file_name();
             let relative = PathBuf::from(&name);
-            if should_skip_snapshot_path(&relative) {
-                continue;
-            }
             copy_tree(&entry.path(), &workspace_root.join(name), &relative)?;
         }
 
@@ -862,12 +1095,32 @@ impl WorkspaceRepository {
             .join("export.json")
     }
 
+    fn imports_index_path(&self) -> PathBuf {
+        self.root.join("imports").join("index.json")
+    }
+
+    fn import_root_path(&self, import_id: &str) -> PathBuf {
+        self.root.join("imports").join("items").join(import_id)
+    }
+
+    fn import_file_path(&self, import_id: &str) -> PathBuf {
+        self.import_root_path(import_id).join("import.json")
+    }
+
     fn collection_file_path(&self, collection_id: &str) -> PathBuf {
         self.root
             .join("collections")
             .join("items")
             .join(collection_id)
             .join("collection.json")
+    }
+
+    fn collection_entries_path(&self, collection_id: &str) -> PathBuf {
+        self.root
+            .join("collections")
+            .join("items")
+            .join(collection_id)
+            .join("entries.ndjson")
     }
 
     fn export_workspace_path(&self, checkpoint_id: &str) -> PathBuf {
@@ -883,6 +1136,17 @@ impl WorkspaceRepository {
             .split_once(':')
             .unwrap_or(("sha256", blob_id));
         self.root.join("blobs").join(algorithm).join(format!("{digest}.txt"))
+    }
+
+    fn resolve_import_bundle_ref(&self, bundle_ref: &str) -> Result<PathBuf, String> {
+        let candidate = PathBuf::from(bundle_ref);
+        let path = if candidate.is_absolute() {
+            candidate
+        } else {
+            self.project_root().join(bundle_ref)
+        };
+        path.canonicalize()
+            .map_err(|error| format!("failed to resolve import bundle {}: {error}", path.display()))
     }
 
     fn resolve_workspace_document_ref(&self, document_ref: &str) -> Result<PathBuf, String> {
@@ -952,34 +1216,15 @@ impl WorkspaceRepository {
     }
 
     fn read_json_path<T: DeserializeOwned>(&self, path: &Path) -> Result<T, String> {
-        let bytes =
-            fs::read(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        serde_json::from_slice(&bytes)
-            .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+        FileWorkspaceStore::read_json_path(path)
     }
 
     fn read_ndjson_path<T: DeserializeOwned>(&self, path: &Path) -> Result<Vec<T>, String> {
-        let contents =
-            fs::read_to_string(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        contents
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| {
-                serde_json::from_str::<T>(line)
-                    .map_err(|error| format!("failed to parse NDJSON line in {}: {error}", path.display()))
-            })
-            .collect()
+        FileWorkspaceStore::read_ndjson_path(path)
     }
 
     fn write_json_path<T: Serialize>(&self, path: &Path, value: &T) -> Result<(), String> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        }
-        let bytes = serde_json::to_vec_pretty(value)
-            .map_err(|error| format!("failed to serialize {}: {error}", path.display()))?;
-        fs::write(path, bytes)
-            .map_err(|error| format!("failed to write {}: {error}", path.display()))
+        FileWorkspaceStore::write_json_path(path, value)
     }
 }
 
@@ -1003,6 +1248,8 @@ struct StrategyActiveRefsFile {
 struct StrategyIndexRefsFile {
     checkpoints_ref: String,
     collections_ref: String,
+    #[serde(default = "default_imports_ref")]
+    imports_ref: String,
     sessions_ref: String,
 }
 
@@ -1081,6 +1328,23 @@ struct SessionsIndexFile {
 #[derive(Clone, Deserialize, Serialize)]
 struct CollectionsIndexFile {
     items: Vec<CollectionIndexItemFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct ImportsIndexFile {
+    items: Vec<ImportRecordFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct ImportRecordFile {
+    import_id: String,
+    imported_at: String,
+    source_bundle_ref: String,
+    bundle_ref: String,
+    workspace_ref: String,
+    checkpoint_ref: String,
+    policy_id: String,
+    sanitized: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1236,152 +1500,63 @@ fn export_excluded_paths() -> Vec<String> {
     ]
 }
 
-fn should_skip_snapshot_path(relative: &Path) -> bool {
-    relative == Path::new("checkpoints") || relative == Path::new("exports/generated")
-}
-
-fn list_relative_files(root: &Path, prefix: &str) -> Result<Vec<String>, String> {
-    let mut items = Vec::new();
-    collect_relative_files(root, root, prefix, &mut items)?;
-    items.sort();
-    Ok(items)
-}
-
-fn collect_relative_files(
-    root: &Path,
-    current: &Path,
-    prefix: &str,
-    items: &mut Vec<String>,
-) -> Result<(), String> {
-    for entry in fs::read_dir(current)
-        .map_err(|error| format!("failed to read {}: {error}", current.display()))?
-    {
-        let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_relative_files(root, &path, prefix, items)?;
-            continue;
-        }
-
-        let relative = path
-            .strip_prefix(root)
-            .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
-        let relative = relative.to_string_lossy().replace('\\', "/");
-        items.push(format!("{prefix}/{relative}"));
-    }
-
-    Ok(())
-}
-
-fn remove_path(path: &Path) -> Result<(), String> {
-    if path.is_dir() {
-        fs::remove_dir_all(path)
-            .map_err(|error| format!("failed to remove {}: {error}", path.display()))
-    } else {
-        fs::remove_file(path)
-            .map_err(|error| format!("failed to remove {}: {error}", path.display()))
-    }
-}
-
-fn copy_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), String> {
-    if should_skip_snapshot_path(relative) {
-        return Ok(());
-    }
-
-    if source.is_dir() {
-        fs::create_dir_all(destination)
-            .map_err(|error| format!("failed to create {}: {error}", destination.display()))?;
-        for entry in fs::read_dir(source)
-            .map_err(|error| format!("failed to read {}: {error}", source.display()))?
-        {
-            let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
-            let name = entry.file_name();
-            let child_relative = if relative.as_os_str().is_empty() {
-                PathBuf::from(&name)
-            } else {
-                relative.join(&name)
-            };
-            copy_tree(&entry.path(), &destination.join(name), &child_relative)?;
-        }
-        return Ok(());
-    }
-
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::copy(source, destination).map_err(|error| {
-        format!(
-            "failed to copy {} to {}: {error}",
-            source.display(),
-            destination.display()
-        )
-    })?;
-    Ok(())
-}
-
-fn copy_template_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    if source.is_dir() {
-        fs::create_dir_all(destination)
-            .map_err(|error| format!("failed to create {}: {error}", destination.display()))?;
-        for entry in fs::read_dir(source)
-            .map_err(|error| format!("failed to read {}: {error}", source.display()))?
-        {
-            let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
-            let name = entry.file_name();
-            copy_template_tree(&entry.path(), &destination.join(name))?;
-        }
-        return Ok(());
-    }
-
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::copy(source, destination).map_err(|error| {
-        format!(
-            "failed to copy {} to {}: {error}",
-            source.display(),
-            destination.display()
-        )
-    })?;
-    Ok(())
-}
-
-fn copy_missing_template_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    if source.is_dir() {
-        fs::create_dir_all(destination)
-            .map_err(|error| format!("failed to create {}: {error}", destination.display()))?;
-        for entry in fs::read_dir(source)
-            .map_err(|error| format!("failed to read {}: {error}", source.display()))?
-        {
-            let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
-            let name = entry.file_name();
-            copy_missing_template_tree(&entry.path(), &destination.join(name))?;
-        }
-        return Ok(());
-    }
-
-    if destination.exists() {
-        return Ok(());
-    }
-
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::copy(source, destination).map_err(|error| {
-        format!(
-            "failed to copy {} to {}: {error}",
-            source.display(),
-            destination.display()
-        )
-    })?;
-    Ok(())
+fn default_imports_ref() -> String {
+    "./imports/index.json".into()
 }
 
 fn uuid_v7_string() -> String {
     Uuid::now_v7().to_string()
+}
+
+fn blob_id_for_contents(contents: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(contents.as_bytes()))
+}
+
+fn collection_entries_hash(entries: &[CollectionEntryFile]) -> Result<String, String> {
+    let mut body = String::new();
+    for entry in entries {
+        let line = serde_json::to_string(entry)
+            .map_err(|error| format!("failed to serialize collection entry for hashing: {error}"))?;
+        body.push_str(&line);
+        body.push('\n');
+    }
+    Ok(blob_id_for_contents(&body))
+}
+
+fn utc_hour_bucket(event_time: &str) -> Result<String, String> {
+    if event_time.len() < 13 {
+        return Err(format!("event_time is too short for UTC hour bucketing: {event_time}"));
+    }
+
+    let prefix = &event_time[..13];
+    if !event_time.contains('T') {
+        return Err(format!("event_time must contain T separator: {event_time}"));
+    }
+
+    Ok(format!("{prefix}:00:00Z"))
+}
+
+fn merge_time_range<'a, I>(times: I) -> Result<TimeRangeFile, String>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut iter = times.into_iter();
+    let first = iter
+        .next()
+        .ok_or_else(|| "collection must contain at least one entry".to_string())?;
+    let mut min = first.to_string();
+    let mut max = first.to_string();
+
+    for time in iter {
+        if time < min.as_str() {
+            min = time.to_string();
+        }
+        if time > max.as_str() {
+            max = time.to_string();
+        }
+    }
+
+    Ok(TimeRangeFile { start: min, end: max })
 }
 
 fn short_alias_suffix() -> String {
@@ -1470,6 +1645,178 @@ mod tests {
                 .map(|item| item.alias.starts_with("incident-restore-anchor-"))
                 .unwrap_or(false),
             "restore should prepend an incident rollback anchor"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ingest_source_entry_creates_collection_blob_and_index_entry() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let result = repo
+            .ingest_source_entry(IngestSourceEntryInput {
+                kind: "raw".into(),
+                source_ref: "news:macro-wire:cpi".into(),
+                event_time: "2026-04-10T12:14:55Z".into(),
+                ingested_at: "2026-04-10T12:15:02Z".into(),
+                preview: Some("US CPI cooled more than expected.".into()),
+                body_text: Some("US CPI cooled more than expected across both headline and core prints.".into()),
+            })
+            .expect("ingest source entry");
+
+        assert!(result.created_collection);
+        assert_eq!(result.time_bucket, "2026-04-10T12:00:00Z");
+        assert_eq!(result.entry_count, 1);
+
+        let collection = repo
+            .read_json_path::<CollectionRecordFile>(&repo.collection_file_path(&result.collection_id))
+            .expect("collection record");
+        assert_eq!(collection.entry_count, 1);
+        assert_eq!(collection.source_ref, "news:macro-wire:cpi");
+
+        let entries = repo
+            .read_ndjson_path::<CollectionEntryFile>(&repo.collection_entries_path(&result.collection_id))
+            .expect("entries shard");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entry_id, result.entry_id);
+        assert_eq!(
+            entries[0].blob_ref.as_deref(),
+            result.blob_id.as_deref()
+        );
+
+        let blob_path = repo.blob_path(result.blob_id.as_deref().expect("blob id"));
+        assert!(blob_path.exists(), "blob should be persisted");
+
+        let collections_index = repo
+            .read_json_path::<CollectionsIndexFile>(&root.join("indexes/collections.json"))
+            .expect("collections index");
+        assert!(
+            collections_index
+                .items
+                .iter()
+                .any(|item| item.collection_id == result.collection_id),
+            "new collection should be indexed"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ingest_source_entry_reuses_hour_bucket_and_blob_for_same_payload() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let first = repo
+            .ingest_source_entry(IngestSourceEntryInput {
+                kind: "raw".into(),
+                source_ref: "news:macro-wire:cpi".into(),
+                event_time: "2026-04-10T12:14:55Z".into(),
+                ingested_at: "2026-04-10T12:15:02Z".into(),
+                preview: Some("US CPI cooled more than expected.".into()),
+                body_text: Some("US CPI cooled more than expected across both headline and core prints.".into()),
+            })
+            .expect("first ingest");
+        let second = repo
+            .ingest_source_entry(IngestSourceEntryInput {
+                kind: "raw".into(),
+                source_ref: "news:macro-wire:cpi".into(),
+                event_time: "2026-04-10T12:44:05Z".into(),
+                ingested_at: "2026-04-10T12:44:06Z".into(),
+                preview: Some("US CPI cooled more than expected.".into()),
+                body_text: Some("US CPI cooled more than expected across both headline and core prints.".into()),
+            })
+            .expect("second ingest");
+
+        assert_eq!(first.collection_id, second.collection_id);
+        assert_eq!(first.blob_id, second.blob_id);
+        assert!(!second.created_collection);
+        assert_eq!(second.entry_count, 2);
+
+        let entries = repo
+            .read_ndjson_path::<CollectionEntryFile>(&repo.collection_entries_path(&first.collection_id))
+            .expect("entries shard");
+        assert_eq!(entries.len(), 2);
+
+        let blob_path = repo.blob_path(second.blob_id.as_deref().expect("blob id"));
+        assert!(blob_path.exists(), "deduplicated blob should exist");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn import_export_bundle_stages_sanitized_bundle_without_mutating_live_workspace() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let export_state = repo.create_export_checkpoint().expect("export checkpoint");
+        let export_bundle_ref = export_state
+            .asset_inspector
+            .latest_export_bundle_ref
+            .clone()
+            .expect("latest export bundle ref");
+        let live_before = repo.load_bootstrap_state().expect("bootstrap before import");
+
+        let imported = repo
+            .import_export_bundle(&export_bundle_ref)
+            .expect("import export bundle");
+
+        let live_after = repo.load_bootstrap_state().expect("bootstrap after import");
+        assert_eq!(live_before.workspace.artifact_id, live_after.workspace.artifact_id);
+        assert_eq!(
+            serde_json::to_string(&live_before.positions).expect("serialize positions before"),
+            serde_json::to_string(&live_after.positions).expect("serialize positions after")
+        );
+
+        let import_metadata_path = root
+            .join("imports")
+            .join("items")
+            .join(&imported.import_id)
+            .join("import.json");
+        assert!(import_metadata_path.exists(), "import metadata should be persisted");
+        assert!(
+            root.join("imports")
+                .join("items")
+                .join(&imported.import_id)
+                .join("workspace")
+                .join("strategy.json")
+                .exists(),
+            "imported workspace should be copied"
+        );
+        assert!(
+            root.join("imports")
+                .join("items")
+                .join(&imported.import_id)
+                .join("bundle")
+                .join("export.json")
+                .exists(),
+            "imported export manifest should be copied"
+        );
+
+        let imports_index = repo
+            .read_json_path::<ImportsIndexFile>(&root.join("imports/index.json"))
+            .expect("imports index");
+        assert_eq!(imports_index.items.len(), 1);
+        assert_eq!(imports_index.items[0].import_id, imported.import_id);
+
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap with imports");
+        assert_eq!(bootstrap.imports.len(), 1);
+        assert_eq!(bootstrap.imports[0].id, imported.import_id);
+
+        let import_detail = repo
+            .load_import_detail(&imported.import_id)
+            .expect("import detail");
+        assert_eq!(import_detail.id, imported.import_id);
+        assert!(
+            import_detail
+                .workspace_file_refs
+                .iter()
+                .any(|path| path.ends_with("strategy.json")),
+            "staged import should expose workspace files for inspection"
         );
 
         let _ = fs::remove_dir_all(&root);

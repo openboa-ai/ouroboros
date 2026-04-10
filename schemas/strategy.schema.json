@@ -36,12 +36,15 @@
     "indexes": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["checkpoints_ref", "collections_ref", "sessions_ref"],
+      "required": ["checkpoints_ref", "collections_ref", "imports_ref", "sessions_ref"],
       "properties": {
         "checkpoints_ref": {
           "type": "string"
         },
         "collections_ref": {
+          "type": "string"
+        },
+        "imports_ref": {
           "type": "string"
         },
         "sessions_ref": {

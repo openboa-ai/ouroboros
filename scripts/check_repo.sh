@@ -42,6 +42,7 @@ required_files=(
   "src-tauri/src/models.rs"
   "src-tauri/src/state.rs"
   "templates/strategy-workspace/strategy.json"
+  "templates/strategy-workspace/imports/index.json"
 )
 
 for file in "${required_files[@]}"; do

@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState,
+        ImportBundleState, ImportDetailState, IngestSourceEntryInput, IngestSourceEntryResult,
         WorkspaceDocumentState,
     },
     workspace::WorkspaceRepository,
@@ -42,6 +43,13 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .load_collection_detail(collection_id)
+    }
+
+    pub fn import_detail(&self, import_id: &str) -> Result<ImportDetailState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .load_import_detail(import_id)
     }
 
     pub fn blob_detail(&self, blob_id: &str) -> Result<BlobDetailState, String> {
@@ -87,5 +95,22 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .restore_checkpoint(checkpoint_id)
+    }
+
+    pub fn ingest_source_entry(
+        &self,
+        input: IngestSourceEntryInput,
+    ) -> Result<IngestSourceEntryResult, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .ingest_source_entry(input)
+    }
+
+    pub fn import_export_bundle(&self, bundle_ref: &str) -> Result<ImportBundleState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .import_export_bundle(bundle_ref)
     }
 }

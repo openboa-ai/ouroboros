@@ -23,6 +23,7 @@ export type StrategyActiveRefs = {
 export type StrategyIndexRefs = {
   checkpoints_ref: string;
   collections_ref: string;
+  imports_ref: string;
   sessions_ref: string;
   [key: string]: string;
 };
