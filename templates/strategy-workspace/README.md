@@ -11,3 +11,4 @@ It reflects the current contract:
 - `live/live-lane.json` points at the active live-centered state files
 - `state/dashboard.json` and `state/decisions.json` drive the current desktop scaffold
 - `checkpoints/items/<checkpoint_id>/` stores addressable checkpoint material
+- `operations/index.json` tracks durable service-layer mutations against the workspace

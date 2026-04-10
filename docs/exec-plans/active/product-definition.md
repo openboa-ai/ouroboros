@@ -72,6 +72,7 @@ These decisions are current, not final.
   - `checkpoints_ref`
   - `collections_ref`
   - `imports_ref`
+  - `operations_ref`
   - `sessions_ref`
 - The current live-lane state refs should also expose:
   - `dashboard_ref`
@@ -215,6 +216,9 @@ These decisions are current, not final.
   - a live-centered export bundle under `exports/generated/<checkpoint_id>/`
 - Sanitized export bundles should also be stageable back into the workspace under `imports/items/<import_id>/` without mutating the active live lane.
 - Source ingestion should materialize source-centered `collection` shards and immutable `blob` bodies through the same workspace/service contract.
+- Service-layer mutations should also append durable operation records under:
+  - `operations/index.json`
+  - `operations/items/<operation_id>.json`
 
 ## Open Decisions
 

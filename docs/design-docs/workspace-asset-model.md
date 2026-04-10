@@ -56,6 +56,7 @@ The current minimum direction is:
 - `checkpoints_ref`
 - `collections_ref`
 - `imports_ref`
+- `operations_ref`
 - `sessions_ref`
 
 ## Export Model
@@ -84,6 +85,8 @@ The current minimum direction is:
 - `state/positions.json` and `state/orders.json` preserve current state plus event history
 - `checkpoints/index.json` is the addressable checkpoint timeline
 - `imports/index.json` is the staged sanitized-import registry
+- `operations/index.json` is the durable workspace-wide service-operation registry
 - `checkpoints/items/<checkpoint_id>/` stores immutable checkpoint snapshots
 - `exports/generated/<checkpoint_id>/` stores live-centered export bundles derived from checkpoints
 - `imports/items/<import_id>/` stores staged sanitized bundles without mutating the active live lane
+- `operations/items/<operation_id>.json` stores addressable service-operation records

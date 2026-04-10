@@ -8,6 +8,7 @@ import { EquityAreaPanel } from "./components/equity-area-panel";
 import { ExposurePanel } from "./components/exposure-panel";
 import { ExportInspectorPanel } from "./components/export-inspector-panel";
 import { LiveContextPanel } from "./components/live-context-panel";
+import { OperationsPanel } from "./components/operations-panel";
 import { PositionsPanel } from "./components/positions-panel";
 import { PriceContextPanel } from "./components/price-context-panel";
 import { StrategyTimeline } from "./components/strategy-timeline";
@@ -290,6 +291,12 @@ export function App() {
       label: "imports index",
       description: "Sanitized import staging catalog kept inside the workspace asset.",
       pathRef: state.workspaceIndex.indexes.importsRef
+    },
+    {
+      id: "operations-index",
+      label: "operations index",
+      description: "Durable workspace-wide service operation registry.",
+      pathRef: state.workspaceIndex.indexes.operationsRef
     },
     {
       id: "sessions-index",
@@ -587,6 +594,14 @@ export function App() {
           selectedImportId={selectedImportId}
           importDetail={selectedImportDetail}
           onSelectImport={setSelectedImportId}
+          onOpenWorkspaceDocument={(documentRef) => {
+            setSelectedDocumentId(`ref:${documentRef}`);
+            setSelectedDocumentRef(documentRef);
+          }}
+        />
+
+        <OperationsPanel
+          operations={state.operations}
           onOpenWorkspaceDocument={(documentRef) => {
             setSelectedDocumentId(`ref:${documentRef}`);
             setSelectedDocumentRef(documentRef);

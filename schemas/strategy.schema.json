@@ -36,7 +36,7 @@
     "indexes": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["checkpoints_ref", "collections_ref", "imports_ref", "sessions_ref"],
+      "required": ["checkpoints_ref", "collections_ref", "imports_ref", "operations_ref", "sessions_ref"],
       "properties": {
         "checkpoints_ref": {
           "type": "string"
@@ -45,6 +45,9 @@
           "type": "string"
         },
         "imports_ref": {
+          "type": "string"
+        },
+        "operations_ref": {
           "type": "string"
         },
         "sessions_ref": {

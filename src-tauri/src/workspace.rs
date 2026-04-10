@@ -9,10 +9,10 @@ use uuid::Uuid;
 
 use crate::models::{
     AssetInspectorState, BlobDetailState, BootstrapState, CheckpointDetailState, CheckpointSummary,
-    CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry,
-    EquityPoint, ExportBundleState, ExportInspectorState, ExposurePoint, ImportDetailState,
-    ImportSummaryState, IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState,
-    LaneEventState, LiveContextState, LiveOrder, LivePosition, MetricCardData, PricePoint,
+    CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint,
+    ExportBundleState, ExportInspectorState, ExposurePoint, ImportDetailState, ImportSummaryState,
+    IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
+    LiveContextState, LiveOrder, LivePosition, MetricCardData, OperationSummaryState, PricePoint,
     ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
     WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
 };
@@ -54,6 +54,8 @@ impl WorkspaceRepository {
         let collections_index_path =
             self.resolve_ref(&strategy_path, &strategy.indexes.collections_ref);
         let imports_index_path = self.resolve_ref(&strategy_path, &strategy.indexes.imports_ref);
+        let operations_index_path =
+            self.resolve_ref(&strategy_path, &strategy.indexes.operations_ref);
 
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&export_policy_path)?;
@@ -65,6 +67,11 @@ impl WorkspaceRepository {
             self.read_json_path::<ImportsIndexFile>(&imports_index_path)?
         } else {
             ImportsIndexFile { items: Vec::new() }
+        };
+        let operations_index = if operations_index_path.exists() {
+            self.read_json_path::<OperationsIndexFile>(&operations_index_path)?
+        } else {
+            OperationsIndexFile { items: Vec::new() }
         };
 
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
@@ -124,9 +131,11 @@ impl WorkspaceRepository {
                     checkpoints_ref: self.display_path(&checkpoints_index_path),
                     collections_ref: self.display_path(&collections_index_path),
                     imports_ref: self.display_path(&imports_index_path),
+                    operations_ref: self.display_path(&operations_index_path),
                     sessions_ref: self.display_path(&sessions_path),
                 },
                 collection_count: collections_index.items.len(),
+                operation_count: operations_index.items.len(),
                 session_count: sessions_count,
             },
             live_context: LiveContextState {
@@ -212,6 +221,25 @@ impl WorkspaceRepository {
                         policy_id: item.policy_id,
                         sanitized: item.sanitized,
                     }
+                })
+                .collect(),
+            operations: operations_index
+                .items
+                .into_iter()
+                .map(|item| OperationSummaryState {
+                    id: item.operation_id.clone(),
+                    kind: item.kind,
+                    scope: item.scope,
+                    status: item.status,
+                    summary: item.summary,
+                    details: item.details,
+                    created_at: item.created_at,
+                    operation_ref: self.display_path(&self.operation_file_path(&item.operation_id)),
+                    related_refs: item
+                        .related_refs
+                        .into_iter()
+                        .map(|reference| self.display_path(&self.root.join(reference)))
+                        .collect(),
                 })
                 .collect(),
         })
@@ -426,6 +454,8 @@ impl WorkspaceRepository {
         };
         self.write_json_path(&collection_path, &collection_record)?;
 
+        let operation_source_ref = input.source_ref.clone();
+
         let index_item = CollectionIndexItemFile {
             collection_id: collection_id.clone(),
             kind: input.kind,
@@ -448,6 +478,20 @@ impl WorkspaceRepository {
                 .then_with(|| left.source_ref.cmp(&right.source_ref))
         });
         self.write_json_path(&self.root.join("indexes/collections.json"), &collections_index)?;
+        self.append_operation(
+            "ingest_source_entry",
+            "workspace",
+            format!(
+                "Ingested {} source entry into collection {}.",
+                operation_source_ref, collection_id
+            ),
+            "The service layer materialized a source-centered collection shard, persisted the entry NDJSON append log, and wrote an immutable blob for the entry body.".into(),
+            vec![
+                self.display_path(&collection_path),
+                self.display_path(&entry_shard_path),
+                self.display_path(&blob_path),
+            ],
+        )?;
 
         Ok(IngestSourceEntryResult {
             collection_id,
@@ -513,6 +557,21 @@ impl WorkspaceRepository {
         };
         imports_index.items.insert(0, metadata.clone());
         self.write_json_path(&self.imports_index_path(), &imports_index)?;
+        self.append_operation(
+            "import_export_bundle",
+            "workspace",
+            format!(
+                "Staged sanitized export bundle {} as import {}.",
+                self.display_path(&source_bundle_path),
+                import_id
+            ),
+            "The service layer copied a sanitized export bundle into the workspace imports area without mutating the active live lane.".into(),
+            vec![
+                self.display_path(&import_root.join("import.json")),
+                self.display_path(&bundle_destination.join("export.json")),
+                self.display_path(&import_workspace),
+            ],
+        )?;
 
         Ok(ImportBundleState {
             import_id,
@@ -557,6 +616,17 @@ impl WorkspaceRepository {
         self.write_json_path(&live_lane_path, &live_lane)?;
         self.write_json_path(&dashboard_path, &dashboard)?;
         self.write_json_path(&decisions_path, &decisions)?;
+        self.append_operation(
+            "pause_global_automation",
+            "live",
+            "Global automation paused through the service layer.".into(),
+            "The service boundary switched the live lane into observer mode without allowing direct client mutation of the workspace.".into(),
+            vec![
+                self.display_path(&live_lane_path),
+                self.display_path(&dashboard_path),
+                self.display_path(&decisions_path),
+            ],
+        )?;
 
         self.load_bootstrap_state()
     }
@@ -625,11 +695,24 @@ impl WorkspaceRepository {
         self.write_json_path(&positions_path, &positions)?;
         self.write_json_path(&orders_path, &orders)?;
 
-        self.create_checkpoint(
+        let checkpoint = self.create_checkpoint(
             "incident",
             "incident-flatten-all".into(),
             "Client-triggered flatten-all command captured as an incident checkpoint.".into(),
             "Live risk reset to flat".into(),
+        )?;
+        self.append_operation(
+            "flatten_all_positions",
+            "live",
+            "Flatten-all intervention reset live positions and orders.".into(),
+            "The service layer flattened current positions, cleared live orders, and captured an incident checkpoint for the intervention.".into(),
+            vec![
+                self.display_path(&dashboard_path),
+                self.display_path(&decisions_path),
+                self.display_path(&positions_path),
+                self.display_path(&orders_path),
+                self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
+            ],
         )?;
 
         self.load_bootstrap_state()
@@ -675,6 +758,17 @@ impl WorkspaceRepository {
         self.write_json_path(&dashboard_path, &dashboard)?;
         self.write_json_path(&decisions_path, &decisions)?;
         self.create_export_bundle(&checkpoint, &export_policy.policy_id)?;
+        self.append_operation(
+            "create_export_checkpoint",
+            "live",
+            format!("Export checkpoint {} created for sanitized sharing.", checkpoint.alias),
+            "The service layer created a fresh export checkpoint and materialized a live-centered sanitized export bundle.".into(),
+            vec![
+                self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
+                self.display_path(&self.export_bundle_path(&checkpoint.checkpoint_id)),
+                self.display_path(&export_policy_path),
+            ],
+        )?;
 
         self.load_bootstrap_state()
     }
@@ -697,6 +791,16 @@ impl WorkspaceRepository {
         self.restore_workspace_snapshot(checkpoint_id)?;
         self.set_current_checkpoint(&target_checkpoint)?;
         self.record_restore_decision(&target_alias)?;
+        self.append_operation(
+            "restore_checkpoint",
+            "live",
+            format!("Live workspace restored from checkpoint {}.", target_alias),
+            "The service layer restored the selected checkpoint snapshot as the active live workspace and preserved the rollback anchor as an incident checkpoint.".into(),
+            vec![
+                self.display_path(&target_checkpoint_path),
+                self.display_path(&self.root.join("strategy.json")),
+            ],
+        )?;
 
         self.load_bootstrap_state()
     }
@@ -732,6 +836,7 @@ impl WorkspaceRepository {
             checkpoints_index.current.checkpoint_id
         );
         let desired_imports_ref = default_imports_ref();
+        let desired_operations_ref = default_operations_ref();
         let mut strategy_dirty = false;
         if strategy.active.current_checkpoint_ref != desired_ref {
             strategy.active.current_checkpoint_ref = desired_ref;
@@ -739,6 +844,10 @@ impl WorkspaceRepository {
         }
         if strategy.indexes.imports_ref != desired_imports_ref {
             strategy.indexes.imports_ref = desired_imports_ref;
+            strategy_dirty = true;
+        }
+        if strategy.indexes.operations_ref != desired_operations_ref {
+            strategy.indexes.operations_ref = desired_operations_ref;
             strategy_dirty = true;
         }
         if strategy_dirty {
@@ -1099,6 +1208,18 @@ impl WorkspaceRepository {
         self.root.join("imports").join("index.json")
     }
 
+    fn operations_index_path(&self) -> PathBuf {
+        self.root.join("operations").join("index.json")
+    }
+
+    fn operation_root_path(&self, operation_id: &str) -> PathBuf {
+        self.root.join("operations").join("items").join(operation_id)
+    }
+
+    fn operation_file_path(&self, operation_id: &str) -> PathBuf {
+        self.operation_root_path(operation_id).join("operation.json")
+    }
+
     fn import_root_path(&self, import_id: &str) -> PathBuf {
         self.root.join("imports").join("items").join(import_id)
     }
@@ -1226,6 +1347,49 @@ impl WorkspaceRepository {
     fn write_json_path<T: Serialize>(&self, path: &Path, value: &T) -> Result<(), String> {
         FileWorkspaceStore::write_json_path(path, value)
     }
+
+    fn append_operation(
+        &self,
+        kind: &str,
+        scope: &str,
+        summary: String,
+        details: String,
+        related_refs: Vec<String>,
+    ) -> Result<OperationRecordFile, String> {
+        let operation = OperationRecordFile {
+            operation_id: uuid_v7_string(),
+            kind: kind.into(),
+            scope: scope.into(),
+            status: "succeeded".into(),
+            summary,
+            details,
+            created_at: now_label(),
+            related_refs: related_refs
+                .into_iter()
+                .map(|reference| {
+                    reference
+                        .strip_prefix(&format!("{}/", self.display_path(&self.root)))
+                        .map(str::to_string)
+                        .unwrap_or(reference)
+                })
+                .collect(),
+        };
+
+        self.write_json_path(
+            &self.operation_file_path(&operation.operation_id),
+            &operation,
+        )?;
+
+        let mut index = if self.operations_index_path().exists() {
+            self.read_json_path::<OperationsIndexFile>(&self.operations_index_path())?
+        } else {
+            OperationsIndexFile { items: Vec::new() }
+        };
+        index.items.insert(0, operation.clone());
+        self.write_json_path(&self.operations_index_path(), &index)?;
+
+        Ok(operation)
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1250,6 +1414,8 @@ struct StrategyIndexRefsFile {
     collections_ref: String,
     #[serde(default = "default_imports_ref")]
     imports_ref: String,
+    #[serde(default = "default_operations_ref")]
+    operations_ref: String,
     sessions_ref: String,
 }
 
@@ -1336,6 +1502,11 @@ struct ImportsIndexFile {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+struct OperationsIndexFile {
+    items: Vec<OperationRecordFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 struct ImportRecordFile {
     import_id: String,
     imported_at: String,
@@ -1345,6 +1516,19 @@ struct ImportRecordFile {
     checkpoint_ref: String,
     policy_id: String,
     sanitized: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct OperationRecordFile {
+    operation_id: String,
+    kind: String,
+    scope: String,
+    status: String,
+    summary: String,
+    details: String,
+    created_at: String,
+    #[serde(default)]
+    related_refs: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1502,6 +1686,10 @@ fn export_excluded_paths() -> Vec<String> {
 
 fn default_imports_ref() -> String {
     "./imports/index.json".into()
+}
+
+fn default_operations_ref() -> String {
+    "./operations/index.json".into()
 }
 
 fn uuid_v7_string() -> String {
@@ -1818,6 +2006,41 @@ mod tests {
                 .any(|path| path.ends_with("strategy.json")),
             "staged import should expose workspace files for inspection"
         );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_operations_are_recorded_for_service_mutations() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        repo.pause_global_automation().expect("pause");
+        repo.ingest_source_entry(IngestSourceEntryInput {
+            kind: "raw".into(),
+            source_ref: "notes:operator:runtime".into(),
+            event_time: "2026-04-10T15:01:00Z".into(),
+            ingested_at: "2026-04-10T15:01:01Z".into(),
+            preview: Some("Operator note".into()),
+            body_text: Some("Operator note body".into()),
+        })
+        .expect("ingest");
+
+        let operations_index = repo
+            .read_json_path::<OperationsIndexFile>(&root.join("operations/index.json"))
+            .expect("operations index");
+        assert_eq!(operations_index.items.len(), 2);
+        assert_eq!(operations_index.items[0].kind, "ingest_source_entry");
+        assert_eq!(operations_index.items[1].kind, "pause_global_automation");
+
+        let operation_path = repo.operation_file_path(&operations_index.items[0].operation_id);
+        assert!(operation_path.exists(), "operation record should be materialized");
+
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap with operations");
+        assert_eq!(bootstrap.operations.len(), 2);
+        assert_eq!(bootstrap.operations[0].kind, "ingest_source_entry");
+        assert_eq!(bootstrap.workspace_index.operation_count, 2);
 
         let _ = fs::remove_dir_all(&root);
     }

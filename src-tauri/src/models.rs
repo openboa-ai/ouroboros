@@ -286,6 +286,7 @@ pub struct StrategyIndexesState {
     pub checkpoints_ref: String,
     pub collections_ref: String,
     pub imports_ref: String,
+    pub operations_ref: String,
     pub sessions_ref: String,
 }
 
@@ -296,7 +297,22 @@ pub struct WorkspaceIndexState {
     pub active: StrategyActiveIndexState,
     pub indexes: StrategyIndexesState,
     pub collection_count: usize,
+    pub operation_count: usize,
     pub session_count: usize,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationSummaryState {
+    pub id: String,
+    pub kind: String,
+    pub scope: String,
+    pub status: String,
+    pub summary: String,
+    pub details: String,
+    pub created_at: String,
+    pub operation_ref: String,
+    pub related_refs: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -354,4 +370,5 @@ pub struct BootstrapState {
     pub checkpoints: Vec<CheckpointSummary>,
     pub collections: Vec<CollectionSummaryState>,
     pub imports: Vec<ImportSummaryState>,
+    pub operations: Vec<OperationSummaryState>,
 }

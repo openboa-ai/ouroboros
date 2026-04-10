@@ -16,6 +16,7 @@ import type {
   IngestSourceEntryResult,
   LaneEventState,
   LiveContextState,
+  OperationSummaryState,
   WorkspaceDocumentState,
   WorkspaceIndexState,
   WorkspaceService
@@ -25,6 +26,7 @@ import checkpointIndexTemplate from "../../templates/strategy-workspace/checkpoi
 import exportPolicyTemplate from "../../templates/strategy-workspace/exports/policy.json";
 import collectionsTemplate from "../../templates/strategy-workspace/indexes/collections.json";
 import importsTemplate from "../../templates/strategy-workspace/imports/index.json";
+import operationsTemplate from "../../templates/strategy-workspace/operations/index.json";
 import btcAggEntriesRaw from "../../templates/strategy-workspace/collections/items/019626b0-4d0a-7a72-9b4e-9d8e11d0f901/entries.ndjson?raw";
 import macroNewsEntriesRaw from "../../templates/strategy-workspace/collections/items/019626b6-c73a-7fe6-b0a5-64ac631d5102/entries.ndjson?raw";
 import btcAggBlobOneRaw from "../../templates/strategy-workspace/blobs/sha256/cd36e47d463d9e2efe3e2030670ca7694a9f303a8837cad4e4e5135c427f945f.txt?raw";
@@ -96,9 +98,24 @@ const importsState = structuredClone(
   }
 );
 
+const operationsState = structuredClone(
+  operationsTemplate as {
+    items: Array<{
+      operation_id: string;
+      kind: string;
+      scope: "live" | "workspace";
+      status: "succeeded";
+      summary: string;
+      details: string;
+      created_at: string;
+      related_refs?: string[];
+    }>;
+  }
+);
+
 const dashboardState = dashboardTemplate as Omit<
   BootstrapState,
-  "workspace" | "positions" | "orders" | "decisions" | "checkpoints" | "imports"
+  "workspace" | "positions" | "orders" | "decisions" | "checkpoints" | "imports" | "operations"
 >;
 
 const decisionsState = decisionsTemplate as {
@@ -203,6 +220,10 @@ function exportBundlePath(checkpointId: string) {
   return `${WORKSPACE_ROOT}/exports/generated/${checkpointId}/export.json`;
 }
 
+function operationPath(operationId: string) {
+  return `${WORKSPACE_ROOT}/operations/items/${operationId}/operation.json`;
+}
+
 function buildAssetInspector(
   checkpoints: CheckpointSummary[],
   currentCheckpointRef: string
@@ -235,9 +256,11 @@ function buildWorkspaceIndex(currentCheckpointRef: string): WorkspaceIndexState 
       checkpointsRef: `${WORKSPACE_ROOT}/checkpoints/index.json`,
       collectionsRef: `${WORKSPACE_ROOT}/indexes/collections.json`,
       importsRef: `${WORKSPACE_ROOT}/imports/index.json`,
+      operationsRef: `${WORKSPACE_ROOT}/operations/index.json`,
       sessionsRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
     },
     collectionCount: collectionsState.items.length,
+    operationCount: operationsState.items.length,
     sessionCount: sessionsState.sessions.length
   };
 }
@@ -265,6 +288,22 @@ function buildImports(): ImportSummaryState[] {
     checkpointRef: item.checkpoint_ref,
     policyId: item.policy_id,
     sanitized: item.sanitized
+  }));
+}
+
+function buildOperations(): OperationSummaryState[] {
+  return operationsState.items.map((item) => ({
+    id: item.operation_id,
+    kind: item.kind,
+    scope: item.scope,
+    status: item.status,
+    summary: item.summary,
+    details: item.details,
+    createdAt: item.created_at,
+    operationRef: operationPath(item.operation_id),
+    relatedRefs: (item.related_refs ?? []).map((path) =>
+      path.startsWith(WORKSPACE_ROOT) ? path : `${WORKSPACE_ROOT}/${path}`
+    )
   }));
 }
 
@@ -351,7 +390,8 @@ function buildTemplateBootstrapState(): BootstrapState {
     decisions: decisionsState.decisions,
     checkpoints,
     collections: buildCollections(),
-    imports: buildImports()
+    imports: buildImports(),
+    operations: buildOperations()
   };
 }
 
@@ -474,6 +514,7 @@ class MockWorkspaceService implements WorkspaceService {
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {
+    const timestamp = this.nowLabel();
     this.state = {
       ...this.state,
       mode: "observer",
@@ -487,7 +528,18 @@ class MockWorkspaceService implements WorkspaceService {
       headline: "Global automation paused",
       reason:
         "The service layer accepted a pause command, switched the client to observer mode, and preserved the live-centered workspace context for inspection.",
-      timestamp: this.nowLabel()
+      timestamp
+    });
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "pause_global_automation",
+      scope: "live",
+      status: "succeeded",
+      summary: "Global automation paused through the service layer.",
+      details:
+        "The client requested a pause and the service boundary switched the live lane into observer mode while preserving workspace inspection state.",
+      created_at: timestamp,
+      related_refs: ["live/live-lane.json", "state/dashboard.json", "state/decisions.json"]
     });
     this.syncDerivedState();
 
@@ -496,6 +548,7 @@ class MockWorkspaceService implements WorkspaceService {
 
   async flattenAllPositions(): Promise<BootstrapState> {
     const checkpointId = crypto.randomUUID();
+    const timestamp = this.nowLabel();
     this.state = {
       ...this.state,
       statusNote: "Service-layer intervention flattened all live positions in the mock runtime.",
@@ -507,14 +560,14 @@ class MockWorkspaceService implements WorkspaceService {
           scope: "positions",
           kind: "flatten-all",
           summary: "All live positions were flattened through the service layer.",
-          timestamp: this.nowLabel()
+          timestamp
         },
         {
           id: this.nextId("lane-event"),
           scope: "orders",
           kind: "flatten-all",
           summary: "All live orders were cleared after the flatten-all intervention.",
-          timestamp: this.nowLabel()
+          timestamp
         },
         ...this.state.laneEvents
       ],
@@ -536,7 +589,24 @@ class MockWorkspaceService implements WorkspaceService {
       headline: "All live positions flattened",
       reason:
         "The service layer executed a mock flatten-all intervention and reset current positions and orders without bypassing the workspace contract.",
-      timestamp: this.nowLabel()
+      timestamp
+    });
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "flatten_all_positions",
+      scope: "live",
+      status: "succeeded",
+      summary: "Flatten-all intervention reset live positions and orders.",
+      details:
+        "The service boundary flattened current positions, cleared orders, and captured an incident checkpoint for the intervention.",
+      created_at: timestamp,
+      related_refs: [
+        "state/dashboard.json",
+        "state/positions.json",
+        "state/orders.json",
+        "state/decisions.json",
+        checkpointPath(checkpointId)
+      ]
     });
 
     this.prependCheckpoint({
@@ -545,7 +615,7 @@ class MockWorkspaceService implements WorkspaceService {
       type: "incident",
       typeTone: "danger",
       summary: "Client-triggered flatten-all command captured as an incident checkpoint.",
-      createdAt: this.nowLabel(),
+      createdAt: timestamp,
       performance: "Live risk reset to flat",
       pathRef: checkpointPath(checkpointId)
     });
@@ -557,6 +627,7 @@ class MockWorkspaceService implements WorkspaceService {
   async createExportCheckpoint(): Promise<BootstrapState> {
     const checkpointId = crypto.randomUUID();
     const alias = `export-${new Date().toISOString().slice(11, 16).replace(":", "")}`;
+    const timestamp = this.nowLabel();
 
     this.state = {
       ...this.state,
@@ -569,7 +640,7 @@ class MockWorkspaceService implements WorkspaceService {
       type: "export",
       typeTone: "warning",
       summary: "Fresh export checkpoint created before generating a sanitized live-centered bundle.",
-      createdAt: this.nowLabel(),
+      createdAt: timestamp,
       performance: "Export policy sanitized-live-centered",
       pathRef: checkpointPath(checkpointId),
       exportBundleRef: exportBundlePath(checkpointId)
@@ -582,7 +653,18 @@ class MockWorkspaceService implements WorkspaceService {
       headline: "Export checkpoint created",
       reason:
         "The service layer created a fresh checkpoint before export so the client can share a stable live-centered asset instead of a drifting mutable state.",
-      timestamp: this.nowLabel()
+      timestamp
+    });
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "create_export_checkpoint",
+      scope: "live",
+      status: "succeeded",
+      summary: `Export checkpoint ${alias} created for sanitized sharing.`,
+      details:
+        "The service layer created a fresh export checkpoint and materialized a sanitized bundle from the live-centered workspace state.",
+      created_at: timestamp,
+      related_refs: [checkpointPath(checkpointId), exportBundlePath(checkpointId), "exports/policy.json"]
     });
     this.syncDerivedState();
 
@@ -596,6 +678,7 @@ class MockWorkspaceService implements WorkspaceService {
     }
 
     const anchorId = crypto.randomUUID();
+    const timestamp = this.nowLabel();
     this.state = {
       ...this.state,
       workspace: {
@@ -611,7 +694,7 @@ class MockWorkspaceService implements WorkspaceService {
           type: "incident",
           typeTone: "danger",
           summary: `Automatic pre-restore checkpoint created before restoring ${target.alias}.`,
-          createdAt: this.nowLabel(),
+          createdAt: timestamp,
           performance: "Rollback anchor for live workspace restore",
           pathRef: checkpointPath(anchorId)
         },
@@ -626,7 +709,18 @@ class MockWorkspaceService implements WorkspaceService {
       headline: `Restored live workspace from ${target.alias}`,
       reason:
         "The service layer reapplied the selected checkpoint snapshot as the active live workspace while preserving checkpoint and export history.",
-      timestamp: this.nowLabel()
+      timestamp
+    });
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "restore_checkpoint",
+      scope: "live",
+      status: "succeeded",
+      summary: `Live workspace restored from checkpoint ${target.alias}.`,
+      details:
+        "The service layer restored the selected checkpoint snapshot as the active live workspace and preserved the rollback anchor as an incident checkpoint.",
+      created_at: timestamp,
+      related_refs: [target.pathRef, checkpointPath(anchorId), "strategy.json", "state/decisions.json"]
     });
 
     this.state = {
@@ -702,6 +796,21 @@ class MockWorkspaceService implements WorkspaceService {
 
     this.state.collections = buildCollections();
     this.state.workspaceIndex.collectionCount = collectionsState.items.length;
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "ingest_source_entry",
+      scope: "workspace",
+      status: "succeeded",
+      summary: `Ingested ${input.sourceRef} into collection ${collectionId}.`,
+      details:
+        "The service layer materialized a source-centered collection shard, appended an entry NDJSON record, and persisted an immutable blob for the entry body.",
+      created_at: this.nowLabel(),
+      related_refs: [
+        `collections/items/${collectionId}/collection.json`,
+        `collections/items/${collectionId}/entries.ndjson`,
+        `blobs/${blobId.replace(":", "/")}.txt`
+      ]
+    });
 
     return {
       collectionId,
@@ -738,6 +847,21 @@ class MockWorkspaceService implements WorkspaceService {
       reason:
         "The service layer staged a sanitized export bundle into the workspace imports area without mutating the active live workspace.",
       timestamp: importedAt
+    });
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "import_export_bundle",
+      scope: "workspace",
+      status: "succeeded",
+      summary: `Staged sanitized export bundle as import ${importId}.`,
+      details:
+        "The service layer copied a sanitized export bundle into the workspace imports area without mutating the active live lane.",
+      created_at: importedAt,
+      related_refs: [
+        `imports/items/${importId}/import.json`,
+        `imports/items/${importId}/bundle/export.json`,
+        `imports/items/${importId}/workspace`
+      ]
     });
     this.syncDerivedState();
 
@@ -784,6 +908,23 @@ class MockWorkspaceService implements WorkspaceService {
     };
   }
 
+  private prependOperation(operation: {
+    operation_id: string;
+    kind: string;
+    scope: "live" | "workspace";
+    status: "succeeded";
+    summary: string;
+    details: string;
+    created_at: string;
+    related_refs?: string[];
+  }) {
+    operationsState.items.unshift(operation);
+    this.state = {
+      ...this.state,
+      operations: buildOperations()
+    };
+  }
+
   private syncDerivedState(currentCheckpointRef?: string, currentCheckpointAlias?: string) {
     const resolvedCheckpointRef =
       currentCheckpointRef ?? this.state.checkpoints[0]?.pathRef ?? checkpointPath(checkpointIndex.current.checkpoint_id);
@@ -800,7 +941,8 @@ class MockWorkspaceService implements WorkspaceService {
       workspaceIndex: buildWorkspaceIndex(resolvedCheckpointRef),
       exportInspector: buildExportInspector(this.state.checkpoints),
       collections: buildCollections(),
-      imports: buildImports()
+      imports: buildImports(),
+      operations: buildOperations()
     };
   }
 
@@ -845,6 +987,16 @@ class MockWorkspaceService implements WorkspaceService {
     }
     if (documentRef === `${WORKSPACE_ROOT}/imports/index.json`) {
       return JSON.stringify(importsState, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/operations/index.json`) {
+      return JSON.stringify(operationsState, null, 2);
+    }
+    const operationMatch = documentRef.match(/var\/dev-workspace\/operations\/items\/([^/]+)\/operation\.json$/);
+    if (operationMatch) {
+      const operation = operationsState.items.find((item) => item.operation_id === operationMatch[1]);
+      if (operation) {
+        return JSON.stringify(operation, null, 2);
+      }
     }
     if (documentRef === `${WORKSPACE_ROOT}/checkpoints/index.json`) {
       return JSON.stringify(

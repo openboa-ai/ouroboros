@@ -16,6 +16,7 @@ export function WorkspaceIndexPanel({ workspaceIndex }: WorkspaceIndexPanelProps
         <div className="flex flex-wrap gap-2">
           <Badge tone="neutral">schema {workspaceIndex.schemaVersion}</Badge>
           <Badge tone="positive">{workspaceIndex.collectionCount} collections</Badge>
+          <Badge tone="neutral">{workspaceIndex.operationCount} operations</Badge>
           <Badge tone="warning">{workspaceIndex.sessionCount} sessions</Badge>
         </div>
 
@@ -37,6 +38,7 @@ export function WorkspaceIndexPanel({ workspaceIndex }: WorkspaceIndexPanelProps
             <IndexRow label="Checkpoints" value={workspaceIndex.indexes.checkpointsRef} />
             <IndexRow label="Collections" value={workspaceIndex.indexes.collectionsRef} />
             <IndexRow label="Imports" value={workspaceIndex.indexes.importsRef} />
+            <IndexRow label="Operations" value={workspaceIndex.indexes.operationsRef} />
             <IndexRow label="Sessions" value={workspaceIndex.indexes.sessionsRef} />
           </dl>
         </section>

@@ -191,6 +191,18 @@ export type ImportBundleState = {
   sanitized: boolean;
 };
 
+export type OperationSummaryState = {
+  id: string;
+  kind: string;
+  scope: "live" | "workspace";
+  status: "succeeded";
+  summary: string;
+  details: string;
+  createdAt: string;
+  operationRef: string;
+  relatedRefs: string[];
+};
+
 export type WorkspaceSummary = {
   artifactId: string;
   slug: string;
@@ -220,6 +232,7 @@ export type StrategyIndexesState = {
   checkpointsRef: string;
   collectionsRef: string;
   importsRef: string;
+  operationsRef: string;
   sessionsRef: string;
 };
 
@@ -228,6 +241,7 @@ export type WorkspaceIndexState = {
   active: StrategyActiveIndexState;
   indexes: StrategyIndexesState;
   collectionCount: number;
+  operationCount: number;
   sessionCount: number;
 };
 
@@ -278,6 +292,7 @@ export type BootstrapState = {
   checkpoints: CheckpointSummary[];
   collections: CollectionSummaryState[];
   imports: ImportSummaryState[];
+  operations: OperationSummaryState[];
 };
 
 export interface WorkspaceService {
