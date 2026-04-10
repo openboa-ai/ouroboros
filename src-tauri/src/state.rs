@@ -4,7 +4,7 @@ use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
         CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
-        IngestSourceEntryResult, WorkspaceDocumentState,
+        IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
     },
     workspace::WorkspaceRepository,
 };
@@ -68,6 +68,13 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .load_blob_detail(blob_id)
+    }
+
+    pub fn operation_detail(&self, operation_id: &str) -> Result<OperationDetailState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .load_operation_detail(operation_id)
     }
 
     pub fn workspace_document(

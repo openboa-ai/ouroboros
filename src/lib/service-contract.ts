@@ -223,6 +223,28 @@ export type OperationSummaryState = {
   relatedRefs: string[];
 };
 
+export type OperationRelatedDocumentState = {
+  pathRef: string;
+  label: string;
+  description: string;
+  category: string;
+  resolved: boolean;
+};
+
+export type OperationDetailState = {
+  id: string;
+  kind: string;
+  scope: "live" | "workspace";
+  status: "succeeded";
+  summary: string;
+  details: string;
+  createdAt: string;
+  operationRef: string;
+  relatedRefs: string[];
+  relatedDocuments: OperationRelatedDocumentState[];
+  unresolvedRefs: string[];
+};
+
 export type WorkspaceCatalogEntry = {
   id: string;
   category:
@@ -361,6 +383,7 @@ export interface WorkspaceService {
   getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
   getImportDetail(importId: string): Promise<ImportDetailState>;
   getBlobDetail(blobId: string): Promise<BlobDetailState>;
+  getOperationDetail(operationId: string): Promise<OperationDetailState>;
   getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;

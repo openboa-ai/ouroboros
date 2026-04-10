@@ -15,9 +15,9 @@ use crate::models::{
     ExportInspectorState, ExposurePoint, ImportDetailState, ImportSummaryState,
     IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
     LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
-    MetricCardData, OperationSummaryState, PricePoint, ProviderStatus, StrategyActiveIndexState,
-    StrategyIndexesState, TradingMode, WorkspaceCatalogEntryState, WorkspaceDocumentState,
-    WorkspaceIndexState, WorkspaceSummary,
+    MetricCardData, OperationDetailState, OperationRelatedDocumentState, OperationSummaryState,
+    PricePoint, ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
+    WorkspaceCatalogEntryState, WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
 };
 use crate::storage::{
     copy_missing_template_tree, copy_template_tree, copy_tree, list_relative_files, remove_path,
@@ -110,6 +110,7 @@ impl WorkspaceRepository {
             &collections_index_path,
             &imports_index_path,
             &operations_index_path,
+            &operations_index,
             &sessions_path,
             &sessions,
             &eval_summaries_path,
@@ -501,6 +502,63 @@ impl WorkspaceRepository {
             byte_length: content_text.as_bytes().len(),
             line_count: content_text.lines().count(),
             content_text,
+        })
+    }
+
+    pub fn load_operation_detail(
+        &self,
+        operation_id: &str,
+    ) -> Result<OperationDetailState, String> {
+        let operation_path = self.operation_file_path(operation_id);
+        let operation = self.read_json_path::<OperationRecordFile>(&operation_path)?;
+        let bootstrap = self.load_bootstrap_state()?;
+        let related_refs = operation
+            .related_refs
+            .iter()
+            .map(|reference| self.display_path(&self.root.join(reference)))
+            .collect::<Vec<_>>();
+        let mut related_documents = Vec::new();
+        let mut unresolved_refs = Vec::new();
+
+        for path_ref in &related_refs {
+            if let Some(document) = bootstrap
+                .document_catalog
+                .iter()
+                .find(|item| item.path_ref == *path_ref)
+            {
+                related_documents.push(OperationRelatedDocumentState {
+                    path_ref: document.path_ref.clone(),
+                    label: document.label.clone(),
+                    description: document.description.clone(),
+                    category: document.category.clone(),
+                    resolved: true,
+                });
+            } else {
+                unresolved_refs.push(path_ref.clone());
+                related_documents.push(OperationRelatedDocumentState {
+                    path_ref: path_ref.clone(),
+                    label: path_leaf_label(path_ref),
+                    description:
+                        "Workspace reference captured by the service layer but not indexed in the current document catalog."
+                            .into(),
+                    category: "reference".into(),
+                    resolved: false,
+                });
+            }
+        }
+
+        Ok(OperationDetailState {
+            id: operation.operation_id,
+            kind: operation.kind,
+            scope: operation.scope,
+            status: operation.status,
+            summary: operation.summary,
+            details: operation.details,
+            created_at: operation.created_at,
+            operation_ref: self.display_path(&operation_path),
+            related_refs,
+            related_documents,
+            unresolved_refs,
         })
     }
 
@@ -1649,6 +1707,7 @@ impl WorkspaceRepository {
         collections_index_path: &Path,
         imports_index_path: &Path,
         operations_index_path: &Path,
+        operations: &OperationsIndexFile,
         sessions_path: &Path,
         sessions: &SessionsIndexFile,
         eval_summaries_path: &Path,
@@ -1775,6 +1834,16 @@ impl WorkspaceRepository {
                     "Live-lane evaluation evidence summary with refs back to raw supporting artifacts."
                         .into(),
                 path_ref: self.display_path(&summary_path),
+            });
+        }
+
+        for operation in &operations.items {
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("operation-{}", operation.operation_id),
+                category: "operation".into(),
+                label: format!("{} · {}", operation.kind, operation.created_at),
+                description: operation.summary.clone(),
+                path_ref: self.display_path(&self.operation_file_path(&operation.operation_id)),
             });
         }
 
@@ -2260,6 +2329,14 @@ fn slugish_id(input: &str) -> String {
         .join("-")
 }
 
+fn path_leaf_label(path_ref: &str) -> String {
+    Path::new(path_ref)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or(path_ref)
+        .to_string()
+}
+
 fn summary_position_hash(summary: &EvalSummaryRecord) -> String {
     let seed = summary
         .headline
@@ -2546,6 +2623,38 @@ mod tests {
         assert_eq!(bootstrap.operations.len(), 2);
         assert_eq!(bootstrap.operations[0].kind, "ingest_source_entry");
         assert_eq!(bootstrap.workspace_index.operation_count, 2);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_operation_detail_resolves_catalog_documents() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        repo.pause_global_automation().expect("pause");
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
+        let operation = bootstrap.operations.first().expect("operation summary");
+        let detail = repo
+            .load_operation_detail(&operation.id)
+            .expect("operation detail");
+
+        assert_eq!(detail.id, operation.id);
+        assert!(
+            detail
+                .related_documents
+                .iter()
+                .any(|document| document.path_ref.ends_with("live-lane.json")),
+            "operation detail should resolve related workspace documents"
+        );
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
+                .any(|document| document.id == format!("operation-{}", operation.id)),
+            "document catalog should expose individual operation documents"
+        );
 
         let _ = fs::remove_dir_all(&root);
     }

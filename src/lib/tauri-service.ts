@@ -9,6 +9,7 @@ import type {
   ImportDetailState,
   IngestSourceEntryInput,
   IngestSourceEntryResult,
+  OperationDetailState,
   WorkspaceDocumentState,
   WorkspaceService
 } from "./service-contract";
@@ -42,6 +43,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getBlobDetail(blobId: string): Promise<BlobDetailState> {
     return invoke<BlobDetailState>("get_blob_detail", { blobId });
+  }
+
+  async getOperationDetail(operationId: string): Promise<OperationDetailState> {
+    return invoke<OperationDetailState>("get_operation_detail", { operationId });
   }
 
   async getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState> {

@@ -26,6 +26,7 @@ import type {
   CheckpointDetailState,
   CollectionDetailState,
   ImportDetailState,
+  OperationDetailState,
   WorkspaceCatalogEntry,
   WorkspaceDocumentState
 } from "./lib/service-contract";
@@ -49,6 +50,10 @@ export function App() {
   const [selectedImportDetail, setSelectedImportDetail] = useState<ImportDetailState | null>(null);
   const [selectedBlobId, setSelectedBlobId] = useState<string | null>(null);
   const [selectedBlobDetail, setSelectedBlobDetail] = useState<BlobDetailState | null>(null);
+  const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
+  const [selectedOperationDetail, setSelectedOperationDetail] = useState<OperationDetailState | null>(
+    null
+  );
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedDocumentRef, setSelectedDocumentRef] = useState<string | null>(null);
   const [selectedDocumentDetail, setSelectedDocumentDetail] = useState<WorkspaceDocumentState | null>(
@@ -204,6 +209,29 @@ export function App() {
   }, [selectedBlobId]);
 
   useEffect(() => {
+    if (!selectedOperationId) {
+      setSelectedOperationDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.getOperationDetail(selectedOperationId).then((detail) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedOperationDetail(detail);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOperationId]);
+
+  useEffect(() => {
     if (!selectedDocumentRef) {
       setSelectedDocumentDetail(null);
       return;
@@ -245,6 +273,7 @@ export function App() {
       selectedCheckpointId?: string | null;
       selectedCollectionId?: string | null;
       selectedImportId?: string | null;
+      selectedOperationId?: string | null;
       selectedDocumentId?: string | null;
       selectedDocumentRef?: string | null;
     }
@@ -266,6 +295,11 @@ export function App() {
       nextState.imports.find((item) => item.id === selectedImportId)?.id ??
       nextState.imports[0]?.id ??
       null;
+    const nextOperationId =
+      options?.selectedOperationId ??
+      nextState.operations.find((item) => item.id === selectedOperationId)?.id ??
+      nextState.operations[0]?.id ??
+      null;
     const nextDocumentId = options?.selectedDocumentId ?? "strategy";
     const nextDocumentRef = options?.selectedDocumentRef ?? nextState.assetInspector.strategyRef;
 
@@ -280,6 +314,8 @@ export function App() {
       setSelectedImportDetail(null);
       setSelectedBlobId(null);
       setSelectedBlobDetail(null);
+      setSelectedOperationId(nextOperationId);
+      setSelectedOperationDetail(null);
       setSelectedDocumentId(nextDocumentId);
       setSelectedDocumentRef(nextDocumentRef);
       setSelectedDocumentDetail(null);
@@ -588,6 +624,9 @@ export function App() {
 
         <OperationsPanel
           operations={state.operations}
+          selectedOperationId={selectedOperationId}
+          operationDetail={selectedOperationDetail}
+          onSelectOperation={setSelectedOperationId}
           onOpenWorkspaceDocument={(documentRef) => {
             setSelectedDocumentId(`ref:${documentRef}`);
             setSelectedDocumentRef(documentRef);

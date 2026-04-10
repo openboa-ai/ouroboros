@@ -18,6 +18,7 @@ pub fn run() {
             commands::get_collection_detail,
             commands::get_import_detail,
             commands::get_blob_detail,
+            commands::get_operation_detail,
             commands::get_workspace_document,
             commands::pause_global_automation,
             commands::flatten_all_positions,

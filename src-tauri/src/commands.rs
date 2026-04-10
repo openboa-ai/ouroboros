@@ -4,7 +4,7 @@ use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
         CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
-        IngestSourceEntryResult, WorkspaceDocumentState,
+        IngestSourceEntryResult, OperationDetailState, WorkspaceDocumentState,
     },
     state::AppState,
 };
@@ -53,6 +53,14 @@ pub fn get_blob_detail(
     state: State<'_, AppState>,
 ) -> Result<BlobDetailState, String> {
     state.blob_detail(&blob_id)
+}
+
+#[tauri::command]
+pub fn get_operation_detail(
+    operation_id: String,
+    state: State<'_, AppState>,
+) -> Result<OperationDetailState, String> {
+    state.operation_detail(&operation_id)
 }
 
 #[tauri::command]

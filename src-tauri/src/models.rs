@@ -228,6 +228,32 @@ pub struct BlobDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OperationRelatedDocumentState {
+    pub path_ref: String,
+    pub label: String,
+    pub description: String,
+    pub category: String,
+    pub resolved: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationDetailState {
+    pub id: String,
+    pub kind: String,
+    pub scope: String,
+    pub status: String,
+    pub summary: String,
+    pub details: String,
+    pub created_at: String,
+    pub operation_ref: String,
+    pub related_refs: Vec<String>,
+    pub related_documents: Vec<OperationRelatedDocumentState>,
+    pub unresolved_refs: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceDocumentState {
     pub path_ref: String,
     pub format: String,

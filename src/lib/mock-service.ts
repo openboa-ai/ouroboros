@@ -18,6 +18,7 @@ import type {
   LaneEventState,
   LiveContextState,
   OperationSummaryState,
+  OperationDetailState,
   WorkspaceCatalogEntry,
   WorkspaceDocumentState,
   WorkspaceIndexState,
@@ -469,6 +470,16 @@ function buildDocumentCatalog(
     }))
   );
 
+  items.push(
+    ...operationsState.items.map((operation) => ({
+      id: `operation-${operation.operation_id}`,
+      category: "operation" as const,
+      label: `${operation.kind} · ${operation.created_at}`,
+      description: operation.summary,
+      pathRef: operationPath(operation.operation_id)
+    }))
+  );
+
   if (latestExportBundleRef) {
     items.push({
       id: "latest-export-bundle",
@@ -705,6 +716,58 @@ class MockWorkspaceService implements WorkspaceService {
       byteLength: new TextEncoder().encode(contentText).length,
       lineCount: contentText.split("\n").length,
       contentText
+    };
+  }
+
+  async getOperationDetail(operationId: string): Promise<OperationDetailState> {
+    const operation = operationsState.items.find((item) => item.operation_id === operationId);
+    if (!operation) {
+      throw new Error(`unknown operation: ${operationId}`);
+    }
+
+    const documentCatalog = buildDocumentCatalog(
+      this.state.assetInspector.currentCheckpointRef,
+      this.state.assetInspector.latestExportBundleRef
+    );
+    const relatedRefs = (operation.related_refs ?? []).map((path) =>
+      path.startsWith(WORKSPACE_ROOT) ? path : `${WORKSPACE_ROOT}/${path}`
+    );
+    const unresolvedRefs: string[] = [];
+    const relatedDocuments = relatedRefs.map((pathRef) => {
+      const document = documentCatalog.find((item) => item.pathRef === pathRef);
+      if (document) {
+        return {
+          pathRef: document.pathRef,
+          label: document.label,
+          description: document.description,
+          category: document.category,
+          resolved: true
+        };
+      }
+
+      unresolvedRefs.push(pathRef);
+      return {
+        pathRef,
+        label: pathRef.split("/").pop() ?? pathRef,
+        description:
+          "Workspace reference captured by the service layer but not indexed in the current document catalog.",
+        category: "reference",
+        resolved: false
+      };
+    });
+
+    return {
+      id: operation.operation_id,
+      kind: operation.kind,
+      scope: operation.scope,
+      status: operation.status,
+      summary: operation.summary,
+      details: operation.details,
+      createdAt: operation.created_at,
+      operationRef: operationPath(operation.operation_id),
+      relatedRefs,
+      relatedDocuments,
+      unresolvedRefs
     };
   }
 
