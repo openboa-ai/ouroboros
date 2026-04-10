@@ -8,8 +8,9 @@ use uuid::Uuid;
 
 use crate::models::{
     AssetInspectorState, BootstrapState, CheckpointSummary, DecisionEntry, EquityPoint,
-    ExposurePoint, LiveContextState, LiveOrder, LivePosition, MetricCardData, PricePoint,
-    ProviderStatus, TradingMode, WorkspaceSummary,
+    ExportBundleState, ExportInspectorState, ExposurePoint, LiveContextState, LiveOrder,
+    LivePosition, MetricCardData, PricePoint, ProviderStatus, StrategyActiveIndexState,
+    StrategyIndexesState, TradingMode, WorkspaceIndexState, WorkspaceSummary,
 };
 
 #[derive(Clone)]
@@ -42,11 +43,15 @@ impl WorkspaceRepository {
         let export_policy_path = self.resolve_ref(&strategy_path, &strategy.active.export_policy_ref);
         let checkpoints_index_path =
             self.resolve_ref(&strategy_path, &strategy.indexes.checkpoints_ref);
+        let collections_index_path =
+            self.resolve_ref(&strategy_path, &strategy.indexes.collections_ref);
 
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&export_policy_path)?;
         let checkpoints_index =
             self.read_json_path::<CheckpointIndexFile>(&checkpoints_index_path)?;
+        let collections_index =
+            self.read_json_path::<CollectionsIndexFile>(&collections_index_path)?;
 
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
@@ -70,6 +75,8 @@ impl WorkspaceRepository {
             &checkpoints_index,
         );
         let export_inventory = self.export_inventory(&checkpoints_index.items);
+        let latest_export_bundle = self.latest_export_bundle(&checkpoints_index.items)?;
+        let sessions_count = sessions.sessions.len();
 
         Ok(BootstrapState {
             mode: live_lane.mode,
@@ -80,7 +87,7 @@ impl WorkspaceRepository {
                 slug: strategy.slug,
                 live_lane_label: live_lane.label,
                 current_checkpoint_alias: checkpoints_index.current.alias,
-                export_policy_label: export_policy.policy_id,
+                export_policy_label: export_policy.policy_id.clone(),
             },
             asset_inspector: AssetInspectorState {
                 workspace_root: self.display_path(&self.root),
@@ -91,6 +98,21 @@ impl WorkspaceRepository {
                 latest_export_bundle_ref: export_inventory.latest_ref,
                 checkpoint_count: checkpoints_index.items.len(),
                 export_count: export_inventory.count,
+            },
+            workspace_index: WorkspaceIndexState {
+                schema_version: strategy.schema_version.clone(),
+                active: StrategyActiveIndexState {
+                    live_lane_ref: self.display_path(&live_lane_path),
+                    current_checkpoint_ref: self.display_path(&current_checkpoint_path),
+                    export_policy_ref: self.display_path(&export_policy_path),
+                },
+                indexes: StrategyIndexesState {
+                    checkpoints_ref: self.display_path(&checkpoints_index_path),
+                    collections_ref: self.display_path(&collections_index_path),
+                    sessions_ref: self.display_path(&sessions_path),
+                },
+                collection_count: collections_index.collections.len(),
+                session_count: sessions_count,
             },
             live_context: LiveContextState {
                 memory_notes: live_memory
@@ -110,6 +132,11 @@ impl WorkspaceRepository {
                     .collect(),
                 position_event_count: positions.events.len(),
                 order_event_count: orders.events.len(),
+            },
+            export_inspector: ExportInspectorState {
+                policy_id: export_policy.policy_id.clone(),
+                description: export_policy.description.clone(),
+                latest_bundle: latest_export_bundle,
             },
             providers: dashboard.providers,
             metrics: dashboard.metrics,
@@ -430,6 +457,7 @@ impl WorkspaceRepository {
         }
 
         copy_tree(&checkpoint_workspace, &export_workspace, &PathBuf::new())?;
+        let included_refs = list_relative_files(&export_workspace, "./workspace")?;
         self.write_json_path(
             &export_root.join("export.json"),
             &ExportBundleFile {
@@ -438,6 +466,9 @@ impl WorkspaceRepository {
                 policy_id: policy_id.into(),
                 created_at: now_label(),
                 sanitized: true,
+                workspace_ref: "./workspace".into(),
+                included_refs,
+                excluded_paths: export_excluded_paths(),
             },
         )?;
 
@@ -480,6 +511,44 @@ impl WorkspaceRepository {
         ExportInventory { count, latest_ref }
     }
 
+    fn latest_export_bundle(
+        &self,
+        checkpoints: &[CheckpointRecordFile],
+    ) -> Result<Option<ExportBundleState>, String> {
+        for checkpoint in checkpoints.iter().filter(|item| item.r#type == "export") {
+            let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
+            if !export_path.exists() {
+                continue;
+            }
+
+            let export_bundle = self.read_json_path::<ExportBundleFile>(&export_path)?;
+            let workspace_path = self.export_workspace_path(&checkpoint.checkpoint_id);
+            let included_refs = if export_bundle.included_refs.is_empty() && workspace_path.exists() {
+                list_relative_files(&workspace_path, "./workspace")?
+            } else {
+                export_bundle.included_refs.clone()
+            };
+
+            return Ok(Some(ExportBundleState {
+                export_id: export_bundle.export_id,
+                created_at: export_bundle.created_at,
+                policy_id: export_bundle.policy_id,
+                checkpoint_ref: self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
+                workspace_ref: if export_bundle.workspace_ref.is_empty() {
+                    self.display_path(&workspace_path)
+                } else {
+                    export_bundle.workspace_ref
+                },
+                bundle_ref: self.display_path(&export_path),
+                included_refs,
+                excluded_paths: export_bundle.excluded_paths,
+                sanitized: export_bundle.sanitized,
+            }));
+        }
+
+        Ok(None)
+    }
+
     fn export_bundle_display_ref(&self, checkpoint: &CheckpointRecordFile) -> Option<String> {
         if checkpoint.r#type != "export" {
             return None;
@@ -503,6 +572,14 @@ impl WorkspaceRepository {
             .join("generated")
             .join(checkpoint_id)
             .join("export.json")
+    }
+
+    fn export_workspace_path(&self, checkpoint_id: &str) -> PathBuf {
+        self.root
+            .join("exports")
+            .join("generated")
+            .join(checkpoint_id)
+            .join("workspace")
     }
 
     fn display_path(&self, path: &Path) -> String {
@@ -636,6 +713,18 @@ struct SessionsIndexFile {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+struct CollectionsIndexFile {
+    #[serde(default)]
+    collections: Vec<CollectionRecordFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct CollectionRecordFile {
+    #[allow(dead_code)]
+    collection_id: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 struct SessionRecordFile {
     label: String,
 }
@@ -689,6 +778,12 @@ struct ExportBundleFile {
     policy_id: String,
     created_at: String,
     sanitized: bool,
+    #[serde(default)]
+    workspace_ref: String,
+    #[serde(default)]
+    included_refs: Vec<String>,
+    #[serde(default)]
+    excluded_paths: Vec<String>,
 }
 
 struct ExportInventory {
@@ -708,8 +803,50 @@ fn checkpoint_tone(checkpoint_type: &str) -> &'static str {
     }
 }
 
+fn export_excluded_paths() -> Vec<String> {
+    vec![
+        "./workspace/checkpoints".into(),
+        "./workspace/exports/generated".into(),
+        "./workspace/secrets".into(),
+        "./workspace/credentials".into(),
+    ]
+}
+
 fn should_skip_snapshot_path(relative: &Path) -> bool {
     relative == Path::new("checkpoints") || relative == Path::new("exports/generated")
+}
+
+fn list_relative_files(root: &Path, prefix: &str) -> Result<Vec<String>, String> {
+    let mut items = Vec::new();
+    collect_relative_files(root, root, prefix, &mut items)?;
+    items.sort();
+    Ok(items)
+}
+
+fn collect_relative_files(
+    root: &Path,
+    current: &Path,
+    prefix: &str,
+    items: &mut Vec<String>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(current)
+        .map_err(|error| format!("failed to read {}: {error}", current.display()))?
+    {
+        let entry = entry.map_err(|error| format!("failed to read entry: {error}"))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_relative_files(root, &path, prefix, items)?;
+            continue;
+        }
+
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
+        let relative = relative.to_string_lossy().replace('\\', "/");
+        items.push(format!("{prefix}/{relative}"));
+    }
+
+    Ok(())
 }
 
 fn copy_tree(source: &Path, destination: &Path, relative: &Path) -> Result<(), String> {

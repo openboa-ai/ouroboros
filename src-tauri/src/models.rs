@@ -121,6 +121,32 @@ pub struct AssetInspectorState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StrategyActiveIndexState {
+    pub live_lane_ref: String,
+    pub current_checkpoint_ref: String,
+    pub export_policy_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyIndexesState {
+    pub checkpoints_ref: String,
+    pub collections_ref: String,
+    pub sessions_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexState {
+    pub schema_version: String,
+    pub active: StrategyActiveIndexState,
+    pub indexes: StrategyIndexesState,
+    pub collection_count: usize,
+    pub session_count: usize,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LiveContextState {
     pub memory_notes: Vec<String>,
     pub session_labels: Vec<String>,
@@ -131,13 +157,37 @@ pub struct LiveContextState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExportBundleState {
+    pub export_id: String,
+    pub created_at: String,
+    pub policy_id: String,
+    pub checkpoint_ref: String,
+    pub workspace_ref: String,
+    pub bundle_ref: String,
+    pub included_refs: Vec<String>,
+    pub excluded_paths: Vec<String>,
+    pub sanitized: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportInspectorState {
+    pub policy_id: String,
+    pub description: String,
+    pub latest_bundle: Option<ExportBundleState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BootstrapState {
     pub mode: TradingMode,
     pub automation_status: String,
     pub status_note: Option<String>,
     pub workspace: WorkspaceSummary,
     pub asset_inspector: AssetInspectorState,
+    pub workspace_index: WorkspaceIndexState,
     pub live_context: LiveContextState,
+    pub export_inspector: ExportInspectorState,
     pub providers: Vec<ProviderStatus>,
     pub metrics: Vec<MetricCardData>,
     pub price_series: Vec<PricePoint>,

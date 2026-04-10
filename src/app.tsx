@@ -6,10 +6,12 @@ import { DashboardGrid } from "./components/dashboard-grid";
 import { DecisionFeed } from "./components/decision-feed";
 import { EquityAreaPanel } from "./components/equity-area-panel";
 import { ExposurePanel } from "./components/exposure-panel";
+import { ExportInspectorPanel } from "./components/export-inspector-panel";
 import { LiveContextPanel } from "./components/live-context-panel";
 import { PositionsPanel } from "./components/positions-panel";
 import { PriceContextPanel } from "./components/price-context-panel";
 import { StrategyTimeline } from "./components/strategy-timeline";
+import { WorkspaceIndexPanel } from "./components/workspace-index-panel";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
@@ -107,6 +109,8 @@ export function App() {
             ) : null}
           </Card>
           <AssetInspectorPanel assetInspector={state.assetInspector} />
+          <WorkspaceIndexPanel workspaceIndex={state.workspaceIndex} />
+          <ExportInspectorPanel exportInspector={state.exportInspector} />
           <LiveContextPanel liveContext={state.liveContext} />
         </div>
       }

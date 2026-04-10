@@ -22,6 +22,10 @@ It does not treat the workspace as a public storage API.
 - Short decision reasons belong on the main surface.
 - Deep reasoning, evaluation detail, and candidate history belong in drill-down surfaces.
 - The client should never require users to read raw workspace files to understand live behavior.
+- Workspace structure should be surfaced through curated service-owned panels such as:
+  - asset inspector
+  - workspace index
+  - export inspector
 
 ## Chart Rules
 
@@ -37,3 +41,4 @@ It does not treat the workspace as a public storage API.
 - The client must always expose explicit intervention controls.
 - The client must surface forced interventions and incident history clearly.
 - The client must never imply that a workspace mutation has succeeded until the service layer confirms it.
+- Exports should be shown as checkpoint-derived bundles, not as ad-hoc file copies from mutable state.

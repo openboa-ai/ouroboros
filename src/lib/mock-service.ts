@@ -3,12 +3,16 @@ import type {
   BootstrapState,
   CheckpointSummary,
   DecisionEntry,
+  ExportBundleState,
+  ExportInspectorState,
   LiveContextState,
+  WorkspaceIndexState,
   WorkspaceService
 } from "./service-contract";
 import type { LiveLaneState, StrategyManifest } from "./workspace-contract";
 import checkpointIndexTemplate from "../../templates/strategy-workspace/checkpoints/index.json";
 import exportPolicyTemplate from "../../templates/strategy-workspace/exports/policy.json";
+import collectionsTemplate from "../../templates/strategy-workspace/indexes/collections.json";
 import liveLaneTemplate from "../../templates/strategy-workspace/live/live-lane.json";
 import strategyTemplate from "../../templates/strategy-workspace/strategy.json";
 import dashboardTemplate from "../../templates/strategy-workspace/state/dashboard.json";
@@ -42,6 +46,11 @@ const checkpointIndex = checkpointIndexTemplate as {
 
 const exportPolicy = exportPolicyTemplate as {
   policy_id: string;
+  description: string;
+};
+
+const collectionsState = collectionsTemplate as {
+  collections: Array<unknown>;
 };
 
 const dashboardState = dashboardTemplate as Omit<
@@ -76,6 +85,23 @@ const evalSummariesState = evalSummariesTemplate as {
 };
 
 const WORKSPACE_ROOT = "var/dev-workspace";
+const DEFAULT_EXCLUDED_PATHS = [
+  "./workspace/checkpoints",
+  "./workspace/exports/generated",
+  "./workspace/secrets",
+  "./workspace/credentials"
+];
+const DEFAULT_INCLUDED_REFS = [
+  "./workspace/strategy.json",
+  "./workspace/live/live-lane.json",
+  "./workspace/state/dashboard.json",
+  "./workspace/state/decisions.json",
+  "./workspace/state/live-memory.json",
+  "./workspace/state/orders.json",
+  "./workspace/state/positions.json",
+  "./workspace/state/eval-summaries.json",
+  "./workspace/indexes/sessions.json"
+];
 
 function checkpointPath(checkpointId: string) {
   return `${WORKSPACE_ROOT}/checkpoints/items/${checkpointId}/checkpoint.json`;
@@ -85,16 +111,41 @@ function exportBundlePath(checkpointId: string) {
   return `${WORKSPACE_ROOT}/exports/generated/${checkpointId}/export.json`;
 }
 
-function buildAssetInspector(): AssetInspectorState {
+function buildAssetInspector(
+  checkpoints: CheckpointSummary[],
+  currentCheckpointRef: string
+): AssetInspectorState {
+  const latestExport = checkpoints.find(
+    (checkpoint) => checkpoint.type === "export" && checkpoint.exportBundleRef
+  );
+
   return {
     workspaceRoot: WORKSPACE_ROOT,
     strategyRef: `${WORKSPACE_ROOT}/strategy.json`,
     liveLaneRef: `${WORKSPACE_ROOT}/live/live-lane.json`,
-    currentCheckpointRef: checkpointPath(checkpointIndex.current.checkpoint_id),
+    currentCheckpointRef,
     exportPolicyRef: `${WORKSPACE_ROOT}/exports/policy.json`,
-    latestExportBundleRef: undefined,
-    checkpointCount: checkpointIndex.items.length,
-    exportCount: 0
+    latestExportBundleRef: latestExport?.exportBundleRef,
+    checkpointCount: checkpoints.length,
+    exportCount: checkpoints.filter((checkpoint) => checkpoint.type === "export").length
+  };
+}
+
+function buildWorkspaceIndex(currentCheckpointRef: string): WorkspaceIndexState {
+  return {
+    schemaVersion: mockStrategyManifest.schema_version,
+    active: {
+      liveLaneRef: `${WORKSPACE_ROOT}/live/live-lane.json`,
+      currentCheckpointRef,
+      exportPolicyRef: `${WORKSPACE_ROOT}/exports/policy.json`
+    },
+    indexes: {
+      checkpointsRef: `${WORKSPACE_ROOT}/checkpoints/index.json`,
+      collectionsRef: `${WORKSPACE_ROOT}/indexes/collections.json`,
+      sessionsRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
+    },
+    collectionCount: collectionsState.collections.length,
+    sessionCount: sessionsState.sessions.length
   };
 }
 
@@ -108,7 +159,46 @@ function buildLiveContext(): LiveContextState {
   };
 }
 
+function buildExportBundle(checkpoint: CheckpointSummary): ExportBundleState {
+  return {
+    exportId: checkpoint.id,
+    createdAt: checkpoint.createdAt,
+    policyId: exportPolicy.policy_id,
+    checkpointRef: checkpoint.pathRef,
+    workspaceRef: "./workspace",
+    bundleRef: exportBundlePath(checkpoint.id),
+    includedRefs: DEFAULT_INCLUDED_REFS,
+    excludedPaths: DEFAULT_EXCLUDED_PATHS,
+    sanitized: true
+  };
+}
+
+function buildExportInspector(checkpoints: CheckpointSummary[]): ExportInspectorState {
+  const latestExport = checkpoints.find(
+    (checkpoint) => checkpoint.type === "export" && checkpoint.exportBundleRef
+  );
+
+  return {
+    policyId: exportPolicy.policy_id,
+    description: exportPolicy.description,
+    latestBundle: latestExport ? buildExportBundle(latestExport) : null
+  };
+}
+
 function buildTemplateBootstrapState(): BootstrapState {
+  const checkpoints = checkpointIndex.items.map((item) => ({
+    id: item.checkpoint_id,
+    alias: item.alias,
+    type: item.type,
+    typeTone: item.type_tone ?? "warning",
+    summary: item.summary ?? "Checkpoint captured.",
+    createdAt: item.created_at ?? "UTC unknown",
+    performance: item.performance ?? "No summary",
+    pathRef: item.path_ref ? checkpointPath(item.checkpoint_id) : checkpointPath(item.checkpoint_id),
+    exportBundleRef: undefined
+  }));
+  const currentCheckpointRef = checkpointPath(checkpointIndex.current.checkpoint_id);
+
   return {
     ...dashboardState,
     workspace: {
@@ -118,22 +208,14 @@ function buildTemplateBootstrapState(): BootstrapState {
       currentCheckpointAlias: checkpointIndex.current.alias,
       exportPolicyLabel: exportPolicy.policy_id
     },
-    assetInspector: buildAssetInspector(),
+    assetInspector: buildAssetInspector(checkpoints, currentCheckpointRef),
+    workspaceIndex: buildWorkspaceIndex(currentCheckpointRef),
     liveContext: buildLiveContext(),
+    exportInspector: buildExportInspector(checkpoints),
     positions: positionsState.current,
     orders: ordersState.current,
     decisions: decisionsState.decisions,
-    checkpoints: checkpointIndex.items.map((item) => ({
-      id: item.checkpoint_id,
-      alias: item.alias,
-      type: item.type,
-      typeTone: item.type_tone ?? "warning",
-      summary: item.summary ?? "Checkpoint captured.",
-      createdAt: item.created_at ?? "UTC unknown",
-      performance: item.performance ?? "No summary",
-      pathRef: item.path_ref ? checkpointPath(item.checkpoint_id) : checkpointPath(item.checkpoint_id),
-      exportBundleRef: undefined
-    }))
+    checkpoints
   };
 }
 
@@ -162,6 +244,7 @@ class MockWorkspaceService implements WorkspaceService {
         "The service layer accepted a pause command, switched the client to observer mode, and preserved the live-centered workspace context for inspection.",
       timestamp: this.nowLabel()
     });
+    this.syncDerivedState();
 
     return structuredClone(this.state);
   }
@@ -204,6 +287,7 @@ class MockWorkspaceService implements WorkspaceService {
       performance: "Live risk reset to flat",
       pathRef: checkpointPath(checkpointId)
     });
+    this.syncDerivedState();
 
     return structuredClone(this.state);
   }
@@ -238,6 +322,7 @@ class MockWorkspaceService implements WorkspaceService {
         "The service layer created a fresh checkpoint before export so the client can share a stable live-centered asset instead of a drifting mutable state.",
       timestamp: this.nowLabel()
     });
+    this.syncDerivedState();
 
     return structuredClone(this.state);
   }
@@ -270,6 +355,17 @@ class MockWorkspaceService implements WorkspaceService {
     this.state = {
       ...this.state,
       decisions: [decision, ...this.state.decisions]
+    };
+  }
+
+  private syncDerivedState() {
+    const currentCheckpointRef = this.state.checkpoints[0]?.pathRef ?? checkpointPath(checkpointIndex.current.checkpoint_id);
+
+    this.state = {
+      ...this.state,
+      assetInspector: buildAssetInspector(this.state.checkpoints, currentCheckpointRef),
+      workspaceIndex: buildWorkspaceIndex(currentCheckpointRef),
+      exportInspector: buildExportInspector(this.state.checkpoints)
     };
   }
 

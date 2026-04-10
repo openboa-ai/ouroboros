@@ -35,6 +35,7 @@ The official AutoKairos client is a desktop application, not a thin file browser
 - expose current live dashboard state
 - expose mode and provider status
 - expose current live lane context
+- expose workspace entrypoint refs and index refs as curated read models
 - expose checkpoint and export metadata
 - accept intervention commands
 - enforce locks, migrations, and invariant checks
@@ -43,6 +44,7 @@ The official AutoKairos client is a desktop application, not a thin file browser
 
 - render the main live dashboard
 - render charts for price, equity, and exposure
+- render asset-aware drill-downs for workspace and export inspection
 - surface short decision reasons
 - surface version and checkpoint history without crowding the main live surface
 - provide explicit intervention controls

@@ -89,6 +89,26 @@ export type AssetInspectorState = {
   exportCount: number;
 };
 
+export type StrategyActiveIndexState = {
+  liveLaneRef: string;
+  currentCheckpointRef: string;
+  exportPolicyRef: string;
+};
+
+export type StrategyIndexesState = {
+  checkpointsRef: string;
+  collectionsRef: string;
+  sessionsRef: string;
+};
+
+export type WorkspaceIndexState = {
+  schemaVersion: string;
+  active: StrategyActiveIndexState;
+  indexes: StrategyIndexesState;
+  collectionCount: number;
+  sessionCount: number;
+};
+
 export type LiveContextState = {
   memoryNotes: string[];
   sessionLabels: string[];
@@ -97,13 +117,33 @@ export type LiveContextState = {
   orderEventCount: number;
 };
 
+export type ExportBundleState = {
+  exportId: string;
+  createdAt: string;
+  policyId: string;
+  checkpointRef: string;
+  workspaceRef: string;
+  bundleRef: string;
+  includedRefs: string[];
+  excludedPaths: string[];
+  sanitized: boolean;
+};
+
+export type ExportInspectorState = {
+  policyId: string;
+  description: string;
+  latestBundle: ExportBundleState | null;
+};
+
 export type BootstrapState = {
   mode: TradingMode;
   automationStatus: "active" | "paused";
   statusNote?: string;
   workspace: WorkspaceSummary;
   assetInspector: AssetInspectorState;
+  workspaceIndex: WorkspaceIndexState;
   liveContext: LiveContextState;
+  exportInspector: ExportInspectorState;
   providers: ProviderStatus[];
   metrics: MetricCardData[];
   priceSeries: PricePoint[];
