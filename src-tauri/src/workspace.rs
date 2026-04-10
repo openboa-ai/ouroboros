@@ -12,9 +12,10 @@ use crate::models::{
     CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint,
     ExportBundleState, ExportInspectorState, ExposurePoint, ImportDetailState, ImportSummaryState,
     IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
-    LiveContextState, LiveOrder, LivePosition, MetricCardData, OperationSummaryState, PricePoint,
-    ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
-    WorkspaceCatalogEntryState, WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
+    LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
+    MetricCardData, OperationSummaryState, PricePoint, ProviderStatus, StrategyActiveIndexState,
+    StrategyIndexesState, TradingMode, WorkspaceCatalogEntryState, WorkspaceDocumentState,
+    WorkspaceIndexState, WorkspaceSummary,
 };
 use crate::storage::{
     copy_missing_template_tree, copy_template_tree, copy_tree, list_relative_files, remove_path,
@@ -108,6 +109,9 @@ impl WorkspaceRepository {
             &imports_index_path,
             &operations_index_path,
             &sessions_path,
+            &sessions,
+            &eval_summaries_path,
+            &eval_summaries,
             export_inventory.latest_ref.as_deref(),
         );
 
@@ -156,15 +160,58 @@ impl WorkspaceRepository {
                     .into_iter()
                     .map(|note| note.summary)
                     .collect(),
-                session_labels: sessions
+                sessions: sessions
                     .sessions
                     .into_iter()
-                    .map(|session| session.label)
+                    .map(|session| {
+                        let session_id = session
+                            .session_id
+                            .clone()
+                            .unwrap_or_else(|| format!("legacy-session-{}", slugish_id(&session.label)));
+                        let label = session.label;
+                        let started_at = session.started_at.unwrap_or_else(|| "UTC unknown".into());
+                        let status = session.status.unwrap_or_else(|| "active".into());
+                        let fallback_ref = format!("../sessions/items/{session_id}/session.json");
+                        let path_ref = self.display_path(&self.resolve_optional_ref(
+                            &sessions_path,
+                            session.path_ref.as_deref(),
+                            fallback_ref.as_str(),
+                        ));
+
+                        LiveSessionState {
+                            id: session_id,
+                            label,
+                            started_at,
+                            status,
+                            path_ref,
+                        }
+                    })
                     .collect(),
-                eval_evidence_refs: eval_summaries
+                evaluation_summaries: eval_summaries
                     .summaries
                     .into_iter()
-                    .flat_map(|summary| summary.evidence_refs)
+                    .map(|summary| {
+                        let summary_id = summary
+                            .summary_id
+                            .clone()
+                            .unwrap_or_else(|| format!("legacy-eval-{}", summary_position_hash(&summary)));
+                        let headline = summary.headline.unwrap_or_else(|| "Evaluation summary".into());
+                        let created_at = summary.created_at.unwrap_or_else(|| "UTC unknown".into());
+                        let fallback_ref = format!("../eval-summaries/items/{summary_id}/summary.json");
+                        let path_ref = self.display_path(&self.resolve_optional_ref(
+                            &eval_summaries_path,
+                            summary.path_ref.as_deref(),
+                            fallback_ref.as_str(),
+                        ));
+
+                        LiveEvaluationSummaryState {
+                            id: summary_id,
+                            headline,
+                            created_at,
+                            path_ref,
+                            evidence_refs: summary.evidence_refs,
+                        }
+                    })
                     .collect(),
                 position_event_count: positions.events.len(),
                 order_event_count: orders.events.len(),
@@ -879,6 +926,143 @@ impl WorkspaceRepository {
             }
         }
 
+        self.materialize_live_context_documents()?;
+
+        Ok(())
+    }
+
+    fn materialize_live_context_documents(&self) -> Result<(), String> {
+        let strategy_path = self.root.join("strategy.json");
+        let strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
+        let live_lane_path = self.resolve_ref(&strategy_path, &strategy.active.live_lane_ref);
+        let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let sessions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.sessions_ref);
+        let eval_summaries_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.eval_summaries_ref);
+
+        let mut sessions = self.read_json_path::<SessionsIndexFile>(&sessions_path)?;
+        let mut sessions_dirty = false;
+        for session in &mut sessions.sessions {
+            let session_id = session
+                .session_id
+                .clone()
+                .unwrap_or_else(|| format!("legacy-session-{}", slugish_id(&session.label)));
+            let path_ref = session
+                .path_ref
+                .clone()
+                .unwrap_or_else(|| format!("../sessions/items/{session_id}/session.json"));
+            let started_at = session
+                .started_at
+                .clone()
+                .unwrap_or_else(|| "UTC unknown".into());
+            let status = session.status.clone().unwrap_or_else(|| "active".into());
+            let session_path = self.resolve_ref(&sessions_path, &path_ref);
+            let session_file = SessionDetailFile {
+                session_id: session_id.clone(),
+                label: session.label.clone(),
+                started_at: started_at.clone(),
+                status: status.clone(),
+                scope: "live".into(),
+                goal: "Keep the live trading context inspectable, exportable, and replayable.".into(),
+                context_refs: vec![
+                    "./live/live-lane.json".into(),
+                    "./state/live-memory.json".into(),
+                    "./state/positions.json".into(),
+                    "./state/orders.json".into(),
+                    "./state/eval-summaries.json".into(),
+                ],
+                notes: vec![
+                    "Session records stay inside the workspace asset and are exposed through the service layer.".into(),
+                    "These documents are part of the live trading context whenever they materially influence trading behavior.".into(),
+                ],
+            };
+
+            if session.session_id.as_deref() != Some(&session_id) {
+                session.session_id = Some(session_id.clone());
+                sessions_dirty = true;
+            }
+            if session.started_at.as_deref() != Some(&started_at) {
+                session.started_at = Some(started_at);
+                sessions_dirty = true;
+            }
+            if session.status.as_deref() != Some(&status) {
+                session.status = Some(status);
+                sessions_dirty = true;
+            }
+            if session.path_ref.as_deref() != Some(path_ref.as_str()) {
+                session.path_ref = Some(path_ref);
+                sessions_dirty = true;
+            }
+            if !session_path.exists() {
+                self.write_json_path(&session_path, &session_file)?;
+            }
+        }
+        if sessions_dirty {
+            self.write_json_path(&sessions_path, &sessions)?;
+        }
+
+        let mut eval_summaries = self.read_json_path::<EvalSummariesFile>(&eval_summaries_path)?;
+        let mut eval_dirty = false;
+        for summary in &mut eval_summaries.summaries {
+            let summary_id = summary
+                .summary_id
+                .clone()
+                .unwrap_or_else(|| format!("legacy-eval-{}", summary_position_hash(summary)));
+            let headline = summary
+                .headline
+                .clone()
+                .unwrap_or_else(|| "Evaluation summary".into());
+            let created_at = summary
+                .created_at
+                .clone()
+                .unwrap_or_else(|| "UTC unknown".into());
+            let path_ref = summary
+                .path_ref
+                .clone()
+                .unwrap_or_else(|| format!("../eval-summaries/items/{summary_id}/summary.json"));
+            let summary_path = self.resolve_ref(&eval_summaries_path, &path_ref);
+            let summary_file = EvalSummaryDetailFile {
+                summary_id: summary_id.clone(),
+                headline: headline.clone(),
+                created_at: created_at.clone(),
+                tone: "neutral".into(),
+                decision: "inspect-live-evidence".into(),
+                rationale: vec![
+                    "Evaluation summaries remain part of the live trading context whenever they materially influence trade decisions.".into(),
+                    "Raw evidence refs stay attached so the asset remains inspectable and replayable.".into(),
+                ],
+                evidence_refs: if summary.evidence_refs.is_empty() {
+                    vec!["./checkpoints/index.json".into()]
+                } else {
+                    summary.evidence_refs.clone()
+                },
+            };
+
+            if summary.summary_id.as_deref() != Some(&summary_id) {
+                summary.summary_id = Some(summary_id);
+                eval_dirty = true;
+            }
+            if summary.headline.as_deref() != Some(&headline) {
+                summary.headline = Some(headline);
+                eval_dirty = true;
+            }
+            if summary.created_at.as_deref() != Some(&created_at) {
+                summary.created_at = Some(created_at);
+                eval_dirty = true;
+            }
+            if summary.path_ref.as_deref() != Some(path_ref.as_str()) {
+                summary.path_ref = Some(path_ref);
+                eval_dirty = true;
+            }
+            if summary_path.exists() {
+                continue;
+            }
+            self.write_json_path(&summary_path, &summary_file)?;
+        }
+        if eval_dirty {
+            self.write_json_path(&eval_summaries_path, &eval_summaries)?;
+        }
+
         Ok(())
     }
 
@@ -1349,6 +1533,10 @@ impl WorkspaceRepository {
         base_dir.join(clean_reference)
     }
 
+    fn resolve_optional_ref(&self, base_file: &Path, reference: Option<&str>, fallback: &str) -> PathBuf {
+        self.resolve_ref(base_file, reference.unwrap_or(fallback))
+    }
+
     fn read_json_path<T: DeserializeOwned>(&self, path: &Path) -> Result<T, String> {
         FileWorkspaceStore::read_json_path(path)
     }
@@ -1372,6 +1560,9 @@ impl WorkspaceRepository {
         imports_index_path: &Path,
         operations_index_path: &Path,
         sessions_path: &Path,
+        sessions: &SessionsIndexFile,
+        eval_summaries_path: &Path,
+        eval_summaries: &EvalSummariesFile,
         latest_export_bundle_ref: Option<&str>,
     ) -> Vec<WorkspaceCatalogEntryState> {
         let mut items = vec![
@@ -1442,7 +1633,60 @@ impl WorkspaceRepository {
                 description: "Durable session references that shape current live context.".into(),
                 path_ref: self.display_path(sessions_path),
             },
+            WorkspaceCatalogEntryState {
+                id: "eval-summaries-index".into(),
+                category: "index".into(),
+                label: "eval summaries".into(),
+                description: "Inspectable evaluation summaries that still link back to raw evidence refs.".into(),
+                path_ref: self.display_path(eval_summaries_path),
+            },
         ];
+
+        for session in &sessions.sessions {
+            let session_id = session
+                .session_id
+                .clone()
+                .unwrap_or_else(|| format!("legacy-session-{}", slugish_id(&session.label)));
+            let session_path = self.resolve_optional_ref(
+                sessions_path,
+                session.path_ref.as_deref(),
+                format!("../sessions/items/{session_id}/session.json").as_str(),
+            );
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("session-{session_id}"),
+                category: "session".into(),
+                label: session.label.clone(),
+                description: format!(
+                    "Live session document ({}) that remains part of the exportable trading context.",
+                    session.status.clone().unwrap_or_else(|| "active".into())
+                ),
+                path_ref: self.display_path(&session_path),
+            });
+        }
+
+        for summary in &eval_summaries.summaries {
+            let summary_id = summary
+                .summary_id
+                .clone()
+                .unwrap_or_else(|| format!("legacy-eval-{}", summary_position_hash(summary)));
+            let summary_path = self.resolve_optional_ref(
+                eval_summaries_path,
+                summary.path_ref.as_deref(),
+                format!("../eval-summaries/items/{summary_id}/summary.json").as_str(),
+            );
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("evaluation-{summary_id}"),
+                category: "evaluation".into(),
+                label: summary
+                    .headline
+                    .clone()
+                    .unwrap_or_else(|| "evaluation summary".into()),
+                description:
+                    "Live-lane evaluation evidence summary with refs back to raw supporting artifacts."
+                        .into(),
+                path_ref: self.display_path(&summary_path),
+            });
+        }
 
         if let Some(latest_export_bundle_ref) = latest_export_bundle_ref {
             items.push(WorkspaceCatalogEntryState {
@@ -1686,7 +1930,15 @@ struct TimeRangeFile {
 
 #[derive(Clone, Deserialize, Serialize)]
 struct SessionRecordFile {
+    #[serde(default)]
+    session_id: Option<String>,
     label: String,
+    #[serde(default)]
+    started_at: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    path_ref: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1697,6 +1949,37 @@ struct EvalSummariesFile {
 #[derive(Clone, Deserialize, Serialize)]
 struct EvalSummaryRecord {
     #[serde(default)]
+    summary_id: Option<String>,
+    #[serde(default)]
+    headline: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    path_ref: Option<String>,
+    #[serde(default)]
+    evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct SessionDetailFile {
+    session_id: String,
+    label: String,
+    started_at: String,
+    status: String,
+    scope: String,
+    goal: String,
+    context_refs: Vec<String>,
+    notes: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct EvalSummaryDetailFile {
+    summary_id: String,
+    headline: String,
+    created_at: String,
+    tone: String,
+    decision: String,
+    rationale: Vec<String>,
     evidence_refs: Vec<String>,
 }
 
@@ -1873,6 +2156,27 @@ fn now_label() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("UTC epoch {seconds}")
+}
+
+fn slugish_id(input: &str) -> String {
+    let normalized = input
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .collect::<String>();
+    normalized
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn summary_position_hash(summary: &EvalSummaryRecord) -> String {
+    let seed = summary
+        .headline
+        .as_deref()
+        .or_else(|| summary.evidence_refs.first().map(String::as_str))
+        .unwrap_or("summary");
+    slugish_id(seed)
 }
 
 #[cfg(test)]
@@ -2152,6 +2456,76 @@ mod tests {
         assert_eq!(bootstrap.operations.len(), 2);
         assert_eq!(bootstrap.operations[0].kind, "ingest_source_entry");
         assert_eq!(bootstrap.workspace_index.operation_count, 2);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn normalize_workspace_materializes_session_and_eval_documents() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let legacy_sessions = serde_json::json!({
+            "sessions": [
+                {
+                    "label": "legacy-live-session"
+                }
+            ]
+        });
+        let legacy_eval_summaries = serde_json::json!({
+            "summaries": [
+                {
+                    "evidence_refs": ["../checkpoints/index.json#items[0]"]
+                }
+            ]
+        });
+
+        repo.write_json_path(&root.join("indexes/sessions.json"), &legacy_sessions)
+            .expect("write legacy sessions");
+        repo.write_json_path(&root.join("state/eval-summaries.json"), &legacy_eval_summaries)
+            .expect("write legacy eval summaries");
+        let _ = fs::remove_dir_all(root.join("sessions"));
+        let _ = fs::remove_dir_all(root.join("eval-summaries"));
+
+        repo.normalize_workspace().expect("normalize workspace");
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
+
+        let sessions_index = repo
+            .read_json_path::<SessionsIndexFile>(&root.join("indexes/sessions.json"))
+            .expect("sessions index");
+        let session = sessions_index.sessions.first().expect("session entry");
+        let session_path = repo.resolve_ref(
+            &root.join("indexes/sessions.json"),
+            session.path_ref.as_deref().expect("session path ref"),
+        );
+        assert!(session_path.exists(), "session item should be materialized");
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
+                .any(|item| item.category == "session"),
+            "session documents should appear in the service-owned catalog"
+        );
+        assert_eq!(bootstrap.live_context.sessions.len(), 1);
+
+        let eval_index = repo
+            .read_json_path::<EvalSummariesFile>(&root.join("state/eval-summaries.json"))
+            .expect("eval summaries");
+        let summary = eval_index.summaries.first().expect("eval summary");
+        let summary_path = repo.resolve_ref(
+            &root.join("state/eval-summaries.json"),
+            summary.path_ref.as_deref().expect("summary path ref"),
+        );
+        assert!(summary_path.exists(), "eval summary item should be materialized");
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
+                .any(|item| item.category == "evaluation"),
+            "evaluation summary documents should appear in the service-owned catalog"
+        );
+        assert_eq!(bootstrap.live_context.evaluation_summaries.len(), 1);
 
         let _ = fs::remove_dir_all(&root);
     }

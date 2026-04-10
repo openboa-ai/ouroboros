@@ -1,0 +1,15 @@
+{
+  "summary_id": "0196274f-40c8-73be-9f42-f5cf61951b44",
+  "headline": "Current live artifact still wins on net PnL after model cost.",
+  "created_at": "UTC 2026-04-10 11:14",
+  "tone": "positive",
+  "decision": "keep-current-live-checkpoint",
+  "rationale": [
+    "Recent paper candidates improved gross PnL but lost the edge once model cost and slippage were applied.",
+    "Forced intervention frequency remained lower on the current live checkpoint than on the latest rejected candidates."
+  ],
+  "evidence_refs": [
+    "./checkpoints/index.json#items[0]",
+    "./state/dashboard.json"
+  ]
+}

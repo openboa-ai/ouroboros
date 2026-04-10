@@ -138,11 +138,23 @@ const liveMemoryState = liveMemoryTemplate as {
 };
 
 const sessionsState = sessionsTemplate as {
-  sessions: Array<{ label: string }>;
+  sessions: Array<{
+    session_id: string;
+    label: string;
+    started_at: string;
+    status: string;
+    path_ref: string;
+  }>;
 };
 
 const evalSummariesState = evalSummariesTemplate as {
-  summaries: Array<{ evidence_refs?: string[] }>;
+  summaries: Array<{
+    summary_id: string;
+    headline: string;
+    created_at: string;
+    path_ref: string;
+    evidence_refs?: string[];
+  }>;
 };
 
 const WORKSPACE_ROOT = "var/dev-workspace";
@@ -191,7 +203,9 @@ const DEFAULT_INCLUDED_REFS = [
   "./workspace/state/orders.json",
   "./workspace/state/positions.json",
   "./workspace/state/eval-summaries.json",
-  "./workspace/indexes/sessions.json"
+  "./workspace/indexes/sessions.json",
+  "./workspace/sessions/items/01962740-2f14-7f37-a9a5-1d3c5d9f1a01/session.json",
+  "./workspace/eval-summaries/items/0196274f-40c8-73be-9f42-f5cf61951b44/summary.json"
 ];
 
 function buildLaneEvents(): LaneEventState[] {
@@ -311,8 +325,20 @@ function buildOperations(): OperationSummaryState[] {
 function buildLiveContext(): LiveContextState {
   return {
     memoryNotes: liveMemoryState.notes.map((note) => note.summary),
-    sessionLabels: sessionsState.sessions.map((session) => session.label),
-    evalEvidenceRefs: evalSummariesState.summaries.flatMap((summary) => summary.evidence_refs ?? []),
+    sessions: sessionsState.sessions.map((session) => ({
+      id: session.session_id,
+      label: session.label,
+      startedAt: session.started_at,
+      status: session.status,
+      pathRef: `${WORKSPACE_ROOT}/sessions/items/${session.session_id}/session.json`
+    })),
+    evaluationSummaries: evalSummariesState.summaries.map((summary) => ({
+      id: summary.summary_id,
+      headline: summary.headline,
+      createdAt: summary.created_at,
+      pathRef: `${WORKSPACE_ROOT}/eval-summaries/items/${summary.summary_id}/summary.json`,
+      evidenceRefs: summary.evidence_refs ?? []
+    })),
     positionEventCount: positionsState.events.length,
     orderEventCount: ordersState.events.length
   };
@@ -412,8 +438,35 @@ function buildDocumentCatalog(
       label: "sessions index",
       description: "Durable session references that shape current live context.",
       pathRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
+    },
+    {
+      id: "eval-summaries-index",
+      category: "index",
+      label: "eval summaries",
+      description: "Inspectable evaluation summaries that still link back to raw evidence refs.",
+      pathRef: `${WORKSPACE_ROOT}/state/eval-summaries.json`
     }
   ];
+
+  items.push(
+    ...sessionsState.sessions.map((session) => ({
+      id: `session-${session.session_id}`,
+      category: "session" as const,
+      label: session.label,
+      description: `Live session document (${session.status}) that remains part of the exportable trading context.`,
+      pathRef: `${WORKSPACE_ROOT}/sessions/items/${session.session_id}/session.json`
+    }))
+  );
+
+  items.push(
+    ...evalSummariesState.summaries.map((summary) => ({
+      id: `evaluation-${summary.summary_id}`,
+      category: "evaluation" as const,
+      label: summary.headline,
+      description: "Live-lane evaluation evidence summary with refs back to raw supporting artifacts.",
+      pathRef: `${WORKSPACE_ROOT}/eval-summaries/items/${summary.summary_id}/summary.json`
+    }))
+  );
 
   if (latestExportBundleRef) {
     items.push({
@@ -1117,7 +1170,65 @@ class MockWorkspaceService implements WorkspaceService {
       return JSON.stringify({ items: collectionsState.items }, null, 2);
     }
     if (documentRef === `${WORKSPACE_ROOT}/indexes/sessions.json`) {
-      return JSON.stringify(sessionsTemplate, null, 2);
+      return JSON.stringify(sessionsState, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/state/eval-summaries.json`) {
+      return JSON.stringify(evalSummariesState, null, 2);
+    }
+
+    const sessionMatch = documentRef.match(/sessions\/items\/([^/]+)\/session\.json$/);
+    if (sessionMatch) {
+      const session = sessionsState.sessions.find((item) => item.session_id === sessionMatch[1]);
+      if (session) {
+        return JSON.stringify(
+          {
+            session_id: session.session_id,
+            label: session.label,
+            started_at: session.started_at,
+            status: session.status,
+            scope: "live",
+            goal: "Keep the live trading context inspectable, exportable, and replayable.",
+            context_refs: [
+              "./live/live-lane.json",
+              "./state/live-memory.json",
+              "./state/positions.json",
+              "./state/orders.json",
+              "./state/eval-summaries.json"
+            ],
+            notes: [
+              "Session records stay inside the workspace asset and are exposed through the service layer.",
+              "These documents are part of the live trading context whenever they materially influence trading behavior."
+            ]
+          },
+          null,
+          2
+        );
+      }
+    }
+
+    const evalSummaryMatch = documentRef.match(/eval-summaries\/items\/([^/]+)\/summary\.json$/);
+    if (evalSummaryMatch) {
+      const summary = evalSummariesState.summaries.find(
+        (item) => item.summary_id === evalSummaryMatch[1]
+      );
+      if (summary) {
+        return JSON.stringify(
+          {
+            summary_id: summary.summary_id,
+            headline: summary.headline,
+            created_at: summary.created_at,
+            tone: "positive",
+            decision: "keep-current-live-checkpoint",
+            rationale: [
+              "Recent paper candidates improved gross PnL but lost the edge once model cost and slippage were applied.",
+              "Forced intervention frequency remained lower on the current live checkpoint than on the latest rejected candidates."
+            ],
+            evidence_refs: summary.evidence_refs ?? []
+          },
+          null,
+          2
+        );
+      }
     }
 
     const checkpointMatch = documentRef.match(/checkpoints\/items\/([^/]+)\/checkpoint\.json$/);

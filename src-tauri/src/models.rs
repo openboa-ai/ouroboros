@@ -327,10 +327,30 @@ pub struct WorkspaceCatalogEntryState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LiveSessionState {
+    pub id: String,
+    pub label: String,
+    pub started_at: String,
+    pub status: String,
+    pub path_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveEvaluationSummaryState {
+    pub id: String,
+    pub headline: String,
+    pub created_at: String,
+    pub path_ref: String,
+    pub evidence_refs: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LiveContextState {
     pub memory_notes: Vec<String>,
-    pub session_labels: Vec<String>,
-    pub eval_evidence_refs: Vec<String>,
+    pub sessions: Vec<LiveSessionState>,
+    pub evaluation_summaries: Vec<LiveEvaluationSummaryState>,
     pub position_event_count: usize,
     pub order_event_count: usize,
 }

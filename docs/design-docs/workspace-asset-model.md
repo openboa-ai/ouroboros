@@ -82,6 +82,8 @@ The current minimum direction is:
 - `live/live-lane.json` defines the active lane and state refs
 - `state/dashboard.json` carries the dashboard-facing live context
 - `state/decisions.json` stores short-form decision history
+- `indexes/sessions.json` catalogs live session documents under `sessions/items/<session_id>/`
+- `state/eval-summaries.json` catalogs evaluation evidence summaries under `eval-summaries/items/<summary_id>/`
 - `state/positions.json` and `state/orders.json` preserve current state plus event history
 - `checkpoints/index.json` is the addressable checkpoint timeline
 - `imports/index.json` is the staged sanitized-import registry

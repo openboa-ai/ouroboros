@@ -1,0 +1,19 @@
+{
+  "session_id": "01962740-2f14-7f37-a9a5-1d3c5d9f1a01",
+  "label": "live-evaluation-window",
+  "started_at": "UTC 2026-04-10 11:10",
+  "status": "active",
+  "scope": "live",
+  "goal": "Keep the promoted strategy responsive to BTC and ETH market context while preserving exportable evidence.",
+  "context_refs": [
+    "./live/live-lane.json",
+    "./state/live-memory.json",
+    "./state/positions.json",
+    "./state/orders.json",
+    "./state/eval-summaries.json"
+  ],
+  "notes": [
+    "This session remains part of the live trading context and should be export-targetable when it materially affects trading behavior.",
+    "Session documents are intended to stay inspectable through the service layer rather than direct client filesystem access."
+  ]
+}

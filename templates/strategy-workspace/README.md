@@ -10,5 +10,7 @@ It reflects the current contract:
 - checkpoints and exports remain explicit and addressable
 - `live/live-lane.json` points at the active live-centered state files
 - `state/dashboard.json` and `state/decisions.json` drive the current desktop scaffold
+- `indexes/sessions.json` and `sessions/items/*` materialize live session context as addressable workspace docs
+- `state/eval-summaries.json` and `eval-summaries/items/*` materialize live evaluation evidence as addressable workspace docs
 - `checkpoints/items/<checkpoint_id>/` stores addressable checkpoint material
 - `operations/index.json` tracks durable service-layer mutations against the workspace

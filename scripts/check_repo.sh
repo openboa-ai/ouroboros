@@ -44,6 +44,8 @@ required_files=(
   "templates/strategy-workspace/strategy.json"
   "templates/strategy-workspace/imports/index.json"
   "templates/strategy-workspace/operations/index.json"
+  "templates/strategy-workspace/indexes/sessions.json"
+  "templates/strategy-workspace/state/eval-summaries.json"
 )
 
 for file in "${required_files[@]}"; do

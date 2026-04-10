@@ -404,7 +404,13 @@ export function App() {
           <AssetInspectorPanel assetInspector={state.assetInspector} />
           <WorkspaceIndexPanel workspaceIndex={state.workspaceIndex} />
           <ExportInspectorPanel exportInspector={state.exportInspector} />
-          <LiveContextPanel liveContext={state.liveContext} />
+          <LiveContextPanel
+            liveContext={state.liveContext}
+            onOpenDocument={(documentId, pathRef) => {
+              setSelectedDocumentId(documentId);
+              setSelectedDocumentRef(pathRef);
+            }}
+          />
         </div>
       }
     >

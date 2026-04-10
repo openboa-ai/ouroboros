@@ -86,6 +86,8 @@ These decisions are current, not final.
 - Official clients should talk to a service/application layer that owns validation, invariants, migrations, locking, and export rules.
 - Manual human inspection of the workspace remains allowed, but machine clients should treat the workspace as internal state behind the app/service boundary.
 - The desktop client should obtain its workspace-document browser/catalog from the service layer rather than hard-coding workspace file paths into the UI.
+- Live sessions and evaluation summaries should be materialized as addressable workspace documents rather than staying only as inline labels inside dashboard state.
+- Those live-evidence documents should appear in the service-owned workspace document catalog so inspection continues to flow through the service boundary.
 - Mutable local memory should keep flowing, but each promotion should create an immutable checkpoint snapshot inside the strategy asset.
 - One artifact may contain multiple mutable runtime lanes rather than a single global mutable state.
 - The mutable runtime lanes should be strongly separated by purpose:

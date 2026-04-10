@@ -214,10 +214,28 @@ export type WorkspaceCatalogEntry = {
     | "checkpoint"
     | "collection"
     | "import"
-    | "blob";
+    | "blob"
+    | "session"
+    | "evaluation";
   label: string;
   description: string;
   pathRef: string;
+};
+
+export type LiveSessionState = {
+  id: string;
+  label: string;
+  startedAt: string;
+  status: string;
+  pathRef: string;
+};
+
+export type LiveEvaluationSummaryState = {
+  id: string;
+  headline: string;
+  createdAt: string;
+  pathRef: string;
+  evidenceRefs: string[];
 };
 
 export type WorkspaceSummary = {
@@ -264,8 +282,8 @@ export type WorkspaceIndexState = {
 
 export type LiveContextState = {
   memoryNotes: string[];
-  sessionLabels: string[];
-  evalEvidenceRefs: string[];
+  sessions: LiveSessionState[];
+  evaluationSummaries: LiveEvaluationSummaryState[];
   positionEventCount: number;
   orderEventCount: number;
 };
