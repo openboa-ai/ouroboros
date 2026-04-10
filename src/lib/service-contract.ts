@@ -193,9 +193,23 @@ export type ImportSummaryState = {
   sanitized: boolean;
 };
 
+export type ImportPreflightCheckState = {
+  id: string;
+  severity: "ok" | "warning" | "blocked";
+  label: string;
+  detail: string;
+};
+
+export type ImportPreflightState = {
+  status: "ready" | "blocked";
+  summary: string;
+  checks: ImportPreflightCheckState[];
+};
+
 export type ImportDetailState = ImportSummaryState & {
   bundleRef: string;
   workspaceFileRefs: string[];
+  preflight: ImportPreflightState;
 };
 
 export type ImportComparisonState = {

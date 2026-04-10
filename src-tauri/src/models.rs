@@ -203,6 +203,23 @@ pub struct ImportSummaryState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportPreflightCheckState {
+    pub id: String,
+    pub severity: String,
+    pub label: String,
+    pub detail: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPreflightState {
+    pub status: String,
+    pub summary: String,
+    pub checks: Vec<ImportPreflightCheckState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportDetailState {
     pub id: String,
     pub imported_at: String,
@@ -214,6 +231,7 @@ pub struct ImportDetailState {
     pub sanitized: bool,
     pub bundle_ref: String,
     pub workspace_file_refs: Vec<String>,
+    pub preflight: ImportPreflightState,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

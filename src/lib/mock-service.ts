@@ -13,6 +13,8 @@ import type {
   ImportBundleState,
   ImportComparisonState,
   ImportDetailState,
+  ImportPreflightCheckState,
+  ImportPreflightState,
   ImportSummaryState,
   IngestSourceEntryInput,
   IngestSourceEntryResult,
@@ -759,6 +761,61 @@ const bootstrapState: BootstrapState = buildTemplateBootstrapState();
 class MockWorkspaceService implements WorkspaceService {
   private state: BootstrapState = structuredClone(bootstrapState);
 
+  private buildImportPreflight(record: (typeof importsState.items)[number]): ImportPreflightState {
+    const checks: ImportPreflightCheckState[] = [
+      {
+        id: "sanitized-bundle",
+        severity: record.sanitized ? "ok" : "blocked",
+        label: "Sanitized bundle",
+        detail: record.sanitized
+          ? "Import bundle is marked sanitized and can be considered for live activation."
+          : "Import bundle is not sanitized and must never become live."
+      },
+      {
+        id: "strategy-entrypoint",
+        severity: "ok",
+        label: "strategy.json entrypoint",
+        detail: "Mock imports always carry a strategy entrypoint and workspace root."
+      },
+      {
+        id: "live-lane-ref",
+        severity: "ok",
+        label: "Live lane ref",
+        detail: "Mock staged imports always include a live lane reference."
+      },
+      {
+        id: "export-policy-ref",
+        severity: "ok",
+        label: "Export policy ref",
+        detail: "Mock staged imports always include an export policy reference."
+      },
+      {
+        id: "checkpoint-ref",
+        severity: this.state.checkpoints.some((checkpoint) => checkpoint.pathRef === record.checkpoint_ref)
+          ? "ok"
+          : "warning",
+        label: "Checkpoint ref",
+        detail: this.state.checkpoints.some((checkpoint) => checkpoint.pathRef === record.checkpoint_ref)
+          ? "Imported checkpoint ref resolves to a local checkpoint."
+          : "Imported checkpoint ref would require the service layer to anchor a fresh local incident checkpoint."
+      }
+    ];
+
+    const blockedCount = checks.filter((check) => check.severity === "blocked").length;
+    const warningCount = checks.filter((check) => check.severity === "warning").length;
+
+    return {
+      status: blockedCount > 0 ? "blocked" : "ready",
+      summary:
+        blockedCount > 0
+          ? `${blockedCount} blocking issue(s) and ${warningCount} warning(s) must be resolved before activation.`
+          : warningCount > 0
+            ? `Activation is ready with ${warningCount} warning(s); the service layer will compensate where possible.`
+            : "Activation is ready. Import manifest passed service-owned preflight.",
+      checks
+    };
+  }
+
   async getBootstrapState(): Promise<BootstrapState> {
     return structuredClone(this.state);
   }
@@ -898,6 +955,7 @@ class MockWorkspaceService implements WorkspaceService {
     }
 
     const workspaceRef = `${WORKSPACE_ROOT}/imports/items/${record.import_id}/workspace`;
+    const preflight = this.buildImportPreflight(record);
     return {
       id: record.import_id,
       importedAt: record.imported_at,
@@ -908,7 +966,8 @@ class MockWorkspaceService implements WorkspaceService {
       policyId: record.policy_id,
       sanitized: record.sanitized,
       bundleRef: `${WORKSPACE_ROOT}/imports/items/${record.import_id}/bundle/export.json`,
-      workspaceFileRefs: DEFAULT_INCLUDED_REFS.map((path) => path.replace("./workspace", workspaceRef))
+      workspaceFileRefs: DEFAULT_INCLUDED_REFS.map((path) => path.replace("./workspace", workspaceRef)),
+      preflight
     };
   }
 
@@ -1307,6 +1366,10 @@ class MockWorkspaceService implements WorkspaceService {
     const record = importsState.items.find((item) => item.import_id === importId);
     if (!record) {
       throw new Error(`unknown import: ${importId}`);
+    }
+    const preflight = this.buildImportPreflight(record);
+    if (preflight.status !== "ready") {
+      throw new Error(`import ${importId} failed activation preflight: ${preflight.summary}`);
     }
 
     const timestamp = this.nowLabel();

@@ -91,6 +91,7 @@
 - Added service-owned workspace document backlinks so strategy.json, indexes, operation refs, and export refs can be navigated as an asset graph.
 - Added staged import comparison against the current live workspace so imported sanitized bundles can be evaluated as candidates instead of only being stored.
 - Added staged import activation so a sanitized import can replace the current live workspace through the service boundary while preserving audit roots.
+- Added staged import preflight so the service layer blocks activation when a staged bundle is unsanitized or missing its entrypoint/live-state refs.
 - Moved collection/import document discovery into the backend workspace catalog so the client no longer has to synthesize selected collection/import docs ad hoc.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
 - Recorded that checkpoint restore and import activation should preserve service-owned roots such as checkpoints, imports, operations, generated exports, and secret-bearing directories while rotating live workspace state.

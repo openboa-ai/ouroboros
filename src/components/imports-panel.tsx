@@ -100,8 +100,49 @@ export function ImportsPanel({
               <ImportRow label="Checkpoint ref" value={importDetail.checkpointRef} />
             </dl>
 
+            <section className="space-y-2">
+              <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Activation preflight</h3>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={importDetail.preflight.status === "ready" ? "positive" : "danger"}>
+                    {importDetail.preflight.status}
+                  </Badge>
+                  <Badge tone="neutral">{importDetail.preflight.checks.length} checks</Badge>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-ink-200">{importDetail.preflight.summary}</p>
+                <div className="mt-3 space-y-2">
+                  {importDetail.preflight.checks.map((check) => (
+                    <div
+                      key={check.id}
+                      className="rounded-xl border border-white/10 bg-black/20 px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          tone={
+                            check.severity === "ok"
+                              ? "positive"
+                              : check.severity === "warning"
+                                ? "warning"
+                                : "danger"
+                          }
+                        >
+                          {check.severity}
+                        </Badge>
+                        <p className="text-sm font-medium text-ink-50">{check.label}</p>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-ink-300">{check.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => onActivateImport(importDetail.id)}>
+              <Button
+                variant="secondary"
+                onClick={() => onActivateImport(importDetail.id)}
+                disabled={importDetail.preflight.status !== "ready"}
+              >
                 Activate As Live
               </Button>
               <Button

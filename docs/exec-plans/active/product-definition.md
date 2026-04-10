@@ -91,6 +91,7 @@ These decisions are current, not final.
 - Workspace document inspection should surface backlinks through the service layer so the asset remains explorable as a graph instead of a flat file list.
 - Staged imports should not only be inspectable; they should also be diffable against the current live workspace through the service boundary.
 - Staged imports should also be activatable as the next live workspace through the service boundary instead of forcing the client to mutate workspace files directly.
+- Staged import activation should remain preflight-gated by the service layer so unsanitized bundles, missing entrypoints, or missing live-state refs block activation before the live workspace is modified.
 - Collection manifests, entry shards, staged import manifests, and staged import bundle manifests should be emitted by the backend workspace catalog so the client does not synthesize asset documents on its own.
 - Durable operation records should also be addressable workspace documents, and operation drill-down should resolve linked workspace refs through the same service-owned catalog.
 - Workspace search should run through the service layer and be able to match both document metadata and document content.

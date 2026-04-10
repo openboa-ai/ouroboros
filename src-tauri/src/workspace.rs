@@ -12,13 +12,14 @@ use crate::models::{
     AssetInspectorState, BlobDetailState, BootstrapState, CheckpointComparisonFileState,
     CheckpointComparisonState, CheckpointDetailState, CheckpointSummary, CollectionDetailState,
     CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint, ExportBundleState,
-    ExportInspectorState, ExposurePoint, ImportComparisonState, ImportDetailState, ImportSummaryState,
-    IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
-    LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
-    MetricCardData, OperationDetailState, OperationRelatedDocumentState, OperationSummaryState,
-    PricePoint, ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
-    WorkspaceCatalogEntryState, WorkspaceDocumentBacklinkState, WorkspaceDocumentState, WorkspaceIndexState,
-    WorkspaceSearchResultState, WorkspaceSummary,
+    ExportInspectorState, ExposurePoint, ImportComparisonState, ImportDetailState,
+    ImportPreflightCheckState, ImportPreflightState, ImportSummaryState, IngestSourceEntryInput,
+    IngestSourceEntryResult, ImportBundleState, LaneEventState, LiveContextState,
+    LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState, MetricCardData,
+    OperationDetailState, OperationRelatedDocumentState, OperationSummaryState, PricePoint,
+    ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
+    WorkspaceCatalogEntryState, WorkspaceDocumentBacklinkState, WorkspaceDocumentState,
+    WorkspaceIndexState, WorkspaceSearchResultState, WorkspaceSummary,
 };
 use crate::storage::{
     copy_missing_template_tree, copy_template_tree, copy_tree, list_relative_files, remove_path,
@@ -424,6 +425,8 @@ impl WorkspaceRepository {
         let import_root = self.import_root_path(import_id);
         let bundle_path = self.resolve_ref(&import_path, &import_record.bundle_ref);
         let workspace_path = self.resolve_ref(&import_path, &import_record.workspace_ref);
+        let preflight =
+            self.build_import_preflight(&import_record, &import_path, &workspace_path)?;
         let workspace_file_refs = if workspace_path.exists() {
             self.list_display_files(&workspace_path)?
         } else {
@@ -441,6 +444,7 @@ impl WorkspaceRepository {
             sanitized: import_record.sanitized,
             bundle_ref: self.display_path(&bundle_path),
             workspace_file_refs,
+            preflight,
         })
     }
 
@@ -822,6 +826,14 @@ impl WorkspaceRepository {
         let import_path = self.import_file_path(import_id);
         let import_record = self.read_json_path::<ImportRecordFile>(&import_path)?;
         let import_workspace = self.resolve_ref(&import_path, &import_record.workspace_ref);
+        let preflight =
+            self.build_import_preflight(&import_record, &import_path, &import_workspace)?;
+        if preflight.status != "ready" {
+            return Err(format!(
+                "import {} failed activation preflight: {}",
+                import_id, preflight.summary
+            ));
+        }
         if !import_workspace.exists() {
             return Err(format!(
                 "import workspace does not exist: {}",
@@ -2415,6 +2427,207 @@ impl WorkspaceRepository {
         self.read_json_path::<CheckpointRecordFile>(&checkpoint_path)
             .map(Some)
     }
+
+    fn build_import_preflight(
+        &self,
+        import_record: &ImportRecordFile,
+        import_path: &Path,
+        workspace_path: &Path,
+    ) -> Result<ImportPreflightState, String> {
+        let mut checks = Vec::new();
+
+        let sanitized = import_record.sanitized;
+        checks.push(ImportPreflightCheckState {
+            id: "sanitized-bundle".into(),
+            severity: if sanitized { "ok" } else { "blocked" }.into(),
+            label: "Sanitized bundle".into(),
+            detail: if sanitized {
+                "Import bundle is marked sanitized and can be considered for live activation.".into()
+            } else {
+                "Import bundle is not sanitized and must never become live.".into()
+            },
+        });
+
+        let workspace_exists = workspace_path.exists();
+        checks.push(ImportPreflightCheckState {
+            id: "workspace-root".into(),
+            severity: if workspace_exists { "ok" } else { "blocked" }.into(),
+            label: "Workspace root".into(),
+            detail: if workspace_exists {
+                format!("Staged workspace is present at {}.", self.display_path(workspace_path))
+            } else {
+                format!(
+                    "Staged workspace is missing at {}.",
+                    self.display_path(workspace_path)
+                )
+            },
+        });
+
+        if workspace_exists {
+            let strategy_path = workspace_path.join("strategy.json");
+            let strategy_exists = strategy_path.exists();
+            checks.push(ImportPreflightCheckState {
+                id: "strategy-entrypoint".into(),
+                severity: if strategy_exists { "ok" } else { "blocked" }.into(),
+                label: "strategy.json entrypoint".into(),
+                detail: if strategy_exists {
+                    format!(
+                        "Import workspace exposes strategy entrypoint {}.",
+                        self.display_path(&strategy_path)
+                    )
+                } else {
+                    format!(
+                        "Import workspace is missing strategy entrypoint {}.",
+                        self.display_path(&strategy_path)
+                    )
+                },
+            });
+
+            if strategy_exists {
+                let strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
+                let live_lane_path = self.resolve_ref(&strategy_path, &strategy.active.live_lane_ref);
+                let export_policy_path =
+                    self.resolve_ref(&strategy_path, &strategy.active.export_policy_ref);
+
+                checks.push(ImportPreflightCheckState {
+                    id: "live-lane-ref".into(),
+                    severity: if live_lane_path.exists() { "ok" } else { "blocked" }.into(),
+                    label: "Live lane ref".into(),
+                    detail: if live_lane_path.exists() {
+                        format!(
+                            "Live lane file resolves to {}.",
+                            self.display_path(&live_lane_path)
+                        )
+                    } else {
+                        format!(
+                            "Live lane ref points to missing file {}.",
+                            self.display_path(&live_lane_path)
+                        )
+                    },
+                });
+
+                checks.push(ImportPreflightCheckState {
+                    id: "export-policy-ref".into(),
+                    severity: if export_policy_path.exists() { "ok" } else { "blocked" }.into(),
+                    label: "Export policy ref".into(),
+                    detail: if export_policy_path.exists() {
+                        format!(
+                            "Export policy resolves to {}.",
+                            self.display_path(&export_policy_path)
+                        )
+                    } else {
+                        format!(
+                            "Export policy ref points to missing file {}.",
+                            self.display_path(&export_policy_path)
+                        )
+                    },
+                });
+
+                if live_lane_path.exists() {
+                    let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+                    for (check_id, label, path) in [
+                        (
+                            "dashboard-state",
+                            "Dashboard state ref",
+                            self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref),
+                        ),
+                        (
+                            "decisions-state",
+                            "Decision log ref",
+                            self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref),
+                        ),
+                        (
+                            "memory-state",
+                            "Memory state ref",
+                            self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref),
+                        ),
+                        (
+                            "sessions-state",
+                            "Sessions state ref",
+                            self.resolve_ref(&live_lane_path, &live_lane.state_refs.sessions_ref),
+                        ),
+                        (
+                            "positions-state",
+                            "Positions state ref",
+                            self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref),
+                        ),
+                        (
+                            "orders-state",
+                            "Orders state ref",
+                            self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref),
+                        ),
+                        (
+                            "eval-summaries-state",
+                            "Evaluation summaries ref",
+                            self.resolve_ref(
+                                &live_lane_path,
+                                &live_lane.state_refs.eval_summaries_ref,
+                            ),
+                        ),
+                    ] {
+                        checks.push(ImportPreflightCheckState {
+                            id: check_id.into(),
+                            severity: if path.exists() { "ok" } else { "blocked" }.into(),
+                            label: label.into(),
+                            detail: if path.exists() {
+                                format!("Required live state resolves to {}.", self.display_path(&path))
+                            } else {
+                                format!(
+                                    "Required live state is missing at {}.",
+                                    self.display_path(&path)
+                                )
+                            },
+                        });
+                    }
+                }
+
+                let checkpoint_status =
+                    match self.resolve_checkpoint_record_by_ref(&import_record.checkpoint_ref)? {
+                        Some(checkpoint) => (
+                            "ok",
+                            format!(
+                                "Imported checkpoint ref resolves to local checkpoint {}.",
+                                checkpoint.alias
+                            ),
+                        ),
+                        None => (
+                            "warning",
+                            "Imported checkpoint ref does not resolve locally; activation will anchor a fresh local incident checkpoint.".into(),
+                        ),
+                    };
+                checks.push(ImportPreflightCheckState {
+                    id: "checkpoint-ref".into(),
+                    severity: checkpoint_status.0.into(),
+                    label: "Checkpoint ref".into(),
+                    detail: checkpoint_status.1,
+                });
+            }
+        }
+
+        let blocked_count = checks.iter().filter(|check| check.severity == "blocked").count();
+        let warning_count = checks.iter().filter(|check| check.severity == "warning").count();
+        let status = if blocked_count > 0 { "blocked" } else { "ready" };
+        let summary = if blocked_count > 0 {
+            format!(
+                "{blocked_count} blocking issue(s) and {warning_count} warning(s) must be resolved before activation."
+            )
+        } else if warning_count > 0 {
+            format!(
+                "Activation is ready with {warning_count} warning(s); the service layer will compensate where possible."
+            )
+        } else {
+            format!(
+                "Activation is ready. Import manifest {} passed service-owned preflight.",
+                self.display_path(import_path)
+            )
+        };
+
+        Ok(ImportPreflightState {
+            status: status.into(),
+            summary,
+            checks,
+        })
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -3067,6 +3280,50 @@ mod tests {
             strategy.active.current_checkpoint_ref,
             format!("./checkpoints/items/{}/checkpoint.json", export_checkpoint.id),
             "strategy.json should now point at the activated checkpoint"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn import_preflight_blocks_activation_when_strategy_entrypoint_is_missing() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let export_state = repo.create_export_checkpoint().expect("export checkpoint");
+        let export_bundle_ref = export_state
+            .asset_inspector
+            .latest_export_bundle_ref
+            .clone()
+            .expect("latest export bundle");
+        let imported = repo
+            .import_export_bundle(&export_bundle_ref)
+            .expect("stage import");
+
+        let import_workspace = repo.import_root_path(&imported.import_id).join("workspace");
+        fs::remove_file(import_workspace.join("strategy.json")).expect("remove staged strategy");
+
+        let import_detail = repo
+            .load_import_detail(&imported.import_id)
+            .expect("load staged import detail");
+        assert_eq!(import_detail.preflight.status, "blocked");
+        assert!(
+            import_detail
+                .preflight
+                .checks
+                .iter()
+                .any(|check| check.id == "strategy-entrypoint" && check.severity == "blocked"),
+            "preflight should flag the missing strategy entrypoint"
+        );
+
+        let error = match repo.activate_import_as_live(&imported.import_id) {
+            Ok(_) => panic!("activation should fail when preflight is blocked"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("failed activation preflight"),
+            "activation should surface a preflight failure"
         );
 
         let _ = fs::remove_dir_all(&root);

@@ -97,6 +97,7 @@ The current minimum direction is:
 - workspace documents should expose service-owned backlinks so the asset graph stays navigable without the client reading storage directly
 - staged imports should be comparable against the current live workspace through the same service boundary before activation
 - staged imports should also be activatable through the service boundary, promoting the staged workspace into the live asset without letting the client mutate workspace files directly
+- staged import activation should be preflight-gated by the service layer so missing entrypoints, missing live-state refs, or unsanitized bundles block activation before the live workspace is touched
 - collection manifests, entry shards, staged import manifests, and staged import bundle manifests should appear in the service-owned workspace document catalog instead of being client-side ad hoc additions
 - individual operation records should be addressable workspace documents, not just rows in an operations summary list
 - restoring checkpoints or activating imports should preserve service-owned roots such as `checkpoints/`, `imports/`, `operations/`, generated exports, and secret-bearing directories so the workspace can rotate live state without destroying its audit trail
