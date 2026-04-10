@@ -12,6 +12,10 @@ import { PositionsPanel } from "./components/positions-panel";
 import { PriceContextPanel } from "./components/price-context-panel";
 import { StrategyTimeline } from "./components/strategy-timeline";
 import { WorkspaceIndexPanel } from "./components/workspace-index-panel";
+import {
+  WorkspaceDocumentPanel,
+  type WorkspaceDocumentTarget
+} from "./components/workspace-document-panel";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
@@ -19,7 +23,8 @@ import type {
   BlobDetailState,
   BootstrapState,
   CheckpointDetailState,
-  CollectionDetailState
+  CollectionDetailState,
+  WorkspaceDocumentState
 } from "./lib/service-contract";
 import { workspaceService } from "./lib/service-gateway";
 import { CollectionsPanel } from "./components/collections-panel";
@@ -36,6 +41,11 @@ export function App() {
   );
   const [selectedBlobId, setSelectedBlobId] = useState<string | null>(null);
   const [selectedBlobDetail, setSelectedBlobDetail] = useState<BlobDetailState | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [selectedDocumentRef, setSelectedDocumentRef] = useState<string | null>(null);
+  const [selectedDocumentDetail, setSelectedDocumentDetail] = useState<WorkspaceDocumentState | null>(
+    null
+  );
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -129,6 +139,29 @@ export function App() {
     };
   }, [selectedBlobId]);
 
+  useEffect(() => {
+    if (!selectedDocumentRef) {
+      setSelectedDocumentDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.getWorkspaceDocument(selectedDocumentRef).then((detail) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedDocumentDetail(detail);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDocumentRef]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-shell-950 text-ink-50">
@@ -151,8 +184,92 @@ export function App() {
       setSelectedCollectionDetail(null);
       setSelectedBlobId(null);
       setSelectedBlobDetail(null);
+      setSelectedDocumentId("strategy");
+      setSelectedDocumentRef(nextState.assetInspector.strategyRef);
+      setSelectedDocumentDetail(null);
     });
   }
+
+  const workspaceDocuments: WorkspaceDocumentTarget[] = [
+    {
+      id: "strategy",
+      label: "strategy.json",
+      description: "Canonical workspace entrypoint for the live-centered asset.",
+      pathRef: state.assetInspector.strategyRef
+    },
+    {
+      id: "live-lane",
+      label: "live lane",
+      description: "Active live lane refs, state pointers, and runtime mode.",
+      pathRef: state.assetInspector.liveLaneRef
+    },
+    {
+      id: "current-checkpoint",
+      label: "current checkpoint",
+      description: "The authoritative checkpoint anchor for the current live-centered asset.",
+      pathRef: state.assetInspector.currentCheckpointRef
+    },
+    {
+      id: "export-policy",
+      label: "export policy",
+      description: "Sanitization policy that governs export bundle generation.",
+      pathRef: state.assetInspector.exportPolicyRef
+    },
+    {
+      id: "checkpoints-index",
+      label: "checkpoint index",
+      description: "Promotion, export, and incident history catalog.",
+      pathRef: state.workspaceIndex.indexes.checkpointsRef
+    },
+    {
+      id: "collections-index",
+      label: "collections index",
+      description: "Source-centered collection catalog materialized by UTC-hour shards.",
+      pathRef: state.workspaceIndex.indexes.collectionsRef
+    },
+    {
+      id: "sessions-index",
+      label: "sessions index",
+      description: "Durable session references that shape current live context.",
+      pathRef: state.workspaceIndex.indexes.sessionsRef
+    },
+    ...(state.assetInspector.latestExportBundleRef
+      ? [
+          {
+            id: "latest-export-bundle",
+            label: "latest export bundle",
+            description: "Most recent sanitized export created from the live-centered workspace asset.",
+            pathRef: state.assetInspector.latestExportBundleRef
+          }
+        ]
+      : []),
+    ...(selectedCollectionDetail
+      ? [
+          {
+            id: "selected-collection",
+            label: "selected collection",
+            description: "Current source collection metadata inside the workspace asset.",
+            pathRef: selectedCollectionDetail.collectionRef
+          },
+          {
+            id: "selected-collection-entries",
+            label: "selected entry shard",
+            description: "Append-friendly NDJSON shard backing the selected collection.",
+            pathRef: selectedCollectionDetail.entryShardRef
+          }
+        ]
+      : []),
+    ...(selectedBlobDetail
+      ? [
+          {
+            id: "selected-blob",
+            label: "selected blob",
+            description: "Immutable source body resolved from the selected entry.",
+            pathRef: selectedBlobDetail.blobPathRef
+          }
+        ]
+      : [])
+  ];
 
   return (
     <AppShell
@@ -282,7 +399,11 @@ export function App() {
           </div>
           <div className="space-y-6">
             <ExposurePanel series={state.exposureSeries} />
-            <PositionsPanel positions={state.positions} orders={state.orders} />
+            <PositionsPanel
+              positions={state.positions}
+              orders={state.orders}
+              laneEvents={state.laneEvents}
+            />
           </div>
         </div>
 
@@ -307,6 +428,16 @@ export function App() {
           blobDetail={selectedBlobDetail}
           onSelectCollection={setSelectedCollectionId}
           onSelectBlob={setSelectedBlobId}
+        />
+
+        <WorkspaceDocumentPanel
+          documents={workspaceDocuments}
+          selectedDocumentId={selectedDocumentId}
+          documentDetail={selectedDocumentDetail}
+          onSelectDocument={(documentId, pathRef) => {
+            setSelectedDocumentId(documentId);
+            setSelectedDocumentRef(pathRef);
+          }}
         />
       </section>
     </AppShell>

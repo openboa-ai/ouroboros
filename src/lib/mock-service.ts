@@ -9,7 +9,9 @@ import type {
   DecisionEntry,
   ExportBundleState,
   ExportInspectorState,
+  LaneEventState,
   LiveContextState,
+  WorkspaceDocumentState,
   WorkspaceIndexState,
   WorkspaceService
 } from "./service-contract";
@@ -84,12 +86,12 @@ const decisionsState = decisionsTemplate as {
 
 const ordersState = ordersTemplate as {
   current: BootstrapState["orders"];
-  events: Array<{ event_id: string }>;
+  events: LaneEventRecord[];
 };
 
 const positionsState = positionsTemplate as {
   current: BootstrapState["positions"];
-  events: Array<{ event_id: string }>;
+  events: LaneEventRecord[];
 };
 
 const liveMemoryState = liveMemoryTemplate as {
@@ -122,6 +124,13 @@ type CollectionEntryRecord = {
   preview?: string;
 };
 
+type LaneEventRecord = {
+  event_id: string;
+  timestamp: string;
+  kind: string;
+  summary: string;
+};
+
 const entriesByCollection = {
   "019626b0-4d0a-7a72-9b4e-9d8e11d0f901": parseEntries(btcAggEntriesRaw),
   "019626b6-c73a-7fe6-b0a5-64ac631d5102": parseEntries(macroNewsEntriesRaw)
@@ -145,6 +154,25 @@ const DEFAULT_INCLUDED_REFS = [
   "./workspace/state/eval-summaries.json",
   "./workspace/indexes/sessions.json"
 ];
+
+function buildLaneEvents(): LaneEventState[] {
+  return [
+    ...positionsState.events.map((event) => ({
+      id: event.event_id,
+      scope: "positions" as const,
+      kind: event.kind,
+      summary: event.summary,
+      timestamp: event.timestamp
+    })),
+    ...ordersState.events.map((event) => ({
+      id: event.event_id,
+      scope: "orders" as const,
+      kind: event.kind,
+      summary: event.summary,
+      timestamp: event.timestamp
+    }))
+  ].sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+}
 
 function checkpointPath(checkpointId: string) {
   return `${WORKSPACE_ROOT}/checkpoints/items/${checkpointId}/checkpoint.json`;
@@ -270,6 +298,7 @@ function buildTemplateBootstrapState(): BootstrapState {
     exportInspector: buildExportInspector(checkpoints),
     positions: positionsState.current,
     orders: ordersState.current,
+    laneEvents: buildLaneEvents(),
     decisions: decisionsState.decisions,
     checkpoints,
     collections: buildCollections()
@@ -356,6 +385,23 @@ class MockWorkspaceService implements WorkspaceService {
     };
   }
 
+  async getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState> {
+    const contentText = this.resolveDocumentContent(documentRef);
+    const format = documentRef.endsWith(".ndjson")
+      ? "ndjson"
+      : documentRef.endsWith(".json")
+        ? "json"
+        : "text";
+
+    return {
+      pathRef: documentRef,
+      format,
+      byteLength: new TextEncoder().encode(contentText).length,
+      lineCount: contentText.split("\n").length,
+      contentText
+    };
+  }
+
   async pauseGlobalAutomation(): Promise<BootstrapState> {
     this.state = {
       ...this.state,
@@ -384,6 +430,23 @@ class MockWorkspaceService implements WorkspaceService {
       statusNote: "Service-layer intervention flattened all live positions in the mock runtime.",
       positions: [],
       orders: [],
+      laneEvents: [
+        {
+          id: this.nextId("lane-event"),
+          scope: "positions",
+          kind: "flatten-all",
+          summary: "All live positions were flattened through the service layer.",
+          timestamp: this.nowLabel()
+        },
+        {
+          id: this.nextId("lane-event"),
+          scope: "orders",
+          kind: "flatten-all",
+          summary: "All live orders were cleared after the flatten-all intervention.",
+          timestamp: this.nowLabel()
+        },
+        ...this.state.laneEvents
+      ],
       metrics: this.state.metrics.map((metric) =>
         metric.label === "Risk Budget"
           ? {
@@ -503,6 +566,112 @@ class MockWorkspaceService implements WorkspaceService {
 
   private nowLabel() {
     return `UTC ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
+  }
+
+  private resolveDocumentContent(documentRef: string) {
+    if (documentRef === `${WORKSPACE_ROOT}/strategy.json`) {
+      return JSON.stringify(mockStrategyManifest, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/live/live-lane.json`) {
+      return JSON.stringify(liveLane, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/exports/policy.json`) {
+      return JSON.stringify(exportPolicyTemplate, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/checkpoints/index.json`) {
+      return JSON.stringify(
+        {
+          current: {
+            checkpoint_id: this.state.checkpoints[0]?.id ?? checkpointIndex.current.checkpoint_id,
+            alias: this.state.checkpoints[0]?.alias ?? checkpointIndex.current.alias,
+            type: this.state.checkpoints[0]?.type ?? checkpointIndex.current.type
+          },
+          items: this.state.checkpoints.map((checkpoint) => ({
+            checkpoint_id: checkpoint.id,
+            alias: checkpoint.alias,
+            type: checkpoint.type,
+            type_tone: checkpoint.typeTone,
+            summary: checkpoint.summary,
+            created_at: checkpoint.createdAt,
+            performance: checkpoint.performance,
+            path_ref: checkpoint.pathRef
+          }))
+        },
+        null,
+        2
+      );
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/indexes/collections.json`) {
+      return JSON.stringify(collectionsTemplate, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/indexes/sessions.json`) {
+      return JSON.stringify(sessionsTemplate, null, 2);
+    }
+
+    const checkpointMatch = documentRef.match(/checkpoints\/items\/([^/]+)\/checkpoint\.json$/);
+    if (checkpointMatch) {
+      const checkpoint = this.state.checkpoints.find((item) => item.id === checkpointMatch[1]);
+      if (checkpoint) {
+        return JSON.stringify(
+          {
+            checkpoint_id: checkpoint.id,
+            alias: checkpoint.alias,
+            type: checkpoint.type,
+            type_tone: checkpoint.typeTone,
+            summary: checkpoint.summary,
+            created_at: checkpoint.createdAt,
+            performance: checkpoint.performance,
+            path_ref: checkpoint.pathRef
+          },
+          null,
+          2
+        );
+      }
+    }
+
+    const exportMatch = documentRef.match(/exports\/generated\/([^/]+)\/export\.json$/);
+    if (exportMatch) {
+      const checkpoint = this.state.checkpoints.find((item) => item.id === exportMatch[1]);
+      if (checkpoint) {
+        return JSON.stringify(buildExportBundle(checkpoint), null, 2);
+      }
+    }
+
+    const collectionMatch = documentRef.match(/collections\/items\/([^/]+)\/collection\.json$/);
+    if (collectionMatch) {
+      const collection =
+        collectionsState.items.find((item) => item.collection_id === collectionMatch[1]) ??
+        collectionsState.items[0];
+      return JSON.stringify(
+        {
+          ...collection,
+          entry_shard_ref: `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/entries.ndjson`,
+          notes:
+            collection.source_ref === "binance-usdm:aggtrade:BTCUSDT"
+              ? "Agg trades stay raw and source-centered. Market interpretation belongs in evaluation and session logs."
+              : "Macro text is stored source-first. Symbol linkage and impact are deferred to agent logs."
+        },
+        null,
+        2
+      );
+    }
+
+    const shardMatch = documentRef.match(/collections\/items\/([^/]+)\/entries\.ndjson$/);
+    if (shardMatch) {
+      return (
+        entriesByCollection[shardMatch[1] as keyof typeof entriesByCollection]
+          ?.map((entry) => JSON.stringify(entry))
+          .join("\n") ?? ""
+      );
+    }
+
+    const blobMatch = documentRef.match(/blobs\/sha256\/([a-f0-9]+)\.txt$/);
+    if (blobMatch) {
+      const blobId = `sha256:${blobMatch[1]}` as keyof typeof blobContents;
+      return blobContents[blobId] ?? "Blob content is unavailable in the mock service.";
+    }
+
+    return JSON.stringify({ unsupportedRef: documentRef }, null, 2);
   }
 }
 

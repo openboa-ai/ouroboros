@@ -73,6 +73,16 @@ pub struct LiveOrder {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LaneEventState {
+    pub id: String,
+    pub scope: String,
+    pub kind: String,
+    pub summary: String,
+    pub timestamp: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DecisionEntry {
     pub id: String,
     pub kind: String,
@@ -159,6 +169,16 @@ pub struct CollectionDetailState {
 pub struct BlobDetailState {
     pub id: String,
     pub blob_path_ref: String,
+    pub byte_length: usize,
+    pub line_count: usize,
+    pub content_text: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDocumentState {
+    pub path_ref: String,
+    pub format: String,
     pub byte_length: usize,
     pub line_count: usize,
     pub content_text: String,
@@ -263,6 +283,7 @@ pub struct BootstrapState {
     pub exposure_series: Vec<ExposurePoint>,
     pub positions: Vec<LivePosition>,
     pub orders: Vec<LiveOrder>,
+    pub lane_events: Vec<LaneEventState>,
     pub decisions: Vec<DecisionEntry>,
     pub checkpoints: Vec<CheckpointSummary>,
     pub collections: Vec<CollectionSummaryState>,

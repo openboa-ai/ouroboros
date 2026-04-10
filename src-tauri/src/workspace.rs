@@ -9,9 +9,9 @@ use uuid::Uuid;
 use crate::models::{
     AssetInspectorState, BlobDetailState, BootstrapState, CheckpointDetailState, CheckpointSummary,
     CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint,
-    ExportBundleState, ExportInspectorState, ExposurePoint, LiveContextState, LiveOrder,
-    LivePosition, MetricCardData, PricePoint, ProviderStatus, StrategyActiveIndexState,
-    StrategyIndexesState, TradingMode, WorkspaceIndexState, WorkspaceSummary,
+    ExportBundleState, ExportInspectorState, ExposurePoint, LaneEventState, LiveContextState,
+    LiveOrder, LivePosition, MetricCardData, PricePoint, ProviderStatus, StrategyActiveIndexState,
+    StrategyIndexesState, TradingMode, WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
 };
 
 #[derive(Clone)]
@@ -146,6 +146,7 @@ impl WorkspaceRepository {
             exposure_series: dashboard.exposure_series,
             positions: positions.current,
             orders: orders.current,
+            lane_events: lane_event_feed(&positions.events, &orders.events),
             decisions: decisions.decisions,
             checkpoints: checkpoints_index
                 .items
@@ -270,6 +271,28 @@ impl WorkspaceRepository {
         Ok(BlobDetailState {
             id: blob_id.to_string(),
             blob_path_ref: self.display_path(&blob_path),
+            byte_length: content_text.as_bytes().len(),
+            line_count: content_text.lines().count(),
+            content_text,
+        })
+    }
+
+    pub fn load_workspace_document(
+        &self,
+        document_ref: &str,
+    ) -> Result<WorkspaceDocumentState, String> {
+        let document_path = self.resolve_workspace_document_ref(document_ref)?;
+        let content_text = fs::read_to_string(&document_path)
+            .map_err(|error| format!("failed to read {}: {error}", document_path.display()))?;
+        let format = match document_path.extension().and_then(|ext| ext.to_str()) {
+            Some("json") => "json",
+            Some("ndjson") => "ndjson",
+            _ => "text",
+        };
+
+        Ok(WorkspaceDocumentState {
+            path_ref: self.display_path(&document_path),
+            format: format.to_string(),
             byte_length: content_text.as_bytes().len(),
             line_count: content_text.lines().count(),
             content_text,
@@ -712,11 +735,38 @@ impl WorkspaceRepository {
         self.root.join("blobs").join(algorithm).join(format!("{digest}.txt"))
     }
 
+    fn resolve_workspace_document_ref(&self, document_ref: &str) -> Result<PathBuf, String> {
+        let project_root = self.project_root();
+        let candidate = project_root.join(document_ref);
+        let canonical = candidate.canonicalize().map_err(|error| {
+            format!(
+                "failed to resolve workspace document {}: {error}",
+                candidate.display()
+            )
+        })?;
+        let root = self.root.canonicalize().map_err(|error| {
+            format!("failed to resolve workspace root {}: {error}", self.root.display())
+        })?;
+
+        if !canonical.starts_with(&root) {
+            return Err(format!(
+                "document ref must stay inside workspace root: {}",
+                document_ref
+            ));
+        }
+
+        Ok(canonical)
+    }
+
     fn display_path(&self, path: &Path) -> String {
-        let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        let project_root = self.project_root();
         path.strip_prefix(&project_root)
             .map(|relative| relative.to_string_lossy().replace('\\', "/"))
             .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
+    }
+
+    fn project_root(&self) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
     }
 
     fn resolve_ref(&self, base_file: &Path, reference: &str) -> PathBuf {
@@ -971,6 +1021,29 @@ struct ExportInventory {
 
 fn prepend_decision(decisions: &mut Vec<DecisionEntry>, decision: DecisionEntry) {
     decisions.insert(0, decision);
+}
+
+fn lane_event_feed(position_events: &[LaneEvent], order_events: &[LaneEvent]) -> Vec<LaneEventState> {
+    let mut items = position_events
+        .iter()
+        .map(|event| LaneEventState {
+            id: event.event_id.clone(),
+            scope: "positions".into(),
+            kind: event.kind.clone(),
+            summary: event.summary.clone(),
+            timestamp: event.timestamp.clone(),
+        })
+        .chain(order_events.iter().map(|event| LaneEventState {
+            id: event.event_id.clone(),
+            scope: "orders".into(),
+            kind: event.kind.clone(),
+            summary: event.summary.clone(),
+            timestamp: event.timestamp.clone(),
+        }))
+        .collect::<Vec<_>>();
+
+    items.sort_by(|left, right| right.timestamp.cmp(&left.timestamp));
+    items
 }
 
 fn checkpoint_tone(checkpoint_type: &str) -> &'static str {

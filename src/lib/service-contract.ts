@@ -49,6 +49,14 @@ export type LiveOrder = {
   summary: string;
 };
 
+export type LaneEventState = {
+  id: string;
+  scope: "positions" | "orders";
+  kind: string;
+  summary: string;
+  timestamp: string;
+};
+
 export type DecisionEntry = {
   id: string;
   kind: string;
@@ -123,6 +131,14 @@ export type CollectionDetailState = {
 export type BlobDetailState = {
   id: string;
   blobPathRef: string;
+  byteLength: number;
+  lineCount: number;
+  contentText: string;
+};
+
+export type WorkspaceDocumentState = {
+  pathRef: string;
+  format: "json" | "ndjson" | "text";
   byteLength: number;
   lineCount: number;
   contentText: string;
@@ -209,6 +225,7 @@ export type BootstrapState = {
   exposureSeries: ExposurePoint[];
   positions: LivePosition[];
   orders: LiveOrder[];
+  laneEvents: LaneEventState[];
   decisions: DecisionEntry[];
   checkpoints: CheckpointSummary[];
   collections: CollectionSummaryState[];
@@ -219,6 +236,7 @@ export interface WorkspaceService {
   getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState>;
   getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
   getBlobDetail(blobId: string): Promise<BlobDetailState>;
+  getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;

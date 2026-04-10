@@ -4,6 +4,7 @@ import type {
   BootstrapState,
   CheckpointDetailState,
   CollectionDetailState,
+  WorkspaceDocumentState,
   WorkspaceService
 } from "./service-contract";
 
@@ -22,6 +23,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getBlobDetail(blobId: string): Promise<BlobDetailState> {
     return invoke<BlobDetailState>("get_blob_detail", { blobId });
+  }
+
+  async getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState> {
+    return invoke<WorkspaceDocumentState>("get_workspace_document", { documentRef });
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {

@@ -1,7 +1,10 @@
 use tauri::State;
 
 use crate::{
-    models::{BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState},
+    models::{
+        BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState,
+        WorkspaceDocumentState,
+    },
     state::AppState,
 };
 
@@ -32,6 +35,14 @@ pub fn get_blob_detail(
     state: State<'_, AppState>,
 ) -> Result<BlobDetailState, String> {
     state.blob_detail(&blob_id)
+}
+
+#[tauri::command]
+pub fn get_workspace_document(
+    document_ref: String,
+    state: State<'_, AppState>,
+) -> Result<WorkspaceDocumentState, String> {
+    state.workspace_document(&document_ref)
 }
 
 #[tauri::command]

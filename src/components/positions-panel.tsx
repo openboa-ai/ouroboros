@@ -1,13 +1,14 @@
-import type { LiveOrder, LivePosition } from "../lib/service-contract";
+import type { LaneEventState, LiveOrder, LivePosition } from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
 type PositionsPanelProps = {
   positions: LivePosition[];
   orders: LiveOrder[];
+  laneEvents: LaneEventState[];
 };
 
-export function PositionsPanel({ orders, positions }: PositionsPanelProps) {
+export function PositionsPanel({ laneEvents, orders, positions }: PositionsPanelProps) {
   return (
     <div className="space-y-6">
       <Card title="Positions" description="Current state plus event-aware trading context.">
@@ -65,6 +66,27 @@ export function PositionsPanel({ orders, positions }: PositionsPanelProps) {
                 <Badge tone={order.statusTone}>{order.status}</Badge>
               </div>
               <p className="mt-3">{order.summary}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card title="Lane Events" description="Live lane history is kept alongside current state and exposed through the service layer.">
+        <div className="space-y-3">
+          {laneEvents.map((event) => (
+            <div
+              key={event.id}
+              className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ink-200"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={event.scope === "positions" ? "positive" : "warning"}>
+                    {event.scope}
+                  </Badge>
+                  <p className="text-xs uppercase tracking-[0.16em] text-ink-300">{event.kind}</p>
+                </div>
+                <p className="text-xs uppercase tracking-[0.16em] text-ink-300">{event.timestamp}</p>
+              </div>
+              <p className="mt-3">{event.summary}</p>
             </div>
           ))}
         </div>
