@@ -14,7 +14,7 @@ use crate::models::{
     IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
     LiveContextState, LiveOrder, LivePosition, MetricCardData, OperationSummaryState, PricePoint,
     ProviderStatus, StrategyActiveIndexState, StrategyIndexesState, TradingMode,
-    WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
+    WorkspaceCatalogEntryState, WorkspaceDocumentState, WorkspaceIndexState, WorkspaceSummary,
 };
 use crate::storage::{
     copy_missing_template_tree, copy_template_tree, copy_tree, list_relative_files, remove_path,
@@ -98,6 +98,18 @@ impl WorkspaceRepository {
         let export_inventory = self.export_inventory(&checkpoints_index.items);
         let latest_export_bundle = self.latest_export_bundle(&checkpoints_index.items)?;
         let sessions_count = sessions.sessions.len();
+        let document_catalog = self.build_document_catalog(
+            &strategy_path,
+            &live_lane_path,
+            &export_policy_path,
+            &current_checkpoint_path,
+            &checkpoints_index_path,
+            &collections_index_path,
+            &imports_index_path,
+            &operations_index_path,
+            &sessions_path,
+            export_inventory.latest_ref.as_deref(),
+        );
 
         Ok(BootstrapState {
             mode: live_lane.mode,
@@ -242,6 +254,7 @@ impl WorkspaceRepository {
                         .collect(),
                 })
                 .collect(),
+            document_catalog,
         })
     }
 
@@ -1346,6 +1359,104 @@ impl WorkspaceRepository {
 
     fn write_json_path<T: Serialize>(&self, path: &Path, value: &T) -> Result<(), String> {
         FileWorkspaceStore::write_json_path(path, value)
+    }
+
+    fn build_document_catalog(
+        &self,
+        strategy_path: &Path,
+        live_lane_path: &Path,
+        export_policy_path: &Path,
+        current_checkpoint_path: &Path,
+        checkpoints_index_path: &Path,
+        collections_index_path: &Path,
+        imports_index_path: &Path,
+        operations_index_path: &Path,
+        sessions_path: &Path,
+        latest_export_bundle_ref: Option<&str>,
+    ) -> Vec<WorkspaceCatalogEntryState> {
+        let mut items = vec![
+            WorkspaceCatalogEntryState {
+                id: "strategy".into(),
+                category: "entrypoint".into(),
+                label: "strategy.json".into(),
+                description: "Canonical workspace entrypoint for the live-centered asset.".into(),
+                path_ref: self.display_path(strategy_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-lane".into(),
+                category: "active".into(),
+                label: "live lane".into(),
+                description: "Active live lane refs, state pointers, and runtime mode.".into(),
+                path_ref: self.display_path(live_lane_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "current-checkpoint".into(),
+                category: "checkpoint".into(),
+                label: "current checkpoint".into(),
+                description:
+                    "The authoritative checkpoint anchor for the current live-centered asset."
+                        .into(),
+                path_ref: self.display_path(current_checkpoint_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "export-policy".into(),
+                category: "export".into(),
+                label: "export policy".into(),
+                description: "Sanitization policy that governs export bundle generation.".into(),
+                path_ref: self.display_path(export_policy_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "checkpoints-index".into(),
+                category: "index".into(),
+                label: "checkpoint index".into(),
+                description: "Promotion, export, and incident history catalog.".into(),
+                path_ref: self.display_path(checkpoints_index_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "collections-index".into(),
+                category: "index".into(),
+                label: "collections index".into(),
+                description:
+                    "Source-centered collection catalog materialized by UTC-hour shards.".into(),
+                path_ref: self.display_path(collections_index_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "imports-index".into(),
+                category: "index".into(),
+                label: "imports index".into(),
+                description: "Sanitized import staging catalog kept inside the workspace asset."
+                    .into(),
+                path_ref: self.display_path(imports_index_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "operations-index".into(),
+                category: "index".into(),
+                label: "operations index".into(),
+                description: "Durable workspace-wide service operation registry.".into(),
+                path_ref: self.display_path(operations_index_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "sessions-index".into(),
+                category: "index".into(),
+                label: "sessions index".into(),
+                description: "Durable session references that shape current live context.".into(),
+                path_ref: self.display_path(sessions_path),
+            },
+        ];
+
+        if let Some(latest_export_bundle_ref) = latest_export_bundle_ref {
+            items.push(WorkspaceCatalogEntryState {
+                id: "latest-export-bundle".into(),
+                category: "export".into(),
+                label: "latest export bundle".into(),
+                description:
+                    "Most recent sanitized export created from the live-centered workspace asset."
+                        .into(),
+                path_ref: latest_export_bundle_ref.into(),
+            });
+        }
+
+        items
     }
 
     fn append_operation(

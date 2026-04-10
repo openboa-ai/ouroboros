@@ -90,3 +90,4 @@ The current minimum direction is:
 - `exports/generated/<checkpoint_id>/` stores live-centered export bundles derived from checkpoints
 - `imports/items/<import_id>/` stores staged sanitized bundles without mutating the active live lane
 - `operations/items/<operation_id>.json` stores addressable service-operation records
+- the official client should browse workspace documents through a service-owned catalog instead of hard-coding file paths

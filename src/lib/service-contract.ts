@@ -203,6 +203,23 @@ export type OperationSummaryState = {
   relatedRefs: string[];
 };
 
+export type WorkspaceCatalogEntry = {
+  id: string;
+  category:
+    | "entrypoint"
+    | "active"
+    | "index"
+    | "export"
+    | "operation"
+    | "checkpoint"
+    | "collection"
+    | "import"
+    | "blob";
+  label: string;
+  description: string;
+  pathRef: string;
+};
+
 export type WorkspaceSummary = {
   artifactId: string;
   slug: string;
@@ -293,6 +310,7 @@ export type BootstrapState = {
   collections: CollectionSummaryState[];
   imports: ImportSummaryState[];
   operations: OperationSummaryState[];
+  documentCatalog: WorkspaceCatalogEntry[];
 };
 
 export interface WorkspaceService {

@@ -85,6 +85,7 @@ These decisions are current, not final.
 - Official app clients should not read or mutate the workspace contract directly as their primary integration path.
 - Official clients should talk to a service/application layer that owns validation, invariants, migrations, locking, and export rules.
 - Manual human inspection of the workspace remains allowed, but machine clients should treat the workspace as internal state behind the app/service boundary.
+- The desktop client should obtain its workspace-document browser/catalog from the service layer rather than hard-coding workspace file paths into the UI.
 - Mutable local memory should keep flowing, but each promotion should create an immutable checkpoint snapshot inside the strategy asset.
 - One artifact may contain multiple mutable runtime lanes rather than a single global mutable state.
 - The mutable runtime lanes should be strongly separated by purpose:

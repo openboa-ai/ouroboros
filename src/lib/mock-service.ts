@@ -17,6 +17,7 @@ import type {
   LaneEventState,
   LiveContextState,
   OperationSummaryState,
+  WorkspaceCatalogEntry,
   WorkspaceDocumentState,
   WorkspaceIndexState,
   WorkspaceService
@@ -344,6 +345,89 @@ function buildExportInspector(checkpoints: CheckpointSummary[]): ExportInspector
   };
 }
 
+function buildDocumentCatalog(
+  currentCheckpointRef: string,
+  latestExportBundleRef?: string
+): WorkspaceCatalogEntry[] {
+  const items: WorkspaceCatalogEntry[] = [
+    {
+      id: "strategy",
+      category: "entrypoint",
+      label: "strategy.json",
+      description: "Canonical workspace entrypoint for the live-centered asset.",
+      pathRef: `${WORKSPACE_ROOT}/strategy.json`
+    },
+    {
+      id: "live-lane",
+      category: "active",
+      label: "live lane",
+      description: "Active live lane refs, state pointers, and runtime mode.",
+      pathRef: `${WORKSPACE_ROOT}/live/live-lane.json`
+    },
+    {
+      id: "current-checkpoint",
+      category: "checkpoint",
+      label: "current checkpoint",
+      description: "The authoritative checkpoint anchor for the current live-centered asset.",
+      pathRef: currentCheckpointRef
+    },
+    {
+      id: "export-policy",
+      category: "export",
+      label: "export policy",
+      description: "Sanitization policy that governs export bundle generation.",
+      pathRef: `${WORKSPACE_ROOT}/exports/policy.json`
+    },
+    {
+      id: "checkpoints-index",
+      category: "index",
+      label: "checkpoint index",
+      description: "Promotion, export, and incident history catalog.",
+      pathRef: `${WORKSPACE_ROOT}/checkpoints/index.json`
+    },
+    {
+      id: "collections-index",
+      category: "index",
+      label: "collections index",
+      description: "Source-centered collection catalog materialized by UTC-hour shards.",
+      pathRef: `${WORKSPACE_ROOT}/indexes/collections.json`
+    },
+    {
+      id: "imports-index",
+      category: "index",
+      label: "imports index",
+      description: "Sanitized import staging catalog kept inside the workspace asset.",
+      pathRef: `${WORKSPACE_ROOT}/imports/index.json`
+    },
+    {
+      id: "operations-index",
+      category: "index",
+      label: "operations index",
+      description: "Durable workspace-wide service operation registry.",
+      pathRef: `${WORKSPACE_ROOT}/operations/index.json`
+    },
+    {
+      id: "sessions-index",
+      category: "index",
+      label: "sessions index",
+      description: "Durable session references that shape current live context.",
+      pathRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
+    }
+  ];
+
+  if (latestExportBundleRef) {
+    items.push({
+      id: "latest-export-bundle",
+      category: "export",
+      label: "latest export bundle",
+      description: "Most recent sanitized export created from the live-centered workspace asset.",
+      pathRef: latestExportBundleRef
+    });
+  }
+
+  return items;
+}
+
 function toUtcHourBucket(eventTime: string) {
   return `${eventTime.slice(0, 13)}:00:00Z`;
 }
@@ -391,7 +475,11 @@ function buildTemplateBootstrapState(): BootstrapState {
     checkpoints,
     collections: buildCollections(),
     imports: buildImports(),
-    operations: buildOperations()
+    operations: buildOperations(),
+    documentCatalog: buildDocumentCatalog(
+      currentCheckpointRef,
+      buildExportInspector(checkpoints).latestBundle?.bundleRef
+    )
   };
 }
 
@@ -942,7 +1030,11 @@ class MockWorkspaceService implements WorkspaceService {
       exportInspector: buildExportInspector(this.state.checkpoints),
       collections: buildCollections(),
       imports: buildImports(),
-      operations: buildOperations()
+      operations: buildOperations(),
+      documentCatalog: buildDocumentCatalog(
+        resolvedCheckpointRef,
+        buildExportInspector(this.state.checkpoints).latestBundle?.bundleRef
+      )
     };
   }
 

@@ -317,6 +317,16 @@ pub struct OperationSummaryState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceCatalogEntryState {
+    pub id: String,
+    pub category: String,
+    pub label: String,
+    pub description: String,
+    pub path_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LiveContextState {
     pub memory_notes: Vec<String>,
     pub session_labels: Vec<String>,
@@ -371,4 +381,5 @@ pub struct BootstrapState {
     pub collections: Vec<CollectionSummaryState>,
     pub imports: Vec<ImportSummaryState>,
     pub operations: Vec<OperationSummaryState>,
+    pub document_catalog: Vec<WorkspaceCatalogEntryState>,
 }

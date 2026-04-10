@@ -1,16 +1,10 @@
-import type { WorkspaceDocumentState } from "../lib/service-contract";
+import { useMemo, useState } from "react";
+import type { WorkspaceCatalogEntry, WorkspaceDocumentState } from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
-export type WorkspaceDocumentTarget = {
-  id: string;
-  label: string;
-  description: string;
-  pathRef: string;
-};
-
 type WorkspaceDocumentPanelProps = {
-  documents: WorkspaceDocumentTarget[];
+  documents: WorkspaceCatalogEntry[];
   selectedDocumentId: string | null;
   documentDetail: WorkspaceDocumentState | null;
   onSelectDocument: (documentId: string, pathRef: string) => void;
@@ -22,7 +16,27 @@ export function WorkspaceDocumentPanel({
   documentDetail,
   onSelectDocument
 }: WorkspaceDocumentPanelProps) {
-  const selected = documents.find((item) => item.id === selectedDocumentId) ?? documents[0] ?? null;
+  const [query, setQuery] = useState("");
+  const filteredDocuments = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return documents;
+    }
+
+    return documents.filter((document) =>
+      [document.label, document.description, document.pathRef, document.category]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized)
+    );
+  }, [documents, query]);
+
+  const selected =
+    filteredDocuments.find((item) => item.id === selectedDocumentId) ??
+    documents.find((item) => item.id === selectedDocumentId) ??
+    filteredDocuments[0] ??
+    documents[0] ??
+    null;
 
   return (
     <Card
@@ -31,7 +45,13 @@ export function WorkspaceDocumentPanel({
     >
       <div className="grid gap-5 xl:grid-cols-[minmax(0,280px)_1fr]">
         <div className="space-y-3">
-          {documents.map((document) => {
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search workspace docs"
+            className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-ink-50 outline-none transition placeholder:text-ink-400 focus:border-accent-teal/40"
+          />
+          {filteredDocuments.map((document) => {
             const isSelected = document.id === selected?.id;
             return (
               <button
@@ -45,11 +65,19 @@ export function WorkspaceDocumentPanel({
                     : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]"
                 ].join(" ")}
               >
-                <p className="text-sm font-medium text-ink-50">{document.label}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-ink-50">{document.label}</p>
+                  <Badge tone="neutral">{document.category}</Badge>
+                </div>
                 <p className="mt-1 text-xs leading-5 text-ink-300">{document.description}</p>
               </button>
             );
           })}
+          {filteredDocuments.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm text-ink-300">
+              No workspace documents match this filter.
+            </div>
+          ) : null}
         </div>
 
         {documentDetail ? (

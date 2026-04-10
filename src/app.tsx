@@ -14,8 +14,7 @@ import { PriceContextPanel } from "./components/price-context-panel";
 import { StrategyTimeline } from "./components/strategy-timeline";
 import { WorkspaceIndexPanel } from "./components/workspace-index-panel";
 import {
-  WorkspaceDocumentPanel,
-  type WorkspaceDocumentTarget
+  WorkspaceDocumentPanel
 } from "./components/workspace-document-panel";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -26,6 +25,7 @@ import type {
   CheckpointDetailState,
   CollectionDetailState,
   ImportDetailState,
+  WorkspaceCatalogEntry,
   WorkspaceDocumentState
 } from "./lib/service-contract";
 import { workspaceService } from "./lib/service-gateway";
@@ -249,81 +249,20 @@ export function App() {
     });
   }
 
-  const workspaceDocuments: WorkspaceDocumentTarget[] = [
-    {
-      id: "strategy",
-      label: "strategy.json",
-      description: "Canonical workspace entrypoint for the live-centered asset.",
-      pathRef: state.assetInspector.strategyRef
-    },
-    {
-      id: "live-lane",
-      label: "live lane",
-      description: "Active live lane refs, state pointers, and runtime mode.",
-      pathRef: state.assetInspector.liveLaneRef
-    },
-    {
-      id: "current-checkpoint",
-      label: "current checkpoint",
-      description: "The authoritative checkpoint anchor for the current live-centered asset.",
-      pathRef: state.assetInspector.currentCheckpointRef
-    },
-    {
-      id: "export-policy",
-      label: "export policy",
-      description: "Sanitization policy that governs export bundle generation.",
-      pathRef: state.assetInspector.exportPolicyRef
-    },
-    {
-      id: "checkpoints-index",
-      label: "checkpoint index",
-      description: "Promotion, export, and incident history catalog.",
-      pathRef: state.workspaceIndex.indexes.checkpointsRef
-    },
-    {
-      id: "collections-index",
-      label: "collections index",
-      description: "Source-centered collection catalog materialized by UTC-hour shards.",
-      pathRef: state.workspaceIndex.indexes.collectionsRef
-    },
-    {
-      id: "imports-index",
-      label: "imports index",
-      description: "Sanitized import staging catalog kept inside the workspace asset.",
-      pathRef: state.workspaceIndex.indexes.importsRef
-    },
-    {
-      id: "operations-index",
-      label: "operations index",
-      description: "Durable workspace-wide service operation registry.",
-      pathRef: state.workspaceIndex.indexes.operationsRef
-    },
-    {
-      id: "sessions-index",
-      label: "sessions index",
-      description: "Durable session references that shape current live context.",
-      pathRef: state.workspaceIndex.indexes.sessionsRef
-    },
-    ...(state.assetInspector.latestExportBundleRef
-      ? [
-          {
-            id: "latest-export-bundle",
-            label: "latest export bundle",
-            description: "Most recent sanitized export created from the live-centered workspace asset.",
-            pathRef: state.assetInspector.latestExportBundleRef
-          }
-        ]
-      : []),
+  const workspaceDocuments: WorkspaceCatalogEntry[] = [
+    ...state.documentCatalog,
     ...(selectedCollectionDetail
       ? [
           {
             id: "selected-collection",
+            category: "collection" as const,
             label: "selected collection",
             description: "Current source collection metadata inside the workspace asset.",
             pathRef: selectedCollectionDetail.collectionRef
           },
           {
             id: "selected-collection-entries",
+            category: "collection" as const,
             label: "selected entry shard",
             description: "Append-friendly NDJSON shard backing the selected collection.",
             pathRef: selectedCollectionDetail.entryShardRef
@@ -334,6 +273,7 @@ export function App() {
       ? [
           {
             id: "selected-blob",
+            category: "blob" as const,
             label: "selected blob",
             description: "Immutable source body resolved from the selected entry.",
             pathRef: selectedBlobDetail.blobPathRef
@@ -344,12 +284,14 @@ export function App() {
       ? [
           {
             id: "selected-import",
+            category: "import" as const,
             label: "selected import",
             description: "Import manifest for a staged sanitized bundle.",
             pathRef: selectedImportDetail.importRef
           },
           {
             id: "selected-import-bundle",
+            category: "import" as const,
             label: "selected import bundle",
             description: "Imported sanitized export manifest staged inside the workspace.",
             pathRef: selectedImportDetail.bundleRef
