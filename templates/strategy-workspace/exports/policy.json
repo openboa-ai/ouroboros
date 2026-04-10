@@ -1,0 +1,4 @@
+{
+  "policy_id": "sanitized-live-centered",
+  "description": "Exports are generated from checkpoints and stay live-centered while removing secrets and user-identifying material."
+}

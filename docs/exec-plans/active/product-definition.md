@@ -1,0 +1,214 @@
+# Product Definition
+
+This file captures the current best understanding from the ongoing product-definition conversation.
+These decisions are current, not final.
+
+## Current Decisions
+
+- AutoKairos is a money-making automated trading system.
+- It should ship as an installable local app that other people can install.
+- The official desktop client stack should use:
+  - `Tauri 2`
+  - `React`
+  - `Vite`
+  - `Tailwind CSS`
+  - `shadcn/ui`-oriented primitives
+- Each app instance is single-user and connects to one Binance Futures account.
+- Primary market: Binance Futures `USDⓈ-M perpetual`.
+- Initial symbols: `BTCUSDT` and `ETHUSDT`.
+- Long and short are both allowed.
+- Simultaneous BTC and ETH positions are allowed.
+- Hedge mode is supported.
+- Default margin mode is `Isolated`.
+- The target is practical low-latency automated trading, not true HFT.
+- Trading should be fully automatic.
+- The install default is `observer` or `paper`, not `live`.
+- `live` must be explicitly enabled by the user.
+- The user remains the ultimate owner and can always intervene.
+- The main client surface should be a trading dashboard first rather than an agent-chat surface.
+- Charts should be treated as first-class trading surfaces and should support:
+  - price context
+  - equity or net-PnL
+  - symbol exposure
+  - checkpoint or version comparison views
+- The system should ingest any market-relevant data worth using.
+- Liveness should cover market data, model inference, order responses, position sync, and protective-stop presence.
+- Every live position must have an exchange-native protective stop.
+- The execution core owns critical safety enforcement.
+- Self-improvement should run continuously in the background.
+- Candidate generation should continue periodically even without explicit triggers.
+- The agent may change strategy, prompts, evaluation methods, data collection logic, and feature generation.
+- The agent must not directly modify the live execution core, exchange credential handling, or kill-switch logic.
+- Live-impacting changes must pass isolated backtest and isolated paper trading before promotion.
+- Paper trading is mandatory before live promotion.
+- Testnet is for execution-core integration checks, not the main paper-trading loop.
+- Primary paper trading should use real Binance mainnet market data with simulated execution.
+- Minimum functionality should work on a normal laptop.
+- More compute should allow stronger background search and more parallel paper candidates.
+- Model costs belong in net profitability analysis.
+- Researcher self-improvement should feed future promoted trader versions, not mutate the currently running live trader directly.
+- The promoted artifact should likely version the researcher and trader together as one strategy package, even if the live runtime stays operationally separated.
+- Rollback and comparison should happen at the full strategy-artifact level, including the researcher recipe that produced the trader.
+- Strategy artifacts should be managed as one portfolio-level package across the supported symbols, not as separate BTC and ETH artifacts.
+- Within one portfolio-level strategy artifact, BTC and ETH trading decisions should still be allowed to act independently.
+- One promoted strategy artifact should be a full directory bundle, not a single monolithic manifest file.
+- The bundle should likely contain a declarative manifest plus prompts, skills, tools, and markdown context.
+- The agent workspace itself should be treated as the primary strategy asset boundary.
+- The system should avoid hard-coding semantic / episodic / procedural memory as first-class storage categories in the asset contract.
+- Instead, each agent may organize its own workspace materials differently inside the asset, as long as the workspace remains exportable, inspectable, and replayable.
+- Memory that materially affects trading should live inside the asset workspace rather than being treated as disposable external residue.
+- The strategy bundle should be self-contained and relocatable, with no required external prompt or skill dependencies outside the bundle itself.
+- `strategy.json` should remain the single canonical entrypoint at the workspace root.
+- `strategy.json` should stay thin and act as a bootstrap/index file for the workspace rather than a giant all-in-one configuration dump.
+- `strategy.json` may reference local files inside the same workspace bundle instead of forcing every prompt or skill inline into one JSON file.
+- The top-level shape of `strategy.json` should be organized around:
+  - `active` for live-critical current references
+  - `indexes` for broader workspace registries and lookup surfaces
+- The minimum `strategy.json.active` set should include:
+  - `live_lane_ref`
+  - `current_checkpoint_ref`
+  - `export_policy_ref`
+- Official app clients should not read or mutate the workspace contract directly as their primary integration path.
+- Official clients should talk to a service/application layer that owns validation, invariants, migrations, locking, and export rules.
+- Manual human inspection of the workspace remains allowed, but machine clients should treat the workspace as internal state behind the app/service boundary.
+- Mutable local memory should keep flowing, but each promotion should create an immutable checkpoint snapshot inside the strategy asset.
+- One artifact may contain multiple mutable runtime lanes rather than a single global mutable state.
+- The mutable runtime lanes should be strongly separated by purpose:
+  - one authoritative `live` lane
+  - multiple `paper` lanes
+  - multiple `shadow` lanes
+  - optional read-mostly `observer` lane
+- The `live` lane should carry the full mutable trading context used for decision-making, including at least live memory, sessions, positions, orders, and evaluation summaries that materially influence trading behavior.
+- Those live-facing evaluation summaries should not stand alone; they should retain references to the underlying raw evidence so decisions remain inspectable and replayable.
+- `positions` and `orders` in the live lane should preserve both current state and event history rather than only the latest snapshot.
+- Non-live lanes should be treated as internal evaluation/runtime machinery unless their artifacts are actually consumed by the live trading context.
+- The exportable asset model should stay live-centered even if the local runtime is multi-lane internally, and all artifacts that materially participate in live trading should be export targets.
+- Each immutable checkpoint should be a full copy snapshot, not only a diff or lineage record.
+- Each promotion checkpoint should include the paper-trading evidence that justified promotion.
+- Paper-trading evidence should stay structurally separated from live mutable state inside the asset.
+- Paper-trading evidence should be rich enough to preserve original evaluation context, but saleable/exportable artifacts must exclude user-identifying and secret-bearing data.
+- The system likely needs a distinction between:
+  - a local master asset
+  - a sanitized exportable asset
+- Secrets, credentials, and other host-level trust material should remain outside the asset workspace even if the workspace itself is the primary artifact boundary.
+- AutoKairos should treat sanitized export as a first-class capability of the asset model, not as an afterthought.
+- Sanitized export should be producible as a first-class app workflow, effectively a one-click export path from a local master asset.
+- The export workflow should support both:
+  - exporting the current live asset
+  - exporting a specific checkpoint
+- Export should always operate on a checkpoint.
+- If the user exports the current live asset, the app should create a fresh checkpoint first and then export from that checkpoint.
+- The checkpoint system should support at least three types:
+  - promotion
+  - export
+  - incident
+- Incident checkpoints should be system-generated automatically rather than created manually by the user.
+- Promotion checkpoints should be created at the moment a candidate passes paper trading.
+- Live promotion decisions should consider time-series performance across checkpoints, not only the most recent promotion checkpoint.
+- Promotion analysis should be able to inspect both recent performance and full cumulative performance rather than forcing a single weighting view.
+- Promotion decisions should remain multi-metric and agent-judged rather than being collapsed into one mandatory scalar score.
+- Evaluation should keep a fixed core set of mandatory dimensions, while still allowing the agent to add or reinterpret secondary metrics over time.
+- The fixed core evaluation dimensions should explicitly include incident frequency and forced-intervention history.
+- Incident and intervention logs should not rely on an exhaustive fixed taxonomy.
+- Instead, the system should keep:
+  - a minimal structured event envelope
+  - rich raw logs and context
+  - agent-queryable analysis over those logs
+- The evaluator should itself be treated as a self-improving component.
+- Rejected paper candidates should still continue for a period in shadow evaluation so the system can assess evaluator quality over time.
+- Shadow evaluation should apply by default to rejected paper candidates rather than only to manually selected borderline cases.
+- Shadow-evaluation duration should be fixed in the same way paper-evaluation duration is fixed for the current artifact policy.
+- Every artifact should remain backtestable on demand.
+- Backtestable means an artifact should be replayable against historical raw market data whenever that data is available.
+- AutoKairos should keep a local shared data store for raw historical market data inside the local workspace/asset boundary.
+- Artifacts should reference that data store via stable collection identifiers such as hashes or snapshot ids rather than embedding full raw datasets directly.
+- One shared local data store is sufficient for the current system model; per-asset private raw-data stores are not needed by default.
+- The shared local data store should cover not only exchange-market data but also other strategy-relevant data such as external text and on-chain data.
+- The shared local data store should contain both:
+  - a raw layer
+  - a canonicalized layer
+- The canonicalized layer should follow app-level canonical schemas rather than asset-specific private schemas.
+- The common canonical envelope should stay source-centered and avoid embedding market interpretation directly into the stored entry.
+- The common canonical envelope should explicitly include source/provenance identity, event or publication time, local ingest time, and content identity.
+- The minimal source-centered envelope should at least include:
+  - `source_ref`
+  - `event_time`
+  - `ingested_at`
+  - `content_hash`
+- Source entries should keep metadata plus content references.
+- Large or meaningful bodies such as article text, transcripts, or raw payloads should live in separate blobs/files addressed by the entry rather than being inlined into the entry itself.
+- Very small sources may be inlined into the record as an exception, but the default model remains:
+  - entry = searchable card
+  - blob/file = actual body
+- Market interpretation should not be stored as part of the source entry itself.
+- Interpretation such as symbol linkage, sentiment, regime relevance, or impact assessment should live in LLM/session/evaluation logs rather than in a separate canonical source-data layer.
+- The storage model should be workspace-first rather than file-first or DB-first.
+- A local embedded database owned by the workspace is part of the asset, not an "external" dependency.
+- The preferred v1 shape is a hybrid model:
+  - embedded DB for mutable operational state, indexes, and references
+  - blob/files for large immutable bodies, exports, and dataset files
+- The current storage preference leans toward an embedded NoSQL/document-oriented store rather than a relational embedded store.
+- The preferred embedded NoSQL style should follow a document model.
+- Storage access should still be abstracted so alternative backends can be introduced later without changing the asset contract.
+- Future backends may include document or index stores such as MongoDB, but only as alternative implementations or mirrors of the same asset/storage contract rather than as the defining source of truth.
+- The storage contract should currently treat these as the top-level entities:
+  - `artifact`
+  - `checkpoint`
+  - `collection`
+  - `entry`
+  - `blob`
+- The v1 `artifact_id` format should use `UUIDv7`.
+- `artifact` should also carry a human-facing `slug` for export, marketplace, and UX surfaces.
+- The human-facing `slug` should behave more like a renameable alias than a permanent primary key.
+- `checkpoint` should be a first-class addressable entity, but it still belongs to a parent `artifact` lineage rather than existing as a completely free-floating object.
+- The v1 `checkpoint_id` format should use `UUIDv7`.
+- Human-facing checkpoint labels should be handled through optional tags or aliases rather than by overloading the primary identifier.
+- `collection` should also be a first-class addressable entity. Artifacts and checkpoints may reference collections, but collections should remain globally reusable rather than being owned by one artifact lineage.
+- `collection` should be treated as the logical storage unit, even if its physical representation changes over time.
+- In the v1 file-first implementation, one `collection` should materialize as one `source + UTC hour` shard.
+- The v1 `collection_id` format should use `UUIDv7`.
+- Each `entry` should belong to exactly one owner `collection`.
+- Cross-collection reuse should happen through references, not by giving one entry multiple homes.
+- `entry_id` should not be content-derived. Multiple entries may legitimately point to the same blob while differing in source metadata, ingest context, or timing.
+- The v1 `entry_id` should be an ingest-assigned immutable identifier rather than a digest of the body. It should be stable, opaque, and sortable enough for operational use.
+- The v1 `entry_id` format should use `UUIDv7`.
+- `blob` should be an immutable content-addressed object.
+- Multiple entries may point to the same blob when their underlying body or payload is identical.
+- Blob identity should be derived from content, so deduplication and integrity verification fall out of the storage model rather than requiring extra bookkeeping.
+- The v1 blob identifier format should be a self-describing hash string such as `sha256:<lowercase-hex>`.
+- Blob identity should stay future-compatible by following the general pattern `algorithm:digest` rather than using bare hex strings.
+- Export workflows should include the necessary collection references, and where appropriate the export package may carry the collection material needed to preserve reproducibility.
+- Collection identity should not rely only on source and time range; it should also carry collection kind and content identity.
+- The common collection identity should at least include:
+  - `kind`
+  - `time_range`
+  - `content_hash`
+- Canonical collections should additionally include:
+  - `parent_collection_ref`
+  - `transform_version`
+- File-format direction for file-backed parts of the hybrid model:
+  - use `JSON` for top-level manifests such as `strategy.json`
+  - use `NDJSON` with the `.ndjson` extension for append-friendly collection catalogs and event streams
+  - use `JSON` for small self-contained metadata objects and snapshots
+  - reserve `Parquet` for large tabular or time-series datasets when bulk analytics or storage efficiency matter
+- Do not split the project between both `.jsonl` and `.ndjson`; standardize on `.ndjson`.
+- Storage partitioning should use `UTC hour` consistently across sources for operational simplicity.
+- Stored source entries should continue to preserve their own `event_time`; the `UTC hour` partition is a storage rule, not the semantic truth of the data.
+
+## Open Decisions
+
+- Whether v1 live should run exactly one promoted strategy version or eventually allow multiple promoted live sub-strategies with central allocation.
+- If multiple research trader agents exist, what should differentiate them.
+- How much portfolio-construction logic should exist before v1 becomes too complex for a single Binance account.
+- What exactly belongs inside one promoted strategy artifact beyond trader logic and researcher recipe: evaluation config, data assumptions, and prompt lineage.
+- Whether one promoted strategy artifact should be materialized as a declarative manifest package, centered on JSON, that defines agent topology, prompts, evaluation, data dependencies, constraints, and provenance.
+- How the asset should separate immutable bundle content from mutable local session memory while still treating both as one local asset.
+- How much of the bundle should be inline inside `strategy.json` versus referenced as local files within the same bundle.
+- What exact sanitization policy should govern exportable strategy assets and their attached paper evidence.
+- What the minimal structured envelope for incidents and interventions should contain before agent-side interpretation begins.
+- How long rejected candidates should remain in shadow evaluation for evaluator assessment.
+- How the local shared data store should version, hash, and garbage-collect raw datasets over time.
+- How minimal the app-wide canonical schema can be while still avoiding brittle source-by-source schema maintenance.
+- What exact fields belong in the source-centered common envelope beyond the current minimum of `source_ref`, `event_time`, `ingested_at`, and `content_hash`.
+- Whether the entry should also carry a small preview or excerpt in addition to the blob/file reference.
+- How much of the hybrid workspace storage model should live in the embedded DB versus file/blob components.

@@ -1,0 +1,15 @@
+{
+  "artifact_id": "0196252c-a974-7ce8-94de-31f9f0f2b9c9",
+  "slug": "autokairos-template",
+  "schema_version": "0.1.0",
+  "active": {
+    "live_lane_ref": "./live/live-lane.json",
+    "current_checkpoint_ref": "./checkpoints/index.json#current",
+    "export_policy_ref": "./exports/policy.json"
+  },
+  "indexes": {
+    "checkpoints_ref": "./checkpoints/index.json",
+    "collections_ref": "./indexes/collections.json",
+    "sessions_ref": "./indexes/sessions.json"
+  }
+}

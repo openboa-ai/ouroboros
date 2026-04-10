@@ -1,0 +1,93 @@
+# Knowledge Log
+
+## 2026-04-09
+
+- Added `knowledge-index.md` as the top-level navigation layer for active and durable knowledge.
+- Moved the active discovery flow under `docs/exec-plans/active/` to simplify the repo shape.
+- Rebuilt `docs/` around `design-docs/`, `product-specs/`, `exec-plans/`, `references/`, and `generated/`.
+- Added [ARCHITECTURE.md](ARCHITECTURE.md) as the top-level system document.
+- Moved repo-local agent workflow rules into `.agents/` and replaced the narrow discovery skill with a broader wiki-maintenance skill.
+- Added `docs/exec-plans/active/coding-harness-skill-plan.md` to design how a repo-local coding-harness skill should apply OpenAI harness ideas to AutoKairos.
+- Copied the selected `addyosmani/agent-skills` workflows into `.agents/skills/agent-skills/` so AutoKairos can compose with needed upstream skills without carrying the full repository layout.
+- Added `.agents/skills/coding-harness/` as the repo-local implementation workflow that composes with the copied upstream skills and enforces AutoKairos-specific safety and evidence rules.
+- Recorded the direction that researcher self-improvement should create future promoted trader versions instead of mutating the current live trader directly.
+- Recorded the emerging direction that one promoted strategy artifact may need to bundle both researcher and trader lineage even if their runtimes stay separated.
+- Recorded that rollback and comparison should operate on the full strategy artifact, including researcher lineage, rather than trader code alone.
+- Recorded that strategy artifacts should be managed as one portfolio-level package across supported symbols rather than split per symbol.
+- Recorded that BTC and ETH decisions should remain independent inside one portfolio-level strategy artifact.
+- Recorded the emerging direction that promoted strategy artifacts may need a declarative manifest, centered on JSON, to describe agent topology and constraints while keeping runtime interfaces stable.
+- Recorded the direction that the agent workspace itself should be treated as the primary strategy asset boundary, instead of hard-coding semantic/episodic/procedural memory categories into the asset contract.
+- Recorded that each agent should be free to organize its own workspace materials inside the asset as long as the workspace stays exportable, inspectable, and replayable.
+- Recorded that `strategy.json` should remain the single canonical entrypoint at the workspace root and should behave as a thin bootstrap/index file rather than a giant all-in-one configuration dump.
+- Recorded that the top-level shape of `strategy.json` should be organized around `active` and `indexes`.
+- Recorded that the minimum `strategy.json.active` set should include `live_lane_ref`, `current_checkpoint_ref`, and `export_policy_ref`.
+- Recorded that official clients should integrate through a service/application layer rather than directly reading or mutating the workspace contract, while human inspection of the workspace remains allowed.
+- Recorded the direction that strategy bundles should be self-contained and relocatable, while still allowing `strategy.json` to reference local files inside the bundle rather than forcing every resource inline.
+- Recorded that mutable local memory should continue evolving between promotions while each promotion leaves behind an immutable checkpoint snapshot inside the asset.
+- Recorded that one artifact may contain multiple mutable runtime lanes, with the `live` lane carrying the full mutable trading context used for decisions, and with non-live lanes remaining internal unless their outputs materially affect live trading. Also recorded that all artifacts materially participating in live trading should be export targets.
+- Recorded that live-facing evaluation summaries should retain references to underlying raw evidence rather than existing as summary-only black boxes.
+- Recorded that live-lane `positions` and `orders` should preserve both current state and event history.
+- Recorded that immutable promotion checkpoints should be stored as full-copy snapshots rather than diff-only metadata.
+- Recorded that promotion checkpoints should include paper-trading evidence while keeping that evidence structurally separate from live mutable state.
+- Recorded the emerging need to distinguish a local master strategy asset from a sanitized exportable asset so saleable bundles exclude secrets, identities, and other non-shareable data.
+- Recorded that secrets, credentials, and other host-level trust material should remain outside the asset workspace even when the workspace is the primary artifact boundary.
+- Recorded that sanitized export should be a first-class capability of the asset model rather than a later add-on.
+- Recorded that sanitized export should be directly producible from the app as a first-class workflow.
+- Recorded that export should support both the current live asset and specific checkpoints.
+- Recorded that export should always be checkpoint-based, creating a fresh checkpoint first when exporting the current live asset.
+- Recorded that the checkpoint system should support at least promotion, export, and incident checkpoint types.
+- Recorded that incident checkpoints should be system-generated automatically rather than manually created by the user.
+- Recorded that promotion checkpoints should be created when a candidate passes paper trading.
+- Recorded that live promotion decisions should use time-series performance across checkpoints rather than only the latest promotion checkpoint.
+- Recorded that promotion analysis should expose both recent and cumulative performance views.
+- Recorded that promotion should remain a multi-metric agent judgment rather than being forced into a single scalar score.
+- Recorded that evaluation should keep fixed mandatory core dimensions while still allowing agent-adjustable secondary metrics.
+- Recorded that the fixed core evaluation dimensions should include incident frequency and forced-intervention history.
+- Recorded that incident/intervention handling should use minimal structured envelopes plus rich raw logs instead of an exhaustive fixed taxonomy.
+- Recorded that the evaluator itself should be self-improving.
+- Recorded that rejected paper candidates should continue in shadow evaluation for some period so evaluator quality can be assessed over time.
+- Recorded that shadow evaluation should apply by default to rejected paper candidates.
+- Recorded that shadow-evaluation duration should be fixed like paper-evaluation duration under the current artifact policy.
+- Recorded that every artifact should remain backtestable on demand.
+- Recorded that backtestability means an artifact should be replayable against historical raw market data whenever that data is available.
+- Recorded that raw historical data should live in a local shared data store inside the workspace boundary and that artifacts should reference collections by stable hashes or snapshot ids instead of embedding full raw datasets.
+- Recorded that one shared local raw-data store is sufficient by default and that per-asset private raw-data stores are not needed in the current model.
+- Recorded that the shared local data store should cover exchange data and other strategy-relevant modalities such as external text and on-chain data.
+- Recorded that the shared local data store should contain both raw and canonicalized layers.
+- Recorded that the canonicalized layer should use app-wide canonical schemas rather than asset-specific private schemas.
+- Recorded the emerging direction that app-wide canonical schemas should likely stay minimal, with rich source-specific context blobs preserved alongside them.
+- Corrected the common canonical envelope direction so it stays source-centered with a current minimum of `source_ref`, `event_time`, `ingested_at`, and `content_hash`, while market interpretation stays in LLM/session/evaluation logs rather than on the source record itself.
+- Recorded that source entries should stay metadata-centered and reference separate content blobs/files for large bodies and raw payloads.
+- Recorded that the storage model should be workspace-first rather than file-first or DB-first, and that a local embedded DB owned by the workspace counts as part of the asset rather than as an external dependency.
+- Recorded that the preferred v1 storage shape is hybrid: embedded DB for mutable operational state, indexes, and references, plus blob/files for large immutable bodies, exports, and dataset files.
+- Recorded that the current storage preference leans toward an embedded NoSQL/document-oriented store rather than a relational embedded store.
+- Recorded that the preferred embedded NoSQL style should follow a document model.
+- Recorded that future backends may include document stores such as MongoDB, but only as alternative implementations or mirrors of the same storage contract rather than as the defining source of truth for the asset model.
+- Recorded that the current storage contract should treat `artifact`, `checkpoint`, `collection`, `entry`, and `blob` as its top-level entity types.
+- Recorded that the v1 `artifact_id` format should use `UUIDv7`, while `artifact` also carries a human-facing `slug`.
+- Recorded that the human-facing artifact `slug` should behave more like a renameable alias than a permanent primary key.
+- Recorded that `checkpoint` should be a first-class addressable entity while still remaining attached to a parent `artifact` lineage.
+- Recorded that the v1 `checkpoint_id` format should use `UUIDv7`, with optional human-facing tags or aliases layered on top.
+- Recorded that `collection` should also be a first-class addressable entity that remains globally reusable rather than artifact-owned.
+- Recorded that `collection` should stay the logical storage unit, while the v1 file-first implementation materializes one collection as one `source + UTC hour` shard.
+- Recorded that the v1 `collection_id` format should use `UUIDv7`.
+- Recorded that each `entry` should have exactly one owner `collection`, with reuse handled by references rather than multiple homes.
+- Recorded that `entry_id` should be an ingest-assigned immutable identifier rather than a content-derived digest, so multiple entries can still point to the same blob when needed.
+- Recorded that the v1 `entry_id` format should use `UUIDv7`.
+- Recorded that `blob` should be an immutable content-addressed object, allowing deduplication and integrity verification by content identity.
+- Recorded that v1 blob identifiers should use a self-describing string format such as `sha256:<lowercase-hex>`, with the broader `algorithm:digest` pattern reserved for future compatibility.
+- Recorded that export workflows should include the collection references needed for reproducibility, and may include collection material when appropriate.
+- Recorded that collection identity should at least include `kind`, `time_range`, and `content_hash`, with canonical collections additionally carrying `parent_collection_ref` and `transform_version`.
+- Recorded the current file-format direction: JSON for manifests, NDJSON with the `.ndjson` extension for append-friendly catalogs and event streams, JSON for small metadata objects, and Parquet reserved for large tabular/time-series datasets.
+- Recorded the decision to standardize on JSON for people-facing declarative files as well, instead of mixing YAML and JSON in the asset model.
+- Recorded that file-first source storage should standardize on `UTC hour` partitioning across sources, while preserving `event_time` inside each record as the semantic time.
+
+## 2026-04-10
+
+- Recorded the official desktop-client stack direction as `Tauri 2 + React + Vite + Tailwind CSS`, with `shadcn/ui`-oriented component boundaries.
+- Recorded that the official client should remain dashboard-first, with charts treated as first-class trading surfaces rather than decorative widgets.
+- Recorded that the official client must continue to consume a service layer rather than treating the workspace contract as a direct machine API.
+- Added a stable workspace-asset model doc and a first JSON schema for `strategy.json` so the workspace contract now exists in both markdown and code-facing form.
+- Added a first end-to-end service boundary for the desktop scaffold: the React client now talks to a workspace-service interface, with a Tauri command path and a local mock path sharing the same contract.
+- Wired the mock client state back to the strategy-workspace template so `strategy.json`, checkpoint aliases, and export policy are no longer duplicated by hand in the frontend scaffold.
+- Added initial Vite manual chunking to keep the chart-heavy trading dashboard from collapsing into one oversized frontend bundle.

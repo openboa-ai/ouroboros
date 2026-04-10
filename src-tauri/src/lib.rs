@@ -1,0 +1,17 @@
+mod commands;
+mod models;
+mod state;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(state::AppState::default())
+        .invoke_handler(tauri::generate_handler![
+            commands::get_bootstrap_state,
+            commands::pause_global_automation,
+            commands::flatten_all_positions,
+            commands::create_export_checkpoint
+        ])
+        .run(tauri::generate_context!())
+        .expect("failed to run AutoKairos desktop shell");
+}
