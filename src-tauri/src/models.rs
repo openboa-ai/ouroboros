@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TradingMode {
     Observer,
@@ -8,7 +8,7 @@ pub enum TradingMode {
     Live,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderStatus {
     pub name: String,
@@ -16,7 +16,7 @@ pub struct ProviderStatus {
     pub usage_label: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetricCardData {
     pub label: String,
@@ -26,7 +26,7 @@ pub struct MetricCardData {
     pub icon: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PricePoint {
     pub label: String,
@@ -34,21 +34,21 @@ pub struct PricePoint {
     pub eth: i64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EquityPoint {
     pub label: String,
     pub value: i64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExposurePoint {
     pub symbol: String,
     pub value: i64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LivePosition {
     pub symbol: String,
@@ -60,7 +60,7 @@ pub struct LivePosition {
     pub context_tag: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveOrder {
     pub id: String,
@@ -71,7 +71,7 @@ pub struct LiveOrder {
     pub summary: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecisionEntry {
     pub id: String,
@@ -82,7 +82,7 @@ pub struct DecisionEntry {
     pub timestamp: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckpointSummary {
     pub id: String,
@@ -94,7 +94,7 @@ pub struct CheckpointSummary {
     pub performance: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub artifact_id: String,
@@ -104,7 +104,7 @@ pub struct WorkspaceSummary {
     pub export_policy_label: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapState {
     pub mode: TradingMode,

@@ -1,4 +1,30 @@
 {
-  "current": [],
-  "events": []
+  "current": [
+    {
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "size": "0.46 BTC",
+      "entry": "69,880",
+      "pnl": "+$1,284",
+      "protectiveStop": "68,940",
+      "contextTag": "breakout + flow + risk budget"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "side": "SHORT",
+      "size": "11.2 ETH",
+      "entry": "3,674",
+      "pnl": "+$312",
+      "protectiveStop": "3,728",
+      "contextTag": "fade extension + book pressure"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "01962577-26a8-759c-bca1-a24064c8af79",
+      "timestamp": "UTC 2026-04-10 13:42",
+      "kind": "position-expanded",
+      "summary": "BTC long size increased after flow and breakout confirmation."
+    }
+  ]
 }

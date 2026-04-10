@@ -68,6 +68,19 @@ The current minimum direction is:
 ## Storage Direction
 
 - workspace-first hybrid storage
-- embedded document-oriented state/index layer
-- file/blob layer for large immutable bodies and export material
+- v0 materialization is file-first JSON inside the workspace
+- the service layer seeds a mutable development workspace under `var/dev-workspace/`
+- file/blob storage is authoritative for the current scaffold
+- a document-oriented embedded store can be added later behind the same workspace contract
 - storage backends should remain swappable behind the same asset contract
+
+## Current V0 Workspace Paths
+
+- `strategy.json` is the canonical entrypoint
+- `live/live-lane.json` defines the active lane and state refs
+- `state/dashboard.json` carries the dashboard-facing live context
+- `state/decisions.json` stores short-form decision history
+- `state/positions.json` and `state/orders.json` preserve current state plus event history
+- `checkpoints/index.json` is the addressable checkpoint timeline
+- `checkpoints/items/<checkpoint_id>/` stores immutable checkpoint snapshots
+- `exports/generated/<checkpoint_id>/` stores live-centered export bundles derived from checkpoints

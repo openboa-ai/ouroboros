@@ -1,3 +1,9 @@
 {
-  "notes": []
+  "notes": [
+    {
+      "note_id": "01962589-67d4-73db-bcca-9b4230139ffb",
+      "kind": "market-context",
+      "summary": "BTC remains the dominant live expression while ETH is sized smaller due to weaker cumulative checkpoint evidence."
+    }
+  ]
 }

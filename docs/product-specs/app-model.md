@@ -15,5 +15,6 @@
   - intervention controls
   - reasoning and change-history drill-downs
 - The official client should talk to a service/application layer rather than reading the strategy workspace directly.
+- The current scaffold should materialize a mutable development workspace under `var/dev-workspace/` from the strategy-workspace template.
 - The app should start in `observer` or `paper`, not `live`.
 - The app should remain compatible with later headless or server deployment.

@@ -1,3 +1,11 @@
 {
-  "summaries": []
+  "summaries": [
+    {
+      "summary_id": "01962591-e32d-741f-b7cb-f81972583d32",
+      "headline": "Current live artifact still wins on net PnL after model cost.",
+      "evidence_refs": [
+        "../checkpoints/index.json#items[0]"
+      ]
+    }
+  ]
 }

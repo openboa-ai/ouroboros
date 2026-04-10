@@ -15,6 +15,7 @@ Thumbs.db
 .cache/
 tmp/
 temp/
+var/
 
 # Python
 __pycache__/

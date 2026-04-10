@@ -1,11 +1,15 @@
 mod commands;
 mod models;
 mod state;
+mod workspace;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let app_state = state::AppState::new_default()
+        .expect("failed to initialize workspace-backed application state");
+
     tauri::Builder::default()
-        .manage(state::AppState::default())
+        .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_bootstrap_state,
             commands::pause_global_automation,

@@ -32,6 +32,8 @@ export type LiveLaneState = {
   label: string;
   mode: "observer" | "paper" | "live";
   state_refs: {
+    dashboard_ref: string;
+    decisions_ref: string;
     memory_ref: string;
     sessions_ref: string;
     positions_ref: string;
@@ -50,6 +52,10 @@ export type CheckpointIndex = {
     checkpoint_id: CheckpointId;
     alias: string;
     type: "promotion" | "export" | "incident";
+    type_tone?: "positive" | "warning" | "danger";
+    summary?: string;
+    performance?: string;
+    path_ref?: string;
     created_at?: string;
   }>;
 };

@@ -11,6 +11,8 @@ The runtime should feel alive by default, but the live-trading path must remain 
   The installable UI surface users launch.
 - `client service layer`
   The boundary the official client uses instead of mutating workspace state directly.
+- `workspace asset`
+  The local strategy workspace the service layer owns, seeds, checkpoints, and exports.
 - `resident supervisor`
   The always-on orchestration layer that owns threads, turns, logs, and background work.
 - `research runtime`
@@ -37,6 +39,7 @@ Research and live execution should not be the same surface.
 - live execution must remain deterministic and harder to change
 - candidate changes must be evaluated before promotion
 - live trading should never depend on an unreviewed experimental workspace
+- the current v0 scaffold seeds a mutable workspace from `templates/strategy-workspace/` into `var/dev-workspace/`
 
 ## Current Live-Path Invariants
 

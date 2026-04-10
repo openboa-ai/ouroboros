@@ -4,12 +4,18 @@ import type {
   DecisionEntry,
   WorkspaceService
 } from "./service-contract";
-import type { StrategyManifest } from "./workspace-contract";
+import type { LiveLaneState, StrategyManifest } from "./workspace-contract";
 import checkpointIndexTemplate from "../../templates/strategy-workspace/checkpoints/index.json";
 import exportPolicyTemplate from "../../templates/strategy-workspace/exports/policy.json";
+import liveLaneTemplate from "../../templates/strategy-workspace/live/live-lane.json";
 import strategyTemplate from "../../templates/strategy-workspace/strategy.json";
+import dashboardTemplate from "../../templates/strategy-workspace/state/dashboard.json";
+import decisionsTemplate from "../../templates/strategy-workspace/state/decisions.json";
+import ordersTemplate from "../../templates/strategy-workspace/state/orders.json";
+import positionsTemplate from "../../templates/strategy-workspace/state/positions.json";
 
 export const mockStrategyManifest = strategyTemplate as StrategyManifest;
+const liveLane = liveLaneTemplate as LiveLaneState;
 
 const checkpointIndex = checkpointIndexTemplate as {
   current: {
@@ -17,183 +23,64 @@ const checkpointIndex = checkpointIndexTemplate as {
     alias: string;
     type: "promotion" | "export" | "incident";
   };
+  items: Array<{
+    checkpoint_id: string;
+    alias: string;
+    type: "promotion" | "export" | "incident";
+    type_tone?: "positive" | "warning" | "danger";
+    summary?: string;
+    created_at?: string;
+    performance?: string;
+  }>;
 };
 
 const exportPolicy = exportPolicyTemplate as {
   policy_id: string;
 };
 
-const bootstrapState: BootstrapState = {
-  mode: "paper",
-  automationStatus: "active",
-  statusNote: "Research and live-facing context are running through the service layer.",
-  workspace: {
-    artifactId: mockStrategyManifest.artifact_id,
-    slug: mockStrategyManifest.slug,
-    liveLaneLabel: "live-lane/main",
-    currentCheckpointAlias: checkpointIndex.current.alias,
-    exportPolicyLabel: exportPolicy.policy_id
-  },
-  providers: [
-    {
-      name: "Codex",
-      statusLabel: "Connected via user auth",
-      usageLabel: "6.1k tokens this session"
-    },
-    {
-      name: "Claude Code",
-      statusLabel: "Connected via user auth",
-      usageLabel: "2 managed sessions active"
-    }
-  ],
-  metrics: [
-    {
-      label: "Net PnL",
-      value: "+$4,218",
-      delta: "Includes fees, funding, slippage, and model cost",
-      description: "Current promoted artifact",
-      icon: "up"
-    },
-    {
-      label: "Risk Budget",
-      value: "61%",
-      delta: "Adaptive budget after BTC momentum expansion",
-      description: "Trader-controlled portfolio allocation",
-      icon: "risk"
-    },
-    {
-      label: "Leverage",
-      value: "4.2x",
-      delta: "Dynamic within user cap",
-      description: "Live portfolio effective leverage",
-      icon: "leverage"
-    },
-    {
-      label: "Intervention Load",
-      value: "1 incident",
-      delta: "No protective-stop violations in current live state",
-      description: "Fixed core evaluation dimension",
-      icon: "momentum"
-    }
-  ],
-  priceSeries: [
-    { label: "00:00", btc: 68620, eth: 3528 },
-    { label: "04:00", btc: 68910, eth: 3554 },
-    { label: "08:00", btc: 69580, eth: 3624 },
-    { label: "12:00", btc: 69220, eth: 3598 },
-    { label: "16:00", btc: 70140, eth: 3660 },
-    { label: "20:00", btc: 70610, eth: 3695 }
-  ],
-  equitySeries: [
-    { label: "Mon", value: 1180 },
-    { label: "Tue", value: 1670 },
-    { label: "Wed", value: 2140 },
-    { label: "Thu", value: 2865 },
-    { label: "Fri", value: 3340 },
-    { label: "Sat", value: 4218 }
-  ],
-  exposureSeries: [
-    { symbol: "BTCUSDT", value: 58 },
-    { symbol: "ETHUSDT", value: 31 },
-    { symbol: "Dry Powder", value: 11 }
-  ],
-  positions: [
-    {
-      symbol: "BTCUSDT",
-      side: "LONG",
-      size: "0.46 BTC",
-      entry: "69,880",
-      pnl: "+$1,284",
-      protectiveStop: "68,940",
-      contextTag: "breakout + flow + risk budget"
-    },
-    {
-      symbol: "ETHUSDT",
-      side: "SHORT",
-      size: "11.2 ETH",
-      entry: "3,674",
-      pnl: "+$312",
-      protectiveStop: "3,728",
-      contextTag: "fade extension + book pressure"
-    }
-  ],
-  orders: [
-    {
-      id: "order-1",
-      symbol: "BTCUSDT",
-      kind: "Protective stop",
-      status: "Active",
-      statusTone: "positive",
-      summary: "Exchange-native stop verified after latest position expansion."
-    },
-    {
-      id: "order-2",
-      symbol: "ETHUSDT",
-      kind: "Scale-out",
-      status: "Queued",
-      statusTone: "warning",
-      summary: "Waiting for volatility band confirmation before partial close."
-    }
-  ],
-  decisions: [
-    {
-      id: "decision-1",
-      kind: "Entry",
-      tone: "positive",
-      headline: "BTC long still favored",
-      reason:
-        "Recent breakout remains supported by positive flow and no current liveness degradation. Trader kept leverage below the user cap and refreshed the protective stop path.",
-      timestamp: "UTC 2026-04-10 13:42"
-    },
-    {
-      id: "decision-2",
-      kind: "Risk",
-      tone: "warning",
-      headline: "ETH short stays smaller than BTC long",
-      reason:
-        "Portfolio-level context still prefers BTC as the dominant expression. ETH remains active but receives lower size due to weaker cumulative checkpoint evidence.",
-      timestamp: "UTC 2026-04-10 13:36"
-    },
-    {
-      id: "decision-3",
-      kind: "Evaluation",
-      tone: "neutral",
-      headline: "Rejected candidate remains in shadow evaluation",
-      reason:
-        "A rejected candidate is still running under the same fixed paper policy so the evaluator can inspect whether rejection quality is degrading.",
-      timestamp: "UTC 2026-04-10 12:58"
-    }
-  ],
-  checkpoints: [
-    {
-      id: "0196256c-e9aa-7c4d-967e-cb0ec87907df",
-      alias: "promote-btc-eth-apr10",
-      type: "promotion",
-      typeTone: "positive",
-      summary: "Promoted after time-series paper outperformance across recent and cumulative views.",
-      createdAt: "UTC 2026-04-10 12:02",
-      performance: "Paper +6.4% / Shadow +2.1%"
-    },
-    {
-      id: "0196251f-7e08-76f2-b48d-0f88a2995874",
-      alias: "incident-stop-repair",
-      type: "incident",
-      typeTone: "danger",
-      summary: "Execution core repaired a missing stop registration before allowing new entries.",
-      createdAt: "UTC 2026-04-09 18:40",
-      performance: "No forced flatten required"
-    },
-    {
-      id: "01962489-41de-73ce-9f5b-ff2696878ec9",
-      alias: "export-paper-stack",
-      type: "export",
-      typeTone: "warning",
-      summary: "Sanitized export generated from a fresh checkpoint before sharing the live-centered asset.",
-      createdAt: "UTC 2026-04-09 08:05",
-      performance: "Export policy sanitized-live-centered"
-    }
-  ]
+const dashboardState = dashboardTemplate as Omit<
+  BootstrapState,
+  "workspace" | "positions" | "orders" | "decisions" | "checkpoints"
+>;
+
+const decisionsState = decisionsTemplate as {
+  decisions: DecisionEntry[];
 };
+
+const ordersState = ordersTemplate as {
+  current: BootstrapState["orders"];
+};
+
+const positionsState = positionsTemplate as {
+  current: BootstrapState["positions"];
+};
+
+function buildTemplateBootstrapState(): BootstrapState {
+  return {
+    ...dashboardState,
+    workspace: {
+      artifactId: mockStrategyManifest.artifact_id,
+      slug: mockStrategyManifest.slug,
+      liveLaneLabel: liveLane.label,
+      currentCheckpointAlias: checkpointIndex.current.alias,
+      exportPolicyLabel: exportPolicy.policy_id
+    },
+    positions: positionsState.current,
+    orders: ordersState.current,
+    decisions: decisionsState.decisions,
+    checkpoints: checkpointIndex.items.map((item) => ({
+      id: item.checkpoint_id,
+      alias: item.alias,
+      type: item.type,
+      typeTone: item.type_tone ?? "warning",
+      summary: item.summary ?? "Checkpoint captured.",
+      createdAt: item.created_at ?? "UTC unknown",
+      performance: item.performance ?? "No summary"
+    }))
+  };
+}
+
+const bootstrapState: BootstrapState = buildTemplateBootstrapState();
 
 class MockWorkspaceService implements WorkspaceService {
   private state: BootstrapState = structuredClone(bootstrapState);

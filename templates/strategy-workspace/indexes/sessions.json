@@ -1,3 +1,9 @@
 {
-  "sessions": []
+  "sessions": [
+    {
+      "session_id": "0196259b-481e-7249-b4a9-b8d5048790ec",
+      "label": "live-evaluation-window",
+      "started_at": "UTC 2026-04-10 11:10"
+    }
+  ]
 }

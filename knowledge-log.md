@@ -91,3 +91,6 @@
 - Added a first end-to-end service boundary for the desktop scaffold: the React client now talks to a workspace-service interface, with a Tauri command path and a local mock path sharing the same contract.
 - Wired the mock client state back to the strategy-workspace template so `strategy.json`, checkpoint aliases, and export policy are no longer duplicated by hand in the frontend scaffold.
 - Added initial Vite manual chunking to keep the chart-heavy trading dashboard from collapsing into one oversized frontend bundle.
+- Replaced the Tauri in-memory demo state with a workspace-backed repository layer that seeds `var/dev-workspace/` from the strategy-workspace template.
+- Added live workspace files for dashboard context, decision history, and richer sample positions/orders so the scaffold now reads real JSON asset state rather than hard-coded Rust seed data.
+- Added checkpoint snapshot materialization and export-bundle generation paths so incident/export commands now create actual files under the workspace instead of only mutating UI memory.

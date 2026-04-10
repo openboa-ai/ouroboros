@@ -68,6 +68,14 @@ These decisions are current, not final.
   - `live_lane_ref`
   - `current_checkpoint_ref`
   - `export_policy_ref`
+- The current live-lane state refs should also expose:
+  - `dashboard_ref`
+  - `decisions_ref`
+  - `memory_ref`
+  - `sessions_ref`
+  - `positions_ref`
+  - `orders_ref`
+  - `eval_summaries_ref`
 - Official app clients should not read or mutate the workspace contract directly as their primary integration path.
 - Official clients should talk to a service/application layer that owns validation, invariants, migrations, locking, and export rules.
 - Manual human inspection of the workspace remains allowed, but machine clients should treat the workspace as internal state behind the app/service boundary.
@@ -147,6 +155,7 @@ These decisions are current, not final.
 - The preferred v1 shape is a hybrid model:
   - embedded DB for mutable operational state, indexes, and references
   - blob/files for large immutable bodies, exports, and dataset files
+- The current v0 implementation should still materialize the workspace as file-first JSON so the asset stays inspectable, exportable, and easy to seed locally before a stronger embedded store exists.
 - The current storage preference leans toward an embedded NoSQL/document-oriented store rather than a relational embedded store.
 - The preferred embedded NoSQL style should follow a document model.
 - Storage access should still be abstracted so alternative backends can be introduced later without changing the asset contract.
@@ -194,6 +203,11 @@ These decisions are current, not final.
 - Do not split the project between both `.jsonl` and `.ndjson`; standardize on `.ndjson`.
 - Storage partitioning should use `UTC hour` consistently across sources for operational simplicity.
 - Stored source entries should continue to preserve their own `event_time`; the `UTC hour` partition is a storage rule, not the semantic truth of the data.
+- The current desktop scaffold should seed a mutable development workspace under `var/dev-workspace/` from `templates/strategy-workspace/`.
+- Tauri service commands should read and write that workspace directly rather than mutating in-memory demo state.
+- Export checkpoint creation should materialize both:
+  - a checkpoint snapshot under `checkpoints/items/<checkpoint_id>/`
+  - a live-centered export bundle under `exports/generated/<checkpoint_id>/`
 
 ## Open Decisions
 

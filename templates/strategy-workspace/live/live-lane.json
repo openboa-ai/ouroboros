@@ -3,6 +3,8 @@
   "label": "live-lane/main",
   "mode": "paper",
   "state_refs": {
+    "dashboard_ref": "../state/dashboard.json",
+    "decisions_ref": "../state/decisions.json",
     "memory_ref": "../state/live-memory.json",
     "sessions_ref": "../indexes/sessions.json",
     "positions_ref": "../state/positions.json",

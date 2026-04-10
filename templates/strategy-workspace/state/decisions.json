@@ -1,0 +1,28 @@
+{
+  "decisions": [
+    {
+      "id": "decision-1",
+      "kind": "Entry",
+      "tone": "positive",
+      "headline": "BTC long still favored",
+      "reason": "Recent breakout remains supported by positive flow and no current liveness degradation. Trader kept leverage below the user cap and refreshed the protective stop path.",
+      "timestamp": "UTC 2026-04-10 13:42"
+    },
+    {
+      "id": "decision-2",
+      "kind": "Risk",
+      "tone": "warning",
+      "headline": "ETH short stays smaller than BTC long",
+      "reason": "Portfolio-level context still prefers BTC as the dominant expression. ETH remains active but receives lower size due to weaker cumulative checkpoint evidence.",
+      "timestamp": "UTC 2026-04-10 13:36"
+    },
+    {
+      "id": "decision-3",
+      "kind": "Evaluation",
+      "tone": "neutral",
+      "headline": "Rejected candidate remains in shadow evaluation",
+      "reason": "A rejected candidate is still running under the same fixed paper policy so the evaluator can inspect whether rejection quality is degrading.",
+      "timestamp": "UTC 2026-04-10 12:58"
+    }
+  ]
+}

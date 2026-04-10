@@ -1,0 +1,10 @@
+{
+  "checkpoint_id": "01962489-41de-73ce-9f5b-ff2696878ec9",
+  "alias": "export-paper-stack",
+  "type": "export",
+  "type_tone": "warning",
+  "summary": "Sanitized export generated from a fresh checkpoint before sharing the live-centered asset.",
+  "created_at": "UTC 2026-04-09 08:05",
+  "performance": "Export policy sanitized-live-centered",
+  "path_ref": "./items/01962489-41de-73ce-9f5b-ff2696878ec9/checkpoint.json"
+}
