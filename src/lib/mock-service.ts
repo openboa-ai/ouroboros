@@ -2,6 +2,7 @@ import type {
   AssetInspectorState,
   BlobDetailState,
   BootstrapState,
+  CheckpointComparisonState,
   CollectionDetailState,
   CollectionSummaryState,
   CheckpointDetailState,
@@ -564,6 +565,76 @@ class MockWorkspaceService implements WorkspaceService {
       ),
       exportBundle:
         checkpoint.type === "export" && checkpoint.exportBundleRef ? buildExportBundle(checkpoint) : null
+    };
+  }
+
+  async getCheckpointComparison(
+    baseCheckpointId: string,
+    targetCheckpointId: string
+  ): Promise<CheckpointComparisonState> {
+    const base = await this.getCheckpointDetail(baseCheckpointId);
+    const target = await this.getCheckpointDetail(targetCheckpointId);
+    const baseFiles = new Set(base.workspaceFileRefs);
+    const targetFiles = new Set(target.workspaceFileRefs);
+    const fileKeys = new Set<string>([...baseFiles, ...targetFiles]);
+    const files: CheckpointComparisonState["files"] = [];
+    let changedCount = 0;
+    let addedCount = 0;
+    let removedCount = 0;
+
+    for (const fullRef of fileKeys) {
+      const baseHas = baseFiles.has(fullRef);
+      const targetHas = targetFiles.has(fullRef);
+      const relativePath = fullRef
+        .replace(`${base.snapshotWorkspaceRef}/`, "")
+        .replace(`${target.snapshotWorkspaceRef}/`, "");
+
+      let status: "added" | "removed" | "changed" | null = null;
+      if (baseHas && targetHas) {
+        const baseContent = this.resolveDocumentContent(fullRef);
+        const targetRef = fullRef.replace(base.snapshotWorkspaceRef, target.snapshotWorkspaceRef);
+        const targetContent = this.resolveDocumentContent(targetRef);
+        if (baseContent !== targetContent) {
+          status = "changed";
+          changedCount += 1;
+          files.push({
+            relativePath,
+            status,
+            baseRef: fullRef,
+            targetRef
+          });
+        }
+        continue;
+      }
+      if (baseHas) {
+        status = "removed";
+        removedCount += 1;
+      } else if (targetHas) {
+        status = "added";
+        addedCount += 1;
+      }
+
+      if (status) {
+        files.push({
+          relativePath,
+          status,
+          baseRef: baseHas ? fullRef : undefined,
+          targetRef: targetHas ? fullRef : undefined
+        });
+      }
+    }
+
+    return {
+      baseCheckpointId: base.id,
+      baseAlias: base.alias,
+      targetCheckpointId: target.id,
+      targetAlias: target.alias,
+      comparedFileCount: files.length,
+      changedCount,
+      addedCount,
+      removedCount,
+      summary: `${changedCount} changed, ${addedCount} added, ${removedCount} removed between ${base.alias} and ${target.alias}.`,
+      files
     };
   }
 

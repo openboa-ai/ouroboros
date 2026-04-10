@@ -124,6 +124,30 @@ pub struct CheckpointDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CheckpointComparisonFileState {
+    pub relative_path: String,
+    pub status: String,
+    pub base_ref: Option<String>,
+    pub target_ref: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckpointComparisonState {
+    pub base_checkpoint_id: String,
+    pub base_alias: String,
+    pub target_checkpoint_id: String,
+    pub target_alias: String,
+    pub compared_file_count: usize,
+    pub changed_count: usize,
+    pub added_count: usize,
+    pub removed_count: usize,
+    pub summary: String,
+    pub files: Vec<CheckpointComparisonFileState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CollectionSummaryState {
     pub id: String,
     pub kind: String,

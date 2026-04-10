@@ -2,9 +2,9 @@ use tauri::State;
 
 use crate::{
     models::{
-        BlobDetailState, BootstrapState, CheckpointDetailState, CollectionDetailState,
-        ImportBundleState, ImportDetailState, IngestSourceEntryInput, IngestSourceEntryResult,
-        WorkspaceDocumentState,
+        BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
+        CollectionDetailState, ImportBundleState, ImportDetailState, IngestSourceEntryInput,
+        IngestSourceEntryResult, WorkspaceDocumentState,
     },
     state::AppState,
 };
@@ -20,6 +20,15 @@ pub fn get_checkpoint_detail(
     state: State<'_, AppState>,
 ) -> Result<CheckpointDetailState, String> {
     state.checkpoint_detail(&checkpoint_id)
+}
+
+#[tauri::command]
+pub fn get_checkpoint_comparison(
+    base_checkpoint_id: String,
+    target_checkpoint_id: String,
+    state: State<'_, AppState>,
+) -> Result<CheckpointComparisonState, String> {
+    state.checkpoint_comparison(&base_checkpoint_id, &target_checkpoint_id)
 }
 
 #[tauri::command]

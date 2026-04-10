@@ -22,6 +22,7 @@ import { Card } from "./components/ui/card";
 import type {
   BlobDetailState,
   BootstrapState,
+  CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
   ImportDetailState,
@@ -38,6 +39,8 @@ export function App() {
   const [selectedCheckpointDetail, setSelectedCheckpointDetail] = useState<CheckpointDetailState | null>(
     null
   );
+  const [selectedCheckpointComparison, setSelectedCheckpointComparison] =
+    useState<CheckpointComparisonState | null>(null);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [selectedCollectionDetail, setSelectedCollectionDetail] = useState<CollectionDetailState | null>(
     null
@@ -91,6 +94,39 @@ export function App() {
       cancelled = true;
     };
   }, [selectedCheckpointId]);
+
+  useEffect(() => {
+    if (!state || !selectedCheckpointId) {
+      setSelectedCheckpointComparison(null);
+      return;
+    }
+
+    const currentCheckpoint =
+      state.checkpoints.find(
+        (checkpoint) => checkpoint.pathRef === state.workspaceIndex.active.currentCheckpointRef
+      ) ?? state.checkpoints[0];
+    if (!currentCheckpoint || currentCheckpoint.id === selectedCheckpointId) {
+      setSelectedCheckpointComparison(null);
+      return;
+    }
+
+    let cancelled = false;
+    void workspaceService
+      .getCheckpointComparison(currentCheckpoint.id, selectedCheckpointId)
+      .then((comparison) => {
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedCheckpointComparison(comparison);
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state, selectedCheckpointId]);
 
   useEffect(() => {
     if (!selectedCollectionId) {
@@ -237,6 +273,7 @@ export function App() {
       setState(nextState);
       setSelectedCheckpointId(nextCheckpointId);
       setSelectedCheckpointDetail(null);
+      setSelectedCheckpointComparison(null);
       setSelectedCollectionId(nextCollectionId);
       setSelectedCollectionDetail(null);
       setSelectedImportId(nextImportId);
@@ -480,6 +517,7 @@ export function App() {
             <StrategyTimeline
               checkpoints={state.checkpoints}
               checkpointDetail={selectedCheckpointDetail}
+              checkpointComparison={selectedCheckpointComparison}
               selectedCheckpointId={selectedCheckpointId}
               onSelectCheckpoint={setSelectedCheckpointId}
               onOpenWorkspaceDocument={(documentRef) => {

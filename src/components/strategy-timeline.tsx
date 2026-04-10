@@ -1,4 +1,8 @@
-import type { CheckpointDetailState, CheckpointSummary } from "../lib/service-contract";
+import type {
+  CheckpointComparisonState,
+  CheckpointDetailState,
+  CheckpointSummary
+} from "../lib/service-contract";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -6,6 +10,7 @@ import { Button } from "./ui/button";
 type StrategyTimelineProps = {
   checkpoints: CheckpointSummary[];
   checkpointDetail: CheckpointDetailState | null;
+  checkpointComparison: CheckpointComparisonState | null;
   selectedCheckpointId: string | null;
   onSelectCheckpoint: (checkpointId: string) => void;
   onRestoreCheckpoint: (checkpointId: string) => void;
@@ -13,6 +18,7 @@ type StrategyTimelineProps = {
 };
 
 export function StrategyTimeline({
+  checkpointComparison,
   checkpointDetail,
   checkpoints,
   onOpenWorkspaceDocument,
@@ -163,6 +169,53 @@ export function StrategyTimeline({
                     </dd>
                   </div>
                 </>
+              ) : null}
+              {checkpointComparison ? (
+                <div>
+                  <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                    Compare vs current live checkpoint
+                  </dt>
+                  <dd className="mt-2 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge tone="warning">{checkpointComparison.changedCount} changed</Badge>
+                      <Badge tone="positive">{checkpointComparison.addedCount} added</Badge>
+                      <Badge tone="danger">{checkpointComparison.removedCount} removed</Badge>
+                    </div>
+                    <p className="text-sm leading-6 text-ink-200">{checkpointComparison.summary}</p>
+                    <div className="space-y-2">
+                      {checkpointComparison.files.slice(0, 6).map((file) => (
+                        <button
+                          key={`${file.status}:${file.relativePath}`}
+                          type="button"
+                          onClick={() =>
+                            onOpenWorkspaceDocument(file.targetRef ?? file.baseRef ?? "")
+                          }
+                          className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left transition hover:border-white/20 hover:bg-white/[0.05]"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-ink-50">{file.relativePath}</p>
+                            <Badge
+                              tone={
+                                file.status === "added"
+                                  ? "positive"
+                                  : file.status === "removed"
+                                    ? "danger"
+                                    : "warning"
+                              }
+                            >
+                              {file.status}
+                            </Badge>
+                          </div>
+                        </button>
+                      ))}
+                      {checkpointComparison.files.length > 6 ? (
+                        <p className="text-xs uppercase tracking-[0.16em] text-ink-300">
+                          +{checkpointComparison.files.length - 6} more changed files
+                        </p>
+                      ) : null}
+                    </div>
+                  </dd>
+                </div>
               ) : null}
             </dl>
           </div>

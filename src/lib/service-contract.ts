@@ -92,6 +92,26 @@ export type CheckpointDetailState = {
   exportBundle: ExportBundleState | null;
 };
 
+export type CheckpointComparisonFileState = {
+  relativePath: string;
+  status: "added" | "removed" | "changed";
+  baseRef?: string;
+  targetRef?: string;
+};
+
+export type CheckpointComparisonState = {
+  baseCheckpointId: string;
+  baseAlias: string;
+  targetCheckpointId: string;
+  targetAlias: string;
+  comparedFileCount: number;
+  changedCount: number;
+  addedCount: number;
+  removedCount: number;
+  summary: string;
+  files: CheckpointComparisonFileState[];
+};
+
 export type CollectionSummaryState = {
   id: string;
   kind: "raw" | "canonical";
@@ -334,6 +354,10 @@ export type BootstrapState = {
 export interface WorkspaceService {
   getBootstrapState(): Promise<BootstrapState>;
   getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState>;
+  getCheckpointComparison(
+    baseCheckpointId: string,
+    targetCheckpointId: string
+  ): Promise<CheckpointComparisonState>;
   getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
   getImportDetail(importId: string): Promise<ImportDetailState>;
   getBlobDetail(blobId: string): Promise<BlobDetailState>;

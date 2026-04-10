@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   BlobDetailState,
   BootstrapState,
+  CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
   ImportBundleState,
@@ -19,6 +20,16 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState> {
     return invoke<CheckpointDetailState>("get_checkpoint_detail", { checkpointId });
+  }
+
+  async getCheckpointComparison(
+    baseCheckpointId: string,
+    targetCheckpointId: string
+  ): Promise<CheckpointComparisonState> {
+    return invoke<CheckpointComparisonState>("get_checkpoint_comparison", {
+      baseCheckpointId,
+      targetCheckpointId
+    });
   }
 
   async getCollectionDetail(collectionId: string): Promise<CollectionDetailState> {

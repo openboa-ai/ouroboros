@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{collections::BTreeSet};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -8,9 +9,10 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::models::{
-    AssetInspectorState, BlobDetailState, BootstrapState, CheckpointDetailState, CheckpointSummary,
-    CollectionDetailState, CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint,
-    ExportBundleState, ExportInspectorState, ExposurePoint, ImportDetailState, ImportSummaryState,
+    AssetInspectorState, BlobDetailState, BootstrapState, CheckpointComparisonFileState,
+    CheckpointComparisonState, CheckpointDetailState, CheckpointSummary, CollectionDetailState,
+    CollectionEntryState, CollectionSummaryState, DecisionEntry, EquityPoint, ExportBundleState,
+    ExportInspectorState, ExposurePoint, ImportDetailState, ImportSummaryState,
     IngestSourceEntryInput, IngestSourceEntryResult, ImportBundleState, LaneEventState,
     LiveContextState, LiveEvaluationSummaryState, LiveOrder, LivePosition, LiveSessionState,
     MetricCardData, OperationSummaryState, PricePoint, ProviderStatus, StrategyActiveIndexState,
@@ -311,12 +313,7 @@ impl WorkspaceRepository {
     ) -> Result<CheckpointDetailState, String> {
         let checkpoint_path = self.checkpoint_file_path(checkpoint_id);
         let checkpoint = self.read_json_path::<CheckpointRecordFile>(&checkpoint_path)?;
-        let snapshot_workspace = self
-            .root
-            .join("checkpoints")
-            .join("items")
-            .join(checkpoint_id)
-            .join("workspace");
+        let snapshot_workspace = self.checkpoint_snapshot_path(checkpoint_id);
         let workspace_file_refs = if snapshot_workspace.exists() {
             self.list_display_files(&snapshot_workspace)?
         } else {
@@ -340,6 +337,91 @@ impl WorkspaceRepository {
             snapshot_workspace_ref: self.display_path(&snapshot_workspace),
             workspace_file_refs,
             export_bundle,
+        })
+    }
+
+    pub fn compare_checkpoints(
+        &self,
+        base_checkpoint_id: &str,
+        target_checkpoint_id: &str,
+    ) -> Result<CheckpointComparisonState, String> {
+        let base_checkpoint_path = self.checkpoint_file_path(base_checkpoint_id);
+        let target_checkpoint_path = self.checkpoint_file_path(target_checkpoint_id);
+        let base_checkpoint = self.read_json_path::<CheckpointRecordFile>(&base_checkpoint_path)?;
+        let target_checkpoint =
+            self.read_json_path::<CheckpointRecordFile>(&target_checkpoint_path)?;
+        let base_root = self.checkpoint_snapshot_path(base_checkpoint_id);
+        let target_root = self.checkpoint_snapshot_path(target_checkpoint_id);
+
+        let base_files = list_relative_files(&base_root, ".")?;
+        let target_files = list_relative_files(&target_root, ".")?;
+        let mut file_keys = BTreeSet::new();
+        for file in &base_files {
+            file_keys.insert(file.clone());
+        }
+        for file in &target_files {
+            file_keys.insert(file.clone());
+        }
+
+        let mut files = Vec::new();
+        let mut changed_count = 0;
+        let mut added_count = 0;
+        let mut removed_count = 0;
+
+        for relative_path in file_keys {
+            let base_rel = relative_path.trim_start_matches("./");
+            let base_path = base_root.join(base_rel);
+            let target_path = target_root.join(base_rel);
+            let base_exists = base_path.exists();
+            let target_exists = target_path.exists();
+
+            let status = match (base_exists, target_exists) {
+                (true, true) => {
+                    let left = fs::read(&base_path).map_err(|error| {
+                        format!("failed to read {}: {error}", base_path.display())
+                    })?;
+                    let right = fs::read(&target_path).map_err(|error| {
+                        format!("failed to read {}: {error}", target_path.display())
+                    })?;
+                    if left == right {
+                        continue;
+                    }
+                    changed_count += 1;
+                    "changed"
+                }
+                (true, false) => {
+                    removed_count += 1;
+                    "removed"
+                }
+                (false, true) => {
+                    added_count += 1;
+                    "added"
+                }
+                (false, false) => continue,
+            };
+
+            files.push(CheckpointComparisonFileState {
+                relative_path: base_rel.into(),
+                status: status.into(),
+                base_ref: base_exists.then(|| self.display_path(&base_path)),
+                target_ref: target_exists.then(|| self.display_path(&target_path)),
+            });
+        }
+
+        Ok(CheckpointComparisonState {
+            base_checkpoint_id: base_checkpoint.checkpoint_id,
+            base_alias: base_checkpoint.alias,
+            target_checkpoint_id: target_checkpoint.checkpoint_id,
+            target_alias: target_checkpoint.alias,
+            compared_file_count: files.len(),
+            changed_count,
+            added_count,
+            removed_count,
+            summary: format!(
+                "{} changed, {} added, {} removed between {} and {}.",
+                changed_count, added_count, removed_count, base_checkpoint_id, target_checkpoint_id
+            ),
+            files,
         })
     }
 
@@ -1391,6 +1473,14 @@ impl WorkspaceRepository {
             .join("items")
             .join(checkpoint_id)
             .join("checkpoint.json")
+    }
+
+    fn checkpoint_snapshot_path(&self, checkpoint_id: &str) -> PathBuf {
+        self.root
+            .join("checkpoints")
+            .join("items")
+            .join(checkpoint_id)
+            .join("workspace")
     }
 
     fn export_bundle_path(&self, checkpoint_id: &str) -> PathBuf {
@@ -2526,6 +2616,46 @@ mod tests {
             "evaluation summary documents should appear in the service-owned catalog"
         );
         assert_eq!(bootstrap.live_context.evaluation_summaries.len(), 1);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn compare_checkpoints_reports_workspace_differences() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let export_state = repo.create_export_checkpoint().expect("export checkpoint");
+        let export_checkpoint_id = export_state
+            .checkpoints
+            .first()
+            .map(|checkpoint| checkpoint.id.clone())
+            .expect("export checkpoint id");
+
+        let flattened = repo.flatten_all_positions().expect("flatten");
+        let incident_checkpoint_id = flattened
+            .checkpoints
+            .first()
+            .map(|checkpoint| checkpoint.id.clone())
+            .expect("incident checkpoint id");
+
+        let comparison = repo
+            .compare_checkpoints(&export_checkpoint_id, &incident_checkpoint_id)
+            .expect("compare checkpoints");
+
+        assert!(comparison.compared_file_count > 0);
+        assert!(
+            comparison
+                .files
+                .iter()
+                .any(|file| file.relative_path == "state/positions.json"),
+            "positions.json should differ after flattening live positions"
+        );
+        assert!(
+            comparison.changed_count >= 1,
+            "at least one file should differ between export and incident checkpoints"
+        );
 
         let _ = fs::remove_dir_all(&root);
     }
