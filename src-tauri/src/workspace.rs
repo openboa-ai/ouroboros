@@ -122,16 +122,22 @@ impl WorkspaceRepository {
             checkpoints: checkpoints_index
                 .items
                 .into_iter()
-                .map(|item| CheckpointSummary {
-                    id: item.checkpoint_id.clone(),
-                    alias: item.alias,
-                    r#type: item.r#type,
-                    type_tone: item.type_tone,
-                    summary: item.summary,
-                    created_at: item.created_at,
-                    performance: item.performance,
-                    path_ref: self.display_path(&self.checkpoint_file_path(&item.checkpoint_id)),
-                    export_bundle_ref: self.export_bundle_display_ref(&item),
+                .map(|item| {
+                    let checkpoint_id = item.checkpoint_id.clone();
+                    let path_ref = self.display_path(&self.checkpoint_file_path(&checkpoint_id));
+                    let export_bundle_ref = self.export_bundle_display_ref(&item);
+
+                    CheckpointSummary {
+                        id: checkpoint_id,
+                        alias: item.alias,
+                        r#type: item.r#type,
+                        type_tone: item.type_tone,
+                        summary: item.summary,
+                        created_at: item.created_at,
+                        performance: item.performance,
+                        path_ref,
+                        export_bundle_ref,
+                    }
                 })
                 .collect(),
         })
