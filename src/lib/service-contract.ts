@@ -84,6 +84,42 @@ export type CheckpointDetailState = {
   exportBundle: ExportBundleState | null;
 };
 
+export type CollectionSummaryState = {
+  id: string;
+  kind: "raw" | "canonical";
+  sourceRef: string;
+  timeBucket: string;
+  timeRangeLabel: string;
+  entryCount: number;
+  contentHash: string;
+  collectionRef: string;
+};
+
+export type CollectionEntryState = {
+  id: string;
+  sourceRef: string;
+  eventTime: string;
+  ingestedAt: string;
+  contentHash: string;
+  preview?: string;
+  blobRef?: string;
+  blobPathRef?: string;
+};
+
+export type CollectionDetailState = {
+  id: string;
+  kind: "raw" | "canonical";
+  sourceRef: string;
+  timeBucket: string;
+  timeRangeLabel: string;
+  entryCount: number;
+  contentHash: string;
+  collectionRef: string;
+  entryShardRef: string;
+  notes?: string;
+  entries: CollectionEntryState[];
+};
+
 export type WorkspaceSummary = {
   artifactId: string;
   slug: string;
@@ -167,11 +203,13 @@ export type BootstrapState = {
   orders: LiveOrder[];
   decisions: DecisionEntry[];
   checkpoints: CheckpointSummary[];
+  collections: CollectionSummaryState[];
 };
 
 export interface WorkspaceService {
   getBootstrapState(): Promise<BootstrapState>;
   getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState>;
+  getCollectionDetail(collectionId: string): Promise<CollectionDetailState>;
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;

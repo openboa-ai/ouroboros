@@ -1,0 +1,4 @@
+Agg trade sample:
+- symbol: BTCUSDT
+- side pressure: sell
+- remark: late-hour sell program failed to convert into continuation as support held.

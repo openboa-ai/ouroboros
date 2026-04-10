@@ -114,6 +114,48 @@ pub struct CheckpointDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CollectionSummaryState {
+    pub id: String,
+    pub kind: String,
+    pub source_ref: String,
+    pub time_bucket: String,
+    pub time_range_label: String,
+    pub entry_count: usize,
+    pub content_hash: String,
+    pub collection_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionEntryState {
+    pub id: String,
+    pub source_ref: String,
+    pub event_time: String,
+    pub ingested_at: String,
+    pub content_hash: String,
+    pub preview: Option<String>,
+    pub blob_ref: Option<String>,
+    pub blob_path_ref: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionDetailState {
+    pub id: String,
+    pub kind: String,
+    pub source_ref: String,
+    pub time_bucket: String,
+    pub time_range_label: String,
+    pub entry_count: usize,
+    pub content_hash: String,
+    pub collection_ref: String,
+    pub entry_shard_ref: String,
+    pub notes: Option<String>,
+    pub entries: Vec<CollectionEntryState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub artifact_id: String,
     pub slug: String,
@@ -213,4 +255,5 @@ pub struct BootstrapState {
     pub orders: Vec<LiveOrder>,
     pub decisions: Vec<DecisionEntry>,
     pub checkpoints: Vec<CheckpointSummary>,
+    pub collections: Vec<CollectionSummaryState>,
 }

@@ -1,6 +1,9 @@
 use tauri::State;
 
-use crate::{models::{BootstrapState, CheckpointDetailState}, state::AppState};
+use crate::{
+    models::{BootstrapState, CheckpointDetailState, CollectionDetailState},
+    state::AppState,
+};
 
 #[tauri::command]
 pub fn get_bootstrap_state(state: State<'_, AppState>) -> Result<BootstrapState, String> {
@@ -13,6 +16,14 @@ pub fn get_checkpoint_detail(
     state: State<'_, AppState>,
 ) -> Result<CheckpointDetailState, String> {
     state.checkpoint_detail(&checkpoint_id)
+}
+
+#[tauri::command]
+pub fn get_collection_detail(
+    collection_id: String,
+    state: State<'_, AppState>,
+) -> Result<CollectionDetailState, String> {
+    state.collection_detail(&collection_id)
 }
 
 #[tauri::command]

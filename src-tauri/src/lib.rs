@@ -13,6 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_bootstrap_state,
             commands::get_checkpoint_detail,
+            commands::get_collection_detail,
             commands::pause_global_automation,
             commands::flatten_all_positions,
             commands::create_export_checkpoint

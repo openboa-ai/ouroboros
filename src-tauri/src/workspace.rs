@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::models::{
     AssetInspectorState, BootstrapState, CheckpointDetailState, CheckpointSummary, DecisionEntry,
-    EquityPoint, ExportBundleState, ExportInspectorState, ExposurePoint, LiveContextState, LiveOrder,
+    CollectionDetailState, CollectionEntryState, CollectionSummaryState, EquityPoint,
+    ExportBundleState, ExportInspectorState, ExposurePoint, LiveContextState, LiveOrder,
     LivePosition, MetricCardData, PricePoint, ProviderStatus, StrategyActiveIndexState,
     StrategyIndexesState, TradingMode, WorkspaceIndexState, WorkspaceSummary,
 };
@@ -111,7 +112,7 @@ impl WorkspaceRepository {
                     collections_ref: self.display_path(&collections_index_path),
                     sessions_ref: self.display_path(&sessions_path),
                 },
-                collection_count: collections_index.collections.len(),
+                collection_count: collections_index.items.len(),
                 session_count: sessions_count,
             },
             live_context: LiveContextState {
@@ -167,6 +168,20 @@ impl WorkspaceRepository {
                     }
                 })
                 .collect(),
+            collections: collections_index
+                .items
+                .into_iter()
+                .map(|item| CollectionSummaryState {
+                    id: item.collection_id.clone(),
+                    kind: item.kind,
+                    source_ref: item.source_ref,
+                    time_bucket: item.time_bucket,
+                    time_range_label: format!("{} -> {}", item.time_range.start, item.time_range.end),
+                    entry_count: item.entry_count,
+                    content_hash: item.content_hash,
+                    collection_ref: self.display_path(&self.collection_file_path(&item.collection_id)),
+                })
+                .collect(),
         })
     }
 
@@ -205,6 +220,45 @@ impl WorkspaceRepository {
             snapshot_workspace_ref: self.display_path(&snapshot_workspace),
             workspace_file_refs,
             export_bundle,
+        })
+    }
+
+    pub fn load_collection_detail(
+        &self,
+        collection_id: &str,
+    ) -> Result<CollectionDetailState, String> {
+        let collection_path = self.collection_file_path(collection_id);
+        let collection = self.read_json_path::<CollectionRecordFile>(&collection_path)?;
+        let entry_shard_path = self.resolve_ref(&collection_path, &collection.entry_shard_ref);
+        let entries = self.read_ndjson_path::<CollectionEntryFile>(&entry_shard_path)?;
+
+        Ok(CollectionDetailState {
+            id: collection.collection_id.clone(),
+            kind: collection.kind,
+            source_ref: collection.source_ref,
+            time_bucket: collection.time_bucket,
+            time_range_label: format!("{} -> {}", collection.time_range.start, collection.time_range.end),
+            entry_count: collection.entry_count,
+            content_hash: collection.content_hash,
+            collection_ref: self.display_path(&collection_path),
+            entry_shard_ref: self.display_path(&entry_shard_path),
+            notes: collection.notes,
+            entries: entries
+                .into_iter()
+                .map(|entry| CollectionEntryState {
+                    id: entry.entry_id,
+                    source_ref: entry.source_ref,
+                    event_time: entry.event_time,
+                    ingested_at: entry.ingested_at,
+                    content_hash: entry.content_hash,
+                    preview: entry.preview,
+                    blob_ref: entry.blob_ref.clone(),
+                    blob_path_ref: entry
+                        .blob_ref
+                        .as_ref()
+                        .map(|blob_ref| self.display_path(&self.blob_path(blob_ref))),
+                })
+                .collect(),
         })
     }
 
@@ -621,12 +675,27 @@ impl WorkspaceRepository {
             .join("export.json")
     }
 
+    fn collection_file_path(&self, collection_id: &str) -> PathBuf {
+        self.root
+            .join("collections")
+            .join("items")
+            .join(collection_id)
+            .join("collection.json")
+    }
+
     fn export_workspace_path(&self, checkpoint_id: &str) -> PathBuf {
         self.root
             .join("exports")
             .join("generated")
             .join(checkpoint_id)
             .join("workspace")
+    }
+
+    fn blob_path(&self, blob_id: &str) -> PathBuf {
+        let (algorithm, digest) = blob_id
+            .split_once(':')
+            .unwrap_or(("sha256", blob_id));
+        self.root.join("blobs").join(algorithm).join(format!("{digest}.txt"))
     }
 
     fn display_path(&self, path: &Path) -> String {
@@ -650,6 +719,19 @@ impl WorkspaceRepository {
             fs::read(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
         serde_json::from_slice(&bytes)
             .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+    }
+
+    fn read_ndjson_path<T: DeserializeOwned>(&self, path: &Path) -> Result<Vec<T>, String> {
+        let contents =
+            fs::read_to_string(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        contents
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                serde_json::from_str::<T>(line)
+                    .map_err(|error| format!("failed to parse NDJSON line in {}: {error}", path.display()))
+            })
+            .collect()
     }
 
     fn write_json_path<T: Serialize>(&self, path: &Path, value: &T) -> Result<(), String> {
@@ -761,14 +843,49 @@ struct SessionsIndexFile {
 
 #[derive(Clone, Deserialize, Serialize)]
 struct CollectionsIndexFile {
-    #[serde(default)]
-    collections: Vec<CollectionRecordFile>,
+    items: Vec<CollectionIndexItemFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct CollectionIndexItemFile {
+    collection_id: String,
+    kind: String,
+    source_ref: String,
+    time_bucket: String,
+    time_range: TimeRangeFile,
+    entry_count: usize,
+    content_hash: String,
+    path_ref: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 struct CollectionRecordFile {
-    #[allow(dead_code)]
-    collection_id: Option<String>,
+    collection_id: String,
+    kind: String,
+    source_ref: String,
+    time_bucket: String,
+    time_range: TimeRangeFile,
+    entry_count: usize,
+    content_hash: String,
+    entry_shard_ref: String,
+    notes: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct CollectionEntryFile {
+    entry_id: String,
+    source_ref: String,
+    event_time: String,
+    ingested_at: String,
+    content_hash: String,
+    blob_ref: Option<String>,
+    preview: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct TimeRangeFile {
+    start: String,
+    end: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

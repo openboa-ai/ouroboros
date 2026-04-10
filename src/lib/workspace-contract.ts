@@ -63,11 +63,17 @@ export type CheckpointIndex = {
 export type CollectionRecord = {
   collection_id: CollectionId;
   kind: "raw" | "canonical";
+  source_ref: string;
+  time_bucket: string;
   time_range: {
     start: string;
     end: string;
   };
   content_hash: string;
+  entry_count?: number;
+  path_ref?: string;
+  entry_shard_ref?: string;
+  notes?: string;
   parent_collection_ref?: string;
   transform_version?: string;
 };

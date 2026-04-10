@@ -15,13 +15,22 @@ import { WorkspaceIndexPanel } from "./components/workspace-index-panel";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
-import type { BootstrapState, CheckpointDetailState } from "./lib/service-contract";
+import type {
+  BootstrapState,
+  CheckpointDetailState,
+  CollectionDetailState
+} from "./lib/service-contract";
 import { workspaceService } from "./lib/service-gateway";
+import { CollectionsPanel } from "./components/collections-panel";
 
 export function App() {
   const [state, setState] = useState<BootstrapState | null>(null);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [selectedCheckpointDetail, setSelectedCheckpointDetail] = useState<CheckpointDetailState | null>(
+    null
+  );
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedCollectionDetail, setSelectedCollectionDetail] = useState<CollectionDetailState | null>(
     null
   );
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
@@ -65,6 +74,29 @@ export function App() {
     };
   }, [selectedCheckpointId]);
 
+  useEffect(() => {
+    if (!selectedCollectionId) {
+      setSelectedCollectionDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void workspaceService.getCollectionDetail(selectedCollectionId).then((detail) => {
+      if (cancelled) {
+        return;
+      }
+
+      startTransition(() => {
+        setSelectedCollectionDetail(detail);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCollectionId]);
+
   if (!state) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-shell-950 text-ink-50">
@@ -83,6 +115,8 @@ export function App() {
       setState(nextState);
       setSelectedCheckpointId(nextState.checkpoints[0]?.id ?? null);
       setSelectedCheckpointDetail(null);
+      setSelectedCollectionId(nextState.collections[0]?.id ?? null);
+      setSelectedCollectionDetail(null);
     });
   }
 
@@ -230,6 +264,13 @@ export function App() {
             </ul>
           </Card>
         </div>
+
+        <CollectionsPanel
+          collections={state.collections}
+          selectedCollectionId={selectedCollectionId}
+          collectionDetail={selectedCollectionDetail}
+          onSelectCollection={setSelectedCollectionId}
+        />
       </section>
     </AppShell>
   );

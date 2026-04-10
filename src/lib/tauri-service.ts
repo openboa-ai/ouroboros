@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { BootstrapState, CheckpointDetailState, WorkspaceService } from "./service-contract";
+import type {
+  BootstrapState,
+  CheckpointDetailState,
+  CollectionDetailState,
+  WorkspaceService
+} from "./service-contract";
 
 class TauriWorkspaceService implements WorkspaceService {
   async getBootstrapState(): Promise<BootstrapState> {
@@ -8,6 +13,10 @@ class TauriWorkspaceService implements WorkspaceService {
 
   async getCheckpointDetail(checkpointId: string): Promise<CheckpointDetailState> {
     return invoke<CheckpointDetailState>("get_checkpoint_detail", { checkpointId });
+  }
+
+  async getCollectionDetail(collectionId: string): Promise<CollectionDetailState> {
+    return invoke<CollectionDetailState>("get_collection_detail", { collectionId });
   }
 
   async pauseGlobalAutomation(): Promise<BootstrapState> {

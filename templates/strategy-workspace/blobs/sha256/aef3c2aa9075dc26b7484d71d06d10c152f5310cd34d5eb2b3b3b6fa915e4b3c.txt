@@ -1,0 +1,4 @@
+Agg trade sample:
+- symbol: BTCUSDT
+- side pressure: mixed
+- remark: ladder compressed into three bursts while resting liquidity above 94520 absorbed impact.

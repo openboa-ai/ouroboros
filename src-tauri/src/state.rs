@@ -1,6 +1,9 @@
 use std::sync::Mutex;
 
-use crate::{models::{BootstrapState, CheckpointDetailState}, workspace::WorkspaceRepository};
+use crate::{
+    models::{BootstrapState, CheckpointDetailState, CollectionDetailState},
+    workspace::WorkspaceRepository,
+};
 
 pub struct AppState {
     workspace: Mutex<WorkspaceRepository>,
@@ -29,6 +32,13 @@ impl AppState {
             .lock()
             .map_err(|_| "workspace lock poisoned".to_string())?
             .load_checkpoint_detail(checkpoint_id)
+    }
+
+    pub fn collection_detail(&self, collection_id: &str) -> Result<CollectionDetailState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .load_collection_detail(collection_id)
     }
 
     pub fn pause_global_automation(&self) -> Result<BootstrapState, String> {
