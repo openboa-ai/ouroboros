@@ -112,6 +112,7 @@
 - Split client workspace orchestration again so bootstrap/polling and selection/apply-next-state logic live in dedicated hooks instead of remaining entangled inside the top-level workspace controller.
 - Split the Rust workspace repository's read-side API into a dedicated `workspace/query.rs` module so checkpoint/import/collection/document inspection is no longer mixed into the mutation-heavy core file.
 - Split the Rust workspace repository's write-side API into a dedicated `workspace/mutations.rs` module so ingestion, import activation, export, restore, and live interventions now share a separate mutation boundary from read-only queries.
+- Split the Rust workspace repository's document-catalog and backlink logic into `workspace/catalog.rs`, and moved workspace diff / import-preflight / operation-record helpers into `workspace/operations.rs`, so `workspace.rs` now holds less cross-cutting service logic.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
 - Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
