@@ -25,6 +25,7 @@ pub fn run() {
             commands::pause_global_automation,
             commands::flatten_all_positions,
             commands::create_export_checkpoint,
+            commands::export_checkpoint,
             commands::restore_checkpoint,
             commands::activate_import_as_live,
             commands::ingest_source_entry,

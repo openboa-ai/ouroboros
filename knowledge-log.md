@@ -101,6 +101,7 @@
 - Added explicit bootstrap and command error handling in the desktop client so service failures no longer leave the app hanging silently on the loading screen or control surface.
 - Replaced the hardcoded sample-source action with a real source-ingest panel and surfaced asynchronous detail-loader failures through client-visible service alerts so workspace browsing errors are no longer silent.
 - Added a bundle-import panel that stages sanitized exports from an explicit bundle ref instead of only supporting the latest local export button path.
+- Added explicit checkpoint export support so any existing checkpoint can materialize its own sanitized bundle instead of limiting exports to fresh live export checkpoints.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
 - Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.

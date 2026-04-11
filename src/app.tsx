@@ -768,6 +768,33 @@ export function App() {
               checkpointComparison={selectedCheckpointComparison}
               selectedCheckpointId={selectedCheckpointId}
               onSelectCheckpoint={setSelectedCheckpointId}
+              onExportCheckpoint={(checkpointId) => {
+                const checkpoint = state.checkpoints.find((item) => item.id === checkpointId);
+                setCommandStatus(
+                  checkpoint
+                    ? `Exporting checkpoint ${checkpoint.alias}...`
+                    : "Exporting checkpoint..."
+                );
+                void (async () => {
+                  try {
+                    const nextState = await workspaceService.exportCheckpoint(checkpointId);
+                    applyNextState(nextState, {
+                      selectedCheckpointId: checkpointId,
+                      selectedDocumentId: "selected-checkpoint",
+                      selectedDocumentRef:
+                        nextState.checkpoints.find((item) => item.id === checkpointId)?.pathRef ??
+                        nextState.assetInspector.currentCheckpointRef
+                    });
+                    setCommandStatus(
+                      checkpoint
+                        ? `Checkpoint ${checkpoint.alias} exported as a sanitized bundle.`
+                        : "Checkpoint exported as a sanitized bundle."
+                    );
+                  } catch (error) {
+                    setCommandStatus(`Checkpoint export failed: ${errorMessage(error)}`);
+                  }
+                })();
+              }}
               onOpenWorkspaceDocument={(documentRef) => {
                 setSelectedDocumentId(`ref:${documentRef}`);
                 setSelectedDocumentRef(documentRef);

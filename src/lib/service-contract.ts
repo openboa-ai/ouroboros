@@ -440,6 +440,7 @@ export interface WorkspaceService {
   pauseGlobalAutomation(): Promise<BootstrapState>;
   flattenAllPositions(): Promise<BootstrapState>;
   createExportCheckpoint(): Promise<BootstrapState>;
+  exportCheckpoint(checkpointId: string): Promise<BootstrapState>;
   restoreCheckpoint(checkpointId: string): Promise<BootstrapState>;
   activateImportAsLive(importId: string): Promise<BootstrapState>;
   ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult>;

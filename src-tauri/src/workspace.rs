@@ -1124,6 +1124,34 @@ impl WorkspaceRepository {
         self.load_bootstrap_state()
     }
 
+    pub fn export_checkpoint(&self, checkpoint_id: &str) -> Result<BootstrapState, String> {
+        let checkpoint_path = self.checkpoint_file_path(checkpoint_id);
+        let checkpoint = self.read_json_path::<CheckpointRecordFile>(&checkpoint_path)?;
+        let strategy_path = self.root.join("strategy.json");
+        let strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
+        let export_policy_path =
+            self.resolve_ref(&strategy_path, &strategy.active.export_policy_ref);
+        let export_policy = self.read_json_path::<ExportPolicyFile>(&export_policy_path)?;
+
+        self.create_export_bundle(&checkpoint, &export_policy.policy_id)?;
+        self.append_operation(
+            "export_checkpoint",
+            "workspace",
+            format!(
+                "Checkpoint {} exported as a sanitized bundle.",
+                checkpoint.alias
+            ),
+            "The service layer materialized a sanitized export bundle from an existing checkpoint without mutating the current live lane.".into(),
+            vec![
+                self.display_path(&checkpoint_path),
+                self.display_path(&self.export_bundle_path(&checkpoint.checkpoint_id)),
+                self.display_path(&export_policy_path),
+            ],
+        )?;
+
+        self.load_bootstrap_state()
+    }
+
     pub fn restore_checkpoint(&self, checkpoint_id: &str) -> Result<BootstrapState, String> {
         let target_checkpoint_path = self.checkpoint_file_path(checkpoint_id);
         let target_checkpoint = self.read_json_path::<CheckpointRecordFile>(&target_checkpoint_path)?;
@@ -1828,7 +1856,7 @@ impl WorkspaceRepository {
         let mut count = 0usize;
         let mut latest_ref = None;
 
-        for checkpoint in checkpoints.iter().filter(|item| item.r#type == "export") {
+        for checkpoint in checkpoints {
             let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
             if export_path.exists() {
                 count += 1;
@@ -1845,7 +1873,7 @@ impl WorkspaceRepository {
         &self,
         checkpoints: &[CheckpointRecordFile],
     ) -> Result<Option<ExportBundleState>, String> {
-        for checkpoint in checkpoints.iter().filter(|item| item.r#type == "export") {
+        for checkpoint in checkpoints {
             if let Some(bundle) = self.load_export_bundle_for_checkpoint(checkpoint)? {
                 return Ok(Some(bundle));
             }
@@ -1895,10 +1923,6 @@ impl WorkspaceRepository {
     }
 
     fn export_bundle_display_ref(&self, checkpoint: &CheckpointRecordFile) -> Option<String> {
-        if checkpoint.r#type != "export" {
-            return None;
-        }
-
         let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
         export_path.exists().then(|| self.display_path(&export_path))
     }
@@ -4021,6 +4045,51 @@ mod tests {
         assert!(
             import_comparison.summary.contains("current workspace"),
             "import comparison should describe the current workspace as the baseline"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn export_checkpoint_materializes_bundle_for_existing_promotion_checkpoint() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        let initial = repo.load_bootstrap_state().expect("initial bootstrap");
+        let promotion = initial
+            .checkpoints
+            .iter()
+            .find(|checkpoint| checkpoint.r#type == "promotion")
+            .expect("promotion checkpoint");
+
+        let exported = repo
+            .export_checkpoint(&promotion.id)
+            .expect("export existing checkpoint");
+        let exported_summary = exported
+            .checkpoints
+            .iter()
+            .find(|checkpoint| checkpoint.id == promotion.id)
+            .expect("exported checkpoint summary");
+
+        assert!(
+            exported_summary.export_bundle_ref.is_some(),
+            "existing checkpoint should now advertise a sanitized export bundle"
+        );
+        assert_eq!(
+            exported.asset_inspector.latest_export_bundle_ref,
+            exported_summary.export_bundle_ref
+        );
+        assert!(
+            repo.export_bundle_path(&promotion.id).exists(),
+            "exporting an existing checkpoint should materialize the export bundle"
+        );
+        assert!(
+            exported
+                .operations
+                .iter()
+                .any(|operation| operation.kind == "export_checkpoint"),
+            "exporting an existing checkpoint should append a workspace operation"
         );
 
         let _ = fs::remove_dir_all(&root);

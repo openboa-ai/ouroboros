@@ -13,6 +13,7 @@ type StrategyTimelineProps = {
   checkpointComparison: CheckpointComparisonState | null;
   selectedCheckpointId: string | null;
   onSelectCheckpoint: (checkpointId: string) => void;
+  onExportCheckpoint: (checkpointId: string) => void;
   onRestoreCheckpoint: (checkpointId: string) => void;
   onOpenWorkspaceDocument: (documentRef: string) => void;
 };
@@ -21,6 +22,7 @@ export function StrategyTimeline({
   checkpointComparison,
   checkpointDetail,
   checkpoints,
+  onExportCheckpoint,
   onOpenWorkspaceDocument,
   onSelectCheckpoint,
   onRestoreCheckpoint,
@@ -76,7 +78,10 @@ export function StrategyTimeline({
                 <Badge tone="neutral">{selectedCheckpoint.alias}</Badge>
               </div>
               <p className="text-sm leading-6 text-ink-200">{selectedCheckpoint.summary}</p>
-              <div className="pt-2">
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button variant="ghost" onClick={() => onExportCheckpoint(selectedCheckpoint.id)}>
+                  {selectedCheckpoint.exportBundleRef ? "Refresh Export Bundle" : "Export This Checkpoint"}
+                </Button>
                 <Button variant="secondary" onClick={() => onRestoreCheckpoint(selectedCheckpoint.id)}>
                   Restore This Checkpoint
                 </Button>

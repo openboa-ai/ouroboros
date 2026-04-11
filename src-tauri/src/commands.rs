@@ -104,6 +104,14 @@ pub fn create_export_checkpoint(state: State<'_, AppState>) -> Result<BootstrapS
 }
 
 #[tauri::command]
+pub fn export_checkpoint(
+    checkpoint_id: String,
+    state: State<'_, AppState>,
+) -> Result<BootstrapState, String> {
+    state.export_checkpoint(&checkpoint_id)
+}
+
+#[tauri::command]
 pub fn restore_checkpoint(
     checkpoint_id: String,
     state: State<'_, AppState>,

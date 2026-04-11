@@ -124,6 +124,13 @@ impl AppState {
             .create_export_checkpoint()
     }
 
+    pub fn export_checkpoint(&self, checkpoint_id: &str) -> Result<BootstrapState, String> {
+        self.workspace
+            .lock()
+            .map_err(|_| "workspace lock poisoned".to_string())?
+            .export_checkpoint(checkpoint_id)
+    }
+
     pub fn restore_checkpoint(&self, checkpoint_id: &str) -> Result<BootstrapState, String> {
         self.workspace
             .lock()

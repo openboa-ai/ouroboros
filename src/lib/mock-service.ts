@@ -256,9 +256,7 @@ function buildAssetInspector(
   checkpoints: CheckpointSummary[],
   currentCheckpointRef: string
 ): AssetInspectorState {
-  const latestExport = checkpoints.find(
-    (checkpoint) => checkpoint.type === "export" && checkpoint.exportBundleRef
-  );
+  const latestExport = checkpoints.find((checkpoint) => checkpoint.exportBundleRef);
 
   return {
     workspaceRoot: WORKSPACE_ROOT,
@@ -268,7 +266,7 @@ function buildAssetInspector(
     exportPolicyRef: `${WORKSPACE_ROOT}/exports/policy.json`,
     latestExportBundleRef: latestExport?.exportBundleRef,
     checkpointCount: checkpoints.length,
-    exportCount: checkpoints.filter((checkpoint) => checkpoint.type === "export").length
+    exportCount: checkpoints.filter((checkpoint) => checkpoint.exportBundleRef).length
   };
 }
 
@@ -378,9 +376,7 @@ function buildExportBundle(checkpoint: CheckpointSummary): ExportBundleState {
 }
 
 function buildExportInspector(checkpoints: CheckpointSummary[]): ExportInspectorState {
-  const latestExport = checkpoints.find(
-    (checkpoint) => checkpoint.type === "export" && checkpoint.exportBundleRef
-  );
+  const latestExport = checkpoints.find((checkpoint) => checkpoint.exportBundleRef);
 
   return {
     policyId: exportPolicy.policy_id,
@@ -1444,6 +1440,31 @@ class MockWorkspaceService implements WorkspaceService {
         "The service layer created a fresh export checkpoint and materialized a sanitized bundle from the live-centered workspace state.",
       created_at: timestamp,
       related_refs: [checkpointPath(checkpointId), exportBundlePath(checkpointId), "exports/policy.json"]
+    });
+    this.syncDerivedState();
+
+    return structuredClone(this.state);
+  }
+
+  async exportCheckpoint(checkpointId: string): Promise<BootstrapState> {
+    const target = this.state.checkpoints.find((checkpoint) => checkpoint.id === checkpointId);
+    if (!target) {
+      throw new Error(`unknown checkpoint: ${checkpointId}`);
+    }
+
+    const timestamp = this.nowLabel();
+    target.exportBundleRef = exportBundlePath(checkpointId);
+
+    this.prependOperation({
+      operation_id: crypto.randomUUID(),
+      kind: "export_checkpoint",
+      scope: "workspace",
+      status: "succeeded",
+      summary: `Checkpoint ${target.alias} exported as a sanitized bundle.`,
+      details:
+        "The service layer materialized a sanitized export bundle from an existing checkpoint without mutating the active live lane.",
+      created_at: timestamp,
+      related_refs: [target.pathRef, exportBundlePath(checkpointId), "exports/policy.json"]
     });
     this.syncDerivedState();
 
