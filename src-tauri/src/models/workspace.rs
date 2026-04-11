@@ -188,6 +188,76 @@ pub struct BlobDetailState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExchangeAdapterState {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub mode: String,
+    pub definition_ref: String,
+    pub supports_live: bool,
+    pub supports_paper: bool,
+    pub supports_backtest: bool,
+    pub capabilities: Vec<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluationRunSummaryState {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub headline: String,
+    pub summary: String,
+    pub created_at: String,
+    pub adapter_ref: String,
+    pub adapter_name: String,
+    pub collection_refs: Vec<String>,
+    pub net_pnl: f64,
+    pub trade_count: usize,
+    pub position_count: usize,
+    pub path_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluationTradeState {
+    pub symbol: String,
+    pub side: String,
+    pub entry_time: String,
+    pub exit_time: String,
+    pub entry_price: f64,
+    pub exit_price: f64,
+    pub net_pnl: f64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluationRunDetailState {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub headline: String,
+    pub summary: String,
+    pub created_at: String,
+    pub adapter_ref: String,
+    pub adapter_name: String,
+    pub collection_refs: Vec<String>,
+    pub gross_pnl: f64,
+    pub fee_cost: f64,
+    pub slippage_cost: f64,
+    pub model_cost: f64,
+    pub net_pnl: f64,
+    pub trade_count: usize,
+    pub position_count: usize,
+    pub path_ref: String,
+    pub equity_curve: Vec<EquityPoint>,
+    pub trades: Vec<EvaluationTradeState>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OperationRelatedDocumentState {
     pub path_ref: String,
     pub label: String,
@@ -379,7 +449,9 @@ pub struct StrategyIndexesState {
     pub checkpoints_ref: String,
     pub agents_ref: String,
     pub environments_ref: String,
+    pub adapters_ref: String,
     pub collections_ref: String,
+    pub evaluations_ref: String,
     pub imports_ref: String,
     pub operations_ref: String,
     pub sessions_ref: String,
@@ -393,7 +465,9 @@ pub struct WorkspaceIndexState {
     pub indexes: StrategyIndexesState,
     pub agent_count: usize,
     pub environment_count: usize,
+    pub adapter_count: usize,
     pub collection_count: usize,
+    pub evaluation_count: usize,
     pub operation_count: usize,
     pub session_count: usize,
 }
@@ -445,6 +519,7 @@ pub struct LiveEvaluationSummaryState {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveContextState {
+    pub runtime_status_ref: String,
     pub dashboard_ref: String,
     pub decisions_ref: String,
     pub memory_ref: String,
@@ -477,6 +552,7 @@ pub struct BootstrapState {
     pub runtime_topology: RuntimeTopologyState,
     pub live_context: LiveContextState,
     pub export_inspector: ExportInspectorState,
+    pub adapters: Vec<ExchangeAdapterState>,
     pub providers: Vec<ProviderStatus>,
     pub metrics: Vec<MetricCardData>,
     pub price_series: Vec<PricePoint>,
@@ -488,6 +564,7 @@ pub struct BootstrapState {
     pub decisions: Vec<DecisionEntry>,
     pub checkpoints: Vec<CheckpointSummary>,
     pub collections: Vec<CollectionSummaryState>,
+    pub evaluation_runs: Vec<EvaluationRunSummaryState>,
     pub imports: Vec<ImportSummaryState>,
     pub operations: Vec<OperationSummaryState>,
     pub document_catalog: Vec<WorkspaceCatalogEntryState>,

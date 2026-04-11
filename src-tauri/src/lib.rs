@@ -1,6 +1,7 @@
 mod application;
 mod commands;
 mod models;
+mod runtime;
 mod state;
 mod storage;
 mod workspace;
@@ -20,6 +21,7 @@ pub fn run() {
             commands::queries::get_import_detail,
             commands::queries::get_import_comparison,
             commands::queries::get_blob_detail,
+            commands::queries::get_evaluation_run_detail,
             commands::queries::get_operation_detail,
             commands::queries::get_workspace_document,
             commands::queries::search_workspace,
@@ -30,7 +32,9 @@ pub fn run() {
             commands::mutations::restore_checkpoint,
             commands::mutations::activate_import_as_live,
             commands::mutations::ingest_source_entry,
-            commands::mutations::import_export_bundle
+            commands::mutations::import_export_bundle,
+            commands::mutations::run_backtest,
+            commands::mutations::run_paper_evaluation
         ])
         .run(tauri::generate_context!())
         .expect("failed to run AutoKairos desktop shell");

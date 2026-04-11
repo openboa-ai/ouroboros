@@ -1,8 +1,8 @@
 {
   "lane_id": "01962531-d1ee-79f5-b7cd-31b7fce1ef24",
   "label": "live-lane/main",
-  "mode": "paper",
   "state_refs": {
+    "runtime_status_ref": "../state/runtime-status.json",
     "dashboard_ref": "../state/dashboard.json",
     "decisions_ref": "../state/decisions.json",
     "memory_ref": "../state/live-memory.json",

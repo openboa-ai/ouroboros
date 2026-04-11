@@ -12,7 +12,9 @@
     "checkpoints_ref": "./checkpoints/index.json",
     "agents_ref": "./agents/index.json",
     "environments_ref": "./environments/index.json",
+    "adapters_ref": "./adapters/index.json",
     "collections_ref": "./indexes/collections.json",
+    "evaluations_ref": "./evaluations/index.json",
     "imports_ref": "./imports/index.json",
     "operations_ref": "./operations/index.json",
     "sessions_ref": "./indexes/sessions.json"

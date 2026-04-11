@@ -9,6 +9,7 @@ import type {
 } from "../service-contract";
 import {
   collectionEntryPath,
+  evaluationRunPath,
   normalizeWorkspaceRef,
   operationPath,
   WORKSPACE_ROOT
@@ -90,14 +91,21 @@ export function buildDocumentCatalog(
       id: "live-lane",
       category: "active",
       label: "live lane",
-      description: "Active live lane refs, state pointers, and runtime mode.",
+      description: "Active live lane refs and workspace pointers for the current live book.",
       pathRef: `${WORKSPACE_ROOT}/live/live-lane.json`
+    },
+    {
+      id: "live-runtime-status",
+      category: "active",
+      label: "runtime status",
+      description: "Authoritative control-state document for mode, automation status, and live status notes.",
+      pathRef: `${WORKSPACE_ROOT}/state/runtime-status.json`
     },
     {
       id: "live-dashboard",
       category: "active",
       label: "dashboard state",
-      description: "Current dashboard-facing live state surfaced through the service boundary.",
+      description: "Current dashboard-facing metrics and chart data surfaced through the service boundary.",
       pathRef: `${WORKSPACE_ROOT}/state/dashboard.json`
     },
     {
@@ -164,11 +172,25 @@ export function buildDocumentCatalog(
       pathRef: `${WORKSPACE_ROOT}/environments/index.json`
     },
     {
+      id: "adapters-index",
+      category: "index",
+      label: "adapters index",
+      description: "Exchange/runtime adapter catalog for live, paper, and backtest execution paths.",
+      pathRef: `${WORKSPACE_ROOT}/adapters/index.json`
+    },
+    {
       id: "collections-index",
       category: "index",
       label: "collections index",
       description: "Source-centered collection catalog materialized by UTC-hour shards.",
       pathRef: `${WORKSPACE_ROOT}/indexes/collections.json`
+    },
+    {
+      id: "evaluations-index",
+      category: "index",
+      label: "evaluations index",
+      description: "Backtest and paper evaluation run catalog for the current workspace asset.",
+      pathRef: `${WORKSPACE_ROOT}/evaluations/index.json`
     },
     {
       id: "imports-index",
@@ -221,6 +243,16 @@ export function buildDocumentCatalog(
   );
 
   items.push(
+    ...store.adaptersIndex.adapters.map((adapter) => ({
+      id: `adapter-${adapter.id}`,
+      category: "adapter" as const,
+      label: adapter.name,
+      description: "Workspace adapter definition used by replay, paper, or live execution paths.",
+      pathRef: `${WORKSPACE_ROOT}/adapters/items/${adapter.id}/adapter.json`
+    }))
+  );
+
+  items.push(
     ...store.sessionsState.sessions.map((session) => ({
       id: `session-${session.session_id}`,
       category: "session" as const,
@@ -237,6 +269,16 @@ export function buildDocumentCatalog(
       label: summary.headline,
       description: "Live-lane evaluation evidence summary with refs back to raw supporting artifacts.",
       pathRef: `${WORKSPACE_ROOT}/eval-summaries/items/${summary.summary_id}/summary.json`
+    }))
+  );
+
+  items.push(
+    ...store.evaluationsState.items.map((run) => ({
+      id: `evaluation-run-${run.run_id}`,
+      category: "evaluation" as const,
+      label: `${run.kind} · ${run.created_at}`,
+      description: run.headline,
+      pathRef: evaluationRunPath(run.run_id)
     }))
   );
 
@@ -336,7 +378,8 @@ export function buildDocumentBacklinks(
   store: MockWorkspaceStore,
   state: {
     assetInspector: { strategyRef: string; liveLaneRef: string; currentCheckpointRef: string; exportPolicyRef: string };
-    liveContext: {
+      liveContext: {
+      runtimeStatusRef: string;
       dashboardRef: string;
       decisionsRef: string;
       memoryRef: string;
@@ -353,7 +396,9 @@ export function buildDocumentBacklinks(
         checkpointsRef: string;
         agentsRef: string;
         environmentsRef: string;
+        adaptersRef: string;
         collectionsRef: string;
+        evaluationsRef: string;
         importsRef: string;
         operationsRef: string;
         sessionsRef: string;
@@ -364,6 +409,9 @@ export function buildDocumentBacklinks(
       createdAt: string;
       operationRef: string;
       relatedRefs: string[];
+    }>;
+    evaluationRuns: Array<{
+      pathRef: string;
     }>;
     documentCatalog: WorkspaceCatalogEntry[];
     exportInspector: {
@@ -401,6 +449,7 @@ export function buildDocumentBacklinks(
   }
 
   const activeStateRefs = [
+    [state.liveContext.runtimeStatusRef, "state_refs.runtime_status_ref"],
     [state.liveContext.dashboardRef, "state_refs.dashboard_ref"],
     [state.liveContext.decisionsRef, "state_refs.decisions_ref"],
     [state.liveContext.memoryRef, "state_refs.memory_ref"],
@@ -434,7 +483,9 @@ export function buildDocumentBacklinks(
     [state.workspaceIndex.indexes.checkpointsRef, "indexes.checkpoints_ref"],
     [state.workspaceIndex.indexes.agentsRef, "indexes.agents_ref"],
     [state.workspaceIndex.indexes.environmentsRef, "indexes.environments_ref"],
+    [state.workspaceIndex.indexes.adaptersRef, "indexes.adapters_ref"],
     [state.workspaceIndex.indexes.collectionsRef, "indexes.collections_ref"],
+    [state.workspaceIndex.indexes.evaluationsRef, "indexes.evaluations_ref"],
     [state.workspaceIndex.indexes.importsRef, "indexes.imports_ref"],
     [state.workspaceIndex.indexes.operationsRef, "indexes.operations_ref"],
     [state.workspaceIndex.indexes.sessionsRef, "indexes.sessions_ref"]
@@ -473,6 +524,18 @@ export function buildDocumentBacklinks(
     }
   }
 
+  for (const adapter of store.adaptersIndex.adapters) {
+    const adapterPath = `${WORKSPACE_ROOT}/adapters/items/${adapter.id}/adapter.json`;
+    if (adapterPath === documentRef) {
+      pushBacklink(
+        "adapters index",
+        state.workspaceIndex.indexes.adaptersRef,
+        "index",
+        "adapter catalog entry"
+      );
+    }
+  }
+
   if (state.liveContext.evaluationSummaries.some((summary) => summary.pathRef === documentRef)) {
     pushBacklink(
       "eval summaries",
@@ -480,6 +543,17 @@ export function buildDocumentBacklinks(
       "index",
       "evaluation summary entry"
     );
+  }
+
+  for (const run of state.evaluationRuns ?? []) {
+    if (run.pathRef === documentRef) {
+      pushBacklink(
+        "evaluations index",
+        state.workspaceIndex.indexes.evaluationsRef,
+        "index",
+        "evaluation run entry"
+      );
+    }
   }
 
   for (const operation of state.operations) {

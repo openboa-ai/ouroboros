@@ -10,10 +10,16 @@ type LiveContextPanelProps = {
 export function LiveContextPanel({ liveContext, onOpenDocument }: LiveContextPanelProps) {
   const stateDocuments = [
     {
+      id: "runtime-status",
+      label: "Runtime status",
+      pathRef: liveContext.runtimeStatusRef,
+      description: "Authoritative control-state document for mode, automation status, and live notes."
+    },
+    {
       id: "dashboard",
       label: "Dashboard state",
       pathRef: liveContext.dashboardRef,
-      description: "Live dashboard metrics, chart series, and automation status."
+      description: "Live dashboard metrics and chart series surfaced through the service boundary."
     },
     {
       id: "decisions",

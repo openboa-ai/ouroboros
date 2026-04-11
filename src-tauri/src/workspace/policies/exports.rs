@@ -1,7 +1,7 @@
 use super::super::*;
 
 pub(in crate::workspace) struct ExportCheckpointTransition {
-    pub dashboard: DashboardStateFile,
+    pub runtime_status: RuntimeStatusFile,
     pub decisions: DecisionLogFile,
 }
 
@@ -17,10 +17,10 @@ pub(in crate::workspace) fn excluded_paths() -> Vec<String> {
 }
 
 pub(in crate::workspace) fn mark_export_checkpoint_created(
-    mut dashboard: DashboardStateFile,
+    mut runtime_status: RuntimeStatusFile,
     mut decisions: DecisionLogFile,
 ) -> ExportCheckpointTransition {
-    dashboard.status_note =
+    runtime_status.status_note =
         Some("A fresh export checkpoint was created from the current live-centered asset.".into());
     prepend_decision(
         &mut decisions.decisions,
@@ -35,7 +35,7 @@ pub(in crate::workspace) fn mark_export_checkpoint_created(
     );
 
     ExportCheckpointTransition {
-        dashboard,
+        runtime_status,
         decisions,
     }
 }

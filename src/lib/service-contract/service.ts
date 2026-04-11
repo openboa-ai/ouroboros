@@ -4,6 +4,7 @@ import type {
   CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
+  EvaluationRunDetailState,
   ImportBundleState,
   ImportComparisonState,
   ImportDetailState,
@@ -25,6 +26,7 @@ export interface WorkspaceService {
   getImportDetail(importId: string): Promise<ImportDetailState>;
   getImportComparison(importId: string): Promise<ImportComparisonState>;
   getBlobDetail(blobId: string): Promise<BlobDetailState>;
+  getEvaluationRunDetail(runId: string): Promise<EvaluationRunDetailState>;
   getOperationDetail(operationId: string): Promise<OperationDetailState>;
   getWorkspaceDocument(documentRef: string): Promise<WorkspaceDocumentState>;
   searchWorkspace(query: string): Promise<WorkspaceSearchResultState[]>;
@@ -36,4 +38,6 @@ export interface WorkspaceService {
   activateImportAsLive(importId: string): Promise<BootstrapState>;
   ingestSourceEntry(input: IngestSourceEntryInput): Promise<IngestSourceEntryResult>;
   importExportBundle(bundleRef: string): Promise<ImportBundleState>;
+  runBacktest(): Promise<BootstrapState>;
+  runPaperEvaluation(): Promise<BootstrapState>;
 }

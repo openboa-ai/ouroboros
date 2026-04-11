@@ -16,6 +16,7 @@ export function useWorkspaceSelectionState({
   const [detailResetVersion, setDetailResetVersion] = useState(0);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedEvaluationRunId, setSelectedEvaluationRunId] = useState<string | null>(null);
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [selectedBlobId, setSelectedBlobId] = useState<string | null>(null);
   const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
@@ -43,6 +44,11 @@ export function useWorkspaceSelectionState({
         nextState.imports.find((item) => item.id === selectedImportId)?.id ??
         nextState.imports[0]?.id ??
         null;
+      const nextEvaluationRunId =
+        options?.selectedEvaluationRunId ??
+        nextState.evaluationRuns.find((item) => item.id === selectedEvaluationRunId)?.id ??
+        nextState.evaluationRuns[0]?.id ??
+        null;
       const nextOperationId =
         options?.selectedOperationId ??
         nextState.operations.find((item) => item.id === selectedOperationId)?.id ??
@@ -62,6 +68,7 @@ export function useWorkspaceSelectionState({
         }
         setSelectedCheckpointId(nextCheckpointId);
         setSelectedCollectionId(nextCollectionId);
+        setSelectedEvaluationRunId(nextEvaluationRunId);
         setSelectedImportId(nextImportId);
         if (!preserveDetailState || collectionChanged) {
           setSelectedBlobId(null);
@@ -73,6 +80,7 @@ export function useWorkspaceSelectionState({
     },
     [
       selectedCollectionId,
+      selectedEvaluationRunId,
       selectedImportId,
       selectedOperationId,
       setLastSyncedAt,
@@ -89,6 +97,7 @@ export function useWorkspaceSelectionState({
     selections: {
       selectedCheckpointId,
       selectedCollectionId,
+      selectedEvaluationRunId,
       selectedImportId,
       selectedOperationId,
       selectedDocumentId,
@@ -100,6 +109,7 @@ export function useWorkspaceSelectionState({
     selectedDocumentRef,
     setSelectedCheckpointId,
     setSelectedCollectionId,
+    setSelectedEvaluationRunId,
     setSelectedImportId,
     setSelectedOperationId,
     setSelectedBlobId,

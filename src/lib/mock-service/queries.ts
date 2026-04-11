@@ -3,6 +3,7 @@ import type {
   CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
+  EvaluationRunDetailState,
   ImportComparisonState,
   ImportDetailState,
   OperationDetailState,
@@ -19,6 +20,7 @@ import {
   checkpointPath,
   collectionEntryPath,
   CURRENT_WORKSPACE_FILE_REFS,
+  evaluationRunPath,
   exportBundlePath,
   operationPath,
   WORKSPACE_ROOT
@@ -222,6 +224,47 @@ export async function getBlobDetail(
     byteLength: new TextEncoder().encode(contentText).length,
     lineCount: contentText.split("\n").length,
     contentText
+  };
+}
+
+export async function getEvaluationRunDetail(
+  context: MockWorkspaceContext,
+  runId: string
+): Promise<EvaluationRunDetailState> {
+  const run = context.store.evaluationsState.items.find((item) => item.run_id === runId);
+  if (!run) {
+    throw new Error(`unknown evaluation run: ${runId}`);
+  }
+
+  return {
+    id: run.run_id,
+    kind: run.kind,
+    status: run.status,
+    headline: run.headline,
+    summary: run.summary,
+    createdAt: run.created_at,
+    adapterRef: run.adapter_ref,
+    adapterName: run.adapter_name,
+    collectionRefs: run.collection_refs,
+    grossPnl: run.gross_pnl,
+    feeCost: run.fee_cost,
+    slippageCost: run.slippage_cost,
+    modelCost: run.model_cost,
+    netPnl: run.net_pnl,
+    tradeCount: run.trade_count,
+    positionCount: run.position_count,
+    pathRef: evaluationRunPath(run.run_id),
+    equityCurve: run.equity_curve,
+    trades: run.trades.map((trade) => ({
+      symbol: trade.symbol,
+      side: trade.side,
+      entryTime: trade.entry_time,
+      exitTime: trade.exit_time,
+      entryPrice: trade.entry_price,
+      exitPrice: trade.exit_price,
+      netPnl: trade.net_pnl
+    })),
+    notes: run.notes
   };
 }
 

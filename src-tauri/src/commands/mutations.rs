@@ -59,3 +59,13 @@ pub fn import_export_bundle(
 ) -> Result<ImportBundleState, String> {
     state.import_export_bundle(&bundle_ref)
 }
+
+#[tauri::command]
+pub fn run_backtest(state: State<'_, AppState>) -> Result<BootstrapState, String> {
+    state.run_backtest()
+}
+
+#[tauri::command]
+pub fn run_paper_evaluation(state: State<'_, AppState>) -> Result<BootstrapState, String> {
+    state.run_paper_evaluation()
+}

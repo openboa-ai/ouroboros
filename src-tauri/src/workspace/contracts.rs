@@ -31,7 +31,11 @@ pub(super) struct StrategyIndexRefsFile {
     pub agents_ref: String,
     #[serde(default = "super::default_environments_ref")]
     pub environments_ref: String,
+    #[serde(default = "super::default_adapters_ref")]
+    pub adapters_ref: String,
     pub collections_ref: String,
+    #[serde(default = "super::default_evaluations_ref")]
+    pub evaluations_ref: String,
     #[serde(default = "super::default_imports_ref")]
     pub imports_ref: String,
     #[serde(default = "super::default_operations_ref")]
@@ -43,7 +47,6 @@ pub(super) struct StrategyIndexRefsFile {
 pub(super) struct LiveLaneFile {
     pub lane_id: String,
     pub label: String,
-    pub mode: TradingMode,
     pub state_refs: LiveLaneRefsFile,
 }
 
@@ -67,21 +70,35 @@ pub(super) struct OrchestratorTopologyRefsFile {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct LiveLaneRefsFile {
+    #[serde(default = "super::default_runtime_status_ref")]
+    pub runtime_status_ref: String,
+    #[serde(default = "super::default_dashboard_ref")]
     pub dashboard_ref: String,
+    #[serde(default = "super::default_decisions_ref")]
     pub decisions_ref: String,
+    #[serde(default = "super::default_live_memory_ref")]
     pub memory_ref: String,
+    #[serde(default = "super::default_sessions_ref")]
     pub sessions_ref: String,
+    #[serde(default = "super::default_positions_ref")]
     pub positions_ref: String,
+    #[serde(default = "super::default_orders_ref")]
     pub orders_ref: String,
+    #[serde(default = "super::default_eval_summaries_state_ref")]
     pub eval_summaries_ref: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct DashboardStateFile {
+pub(super) struct RuntimeStatusFile {
     pub mode: TradingMode,
     pub automation_status: AutomationStatus,
     pub status_note: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DashboardStateFile {
     pub providers: Vec<ProviderStatus>,
     pub metrics: Vec<MetricCardData>,
     pub price_series: Vec<PricePoint>,
@@ -189,8 +206,100 @@ pub(super) struct EnvironmentRecordFile {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AdaptersIndexFile {
+    pub adapters: Vec<AdapterIndexItemFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AdapterIndexItemFile {
+    pub id: String,
+    pub name: String,
+    pub definition_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AdapterRecordFile {
+    pub adapter_id: String,
+    pub name: String,
+    pub kind: String,
+    pub mode: String,
+    pub supports_live: bool,
+    pub supports_paper: bool,
+    pub supports_backtest: bool,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 pub(super) struct ImportsIndexFile {
     pub items: Vec<ImportRecordFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EvaluationsIndexFile {
+    pub items: Vec<EvaluationRunSummaryFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EvaluationRunSummaryFile {
+    pub run_id: String,
+    pub kind: String,
+    pub status: String,
+    pub headline: String,
+    pub summary: String,
+    pub created_at: String,
+    pub adapter_ref: String,
+    pub adapter_name: String,
+    #[serde(default)]
+    pub collection_refs: Vec<String>,
+    pub net_pnl: f64,
+    pub trade_count: usize,
+    pub position_count: usize,
+    pub path_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EvaluationTradeFile {
+    pub symbol: String,
+    pub side: String,
+    pub entry_time: String,
+    pub exit_time: String,
+    pub entry_price: f64,
+    pub exit_price: f64,
+    pub net_pnl: f64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EvaluationRunFile {
+    pub run_id: String,
+    pub kind: String,
+    pub status: String,
+    pub headline: String,
+    pub summary: String,
+    pub created_at: String,
+    pub adapter_ref: String,
+    pub adapter_name: String,
+    #[serde(default)]
+    pub collection_refs: Vec<String>,
+    pub gross_pnl: f64,
+    pub fee_cost: f64,
+    pub slippage_cost: f64,
+    pub model_cost: f64,
+    pub net_pnl: f64,
+    pub trade_count: usize,
+    pub position_count: usize,
+    pub path_ref: String,
+    #[serde(default)]
+    pub equity_curve: Vec<EquityPoint>,
+    #[serde(default)]
+    pub trades: Vec<EvaluationTradeFile>,
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

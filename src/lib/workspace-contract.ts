@@ -1,4 +1,4 @@
-import type { OrchestratorMode, TradingMode } from "./service-contract/states";
+import type { OrchestratorMode } from "./service-contract/states";
 
 export type ArtifactId = string;
 export type CheckpointId = string;
@@ -27,7 +27,9 @@ export type StrategyIndexRefs = {
   checkpoints_ref: string;
   agents_ref: string;
   environments_ref: string;
+  adapters_ref: string;
   collections_ref: string;
+  evaluations_ref: string;
   imports_ref: string;
   operations_ref: string;
   sessions_ref: string;
@@ -37,15 +39,15 @@ export type StrategyIndexRefs = {
 export type LiveLaneState = {
   lane_id: string;
   label: string;
-  mode: TradingMode;
   state_refs: {
+    runtime_status_ref: string;
     dashboard_ref: string;
     decisions_ref: string;
     memory_ref: string;
     sessions_ref: string;
     positions_ref: string;
     orders_ref: string;
-  eval_summaries_ref: string;
+    eval_summaries_ref: string;
   };
 };
 
@@ -96,6 +98,26 @@ export type EnvironmentDefinition = {
   environment_id: string;
   name: string;
   kind: string;
+  capabilities: string[];
+  notes?: string;
+};
+
+export type AdaptersIndex = {
+  adapters: Array<{
+    id: string;
+    name: string;
+    definition_ref: string;
+  }>;
+};
+
+export type AdapterDefinition = {
+  adapter_id: string;
+  name: string;
+  kind: string;
+  mode: string;
+  supports_live: boolean;
+  supports_paper: boolean;
+  supports_backtest: boolean;
   capabilities: string[];
   notes?: string;
 };

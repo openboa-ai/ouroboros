@@ -4,6 +4,7 @@ import type {
   CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
+  EvaluationRunDetailState,
   ImportComparisonState,
   ImportDetailState,
   OperationDetailState,
@@ -36,6 +37,9 @@ export const tauriQueryTransport = {
   },
   getBlobDetail(blobId: string) {
     return invoke<BlobDetailState>("get_blob_detail", { blobId });
+  },
+  getEvaluationRunDetail(runId: string) {
+    return invoke<EvaluationRunDetailState>("get_evaluation_run_detail", { runId });
   },
   getOperationDetail(operationId: string) {
     return invoke<OperationDetailState>("get_operation_detail", { operationId });

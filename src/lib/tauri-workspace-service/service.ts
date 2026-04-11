@@ -31,6 +31,10 @@ class TauriWorkspaceService implements WorkspaceService {
     return tauriQueryTransport.getBlobDetail(blobId);
   }
 
+  getEvaluationRunDetail(runId: string) {
+    return tauriQueryTransport.getEvaluationRunDetail(runId);
+  }
+
   getOperationDetail(operationId: string) {
     return tauriQueryTransport.getOperationDetail(operationId);
   }
@@ -73,6 +77,14 @@ class TauriWorkspaceService implements WorkspaceService {
 
   importExportBundle(bundleRef: string) {
     return tauriMutationTransport.importExportBundle(bundleRef);
+  }
+
+  runBacktest() {
+    return tauriMutationTransport.runBacktest();
+  }
+
+  runPaperEvaluation() {
+    return tauriMutationTransport.runPaperEvaluation();
   }
 }
 

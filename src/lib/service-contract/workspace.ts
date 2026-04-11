@@ -1,4 +1,5 @@
 import type {
+  EquityPoint,
   ImportPreflightSeverity,
   ImportPreflightStatus,
   OperationStatus,
@@ -14,6 +15,7 @@ export type WorkspaceCatalogCategory =
   | "checkpoint"
   | "agent"
   | "environment"
+  | "adapter"
   | "collection"
   | "entry"
   | "import"
@@ -122,6 +124,68 @@ export type BlobDetailState = {
   byteLength: number;
   lineCount: number;
   contentText: string;
+};
+
+export type ExchangeAdapterState = {
+  id: string;
+  name: string;
+  kind: string;
+  mode: string;
+  definitionRef: string;
+  supportsLive: boolean;
+  supportsPaper: boolean;
+  supportsBacktest: boolean;
+  capabilities: string[];
+  notes?: string;
+};
+
+export type EvaluationRunSummaryState = {
+  id: string;
+  kind: string;
+  status: string;
+  headline: string;
+  summary: string;
+  createdAt: string;
+  adapterRef: string;
+  adapterName: string;
+  collectionRefs: string[];
+  netPnl: number;
+  tradeCount: number;
+  positionCount: number;
+  pathRef: string;
+};
+
+export type EvaluationTradeState = {
+  symbol: string;
+  side: string;
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  netPnl: number;
+};
+
+export type EvaluationRunDetailState = {
+  id: string;
+  kind: string;
+  status: string;
+  headline: string;
+  summary: string;
+  createdAt: string;
+  adapterRef: string;
+  adapterName: string;
+  collectionRefs: string[];
+  grossPnl: number;
+  feeCost: number;
+  slippageCost: number;
+  modelCost: number;
+  netPnl: number;
+  tradeCount: number;
+  positionCount: number;
+  pathRef: string;
+  equityCurve: EquityPoint[];
+  trades: EvaluationTradeState[];
+  notes: string[];
 };
 
 export type WorkspaceDocumentBacklinkState = {
@@ -356,7 +420,9 @@ export type StrategyIndexesState = {
   checkpointsRef: string;
   agentsRef: string;
   environmentsRef: string;
+  adaptersRef: string;
   collectionsRef: string;
+  evaluationsRef: string;
   importsRef: string;
   operationsRef: string;
   sessionsRef: string;
@@ -368,12 +434,15 @@ export type WorkspaceIndexState = {
   indexes: StrategyIndexesState;
   agentCount: number;
   environmentCount: number;
+  adapterCount: number;
   collectionCount: number;
+  evaluationCount: number;
   operationCount: number;
   sessionCount: number;
 };
 
 export type LiveContextState = {
+  runtimeStatusRef: string;
   dashboardRef: string;
   decisionsRef: string;
   memoryRef: string;

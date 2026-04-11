@@ -3,6 +3,7 @@ import type { BootstrapState } from "../lib/service-contract";
 export type ApplyNextStateOptions = {
   selectedCheckpointId?: string | null;
   selectedCollectionId?: string | null;
+  selectedEvaluationRunId?: string | null;
   selectedImportId?: string | null;
   selectedOperationId?: string | null;
   selectedDocumentId?: string | null;

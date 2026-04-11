@@ -21,6 +21,14 @@ function latestOperationDocumentRef(nextState: BootstrapState) {
   return nextState.operations[0]?.operationRef ?? nextState.assetInspector.strategyRef;
 }
 
+function latestEvaluationSelection(nextState: BootstrapState) {
+  return nextState.evaluationRuns[0]?.id ?? null;
+}
+
+function latestEvaluationDocumentRef(nextState: BootstrapState) {
+  return nextState.evaluationRuns[0]?.pathRef ?? nextState.assetInspector.strategyRef;
+}
+
 export function useWorkspaceActions({
   state,
   setCommandStatus,
@@ -116,6 +124,40 @@ export function useWorkspaceActions({
           );
         }
       );
+    },
+    async runBacktest() {
+      await runAction("Running backtest...", async () => {
+        const nextState = await workspaceService.runBacktest();
+        applyNextState(nextState, {
+          selectedEvaluationRunId: latestEvaluationSelection(nextState),
+          selectedOperationId: latestOperationSelection(nextState),
+          selectedDocumentId: "latest-evaluation-run",
+          selectedDocumentRef: latestEvaluationDocumentRef(nextState)
+        });
+        const latestRun = nextState.evaluationRuns[0];
+        setCommandStatus(
+          latestRun
+            ? `Backtest completed. ${latestRun.tradeCount} trades, net PnL ${latestRun.netPnl.toFixed(2)}.`
+            : "Backtest completed."
+        );
+      });
+    },
+    async runPaperEvaluation() {
+      await runAction("Running paper evaluation...", async () => {
+        const nextState = await workspaceService.runPaperEvaluation();
+        applyNextState(nextState, {
+          selectedEvaluationRunId: latestEvaluationSelection(nextState),
+          selectedOperationId: latestOperationSelection(nextState),
+          selectedDocumentId: "latest-evaluation-run",
+          selectedDocumentRef: latestEvaluationDocumentRef(nextState)
+        });
+        const latestRun = nextState.evaluationRuns[0];
+        setCommandStatus(
+          latestRun
+            ? `Paper evaluation completed. ${latestRun.tradeCount} trades, net PnL ${latestRun.netPnl.toFixed(2)}.`
+            : "Paper evaluation completed."
+        );
+      });
     },
     async restoreCheckpoint(checkpointId: string) {
       const checkpoint = state?.checkpoints.find((item) => item.id === checkpointId);

@@ -17,6 +17,11 @@ export const DEFAULT_INCLUDED_REFS = [
   "./workspace/environments/index.json",
   "./workspace/environments/items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json",
   "./workspace/environments/items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json",
+  "./workspace/adapters/index.json",
+  "./workspace/adapters/items/01963a00-1111-7111-8111-111111111111/adapter.json",
+  "./workspace/adapters/items/01963a00-2222-7222-8222-222222222222/adapter.json",
+  "./workspace/evaluations/index.json",
+  "./workspace/state/runtime-status.json",
   "./workspace/state/dashboard.json",
   "./workspace/state/decisions.json",
   "./workspace/state/live-memory.json",
@@ -42,6 +47,10 @@ export function exportBundlePath(checkpointId: string) {
 
 export function operationPath(operationId: string) {
   return `${WORKSPACE_ROOT}/operations/items/${operationId}/operation.json`;
+}
+
+export function evaluationRunPath(runId: string) {
+  return `${WORKSPACE_ROOT}/evaluations/items/${runId}/run.json`;
 }
 
 export function collectionEntryPath(collectionId: string, entryId: string) {

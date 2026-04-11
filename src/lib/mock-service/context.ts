@@ -61,6 +61,12 @@ export class MockWorkspaceContext {
         detail: "Mock staged imports always include a live lane reference."
       },
       {
+        id: "runtime-status-ref",
+        severity: "ok",
+        label: "Runtime status ref",
+        detail: "Mock staged imports always include the authoritative runtime control-state document."
+      },
+      {
         id: "export-policy-ref",
         severity: "ok",
         label: "Export policy ref",
@@ -124,20 +130,25 @@ export class MockWorkspaceContext {
 
     this.currentState = {
       ...this.currentState,
+      ...this.store.runtimeStatusState,
+      ...this.store.dashboardSeedState,
       workspace: {
         ...this.currentState.workspace,
         currentCheckpointAlias: resolvedCheckpointAlias
       },
       assetInspector: derived.assetInspector,
       workspaceIndex: derived.workspaceIndex,
+      runtimeTopology: derived.runtimeTopology,
       liveContext: derived.liveContext,
       exportInspector: derived.exportInspector,
+      adapters: derived.adapters,
       positions: structuredClone(this.store.positionsState.current),
       orders: structuredClone(this.store.ordersState.current),
       laneEvents: derived.laneEvents,
       decisions: structuredClone(this.store.decisionsState.decisions),
       checkpoints,
       collections: derived.collections,
+      evaluationRuns: derived.evaluationRuns,
       imports: derived.imports,
       operations: derived.operations,
       documentCatalog: derived.documentCatalog

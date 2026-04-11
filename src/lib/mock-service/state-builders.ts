@@ -4,6 +4,8 @@ import type {
   BootstrapState,
   CheckpointSummary,
   DecisionEntry,
+  EvaluationRunSummaryState,
+  ExchangeAdapterState,
   EnvironmentRuntimeState,
   ExportBundleState,
   ExportInspectorState,
@@ -75,14 +77,18 @@ export function buildWorkspaceIndex(
       checkpointsRef: `${WORKSPACE_ROOT}/checkpoints/index.json`,
       agentsRef: `${WORKSPACE_ROOT}/agents/index.json`,
       environmentsRef: `${WORKSPACE_ROOT}/environments/index.json`,
+      adaptersRef: `${WORKSPACE_ROOT}/adapters/index.json`,
       collectionsRef: `${WORKSPACE_ROOT}/indexes/collections.json`,
+      evaluationsRef: `${WORKSPACE_ROOT}/evaluations/index.json`,
       importsRef: `${WORKSPACE_ROOT}/imports/index.json`,
       operationsRef: `${WORKSPACE_ROOT}/operations/index.json`,
       sessionsRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
     },
     agentCount: store.agentsIndex.agents.length,
     environmentCount: store.environmentsIndex.environments.length,
+    adapterCount: store.adaptersIndex.adapters.length,
     collectionCount: store.collectionsState.items.length,
+    evaluationCount: store.evaluationsState.items.length,
     operationCount: store.operationsState.items.length,
     sessionCount: store.sessionsState.sessions.length
   };
@@ -190,6 +196,7 @@ export function buildRuntimeTopology(store: MockWorkspaceStore): RuntimeTopology
 
 export function buildLiveContext(store: MockWorkspaceStore): LiveContextState {
   return {
+    runtimeStatusRef: `${WORKSPACE_ROOT}/state/runtime-status.json`,
     dashboardRef: `${WORKSPACE_ROOT}/state/dashboard.json`,
     decisionsRef: `${WORKSPACE_ROOT}/state/decisions.json`,
     memoryRef: `${WORKSPACE_ROOT}/state/live-memory.json`,
@@ -215,6 +222,44 @@ export function buildLiveContext(store: MockWorkspaceStore): LiveContextState {
   };
 }
 
+export function buildAdapters(store: MockWorkspaceStore): ExchangeAdapterState[] {
+  return store.adaptersIndex.adapters.map((adapter) => {
+    const definition = store.adapterDefinitions[adapter.id];
+    return {
+      id: adapter.id,
+      name: definition?.name ?? adapter.name,
+      kind: definition?.kind ?? "unknown",
+      mode: definition?.mode ?? "unknown",
+      definitionRef: `${WORKSPACE_ROOT}/adapters/items/${adapter.id}/adapter.json`,
+      supportsLive: definition?.supports_live ?? false,
+      supportsPaper: definition?.supports_paper ?? false,
+      supportsBacktest: definition?.supports_backtest ?? false,
+      capabilities: definition?.capabilities ?? [],
+      notes: definition?.notes
+    };
+  });
+}
+
+export function buildEvaluationRuns(
+  store: MockWorkspaceStore
+): EvaluationRunSummaryState[] {
+  return store.evaluationsState.items.map((run) => ({
+    id: run.run_id,
+    kind: run.kind,
+    status: run.status,
+    headline: run.headline,
+    summary: run.summary,
+    createdAt: run.created_at,
+    adapterRef: run.adapter_ref,
+    adapterName: run.adapter_name,
+    collectionRefs: run.collection_refs,
+    netPnl: run.net_pnl,
+    tradeCount: run.trade_count,
+    positionCount: run.position_count,
+    pathRef: run.path_ref
+  }));
+}
+
 export function buildExportBundle(
   store: MockWorkspaceStore,
   checkpoint: CheckpointSummary
@@ -228,9 +273,10 @@ export function buildExportBundle(
     workspaceRef,
     bundleRef: exportBundlePath(checkpoint.id),
     includedRefs: store.strategyManifest.active
-      ? [
+        ? [
           "./workspace/strategy.json",
           "./workspace/live/live-lane.json",
+          "./workspace/state/runtime-status.json",
           "./workspace/state/dashboard.json",
           "./workspace/state/decisions.json",
           "./workspace/state/live-memory.json",
@@ -295,7 +341,9 @@ export function buildDerivedState(
     runtimeTopology: buildRuntimeTopology(store),
     liveContext: buildLiveContext(store),
     exportInspector,
+    adapters: buildAdapters(store),
     collections: buildCollections(store),
+    evaluationRuns: buildEvaluationRuns(store),
     imports: buildImports(store),
     operations: buildOperations(store),
     documentCatalog: buildDocumentCatalog(store, currentCheckpointRef, exportInspector.latestBundle?.bundleRef),
@@ -309,6 +357,7 @@ export function buildTemplateBootstrapState(store: MockWorkspaceStore): Bootstra
   const derived = buildDerivedState(store, checkpoints, currentCheckpointRef);
 
   return {
+    ...store.runtimeStatusState,
     ...store.dashboardSeedState,
     workspace: {
       artifactId: store.strategyManifest.artifact_id,
@@ -322,12 +371,14 @@ export function buildTemplateBootstrapState(store: MockWorkspaceStore): Bootstra
     runtimeTopology: derived.runtimeTopology,
     liveContext: derived.liveContext,
     exportInspector: derived.exportInspector,
+    adapters: derived.adapters,
     positions: structuredClone(store.positionsState.current),
     orders: structuredClone(store.ordersState.current),
     laneEvents: derived.laneEvents,
     decisions: structuredClone(store.decisionsState.decisions),
     checkpoints: derived.checkpoints,
     collections: derived.collections,
+    evaluationRuns: derived.evaluationRuns,
     imports: derived.imports,
     operations: derived.operations,
     documentCatalog: derived.documentCatalog

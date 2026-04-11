@@ -11,11 +11,14 @@ struct BootstrapPaths {
     strategy_path: PathBuf,
     orchestrator_path: PathBuf,
     live_lane_path: PathBuf,
+    runtime_status_path: PathBuf,
     export_policy_path: PathBuf,
     checkpoints_index_path: PathBuf,
     agents_index_path: PathBuf,
     environments_index_path: PathBuf,
+    adapters_index_path: PathBuf,
     collections_index_path: PathBuf,
+    evaluations_index_path: PathBuf,
     imports_index_path: PathBuf,
     operations_index_path: PathBuf,
     dashboard_path: PathBuf,
@@ -35,9 +38,12 @@ struct BootstrapFiles {
     checkpoints_index: CheckpointIndexFile,
     agents_index: AgentsIndexFile,
     environments_index: EnvironmentsIndexFile,
+    adapters_index: AdaptersIndexFile,
     collections_index: CollectionsIndexFile,
+    evaluations_index: EvaluationsIndexFile,
     imports_index: ImportsIndexFile,
     operations_index: OperationsIndexFile,
+    runtime_status: RuntimeStatusFile,
     dashboard: DashboardStateFile,
     decisions: DecisionLogFile,
     live_memory: LiveMemoryFile,
@@ -78,6 +84,7 @@ impl WorkspaceRepository {
             &paths.strategy_path,
             &paths.orchestrator_path,
             &paths.live_lane_path,
+            &paths.runtime_status_path,
             &paths.dashboard_path,
             &paths.decisions_path,
             &paths.memory_path,
@@ -90,8 +97,12 @@ impl WorkspaceRepository {
             &files.agents_index,
             &paths.environments_index_path,
             &files.environments_index,
+            &paths.adapters_index_path,
+            &files.adapters_index,
             &paths.collections_index_path,
             &files.collections_index,
+            &paths.evaluations_index_path,
+            &files.evaluations_index,
             &paths.imports_index_path,
             &files.imports_index,
             &paths.operations_index_path,
@@ -127,8 +138,11 @@ impl WorkspaceRepository {
         let agents_index_path = self.resolve_ref(strategy_path, &strategy.indexes.agents_ref);
         let environments_index_path =
             self.resolve_ref(strategy_path, &strategy.indexes.environments_ref);
+        let adapters_index_path = self.resolve_ref(strategy_path, &strategy.indexes.adapters_ref);
         let collections_index_path =
             self.resolve_ref(strategy_path, &strategy.indexes.collections_ref);
+        let evaluations_index_path =
+            self.resolve_ref(strategy_path, &strategy.indexes.evaluations_ref);
         let imports_index_path = self.resolve_ref(strategy_path, &strategy.indexes.imports_ref);
         let operations_index_path =
             self.resolve_ref(strategy_path, &strategy.indexes.operations_ref);
@@ -138,6 +152,8 @@ impl WorkspaceRepository {
         Ok(BootstrapPaths {
             strategy_path: strategy_path.to_path_buf(),
             orchestrator_path,
+            runtime_status_path: self
+                .resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref),
             dashboard_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref),
             decisions_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref),
             memory_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref),
@@ -151,7 +167,9 @@ impl WorkspaceRepository {
             checkpoints_index_path,
             agents_index_path,
             environments_index_path,
+            adapters_index_path,
             collections_index_path,
+            evaluations_index_path,
             imports_index_path,
             operations_index_path,
         })
@@ -170,8 +188,15 @@ impl WorkspaceRepository {
         let agents_index = self.read_json_path::<AgentsIndexFile>(&paths.agents_index_path)?;
         let environments_index =
             self.read_json_path::<EnvironmentsIndexFile>(&paths.environments_index_path)?;
+        let adapters_index =
+            self.read_json_path::<AdaptersIndexFile>(&paths.adapters_index_path)?;
         let collections_index =
             self.read_json_path::<CollectionsIndexFile>(&paths.collections_index_path)?;
+        let evaluations_index = if paths.evaluations_index_path.exists() {
+            self.read_json_path::<EvaluationsIndexFile>(&paths.evaluations_index_path)?
+        } else {
+            EvaluationsIndexFile { items: Vec::new() }
+        };
         let imports_index = if paths.imports_index_path.exists() {
             self.read_json_path::<ImportsIndexFile>(&paths.imports_index_path)?
         } else {
@@ -191,9 +216,12 @@ impl WorkspaceRepository {
             checkpoints_index,
             agents_index,
             environments_index,
+            adapters_index,
             collections_index,
+            evaluations_index,
             imports_index,
             operations_index,
+            runtime_status: self.read_json_path::<RuntimeStatusFile>(&paths.runtime_status_path)?,
             dashboard: self.read_json_path::<DashboardStateFile>(&paths.dashboard_path)?,
             decisions: self.read_json_path::<DecisionLogFile>(&paths.decisions_path)?,
             live_memory: self.read_json_path::<LiveMemoryFile>(&paths.memory_path)?,
@@ -222,7 +250,12 @@ impl WorkspaceRepository {
         let export_inspector =
             self.build_export_inspector_state(&context.files, context.latest_export_bundle);
         let checkpoints = self.build_checkpoint_summaries(&context.files.checkpoints_index);
+        let adapters = self.build_adapter_states(
+            &context.paths.adapters_index_path,
+            &context.files.adapters_index,
+        );
         let collections = self.build_collection_summaries(&context.files.collections_index);
+        let evaluation_runs = self.build_evaluation_run_summaries(&context.files.evaluations_index);
         let imports = self.build_import_summaries(&context.files.imports_index);
         let operations = self.build_operation_summaries(&context.files.operations_index);
         let lane_events = lane_event_feed(
@@ -237,15 +270,16 @@ impl WorkspaceRepository {
         } = context;
 
         BootstrapState {
-            mode: files.live_lane.mode,
-            automation_status: files.dashboard.automation_status,
-            status_note: files.dashboard.status_note,
+            mode: files.runtime_status.mode,
+            automation_status: files.runtime_status.automation_status,
+            status_note: files.runtime_status.status_note,
             workspace,
             asset_inspector,
             workspace_index,
             runtime_topology,
             live_context,
             export_inspector,
+            adapters,
             providers: files.dashboard.providers,
             metrics: files.dashboard.metrics,
             price_series: files.dashboard.price_series,
@@ -257,6 +291,7 @@ impl WorkspaceRepository {
             decisions: files.decisions.decisions,
             checkpoints,
             collections,
+            evaluation_runs,
             imports,
             operations,
             document_catalog,
@@ -310,14 +345,18 @@ impl WorkspaceRepository {
                 checkpoints_ref: self.display_path(&paths.checkpoints_index_path),
                 agents_ref: self.display_path(&paths.agents_index_path),
                 environments_ref: self.display_path(&paths.environments_index_path),
+                adapters_ref: self.display_path(&paths.adapters_index_path),
                 collections_ref: self.display_path(&paths.collections_index_path),
+                evaluations_ref: self.display_path(&paths.evaluations_index_path),
                 imports_ref: self.display_path(&paths.imports_index_path),
                 operations_ref: self.display_path(&paths.operations_index_path),
                 sessions_ref: self.display_path(&paths.sessions_path),
             },
             agent_count: files.agents_index.agents.len(),
             environment_count: files.environments_index.environments.len(),
+            adapter_count: files.adapters_index.adapters.len(),
             collection_count: files.collections_index.items.len(),
+            evaluation_count: files.evaluations_index.items.len(),
             operation_count: files.operations_index.items.len(),
             session_count: files.sessions.sessions.len(),
         }
@@ -458,6 +497,7 @@ impl WorkspaceRepository {
         files: &BootstrapFiles,
     ) -> LiveContextState {
         LiveContextState {
+            runtime_status_ref: self.display_path(&paths.runtime_status_path),
             dashboard_ref: self.display_path(&paths.dashboard_path),
             decisions_ref: self.display_path(&paths.decisions_path),
             memory_ref: self.display_path(&paths.memory_path),
@@ -584,6 +624,73 @@ impl WorkspaceRepository {
                 entry_count: item.entry_count,
                 content_hash: item.content_hash.clone(),
                 collection_ref: self.display_path(&self.collection_file_path(&item.collection_id)),
+            })
+            .collect()
+    }
+
+    fn build_adapter_states(
+        &self,
+        adapters_index_path: &Path,
+        adapters: &AdaptersIndexFile,
+    ) -> Vec<ExchangeAdapterState> {
+        adapters
+            .adapters
+            .iter()
+            .map(|item| {
+                let definition_path = self.resolve_ref(adapters_index_path, &item.definition_ref);
+                let record = self
+                    .read_json_path::<AdapterRecordFile>(&definition_path)
+                    .unwrap_or(AdapterRecordFile {
+                        adapter_id: item.id.clone(),
+                        name: item.name.clone(),
+                        kind: "unknown".into(),
+                        mode: "unknown".into(),
+                        supports_live: false,
+                        supports_paper: false,
+                        supports_backtest: false,
+                        capabilities: Vec::new(),
+                        notes: None,
+                    });
+
+                ExchangeAdapterState {
+                    id: record.adapter_id,
+                    name: record.name,
+                    kind: record.kind,
+                    mode: record.mode,
+                    definition_ref: self.display_path(&definition_path),
+                    supports_live: record.supports_live,
+                    supports_paper: record.supports_paper,
+                    supports_backtest: record.supports_backtest,
+                    capabilities: record.capabilities,
+                    notes: record.notes,
+                }
+            })
+            .collect()
+    }
+
+    fn build_evaluation_run_summaries(
+        &self,
+        evaluations: &EvaluationsIndexFile,
+    ) -> Vec<EvaluationRunSummaryState> {
+        evaluations
+            .items
+            .iter()
+            .map(|item| EvaluationRunSummaryState {
+                id: item.run_id.clone(),
+                kind: item.kind.clone(),
+                status: item.status.clone(),
+                headline: item.headline.clone(),
+                summary: item.summary.clone(),
+                created_at: item.created_at.clone(),
+                adapter_ref: item.adapter_ref.clone(),
+                adapter_name: item.adapter_name.clone(),
+                collection_refs: item.collection_refs.clone(),
+                net_pnl: item.net_pnl,
+                trade_count: item.trade_count,
+                position_count: item.position_count,
+                path_ref: self.display_path(
+                    &self.resolve_ref(&self.evaluations_index_path(), &item.path_ref),
+                ),
             })
             .collect()
     }

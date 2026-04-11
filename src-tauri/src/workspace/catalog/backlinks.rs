@@ -53,6 +53,10 @@ impl WorkspaceRepository {
         }
         for (path_ref, reason) in [
             (
+                &bootstrap.live_context.runtime_status_ref,
+                "state_refs.runtime_status_ref",
+            ),
+            (
                 &bootstrap.live_context.dashboard_ref,
                 "state_refs.dashboard_ref",
             ),
@@ -121,10 +125,22 @@ impl WorkspaceRepository {
                 "indexes.environments_ref".to_string(),
             ),
             (
+                bootstrap.workspace_index.indexes.adapters_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.adapters_ref".to_string(),
+            ),
+            (
                 bootstrap.workspace_index.indexes.collections_ref.clone(),
                 "strategy.json".to_string(),
                 "entrypoint".to_string(),
                 "indexes.collections_ref".to_string(),
+            ),
+            (
+                bootstrap.workspace_index.indexes.evaluations_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.evaluations_ref".to_string(),
             ),
             (
                 bootstrap.workspace_index.indexes.imports_ref.clone(),
@@ -186,6 +202,26 @@ impl WorkspaceRepository {
                     bootstrap.workspace_index.indexes.environments_ref.clone(),
                     "index".into(),
                     "environment catalog entry".into(),
+                );
+            }
+            if document.category == "adapter"
+                && self.document_ref_matches_target(&document.path_ref, &target_ref, &target_path)
+            {
+                push_backlink(
+                    "adapters index".into(),
+                    bootstrap.workspace_index.indexes.adapters_ref.clone(),
+                    "index".into(),
+                    "adapter catalog entry".into(),
+                );
+            }
+            if document.id.starts_with("evaluation-run-")
+                && self.document_ref_matches_target(&document.path_ref, &target_ref, &target_path)
+            {
+                push_backlink(
+                    "evaluations index".into(),
+                    bootstrap.workspace_index.indexes.evaluations_ref.clone(),
+                    "index".into(),
+                    "evaluation run catalog entry".into(),
                 );
             }
         }

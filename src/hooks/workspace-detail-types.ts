@@ -3,6 +3,7 @@ import type {
   CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
+  EvaluationRunDetailState,
   ImportComparisonState,
   ImportDetailState,
   OperationDetailState,
@@ -14,6 +15,7 @@ export type WorkspaceDetailState = {
   selectedCheckpointDetail: CheckpointDetailState | null;
   selectedCheckpointComparison: CheckpointComparisonState | null;
   selectedCollectionDetail: CollectionDetailState | null;
+  selectedEvaluationRunDetail: EvaluationRunDetailState | null;
   selectedImportDetail: ImportDetailState | null;
   selectedImportComparison: ImportComparisonState | null;
   selectedBlobDetail: BlobDetailState | null;

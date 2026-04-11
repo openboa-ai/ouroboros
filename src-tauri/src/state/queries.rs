@@ -1,8 +1,8 @@
 use super::*;
 use crate::models::{
     BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
-    CollectionDetailState, ImportComparisonState, ImportDetailState, OperationDetailState,
-    WorkspaceDocumentState, WorkspaceSearchResultState,
+    CollectionDetailState, EvaluationRunDetailState, ImportComparisonState, ImportDetailState,
+    OperationDetailState, WorkspaceDocumentState, WorkspaceSearchResultState,
 };
 
 impl AppState {
@@ -37,6 +37,10 @@ impl AppState {
 
     pub fn blob_detail(&self, blob_id: &str) -> Result<BlobDetailState, String> {
         self.application.blob_detail(blob_id)
+    }
+
+    pub fn evaluation_run_detail(&self, run_id: &str) -> Result<EvaluationRunDetailState, String> {
+        self.application.evaluation_run_detail(run_id)
     }
 
     pub fn operation_detail(&self, operation_id: &str) -> Result<OperationDetailState, String> {

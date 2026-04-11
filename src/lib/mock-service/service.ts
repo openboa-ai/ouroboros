@@ -3,6 +3,7 @@ import type {
   CheckpointComparisonState,
   CheckpointDetailState,
   CollectionDetailState,
+  EvaluationRunDetailState,
   ImportBundleState,
   ImportComparisonState,
   ImportDetailState,
@@ -22,6 +23,8 @@ import {
   importExportBundle,
   ingestSourceEntry,
   pauseGlobalAutomation,
+  runBacktest,
+  runPaperEvaluation,
   restoreCheckpoint
 } from "./mutations";
 import {
@@ -29,6 +32,7 @@ import {
   getCheckpointComparison,
   getCheckpointDetail,
   getCollectionDetail,
+  getEvaluationRunDetail,
   getImportComparison,
   getImportDetail,
   getOperationDetail,
@@ -68,6 +72,10 @@ export class MockWorkspaceService implements WorkspaceService {
 
   async getBlobDetail(blobId: string) {
     return getBlobDetail(this.context, blobId);
+  }
+
+  async getEvaluationRunDetail(runId: string): Promise<EvaluationRunDetailState> {
+    return getEvaluationRunDetail(this.context, runId);
   }
 
   async getOperationDetail(operationId: string): Promise<OperationDetailState> {
@@ -112,6 +120,14 @@ export class MockWorkspaceService implements WorkspaceService {
 
   async importExportBundle(bundleRef: string): Promise<ImportBundleState> {
     return importExportBundle(this.context, bundleRef);
+  }
+
+  async runBacktest(): Promise<BootstrapState> {
+    return runBacktest(this.context);
+  }
+
+  async runPaperEvaluation(): Promise<BootstrapState> {
+    return runPaperEvaluation(this.context);
   }
 }
 

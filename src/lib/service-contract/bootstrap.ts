@@ -15,6 +15,8 @@ import type {
   AssetInspectorState,
   CheckpointSummary,
   CollectionSummaryState,
+  EvaluationRunSummaryState,
+  ExchangeAdapterState,
   ExportInspectorState,
   ImportSummaryState,
   LiveContextState,
@@ -35,6 +37,7 @@ export type BootstrapState = {
   runtimeTopology: RuntimeTopologyState;
   liveContext: LiveContextState;
   exportInspector: ExportInspectorState;
+  adapters: ExchangeAdapterState[];
   providers: ProviderStatus[];
   metrics: MetricCardData[];
   priceSeries: PricePoint[];
@@ -46,6 +49,7 @@ export type BootstrapState = {
   decisions: DecisionEntry[];
   checkpoints: CheckpointSummary[];
   collections: CollectionSummaryState[];
+  evaluationRuns: EvaluationRunSummaryState[];
   imports: ImportSummaryState[];
   operations: OperationSummaryState[];
   documentCatalog: WorkspaceCatalogEntry[];

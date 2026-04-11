@@ -54,6 +54,7 @@ required_files=(
   "templates/strategy-workspace/imports/index.json"
   "templates/strategy-workspace/operations/index.json"
   "templates/strategy-workspace/indexes/sessions.json"
+  "templates/strategy-workspace/state/runtime-status.json"
   "templates/strategy-workspace/state/eval-summaries.json"
 )
 

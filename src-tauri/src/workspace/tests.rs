@@ -702,8 +702,8 @@ fn workspace_operations_are_recorded_for_service_mutations() {
         operations_index.items[1]
             .related_refs
             .iter()
-            .any(|path| path.ends_with("state/dashboard.json")),
-        "pause operation should retain the dashboard document ref"
+            .any(|path| path.ends_with("state/runtime-status.json")),
+        "pause operation should retain the runtime status document ref"
     );
     assert!(
         operations_index.items[1]
@@ -754,8 +754,8 @@ fn load_operation_detail_resolves_catalog_documents() {
         detail
             .related_documents
             .iter()
-            .any(|document| document.path_ref.ends_with("state/dashboard.json")),
-        "operation detail should expose live dashboard state when it was mutated"
+            .any(|document| document.path_ref.ends_with("state/runtime-status.json")),
+        "operation detail should expose runtime status state when it was mutated"
     );
     assert!(
         detail.unresolved_refs.is_empty(),
@@ -828,6 +828,10 @@ fn load_bootstrap_state_promotes_live_state_documents_into_catalog() {
     let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
 
     for (path_ref, expected_id) in [
+        (
+            &bootstrap.live_context.runtime_status_ref,
+            "live-runtime-status",
+        ),
         (&bootstrap.live_context.dashboard_ref, "live-dashboard"),
         (&bootstrap.live_context.decisions_ref, "live-decisions"),
         (&bootstrap.live_context.memory_ref, "live-memory"),
@@ -968,6 +972,88 @@ fn compare_checkpoints_reports_workspace_differences() {
     assert!(
         comparison.changed_count >= 1,
         "at least one file should differ between export and incident checkpoints"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn evaluation_runs_are_persisted_and_queryable() {
+    let root = test_root();
+    let template_root = WorkspaceRepository::default_template_root();
+    let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+    let backtest = repo.run_backtest().expect("run backtest");
+    let backtest_run = backtest
+        .evaluation_runs
+        .first()
+        .cloned()
+        .expect("backtest run summary");
+    assert_eq!(backtest_run.kind, "backtest");
+    assert!(
+        backtest
+            .operations
+            .iter()
+            .any(|operation| operation.kind == "run_backtest"),
+        "backtest should be recorded as a workspace operation"
+    );
+    assert!(
+        backtest
+            .live_context
+            .evaluation_summaries
+            .first()
+            .map(|summary| summary
+                .evidence_refs
+                .iter()
+                .any(|item| item == &backtest_run.path_ref))
+            .unwrap_or(false),
+        "live eval summaries should carry evidence refs to the new run"
+    );
+
+    let backtest_detail = repo
+        .load_evaluation_run_detail(&backtest_run.id)
+        .expect("backtest detail");
+    assert_eq!(backtest_detail.id, backtest_run.id);
+    assert!(
+        !backtest_detail.collection_refs.is_empty(),
+        "backtest run should preserve collection refs for replay"
+    );
+
+    let paper = repo.run_paper_evaluation().expect("run paper evaluation");
+    let paper_run = paper
+        .evaluation_runs
+        .first()
+        .cloned()
+        .expect("paper run summary");
+    assert_eq!(paper_run.kind, "paper");
+    assert!(
+        paper
+            .operations
+            .iter()
+            .any(|operation| operation.kind == "run_paper_evaluation"),
+        "paper evaluation should be recorded as a workspace operation"
+    );
+
+    let evaluations_index = repo
+        .read_json_path::<EvaluationsIndexFile>(&root.join("evaluations/index.json"))
+        .expect("evaluations index");
+    assert!(
+        evaluations_index.items.len() >= 2,
+        "backtest and paper runs should both be indexed"
+    );
+    assert_eq!(
+        evaluations_index
+            .items
+            .first()
+            .map(|item| item.kind.as_str()),
+        Some("paper"),
+        "latest evaluation should be the most recent paper run"
+    );
+
+    let paper_run_path = repo.evaluation_run_file_path(&paper_run.id);
+    assert!(
+        paper_run_path.exists(),
+        "paper run file should be materialized"
     );
 
     let _ = fs::remove_dir_all(&root);

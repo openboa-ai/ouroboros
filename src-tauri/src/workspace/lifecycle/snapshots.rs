@@ -163,15 +163,16 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
-        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
 
-        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let runtime_status = self.read_json_path::<RuntimeStatusFile>(&runtime_status_path)?;
         let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
         let transition =
-            live_policies::mark_restore_checkpoint(dashboard, decisions, checkpoint_alias);
+            live_policies::mark_restore_checkpoint(runtime_status, decisions, checkpoint_alias);
 
-        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&runtime_status_path, &transition.runtime_status)?;
         self.write_json_path(&decisions_path, &transition.decisions)?;
         Ok(())
     }
@@ -189,20 +190,21 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
-        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
 
-        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let runtime_status = self.read_json_path::<RuntimeStatusFile>(&runtime_status_path)?;
         let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
         let transition = live_policies::mark_import_activation(
-            dashboard,
+            runtime_status,
             decisions,
             import_id,
             source_bundle_ref,
             checkpoint_alias,
         );
 
-        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&runtime_status_path, &transition.runtime_status)?;
         self.write_json_path(&decisions_path, &transition.decisions)?;
         Ok(())
     }

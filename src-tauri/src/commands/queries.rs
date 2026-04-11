@@ -3,8 +3,8 @@ use tauri::State;
 use crate::{
     models::{
         BlobDetailState, BootstrapState, CheckpointComparisonState, CheckpointDetailState,
-        CollectionDetailState, ImportComparisonState, ImportDetailState, OperationDetailState,
-        WorkspaceDocumentState, WorkspaceSearchResultState,
+        CollectionDetailState, EvaluationRunDetailState, ImportComparisonState, ImportDetailState,
+        OperationDetailState, WorkspaceDocumentState, WorkspaceSearchResultState,
     },
     state::AppState,
 };
@@ -61,6 +61,14 @@ pub fn get_blob_detail(
     state: State<'_, AppState>,
 ) -> Result<BlobDetailState, String> {
     state.blob_detail(&blob_id)
+}
+
+#[tauri::command]
+pub fn get_evaluation_run_detail(
+    run_id: String,
+    state: State<'_, AppState>,
+) -> Result<EvaluationRunDetailState, String> {
+    state.evaluation_run_detail(&run_id)
 }
 
 #[tauri::command]

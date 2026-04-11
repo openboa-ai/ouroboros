@@ -10,14 +10,15 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
-        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
-        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let runtime_status = self.read_json_path::<RuntimeStatusFile>(&runtime_status_path)?;
         let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
-        let transition = live_policies::pause_automation(live_lane, dashboard, decisions);
+        let transition = live_policies::pause_automation(live_lane, runtime_status, decisions);
 
         self.write_json_path(&live_lane_path, &transition.live_lane)?;
-        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&runtime_status_path, &transition.runtime_status)?;
         self.write_json_path(&decisions_path, &transition.decisions)?;
         self.append_operation(
             "pause_global_automation",
@@ -26,7 +27,7 @@ impl WorkspaceRepository {
             "The service boundary switched the live lane into observer mode without allowing direct client mutation of the workspace.".into(),
             vec![
                 self.display_path(&live_lane_path),
-                self.display_path(&dashboard_path),
+                self.display_path(&runtime_status_path),
                 self.display_path(&decisions_path),
             ],
         )?;
@@ -42,18 +43,27 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
         let positions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref);
         let orders_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref);
 
+        let runtime_status = self.read_json_path::<RuntimeStatusFile>(&runtime_status_path)?;
         let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
         let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
         let positions = self.read_json_path::<PositionsStateFile>(&positions_path)?;
         let orders = self.read_json_path::<OrdersStateFile>(&orders_path)?;
-        let transition =
-            live_policies::flatten_all_live_state(dashboard, decisions, positions, orders);
+        let transition = live_policies::flatten_all_live_state(
+            runtime_status,
+            dashboard,
+            decisions,
+            positions,
+            orders,
+        );
 
+        self.write_json_path(&runtime_status_path, &transition.runtime_status)?;
         self.write_json_path(&dashboard_path, &transition.dashboard)?;
         self.write_json_path(&decisions_path, &transition.decisions)?;
         self.write_json_path(&positions_path, &transition.positions)?;
@@ -71,6 +81,7 @@ impl WorkspaceRepository {
             "Flatten-all intervention reset live positions and orders.".into(),
             "The service layer flattened current positions, cleared live orders, and captured an incident checkpoint for the intervention.".into(),
             vec![
+                self.display_path(&runtime_status_path),
                 self.display_path(&dashboard_path),
                 self.display_path(&decisions_path),
                 self.display_path(&positions_path),
@@ -110,6 +121,8 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
         let memory_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref);
@@ -124,6 +137,7 @@ impl WorkspaceRepository {
                 self.display_path(&target_checkpoint_path),
                 self.display_path(&self.root.join("strategy.json")),
                 self.display_path(&live_lane_path),
+                self.display_path(&runtime_status_path),
                 self.display_path(&dashboard_path),
                 self.display_path(&decisions_path),
                 self.display_path(&memory_path),

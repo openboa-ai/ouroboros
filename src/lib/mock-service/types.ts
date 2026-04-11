@@ -4,6 +4,8 @@ import type {
   CheckpointSummary,
   CollectionSummaryState,
   DecisionEntry,
+  EvaluationRunSummaryState,
+  ExchangeAdapterState,
   ExportInspectorState,
   ImportSummaryState,
   LaneEventState,
@@ -16,6 +18,8 @@ import type {
 import type {
   AgentDefinition,
   AgentsIndex,
+  AdapterDefinition,
+  AdaptersIndex,
   BlobId,
   CheckpointIndex,
   CollectionRecord,
@@ -112,6 +116,43 @@ export type EvalSummariesState = {
   summaries: EvalSummaryRecord[];
 };
 
+export type AdapterRecord = AdapterDefinition;
+
+export type EvaluationRunRecord = {
+  run_id: string;
+  kind: string;
+  status: string;
+  headline: string;
+  summary: string;
+  created_at: string;
+  adapter_ref: string;
+  adapter_name: string;
+  collection_refs: string[];
+  gross_pnl: number;
+  fee_cost: number;
+  slippage_cost: number;
+  model_cost: number;
+  net_pnl: number;
+  trade_count: number;
+  position_count: number;
+  path_ref: string;
+  equity_curve: BootstrapState["equitySeries"];
+  trades: Array<{
+    symbol: string;
+    side: string;
+    entry_time: string;
+    exit_time: string;
+    entry_price: number;
+    exit_price: number;
+    net_pnl: number;
+  }>;
+  notes: string[];
+};
+
+export type EvaluationsState = {
+  items: EvaluationRunRecord[];
+};
+
 export type ImportsState = {
   items: ImportRecord[];
 };
@@ -128,21 +169,31 @@ export type CheckpointIndexSeed = CheckpointIndex;
 
 export type DashboardSeedState = Omit<
   BootstrapState,
+  | "mode"
+  | "automationStatus"
+  | "statusNote"
   | "assetInspector"
   | "workspaceIndex"
   | "runtimeTopology"
   | "liveContext"
   | "exportInspector"
   | "workspace"
+  | "adapters"
   | "positions"
   | "orders"
   | "laneEvents"
   | "decisions"
   | "checkpoints"
   | "collections"
+  | "evaluationRuns"
   | "imports"
   | "operations"
   | "documentCatalog"
+>;
+
+export type RuntimeStatusSeedState = Pick<
+  BootstrapState,
+  "mode" | "automationStatus" | "statusNote"
 >;
 
 export type MockWorkspaceStore = {
@@ -154,6 +205,7 @@ export type MockWorkspaceStore = {
   collectionsState: CollectionsState;
   importsState: ImportsState;
   operationsState: OperationsState;
+  runtimeStatusState: RuntimeStatusSeedState;
   dashboardSeedState: DashboardSeedState;
   decisionsState: DecisionsState;
   ordersState: OrdersState;
@@ -163,8 +215,11 @@ export type MockWorkspaceStore = {
   evalSummariesState: EvalSummariesState;
   agentsIndex: AgentsIndex;
   environmentsIndex: EnvironmentsIndex;
+  adaptersIndex: AdaptersIndex;
+  evaluationsState: EvaluationsState;
   agentDefinitions: Record<string, AgentDefinition>;
   environmentDefinitions: Record<string, EnvironmentDefinition>;
+  adapterDefinitions: Record<string, AdapterRecord>;
   entriesByCollection: Record<string, CollectionEntryRecord[]>;
   blobContents: Record<BlobId | string, string>;
 };
@@ -177,7 +232,9 @@ export type MockDerivedState = {
   runtimeTopology: RuntimeTopologyState;
   liveContext: LiveContextState;
   exportInspector: ExportInspectorState;
+  adapters: ExchangeAdapterState[];
   collections: CollectionSummaryState[];
+  evaluationRuns: EvaluationRunSummaryState[];
   imports: ImportSummaryState[];
   operations: OperationSummaryState[];
   documentCatalog: WorkspaceCatalogEntry[];

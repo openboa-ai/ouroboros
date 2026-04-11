@@ -38,4 +38,12 @@ impl AppState {
     pub fn import_export_bundle(&self, bundle_ref: &str) -> Result<ImportBundleState, String> {
         self.application.import_export_bundle(bundle_ref)
     }
+
+    pub fn run_backtest(&self) -> Result<BootstrapState, String> {
+        self.application.run_backtest()
+    }
+
+    pub fn run_paper_evaluation(&self) -> Result<BootstrapState, String> {
+        self.application.run_paper_evaluation()
+    }
 }

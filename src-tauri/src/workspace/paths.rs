@@ -35,6 +35,18 @@ impl WorkspaceRepository {
         self.root.join("imports").join("index.json")
     }
 
+    pub(super) fn evaluations_index_path(&self) -> PathBuf {
+        self.root.join("evaluations").join("index.json")
+    }
+
+    pub(super) fn evaluation_run_root_path(&self, run_id: &str) -> PathBuf {
+        self.root.join("evaluations").join("items").join(run_id)
+    }
+
+    pub(super) fn evaluation_run_file_path(&self, run_id: &str) -> PathBuf {
+        self.evaluation_run_root_path(run_id).join("run.json")
+    }
+
     pub(super) fn operations_index_path(&self) -> PathBuf {
         self.root.join("operations").join("index.json")
     }

@@ -9,6 +9,7 @@ impl WorkspaceRepository {
         strategy_path: &Path,
         orchestrator_path: &Path,
         live_lane_path: &Path,
+        runtime_status_path: &Path,
         dashboard_path: &Path,
         decisions_path: &Path,
         memory_path: &Path,
@@ -21,8 +22,12 @@ impl WorkspaceRepository {
         agents: &AgentsIndexFile,
         environments_index_path: &Path,
         environments: &EnvironmentsIndexFile,
+        adapters_index_path: &Path,
+        adapters: &AdaptersIndexFile,
         collections_index_path: &Path,
         collections: &CollectionsIndexFile,
+        evaluations_index_path: &Path,
+        evaluations: &EvaluationsIndexFile,
         imports_index_path: &Path,
         imports: &ImportsIndexFile,
         operations_index_path: &Path,
@@ -54,16 +59,23 @@ impl WorkspaceRepository {
                 id: "live-lane".into(),
                 category: "active".into(),
                 label: "live lane".into(),
-                description: "Active live lane refs, state pointers, and runtime mode.".into(),
+                description: "Active live lane refs and workspace pointers for the current live book.".into(),
                 path_ref: self.display_path(live_lane_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-runtime-status".into(),
+                category: "active".into(),
+                label: "runtime status".into(),
+                description:
+                    "Authoritative control-state document for mode, automation status, and live status notes.".into(),
+                path_ref: self.display_path(runtime_status_path),
             },
             WorkspaceCatalogEntryState {
                 id: "live-dashboard".into(),
                 category: "active".into(),
                 label: "dashboard state".into(),
                 description:
-                    "Current dashboard-facing live state surfaced through the service boundary."
-                        .into(),
+                    "Current dashboard-facing metrics and chart data surfaced through the service boundary.".into(),
                 path_ref: self.display_path(dashboard_path),
             },
             WorkspaceCatalogEntryState {
@@ -136,12 +148,30 @@ impl WorkspaceRepository {
                 path_ref: self.display_path(environments_index_path),
             },
             WorkspaceCatalogEntryState {
+                id: "adapters-index".into(),
+                category: "index".into(),
+                label: "adapters index".into(),
+                description:
+                    "Execution and evaluation adapter catalog kept inside the workspace asset."
+                        .into(),
+                path_ref: self.display_path(adapters_index_path),
+            },
+            WorkspaceCatalogEntryState {
                 id: "collections-index".into(),
                 category: "index".into(),
                 label: "collections index".into(),
                 description: "Source-centered collection catalog materialized by UTC-hour shards."
                     .into(),
                 path_ref: self.display_path(collections_index_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "evaluations-index".into(),
+                category: "index".into(),
+                label: "evaluations index".into(),
+                description:
+                    "Backtest and paper-trading run registry for the current strategy workspace."
+                        .into(),
+                path_ref: self.display_path(evaluations_index_path),
             },
             WorkspaceCatalogEntryState {
                 id: "imports-index".into(),
@@ -237,6 +267,32 @@ impl WorkspaceRepository {
             });
         }
 
+        for adapter in &adapters.adapters {
+            let adapter_path = self.resolve_ref(adapters_index_path, &adapter.definition_ref);
+            let adapter_record = self.read_json_path::<AdapterRecordFile>(&adapter_path).ok();
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("adapter-{}", adapter.id),
+                category: "adapter".into(),
+                label: adapter_record
+                    .as_ref()
+                    .map(|record| record.name.clone())
+                    .unwrap_or_else(|| adapter.name.clone()),
+                description: adapter_record
+                    .as_ref()
+                    .map(|record| {
+                        format!(
+                            "{} adapter · live={} paper={} backtest={}",
+                            record.mode,
+                            record.supports_live,
+                            record.supports_paper,
+                            record.supports_backtest
+                        )
+                    })
+                    .unwrap_or_else(|| "Workspace adapter definition.".into()),
+                path_ref: self.display_path(&adapter_path),
+            });
+        }
+
         for session in &sessions.sessions {
             let session_id = session
                 .session_id
@@ -280,6 +336,17 @@ impl WorkspaceRepository {
                     "Live-lane evaluation evidence summary with refs back to raw supporting artifacts."
                         .into(),
                 path_ref: self.display_path(&summary_path),
+            });
+        }
+
+        for evaluation in &evaluations.items {
+            let run_path = self.resolve_ref(evaluations_index_path, &evaluation.path_ref);
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("evaluation-run-{}", evaluation.run_id),
+                category: "evaluation".into(),
+                label: format!("{} · {}", evaluation.kind, evaluation.created_at),
+                description: evaluation.summary.clone(),
+                path_ref: self.display_path(&run_path),
             });
         }
 

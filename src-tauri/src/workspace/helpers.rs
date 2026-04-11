@@ -74,8 +74,48 @@ pub(super) fn default_environments_ref() -> String {
     "./environments/index.json".into()
 }
 
+pub(super) fn default_adapters_ref() -> String {
+    "./adapters/index.json".into()
+}
+
+pub(super) fn default_evaluations_ref() -> String {
+    "./evaluations/index.json".into()
+}
+
 pub(super) fn default_operations_ref() -> String {
     "./operations/index.json".into()
+}
+
+pub(super) fn default_runtime_status_ref() -> String {
+    "../state/runtime-status.json".into()
+}
+
+pub(super) fn default_dashboard_ref() -> String {
+    "../state/dashboard.json".into()
+}
+
+pub(super) fn default_decisions_ref() -> String {
+    "../state/decisions.json".into()
+}
+
+pub(super) fn default_live_memory_ref() -> String {
+    "../state/live-memory.json".into()
+}
+
+pub(super) fn default_sessions_ref() -> String {
+    "../indexes/sessions.json".into()
+}
+
+pub(super) fn default_positions_ref() -> String {
+    "../state/positions.json".into()
+}
+
+pub(super) fn default_orders_ref() -> String {
+    "../state/orders.json".into()
+}
+
+pub(super) fn default_eval_summaries_state_ref() -> String {
+    "../state/eval-summaries.json".into()
 }
 
 pub(super) fn uuid_v7_string() -> String {

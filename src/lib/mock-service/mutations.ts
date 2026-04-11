@@ -7,6 +7,12 @@ import type {
 } from "../service-contract";
 import { MockWorkspaceContext } from "./context";
 import {
+  buildEvaluationDecision,
+  evaluationCollectionRefs,
+  evaluationRunRef,
+  runMockReplay
+} from "./evaluations";
+import {
   checkpointPath,
   exportBundlePath,
   mockBlobIdFromText,
@@ -37,9 +43,8 @@ export async function pauseGlobalAutomation(
   context: MockWorkspaceContext
 ): Promise<BootstrapState> {
   const timestamp = context.nowLabel();
-  context.store.liveLane.mode = "observer";
-  context.state = {
-    ...context.state,
+  context.store.runtimeStatusState = {
+    ...context.store.runtimeStatusState,
     mode: "observer",
     automationStatus: "paused",
     statusNote: "Global automation was paused through the service boundary."
@@ -63,7 +68,7 @@ export async function pauseGlobalAutomation(
     details:
       "The client requested a pause and the service boundary switched the live lane into observer mode while preserving workspace inspection state.",
     created_at: timestamp,
-    related_refs: ["live/live-lane.json", "state/dashboard.json", "state/decisions.json"]
+    related_refs: ["live/live-lane.json", "state/runtime-status.json", "state/decisions.json"]
   });
   context.syncDerivedState();
   return context.snapshot();
@@ -74,10 +79,14 @@ export async function flattenAllPositions(
 ): Promise<BootstrapState> {
   const checkpointId = context.randomId();
   const timestamp = context.nowLabel();
-  context.state = {
-    ...context.state,
+  context.store.runtimeStatusState = {
+    ...context.store.runtimeStatusState,
+    automationStatus: "intervention",
     statusNote: "Service-layer intervention flattened all live positions in the mock runtime.",
-    metrics: context.state.metrics.map((metric) =>
+  };
+  context.store.dashboardSeedState = {
+    ...context.store.dashboardSeedState,
+    metrics: context.store.dashboardSeedState.metrics.map((metric) =>
       metric.label === "Risk Budget"
         ? { ...metric, value: "0%", delta: "Reset after flatten-all intervention" }
         : metric
@@ -118,6 +127,7 @@ export async function flattenAllPositions(
       "The service boundary flattened current positions, cleared orders, and captured an incident checkpoint for the intervention.",
     created_at: timestamp,
     related_refs: [
+      "state/runtime-status.json",
       "state/dashboard.json",
       "state/positions.json",
       "state/orders.json",
@@ -147,8 +157,8 @@ export async function createExportCheckpoint(
   const alias = `export-${new Date().toISOString().slice(11, 16).replace(":", "")}`;
   const timestamp = context.nowLabel();
 
-  context.state = {
-    ...context.state,
+  context.store.runtimeStatusState = {
+    ...context.store.runtimeStatusState,
     statusNote: "A fresh export checkpoint was created from the current live-centered asset."
   };
 
@@ -182,7 +192,12 @@ export async function createExportCheckpoint(
     details:
       "The service layer created a fresh export checkpoint and materialized a sanitized bundle from the live-centered workspace state.",
     created_at: timestamp,
-    related_refs: [checkpointPath(checkpointId), exportBundlePath(checkpointId), "exports/policy.json"]
+    related_refs: [
+      "state/runtime-status.json",
+      checkpointPath(checkpointId),
+      exportBundlePath(checkpointId),
+      "exports/policy.json"
+    ]
   });
   context.syncDerivedState();
   return context.snapshot();
@@ -225,13 +240,16 @@ export async function restoreCheckpoint(
 
   const anchorId = context.randomId();
   const timestamp = context.nowLabel();
+  context.store.runtimeStatusState = {
+    ...context.store.runtimeStatusState,
+    statusNote: `Live workspace restored from checkpoint ${target.alias}.`
+  };
   context.state = {
     ...context.state,
     workspace: {
       ...context.state.workspace,
       currentCheckpointAlias: target.alias
-    },
-    statusNote: `Live workspace restored from checkpoint ${target.alias}.`
+    }
   };
   context.prependCheckpoint({
     id: anchorId,
@@ -262,7 +280,13 @@ export async function restoreCheckpoint(
     details:
       "The service layer restored the selected checkpoint snapshot as the active live workspace and preserved the rollback anchor as an incident checkpoint.",
     created_at: timestamp,
-    related_refs: [target.pathRef, checkpointPath(anchorId), "strategy.json", "state/decisions.json"]
+    related_refs: [
+      target.pathRef,
+      checkpointPath(anchorId),
+      "strategy.json",
+      "state/runtime-status.json",
+      "state/decisions.json"
+    ]
   });
   context.syncDerivedState(target.pathRef, target.alias);
   return context.snapshot();
@@ -286,8 +310,8 @@ export async function activateImportAsLive(
   const targetCheckpoint =
     context.state.checkpoints.find((checkpoint) => checkpoint.pathRef === record.checkpoint_ref) ?? null;
 
-  context.state = {
-    ...context.state,
+  context.store.runtimeStatusState = {
+    ...context.store.runtimeStatusState,
     statusNote: targetCheckpoint
       ? `Staged import ${importId} is now live and anchored at checkpoint ${targetCheckpoint.alias}.`
       : `Staged import ${importId} is now live.`
@@ -325,6 +349,7 @@ export async function activateImportAsLive(
       `imports/items/${importId}/import.json`,
       targetCheckpoint?.pathRef.replace(`${WORKSPACE_ROOT}/`, "") ?? "strategy.json",
       "strategy.json",
+      "state/runtime-status.json",
       checkpointPath(rollbackAnchorId).replace(`${WORKSPACE_ROOT}/`, "")
     ]
   });
@@ -482,4 +507,95 @@ export async function importExportBundle(
     policyId: record.policy_id,
     sanitized: record.sanitized
   };
+}
+
+async function runEvaluation(
+  context: MockWorkspaceContext,
+  kind: "backtest" | "paper"
+): Promise<BootstrapState> {
+  const timestamp = context.nowLabel();
+  const runId = context.randomId();
+  const replay = runMockReplay(kind, context.store.dashboardSeedState.priceSeries);
+  const adapterId = "01963a00-1111-7111-8111-111111111111";
+  const adapterRef = `${WORKSPACE_ROOT}/adapters/items/${adapterId}/adapter.json`;
+  const collectionRefs = evaluationCollectionRefs(context.store);
+
+  context.store.evaluationsState.items.unshift({
+    run_id: runId,
+    kind,
+    status: "completed",
+    headline: replay.headline,
+    summary: replay.summary,
+    created_at: timestamp,
+    adapter_ref: adapterRef,
+    adapter_name: "simulated-exchange",
+    collection_refs: collectionRefs,
+    gross_pnl: replay.grossPnl,
+    fee_cost: replay.feeCost,
+    slippage_cost: replay.slippageCost,
+    model_cost: replay.modelCost,
+    net_pnl: replay.netPnl,
+    trade_count: replay.tradeCount,
+    position_count: replay.positionCount,
+    path_ref: evaluationRunRef(runId),
+    equity_curve: replay.equityCurve,
+    trades: replay.trades.map((trade) => ({
+      symbol: trade.symbol,
+      side: trade.side,
+      entry_time: trade.entryTime,
+      exit_time: trade.exitTime,
+      entry_price: trade.entryPrice,
+      exit_price: trade.exitPrice,
+      net_pnl: trade.netPnl
+    })),
+    notes: replay.notes
+  });
+  context.store.evalSummariesState.summaries.unshift({
+    summary_id: runId,
+    headline: replay.headline,
+    created_at: timestamp,
+    path_ref: `../eval-summaries/items/${runId}/summary.json`,
+    evidence_refs: [evaluationRunRef(runId), ...collectionRefs]
+  });
+  context.prependDecision(
+    buildEvaluationDecision(
+      context.nextId("decision"),
+      kind,
+      replay.headline,
+      replay.summary,
+      timestamp,
+      replay.netPnl >= 0 ? "positive" : "warning"
+    )
+  );
+  context.prependOperation({
+    operation_id: context.randomId(),
+    kind: kind === "backtest" ? "run_backtest" : "run_paper_evaluation",
+    scope: "workspace",
+    status: "succeeded",
+    summary: `${kind === "backtest" ? "Backtest" : "Paper replay"} completed via simulated exchange adapter.`,
+    details:
+      "The service layer persisted an evaluation run, linked the result into live evaluation summaries, and kept raw evidence refs for replay.",
+    created_at: timestamp,
+    related_refs: [
+      evaluationRunRef(runId),
+      `${WORKSPACE_ROOT}/evaluations/index.json`,
+      `${WORKSPACE_ROOT}/state/eval-summaries.json`,
+      `${WORKSPACE_ROOT}/state/decisions.json`,
+      ...collectionRefs
+    ]
+  });
+  context.syncDerivedState();
+  return context.snapshot();
+}
+
+export async function runBacktest(
+  context: MockWorkspaceContext
+): Promise<BootstrapState> {
+  return runEvaluation(context, "backtest");
+}
+
+export async function runPaperEvaluation(
+  context: MockWorkspaceContext
+): Promise<BootstrapState> {
+  return runEvaluation(context, "paper");
 }

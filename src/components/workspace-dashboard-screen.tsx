@@ -8,6 +8,7 @@ import { CollectionsPanel } from "./collections-panel";
 import { DashboardGrid } from "./dashboard-grid";
 import { DecisionFeed } from "./decision-feed";
 import { EquityAreaPanel } from "./equity-area-panel";
+import { EvaluationRunsPanel } from "./evaluation-runs-panel";
 import { ExposurePanel } from "./exposure-panel";
 import { ExportInspectorPanel } from "./export-inspector-panel";
 import { ImportsPanel } from "./imports-panel";
@@ -49,6 +50,7 @@ export function WorkspaceDashboardScreen({
       selectedCheckpointId,
       selectedCollectionId,
       selectedDocumentId,
+      selectedEvaluationRunId,
       selectedImportId,
       selectedOperationId,
       workspaceSearchQuery
@@ -59,6 +61,7 @@ export function WorkspaceDashboardScreen({
       selectedCheckpointDetail,
       selectedCollectionDetail,
       selectedDocumentDetail,
+      selectedEvaluationRunDetail,
       selectedImportComparison,
       selectedImportDetail,
       selectedOperationDetail,
@@ -71,6 +74,7 @@ export function WorkspaceDashboardScreen({
     setSelectedBlobId,
     setSelectedCheckpointId,
     setSelectedCollectionId,
+    setSelectedEvaluationRunId,
     setSelectedImportId,
     setSelectedOperationId,
     setWorkspaceSearchQuery,
@@ -79,6 +83,8 @@ export function WorkspaceDashboardScreen({
     createExportCheckpoint,
     stageBundleImport,
     ingestSourceEntry,
+    runBacktest,
+    runPaperEvaluation,
     exportCheckpoint,
     restoreCheckpoint,
     activateImport
@@ -311,6 +317,23 @@ export function WorkspaceDashboardScreen({
           blobDetail={selectedBlobDetail}
           onSelectCollection={setSelectedCollectionId}
           onSelectBlob={setSelectedBlobId}
+          onOpenWorkspaceDocument={(documentRef) => {
+            selectDocument(`ref:${documentRef}`, documentRef);
+          }}
+        />
+
+        <EvaluationRunsPanel
+          adapters={state.adapters}
+          evaluationRuns={state.evaluationRuns}
+          selectedEvaluationRunId={selectedEvaluationRunId}
+          evaluationRunDetail={selectedEvaluationRunDetail}
+          onSelectEvaluationRun={setSelectedEvaluationRunId}
+          onRunBacktest={() => {
+            void runBacktest();
+          }}
+          onRunPaperEvaluation={() => {
+            void runPaperEvaluation();
+          }}
           onOpenWorkspaceDocument={(documentRef) => {
             selectDocument(`ref:${documentRef}`, documentRef);
           }}

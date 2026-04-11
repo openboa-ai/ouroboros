@@ -43,7 +43,9 @@
         "checkpoints_ref",
         "agents_ref",
         "environments_ref",
+        "adapters_ref",
         "collections_ref",
+        "evaluations_ref",
         "imports_ref",
         "operations_ref",
         "sessions_ref"
@@ -58,7 +60,13 @@
         "environments_ref": {
           "type": "string"
         },
+        "adapters_ref": {
+          "type": "string"
+        },
         "collections_ref": {
+          "type": "string"
+        },
+        "evaluations_ref": {
           "type": "string"
         },
         "imports_ref": {

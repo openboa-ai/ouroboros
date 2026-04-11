@@ -2,7 +2,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo } from "react";
 import type {
   BootstrapState,
-  CollectionDetailState
+  CollectionDetailState,
+  EvaluationRunDetailState
 } from "../lib/service-contract";
 import { workspaceService } from "../lib/service-gateway";
 import { useServiceResource } from "./use-service-resource";
@@ -12,6 +13,7 @@ type UseWorkspaceDetailsParams = {
   state: BootstrapState | null;
   selectedCheckpointId: string | null;
   selectedCollectionId: string | null;
+  selectedEvaluationRunId: string | null;
   selectedImportId: string | null;
   selectedBlobId: string | null;
   selectedOperationId: string | null;
@@ -26,6 +28,7 @@ export function useWorkspaceDetails({
   state,
   selectedCheckpointId,
   selectedCollectionId,
+  selectedEvaluationRunId,
   selectedImportId,
   selectedBlobId,
   selectedOperationId,
@@ -61,6 +64,12 @@ export function useWorkspaceDetails({
     enabled: Boolean(selectedCollectionId),
     loader: () => workspaceService.getCollectionDetail(selectedCollectionId as string),
     deps: [selectedCollectionId, detailRefreshVersion, resetSeed]
+  });
+
+  const evaluationRunDetail = useServiceResource<EvaluationRunDetailState>({
+    enabled: Boolean(selectedEvaluationRunId),
+    loader: () => workspaceService.getEvaluationRunDetail(selectedEvaluationRunId as string),
+    deps: [selectedEvaluationRunId, detailRefreshVersion, resetSeed]
   });
 
   const importDetail = useServiceResource({
@@ -111,6 +120,7 @@ export function useWorkspaceDetails({
         ["checkpoint", checkpointDetail.error],
         ["checkpointComparison", checkpointComparison.error],
         ["collection", collectionDetail.error],
+        ["evaluation", evaluationRunDetail.error],
         ["import", importDetail.error],
         ["importComparison", importComparison.error],
         ["blob", blobDetail.error],
@@ -130,6 +140,7 @@ export function useWorkspaceDetails({
       checkpointDetail.error,
       checkpointComparison.error,
       collectionDetail.error,
+      evaluationRunDetail.error,
       importDetail.error,
       importComparison.error,
       blobDetail.error,
@@ -144,6 +155,7 @@ export function useWorkspaceDetails({
       selectedCheckpointDetail: checkpointDetail.value,
       selectedCheckpointComparison: checkpointComparison.value,
       selectedCollectionDetail: collectionDetail.value,
+      selectedEvaluationRunDetail: evaluationRunDetail.value,
       selectedImportDetail: importDetail.value,
       selectedImportComparison: importComparison.value,
       selectedBlobDetail: blobDetail.value,
@@ -155,6 +167,7 @@ export function useWorkspaceDetails({
       checkpointDetail.value,
       checkpointComparison.value,
       collectionDetail.value,
+      evaluationRunDetail.value,
       importDetail.value,
       importComparison.value,
       blobDetail.value,

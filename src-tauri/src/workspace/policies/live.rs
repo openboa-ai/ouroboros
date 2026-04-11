@@ -2,24 +2,23 @@ use super::super::*;
 
 pub(in crate::workspace) struct PauseAutomationTransition {
     pub live_lane: LiveLaneFile,
-    pub dashboard: DashboardStateFile,
+    pub runtime_status: RuntimeStatusFile,
     pub decisions: DecisionLogFile,
 }
 
 pub(in crate::workspace) struct DecisionUpdateTransition {
-    pub dashboard: DashboardStateFile,
+    pub runtime_status: RuntimeStatusFile,
     pub decisions: DecisionLogFile,
 }
 
 pub(in crate::workspace) fn pause_automation(
-    mut live_lane: LiveLaneFile,
-    mut dashboard: DashboardStateFile,
+    live_lane: LiveLaneFile,
+    mut runtime_status: RuntimeStatusFile,
     mut decisions: DecisionLogFile,
 ) -> PauseAutomationTransition {
-    live_lane.mode = TradingMode::Observer;
-    dashboard.mode = TradingMode::Observer;
-    dashboard.automation_status = AutomationStatus::Paused;
-    dashboard.status_note = Some(
+    runtime_status.mode = TradingMode::Observer;
+    runtime_status.automation_status = AutomationStatus::Paused;
+    runtime_status.status_note = Some(
         "Global automation was paused through the service layer while preserving live context."
             .into(),
     );
@@ -37,17 +36,17 @@ pub(in crate::workspace) fn pause_automation(
 
     PauseAutomationTransition {
         live_lane,
-        dashboard,
+        runtime_status,
         decisions,
     }
 }
 
 pub(in crate::workspace) fn mark_restore_checkpoint(
-    mut dashboard: DashboardStateFile,
+    mut runtime_status: RuntimeStatusFile,
     mut decisions: DecisionLogFile,
     checkpoint_alias: &str,
 ) -> DecisionUpdateTransition {
-    dashboard.status_note = Some(format!(
+    runtime_status.status_note = Some(format!(
         "Live workspace restored from checkpoint {} through the service layer.",
         checkpoint_alias
     ));
@@ -64,19 +63,19 @@ pub(in crate::workspace) fn mark_restore_checkpoint(
     );
 
     DecisionUpdateTransition {
-        dashboard,
+        runtime_status,
         decisions,
     }
 }
 
 pub(in crate::workspace) fn mark_import_activation(
-    mut dashboard: DashboardStateFile,
+    mut runtime_status: RuntimeStatusFile,
     mut decisions: DecisionLogFile,
     import_id: &str,
     source_bundle_ref: &str,
     checkpoint_alias: &str,
 ) -> DecisionUpdateTransition {
-    dashboard.status_note = Some(format!(
+    runtime_status.status_note = Some(format!(
         "Staged import {} is now live and anchored at checkpoint {}.",
         import_id, checkpoint_alias
     ));
@@ -96,12 +95,13 @@ pub(in crate::workspace) fn mark_import_activation(
     );
 
     DecisionUpdateTransition {
-        dashboard,
+        runtime_status,
         decisions,
     }
 }
 
 pub(in crate::workspace) struct FlattenAllTransition {
+    pub runtime_status: RuntimeStatusFile,
     pub dashboard: DashboardStateFile,
     pub decisions: DecisionLogFile,
     pub positions: PositionsStateFile,
@@ -109,13 +109,14 @@ pub(in crate::workspace) struct FlattenAllTransition {
 }
 
 pub(in crate::workspace) fn flatten_all_live_state(
+    mut runtime_status: RuntimeStatusFile,
     mut dashboard: DashboardStateFile,
     mut decisions: DecisionLogFile,
     mut positions: PositionsStateFile,
     mut orders: OrdersStateFile,
 ) -> FlattenAllTransition {
-    dashboard.automation_status = AutomationStatus::Intervention;
-    dashboard.status_note =
+    runtime_status.automation_status = AutomationStatus::Intervention;
+    runtime_status.status_note =
         Some("Service-layer intervention flattened all live positions in the workspace.".into());
     for metric in dashboard.metrics.iter_mut() {
         if metric.label == "Risk Budget" {
@@ -163,6 +164,7 @@ pub(in crate::workspace) fn flatten_all_live_state(
     );
 
     FlattenAllTransition {
+        runtime_status,
         dashboard,
         decisions,
         positions,

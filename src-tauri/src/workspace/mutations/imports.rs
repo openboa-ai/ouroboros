@@ -153,6 +153,8 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
         let memory_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref);
@@ -171,6 +173,7 @@ impl WorkspaceRepository {
                 self.display_path(&import_workspace),
                 self.display_path(&self.root.join("strategy.json")),
                 self.display_path(&live_lane_path),
+                self.display_path(&runtime_status_path),
                 self.display_path(&dashboard_path),
                 self.display_path(&decisions_path),
                 self.display_path(&memory_path),

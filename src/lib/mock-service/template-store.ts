@@ -4,12 +4,13 @@ import type {
   LiveOrder,
   LivePosition,
   MetricCardData,
-  ProviderStatus,
-  TradingMode
+  ProviderStatus
 } from "../service-contract";
 import type {
   AgentDefinition,
   AgentsIndex,
+  AdapterDefinition,
+  AdaptersIndex,
   CheckpointIndex,
   CollectionRecord,
   EnvironmentDefinition,
@@ -21,9 +22,11 @@ import type {
 import checkpointIndexTemplate from "../../../templates/strategy-workspace/checkpoints/index.json";
 import agentsTemplate from "../../../templates/strategy-workspace/agents/index.json";
 import environmentsTemplate from "../../../templates/strategy-workspace/environments/index.json";
+import adaptersTemplate from "../../../templates/strategy-workspace/adapters/index.json";
 import orchestratorTemplate from "../../../templates/strategy-workspace/orchestrator/orchestrator.json";
 import exportPolicyTemplate from "../../../templates/strategy-workspace/exports/policy.json";
 import collectionsTemplate from "../../../templates/strategy-workspace/indexes/collections.json";
+import evaluationsTemplate from "../../../templates/strategy-workspace/evaluations/index.json";
 import importsTemplate from "../../../templates/strategy-workspace/imports/index.json";
 import operationsTemplate from "../../../templates/strategy-workspace/operations/index.json";
 import btcAggEntriesRaw from "../../../templates/strategy-workspace/collections/items/019626b0-4d0a-7a72-9b4e-9d8e11d0f901/entries.ndjson?raw";
@@ -35,6 +38,7 @@ import macroNewsBlobOneRaw from "../../../templates/strategy-workspace/blobs/sha
 import macroNewsBlobTwoRaw from "../../../templates/strategy-workspace/blobs/sha256/e2d312f2f5767f7334ba8d3fa90fc2c9d66b2d05d4c77db8bc8d289d5fc5f7ec.txt?raw";
 import liveLaneTemplate from "../../../templates/strategy-workspace/live/live-lane.json";
 import strategyTemplate from "../../../templates/strategy-workspace/strategy.json";
+import runtimeStatusTemplate from "../../../templates/strategy-workspace/state/runtime-status.json";
 import dashboardTemplate from "../../../templates/strategy-workspace/state/dashboard.json";
 import decisionsTemplate from "../../../templates/strategy-workspace/state/decisions.json";
 import evalSummariesTemplate from "../../../templates/strategy-workspace/state/eval-summaries.json";
@@ -46,6 +50,8 @@ import liveManagerAgentTemplate from "../../../templates/strategy-workspace/agen
 import evaluatorAgentTemplate from "../../../templates/strategy-workspace/agents/items/01963760-0f86-7caf-8e5b-aecf7a760089/agent.json";
 import liveEnvironmentTemplate from "../../../templates/strategy-workspace/environments/items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json";
 import evaluationEnvironmentTemplate from "../../../templates/strategy-workspace/environments/items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json";
+import simulatedAdapterTemplate from "../../../templates/strategy-workspace/adapters/items/01963a00-1111-7111-8111-111111111111/adapter.json";
+import binanceAdapterTemplate from "../../../templates/strategy-workspace/adapters/items/01963a00-2222-7222-8222-222222222222/adapter.json";
 import type { CollectionEntryRecord, MockWorkspaceStore } from "./types";
 
 export const mockStrategyManifest = strategyTemplate as StrategyManifest;
@@ -55,14 +61,14 @@ const checkpointIndexSeed = checkpointIndexTemplate as CheckpointIndex;
 const orchestratorSeed = orchestratorTemplate as OrchestratorRecord;
 const agentsIndexSeed = agentsTemplate as AgentsIndex;
 const environmentsIndexSeed = environmentsTemplate as EnvironmentsIndex;
+const adaptersIndexSeed = adaptersTemplate as AdaptersIndex;
 const exportPolicySeed = exportPolicyTemplate as MockWorkspaceStore["exportPolicy"];
 const collectionsSeed = collectionsTemplate as { items: CollectionRecord[] };
+const evaluationsSeed = evaluationsTemplate as MockWorkspaceStore["evaluationsState"];
 const importsSeed = importsTemplate as MockWorkspaceStore["importsState"];
 const operationsSeed = operationsTemplate as MockWorkspaceStore["operationsState"];
+const runtimeStatusSeed = runtimeStatusTemplate as MockWorkspaceStore["runtimeStatusState"];
 const dashboardSeed = dashboardTemplate as {
-  mode: TradingMode;
-  automationStatus: BootstrapState["automationStatus"];
-  statusNote: string;
   providers: ProviderStatus[];
   metrics: MetricCardData[];
   priceSeries: BootstrapState["priceSeries"];
@@ -100,6 +106,7 @@ export function createMockWorkspaceStore(): MockWorkspaceStore {
     collectionsState: structuredClone(collectionsSeed),
     importsState: structuredClone(importsSeed),
     operationsState: structuredClone(operationsSeed),
+    runtimeStatusState: structuredClone(runtimeStatusSeed),
     dashboardSeedState: structuredClone(dashboardSeed),
     decisionsState: structuredClone(decisionsSeed),
     ordersState: structuredClone(ordersSeed),
@@ -109,6 +116,8 @@ export function createMockWorkspaceStore(): MockWorkspaceStore {
     evalSummariesState: structuredClone(evalSummariesSeed),
     agentsIndex: structuredClone(agentsIndexSeed),
     environmentsIndex: structuredClone(environmentsIndexSeed),
+    adaptersIndex: structuredClone(adaptersIndexSeed),
+    evaluationsState: structuredClone(evaluationsSeed),
     agentDefinitions: {
       "0196375e-6f98-7d61-9a1b-d12c8f95fd55": structuredClone(
         liveManagerAgentTemplate
@@ -124,6 +133,14 @@ export function createMockWorkspaceStore(): MockWorkspaceStore {
       "01963763-147d-7488-acfb-77fd5c95dc0e": structuredClone(
         evaluationEnvironmentTemplate
       ) as EnvironmentDefinition
+    },
+    adapterDefinitions: {
+      "01963a00-1111-7111-8111-111111111111": structuredClone(
+        simulatedAdapterTemplate
+      ) as AdapterDefinition,
+      "01963a00-2222-7222-8222-222222222222": structuredClone(
+        binanceAdapterTemplate
+      ) as AdapterDefinition
     },
     entriesByCollection: {
       "019626b0-4d0a-7a72-9b4e-9d8e11d0f901": parseEntries(btcAggEntriesRaw),

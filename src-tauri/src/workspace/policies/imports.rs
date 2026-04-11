@@ -102,6 +102,14 @@ pub(in crate::workspace) fn build_import_preflight(
         let live_lane = repo.read_json_path::<LiveLaneFile>(&targets.live_lane_path)?;
         for (check_id, label, path) in [
             (
+                "runtime-status-state",
+                "Runtime status ref",
+                repo.resolve_ref(
+                    &targets.live_lane_path,
+                    &live_lane.state_refs.runtime_status_ref,
+                ),
+            ),
+            (
                 "dashboard-state",
                 "Dashboard state ref",
                 repo.resolve_ref(&targets.live_lane_path, &live_lane.state_refs.dashboard_ref),

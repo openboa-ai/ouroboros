@@ -31,4 +31,10 @@ export const tauriMutationTransport = {
   importExportBundle(bundleRef: string) {
     return invoke<ImportBundleState>("import_export_bundle", { bundleRef });
   },
+  runBacktest() {
+    return invoke<BootstrapState>("run_backtest");
+  },
+  runPaperEvaluation() {
+    return invoke<BootstrapState>("run_paper_evaluation");
+  },
 };

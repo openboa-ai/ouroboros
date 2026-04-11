@@ -8,18 +8,21 @@ import {
 } from "./paths";
 import type { MockWorkspaceStore } from "./types";
 
-function serializeDashboardDocument(state: BootstrapState) {
+function serializeRuntimeStatusDocument(state: BootstrapState) {
   return {
     mode: state.mode,
     automationStatus: state.automationStatus,
-    statusNote: state.statusNote,
-    providers: state.providers,
-    metrics: state.metrics,
-    priceSeries: state.priceSeries,
-    equitySeries: state.equitySeries,
-    exposureSeries: state.exposureSeries,
-    workspace: state.workspace,
-    assetInspector: state.assetInspector
+    statusNote: state.statusNote
+  };
+}
+
+function serializeDashboardDocument(store: MockWorkspaceStore) {
+  return {
+    providers: store.dashboardSeedState.providers,
+    metrics: store.dashboardSeedState.metrics,
+    priceSeries: store.dashboardSeedState.priceSeries,
+    equitySeries: store.dashboardSeedState.equitySeries,
+    exposureSeries: store.dashboardSeedState.exposureSeries
   };
 }
 
@@ -58,14 +61,23 @@ export function resolveMockDocumentContent(
   if (documentRef === `${WORKSPACE_ROOT}/live/live-lane.json`) {
     return JSON.stringify(store.liveLane, null, 2);
   }
+  if (documentRef === `${WORKSPACE_ROOT}/state/runtime-status.json`) {
+    return JSON.stringify(serializeRuntimeStatusDocument(state), null, 2);
+  }
   if (documentRef === `${WORKSPACE_ROOT}/agents/index.json`) {
     return JSON.stringify(store.agentsIndex, null, 2);
   }
   if (documentRef === `${WORKSPACE_ROOT}/environments/index.json`) {
     return JSON.stringify(store.environmentsIndex, null, 2);
   }
+  if (documentRef === `${WORKSPACE_ROOT}/adapters/index.json`) {
+    return JSON.stringify(store.adaptersIndex, null, 2);
+  }
+  if (documentRef === `${WORKSPACE_ROOT}/evaluations/index.json`) {
+    return JSON.stringify({ items: store.evaluationsState.items }, null, 2);
+  }
   if (documentRef === `${WORKSPACE_ROOT}/state/dashboard.json`) {
-    return JSON.stringify(serializeDashboardDocument(state), null, 2);
+    return JSON.stringify(serializeDashboardDocument(store), null, 2);
   }
   if (documentRef === `${WORKSPACE_ROOT}/state/decisions.json`) {
     return JSON.stringify(store.decisionsState, null, 2);
@@ -145,6 +157,7 @@ export function resolveMockDocumentContent(
           goal: "Keep the live trading context inspectable, exportable, and replayable.",
           context_refs: [
             "./live/live-lane.json",
+            "./state/runtime-status.json",
             "./state/live-memory.json",
             "./state/positions.json",
             "./state/orders.json",
@@ -222,6 +235,14 @@ export function resolveMockDocumentContent(
     }
   }
 
+  const adapterMatch = documentRef.match(/adapters\/items\/([^/]+)\/adapter\.json$/);
+  if (adapterMatch) {
+    const adapter = store.adapterDefinitions[adapterMatch[1]];
+    if (adapter) {
+      return JSON.stringify(adapter, null, 2);
+    }
+  }
+
   const evalSummaryMatch = documentRef.match(/eval-summaries\/items\/([^/]+)\/summary\.json$/);
   if (evalSummaryMatch) {
     const summary = store.evalSummariesState.summaries.find(
@@ -244,6 +265,14 @@ export function resolveMockDocumentContent(
         null,
         2
       );
+    }
+  }
+
+  const evaluationRunMatch = documentRef.match(/evaluations\/items\/([^/]+)\/run\.json$/);
+  if (evaluationRunMatch) {
+    const run = store.evaluationsState.items.find((item) => item.run_id === evaluationRunMatch[1]);
+    if (run) {
+      return JSON.stringify(run, null, 2);
     }
   }
 

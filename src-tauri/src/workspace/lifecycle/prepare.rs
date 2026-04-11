@@ -97,6 +97,7 @@ impl WorkspaceRepository {
 
         self.normalize_managed_agent_documents(&strategy_path, &strategy)?;
         self.normalize_orchestrator_document(&strategy_path, &strategy)?;
+        self.normalize_live_lane_document(&strategy_path, &strategy)?;
 
         for checkpoint in &checkpoints_index.items {
             let snapshot_root = self
@@ -225,6 +226,54 @@ impl WorkspaceRepository {
             if dirty {
                 self.write_json_path(&agent_path, &agent_record)?;
             }
+        }
+
+        Ok(())
+    }
+
+    pub(in crate::workspace) fn normalize_live_lane_document(
+        &self,
+        strategy_path: &Path,
+        strategy: &StrategyManifestFile,
+    ) -> Result<(), String> {
+        let live_lane_path = self.resolve_ref(strategy_path, &strategy.active.live_lane_ref);
+        if !live_lane_path.exists() {
+            return Ok(());
+        }
+
+        let mut live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let mut dirty = false;
+        let expected_refs = [
+            ("runtime_status_ref", "../state/runtime-status.json"),
+            ("dashboard_ref", "../state/dashboard.json"),
+            ("decisions_ref", "../state/decisions.json"),
+            ("memory_ref", "../state/live-memory.json"),
+            ("sessions_ref", "../indexes/sessions.json"),
+            ("positions_ref", "../state/positions.json"),
+            ("orders_ref", "../state/orders.json"),
+            ("eval_summaries_ref", "../state/eval-summaries.json"),
+        ];
+
+        for (key, expected_ref) in expected_refs {
+            let current_ref = match key {
+                "runtime_status_ref" => &mut live_lane.state_refs.runtime_status_ref,
+                "dashboard_ref" => &mut live_lane.state_refs.dashboard_ref,
+                "decisions_ref" => &mut live_lane.state_refs.decisions_ref,
+                "memory_ref" => &mut live_lane.state_refs.memory_ref,
+                "sessions_ref" => &mut live_lane.state_refs.sessions_ref,
+                "positions_ref" => &mut live_lane.state_refs.positions_ref,
+                "orders_ref" => &mut live_lane.state_refs.orders_ref,
+                "eval_summaries_ref" => &mut live_lane.state_refs.eval_summaries_ref,
+                _ => continue,
+            };
+            if current_ref != expected_ref {
+                *current_ref = expected_ref.into();
+                dirty = true;
+            }
+        }
+
+        if dirty {
+            self.write_json_path(&live_lane_path, &live_lane)?;
         }
 
         Ok(())
@@ -405,6 +454,7 @@ impl WorkspaceRepository {
                 goal: "Keep the live trading context inspectable, exportable, and replayable.".into(),
                 context_refs: vec![
                     "./live/live-lane.json".into(),
+                    "./state/runtime-status.json".into(),
                     "./state/live-memory.json".into(),
                     "./state/positions.json".into(),
                     "./state/orders.json".into(),

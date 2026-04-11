@@ -18,19 +18,20 @@ impl WorkspaceRepository {
             &strategy.active.live_lane_ref,
         );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
-        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let runtime_status_path =
+            self.resolve_ref(&live_lane_path, &live_lane.state_refs.runtime_status_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
         let export_policy_path = self.resolve_ref(
             &self.root.join("strategy.json"),
             &strategy.active.export_policy_ref,
         );
 
-        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let runtime_status = self.read_json_path::<RuntimeStatusFile>(&runtime_status_path)?;
         let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&export_policy_path)?;
-        let transition = export_policies::mark_export_checkpoint_created(dashboard, decisions);
+        let transition = export_policies::mark_export_checkpoint_created(runtime_status, decisions);
 
-        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&runtime_status_path, &transition.runtime_status)?;
         self.write_json_path(&decisions_path, &transition.decisions)?;
         self.create_export_bundle(&checkpoint, &export_policy.policy_id)?;
         self.append_operation(
@@ -40,7 +41,7 @@ impl WorkspaceRepository {
             "The service layer created a fresh export checkpoint and materialized a live-centered sanitized export bundle.".into(),
             vec![
                 self.display_path(&live_lane_path),
-                self.display_path(&dashboard_path),
+                self.display_path(&runtime_status_path),
                 self.display_path(&decisions_path),
                 self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
                 self.display_path(&self.export_bundle_path(&checkpoint.checkpoint_id)),
