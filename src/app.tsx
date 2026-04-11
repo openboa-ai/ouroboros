@@ -11,6 +11,7 @@ import { LiveContextPanel } from "./components/live-context-panel";
 import { OperationsPanel } from "./components/operations-panel";
 import { PositionsPanel } from "./components/positions-panel";
 import { PriceContextPanel } from "./components/price-context-panel";
+import { SourceIngestPanel } from "./components/source-ingest-panel";
 import { StrategyTimeline } from "./components/strategy-timeline";
 import { WorkspaceIndexPanel } from "./components/workspace-index-panel";
 import {
@@ -38,6 +39,7 @@ import { ImportsPanel } from "./components/imports-panel";
 
 export function App() {
   const [state, setState] = useState<BootstrapState | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [selectedCheckpointDetail, setSelectedCheckpointDetail] = useState<CheckpointDetailState | null>(
     null
@@ -68,18 +70,52 @@ export function App() {
   const [workspaceSearchResults, setWorkspaceSearchResults] = useState<
     WorkspaceSearchResultState[] | null
   >(null);
+  const [detailErrors, setDetailErrors] = useState<Record<string, string | null>>({});
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+
+  function errorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  async function loadBootstrapState() {
+    setBootstrapError(null);
+    try {
+      const nextState = await workspaceService.getBootstrapState();
+      applyNextState(nextState);
+    } catch (error) {
+      setBootstrapError(`Failed to boot workspace: ${errorMessage(error)}`);
+    }
+  }
+
+  function setDetailError(scope: string, message: string | null) {
+    startTransition(() => {
+      setDetailErrors((current) => ({
+        ...current,
+        [scope]: message
+      }));
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
 
-    void workspaceService.getBootstrapState().then((nextState) => {
-      if (cancelled) {
-        return;
-      }
+    void (async () => {
+      try {
+        const nextState = await workspaceService.getBootstrapState();
+        if (cancelled) {
+          return;
+        }
 
-      applyNextState(nextState);
-    });
+        setBootstrapError(null);
+        applyNextState(nextState);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setBootstrapError(`Failed to boot workspace: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -89,20 +125,32 @@ export function App() {
   useEffect(() => {
     if (!selectedCheckpointId) {
       setSelectedCheckpointDetail(null);
+      setDetailError("checkpoint", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.getCheckpointDetail(selectedCheckpointId).then((detail) => {
-      if (cancelled) {
-        return;
-      }
+    setDetailError("checkpoint", null);
 
-      startTransition(() => {
-        setSelectedCheckpointDetail(detail);
-      });
-    });
+    void (async () => {
+      try {
+        const detail = await workspaceService.getCheckpointDetail(selectedCheckpointId);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedCheckpointDetail(detail);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("checkpoint", `Checkpoint detail failed: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -112,6 +160,7 @@ export function App() {
   useEffect(() => {
     if (!state || !selectedCheckpointId) {
       setSelectedCheckpointComparison(null);
+      setDetailError("checkpointComparison", null);
       return;
     }
 
@@ -121,13 +170,18 @@ export function App() {
       ) ?? state.checkpoints[0];
     if (!currentCheckpoint || currentCheckpoint.id === selectedCheckpointId) {
       setSelectedCheckpointComparison(null);
+      setDetailError("checkpointComparison", null);
       return;
     }
 
     let cancelled = false;
-    void workspaceService
-      .getCheckpointComparison(currentCheckpoint.id, selectedCheckpointId)
-      .then((comparison) => {
+    setDetailError("checkpointComparison", null);
+    void (async () => {
+      try {
+        const comparison = await workspaceService.getCheckpointComparison(
+          currentCheckpoint.id,
+          selectedCheckpointId
+        );
         if (cancelled) {
           return;
         }
@@ -135,7 +189,17 @@ export function App() {
         startTransition(() => {
           setSelectedCheckpointComparison(comparison);
         });
-      });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError(
+          "checkpointComparison",
+          `Checkpoint comparison failed: ${errorMessage(error)}`
+        );
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -145,20 +209,32 @@ export function App() {
   useEffect(() => {
     if (!selectedCollectionId) {
       setSelectedCollectionDetail(null);
+      setDetailError("collection", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.getCollectionDetail(selectedCollectionId).then((detail) => {
-      if (cancelled) {
-        return;
-      }
+    setDetailError("collection", null);
 
-      startTransition(() => {
-        setSelectedCollectionDetail(detail);
-      });
-    });
+    void (async () => {
+      try {
+        const detail = await workspaceService.getCollectionDetail(selectedCollectionId);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedCollectionDetail(detail);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("collection", `Collection detail failed: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -169,30 +245,56 @@ export function App() {
     if (!selectedImportId) {
       setSelectedImportDetail(null);
       setSelectedImportComparison(null);
+      setDetailError("import", null);
+      setDetailError("importComparison", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.getImportDetail(selectedImportId).then((detail) => {
-      if (cancelled) {
-        return;
+    setDetailError("import", null);
+    setDetailError("importComparison", null);
+
+    void (async () => {
+      try {
+        const detail = await workspaceService.getImportDetail(selectedImportId);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedImportDetail(detail);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("import", `Import detail failed: ${errorMessage(error)}`);
       }
+    })();
 
-      startTransition(() => {
-        setSelectedImportDetail(detail);
-      });
-    });
+    void (async () => {
+      try {
+        const comparison = await workspaceService.getImportComparison(selectedImportId);
+        if (cancelled) {
+          return;
+        }
 
-    void workspaceService.getImportComparison(selectedImportId).then((comparison) => {
-      if (cancelled) {
-        return;
+        startTransition(() => {
+          setSelectedImportComparison(comparison);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError(
+          "importComparison",
+          `Import comparison failed: ${errorMessage(error)}`
+        );
       }
-
-      startTransition(() => {
-        setSelectedImportComparison(comparison);
-      });
-    });
+    })();
 
     return () => {
       cancelled = true;
@@ -203,25 +305,38 @@ export function App() {
     const nextBlobId = selectedCollectionDetail?.entries.find((entry) => entry.blobRef)?.blobRef ?? null;
     setSelectedBlobId((current) => (current === nextBlobId ? current : nextBlobId));
     setSelectedBlobDetail(null);
+    setDetailError("blob", null);
   }, [selectedCollectionDetail]);
 
   useEffect(() => {
     if (!selectedBlobId) {
       setSelectedBlobDetail(null);
+      setDetailError("blob", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.getBlobDetail(selectedBlobId).then((detail) => {
-      if (cancelled) {
-        return;
-      }
+    setDetailError("blob", null);
 
-      startTransition(() => {
-        setSelectedBlobDetail(detail);
-      });
-    });
+    void (async () => {
+      try {
+        const detail = await workspaceService.getBlobDetail(selectedBlobId);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedBlobDetail(detail);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("blob", `Blob detail failed: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -231,20 +346,32 @@ export function App() {
   useEffect(() => {
     if (!selectedOperationId) {
       setSelectedOperationDetail(null);
+      setDetailError("operation", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.getOperationDetail(selectedOperationId).then((detail) => {
-      if (cancelled) {
-        return;
-      }
+    setDetailError("operation", null);
 
-      startTransition(() => {
-        setSelectedOperationDetail(detail);
-      });
-    });
+    void (async () => {
+      try {
+        const detail = await workspaceService.getOperationDetail(selectedOperationId);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedOperationDetail(detail);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("operation", `Operation detail failed: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -254,20 +381,32 @@ export function App() {
   useEffect(() => {
     if (!selectedDocumentRef) {
       setSelectedDocumentDetail(null);
+      setDetailError("document", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.getWorkspaceDocument(selectedDocumentRef).then((detail) => {
-      if (cancelled) {
-        return;
-      }
+    setDetailError("document", null);
 
-      startTransition(() => {
-        setSelectedDocumentDetail(detail);
-      });
-    });
+    void (async () => {
+      try {
+        const detail = await workspaceService.getWorkspaceDocument(selectedDocumentRef);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setSelectedDocumentDetail(detail);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("document", `Workspace document failed: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -278,20 +417,32 @@ export function App() {
     const normalized = workspaceSearchQuery.trim();
     if (!normalized) {
       setWorkspaceSearchResults(null);
+      setDetailError("search", null);
       return;
     }
 
     let cancelled = false;
 
-    void workspaceService.searchWorkspace(normalized).then((results) => {
-      if (cancelled) {
-        return;
-      }
+    setDetailError("search", null);
 
-      startTransition(() => {
-        setWorkspaceSearchResults(results);
-      });
-    });
+    void (async () => {
+      try {
+        const results = await workspaceService.searchWorkspace(normalized);
+        if (cancelled) {
+          return;
+        }
+
+        startTransition(() => {
+          setWorkspaceSearchResults(results);
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setDetailError("search", `Workspace search failed: ${errorMessage(error)}`);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -299,6 +450,30 @@ export function App() {
   }, [workspaceSearchQuery, state]);
 
   if (!state) {
+    if (bootstrapError) {
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-shell-950 px-6 text-ink-50">
+          <Card
+            title="AutoKairos failed to boot"
+            description="The client could not load the workspace through the service boundary."
+            className="w-full max-w-xl"
+          >
+            <div className="space-y-4">
+              <p className="text-sm leading-6 text-ink-200">{bootstrapError}</p>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  void loadBootstrapState();
+                }}
+              >
+                Retry bootstrap
+              </Button>
+            </div>
+          </Card>
+        </main>
+      );
+    }
+
     return (
       <main className="flex min-h-screen items-center justify-center bg-shell-950 text-ink-50">
         <div className="space-y-3 text-center">
@@ -349,6 +524,7 @@ export function App() {
 
     startTransition(() => {
       setState(nextState);
+      setDetailErrors({});
       setSelectedCheckpointId(nextCheckpointId);
       setSelectedCheckpointDetail(null);
       setSelectedCheckpointComparison(null);
@@ -369,6 +545,12 @@ export function App() {
   }
 
   const workspaceDocuments: WorkspaceCatalogEntry[] = state.documentCatalog;
+  const serviceAlerts = Object.entries(detailErrors)
+    .filter(([, message]) => Boolean(message))
+    .map(([scope, message]) => ({
+      scope,
+      message: message as string
+    }));
 
   return (
     <AppShell
@@ -382,10 +564,15 @@ export function App() {
                 variant="danger"
                 onClick={() => {
                   setCommandStatus("Flattening positions...");
-                  void workspaceService.flattenAllPositions().then((nextState) => {
-                    applyNextState(nextState);
-                    setCommandStatus("All positions flattened through the service layer.");
-                  });
+                  void (async () => {
+                    try {
+                      const nextState = await workspaceService.flattenAllPositions();
+                      applyNextState(nextState);
+                      setCommandStatus("All positions flattened through the service layer.");
+                    } catch (error) {
+                      setCommandStatus(`Flatten all failed: ${errorMessage(error)}`);
+                    }
+                  })();
                 }}
               >
                 Flatten All Positions
@@ -394,10 +581,15 @@ export function App() {
                 variant="secondary"
                 onClick={() => {
                   setCommandStatus("Pausing automation...");
-                  void workspaceService.pauseGlobalAutomation().then((nextState) => {
-                    applyNextState(nextState);
-                    setCommandStatus("Global automation paused. Client is now in observer mode.");
-                  });
+                  void (async () => {
+                    try {
+                      const nextState = await workspaceService.pauseGlobalAutomation();
+                      applyNextState(nextState);
+                      setCommandStatus("Global automation paused. Client is now in observer mode.");
+                    } catch (error) {
+                      setCommandStatus(`Pause automation failed: ${errorMessage(error)}`);
+                    }
+                  })();
                 }}
               >
                 Pause Global Automation
@@ -406,10 +598,17 @@ export function App() {
                 variant="ghost"
                 onClick={() => {
                   setCommandStatus("Creating export checkpoint...");
-                  void workspaceService.createExportCheckpoint().then((nextState) => {
-                    applyNextState(nextState);
-                    setCommandStatus("Fresh export checkpoint created from the live-centered asset.");
-                  });
+                  void (async () => {
+                    try {
+                      const nextState = await workspaceService.createExportCheckpoint();
+                      applyNextState(nextState);
+                      setCommandStatus(
+                        "Fresh export checkpoint created from the live-centered asset."
+                      );
+                    } catch (error) {
+                      setCommandStatus(`Create export checkpoint failed: ${errorMessage(error)}`);
+                    }
+                  })();
                 }}
               >
                 Create Export Checkpoint
@@ -425,52 +624,62 @@ export function App() {
                   }
 
                   setCommandStatus("Staging latest sanitized export...");
-                  void workspaceService.importExportBundle(bundleRef).then(async (imported) => {
-                    const nextState = await workspaceService.getBootstrapState();
-                    applyNextState(nextState, {
-                      selectedImportId: imported.importId,
-                      selectedDocumentId: "selected-import",
-                      selectedDocumentRef: imported.importRef
-                    });
-                    setCommandStatus("Latest sanitized export staged into workspace imports.");
-                  });
+                  void (async () => {
+                    try {
+                      const imported = await workspaceService.importExportBundle(bundleRef);
+                      const nextState = await workspaceService.getBootstrapState();
+                      applyNextState(nextState, {
+                        selectedImportId: imported.importId,
+                        selectedDocumentId: "selected-import",
+                        selectedDocumentRef: imported.importRef
+                      });
+                      setCommandStatus("Latest sanitized export staged into workspace imports.");
+                    } catch (error) {
+                      setCommandStatus(`Stage export failed: ${errorMessage(error)}`);
+                    }
+                  })();
                 }}
               >
                 Stage Latest Export
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const eventTime = new Date().toISOString();
-                  const preview = `Operator note captured at ${eventTime}`;
-                  setCommandStatus("Ingesting sample source entry...");
-                  void workspaceService
-                    .ingestSourceEntry({
-                      kind: "raw",
-                      sourceRef: "notes:operator:runtime",
-                      eventTime,
-                      ingestedAt: eventTime,
-                      preview,
-                      bodyText: `${preview}\n\nReason: keep the source pipeline visible inside the workspace asset.`
-                    })
-                    .then(async (result) => {
-                      const nextState = await workspaceService.getBootstrapState();
-                      applyNextState(nextState, {
-                        selectedCollectionId: result.collectionId,
-                        selectedDocumentId: "collections-index",
-                        selectedDocumentRef: nextState.workspaceIndex.indexes.collectionsRef
-                      });
-                      setCommandStatus("Sample source entry ingested into the current workspace.");
-                    });
-                }}
-              >
-                Ingest Sample Source
               </Button>
             </div>
             {commandStatus ? (
               <p className="mt-4 text-sm leading-6 text-ink-200">{commandStatus}</p>
             ) : null}
           </Card>
+          <SourceIngestPanel
+            onSubmit={async (input) => {
+              setCommandStatus(`Ingesting source entry for ${input.sourceRef}...`);
+              const result = await workspaceService.ingestSourceEntry(input);
+              const nextState = await workspaceService.getBootstrapState();
+              applyNextState(nextState, {
+                selectedCollectionId: result.collectionId,
+                selectedDocumentId: "collections-index",
+                selectedDocumentRef: nextState.workspaceIndex.indexes.collectionsRef
+              });
+              setCommandStatus(`Source entry ingested into collection ${result.collectionId}.`);
+            }}
+          />
+          {serviceAlerts.length > 0 ? (
+            <Card
+              title="Service Alerts"
+              description="Asynchronous detail loaders surface here when the service boundary fails to resolve workspace state."
+            >
+              <div className="space-y-3">
+                {serviceAlerts.map((alert) => (
+                  <div
+                    key={alert.scope}
+                    className="rounded-2xl border border-accent-red/30 bg-accent-red/10 px-3 py-3"
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-ink-300">
+                      {alert.scope}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-ink-50">{alert.message}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
           <AssetInspectorPanel
             assetInspector={state.assetInspector}
             onOpenDocument={(documentId, pathRef) => {
@@ -582,14 +791,19 @@ export function App() {
                     ? `Restoring checkpoint ${checkpoint.alias}...`
                     : "Restoring checkpoint..."
                 );
-                void workspaceService.restoreCheckpoint(checkpointId).then((nextState) => {
-                  applyNextState(nextState);
-                  setCommandStatus(
-                    checkpoint
-                      ? `Live workspace restored from checkpoint ${checkpoint.alias}.`
-                      : "Live workspace restored from checkpoint."
-                  );
-                });
+                void (async () => {
+                  try {
+                    const nextState = await workspaceService.restoreCheckpoint(checkpointId);
+                    applyNextState(nextState);
+                    setCommandStatus(
+                      checkpoint
+                        ? `Live workspace restored from checkpoint ${checkpoint.alias}.`
+                        : "Live workspace restored from checkpoint."
+                    );
+                  } catch (error) {
+                    setCommandStatus(`Restore checkpoint failed: ${errorMessage(error)}`);
+                  }
+                })();
               }}
             />
           </div>
@@ -643,18 +857,23 @@ export function App() {
                 ? `Activating import ${selectedImport.id} as the live workspace...`
                 : "Activating staged import as the live workspace..."
             );
-            void workspaceService.activateImportAsLive(importId).then((nextState) => {
-              applyNextState(nextState, {
-                selectedImportId: importId,
-                selectedDocumentId: "strategy",
-                selectedDocumentRef: nextState.assetInspector.strategyRef
-              });
-              setCommandStatus(
-                selectedImport
-                  ? `Import ${selectedImport.id} is now the active live workspace.`
-                  : "Staged import activated as the live workspace."
-              );
-            });
+            void (async () => {
+              try {
+                const nextState = await workspaceService.activateImportAsLive(importId);
+                applyNextState(nextState, {
+                  selectedImportId: importId,
+                  selectedDocumentId: "strategy",
+                  selectedDocumentRef: nextState.assetInspector.strategyRef
+                });
+                setCommandStatus(
+                  selectedImport
+                    ? `Import ${selectedImport.id} is now the active live workspace.`
+                    : "Staged import activated as the live workspace."
+                );
+              } catch (error) {
+                setCommandStatus(`Activate import failed: ${errorMessage(error)}`);
+              }
+            })();
           }}
           onOpenWorkspaceDocument={(documentRef) => {
             setSelectedDocumentId(`ref:${documentRef}`);
