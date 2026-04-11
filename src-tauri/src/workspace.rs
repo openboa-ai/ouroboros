@@ -746,6 +746,9 @@ impl WorkspaceRepository {
             vec![
                 self.display_path(&collection_path),
                 self.display_path(&entry_shard_path),
+                self.display_path(
+                    &self.collection_entry_document_path(&collection_id, &entry.entry_id),
+                ),
                 self.display_path(&blob_path),
             ],
         )?;
@@ -896,6 +899,15 @@ impl WorkspaceRepository {
             &import_record.source_bundle_ref,
             &activated_checkpoint.alias,
         )?;
+        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path =
+            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
+        let memory_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref);
+        let positions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref);
+        let orders_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref);
         self.append_operation(
             "activate_import_as_live",
             "live",
@@ -908,6 +920,12 @@ impl WorkspaceRepository {
                 self.display_path(&import_path),
                 self.display_path(&import_workspace),
                 self.display_path(&self.root.join("strategy.json")),
+                self.display_path(&live_lane_path),
+                self.display_path(&dashboard_path),
+                self.display_path(&decisions_path),
+                self.display_path(&memory_path),
+                self.display_path(&positions_path),
+                self.display_path(&orders_path),
                 self.display_path(&self.checkpoint_file_path(&activated_checkpoint.checkpoint_id)),
             ],
         )?;
@@ -1094,6 +1112,9 @@ impl WorkspaceRepository {
             format!("Export checkpoint {} created for sanitized sharing.", checkpoint.alias),
             "The service layer created a fresh export checkpoint and materialized a live-centered sanitized export bundle.".into(),
             vec![
+                self.display_path(&live_lane_path),
+                self.display_path(&dashboard_path),
+                self.display_path(&decisions_path),
                 self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
                 self.display_path(&self.export_bundle_path(&checkpoint.checkpoint_id)),
                 self.display_path(&export_policy_path),
@@ -1123,6 +1144,15 @@ impl WorkspaceRepository {
         self.normalize_workspace()?;
         self.set_current_checkpoint(&target_checkpoint)?;
         self.record_restore_decision(&target_alias)?;
+        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path =
+            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
+        let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
+        let memory_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref);
+        let positions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref);
+        let orders_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref);
         self.append_operation(
             "restore_checkpoint",
             "live",
@@ -1131,6 +1161,12 @@ impl WorkspaceRepository {
             vec![
                 self.display_path(&target_checkpoint_path),
                 self.display_path(&self.root.join("strategy.json")),
+                self.display_path(&live_lane_path),
+                self.display_path(&dashboard_path),
+                self.display_path(&decisions_path),
+                self.display_path(&memory_path),
+                self.display_path(&positions_path),
+                self.display_path(&orders_path),
             ],
         )?;
 
@@ -4079,6 +4115,27 @@ mod tests {
         assert_eq!(operations_index.items.len(), 2);
         assert_eq!(operations_index.items[0].kind, "ingest_source_entry");
         assert_eq!(operations_index.items[1].kind, "pause_global_automation");
+        assert!(
+            operations_index.items[0]
+                .related_refs
+                .iter()
+                .any(|path| path.contains("/entries/") && path.ends_with(".json")),
+            "ingest operation should retain the materialized entry document ref"
+        );
+        assert!(
+            operations_index.items[1]
+                .related_refs
+                .iter()
+                .any(|path| path.ends_with("state/dashboard.json")),
+            "pause operation should retain the dashboard document ref"
+        );
+        assert!(
+            operations_index.items[1]
+                .related_refs
+                .iter()
+                .any(|path| path.ends_with("state/decisions.json")),
+            "pause operation should retain the decision log ref"
+        );
 
         let operation_path = repo.operation_file_path(&operations_index.items[0].operation_id);
         assert!(operation_path.exists(), "operation record should be materialized");
@@ -4111,6 +4168,17 @@ mod tests {
                 .iter()
                 .any(|document| document.path_ref.ends_with("live-lane.json")),
             "operation detail should resolve related workspace documents"
+        );
+        assert!(
+            detail
+                .related_documents
+                .iter()
+                .any(|document| document.path_ref.ends_with("state/dashboard.json")),
+            "operation detail should expose live dashboard state when it was mutated"
+        );
+        assert!(
+            detail.unresolved_refs.is_empty(),
+            "service-owned pause operation should resolve all related refs through the document catalog"
         );
         assert!(
             bootstrap

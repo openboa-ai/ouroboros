@@ -96,6 +96,7 @@
 - Promoted immutable source-body blobs into the backend workspace catalog and added backlinks from blob documents to their owning collection manifest and entry shard.
 - Promoted collection entries into first-class workspace documents so source inspection can move through collection manifests, entry documents, and blob bodies without client-side synthetic docs.
 - Promoted live lane state documents into the workspace catalog so dashboard, decisions, working memory, positions, and orders are service-owned documents instead of opaque UI-only state.
+- Enriched service mutation operations with direct refs to the live-state and entry documents they touched, so operation drill-down can explain not just that a mutation happened but exactly which workspace documents moved.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
 - Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
