@@ -1,12 +1,17 @@
 import type { ExportInspectorState } from "../lib/service-contract";
+import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
 type ExportInspectorPanelProps = {
   exportInspector: ExportInspectorState;
+  onOpenDocument: (documentId: string, pathRef: string) => void;
 };
 
-export function ExportInspectorPanel({ exportInspector }: ExportInspectorPanelProps) {
+export function ExportInspectorPanel({
+  exportInspector,
+  onOpenDocument
+}: ExportInspectorPanelProps) {
   const latestBundle = exportInspector.latestBundle;
 
   return (
@@ -32,9 +37,23 @@ export function ExportInspectorPanel({ exportInspector }: ExportInspectorPanelPr
         {latestBundle ? (
           <div className="space-y-4">
             <dl className="space-y-3">
-              <ExportRow label="Bundle ref" value={latestBundle.bundleRef} />
-              <ExportRow label="Workspace ref" value={latestBundle.workspaceRef} />
-              <ExportRow label="Checkpoint ref" value={latestBundle.checkpointRef} />
+              <ExportRow
+                label="Bundle ref"
+                value={latestBundle.bundleRef}
+                onOpen={() => onOpenDocument("export:bundle", latestBundle.bundleRef)}
+              />
+              <ExportRow
+                label="Workspace ref"
+                value={latestBundle.workspaceRef}
+                onOpen={() => onOpenDocument("export:workspace", latestBundle.workspaceRef)}
+              />
+              <ExportRow
+                label="Checkpoint ref"
+                value={latestBundle.checkpointRef}
+                onOpen={() =>
+                  onOpenDocument("export:checkpoint", latestBundle.checkpointRef)
+                }
+              />
               <ExportRow label="Created" value={latestBundle.createdAt} />
             </dl>
 
@@ -44,12 +63,14 @@ export function ExportInspectorPanel({ exportInspector }: ExportInspectorPanelPr
               </h3>
               <div className="space-y-2">
                 {latestBundle.includedRefs.map((includedRef) => (
-                  <div
+                  <button
                     key={includedRef}
-                    className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-ink-200"
+                    type="button"
+                    onClick={() => onOpenDocument(`export:included:${includedRef}`, includedRef)}
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-left text-sm leading-6 text-ink-200 transition hover:border-white/20 hover:bg-white/[0.05]"
                   >
                     {includedRef}
-                  </div>
+                  </button>
                 ))}
               </div>
             </section>
@@ -73,11 +94,31 @@ export function ExportInspectorPanel({ exportInspector }: ExportInspectorPanelPr
   );
 }
 
-function ExportRow({ label, value }: { label: string; value: string }) {
+function ExportRow({
+  label,
+  value,
+  onOpen
+}: {
+  label: string;
+  value: string;
+  onOpen?: () => void;
+}) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
       <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">{label}</dt>
-      <dd className="mt-2 break-all text-sm leading-6 text-ink-50">{value}</dd>
+      <dd className="mt-2">
+        {onOpen ? (
+          <Button
+            variant="ghost"
+            className="h-auto w-full justify-start break-all px-0 py-0 text-left text-sm leading-6 text-ink-50"
+            onClick={onOpen}
+          >
+            {value}
+          </Button>
+        ) : (
+          <p className="break-all text-sm leading-6 text-ink-50">{value}</p>
+        )}
+      </dd>
     </div>
   );
 }

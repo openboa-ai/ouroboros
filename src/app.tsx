@@ -471,9 +471,27 @@ export function App() {
               <p className="mt-4 text-sm leading-6 text-ink-200">{commandStatus}</p>
             ) : null}
           </Card>
-          <AssetInspectorPanel assetInspector={state.assetInspector} />
-          <WorkspaceIndexPanel workspaceIndex={state.workspaceIndex} />
-          <ExportInspectorPanel exportInspector={state.exportInspector} />
+          <AssetInspectorPanel
+            assetInspector={state.assetInspector}
+            onOpenDocument={(documentId, pathRef) => {
+              setSelectedDocumentId(documentId);
+              setSelectedDocumentRef(pathRef);
+            }}
+          />
+          <WorkspaceIndexPanel
+            workspaceIndex={state.workspaceIndex}
+            onOpenDocument={(documentId, pathRef) => {
+              setSelectedDocumentId(documentId);
+              setSelectedDocumentRef(pathRef);
+            }}
+          />
+          <ExportInspectorPanel
+            exportInspector={state.exportInspector}
+            onOpenDocument={(documentId, pathRef) => {
+              setSelectedDocumentId(documentId);
+              setSelectedDocumentRef(pathRef);
+            }}
+          />
           <LiveContextPanel
             liveContext={state.liveContext}
             onOpenDocument={(documentId, pathRef) => {
