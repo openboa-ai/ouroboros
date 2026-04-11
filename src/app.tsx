@@ -2,6 +2,7 @@ import { startTransition, useEffect, useState } from "react";
 import { Activity, AlertTriangle, Bot, CandlestickChart, ShieldCheck } from "lucide-react";
 import { AppShell } from "./components/app-shell";
 import { AssetInspectorPanel } from "./components/asset-inspector-panel";
+import { BundleImportPanel } from "./components/bundle-import-panel";
 import { DashboardGrid } from "./components/dashboard-grid";
 import { DecisionFeed } from "./components/decision-feed";
 import { EquityAreaPanel } from "./components/equity-area-panel";
@@ -613,40 +614,27 @@ export function App() {
               >
                 Create Export Checkpoint
               </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  const bundleRef =
-                    state.assetInspector.latestExportBundleRef ?? state.exportInspector.latestBundle?.bundleRef;
-                  if (!bundleRef) {
-                    setCommandStatus("Create an export checkpoint before staging an import.");
-                    return;
-                  }
-
-                  setCommandStatus("Staging latest sanitized export...");
-                  void (async () => {
-                    try {
-                      const imported = await workspaceService.importExportBundle(bundleRef);
-                      const nextState = await workspaceService.getBootstrapState();
-                      applyNextState(nextState, {
-                        selectedImportId: imported.importId,
-                        selectedDocumentId: "selected-import",
-                        selectedDocumentRef: imported.importRef
-                      });
-                      setCommandStatus("Latest sanitized export staged into workspace imports.");
-                    } catch (error) {
-                      setCommandStatus(`Stage export failed: ${errorMessage(error)}`);
-                    }
-                  })();
-                }}
-              >
-                Stage Latest Export
-              </Button>
             </div>
             {commandStatus ? (
               <p className="mt-4 text-sm leading-6 text-ink-200">{commandStatus}</p>
             ) : null}
           </Card>
+          <BundleImportPanel
+            suggestedBundleRef={
+              state.assetInspector.latestExportBundleRef ?? state.exportInspector.latestBundle?.bundleRef
+            }
+            onSubmit={async (bundleRef) => {
+              setCommandStatus(`Staging bundle import from ${bundleRef}...`);
+              const imported = await workspaceService.importExportBundle(bundleRef);
+              const nextState = await workspaceService.getBootstrapState();
+              applyNextState(nextState, {
+                selectedImportId: imported.importId,
+                selectedDocumentId: "selected-import",
+                selectedDocumentRef: imported.importRef
+              });
+              setCommandStatus(`Bundle import staged from ${bundleRef}.`);
+            }}
+          />
           <SourceIngestPanel
             onSubmit={async (input) => {
               setCommandStatus(`Ingesting source entry for ${input.sourceRef}...`);
