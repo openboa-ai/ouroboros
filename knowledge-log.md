@@ -136,3 +136,4 @@
 - Tightened the root workspace module so tests import their own local filesystem helpers and production imports stay limited to the coordinator's actual dependencies.
 - Rebuilt the mock workspace service around a `context + queries + mutations` split so the browser fallback now follows the same service-boundary shape as the real backend instead of hiding read/write concerns in one oversized class.
 - Split mock-service builders into `catalog` and `state-builders` modules, turning the old catch-all builder file into a thin barrel and separating workspace graph construction from derived bootstrap/live-state assembly.
+- Moved the Rust workspace repository tests into `src-tauri/src/workspace/tests.rs`, leaving `workspace.rs` as a small coordinator module so future backend seams can be split without dragging a 800+ line inline test block through every refactor.
