@@ -80,3 +80,5 @@ export function useWorkspaceController() {
     ...actions
   };
 }
+
+export type WorkspaceControllerViewModel = ReturnType<typeof useWorkspaceController>;
