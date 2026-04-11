@@ -7,6 +7,7 @@ impl WorkspaceRepository {
     pub(in crate::workspace) fn build_document_catalog(
         &self,
         strategy_path: &Path,
+        orchestrator_path: &Path,
         live_lane_path: &Path,
         dashboard_path: &Path,
         decisions_path: &Path,
@@ -16,6 +17,10 @@ impl WorkspaceRepository {
         export_policy_path: &Path,
         current_checkpoint_path: &Path,
         checkpoints_index_path: &Path,
+        agents_index_path: &Path,
+        agents: &AgentsIndexFile,
+        environments_index_path: &Path,
+        environments: &EnvironmentsIndexFile,
         collections_index_path: &Path,
         collections: &CollectionsIndexFile,
         imports_index_path: &Path,
@@ -35,6 +40,15 @@ impl WorkspaceRepository {
                 label: "strategy.json".into(),
                 description: "Canonical workspace entrypoint for the live-centered asset.".into(),
                 path_ref: self.display_path(strategy_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "orchestrator".into(),
+                category: "active".into(),
+                label: "orchestrator".into(),
+                description:
+                    "Managed-agent orchestrator that binds the active topology to the live workspace asset."
+                        .into(),
+                path_ref: self.display_path(orchestrator_path),
             },
             WorkspaceCatalogEntryState {
                 id: "live-lane".into(),
@@ -105,6 +119,23 @@ impl WorkspaceRepository {
                 path_ref: self.display_path(checkpoints_index_path),
             },
             WorkspaceCatalogEntryState {
+                id: "agents-index".into(),
+                category: "index".into(),
+                label: "agents index".into(),
+                description:
+                    "Managed-agent topology catalog for orchestrator-owned agent definitions."
+                        .into(),
+                path_ref: self.display_path(agents_index_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "environments-index".into(),
+                category: "index".into(),
+                label: "environments index".into(),
+                description:
+                    "Managed-agent environment catalog referenced by workspace agents.".into(),
+                path_ref: self.display_path(environments_index_path),
+            },
+            WorkspaceCatalogEntryState {
                 id: "collections-index".into(),
                 category: "index".into(),
                 label: "collections index".into(),
@@ -145,6 +176,66 @@ impl WorkspaceRepository {
             },
         ];
         let mut indexed_blob_ids = BTreeSet::new();
+
+        for agent in &agents.agents {
+            let agent_path = self.resolve_ref(agents_index_path, &agent.definition_ref);
+            let agent_record = self.read_json_path::<AgentRecordFile>(&agent_path).ok();
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("agent-{}", agent.id),
+                category: "agent".into(),
+                label: agent_record
+                    .as_ref()
+                    .map(|record| record.name.clone())
+                    .unwrap_or_else(|| agent.name.clone()),
+                description: agent_record
+                    .as_ref()
+                    .map(|record| {
+                        format!(
+                            "{} agent with {} provider mode across {} preferred provider(s).",
+                            record.kind,
+                            record.provider_policy.mode,
+                            record.provider_policy.preferred_providers.len()
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        format!(
+                            "{} agent with {} provider policy.",
+                            agent.kind, agent.provider_mode
+                        )
+                    }),
+                path_ref: self.display_path(&agent_path),
+            });
+        }
+
+        for environment in &environments.environments {
+            let environment_path =
+                self.resolve_ref(environments_index_path, &environment.definition_ref);
+            let environment_record = self
+                .read_json_path::<EnvironmentRecordFile>(&environment_path)
+                .ok();
+            items.push(WorkspaceCatalogEntryState {
+                id: format!("environment-{}", environment.id),
+                category: "environment".into(),
+                label: environment_record
+                    .as_ref()
+                    .map(|record| record.name.clone())
+                    .unwrap_or_else(|| environment.name.clone()),
+                description: environment_record
+                    .as_ref()
+                    .map(|record| {
+                        format!(
+                            "{} environment with {} capability declaration(s).",
+                            record.kind,
+                            record.capabilities.len()
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        "Managed-agent environment definition referenced by workspace agents."
+                            .into()
+                    }),
+                path_ref: self.display_path(&environment_path),
+            });
+        }
 
         for session in &sessions.sessions {
             let session_id = session

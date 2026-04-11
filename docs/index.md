@@ -1,6 +1,7 @@
 # Documentation Index
 
-This repository keeps its markdown system centered in `docs/` and its repo-local agent rules in `.agents/`.
+This repository keeps its markdown system centered in `docs/` and its repo-local agent rules in
+`.agents/`.
 
 ## Read This First
 
@@ -11,6 +12,8 @@ This repository keeps its markdown system centered in `docs/` and its repo-local
 - [../knowledge-index.md](../knowledge-index.md): active knowledge map and navigation
 - [../ARCHITECTURE.md](../ARCHITECTURE.md): top-level system shape
 - [design-docs/index.md](design-docs/index.md): stable design beliefs and technical models
+- [design-docs/vocabulary.md](design-docs/vocabulary.md): canonical architecture vocabulary
+- [design-docs/agent-runtime.md](design-docs/agent-runtime.md): managed-agent runtime model for orchestrator, agents, environments, sessions, and events
 - [product-specs/index.md](product-specs/index.md): product behavior and trading specs
 - [exec-plans/active/product-definition.md](exec-plans/active/product-definition.md): current active product-definition summary
 - [exec-plans/active/coding-harness-skill-plan.md](exec-plans/active/coding-harness-skill-plan.md): plan for the repo-local coding-harness skill
@@ -22,7 +25,8 @@ This repository keeps its markdown system centered in `docs/` and its repo-local
 ## Structure
 
 - `.agents/` holds repo-local agent operating rules and project-specific Codex skills.
-- `.agents/skills/agent-skills/` holds the selected upstream companion skills from `addyosmani/agent-skills`.
+- `.agents/skills/agent-skills/` holds the selected upstream companion skills from
+  `addyosmani/agent-skills`.
 - `knowledge-index.md` and `knowledge-log.md` hold the repository knowledge map and chronology.
 - `docs/design-docs/` holds stable design beliefs and technical models.
 - `docs/product-specs/` holds product behavior and trading specifications.
@@ -37,3 +41,4 @@ Keep active discovery in `docs/exec-plans/active/`.
 Keep durable design beliefs in `docs/design-docs/`.
 Keep product behavior in `docs/product-specs/`.
 Keep live execution narrow and self-improvement explicit.
+Use the managed-agent vocabulary from `docs/design-docs/vocabulary.md`.

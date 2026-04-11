@@ -4,9 +4,12 @@ use super::*;
 
 struct BootstrapPaths {
     strategy_path: PathBuf,
+    orchestrator_path: PathBuf,
     live_lane_path: PathBuf,
     export_policy_path: PathBuf,
     checkpoints_index_path: PathBuf,
+    agents_index_path: PathBuf,
+    environments_index_path: PathBuf,
     collections_index_path: PathBuf,
     imports_index_path: PathBuf,
     operations_index_path: PathBuf,
@@ -24,6 +27,8 @@ struct BootstrapFiles {
     live_lane: LiveLaneFile,
     export_policy: ExportPolicyFile,
     checkpoints_index: CheckpointIndexFile,
+    agents_index: AgentsIndexFile,
+    environments_index: EnvironmentsIndexFile,
     collections_index: CollectionsIndexFile,
     imports_index: ImportsIndexFile,
     operations_index: OperationsIndexFile,
@@ -65,6 +70,7 @@ impl WorkspaceRepository {
         let latest_export_bundle = self.latest_export_bundle(&files.checkpoints_index.items)?;
         let document_catalog = self.build_document_catalog(
             &paths.strategy_path,
+            &paths.orchestrator_path,
             &paths.live_lane_path,
             &paths.dashboard_path,
             &paths.decisions_path,
@@ -74,6 +80,10 @@ impl WorkspaceRepository {
             &paths.export_policy_path,
             &current_checkpoint_path,
             &paths.checkpoints_index_path,
+            &paths.agents_index_path,
+            &files.agents_index,
+            &paths.environments_index_path,
+            &files.environments_index,
             &paths.collections_index_path,
             &files.collections_index,
             &paths.imports_index_path,
@@ -103,9 +113,14 @@ impl WorkspaceRepository {
         strategy: &StrategyManifestFile,
     ) -> Result<BootstrapPaths, String> {
         let live_lane_path = self.resolve_ref(strategy_path, &strategy.active.live_lane_ref);
+        let orchestrator_path =
+            self.resolve_ref(strategy_path, &strategy.active.orchestrator_ref);
         let export_policy_path = self.resolve_ref(strategy_path, &strategy.active.export_policy_ref);
         let checkpoints_index_path =
             self.resolve_ref(strategy_path, &strategy.indexes.checkpoints_ref);
+        let agents_index_path = self.resolve_ref(strategy_path, &strategy.indexes.agents_ref);
+        let environments_index_path =
+            self.resolve_ref(strategy_path, &strategy.indexes.environments_ref);
         let collections_index_path =
             self.resolve_ref(strategy_path, &strategy.indexes.collections_ref);
         let imports_index_path = self.resolve_ref(strategy_path, &strategy.indexes.imports_ref);
@@ -116,6 +131,7 @@ impl WorkspaceRepository {
 
         Ok(BootstrapPaths {
             strategy_path: strategy_path.to_path_buf(),
+            orchestrator_path,
             dashboard_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref),
             decisions_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref),
             memory_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.memory_ref),
@@ -129,6 +145,8 @@ impl WorkspaceRepository {
             live_lane_path,
             export_policy_path,
             checkpoints_index_path,
+            agents_index_path,
+            environments_index_path,
             collections_index_path,
             imports_index_path,
             operations_index_path,
@@ -140,10 +158,14 @@ impl WorkspaceRepository {
         strategy: StrategyManifestFile,
         paths: &BootstrapPaths,
     ) -> Result<BootstrapFiles, String> {
+        let _orchestrator = self.read_json_path::<OrchestratorFile>(&paths.orchestrator_path)?;
         let live_lane = self.read_json_path::<LiveLaneFile>(&paths.live_lane_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&paths.export_policy_path)?;
         let checkpoints_index =
             self.read_json_path::<CheckpointIndexFile>(&paths.checkpoints_index_path)?;
+        let agents_index = self.read_json_path::<AgentsIndexFile>(&paths.agents_index_path)?;
+        let environments_index =
+            self.read_json_path::<EnvironmentsIndexFile>(&paths.environments_index_path)?;
         let collections_index =
             self.read_json_path::<CollectionsIndexFile>(&paths.collections_index_path)?;
         let imports_index = if paths.imports_index_path.exists() {
@@ -162,6 +184,8 @@ impl WorkspaceRepository {
             live_lane,
             export_policy,
             checkpoints_index,
+            agents_index,
+            environments_index,
             collections_index,
             imports_index,
             operations_index,
@@ -268,17 +292,22 @@ impl WorkspaceRepository {
         WorkspaceIndexState {
             schema_version: files.strategy.schema_version.clone(),
             active: StrategyActiveIndexState {
+                orchestrator_ref: self.display_path(&paths.orchestrator_path),
                 live_lane_ref: self.display_path(&paths.live_lane_path),
                 current_checkpoint_ref: self.display_path(current_checkpoint_path),
                 export_policy_ref: self.display_path(&paths.export_policy_path),
             },
             indexes: StrategyIndexesState {
                 checkpoints_ref: self.display_path(&paths.checkpoints_index_path),
+                agents_ref: self.display_path(&paths.agents_index_path),
+                environments_ref: self.display_path(&paths.environments_index_path),
                 collections_ref: self.display_path(&paths.collections_index_path),
                 imports_ref: self.display_path(&paths.imports_index_path),
                 operations_ref: self.display_path(&paths.operations_index_path),
                 sessions_ref: self.display_path(&paths.sessions_path),
             },
+            agent_count: files.agents_index.agents.len(),
+            environment_count: files.environments_index.environments.len(),
             collection_count: files.collections_index.items.len(),
             operation_count: files.operations_index.items.len(),
             session_count: files.sessions.sessions.len(),

@@ -52,8 +52,35 @@ export function resolveMockDocumentContent(
   if (documentRef === `${WORKSPACE_ROOT}/strategy.json`) {
     return JSON.stringify(store.strategyManifest, null, 2);
   }
+  if (documentRef === `${WORKSPACE_ROOT}/orchestrator/orchestrator.json`) {
+    return JSON.stringify(
+      {
+        orchestrator_id: "01963759-7f8a-74ad-92ce-b40d0643dc93",
+        name: "kairos-orchestrator",
+        mode: "managed-agent",
+        topology_refs: {
+          agents_ref: "../agents/index.json",
+          environments_ref: "../environments/index.json",
+          sessions_ref: "../indexes/sessions.json",
+          live_lane_ref: "../live/live-lane.json"
+        },
+        notes: [
+          "The orchestrator owns agent session flow and service-mediated workspace mutations.",
+          "Execution core remains outside the orchestrator boundary."
+        ]
+      },
+      null,
+      2
+    );
+  }
   if (documentRef === `${WORKSPACE_ROOT}/live/live-lane.json`) {
     return JSON.stringify(store.liveLane, null, 2);
+  }
+  if (documentRef === `${WORKSPACE_ROOT}/agents/index.json`) {
+    return JSON.stringify(store.agentsIndex, null, 2);
+  }
+  if (documentRef === `${WORKSPACE_ROOT}/environments/index.json`) {
+    return JSON.stringify(store.environmentsIndex, null, 2);
   }
   if (documentRef === `${WORKSPACE_ROOT}/state/dashboard.json`) {
     return JSON.stringify(serializeDashboardDocument(state), null, 2);
@@ -145,6 +172,67 @@ export function resolveMockDocumentContent(
             "Session records stay inside the workspace asset and are exposed through the service layer.",
             "These documents are part of the live trading context whenever they materially influence trading behavior."
           ]
+        },
+        null,
+        2
+      );
+    }
+  }
+
+  const agentMatch = documentRef.match(/agents\/items\/([^/]+)\/agent\.json$/);
+  if (agentMatch) {
+    const agent = store.agentsIndex.agents.find((item) => item.id === agentMatch[1]);
+    if (agent) {
+      return JSON.stringify(
+        {
+          agent_id: agent.id,
+          name: agent.name,
+          kind: agent.kind,
+          provider_policy: {
+            mode: agent.provider_mode,
+            preferred_providers:
+              agent.name === "kairos-live-manager"
+                ? ["claude-code", "codex"]
+                : ["codex", "claude-code"]
+          },
+          environment_ref:
+            agent.name === "kairos-live-manager"
+              ? "../../environments/items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json"
+              : "../../environments/items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json",
+          workspace_refs:
+            agent.name === "kairos-live-manager"
+              ? {
+                  live_lane_ref: "../../live/live-lane.json",
+                  sessions_ref: "../../indexes/sessions.json"
+                }
+              : {
+                  eval_summaries_ref: "../../state/eval-summaries.json",
+                  collections_ref: "../../indexes/collections.json"
+                }
+        },
+        null,
+        2
+      );
+    }
+  }
+
+  const environmentMatch = documentRef.match(/environments\/items\/([^/]+)\/environment\.json$/);
+  if (environmentMatch) {
+    const environment = store.environmentsIndex.environments.find(
+      (item) => item.id === environmentMatch[1]
+    );
+    if (environment) {
+      return JSON.stringify(
+        {
+          environment_id: environment.id,
+          name: environment.name,
+          kind: environment.name.includes("live") ? "live" : "evaluation",
+          capabilities: environment.name.includes("live")
+            ? ["workspace-read", "workspace-write", "service-commands"]
+            : ["workspace-read", "workspace-write", "service-commands", "collection-ingest"],
+          notes: environment.name.includes("live")
+            ? "Live trading workspace environment. Execution core remains outside this definition."
+            : "Evaluation environment for backtest, paper, and evidence generation."
         },
         null,
         2

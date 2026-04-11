@@ -62,17 +62,22 @@ export function buildWorkspaceIndex(
   return {
     schemaVersion: store.strategyManifest.schema_version,
     active: {
+      orchestratorRef: `${WORKSPACE_ROOT}/orchestrator/orchestrator.json`,
       liveLaneRef: `${WORKSPACE_ROOT}/live/live-lane.json`,
       currentCheckpointRef,
       exportPolicyRef: `${WORKSPACE_ROOT}/exports/policy.json`
     },
     indexes: {
       checkpointsRef: `${WORKSPACE_ROOT}/checkpoints/index.json`,
+      agentsRef: `${WORKSPACE_ROOT}/agents/index.json`,
+      environmentsRef: `${WORKSPACE_ROOT}/environments/index.json`,
       collectionsRef: `${WORKSPACE_ROOT}/indexes/collections.json`,
       importsRef: `${WORKSPACE_ROOT}/imports/index.json`,
       operationsRef: `${WORKSPACE_ROOT}/operations/index.json`,
       sessionsRef: `${WORKSPACE_ROOT}/indexes/sessions.json`
     },
+    agentCount: store.agentsIndex.agents.length,
+    environmentCount: store.environmentsIndex.environments.length,
     collectionCount: store.collectionsState.items.length,
     operationCount: store.operationsState.items.length,
     sessionCount: store.sessionsState.sessions.length

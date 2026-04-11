@@ -181,6 +181,17 @@ These decisions are current, not final.
 - The preferred embedded NoSQL style should follow a document model.
 - Storage access should still be abstracted so alternative backends can be introduced later without changing the asset contract.
 - Future backends may include document or index stores such as MongoDB, but only as alternative implementations or mirrors of the same asset/storage contract rather than as the defining source of truth.
+- The agent side of the system should use managed-agent vocabulary and boundaries:
+  - `orchestrator`
+  - `agent`
+  - `environment`
+  - `session`
+  - `events`
+- The system should stop using `resident supervisor` and `research runtime` as top-level architecture terms.
+- The workspace asset should be the durable local home for the orchestrator, provider-neutral agent definitions, environment definitions, and durable session/event materials.
+- The orchestrator should be the control plane for agent work, background scheduling, evaluation, and promotion.
+- The execution core should remain a separate bounded context from the orchestrator and agents.
+- The provider model should stay brain-oriented behind provider adapters rather than defining the top-level architecture vocabulary.
 - The storage contract should currently treat these as the top-level entities:
   - `artifact`
   - `checkpoint`
@@ -236,6 +247,9 @@ These decisions are current, not final.
 - Service-layer mutations should also append durable operation records under:
   - `operations/index.json`
   - `operations/items/<operation_id>.json`
+- The preferred direction for `strategy.json.indexes` now also includes:
+  - `agents_ref`
+  - `environments_ref`
 
 ## Open Decisions
 

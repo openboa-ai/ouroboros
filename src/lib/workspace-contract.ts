@@ -15,6 +15,7 @@ export type StrategyManifest = {
 };
 
 export type StrategyActiveRefs = {
+  orchestrator_ref: string;
   live_lane_ref: string;
   current_checkpoint_ref: string;
   export_policy_ref: string;
@@ -22,6 +23,8 @@ export type StrategyActiveRefs = {
 
 export type StrategyIndexRefs = {
   checkpoints_ref: string;
+  agents_ref: string;
+  environments_ref: string;
   collections_ref: string;
   imports_ref: string;
   operations_ref: string;

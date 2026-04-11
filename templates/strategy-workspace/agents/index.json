@@ -1,0 +1,18 @@
+{
+  "agents": [
+    {
+      "id": "0196375e-6f98-7d61-9a1b-d12c8f95fd55",
+      "kind": "live-manager",
+      "name": "kairos-live-manager",
+      "provider_mode": "adaptive",
+      "definition_ref": "./items/0196375e-6f98-7d61-9a1b-d12c8f95fd55/agent.json"
+    },
+    {
+      "id": "01963760-0f86-7caf-8e5b-aecf7a760089",
+      "kind": "evaluation-worker",
+      "name": "kairos-evaluator",
+      "provider_mode": "adaptive",
+      "definition_ref": "./items/01963760-0f86-7caf-8e5b-aecf7a760089/agent.json"
+    }
+  ]
+}

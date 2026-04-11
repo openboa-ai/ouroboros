@@ -1,0 +1,14 @@
+{
+  "environments": [
+    {
+      "id": "01963762-0ed3-70ba-bdae-5edf57c9d1de",
+      "name": "live-local",
+      "definition_ref": "./items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json"
+    },
+    {
+      "id": "01963763-147d-7488-acfb-77fd5c95dc0e",
+      "name": "evaluation-local",
+      "definition_ref": "./items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json"
+    }
+  ]
+}

@@ -76,9 +76,32 @@ impl WorkspaceRepository {
 
             if strategy_exists {
                 let strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
+                let orchestrator_path =
+                    self.resolve_ref(&strategy_path, &strategy.active.orchestrator_ref);
                 let live_lane_path = self.resolve_ref(&strategy_path, &strategy.active.live_lane_ref);
                 let export_policy_path =
                     self.resolve_ref(&strategy_path, &strategy.active.export_policy_ref);
+                let agents_index_path =
+                    self.resolve_ref(&strategy_path, &strategy.indexes.agents_ref);
+                let environments_index_path =
+                    self.resolve_ref(&strategy_path, &strategy.indexes.environments_ref);
+
+                checks.push(ImportPreflightCheckState {
+                    id: "orchestrator-ref".into(),
+                    severity: if orchestrator_path.exists() { "ok" } else { "blocked" }.into(),
+                    label: "Orchestrator ref".into(),
+                    detail: if orchestrator_path.exists() {
+                        format!(
+                            "Orchestrator resolves to {}.",
+                            self.display_path(&orchestrator_path)
+                        )
+                    } else {
+                        format!(
+                            "Orchestrator ref points to missing file {}.",
+                            self.display_path(&orchestrator_path)
+                        )
+                    },
+                });
 
                 checks.push(ImportPreflightCheckState {
                     id: "live-lane-ref".into(),
@@ -110,6 +133,45 @@ impl WorkspaceRepository {
                         format!(
                             "Export policy ref points to missing file {}.",
                             self.display_path(&export_policy_path)
+                        )
+                    },
+                });
+
+                checks.push(ImportPreflightCheckState {
+                    id: "agents-index-ref".into(),
+                    severity: if agents_index_path.exists() { "ok" } else { "blocked" }.into(),
+                    label: "Agents index ref".into(),
+                    detail: if agents_index_path.exists() {
+                        format!(
+                            "Agents index resolves to {}.",
+                            self.display_path(&agents_index_path)
+                        )
+                    } else {
+                        format!(
+                            "Agents index ref points to missing file {}.",
+                            self.display_path(&agents_index_path)
+                        )
+                    },
+                });
+
+                checks.push(ImportPreflightCheckState {
+                    id: "environments-index-ref".into(),
+                    severity: if environments_index_path.exists() {
+                        "ok"
+                    } else {
+                        "blocked"
+                    }
+                    .into(),
+                    label: "Environments index ref".into(),
+                    detail: if environments_index_path.exists() {
+                        format!(
+                            "Environments index resolves to {}.",
+                            self.display_path(&environments_index_path)
+                        )
+                    } else {
+                        format!(
+                            "Environments index ref points to missing file {}.",
+                            self.display_path(&environments_index_path)
                         )
                     },
                 });
@@ -170,6 +232,131 @@ impl WorkspaceRepository {
                             },
                         });
                     }
+                }
+
+                if orchestrator_path.exists() {
+                    let orchestrator =
+                        self.read_json_path::<OrchestratorFile>(&orchestrator_path)?;
+                    let topology_targets = [
+                        ("orchestrator-agents-ref", "Orchestrator agents ref", self.resolve_ref(&orchestrator_path, &orchestrator.topology_refs.agents_ref)),
+                        ("orchestrator-environments-ref", "Orchestrator environments ref", self.resolve_ref(&orchestrator_path, &orchestrator.topology_refs.environments_ref)),
+                        ("orchestrator-sessions-ref", "Orchestrator sessions ref", self.resolve_ref(&orchestrator_path, &orchestrator.topology_refs.sessions_ref)),
+                        ("orchestrator-live-lane-ref", "Orchestrator live lane ref", self.resolve_ref(&orchestrator_path, &orchestrator.topology_refs.live_lane_ref)),
+                    ];
+
+                    for (check_id, label, path) in topology_targets {
+                        checks.push(ImportPreflightCheckState {
+                            id: check_id.into(),
+                            severity: if path.exists() { "ok" } else { "blocked" }.into(),
+                            label: label.into(),
+                            detail: if path.exists() {
+                                format!("Orchestrator topology ref resolves to {}.", self.display_path(&path))
+                            } else {
+                                format!("Orchestrator topology ref points to missing file {}.", self.display_path(&path))
+                            },
+                        });
+                    }
+                }
+
+                if agents_index_path.exists() {
+                    let agents_index = self.read_json_path::<AgentsIndexFile>(&agents_index_path)?;
+                    let missing_agent_defs = agents_index
+                        .agents
+                        .iter()
+                        .filter(|agent| {
+                            !self
+                                .resolve_ref(&agents_index_path, &agent.definition_ref)
+                                .exists()
+                        })
+                        .count();
+                    checks.push(ImportPreflightCheckState {
+                        id: "agent-definitions".into(),
+                        severity: if missing_agent_defs == 0 {
+                            "ok"
+                        } else {
+                            "blocked"
+                        }
+                        .into(),
+                        label: "Agent definitions".into(),
+                        detail: if missing_agent_defs == 0 {
+                            format!(
+                                "All {} managed-agent definitions resolve from the agents index.",
+                                agents_index.agents.len()
+                            )
+                        } else {
+                            format!(
+                                "{missing_agent_defs} managed-agent definition ref(s) are missing."
+                            )
+                        },
+                    });
+
+                    let invalid_agent_environments = agents_index
+                        .agents
+                        .iter()
+                        .filter_map(|agent| {
+                            let agent_path =
+                                self.resolve_ref(&agents_index_path, &agent.definition_ref);
+                            let agent_record =
+                                self.read_json_path::<AgentRecordFile>(&agent_path).ok()?;
+                            let environment_path = self
+                                .resolve_ref(&agent_path, &agent_record.environment_ref);
+                            (!environment_path.exists()).then_some(agent_record.name)
+                        })
+                        .count();
+                    checks.push(ImportPreflightCheckState {
+                        id: "agent-environment-links".into(),
+                        severity: if invalid_agent_environments == 0 {
+                            "ok"
+                        } else {
+                            "blocked"
+                        }
+                        .into(),
+                        label: "Agent environment links".into(),
+                        detail: if invalid_agent_environments == 0 {
+                            "Every managed-agent definition resolves its environment ref.".into()
+                        } else {
+                            format!(
+                                "{invalid_agent_environments} managed-agent definition(s) point to missing environment refs."
+                            )
+                        },
+                    });
+                }
+
+                if environments_index_path.exists() {
+                    let environments_index =
+                        self.read_json_path::<EnvironmentsIndexFile>(&environments_index_path)?;
+                    let missing_environment_defs = environments_index
+                        .environments
+                        .iter()
+                        .filter(|environment| {
+                            !self
+                                .resolve_ref(
+                                    &environments_index_path,
+                                    &environment.definition_ref,
+                                )
+                                .exists()
+                        })
+                        .count();
+                    checks.push(ImportPreflightCheckState {
+                        id: "environment-definitions".into(),
+                        severity: if missing_environment_defs == 0 {
+                            "ok"
+                        } else {
+                            "blocked"
+                        }
+                        .into(),
+                        label: "Environment definitions".into(),
+                        detail: if missing_environment_defs == 0 {
+                            format!(
+                                "All {} environment definitions resolve from the environments index.",
+                                environments_index.environments.len()
+                            )
+                        } else {
+                            format!(
+                                "{missing_environment_defs} environment definition ref(s) are missing."
+                            )
+                        },
+                    });
                 }
 
                 let checkpoint_status = match self

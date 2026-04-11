@@ -28,6 +28,18 @@ impl WorkspaceRepository {
             };
 
         if self.document_ref_matches_target(
+            &bootstrap.workspace_index.active.orchestrator_ref,
+            &target_ref,
+            &target_path,
+        ) {
+            push_backlink(
+                "strategy.json".into(),
+                bootstrap.asset_inspector.strategy_ref.clone(),
+                "entrypoint".into(),
+                "active.orchestrator_ref".into(),
+            );
+        }
+        if self.document_ref_matches_target(
             &bootstrap.asset_inspector.live_lane_ref,
             &target_ref,
             &target_path,
@@ -88,6 +100,18 @@ impl WorkspaceRepository {
                 "indexes.checkpoints_ref".to_string(),
             ),
             (
+                bootstrap.workspace_index.indexes.agents_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.agents_ref".to_string(),
+            ),
+            (
+                bootstrap.workspace_index.indexes.environments_ref.clone(),
+                "strategy.json".to_string(),
+                "entrypoint".to_string(),
+                "indexes.environments_ref".to_string(),
+            ),
+            (
                 bootstrap.workspace_index.indexes.collections_ref.clone(),
                 "strategy.json".to_string(),
                 "entrypoint".to_string(),
@@ -130,6 +154,29 @@ impl WorkspaceRepository {
                     bootstrap.workspace_index.indexes.sessions_ref.clone(),
                     "index".into(),
                     "session catalog entry".into(),
+                );
+            }
+        }
+
+        for document in &bootstrap.document_catalog {
+            if document.category == "agent"
+                && self.document_ref_matches_target(&document.path_ref, &target_ref, &target_path)
+            {
+                push_backlink(
+                    "agents index".into(),
+                    bootstrap.workspace_index.indexes.agents_ref.clone(),
+                    "index".into(),
+                    "agent catalog entry".into(),
+                );
+            }
+            if document.category == "environment"
+                && self.document_ref_matches_target(&document.path_ref, &target_ref, &target_path)
+            {
+                push_backlink(
+                    "environments index".into(),
+                    bootstrap.workspace_index.indexes.environments_ref.clone(),
+                    "index".into(),
+                    "environment catalog entry".into(),
                 );
             }
         }

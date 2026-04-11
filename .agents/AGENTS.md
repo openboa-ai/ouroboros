@@ -13,11 +13,12 @@ This directory is the repo-local agent control layer for AutoKairos.
 
 1. Read [../knowledge-index.md](../knowledge-index.md).
 2. Read [../ARCHITECTURE.md](../ARCHITECTURE.md).
-3. Read [../docs/index.md](../docs/index.md) for the documentation tree.
-4. Read [../docs/exec-plans/active/product-definition.md](../docs/exec-plans/active/product-definition.md) for the current active summary.
-5. Read [../docs/exec-plans/active/discovery-log-2026-04-09.md](../docs/exec-plans/active/discovery-log-2026-04-09.md) when product-definition context matters.
-6. Read the relevant local skill in `.agents/skills/` before changing knowledge workflows.
-7. When a task needs generic engineering workflow guidance, read the selected upstream skills under `.agents/skills/agent-skills/`.
+3. Read [../docs/design-docs/vocabulary.md](../docs/design-docs/vocabulary.md) before inventing new top-level architecture terms.
+4. Read [../docs/index.md](../docs/index.md) for the documentation tree.
+5. Read [../docs/exec-plans/active/product-definition.md](../docs/exec-plans/active/product-definition.md) for the current active summary.
+6. Read [../docs/exec-plans/active/discovery-log-2026-04-09.md](../docs/exec-plans/active/discovery-log-2026-04-09.md) when product-definition context matters.
+7. Read the relevant local skill in `.agents/skills/` before changing knowledge workflows.
+8. When a task needs generic engineering workflow guidance, read the selected upstream skills under `.agents/skills/agent-skills/`.
 
 ## Operating Rules
 

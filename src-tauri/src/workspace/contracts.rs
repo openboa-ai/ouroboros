@@ -16,6 +16,8 @@ pub(super) struct StrategyManifestFile {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct StrategyActiveRefsFile {
+    #[serde(default = "super::default_orchestrator_ref")]
+    pub orchestrator_ref: String,
     pub live_lane_ref: String,
     pub current_checkpoint_ref: String,
     pub export_policy_ref: String,
@@ -24,6 +26,10 @@ pub(super) struct StrategyActiveRefsFile {
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct StrategyIndexRefsFile {
     pub checkpoints_ref: String,
+    #[serde(default = "super::default_agents_ref")]
+    pub agents_ref: String,
+    #[serde(default = "super::default_environments_ref")]
+    pub environments_ref: String,
     pub collections_ref: String,
     #[serde(default = "super::default_imports_ref")]
     pub imports_ref: String,
@@ -38,6 +44,24 @@ pub(super) struct LiveLaneFile {
     pub label: String,
     pub mode: TradingMode,
     pub state_refs: LiveLaneRefsFile,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct OrchestratorFile {
+    pub orchestrator_id: String,
+    pub name: String,
+    pub mode: String,
+    pub topology_refs: OrchestratorTopologyRefsFile,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct OrchestratorTopologyRefsFile {
+    pub agents_ref: String,
+    pub environments_ref: String,
+    pub sessions_ref: String,
+    pub live_lane_ref: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -108,6 +132,59 @@ pub(super) struct SessionsIndexFile {
 pub(super) struct CollectionsIndexFile {
     #[serde(default, alias = "collections")]
     pub items: Vec<CollectionIndexItemFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AgentsIndexFile {
+    pub agents: Vec<AgentIndexItemFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AgentIndexItemFile {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub provider_mode: String,
+    pub definition_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AgentRecordFile {
+    pub agent_id: String,
+    pub name: String,
+    pub kind: String,
+    pub environment_ref: String,
+    pub provider_policy: AgentProviderPolicyFile,
+    pub workspace_refs: serde_json::Value,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct AgentProviderPolicyFile {
+    pub mode: String,
+    #[serde(default)]
+    pub preferred_providers: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct EnvironmentsIndexFile {
+    pub environments: Vec<EnvironmentIndexItemFile>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct EnvironmentIndexItemFile {
+    pub id: String,
+    pub name: String,
+    pub definition_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct EnvironmentRecordFile {
+    pub environment_id: String,
+    pub name: String,
+    pub kind: String,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub notes: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

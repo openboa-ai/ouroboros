@@ -128,6 +128,12 @@
 
 ## 2026-04-11
 
+- Reframed the top-level architecture around Anthropic managed-agent concepts: `orchestrator`, `agent`, `environment`, `session`, and `events`, while keeping the previously chosen Hexagonal + CQRS-light + workspace-first asset model.
+- Added a canonical architecture vocabulary doc so future code and docs stop drifting between `resident supervisor`, `research runtime`, `researcher`, and `trader` when the actual concern is the managed-agent control plane.
+- Rewrote the agent-runtime design doc around a managed-agent-style orchestrator model and clarified that the execution core remains a separate bounded context rather than just another agent.
+- Updated the workspace-asset model so the workspace explicitly becomes the durable local home for agent definitions, environment definitions, and durable session/event materials.
+- Updated the provider model so Codex and Claude remain provider adapters behind provider-neutral agent definitions rather than becoming the top-level architecture vocabulary.
+- Added a source-backed managed-agent-patterns reference note using Anthropic Managed Agents and Multica as the conceptual inputs for the agent-side design.
 - Split the mock workspace service into `template-store`, `builders`, `document-content`, and `service` modules so the browser fallback now mirrors the backend's workspace/service boundaries instead of keeping one giant in-memory façade.
 - Extracted workspace file-format contracts and pure helper functions into `src-tauri/src/workspace/contracts.rs` and `src-tauri/src/workspace/helpers.rs`, reducing the amount of structural and utility code mixed into the repository coordinator.
 - Extracted workspace bootstrap/read assembly into `src-tauri/src/workspace/bootstrap.rs` so live dashboard bootstrap state, export-inspector assembly, and current-checkpoint resolution no longer sit inline with mutation and normalization logic.

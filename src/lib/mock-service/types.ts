@@ -106,6 +106,28 @@ export type EvalSummariesState = {
   summaries: EvalSummaryRecord[];
 };
 
+export type AgentIndexItem = {
+  id: string;
+  kind: string;
+  name: string;
+  provider_mode: string;
+  definition_ref: string;
+};
+
+export type EnvironmentIndexItem = {
+  id: string;
+  name: string;
+  definition_ref: string;
+};
+
+export type AgentsIndexState = {
+  agents: AgentIndexItem[];
+};
+
+export type EnvironmentsIndexState = {
+  environments: EnvironmentIndexItem[];
+};
+
 export type ImportsState = {
   items: ImportRecord[];
 };
@@ -153,6 +175,8 @@ export type MockWorkspaceStore = {
   liveMemoryState: LiveMemoryState;
   sessionsState: SessionsState;
   evalSummariesState: EvalSummariesState;
+  agentsIndex: AgentsIndexState;
+  environmentsIndex: EnvironmentsIndexState;
   entriesByCollection: Record<string, CollectionEntryRecord[]>;
   blobContents: Record<BlobId | string, string>;
 };

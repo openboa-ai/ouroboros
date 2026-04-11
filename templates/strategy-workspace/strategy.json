@@ -3,12 +3,15 @@
   "slug": "autokairos-template",
   "schema_version": "0.1.0",
   "active": {
+    "orchestrator_ref": "./orchestrator/orchestrator.json",
     "live_lane_ref": "./live/live-lane.json",
     "current_checkpoint_ref": "./checkpoints/items/0196256c-e9aa-7c4d-967e-cb0ec87907df/checkpoint.json",
     "export_policy_ref": "./exports/policy.json"
   },
   "indexes": {
     "checkpoints_ref": "./checkpoints/index.json",
+    "agents_ref": "./agents/index.json",
+    "environments_ref": "./environments/index.json",
     "collections_ref": "./indexes/collections.json",
     "imports_ref": "./imports/index.json",
     "operations_ref": "./operations/index.json",

@@ -14,6 +14,8 @@ import type {
   StrategyManifest
 } from "../workspace-contract";
 import checkpointIndexTemplate from "../../../templates/strategy-workspace/checkpoints/index.json";
+import agentsTemplate from "../../../templates/strategy-workspace/agents/index.json";
+import environmentsTemplate from "../../../templates/strategy-workspace/environments/index.json";
 import exportPolicyTemplate from "../../../templates/strategy-workspace/exports/policy.json";
 import collectionsTemplate from "../../../templates/strategy-workspace/indexes/collections.json";
 import importsTemplate from "../../../templates/strategy-workspace/imports/index.json";
@@ -40,6 +42,8 @@ export const mockStrategyManifest = strategyTemplate as StrategyManifest;
 
 const liveLaneSeed = liveLaneTemplate as LiveLaneState;
 const checkpointIndexSeed = checkpointIndexTemplate as CheckpointIndex;
+const agentsIndexSeed = agentsTemplate as MockWorkspaceStore["agentsIndex"];
+const environmentsIndexSeed = environmentsTemplate as MockWorkspaceStore["environmentsIndex"];
 const exportPolicySeed = exportPolicyTemplate as MockWorkspaceStore["exportPolicy"];
 const collectionsSeed = collectionsTemplate as { items: CollectionRecord[] };
 const importsSeed = importsTemplate as MockWorkspaceStore["importsState"];
@@ -91,6 +95,8 @@ export function createMockWorkspaceStore(): MockWorkspaceStore {
     liveMemoryState: structuredClone(liveMemorySeed),
     sessionsState: structuredClone(sessionsSeed),
     evalSummariesState: structuredClone(evalSummariesSeed),
+    agentsIndex: structuredClone(agentsIndexSeed),
+    environmentsIndex: structuredClone(environmentsIndexSeed),
     entriesByCollection: {
       "019626b0-4d0a-7a72-9b4e-9d8e11d0f901": parseEntries(btcAggEntriesRaw),
       "019626b6-c73a-7fe6-b0a5-64ac631d5102": parseEntries(macroNewsEntriesRaw)

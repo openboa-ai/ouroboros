@@ -35,11 +35,26 @@ impl WorkspaceRepository {
             "./checkpoints/items/{}/checkpoint.json",
             checkpoints_index.current.checkpoint_id
         );
+        let desired_orchestrator_ref = default_orchestrator_ref();
+        let desired_agents_ref = default_agents_ref();
+        let desired_environments_ref = default_environments_ref();
         let desired_imports_ref = default_imports_ref();
         let desired_operations_ref = default_operations_ref();
         let mut strategy_dirty = false;
         if strategy.active.current_checkpoint_ref != desired_ref {
             strategy.active.current_checkpoint_ref = desired_ref;
+            strategy_dirty = true;
+        }
+        if strategy.active.orchestrator_ref != desired_orchestrator_ref {
+            strategy.active.orchestrator_ref = desired_orchestrator_ref;
+            strategy_dirty = true;
+        }
+        if strategy.indexes.agents_ref != desired_agents_ref {
+            strategy.indexes.agents_ref = desired_agents_ref;
+            strategy_dirty = true;
+        }
+        if strategy.indexes.environments_ref != desired_environments_ref {
+            strategy.indexes.environments_ref = desired_environments_ref;
             strategy_dirty = true;
         }
         if strategy.indexes.imports_ref != desired_imports_ref {
@@ -77,6 +92,9 @@ impl WorkspaceRepository {
             self.materialize_collection_entry_documents_for_root(&self.root)?;
         }
 
+        self.normalize_managed_agent_documents(&strategy_path, &strategy)?;
+        self.normalize_orchestrator_document(&strategy_path, &strategy)?;
+
         for checkpoint in &checkpoints_index.items {
             let snapshot_root = self
                 .root
@@ -96,6 +114,117 @@ impl WorkspaceRepository {
         }
 
         self.materialize_live_context_documents()?;
+
+        Ok(())
+    }
+
+    pub(in crate::workspace) fn normalize_orchestrator_document(
+        &self,
+        strategy_path: &Path,
+        strategy: &StrategyManifestFile,
+    ) -> Result<(), String> {
+        let orchestrator_path =
+            self.resolve_ref(strategy_path, &strategy.active.orchestrator_ref);
+        if !orchestrator_path.exists() {
+            return Ok(());
+        }
+
+        let mut orchestrator = self.read_json_path::<OrchestratorFile>(&orchestrator_path)?;
+        let mut dirty = false;
+        let expected_refs = [
+            ("agents_ref", "../agents/index.json"),
+            ("environments_ref", "../environments/index.json"),
+            ("sessions_ref", "../indexes/sessions.json"),
+            ("live_lane_ref", "../live/live-lane.json"),
+        ];
+
+        for (key, expected_ref) in expected_refs {
+            let current_ref = match key {
+                "agents_ref" => &mut orchestrator.topology_refs.agents_ref,
+                "environments_ref" => &mut orchestrator.topology_refs.environments_ref,
+                "sessions_ref" => &mut orchestrator.topology_refs.sessions_ref,
+                "live_lane_ref" => &mut orchestrator.topology_refs.live_lane_ref,
+                _ => continue,
+            };
+            if current_ref != expected_ref {
+                *current_ref = expected_ref.into();
+                dirty = true;
+            }
+        }
+
+        if dirty {
+            self.write_json_path(&orchestrator_path, &orchestrator)?;
+        }
+
+        Ok(())
+    }
+
+    pub(in crate::workspace) fn normalize_managed_agent_documents(
+        &self,
+        strategy_path: &Path,
+        strategy: &StrategyManifestFile,
+    ) -> Result<(), String> {
+        let agents_index_path = self.resolve_ref(strategy_path, &strategy.indexes.agents_ref);
+        let environments_index_path =
+            self.resolve_ref(strategy_path, &strategy.indexes.environments_ref);
+        if !agents_index_path.exists() || !environments_index_path.exists() {
+            return Ok(());
+        }
+
+        let environments_index =
+            self.read_json_path::<EnvironmentsIndexFile>(&environments_index_path)?;
+        let environment_ids = environments_index
+            .environments
+            .iter()
+            .map(|environment| environment.id.as_str())
+            .collect::<BTreeSet<_>>();
+        let agents_index = self.read_json_path::<AgentsIndexFile>(&agents_index_path)?;
+
+        for agent in &agents_index.agents {
+            let agent_path = self.resolve_ref(&agents_index_path, &agent.definition_ref);
+            if !agent_path.exists() {
+                continue;
+            }
+
+            let mut agent_record = self.read_json_path::<AgentRecordFile>(&agent_path)?;
+            let mut dirty = false;
+
+            if let Some(environment_id) = environment_id_from_ref(&agent_record.environment_ref) {
+                let desired_environment_ref = format!(
+                    "../../../environments/items/{environment_id}/environment.json"
+                );
+                if environment_ids.contains(environment_id.as_str())
+                    && agent_record.environment_ref != desired_environment_ref
+                {
+                    agent_record.environment_ref = desired_environment_ref;
+                    dirty = true;
+                }
+            }
+
+            let expected_workspace_refs = [
+                ("live_lane_ref", "../../../live/live-lane.json"),
+                ("sessions_ref", "../../../indexes/sessions.json"),
+                ("eval_summaries_ref", "../../../state/eval-summaries.json"),
+                ("collections_ref", "../../../indexes/collections.json"),
+            ];
+
+            if let Some(workspace_refs) = agent_record.workspace_refs.as_object_mut() {
+                for (key, expected_ref) in expected_workspace_refs {
+                    let Some(current) = workspace_refs.get_mut(key) else {
+                        continue;
+                    };
+                    if current.as_str() == Some(expected_ref) {
+                        continue;
+                    }
+                    *current = serde_json::Value::String(expected_ref.into());
+                    dirty = true;
+                }
+            }
+
+            if dirty {
+                self.write_json_path(&agent_path, &agent_record)?;
+            }
+        }
 
         Ok(())
     }
@@ -364,4 +493,13 @@ impl WorkspaceRepository {
 
         Ok(())
     }
+}
+
+fn environment_id_from_ref(reference: &str) -> Option<String> {
+    let clean_reference = reference.split('#').next().unwrap_or(reference);
+    Path::new(clean_reference)
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|value| value.to_str())
+        .map(str::to_string)
 }

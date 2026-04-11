@@ -306,6 +306,7 @@ pub struct AssetInspectorState {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StrategyActiveIndexState {
+    pub orchestrator_ref: String,
     pub live_lane_ref: String,
     pub current_checkpoint_ref: String,
     pub export_policy_ref: String,
@@ -315,6 +316,8 @@ pub struct StrategyActiveIndexState {
 #[serde(rename_all = "camelCase")]
 pub struct StrategyIndexesState {
     pub checkpoints_ref: String,
+    pub agents_ref: String,
+    pub environments_ref: String,
     pub collections_ref: String,
     pub imports_ref: String,
     pub operations_ref: String,
@@ -327,6 +330,8 @@ pub struct WorkspaceIndexState {
     pub schema_version: String,
     pub active: StrategyActiveIndexState,
     pub indexes: StrategyIndexesState,
+    pub agent_count: usize,
+    pub environment_count: usize,
     pub collection_count: usize,
     pub operation_count: usize,
     pub session_count: usize,

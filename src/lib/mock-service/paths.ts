@@ -9,7 +9,14 @@ export const DEFAULT_EXCLUDED_PATHS = [
 
 export const DEFAULT_INCLUDED_REFS = [
   "./workspace/strategy.json",
+  "./workspace/orchestrator/orchestrator.json",
   "./workspace/live/live-lane.json",
+  "./workspace/agents/index.json",
+  "./workspace/agents/items/0196375e-6f98-7d61-9a1b-d12c8f95fd55/agent.json",
+  "./workspace/agents/items/01963760-0f86-7caf-8e5b-aecf7a760089/agent.json",
+  "./workspace/environments/index.json",
+  "./workspace/environments/items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json",
+  "./workspace/environments/items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json",
   "./workspace/state/dashboard.json",
   "./workspace/state/decisions.json",
   "./workspace/state/live-memory.json",

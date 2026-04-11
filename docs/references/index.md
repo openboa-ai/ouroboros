@@ -4,5 +4,8 @@
   Initial source-backed analysis of the harness and wiki direction
 - [managed-agent-provider-analysis.md](managed-agent-provider-analysis.md)
   Anthropic managed agents and NanoClaw implications
+- [managed-agent-patterns.md](managed-agent-patterns.md)
+  Anthropic managed-agent concepts and Multica orchestration implications
 - [upstream-agent-skills.md](upstream-agent-skills.md)
-  Why selected `agent-skills` workflows are copied locally and how AutoKairos should compose with them
+  Why selected `agent-skills` workflows are copied locally and how AutoKairos should compose with
+  them

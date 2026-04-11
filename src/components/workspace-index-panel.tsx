@@ -20,6 +20,8 @@ export function WorkspaceIndexPanel({
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Badge tone="neutral">schema {workspaceIndex.schemaVersion}</Badge>
+          <Badge tone="neutral">{workspaceIndex.agentCount} agents</Badge>
+          <Badge tone="neutral">{workspaceIndex.environmentCount} environments</Badge>
           <Badge tone="positive">{workspaceIndex.collectionCount} collections</Badge>
           <Badge tone="neutral">{workspaceIndex.operationCount} operations</Badge>
           <Badge tone="warning">{workspaceIndex.sessionCount} sessions</Badge>
@@ -28,6 +30,13 @@ export function WorkspaceIndexPanel({
         <section className="space-y-3">
           <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Active refs</h3>
           <dl className="space-y-3">
+            <IndexRow
+              label="Orchestrator"
+              value={workspaceIndex.active.orchestratorRef}
+              onOpen={() =>
+                onOpenDocument("index:orchestrator", workspaceIndex.active.orchestratorRef)
+              }
+            />
             <IndexRow
               label="Live lane"
               value={workspaceIndex.active.liveLaneRef}
@@ -58,6 +67,18 @@ export function WorkspaceIndexPanel({
               value={workspaceIndex.indexes.checkpointsRef}
               onOpen={() =>
                 onOpenDocument("index:checkpoints", workspaceIndex.indexes.checkpointsRef)
+              }
+            />
+            <IndexRow
+              label="Agents"
+              value={workspaceIndex.indexes.agentsRef}
+              onOpen={() => onOpenDocument("index:agents", workspaceIndex.indexes.agentsRef)}
+            />
+            <IndexRow
+              label="Environments"
+              value={workspaceIndex.indexes.environmentsRef}
+              onOpen={() =>
+                onOpenDocument("index:environments", workspaceIndex.indexes.environmentsRef)
               }
             />
             <IndexRow

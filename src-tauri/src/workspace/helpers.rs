@@ -73,6 +73,18 @@ pub(super) fn default_imports_ref() -> String {
     "./imports/index.json".into()
 }
 
+pub(super) fn default_orchestrator_ref() -> String {
+    "./orchestrator/orchestrator.json".into()
+}
+
+pub(super) fn default_agents_ref() -> String {
+    "./agents/index.json".into()
+}
+
+pub(super) fn default_environments_ref() -> String {
+    "./environments/index.json".into()
+}
+
 pub(super) fn default_operations_ref() -> String {
     "./operations/index.json".into()
 }

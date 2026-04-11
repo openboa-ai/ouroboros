@@ -1,0 +1,14 @@
+{
+  "agent_id": "01963760-0f86-7caf-8e5b-aecf7a760089",
+  "name": "kairos-evaluator",
+  "kind": "evaluation-worker",
+  "environment_ref": "../../../environments/items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json",
+  "provider_policy": {
+    "mode": "adaptive",
+    "preferred_providers": ["codex", "claude-code"]
+  },
+  "workspace_refs": {
+    "eval_summaries_ref": "../../../state/eval-summaries.json",
+    "collections_ref": "../../../indexes/collections.json"
+  }
+}

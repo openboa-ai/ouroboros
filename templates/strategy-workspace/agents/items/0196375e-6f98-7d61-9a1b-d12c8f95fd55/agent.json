@@ -1,0 +1,14 @@
+{
+  "agent_id": "0196375e-6f98-7d61-9a1b-d12c8f95fd55",
+  "name": "kairos-live-manager",
+  "kind": "live-manager",
+  "environment_ref": "../../../environments/items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json",
+  "provider_policy": {
+    "mode": "adaptive",
+    "preferred_providers": ["claude-code", "codex"]
+  },
+  "workspace_refs": {
+    "live_lane_ref": "../../../live/live-lane.json",
+    "sessions_ref": "../../../indexes/sessions.json"
+  }
+}

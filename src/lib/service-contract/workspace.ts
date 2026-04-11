@@ -5,6 +5,8 @@ export type WorkspaceCatalogCategory =
   | "export"
   | "operation"
   | "checkpoint"
+  | "agent"
+  | "environment"
   | "collection"
   | "entry"
   | "import"
@@ -291,6 +293,7 @@ export type AssetInspectorState = {
 };
 
 export type StrategyActiveIndexState = {
+  orchestratorRef: string;
   liveLaneRef: string;
   currentCheckpointRef: string;
   exportPolicyRef: string;
@@ -298,6 +301,8 @@ export type StrategyActiveIndexState = {
 
 export type StrategyIndexesState = {
   checkpointsRef: string;
+  agentsRef: string;
+  environmentsRef: string;
   collectionsRef: string;
   importsRef: string;
   operationsRef: string;
@@ -308,6 +313,8 @@ export type WorkspaceIndexState = {
   schemaVersion: string;
   active: StrategyActiveIndexState;
   indexes: StrategyIndexesState;
+  agentCount: number;
+  environmentCount: number;
   collectionCount: number;
   operationCount: number;
   sessionCount: number;

@@ -7,6 +7,53 @@ fn test_root() -> PathBuf {
 }
 
 #[test]
+fn bootstrap_surfaces_agent_and_environment_indexes() {
+    let root = test_root();
+    let template_root = WorkspaceRepository::default_template_root();
+    let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+    let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
+
+    assert!(
+        bootstrap
+            .workspace_index
+            .active
+            .orchestrator_ref
+            .ends_with("/orchestrator/orchestrator.json")
+    );
+    assert!(bootstrap.workspace_index.indexes.agents_ref.ends_with("/agents/index.json"));
+    assert!(
+        bootstrap
+            .workspace_index
+            .indexes
+            .environments_ref
+            .ends_with("/environments/index.json")
+    );
+    assert!(bootstrap.workspace_index.agent_count >= 1);
+    assert!(bootstrap.workspace_index.environment_count >= 1);
+    assert!(
+        bootstrap
+            .document_catalog
+            .iter()
+            .any(|entry| entry.path_ref.ends_with("/orchestrator/orchestrator.json"))
+    );
+    assert!(
+        bootstrap
+            .document_catalog
+            .iter()
+            .any(|entry| entry.category == "agent")
+    );
+    assert!(
+        bootstrap
+            .document_catalog
+            .iter()
+            .any(|entry| entry.category == "environment")
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn restore_checkpoint_replays_snapshot_without_losing_generated_exports() {
     let root = test_root();
     let template_root = WorkspaceRepository::default_template_root();

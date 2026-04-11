@@ -79,6 +79,14 @@ export function buildDocumentCatalog(
       pathRef: `${WORKSPACE_ROOT}/strategy.json`
     },
     {
+      id: "orchestrator",
+      category: "active",
+      label: "orchestrator",
+      description:
+        "Managed-agent orchestrator that binds the active topology to the live workspace asset.",
+      pathRef: `${WORKSPACE_ROOT}/orchestrator/orchestrator.json`
+    },
+    {
       id: "live-lane",
       category: "active",
       label: "live lane",
@@ -142,6 +150,20 @@ export function buildDocumentCatalog(
       pathRef: `${WORKSPACE_ROOT}/checkpoints/index.json`
     },
     {
+      id: "agents-index",
+      category: "index",
+      label: "agents index",
+      description: "Managed-agent topology catalog for orchestrator-owned agent definitions.",
+      pathRef: `${WORKSPACE_ROOT}/agents/index.json`
+    },
+    {
+      id: "environments-index",
+      category: "index",
+      label: "environments index",
+      description: "Managed-agent environment catalog referenced by workspace agents.",
+      pathRef: `${WORKSPACE_ROOT}/environments/index.json`
+    },
+    {
       id: "collections-index",
       category: "index",
       label: "collections index",
@@ -177,6 +199,26 @@ export function buildDocumentCatalog(
       pathRef: `${WORKSPACE_ROOT}/state/eval-summaries.json`
     }
   ];
+
+  items.push(
+    ...store.agentsIndex.agents.map((agent) => ({
+      id: `agent-${agent.id}`,
+      category: "agent" as const,
+      label: agent.name,
+      description: `${agent.kind} agent with ${agent.provider_mode} provider policy.`,
+      pathRef: `${WORKSPACE_ROOT}/agents/items/${agent.id}/agent.json`
+    }))
+  );
+
+  items.push(
+    ...store.environmentsIndex.environments.map((environment) => ({
+      id: `environment-${environment.id}`,
+      category: "environment" as const,
+      label: environment.name,
+      description: "Managed-agent environment definition referenced by workspace agents.",
+      pathRef: `${WORKSPACE_ROOT}/environments/items/${environment.id}/environment.json`
+    }))
+  );
 
   items.push(
     ...store.sessionsState.sessions.map((session) => ({
@@ -304,8 +346,13 @@ export function buildDocumentBacklinks(
       evaluationSummaries: Array<{ pathRef: string }>;
     };
     workspaceIndex: {
+      active: {
+        orchestratorRef: string;
+      };
       indexes: {
         checkpointsRef: string;
+        agentsRef: string;
+        environmentsRef: string;
         collectionsRef: string;
         importsRef: string;
         operationsRef: string;
@@ -349,6 +396,9 @@ export function buildDocumentBacklinks(
   if (state.assetInspector.liveLaneRef === documentRef) {
     pushBacklink("strategy.json", state.assetInspector.strategyRef, "entrypoint", "active.live_lane_ref");
   }
+  if (state.workspaceIndex.active.orchestratorRef === documentRef) {
+    pushBacklink("strategy.json", state.assetInspector.strategyRef, "entrypoint", "active.orchestrator_ref");
+  }
 
   const activeStateRefs = [
     [state.liveContext.dashboardRef, "state_refs.dashboard_ref"],
@@ -382,6 +432,8 @@ export function buildDocumentBacklinks(
 
   const indexRefs = [
     [state.workspaceIndex.indexes.checkpointsRef, "indexes.checkpoints_ref"],
+    [state.workspaceIndex.indexes.agentsRef, "indexes.agents_ref"],
+    [state.workspaceIndex.indexes.environmentsRef, "indexes.environments_ref"],
     [state.workspaceIndex.indexes.collectionsRef, "indexes.collections_ref"],
     [state.workspaceIndex.indexes.importsRef, "indexes.imports_ref"],
     [state.workspaceIndex.indexes.operationsRef, "indexes.operations_ref"],
@@ -400,6 +452,25 @@ export function buildDocumentBacklinks(
       "index",
       "session catalog entry"
     );
+  }
+
+  for (const agent of store.agentsIndex.agents) {
+    const agentPath = `${WORKSPACE_ROOT}/agents/items/${agent.id}/agent.json`;
+    if (agentPath === documentRef) {
+      pushBacklink("agents index", state.workspaceIndex.indexes.agentsRef, "index", "agent catalog entry");
+    }
+  }
+
+  for (const environment of store.environmentsIndex.environments) {
+    const environmentPath = `${WORKSPACE_ROOT}/environments/items/${environment.id}/environment.json`;
+    if (environmentPath === documentRef) {
+      pushBacklink(
+        "environments index",
+        state.workspaceIndex.indexes.environmentsRef,
+        "index",
+        "environment catalog entry"
+      );
+    }
   }
 
   if (state.liveContext.evaluationSummaries.some((summary) => summary.pathRef === documentRef)) {

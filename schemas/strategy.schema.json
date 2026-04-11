@@ -20,8 +20,11 @@
     "active": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["live_lane_ref", "current_checkpoint_ref", "export_policy_ref"],
+      "required": ["orchestrator_ref", "live_lane_ref", "current_checkpoint_ref", "export_policy_ref"],
       "properties": {
+        "orchestrator_ref": {
+          "type": "string"
+        },
         "live_lane_ref": {
           "type": "string"
         },
@@ -36,9 +39,23 @@
     "indexes": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["checkpoints_ref", "collections_ref", "imports_ref", "operations_ref", "sessions_ref"],
+      "required": [
+        "checkpoints_ref",
+        "agents_ref",
+        "environments_ref",
+        "collections_ref",
+        "imports_ref",
+        "operations_ref",
+        "sessions_ref"
+      ],
       "properties": {
         "checkpoints_ref": {
+          "type": "string"
+        },
+        "agents_ref": {
+          "type": "string"
+        },
+        "environments_ref": {
           "type": "string"
         },
         "collections_ref": {
