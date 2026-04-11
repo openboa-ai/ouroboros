@@ -168,6 +168,7 @@ pub struct CollectionEntryState {
     pub ingested_at: String,
     pub content_hash: String,
     pub preview: Option<String>,
+    pub entry_path_ref: String,
     pub blob_ref: Option<String>,
     pub blob_path_ref: Option<String>,
 }

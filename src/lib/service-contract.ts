@@ -130,6 +130,7 @@ export type CollectionEntryState = {
   ingestedAt: string;
   contentHash: string;
   preview?: string;
+  entryPathRef: string;
   blobRef?: string;
   blobPathRef?: string;
 };
@@ -298,6 +299,7 @@ export type WorkspaceCatalogEntry = {
     | "operation"
     | "checkpoint"
     | "collection"
+    | "entry"
     | "import"
     | "blob"
     | "session"

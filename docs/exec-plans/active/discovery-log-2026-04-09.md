@@ -140,7 +140,9 @@
 - use `UTC hour` as the uniform storage partition across sources
 - keep `event_time` as the semantic time in the entry; UTC-hour partitioning is only the filesystem/storage rule
 - immutable source-body blobs should also be surfaced as workspace documents so collection evidence can be inspected through the same service-owned catalog
+- source entries should also be surfaced as first-class workspace documents rather than staying only as lines inside `entries.ndjson`
 - blob workspace documents should backlink to the owning collection manifest and entry shard
+- blob workspace documents should also backlink to entry documents so source inspection can traverse collection -> entry -> blob
 - legacy collection indexes should be normalized into the canonical `items` shape and canonical relative refs during boot so older workspaces keep loading
 - protected service-owned roots such as `imports`, `operations`, generated exports, and secret-bearing directories should be physically excluded from checkpoint snapshots and sanitized export workspaces
 

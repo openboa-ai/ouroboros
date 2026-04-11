@@ -89,6 +89,8 @@ These decisions are current, not final.
 - Live sessions and evaluation summaries should be materialized as addressable workspace documents rather than staying only as inline labels inside dashboard state.
 - Those live-evidence documents should appear in the service-owned workspace document catalog so inspection continues to flow through the service boundary.
 - Source-body blobs should also be promoted into the same workspace document catalog so collection evidence can be inspected through the service path instead of ad-hoc file reads.
+- Source entries should also be materialized as first-class workspace documents under `collections/items/<collection_id>/entries/<entry_id>.json`.
+- Collection browsing should follow a service-owned graph of `collection manifest -> entry document -> blob body`.
 - Workspace document inspection should surface backlinks through the service layer so the asset remains explorable as a graph instead of a flat file list.
 - Staged imports should not only be inspectable; they should also be diffable against the current live workspace through the service boundary.
 - Staged imports should also be activatable as the next live workspace through the service boundary instead of forcing the client to mutate workspace files directly.

@@ -248,6 +248,10 @@ function operationPath(operationId: string) {
   return `${WORKSPACE_ROOT}/operations/items/${operationId}/operation.json`;
 }
 
+function collectionEntryPath(collectionId: string, entryId: string) {
+  return `${WORKSPACE_ROOT}/collections/items/${collectionId}/entries/${entryId}.json`;
+}
+
 function buildAssetInspector(
   checkpoints: CheckpointSummary[],
   currentCheckpointRef: string
@@ -506,6 +510,20 @@ function buildDocumentCatalog(
     ])
   );
 
+  items.push(
+    ...collectionsState.items.flatMap((collection) => {
+      const entries = entriesByCollection[collection.collection_id] ?? [];
+      return entries.map((entry) => ({
+        id: `entry-${entry.entry_id}`,
+        category: "entry" as const,
+        label: `${collection.source_ref} entry ${entry.event_time}`,
+        description:
+          entry.preview ?? "Source entry materialized as a first-class workspace document.",
+        pathRef: collectionEntryPath(collection.collection_id, entry.entry_id)
+      }));
+    })
+  );
+
   const blobEntries = new Map<string, WorkspaceCatalogEntry>();
   for (const collection of collectionsState.items) {
     const entries = entriesByCollection[collection.collection_id] ?? [];
@@ -652,15 +670,43 @@ function buildDocumentBacklinks(
       continue;
     }
 
-    if (document.id.startsWith("collection-")) {
+    if (document.id.startsWith("collection-") || document.category === "entry") {
       pushBacklink(
         "collections index",
         state.workspaceIndex.indexes.collectionsRef,
         "index",
         document.id.startsWith("collection-entries-")
           ? "collection entry shard"
+          : document.category === "entry"
+            ? "collection entry document"
           : "collection catalog entry"
       );
+    }
+
+    if (document.category === "entry") {
+      for (const collection of collectionsState.items) {
+        const entryShardRef = `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/entries.ndjson`;
+        const entries = entriesByCollection[collection.collection_id] ?? [];
+        const linkedEntry = entries.find(
+          (entry) => collectionEntryPath(collection.collection_id, entry.entry_id) === documentRef
+        );
+        if (!linkedEntry) {
+          continue;
+        }
+
+        pushBacklink(
+          `${collection.source_ref} · ${collection.time_bucket}`,
+          `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/collection.json`,
+          "collection",
+          "collection manifest owns entry document"
+        );
+        pushBacklink(
+          `${collection.source_ref} entry shard`,
+          entryShardRef,
+          "collection",
+          "entry shard materializes entry document"
+        );
+      }
     }
 
     if (document.category === "blob") {
@@ -668,27 +714,33 @@ function buildDocumentBacklinks(
         const collectionRef = `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/collection.json`;
         const entryShardRef = `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/entries.ndjson`;
         const entries = entriesByCollection[collection.collection_id] ?? [];
-        const linked = entries.some(
-          (entry) =>
-            entry.blob_ref &&
-            `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt` === documentRef
-        );
-        if (!linked) {
-          continue;
-        }
+        for (const entry of entries) {
+          if (
+            !entry.blob_ref ||
+            `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt` !== documentRef
+          ) {
+            continue;
+          }
 
-        pushBacklink(
-          `${collection.source_ref} · ${collection.time_bucket}`,
-          collectionRef,
-          "collection",
-          "collection manifest references blob"
-        );
-        pushBacklink(
-          `${collection.source_ref} entry shard`,
-          entryShardRef,
-          "collection",
-          "entry shard references blob"
-        );
+          pushBacklink(
+            `${collection.source_ref} · ${collection.time_bucket}`,
+            collectionRef,
+            "collection",
+            "collection manifest references blob"
+          );
+          pushBacklink(
+            `${collection.source_ref} entry shard`,
+            entryShardRef,
+            "collection",
+            "entry shard references blob"
+          );
+          pushBacklink(
+            `${collection.source_ref} entry ${entry.event_time}`,
+            collectionEntryPath(collection.collection_id, entry.entry_id),
+            "entry",
+            "entry document references blob"
+          );
+        }
       }
     }
 
@@ -988,6 +1040,7 @@ class MockWorkspaceService implements WorkspaceService {
         ingestedAt: entry.ingested_at,
         contentHash: entry.content_hash,
         preview: entry.preview,
+        entryPathRef: collectionEntryPath(collection.collection_id, entry.entry_id),
         blobRef: entry.blob_ref,
         blobPathRef: entry.blob_ref
           ? `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt`
@@ -1910,6 +1963,40 @@ class MockWorkspaceService implements WorkspaceService {
           ?.map((entry) => JSON.stringify(entry))
           .join("\n") ?? ""
       );
+    }
+
+    const entryMatch = documentRef.match(/collections\/items\/([^/]+)\/entries\/([^/]+)\.json$/);
+    if (entryMatch) {
+      const [collectionId, entryId] = [entryMatch[1], entryMatch[2]];
+      const collection =
+        collectionsState.items.find((item) => item.collection_id === collectionId) ??
+        collectionsState.items[0];
+      const entry =
+        (entriesByCollection[collectionId as keyof typeof entriesByCollection] ?? []).find(
+          (item) => item.entry_id === entryId
+        );
+      if (entry) {
+        return JSON.stringify(
+          {
+            entry_id: entry.entry_id,
+            collection_id: collection.collection_id,
+            kind: collection.kind,
+            source_ref: entry.source_ref,
+            event_time: entry.event_time,
+            ingested_at: entry.ingested_at,
+            content_hash: entry.content_hash,
+            preview: entry.preview,
+            collection_ref: "../collection.json",
+            entry_shard_ref: "../entries.ndjson",
+            blob_ref: entry.blob_ref,
+            blob_path_ref: entry.blob_ref
+              ? "../../../../blobs/" + entry.blob_ref.replace(":", "/") + ".txt"
+              : undefined
+          },
+          null,
+          2
+        );
+      }
     }
 
     const blobMatch = documentRef.match(/blobs\/sha256\/([a-f0-9]+)\.txt$/);

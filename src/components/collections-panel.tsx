@@ -104,7 +104,9 @@ export function CollectionsPanel({
                     type="button"
                     onClick={() => {
                       onSelectBlob(entry.blobRef ?? null);
-                      if (entry.blobPathRef) {
+                      if (entry.entryPathRef) {
+                        onOpenWorkspaceDocument(entry.entryPathRef);
+                      } else if (entry.blobPathRef) {
                         onOpenWorkspaceDocument(entry.blobPathRef);
                       }
                     }}

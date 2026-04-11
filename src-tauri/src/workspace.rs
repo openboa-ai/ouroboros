@@ -403,12 +403,16 @@ impl WorkspaceRepository {
             entries: entries
                 .into_iter()
                 .map(|entry| CollectionEntryState {
-                    id: entry.entry_id,
+                    id: entry.entry_id.clone(),
                     source_ref: entry.source_ref,
                     event_time: entry.event_time,
                     ingested_at: entry.ingested_at,
                     content_hash: entry.content_hash,
                     preview: entry.preview,
+                    entry_path_ref: self.display_path(&self.collection_entry_document_path(
+                        &collection.collection_id,
+                        &entry.entry_id,
+                    )),
                     blob_ref: entry.blob_ref.clone(),
                     blob_path_ref: entry
                         .blob_ref
@@ -690,6 +694,12 @@ impl WorkspaceRepository {
             },
         };
         self.write_json_path(&collection_path, &collection_record)?;
+        self.materialize_collection_entry_documents_for_collection(
+            &collection_path,
+            &entry_shard_path,
+            &collection_record,
+            &entries,
+        )?;
 
         let operation_source_ref = input.source_ref.clone();
 
@@ -1185,6 +1195,8 @@ impl WorkspaceRepository {
             if collections_dirty {
                 self.write_json_path(&collections_index_path, &collections_index)?;
             }
+
+            self.materialize_collection_entry_documents_for_root(&self.root)?;
         }
 
         for checkpoint in &checkpoints_index.items {
@@ -1201,11 +1213,123 @@ impl WorkspaceRepository {
             let snapshot_collections_index_path = snapshot_root.join("indexes/collections.json");
             if snapshot_collections_index_path.exists() {
                 self.normalize_collections_index_file(&snapshot_collections_index_path)?;
+                self.materialize_collection_entry_documents_for_root(&snapshot_root)?;
             }
         }
 
         self.materialize_live_context_documents()?;
 
+        Ok(())
+    }
+
+    fn materialize_collection_entry_documents_for_root(
+        &self,
+        workspace_root: &Path,
+    ) -> Result<(), String> {
+        let collections_index_path = workspace_root.join("indexes/collections.json");
+        if !collections_index_path.exists() {
+            return Ok(());
+        }
+
+        let collections_index =
+            FileWorkspaceStore::read_json_path::<CollectionsIndexFile>(&collections_index_path)?;
+        for collection in collections_index.items {
+            let collection_path = workspace_root
+                .join("collections")
+                .join("items")
+                .join(&collection.collection_id)
+                .join("collection.json");
+            if !collection_path.exists() {
+                continue;
+            }
+
+            let collection_record =
+                FileWorkspaceStore::read_json_path::<CollectionRecordFile>(&collection_path)?;
+            let entry_shard_path = self.resolve_ref(&collection_path, &collection_record.entry_shard_ref);
+            if !entry_shard_path.exists() {
+                continue;
+            }
+
+            let entries = FileWorkspaceStore::read_ndjson_path::<CollectionEntryFile>(&entry_shard_path)?;
+            self.materialize_collection_entry_documents_for_collection(
+                &collection_path,
+                &entry_shard_path,
+                &collection_record,
+                &entries,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn materialize_collection_entry_documents_for_collection(
+        &self,
+        collection_path: &Path,
+        entry_shard_path: &Path,
+        collection_record: &CollectionRecordFile,
+        entries: &[CollectionEntryFile],
+    ) -> Result<(), String> {
+        let workspace_root = workspace_root_for_collection_path(collection_path)?;
+        let collection_root = collection_path
+            .parent()
+            .ok_or_else(|| format!("collection path has no parent: {}", collection_path.display()))?;
+        let entries_dir = collection_root.join("entries");
+        fs::create_dir_all(&entries_dir)
+            .map_err(|error| format!("failed to create {}: {error}", entries_dir.display()))?;
+
+        let expected_ids = entries
+            .iter()
+            .map(|entry| entry.entry_id.as_str())
+            .collect::<BTreeSet<_>>();
+
+        for entry in entries {
+            let entry_path = collection_entry_document_path_for_root(
+                &workspace_root,
+                &collection_record.collection_id,
+                &entry.entry_id,
+            );
+            let entry_document = CollectionEntryDocumentFile {
+                entry_id: entry.entry_id.clone(),
+                collection_id: collection_record.collection_id.clone(),
+                kind: collection_record.kind.clone(),
+                source_ref: entry.source_ref.clone(),
+                event_time: entry.event_time.clone(),
+                ingested_at: entry.ingested_at.clone(),
+                content_hash: entry.content_hash.clone(),
+                preview: entry.preview.clone(),
+                collection_ref: "../collection.json".into(),
+                entry_shard_ref: "../entries.ndjson".into(),
+                blob_ref: entry.blob_ref.clone(),
+                blob_path_ref: entry
+                    .blob_ref
+                    .as_ref()
+                    .map(|blob_ref| collection_entry_blob_path_ref(blob_ref)),
+            };
+            self.write_json_path(&entry_path, &entry_document)?;
+        }
+
+        for existing in fs::read_dir(&entries_dir)
+            .map_err(|error| format!("failed to read {}: {error}", entries_dir.display()))?
+        {
+            let existing = existing.map_err(|error| format!("failed to read entry doc: {error}"))?;
+            let path = existing.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+
+            let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if expected_ids.contains(stem) {
+                continue;
+            }
+
+            fs::remove_file(&path).map_err(|error| {
+                format!("failed to remove stale entry doc {}: {error}", path.display())
+            })?;
+        }
+
+        let _ = entry_shard_path;
         Ok(())
     }
 
@@ -1797,6 +1921,10 @@ impl WorkspaceRepository {
             .join("entries.ndjson")
     }
 
+    fn collection_entry_document_path(&self, collection_id: &str, entry_id: &str) -> PathBuf {
+        collection_entry_document_path_for_root(&self.root, collection_id, entry_id)
+    }
+
     fn export_workspace_path(&self, checkpoint_id: &str) -> PathBuf {
         self.root
             .join("exports")
@@ -2093,6 +2221,19 @@ impl WorkspaceRepository {
             }
 
             for entry in entry_records {
+                let entry_document_path =
+                    self.collection_entry_document_path(&collection.collection_id, &entry.entry_id);
+                items.push(WorkspaceCatalogEntryState {
+                    id: format!("entry-{}", entry.entry_id),
+                    category: "entry".into(),
+                    label: format!("{} entry {}", collection.source_ref, entry.event_time),
+                    description: entry
+                        .preview
+                        .clone()
+                        .unwrap_or_else(|| "Source entry materialized as a first-class workspace document.".into()),
+                    path_ref: self.display_path(&entry_document_path),
+                });
+
                 let Some(blob_ref) = entry.blob_ref else {
                     continue;
                 };
@@ -2319,6 +2460,23 @@ impl WorkspaceRepository {
                 };
 
                 for entry in entries {
+                    let entry_document_path =
+                        self.collection_entry_document_path(&collection.collection_id, &entry.entry_id);
+                    if paths_match(&entry_document_path, &target_path) {
+                        push_backlink(
+                            format!("{} · {}", collection.source_ref, collection.time_bucket),
+                            self.display_path(&collection_path),
+                            "collection".into(),
+                            "collection manifest owns entry document".into(),
+                        );
+                        push_backlink(
+                            format!("{} entry shard", collection.source_ref),
+                            self.display_path(&entry_shard_path),
+                            "collection".into(),
+                            "entry shard materializes entry document".into(),
+                        );
+                    }
+
                     let Some(blob_ref) = entry.blob_ref else {
                         continue;
                     };
@@ -2339,6 +2497,12 @@ impl WorkspaceRepository {
                         "collection".into(),
                         "entry shard references blob".into(),
                     );
+                    push_backlink(
+                        format!("{} entry {}", collection.source_ref, entry.event_time),
+                        self.display_path(&entry_document_path),
+                        "entry".into(),
+                        "entry document references blob".into(),
+                    );
                 }
             }
         }
@@ -2348,13 +2512,15 @@ impl WorkspaceRepository {
                 continue;
             }
 
-            if document.id.starts_with("collection-") {
+            if document.id.starts_with("collection-") || document.category == "entry" {
                 push_backlink(
                     "collections index".into(),
                     bootstrap.workspace_index.indexes.collections_ref.clone(),
                     "index".into(),
                     if document.id.starts_with("collection-entries-") {
                         "collection entry shard".into()
+                    } else if document.category == "entry" {
+                        "collection entry document".into()
                     } else {
                         "collection catalog entry".into()
                     },
@@ -2921,6 +3087,22 @@ struct CollectionEntryFile {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+struct CollectionEntryDocumentFile {
+    entry_id: String,
+    collection_id: String,
+    kind: String,
+    source_ref: String,
+    event_time: String,
+    ingested_at: String,
+    content_hash: String,
+    preview: Option<String>,
+    collection_ref: String,
+    entry_shard_ref: String,
+    blob_ref: Option<String>,
+    blob_path_ref: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 struct TimeRangeFile {
     start: String,
     end: String,
@@ -3176,6 +3358,40 @@ fn short_blob_label(blob_id: &str) -> String {
         .chars()
         .take(12)
         .collect()
+}
+
+fn collection_entry_document_path_for_root(
+    workspace_root: &Path,
+    collection_id: &str,
+    entry_id: &str,
+) -> PathBuf {
+    workspace_root
+        .join("collections")
+        .join("items")
+        .join(collection_id)
+        .join("entries")
+        .join(format!("{entry_id}.json"))
+}
+
+fn collection_entry_blob_path_ref(blob_id: &str) -> String {
+    let (algorithm, digest) = blob_id.split_once(':').unwrap_or(("sha256", blob_id));
+    format!("../../../../blobs/{algorithm}/{digest}.txt")
+}
+
+fn workspace_root_for_collection_path(collection_path: &Path) -> Result<PathBuf, String> {
+    let collection_root = collection_path
+        .parent()
+        .ok_or_else(|| format!("collection path has no parent: {}", collection_path.display()))?;
+    let items_root = collection_root
+        .parent()
+        .ok_or_else(|| format!("collection root has no items parent: {}", collection_root.display()))?;
+    let collections_root = items_root
+        .parent()
+        .ok_or_else(|| format!("items root has no collections parent: {}", items_root.display()))?;
+    collections_root
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| format!("collections root has no workspace parent: {}", collections_root.display()))
 }
 
 fn now_label() -> String {
@@ -3499,14 +3715,42 @@ mod tests {
 
         let blob_path = repo.blob_path(result.blob_id.as_deref().expect("blob id"));
         assert!(blob_path.exists(), "blob should be persisted");
+        let entry_document_path =
+            repo.collection_entry_document_path(&result.collection_id, &result.entry_id);
+        assert!(entry_document_path.exists(), "entry document should be materialized");
+
+        let collection_detail = repo
+            .load_collection_detail(&result.collection_id)
+            .expect("collection detail");
+        assert_eq!(
+            collection_detail.entries[0].entry_path_ref,
+            repo.display_path(&entry_document_path)
+        );
 
         let bootstrap = repo.load_bootstrap_state().expect("bootstrap after ingest");
         assert!(
             bootstrap
                 .document_catalog
                 .iter()
+                .any(|document| document.path_ref == repo.display_path(&entry_document_path) && document.category == "entry"),
+            "entry document should be promoted into the workspace document catalog"
+        );
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
                 .any(|document| document.path_ref == repo.display_path(&blob_path) && document.category == "blob"),
             "blob should be promoted into the workspace document catalog"
+        );
+        let entry_document = repo
+            .load_workspace_document(&repo.display_path(&entry_document_path))
+            .expect("entry document detail");
+        assert!(
+            entry_document
+                .backlinks
+                .iter()
+                .any(|backlink| backlink.reason == "entry shard materializes entry document"),
+            "entry document should backlink to the owning entry shard"
         );
         let blob_document = repo
             .load_workspace_document(&repo.display_path(&blob_path))
@@ -3517,6 +3761,13 @@ mod tests {
                 .iter()
                 .any(|backlink| backlink.reason == "entry shard references blob"),
             "blob document should backlink to the owning entry shard"
+        );
+        assert!(
+            blob_document
+                .backlinks
+                .iter()
+                .any(|backlink| backlink.reason == "entry document references blob"),
+            "blob document should backlink to the entry document as well"
         );
 
         let collections_index = repo

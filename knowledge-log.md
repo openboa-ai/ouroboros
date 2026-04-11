@@ -94,6 +94,7 @@
 - Added staged import preflight so the service layer blocks activation when a staged bundle is unsanitized or missing its entrypoint/live-state refs.
 - Moved collection/import document discovery into the backend workspace catalog so the client no longer has to synthesize selected collection/import docs ad hoc.
 - Promoted immutable source-body blobs into the backend workspace catalog and added backlinks from blob documents to their owning collection manifest and entry shard.
+- Promoted collection entries into first-class workspace documents so source inspection can move through collection manifests, entry documents, and blob bodies without client-side synthetic docs.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
 - Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
