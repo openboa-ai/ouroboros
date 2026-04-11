@@ -368,6 +368,11 @@ export type WorkspaceIndexState = {
 };
 
 export type LiveContextState = {
+  dashboardRef: string;
+  decisionsRef: string;
+  memoryRef: string;
+  positionsRef: string;
+  ordersRef: string;
   memoryNotes: string[];
   sessions: LiveSessionState[];
   evaluationSummaries: LiveEvaluationSummaryState[];

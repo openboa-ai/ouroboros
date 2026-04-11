@@ -141,6 +141,7 @@
 - keep `event_time` as the semantic time in the entry; UTC-hour partitioning is only the filesystem/storage rule
 - immutable source-body blobs should also be surfaced as workspace documents so collection evidence can be inspected through the same service-owned catalog
 - source entries should also be surfaced as first-class workspace documents rather than staying only as lines inside `entries.ndjson`
+- live state documents should also be surfaced as first-class workspace documents so dashboard, decision, memory, position, and order state can be inspected through the same service-owned catalog
 - blob workspace documents should backlink to the owning collection manifest and entry shard
 - blob workspace documents should also backlink to entry documents so source inspection can traverse collection -> entry -> blob
 - legacy collection indexes should be normalized into the canonical `items` shape and canonical relative refs during boot so older workspaces keep loading

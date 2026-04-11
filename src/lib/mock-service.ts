@@ -337,6 +337,11 @@ function buildOperations(): OperationSummaryState[] {
 
 function buildLiveContext(): LiveContextState {
   return {
+    dashboardRef: `${WORKSPACE_ROOT}/state/dashboard.json`,
+    decisionsRef: `${WORKSPACE_ROOT}/state/decisions.json`,
+    memoryRef: `${WORKSPACE_ROOT}/state/live-memory.json`,
+    positionsRef: `${WORKSPACE_ROOT}/state/positions.json`,
+    ordersRef: `${WORKSPACE_ROOT}/state/orders.json`,
     memoryNotes: liveMemoryState.notes.map((note) => note.summary),
     sessions: sessionsState.sessions.map((session) => ({
       id: session.session_id,
@@ -402,6 +407,41 @@ function buildDocumentCatalog(
       label: "live lane",
       description: "Active live lane refs, state pointers, and runtime mode.",
       pathRef: `${WORKSPACE_ROOT}/live/live-lane.json`
+    },
+    {
+      id: "live-dashboard",
+      category: "active",
+      label: "dashboard state",
+      description: "Current dashboard-facing live state surfaced through the service boundary.",
+      pathRef: `${WORKSPACE_ROOT}/state/dashboard.json`
+    },
+    {
+      id: "live-decisions",
+      category: "active",
+      label: "decision log",
+      description: "Recent live trading decisions and interventions that remain part of the exportable context.",
+      pathRef: `${WORKSPACE_ROOT}/state/decisions.json`
+    },
+    {
+      id: "live-memory",
+      category: "active",
+      label: "working memory",
+      description: "Live working-memory notes currently shaping trading behavior.",
+      pathRef: `${WORKSPACE_ROOT}/state/live-memory.json`
+    },
+    {
+      id: "live-positions",
+      category: "active",
+      label: "positions state",
+      description: "Current live positions plus event history for replay and audit.",
+      pathRef: `${WORKSPACE_ROOT}/state/positions.json`
+    },
+    {
+      id: "live-orders",
+      category: "active",
+      label: "orders state",
+      description: "Current live orders plus event history for replay and audit.",
+      pathRef: `${WORKSPACE_ROOT}/state/orders.json`
     },
     {
       id: "current-checkpoint",
@@ -597,6 +637,18 @@ function buildDocumentBacklinks(
 
   if (state.assetInspector.liveLaneRef === documentRef) {
     pushBacklink("strategy.json", state.assetInspector.strategyRef, "entrypoint", "active.live_lane_ref");
+  }
+  const activeStateRefs = [
+    [state.liveContext.dashboardRef, "state_refs.dashboard_ref"],
+    [state.liveContext.decisionsRef, "state_refs.decisions_ref"],
+    [state.liveContext.memoryRef, "state_refs.memory_ref"],
+    [state.liveContext.positionsRef, "state_refs.positions_ref"],
+    [state.liveContext.ordersRef, "state_refs.orders_ref"]
+  ] as const;
+  for (const [pathRef, reason] of activeStateRefs) {
+    if (pathRef === documentRef) {
+      pushBacklink("live lane", state.assetInspector.liveLaneRef, "active", reason);
+    }
   }
   if (state.assetInspector.currentCheckpointRef === documentRef) {
     pushBacklink(
@@ -1782,6 +1834,21 @@ class MockWorkspaceService implements WorkspaceService {
     }
     if (documentRef === `${WORKSPACE_ROOT}/live/live-lane.json`) {
       return JSON.stringify(liveLane, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/state/dashboard.json`) {
+      return JSON.stringify(dashboardTemplate, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/state/decisions.json`) {
+      return JSON.stringify(decisionsState, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/state/live-memory.json`) {
+      return JSON.stringify(liveMemoryTemplate, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/state/orders.json`) {
+      return JSON.stringify(ordersState, null, 2);
+    }
+    if (documentRef === `${WORKSPACE_ROOT}/state/positions.json`) {
+      return JSON.stringify(positionsState, null, 2);
     }
     if (documentRef === `${WORKSPACE_ROOT}/exports/policy.json`) {
       return JSON.stringify(exportPolicyTemplate, null, 2);

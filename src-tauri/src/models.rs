@@ -452,6 +452,11 @@ pub struct LiveEvaluationSummaryState {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveContextState {
+    pub dashboard_ref: String,
+    pub decisions_ref: String,
+    pub memory_ref: String,
+    pub positions_ref: String,
+    pub orders_ref: String,
     pub memory_notes: Vec<String>,
     pub sessions: Vec<LiveSessionState>,
     pub evaluation_summaries: Vec<LiveEvaluationSummaryState>,

@@ -106,6 +106,11 @@ impl WorkspaceRepository {
         let document_catalog = self.build_document_catalog(
             &strategy_path,
             &live_lane_path,
+            &dashboard_path,
+            &decisions_path,
+            &memory_path,
+            &positions_path,
+            &orders_path,
             &export_policy_path,
             &current_checkpoint_path,
             &checkpoints_index_path,
@@ -162,6 +167,11 @@ impl WorkspaceRepository {
                 session_count: sessions_count,
             },
             live_context: LiveContextState {
+                dashboard_ref: self.display_path(&dashboard_path),
+                decisions_ref: self.display_path(&decisions_path),
+                memory_ref: self.display_path(&memory_path),
+                positions_ref: self.display_path(&positions_path),
+                orders_ref: self.display_path(&orders_path),
                 memory_notes: live_memory
                     .notes
                     .into_iter()
@@ -2037,6 +2047,11 @@ impl WorkspaceRepository {
         &self,
         strategy_path: &Path,
         live_lane_path: &Path,
+        dashboard_path: &Path,
+        decisions_path: &Path,
+        memory_path: &Path,
+        positions_path: &Path,
+        orders_path: &Path,
         export_policy_path: &Path,
         current_checkpoint_path: &Path,
         checkpoints_index_path: &Path,
@@ -2066,6 +2081,41 @@ impl WorkspaceRepository {
                 label: "live lane".into(),
                 description: "Active live lane refs, state pointers, and runtime mode.".into(),
                 path_ref: self.display_path(live_lane_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-dashboard".into(),
+                category: "active".into(),
+                label: "dashboard state".into(),
+                description: "Current dashboard-facing live state surfaced through the service boundary.".into(),
+                path_ref: self.display_path(dashboard_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-decisions".into(),
+                category: "active".into(),
+                label: "decision log".into(),
+                description: "Recent live trading decisions and interventions that remain part of the exportable context.".into(),
+                path_ref: self.display_path(decisions_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-memory".into(),
+                category: "active".into(),
+                label: "working memory".into(),
+                description: "Live working-memory notes currently shaping trading behavior.".into(),
+                path_ref: self.display_path(memory_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-positions".into(),
+                category: "active".into(),
+                label: "positions state".into(),
+                description: "Current live positions plus event history for replay and audit.".into(),
+                path_ref: self.display_path(positions_path),
+            },
+            WorkspaceCatalogEntryState {
+                id: "live-orders".into(),
+                category: "active".into(),
+                label: "orders state".into(),
+                description: "Current live orders plus event history for replay and audit.".into(),
+                path_ref: self.display_path(orders_path),
             },
             WorkspaceCatalogEntryState {
                 id: "current-checkpoint".into(),
@@ -2330,6 +2380,22 @@ impl WorkspaceRepository {
                 "entrypoint".into(),
                 "active.live_lane_ref".into(),
             );
+        }
+        for (path_ref, reason) in [
+            (&bootstrap.live_context.dashboard_ref, "state_refs.dashboard_ref"),
+            (&bootstrap.live_context.decisions_ref, "state_refs.decisions_ref"),
+            (&bootstrap.live_context.memory_ref, "state_refs.memory_ref"),
+            (&bootstrap.live_context.positions_ref, "state_refs.positions_ref"),
+            (&bootstrap.live_context.orders_ref, "state_refs.orders_ref"),
+        ] {
+            if self.document_ref_matches_target(path_ref, &target_ref, &target_path) {
+                push_backlink(
+                    "live lane".into(),
+                    bootstrap.asset_inspector.live_lane_ref.clone(),
+                    "active".into(),
+                    reason.into(),
+                );
+            }
         }
         if self.document_ref_matches_target(
             &bootstrap.asset_inspector.current_checkpoint_ref,
@@ -4101,6 +4167,43 @@ mod tests {
                 .any(|backlink| backlink.reason == "active.live_lane_ref"),
             "live lane document should report a backlink from strategy.json"
         );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_bootstrap_state_promotes_live_state_documents_into_catalog() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
+
+        for (path_ref, expected_id) in [
+            (&bootstrap.live_context.dashboard_ref, "live-dashboard"),
+            (&bootstrap.live_context.decisions_ref, "live-decisions"),
+            (&bootstrap.live_context.memory_ref, "live-memory"),
+            (&bootstrap.live_context.positions_ref, "live-positions"),
+            (&bootstrap.live_context.orders_ref, "live-orders"),
+        ] {
+            assert!(
+                bootstrap
+                    .document_catalog
+                    .iter()
+                    .any(|item| item.id == expected_id && item.path_ref == *path_ref),
+                "{expected_id} should be promoted into the workspace document catalog"
+            );
+
+            let document = repo
+                .load_workspace_document(path_ref)
+                .expect("live state workspace document");
+            assert!(
+                document
+                    .backlinks
+                    .iter()
+                    .any(|backlink| backlink.path_ref == bootstrap.asset_inspector.live_lane_ref),
+                "{expected_id} should backlink to the live lane"
+            );
+        }
 
         let _ = fs::remove_dir_all(&root);
     }

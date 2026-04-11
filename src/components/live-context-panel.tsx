@@ -8,6 +8,39 @@ type LiveContextPanelProps = {
 };
 
 export function LiveContextPanel({ liveContext, onOpenDocument }: LiveContextPanelProps) {
+  const stateDocuments = [
+    {
+      id: "dashboard",
+      label: "Dashboard state",
+      pathRef: liveContext.dashboardRef,
+      description: "Live dashboard metrics, chart series, and automation status."
+    },
+    {
+      id: "decisions",
+      label: "Decision log",
+      pathRef: liveContext.decisionsRef,
+      description: "Recent live decisions, interventions, and rationale summaries."
+    },
+    {
+      id: "memory",
+      label: "Working memory",
+      pathRef: liveContext.memoryRef,
+      description: "Mutable memory notes actively shaping the live trading path."
+    },
+    {
+      id: "positions",
+      label: "Positions state",
+      pathRef: liveContext.positionsRef,
+      description: "Current positions plus position event history."
+    },
+    {
+      id: "orders",
+      label: "Orders state",
+      pathRef: liveContext.ordersRef,
+      description: "Current orders plus order event history."
+    }
+  ] as const;
+
   return (
     <Card
       title="Live Context"
@@ -19,6 +52,26 @@ export function LiveContextPanel({ liveContext, onOpenDocument }: LiveContextPan
           <Badge tone="warning">{liveContext.orderEventCount} order events</Badge>
           <Badge tone="neutral">{liveContext.sessions.length} live sessions</Badge>
         </div>
+
+        <section className="space-y-2">
+          <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Live state docs</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {stateDocuments.map((document) => (
+              <button
+                key={document.id}
+                type="button"
+                onClick={() => onOpenDocument(`live-state:${document.id}`, document.pathRef)}
+                className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.05]"
+              >
+                <p className="text-sm font-medium text-ink-50">{document.label}</p>
+                <p className="mt-1 text-xs leading-5 text-ink-300">{document.description}</p>
+                <p className="mt-2 break-all text-[11px] leading-5 text-ink-400">
+                  {document.pathRef}
+                </p>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <section className="space-y-2">
           <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Working memory</h3>
