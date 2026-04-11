@@ -125,3 +125,10 @@
 - Replaced the Tauri in-memory demo state with a workspace-backed repository layer that seeds `var/dev-workspace/` from the strategy-workspace template.
 - Added live workspace files for dashboard context, decision history, and richer sample positions/orders so the scaffold now reads real JSON asset state rather than hard-coded Rust seed data.
 - Added checkpoint snapshot materialization and export-bundle generation paths so incident/export commands now create actual files under the workspace instead of only mutating UI memory.
+
+## 2026-04-11
+
+- Split the mock workspace service into `template-store`, `builders`, `document-content`, and `service` modules so the browser fallback now mirrors the backend's workspace/service boundaries instead of keeping one giant in-memory façade.
+- Extracted workspace file-format contracts and pure helper functions into `src-tauri/src/workspace/contracts.rs` and `src-tauri/src/workspace/helpers.rs`, reducing the amount of structural and utility code mixed into the repository coordinator.
+- Extracted workspace bootstrap/read assembly into `src-tauri/src/workspace/bootstrap.rs` so live dashboard bootstrap state, export-inspector assembly, and current-checkpoint resolution no longer sit inline with mutation and normalization logic.
+- Extracted workspace path and JSON/NDJSON IO helpers into `src-tauri/src/workspace/paths.rs`, keeping `workspace.rs` focused on lifecycle/materialization responsibilities rather than also owning every filesystem address rule.
