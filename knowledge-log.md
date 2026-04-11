@@ -140,3 +140,4 @@
 - Split the frontend service contract into `common`, `workspace`, `bootstrap`, and `service` modules and mirrored the same boundary on the Rust side with `models/dashboard.rs` and `models/workspace.rs`, shrinking the shared contract roots into thin barrels instead of one cross-cutting type file per runtime.
 - Split backend workspace mutations into `sources`, `imports`, `exports`, and `live` submodules so ingestion, import activation, export flows, and live control mutations no longer share one write-heavy file.
 - Split backend workspace catalog logic into dedicated `build` and `backlinks` submodules, keeping catalog materialization and document-reference resolution isolated instead of mixing both read paths in one module.
+- Split backend workspace lifecycle into `prepare` and `snapshots` submodules so workspace normalization/materialization and checkpoint/export/restore mechanics no longer sit in one monolithic lifecycle file.
