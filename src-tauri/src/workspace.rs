@@ -701,7 +701,7 @@ impl WorkspaceRepository {
             time_range,
             entry_count: entries.len(),
             content_hash: collection_content_hash,
-            path_ref: format!("./items/{collection_id}/collection.json"),
+            path_ref: format!("../collections/items/{collection_id}/collection.json"),
         };
 
         match existing_index {
@@ -1166,6 +1166,27 @@ impl WorkspaceRepository {
             self.write_json_path(&strategy_path, &strategy)?;
         }
 
+        let collections_index_path =
+            self.resolve_ref(&strategy_path, &strategy.indexes.collections_ref);
+        if collections_index_path.exists() {
+            self.normalize_collections_index_file(&collections_index_path)?;
+            let mut collections_index =
+                self.read_json_path::<CollectionsIndexFile>(&collections_index_path)?;
+            let mut collections_dirty = false;
+            for collection in &mut collections_index.items {
+                let desired_path_ref =
+                    format!("../collections/items/{}/collection.json", collection.collection_id);
+                if collection.path_ref != desired_path_ref {
+                    collection.path_ref = desired_path_ref;
+                    collections_dirty = true;
+                }
+            }
+
+            if collections_dirty {
+                self.write_json_path(&collections_index_path, &collections_index)?;
+            }
+        }
+
         for checkpoint in &checkpoints_index.items {
             let snapshot_root = self
                 .root
@@ -1176,9 +1197,31 @@ impl WorkspaceRepository {
             if !snapshot_root.exists() {
                 self.materialize_checkpoint_snapshot(checkpoint)?;
             }
+
+            let snapshot_collections_index_path = snapshot_root.join("indexes/collections.json");
+            if snapshot_collections_index_path.exists() {
+                self.normalize_collections_index_file(&snapshot_collections_index_path)?;
+            }
         }
 
         self.materialize_live_context_documents()?;
+
+        Ok(())
+    }
+
+    fn normalize_collections_index_file(&self, path: &Path) -> Result<(), String> {
+        if !path.exists() {
+            return Ok(());
+        }
+
+        let raw = fs::read_to_string(path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        let collections_index = self.read_json_path::<CollectionsIndexFile>(path)?;
+        let needs_rewrite = raw.contains("\"collections\"") || !raw.contains("\"items\"");
+
+        if needs_rewrite {
+            self.write_json_path(path, &collections_index)?;
+        }
 
         Ok(())
     }
@@ -1957,6 +2000,7 @@ impl WorkspaceRepository {
                 path_ref: self.display_path(eval_summaries_path),
             },
         ];
+        let mut indexed_blob_ids = BTreeSet::new();
 
         for session in &sessions.sessions {
             let session_id = session
@@ -2020,6 +2064,11 @@ impl WorkspaceRepository {
             let entry_shard_path = collection_record
                 .as_ref()
                 .map(|record| self.resolve_ref(&collection_path, &record.entry_shard_ref));
+            let entry_records = entry_shard_path
+                .as_ref()
+                .filter(|path| path.exists())
+                .and_then(|path| self.read_ndjson_path::<CollectionEntryFile>(path).ok())
+                .unwrap_or_default();
 
             items.push(WorkspaceCatalogEntryState {
                 id: format!("collection-{}", collection.collection_id),
@@ -2040,6 +2089,29 @@ impl WorkspaceRepository {
                     description: "Append-friendly NDJSON shard backing this source collection."
                         .into(),
                     path_ref: self.display_path(&entry_shard_path),
+                });
+            }
+
+            for entry in entry_records {
+                let Some(blob_ref) = entry.blob_ref else {
+                    continue;
+                };
+                if !indexed_blob_ids.insert(blob_ref.clone()) {
+                    continue;
+                }
+
+                items.push(WorkspaceCatalogEntryState {
+                    id: format!("blob-{}", blob_ref.replace(':', "-")),
+                    category: "blob".into(),
+                    label: format!(
+                        "{} body {}",
+                        collection.source_ref,
+                        short_blob_label(&blob_ref)
+                    ),
+                    description: entry.preview.unwrap_or_else(|| {
+                        "Immutable source body referenced by collection entries.".into()
+                    }),
+                    path_ref: self.display_path(&self.blob_path(&blob_ref)),
                 });
             }
         }
@@ -2226,6 +2298,48 @@ impl WorkspaceRepository {
                     "operation".into(),
                     "operation related ref".into(),
                 );
+            }
+        }
+
+        if let Ok(collections_index) =
+            self.read_json_path::<CollectionsIndexFile>(&self.root.join("indexes/collections.json"))
+        {
+            for collection in &collections_index.items {
+                let collection_path =
+                    self.resolve_ref(&self.root.join("indexes/collections.json"), &collection.path_ref);
+                let Ok(collection_record) =
+                    self.read_json_path::<CollectionRecordFile>(&collection_path)
+                else {
+                    continue;
+                };
+                let entry_shard_path =
+                    self.resolve_ref(&collection_path, &collection_record.entry_shard_ref);
+                let Ok(entries) = self.read_ndjson_path::<CollectionEntryFile>(&entry_shard_path) else {
+                    continue;
+                };
+
+                for entry in entries {
+                    let Some(blob_ref) = entry.blob_ref else {
+                        continue;
+                    };
+                    let blob_path = self.blob_path(&blob_ref);
+                    if !paths_match(&blob_path, &target_path) {
+                        continue;
+                    }
+
+                    push_backlink(
+                        format!("{} · {}", collection.source_ref, collection.time_bucket),
+                        self.display_path(&collection_path),
+                        "collection".into(),
+                        "collection manifest references blob".into(),
+                    );
+                    push_backlink(
+                        format!("{} entry shard", collection.source_ref),
+                        self.display_path(&entry_shard_path),
+                        "collection".into(),
+                        "entry shard references blob".into(),
+                    );
+                }
             }
         }
 
@@ -2731,6 +2845,7 @@ struct SessionsIndexFile {
 
 #[derive(Clone, Deserialize, Serialize)]
 struct CollectionsIndexFile {
+    #[serde(default, alias = "collections")]
     items: Vec<CollectionIndexItemFile>,
 }
 
@@ -3051,6 +3166,16 @@ fn short_alias_suffix() -> String {
         .collect()
 }
 
+fn short_blob_label(blob_id: &str) -> String {
+    blob_id
+        .split(':')
+        .nth(1)
+        .unwrap_or(blob_id)
+        .chars()
+        .take(12)
+        .collect()
+}
+
 fn now_label() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -3090,6 +3215,10 @@ fn checkpoint_id_from_ref(reference: &str) -> Option<String> {
 
 fn canonicalize_or_clone(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn paths_match(left: &Path, right: &Path) -> bool {
+    canonicalize_or_clone(left) == canonicalize_or_clone(right)
 }
 
 fn search_excerpt(content: &str, query: &str) -> Option<String> {
@@ -3368,6 +3497,25 @@ mod tests {
 
         let blob_path = repo.blob_path(result.blob_id.as_deref().expect("blob id"));
         assert!(blob_path.exists(), "blob should be persisted");
+
+        let bootstrap = repo.load_bootstrap_state().expect("bootstrap after ingest");
+        assert!(
+            bootstrap
+                .document_catalog
+                .iter()
+                .any(|document| document.path_ref == repo.display_path(&blob_path) && document.category == "blob"),
+            "blob should be promoted into the workspace document catalog"
+        );
+        let blob_document = repo
+            .load_workspace_document(&repo.display_path(&blob_path))
+            .expect("blob document detail");
+        assert!(
+            blob_document
+                .backlinks
+                .iter()
+                .any(|backlink| backlink.reason == "entry shard references blob"),
+            "blob document should backlink to the owning entry shard"
+        );
 
         let collections_index = repo
             .read_json_path::<CollectionsIndexFile>(&root.join("indexes/collections.json"))

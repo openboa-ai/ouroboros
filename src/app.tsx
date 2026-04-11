@@ -368,20 +368,7 @@ export function App() {
     });
   }
 
-  const workspaceDocuments: WorkspaceCatalogEntry[] = [
-    ...state.documentCatalog,
-    ...(selectedBlobDetail
-      ? [
-          {
-            id: "selected-blob",
-            category: "blob" as const,
-            label: "selected blob",
-            description: "Immutable source body resolved from the selected entry.",
-            pathRef: selectedBlobDetail.blobPathRef
-          }
-        ]
-      : [])
-  ];
+  const workspaceDocuments: WorkspaceCatalogEntry[] = state.documentCatalog;
 
   return (
     <AppShell
@@ -611,15 +598,19 @@ export function App() {
           </Card>
         </div>
 
-        <CollectionsPanel
-          collections={state.collections}
-          selectedCollectionId={selectedCollectionId}
-          collectionDetail={selectedCollectionDetail}
-          selectedBlobId={selectedBlobId}
-          blobDetail={selectedBlobDetail}
-          onSelectCollection={setSelectedCollectionId}
-          onSelectBlob={setSelectedBlobId}
-        />
+          <CollectionsPanel
+            collections={state.collections}
+            selectedCollectionId={selectedCollectionId}
+            collectionDetail={selectedCollectionDetail}
+            selectedBlobId={selectedBlobId}
+            blobDetail={selectedBlobDetail}
+            onSelectCollection={setSelectedCollectionId}
+            onSelectBlob={setSelectedBlobId}
+            onOpenWorkspaceDocument={(documentRef) => {
+              setSelectedDocumentId(`ref:${documentRef}`);
+              setSelectedDocumentRef(documentRef);
+            }}
+          />
 
         <ImportsPanel
           imports={state.imports}

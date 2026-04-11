@@ -506,6 +506,25 @@ function buildDocumentCatalog(
     ])
   );
 
+  const blobEntries = new Map<string, WorkspaceCatalogEntry>();
+  for (const collection of collectionsState.items) {
+    const entries = entriesByCollection[collection.collection_id] ?? [];
+    for (const entry of entries) {
+      if (!entry.blob_ref || blobEntries.has(entry.blob_ref)) {
+        continue;
+      }
+
+      blobEntries.set(entry.blob_ref, {
+        id: `blob-${entry.blob_ref.replace(":", "-")}`,
+        category: "blob",
+        label: `${collection.source_ref} body ${entry.blob_ref.split(":")[1]?.slice(0, 12) ?? entry.blob_ref}`,
+        description: entry.preview ?? "Immutable source body referenced by collection entries.",
+        pathRef: `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt`
+      });
+    }
+  }
+  items.push(...blobEntries.values());
+
   items.push(
     ...importsState.items.flatMap((item) => [
       {
@@ -642,6 +661,35 @@ function buildDocumentBacklinks(
           ? "collection entry shard"
           : "collection catalog entry"
       );
+    }
+
+    if (document.category === "blob") {
+      for (const collection of collectionsState.items) {
+        const collectionRef = `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/collection.json`;
+        const entryShardRef = `${WORKSPACE_ROOT}/collections/items/${collection.collection_id}/entries.ndjson`;
+        const entries = entriesByCollection[collection.collection_id] ?? [];
+        const linked = entries.some(
+          (entry) =>
+            entry.blob_ref &&
+            `${WORKSPACE_ROOT}/blobs/${entry.blob_ref.replace(":", "/")}.txt` === documentRef
+        );
+        if (!linked) {
+          continue;
+        }
+
+        pushBacklink(
+          `${collection.source_ref} · ${collection.time_bucket}`,
+          collectionRef,
+          "collection",
+          "collection manifest references blob"
+        );
+        pushBacklink(
+          `${collection.source_ref} entry shard`,
+          entryShardRef,
+          "collection",
+          "entry shard references blob"
+        );
+      }
     }
 
     if (document.id.startsWith("import-")) {
@@ -1486,7 +1534,7 @@ class MockWorkspaceService implements WorkspaceService {
         time_range: nextTimeRange,
         entry_count: 1,
         content_hash: blobId,
-        path_ref: `./items/${collectionId}/collection.json`
+        path_ref: `../collections/items/${collectionId}/collection.json`
       });
     }
 

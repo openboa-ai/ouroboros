@@ -11,7 +11,7 @@
       },
       "entry_count": 3,
       "content_hash": "sha256:1f719ecdfb7c6dbb43a6b4509a3c70fa18cfdb5f9ae53d66cfd9210963418b22",
-      "path_ref": "./items/019626b0-4d0a-7a72-9b4e-9d8e11d0f901/collection.json"
+      "path_ref": "../collections/items/019626b0-4d0a-7a72-9b4e-9d8e11d0f901/collection.json"
     },
     {
       "collection_id": "019626b6-c73a-7fe6-b0a5-64ac631d5102",
@@ -24,7 +24,7 @@
       },
       "entry_count": 2,
       "content_hash": "sha256:5270461bbdfe6faaf03bf7af6f5c402414f219d4b1847f5d111f2132a6f5d0fe",
-      "path_ref": "./items/019626b6-c73a-7fe6-b0a5-64ac631d5102/collection.json"
+      "path_ref": "../collections/items/019626b6-c73a-7fe6-b0a5-64ac631d5102/collection.json"
     }
   ]
 }

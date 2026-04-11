@@ -139,6 +139,9 @@
 - avoid mixing both `.jsonl` and `.ndjson`; standardize on `.ndjson`
 - use `UTC hour` as the uniform storage partition across sources
 - keep `event_time` as the semantic time in the entry; UTC-hour partitioning is only the filesystem/storage rule
+- immutable source-body blobs should also be surfaced as workspace documents so collection evidence can be inspected through the same service-owned catalog
+- blob workspace documents should backlink to the owning collection manifest and entry shard
+- legacy collection indexes should be normalized into the canonical `items` shape and canonical relative refs during boot so older workspaces keep loading
 
 ## Research Threads Used
 

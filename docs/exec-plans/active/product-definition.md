@@ -88,10 +88,12 @@ These decisions are current, not final.
 - The desktop client should obtain its workspace-document browser/catalog from the service layer rather than hard-coding workspace file paths into the UI.
 - Live sessions and evaluation summaries should be materialized as addressable workspace documents rather than staying only as inline labels inside dashboard state.
 - Those live-evidence documents should appear in the service-owned workspace document catalog so inspection continues to flow through the service boundary.
+- Source-body blobs should also be promoted into the same workspace document catalog so collection evidence can be inspected through the service path instead of ad-hoc file reads.
 - Workspace document inspection should surface backlinks through the service layer so the asset remains explorable as a graph instead of a flat file list.
 - Staged imports should not only be inspectable; they should also be diffable against the current live workspace through the service boundary.
 - Staged imports should also be activatable as the next live workspace through the service boundary instead of forcing the client to mutate workspace files directly.
 - Staged import activation should remain preflight-gated by the service layer so unsanitized bundles, missing entrypoints, or missing live-state refs block activation before the live workspace is modified.
+- Workspace normalization should repair legacy collection-index shapes and relative refs so older workspaces still boot under the canonical contract.
 - Collection manifests, entry shards, staged import manifests, and staged import bundle manifests should be emitted by the backend workspace catalog so the client does not synthesize asset documents on its own.
 - Durable operation records should also be addressable workspace documents, and operation drill-down should resolve linked workspace refs through the same service-owned catalog.
 - Workspace search should run through the service layer and be able to match both document metadata and document content.
@@ -227,6 +229,7 @@ These decisions are current, not final.
   - a live-centered export bundle under `exports/generated/<checkpoint_id>/`
 - Sanitized export bundles should also be stageable back into the workspace under `imports/items/<import_id>/` without mutating the active live lane.
 - Source ingestion should materialize source-centered `collection` shards and immutable `blob` bodies through the same workspace/service contract.
+- The canonical collection index path should resolve from `indexes/collections.json` to `../collections/items/<collection_id>/collection.json`.
 - Service-layer mutations should also append durable operation records under:
   - `operations/index.json`
   - `operations/items/<operation_id>.json`

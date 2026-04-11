@@ -14,6 +14,7 @@ type CollectionsPanelProps = {
   blobDetail: BlobDetailState | null;
   onSelectCollection: (collectionId: string) => void;
   onSelectBlob: (blobId: string | null) => void;
+  onOpenWorkspaceDocument: (documentRef: string) => void;
 };
 
 export function CollectionsPanel({
@@ -22,6 +23,7 @@ export function CollectionsPanel({
   collectionDetail,
   onSelectCollection,
   onSelectBlob,
+  onOpenWorkspaceDocument,
   selectedBlobId,
   selectedCollectionId
 }: CollectionsPanelProps) {
@@ -80,8 +82,16 @@ export function CollectionsPanel({
             </div>
 
             <dl className="space-y-3 text-sm">
-              <CollectionRow label="Collection ref" value={collectionDetail.collectionRef} />
-              <CollectionRow label="Entry shard" value={collectionDetail.entryShardRef} />
+              <CollectionRow
+                label="Collection ref"
+                value={collectionDetail.collectionRef}
+                onOpen={onOpenWorkspaceDocument}
+              />
+              <CollectionRow
+                label="Entry shard"
+                value={collectionDetail.entryShardRef}
+                onOpen={onOpenWorkspaceDocument}
+              />
               <CollectionRow label="Content hash" value={collectionDetail.contentHash} />
             </dl>
 
@@ -92,7 +102,12 @@ export function CollectionsPanel({
                   <button
                     key={entry.id}
                     type="button"
-                    onClick={() => onSelectBlob(entry.blobRef ?? null)}
+                    onClick={() => {
+                      onSelectBlob(entry.blobRef ?? null);
+                      if (entry.blobPathRef) {
+                        onOpenWorkspaceDocument(entry.blobPathRef);
+                      }
+                    }}
                     className={[
                       "w-full rounded-2xl border px-3 py-3 text-left transition",
                       entry.blobRef && entry.blobRef === selectedBlobId
@@ -134,11 +149,27 @@ export function CollectionsPanel({
   );
 }
 
-function CollectionRow({ label, value }: { label: string; value: string }) {
+function CollectionRow({
+  label,
+  value,
+  onOpen
+}: {
+  label: string;
+  value: string;
+  onOpen?: (documentRef: string) => void;
+}) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
       <dt className="text-[11px] uppercase tracking-[0.18em] text-ink-300">{label}</dt>
-      <dd className="mt-2 break-all text-sm leading-6 text-ink-50">{value}</dd>
+      <dd className="mt-2 break-all text-sm leading-6 text-ink-50">
+        {onOpen ? (
+          <button type="button" onClick={() => onOpen(value)} className="text-left hover:text-accent-teal">
+            {value}
+          </button>
+        ) : (
+          value
+        )}
+      </dd>
     </div>
   );
 }
