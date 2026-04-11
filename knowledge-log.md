@@ -102,6 +102,7 @@
 - Replaced the hardcoded sample-source action with a real source-ingest panel and surfaced asynchronous detail-loader failures through client-visible service alerts so workspace browsing errors are no longer silent.
 - Added a bundle-import panel that stages sanitized exports from an explicit bundle ref instead of only supporting the latest local export button path.
 - Added explicit checkpoint export support so any existing checkpoint can materialize its own sanitized bundle instead of limiting exports to fresh live export checkpoints.
+- Surfaced evaluation-summary evidence refs directly in the live context panel so the client can jump from live summaries into service-owned supporting documents without relying on raw filesystem access.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
 - Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.

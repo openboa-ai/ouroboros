@@ -111,18 +111,42 @@ export function LiveContextPanel({ liveContext, onOpenDocument }: LiveContextPan
           <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Evaluation summaries</h3>
           <div className="space-y-2">
             {liveContext.evaluationSummaries.map((summary) => (
-              <button
+              <div
                 key={summary.id}
-                type="button"
-                onClick={() => onOpenDocument(`evaluation:${summary.id}`, summary.pathRef)}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-white/20 hover:bg-white/[0.05]"
+                className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3"
               >
-                <p className="text-sm font-medium text-ink-50">{summary.headline}</p>
-                <p className="mt-1 text-xs leading-5 text-ink-300">{summary.createdAt}</p>
-                <p className="mt-2 text-xs leading-5 text-ink-300">
-                  {summary.evidenceRefs.length} evidence refs attached
-                </p>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenDocument(`evaluation:${summary.id}`, summary.pathRef)}
+                  className="w-full text-left transition hover:text-accent-teal"
+                >
+                  <p className="text-sm font-medium text-ink-50">{summary.headline}</p>
+                  <p className="mt-1 text-xs leading-5 text-ink-300">{summary.createdAt}</p>
+                  <p className="mt-2 text-xs leading-5 text-ink-300">
+                    {summary.evidenceRefs.length} evidence refs attached
+                  </p>
+                </button>
+
+                {summary.evidenceRefs.length > 0 ? (
+                  <div className="mt-3 grid gap-2">
+                    {summary.evidenceRefs.slice(0, 4).map((evidenceRef) => (
+                      <button
+                        key={`${summary.id}:${evidenceRef}`}
+                        type="button"
+                        onClick={() => onOpenDocument(`evaluation-evidence:${summary.id}`, evidenceRef)}
+                        className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-xs leading-5 text-ink-100 transition hover:border-white/20 hover:bg-white/[0.05]"
+                      >
+                        {evidenceRef}
+                      </button>
+                    ))}
+                    {summary.evidenceRefs.length > 4 ? (
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-ink-300">
+                        +{summary.evidenceRefs.length - 4} more evidence refs
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         </section>
