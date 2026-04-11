@@ -107,6 +107,7 @@
 - Updated service mutations to auto-select the latest operation trace after workspace-changing commands so client actions stay attached to service-owned audit documents instead of only updating visual state.
 - Added a non-destructive workspace refresh path with background polling so the live client can keep pulling service-owned state without resetting the currently inspected detail surfaces on every sync.
 - Updated the background refresh loop to rehydrate selected checkpoint, collection, import, blob, operation, and document details so open inspector surfaces do not go stale while the live workspace keeps syncing.
+- Split workspace mutation commands into a dedicated client hook so action policy and service-owned mutation flows are no longer mixed into the selection/detail controller.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
 - Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.

@@ -7,13 +7,14 @@ import type {
   CollectionDetailState,
   ImportDetailState,
   ImportComparisonState,
-  IngestSourceEntryInput,
   OperationDetailState,
   WorkspaceCatalogEntry,
   WorkspaceDocumentState,
   WorkspaceSearchResultState
 } from "../lib/service-contract";
 import { workspaceService } from "../lib/service-gateway";
+import type { ApplyNextStateOptions } from "./workspace-controller-types";
+import { useWorkspaceActions } from "./use-workspace-actions";
 
 export function useWorkspaceController() {
   const refreshInFlightRef = useRef(false);
@@ -54,10 +55,6 @@ export function useWorkspaceController() {
   const [detailErrors, setDetailErrors] = useState<Record<string, string | null>>({});
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
-  function errorMessage(error: unknown) {
-    return error instanceof Error ? error.message : String(error);
-  }
-
   function setDetailError(scope: string, message: string | null) {
     startTransition(() => {
       setDetailErrors((current) => ({
@@ -69,15 +66,7 @@ export function useWorkspaceController() {
 
   function applyNextState(
     nextState: BootstrapState,
-    options?: {
-      selectedCheckpointId?: string | null;
-      selectedCollectionId?: string | null;
-      selectedImportId?: string | null;
-      selectedOperationId?: string | null;
-      selectedDocumentId?: string | null;
-      selectedDocumentRef?: string | null;
-      preserveDetailState?: boolean;
-    }
+    options?: ApplyNextStateOptions
   ) {
     const preserveDetailState = options?.preserveDetailState ?? false;
     const nextCheckpointId =
@@ -154,21 +143,13 @@ export function useWorkspaceController() {
     });
   }
 
-  function latestOperationSelection(nextState: BootstrapState) {
-    return nextState.operations[0]?.id ?? null;
-  }
-
-  function latestOperationDocumentRef(nextState: BootstrapState) {
-    return nextState.operations[0]?.operationRef ?? nextState.assetInspector.strategyRef;
-  }
-
   async function loadBootstrapState() {
     setBootstrapError(null);
     try {
       const nextState = await workspaceService.getBootstrapState();
       applyNextState(nextState);
     } catch (error) {
-      setBootstrapError(`Failed to boot workspace: ${errorMessage(error)}`);
+      setBootstrapError(`Failed to boot workspace: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -189,9 +170,15 @@ export function useWorkspaceController() {
       }
     } catch (error) {
       if (!options?.silent) {
-        setCommandStatus(`Workspace refresh failed: ${errorMessage(error)}`);
+        setCommandStatus(
+          `Workspace refresh failed: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
-      setBootstrapError((current) => current ?? `Failed to refresh workspace: ${errorMessage(error)}`);
+      setBootstrapError(
+        (current) =>
+          current ??
+          `Failed to refresh workspace: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       refreshInFlightRef.current = false;
     }
@@ -218,8 +205,9 @@ export function useWorkspaceController() {
         if (cancelled) {
           return;
         }
-
-        setBootstrapError(`Failed to boot workspace: ${errorMessage(error)}`);
+        setBootstrapError(
+          `Failed to boot workspace: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     })();
 
@@ -260,7 +248,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("checkpoint", `Checkpoint detail failed: ${errorMessage(error)}`);
+          setDetailError(
+            "checkpoint",
+            `Checkpoint detail failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -307,7 +298,9 @@ export function useWorkspaceController() {
         if (!cancelled) {
           setDetailError(
             "checkpointComparison",
-            `Checkpoint comparison failed: ${errorMessage(error)}`
+            `Checkpoint comparison failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`
           );
         }
       }
@@ -340,7 +333,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("collection", `Collection detail failed: ${errorMessage(error)}`);
+          setDetailError(
+            "collection",
+            `Collection detail failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -375,7 +371,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("import", `Import detail failed: ${errorMessage(error)}`);
+          setDetailError(
+            "import",
+            `Import detail failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -394,7 +393,7 @@ export function useWorkspaceController() {
         if (!cancelled) {
           setDetailError(
             "importComparison",
-            `Import comparison failed: ${errorMessage(error)}`
+            `Import comparison failed: ${error instanceof Error ? error.message : String(error)}`
           );
         }
       }
@@ -434,7 +433,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("blob", `Blob detail failed: ${errorMessage(error)}`);
+          setDetailError(
+            "blob",
+            `Blob detail failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -466,7 +468,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("operation", `Operation detail failed: ${errorMessage(error)}`);
+          setDetailError(
+            "operation",
+            `Operation detail failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -498,7 +503,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("document", `Workspace document failed: ${errorMessage(error)}`);
+          setDetailError(
+            "document",
+            `Workspace document failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -531,7 +539,10 @@ export function useWorkspaceController() {
         });
       } catch (error) {
         if (!cancelled) {
-          setDetailError("search", `Workspace search failed: ${errorMessage(error)}`);
+          setDetailError(
+            "search",
+            `Workspace search failed: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
     })();
@@ -541,24 +552,18 @@ export function useWorkspaceController() {
     };
   }, [workspaceSearchQuery, state]);
 
-  async function runAction(
-    startingStatus: string,
-    action: () => Promise<void>
-  ) {
-    setCommandStatus(startingStatus);
-    try {
-      await action();
-    } catch (error) {
-      setCommandStatus(errorMessage(error));
-    }
-  }
-
   const serviceAlerts = Object.entries(detailErrors)
     .filter(([, message]) => Boolean(message))
     .map(([scope, message]) => ({
       scope,
       message: message as string
     }));
+
+  const actions = useWorkspaceActions({
+    state,
+    setCommandStatus,
+    applyNextState
+  });
 
   return {
     state,
@@ -600,127 +605,6 @@ export function useWorkspaceController() {
       setSelectedDocumentId(documentId);
       setSelectedDocumentRef(pathRef);
     },
-    async flattenAllPositions() {
-      await runAction("Flattening positions...", async () => {
-        const nextState = await workspaceService.flattenAllPositions();
-        applyNextState(nextState, {
-          selectedOperationId: latestOperationSelection(nextState),
-          selectedDocumentId: "latest-operation",
-          selectedDocumentRef: latestOperationDocumentRef(nextState)
-        });
-        setCommandStatus("All positions flattened through the service layer.");
-      });
-    },
-    async pauseGlobalAutomation() {
-      await runAction("Pausing automation...", async () => {
-        const nextState = await workspaceService.pauseGlobalAutomation();
-        applyNextState(nextState, {
-          selectedOperationId: latestOperationSelection(nextState),
-          selectedDocumentId: "latest-operation",
-          selectedDocumentRef: latestOperationDocumentRef(nextState)
-        });
-        setCommandStatus("Global automation paused. Client is now in observer mode.");
-      });
-    },
-    async createExportCheckpoint() {
-      await runAction("Creating export checkpoint...", async () => {
-        const nextState = await workspaceService.createExportCheckpoint();
-        applyNextState(nextState, {
-          selectedOperationId: latestOperationSelection(nextState),
-          selectedDocumentId: "latest-operation",
-          selectedDocumentRef: latestOperationDocumentRef(nextState)
-        });
-        setCommandStatus("Fresh export checkpoint created from the live-centered asset.");
-      });
-    },
-    async stageBundleImport(bundleRef: string) {
-      await runAction(`Staging bundle import from ${bundleRef}...`, async () => {
-        const imported = await workspaceService.importExportBundle(bundleRef);
-        const nextState = await workspaceService.getBootstrapState();
-        applyNextState(nextState, {
-          selectedOperationId: latestOperationSelection(nextState),
-          selectedImportId: imported.importId,
-          selectedDocumentId: "selected-import",
-          selectedDocumentRef: imported.importRef
-        });
-        setCommandStatus(`Bundle import staged from ${bundleRef}.`);
-      });
-    },
-    async ingestSourceEntry(input: IngestSourceEntryInput) {
-      await runAction(`Ingesting source entry for ${input.sourceRef}...`, async () => {
-        const result = await workspaceService.ingestSourceEntry(input);
-        const nextState = await workspaceService.getBootstrapState();
-        applyNextState(nextState, {
-          selectedOperationId: latestOperationSelection(nextState),
-          selectedCollectionId: result.collectionId,
-          selectedDocumentId: "collections-index",
-          selectedDocumentRef: nextState.workspaceIndex.indexes.collectionsRef
-        });
-        setCommandStatus(`Source entry ingested into collection ${result.collectionId}.`);
-      });
-    },
-    async exportCheckpoint(checkpointId: string) {
-      const checkpoint = state?.checkpoints.find((item) => item.id === checkpointId);
-      await runAction(
-        checkpoint ? `Exporting checkpoint ${checkpoint.alias}...` : "Exporting checkpoint...",
-        async () => {
-          const nextState = await workspaceService.exportCheckpoint(checkpointId);
-          applyNextState(nextState, {
-            selectedOperationId: latestOperationSelection(nextState),
-            selectedCheckpointId: checkpointId,
-            selectedDocumentId: "selected-checkpoint",
-            selectedDocumentRef:
-              nextState.checkpoints.find((item) => item.id === checkpointId)?.pathRef ??
-              nextState.assetInspector.currentCheckpointRef
-          });
-          setCommandStatus(
-            checkpoint
-              ? `Checkpoint ${checkpoint.alias} exported as a sanitized bundle.`
-              : "Checkpoint exported as a sanitized bundle."
-          );
-        }
-      );
-    },
-    async restoreCheckpoint(checkpointId: string) {
-      const checkpoint = state?.checkpoints.find((item) => item.id === checkpointId);
-      await runAction(
-        checkpoint ? `Restoring checkpoint ${checkpoint.alias}...` : "Restoring checkpoint...",
-        async () => {
-          const nextState = await workspaceService.restoreCheckpoint(checkpointId);
-          applyNextState(nextState, {
-            selectedOperationId: latestOperationSelection(nextState),
-            selectedDocumentId: "latest-operation",
-            selectedDocumentRef: latestOperationDocumentRef(nextState)
-          });
-          setCommandStatus(
-            checkpoint
-              ? `Live workspace restored from checkpoint ${checkpoint.alias}.`
-              : "Live workspace restored from checkpoint."
-          );
-        }
-      );
-    },
-    async activateImport(importId: string) {
-      const selectedImport = state?.imports.find((item) => item.id === importId);
-      await runAction(
-        selectedImport
-          ? `Activating import ${selectedImport.id} as the live workspace...`
-          : "Activating staged import as the live workspace...",
-        async () => {
-          const nextState = await workspaceService.activateImportAsLive(importId);
-          applyNextState(nextState, {
-            selectedOperationId: latestOperationSelection(nextState),
-            selectedImportId: importId,
-            selectedDocumentId: "strategy",
-            selectedDocumentRef: nextState.assetInspector.strategyRef
-          });
-          setCommandStatus(
-            selectedImport
-              ? `Import ${selectedImport.id} is now the active live workspace.`
-              : "Staged import activated as the live workspace."
-          );
-        }
-      );
-    }
+    ...actions
   };
 }
