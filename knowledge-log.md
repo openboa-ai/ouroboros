@@ -95,6 +95,7 @@
 - Moved collection/import document discovery into the backend workspace catalog so the client no longer has to synthesize selected collection/import docs ad hoc.
 - Promoted immutable source-body blobs into the backend workspace catalog and added backlinks from blob documents to their owning collection manifest and entry shard.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
+- Tightened sanitized export and checkpoint snapshot creation so protected roots like `imports`, `operations`, generated exports, and secret-bearing directories are physically excluded from exported workspaces.
 - Recorded that operation records should be first-class workspace documents with typed drill-down instead of staying only as summary rows.
 - Recorded that checkpoint restore and import activation should preserve service-owned roots such as checkpoints, imports, operations, generated exports, and secret-bearing directories while rotating live workspace state.
 - Added a stable workspace-asset model doc and a first JSON schema for `strategy.json` so the workspace contract now exists in both markdown and code-facing form.

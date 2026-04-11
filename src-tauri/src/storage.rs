@@ -213,5 +213,10 @@ fn collect_relative_files(
 }
 
 fn should_skip_snapshot_path(relative: &Path) -> bool {
-    relative == Path::new("checkpoints") || relative == Path::new("exports/generated")
+    relative == Path::new("checkpoints")
+        || relative == Path::new("imports")
+        || relative == Path::new("operations")
+        || relative == Path::new("exports/generated")
+        || relative == Path::new("secrets")
+        || relative == Path::new("credentials")
 }

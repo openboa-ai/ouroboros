@@ -3077,6 +3077,8 @@ fn checkpoint_tone(checkpoint_type: &str) -> &'static str {
 fn export_excluded_paths() -> Vec<String> {
     vec![
         "./workspace/checkpoints".into(),
+        "./workspace/imports".into(),
+        "./workspace/operations".into(),
         "./workspace/exports/generated".into(),
         "./workspace/secrets".into(),
         "./workspace/credentials".into(),
@@ -3666,6 +3668,72 @@ mod tests {
         assert!(
             import_comparison.summary.contains("current workspace"),
             "import comparison should describe the current workspace as the baseline"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn export_checkpoint_excludes_protected_roots_from_sanitized_bundle() {
+        let root = test_root();
+        let template_root = WorkspaceRepository::default_template_root();
+        let repo = WorkspaceRepository::new(root.clone(), template_root).expect("workspace");
+
+        fs::create_dir_all(root.join("secrets")).expect("create secrets dir");
+        fs::create_dir_all(root.join("credentials")).expect("create credentials dir");
+        fs::write(root.join("secrets/runtime.token"), "top-secret").expect("write secret");
+        fs::write(root.join("credentials/binance.json"), "{\"api_key\":\"redacted\"}")
+            .expect("write credential");
+
+        let export_state = repo.create_export_checkpoint().expect("export checkpoint");
+        let export_bundle_ref = export_state
+            .asset_inspector
+            .latest_export_bundle_ref
+            .clone()
+            .expect("latest export bundle ref");
+        let export_bundle_path = repo.project_root().join(&export_bundle_ref);
+        let export_bundle = repo
+            .read_json_path::<ExportBundleFile>(&export_bundle_path)
+            .expect("export bundle");
+        let export_workspace = export_bundle_path
+            .parent()
+            .expect("export root")
+            .join("workspace");
+
+        for protected_root in [
+            "checkpoints",
+            "imports",
+            "operations",
+            "exports/generated",
+            "secrets",
+            "credentials",
+        ] {
+            assert!(
+                !export_workspace.join(protected_root).exists(),
+                "sanitized export should exclude protected root {protected_root}"
+            );
+        }
+
+        assert!(
+            export_bundle
+                .excluded_paths
+                .iter()
+                .any(|path| path == "./workspace/imports"),
+            "export manifest should declare imports as excluded"
+        );
+        assert!(
+            export_bundle
+                .excluded_paths
+                .iter()
+                .any(|path| path == "./workspace/operations"),
+            "export manifest should declare operations as excluded"
+        );
+        assert!(
+            export_bundle
+                .included_refs
+                .iter()
+                .all(|path| !path.starts_with("./workspace/secrets") && !path.starts_with("./workspace/credentials")),
+            "included refs should not leak secret-bearing roots"
         );
 
         let _ = fs::remove_dir_all(&root);

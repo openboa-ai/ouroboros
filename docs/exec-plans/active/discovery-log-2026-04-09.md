@@ -142,6 +142,7 @@
 - immutable source-body blobs should also be surfaced as workspace documents so collection evidence can be inspected through the same service-owned catalog
 - blob workspace documents should backlink to the owning collection manifest and entry shard
 - legacy collection indexes should be normalized into the canonical `items` shape and canonical relative refs during boot so older workspaces keep loading
+- protected service-owned roots such as `imports`, `operations`, generated exports, and secret-bearing directories should be physically excluded from checkpoint snapshots and sanitized export workspaces
 
 ## Research Threads Used
 

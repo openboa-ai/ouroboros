@@ -228,6 +228,7 @@ These decisions are current, not final.
   - a checkpoint snapshot under `checkpoints/items/<checkpoint_id>/`
   - a live-centered export bundle under `exports/generated/<checkpoint_id>/`
 - Sanitized export bundles should also be stageable back into the workspace under `imports/items/<import_id>/` without mutating the active live lane.
+- Checkpoint snapshots and sanitized export bundles should physically exclude protected service-owned roots such as `imports`, `operations`, generated exports, and secret-bearing directories rather than only labeling them as excluded.
 - Source ingestion should materialize source-centered `collection` shards and immutable `blob` bodies through the same workspace/service contract.
 - The canonical collection index path should resolve from `indexes/collections.json` to `../collections/items/<collection_id>/collection.json`.
 - Service-layer mutations should also append durable operation records under:
