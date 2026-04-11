@@ -60,6 +60,12 @@ agent platform.
 - `application service`
   The official machine boundary for validation, invariants, locking, checkpoint/export/import
   workflows, and read/write orchestration.
+- `workspace repository`
+  The persistence-facing boundary that reads and writes the workspace asset, but delegates state
+  rules and preflight decisions to explicit policy/transition objects.
+- `policy and transition objects`
+  Explicit import/export/live-state rules that keep preflight logic, sanitization rules, and state
+  transitions out of transport and file-IO glue.
 - `workspace asset`
   The local strategy workspace that acts as the primary strategy-asset boundary.
 - `orchestrator`
@@ -122,6 +128,8 @@ The agent plane and the execution plane are different bounded contexts.
 - users always keep ultimate control over trading state and emergency actions
 - official clients never mutate workspace files directly; all machine writes go through the
   application service
+- import/export/live mutations should flow through repository-owned IO plus explicit policy or
+  transition objects, not through ad hoc branching in transport handlers
 
 ## Documentation Map
 

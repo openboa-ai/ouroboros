@@ -15,6 +15,15 @@ If code, docs, or comments use older names, prefer the terms in this file.
 - `application service`
   The official machine boundary that owns validation, invariants, locking, migrations, command
   execution, read-model assembly, export rules, and import/preflight rules.
+- `workspace repository`
+  The persistence-facing boundary that owns workspace reads and writes while remaining subordinate
+  to application service orchestration.
+- `policy`
+  An explicit rules object or module that decides preflight, sanitization, or safety semantics
+  without also owning transport or file-IO concerns.
+- `state transition`
+  A pure or mostly-pure mutation step that transforms live/import/export state before repository
+  persistence happens.
 - `client`
   The official UI surface that reads via the application service and sends commands through it.
 - `orchestrator`
@@ -60,6 +69,8 @@ If code, docs, or comments use older names, prefer the terms in this file.
   boundary is the point.
 - Prefer `application service` over `service layer` when talking about the official machine
   boundary the client uses.
+- Prefer `policy` or `state transition` over vague phrases like `helper logic` when the concern is
+  rule evaluation or deterministic state change.
 
 ## Intentional Distinctions
 

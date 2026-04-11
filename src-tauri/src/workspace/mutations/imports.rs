@@ -146,9 +146,12 @@ impl WorkspaceRepository {
             &import_record.source_bundle_ref,
             &activated_checkpoint.alias,
         )?;
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);

@@ -40,11 +40,15 @@ impl WorkspaceRepository {
     }
 
     pub(super) fn operation_root_path(&self, operation_id: &str) -> PathBuf {
-        self.root.join("operations").join("items").join(operation_id)
+        self.root
+            .join("operations")
+            .join("items")
+            .join(operation_id)
     }
 
     pub(super) fn operation_file_path(&self, operation_id: &str) -> PathBuf {
-        self.operation_root_path(operation_id).join("operation.json")
+        self.operation_root_path(operation_id)
+            .join("operation.json")
     }
 
     pub(super) fn import_root_path(&self, import_id: &str) -> PathBuf {
@@ -89,7 +93,10 @@ impl WorkspaceRepository {
 
     pub(super) fn blob_path(&self, blob_id: &str) -> PathBuf {
         let (algorithm, digest) = blob_id.split_once(':').unwrap_or(("sha256", blob_id));
-        self.root.join("blobs").join(algorithm).join(format!("{digest}.txt"))
+        self.root
+            .join("blobs")
+            .join(algorithm)
+            .join(format!("{digest}.txt"))
     }
 
     pub(super) fn resolve_import_bundle_ref(&self, bundle_ref: &str) -> Result<PathBuf, String> {
@@ -99,8 +106,12 @@ impl WorkspaceRepository {
         } else {
             self.project_root().join(bundle_ref)
         };
-        path.canonicalize()
-            .map_err(|error| format!("failed to resolve import bundle {}: {error}", path.display()))
+        path.canonicalize().map_err(|error| {
+            format!(
+                "failed to resolve import bundle {}: {error}",
+                path.display()
+            )
+        })
     }
 
     pub(super) fn resolve_workspace_document_ref(
@@ -116,7 +127,10 @@ impl WorkspaceRepository {
             )
         })?;
         let root = self.root.canonicalize().map_err(|error| {
-            format!("failed to resolve workspace root {}: {error}", self.root.display())
+            format!(
+                "failed to resolve workspace root {}: {error}",
+                self.root.display()
+            )
         })?;
 
         if !canonical.starts_with(&root) {
@@ -196,7 +210,11 @@ impl WorkspaceRepository {
         FileWorkspaceStore::read_ndjson_path(path)
     }
 
-    pub(super) fn write_json_path<T: Serialize>(&self, path: &Path, value: &T) -> Result<(), String> {
+    pub(super) fn write_json_path<T: Serialize>(
+        &self,
+        path: &Path,
+        value: &T,
+    ) -> Result<(), String> {
         FileWorkspaceStore::write_json_path(path, value)
     }
 }

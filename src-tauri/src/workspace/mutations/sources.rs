@@ -12,16 +12,13 @@ impl WorkspaceRepository {
             .ok_or_else(|| "ingest source entry requires body_text or preview".to_string())?;
         let time_bucket = utc_hour_bucket(&input.event_time)?;
 
-        let mut collections_index =
-            self.read_json_path::<CollectionsIndexFile>(&self.root.join("indexes/collections.json"))?;
-        let existing_index = collections_index
-            .items
-            .iter()
-            .position(|item| {
-                item.kind == input.kind
-                    && item.source_ref == input.source_ref
-                    && item.time_bucket == time_bucket
-            });
+        let mut collections_index = self
+            .read_json_path::<CollectionsIndexFile>(&self.root.join("indexes/collections.json"))?;
+        let existing_index = collections_index.items.iter().position(|item| {
+            item.kind == input.kind
+                && item.source_ref == input.source_ref
+                && item.time_bucket == time_bucket
+        });
 
         let (collection_id, created_collection) = match existing_index {
             Some(index) => (collections_index.items[index].collection_id.clone(), false),
@@ -100,7 +97,10 @@ impl WorkspaceRepository {
                 .cmp(&left.time_bucket)
                 .then_with(|| left.source_ref.cmp(&right.source_ref))
         });
-        self.write_json_path(&self.root.join("indexes/collections.json"), &collections_index)?;
+        self.write_json_path(
+            &self.root.join("indexes/collections.json"),
+            &collections_index,
+        )?;
         self.append_operation(
             "ingest_source_entry",
             "workspace",

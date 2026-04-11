@@ -47,17 +47,6 @@ pub(super) fn checkpoint_tone(checkpoint_type: &str) -> &'static str {
     }
 }
 
-pub(super) fn export_excluded_paths() -> Vec<String> {
-    vec![
-        "./workspace/checkpoints".into(),
-        "./workspace/imports".into(),
-        "./workspace/operations".into(),
-        "./workspace/exports/generated".into(),
-        "./workspace/secrets".into(),
-        "./workspace/credentials".into(),
-    ]
-}
-
 pub(super) fn protected_workspace_root_refs() -> &'static [&'static str] {
     &[
         "checkpoints",
@@ -100,8 +89,9 @@ pub(super) fn blob_id_for_contents(contents: &str) -> String {
 pub(super) fn collection_entries_hash(entries: &[CollectionEntryFile]) -> Result<String, String> {
     let mut body = String::new();
     for entry in entries {
-        let line = serde_json::to_string(entry)
-            .map_err(|error| format!("failed to serialize collection entry for hashing: {error}"))?;
+        let line = serde_json::to_string(entry).map_err(|error| {
+            format!("failed to serialize collection entry for hashing: {error}")
+        })?;
         body.push_str(&line);
         body.push('\n');
     }
@@ -110,7 +100,9 @@ pub(super) fn collection_entries_hash(entries: &[CollectionEntryFile]) -> Result
 
 pub(super) fn utc_hour_bucket(event_time: &str) -> Result<String, String> {
     if event_time.len() < 13 {
-        return Err(format!("event_time is too short for UTC hour bucketing: {event_time}"));
+        return Err(format!(
+            "event_time is too short for UTC hour bucketing: {event_time}"
+        ));
     }
     let prefix = &event_time[..13];
     if !event_time.contains('T') {
@@ -139,7 +131,10 @@ where
         }
     }
 
-    Ok(TimeRangeFile { start: min, end: max })
+    Ok(TimeRangeFile {
+        start: min,
+        end: max,
+    })
 }
 
 pub(super) fn short_alias_suffix() -> String {
@@ -179,20 +174,36 @@ pub(super) fn collection_entry_blob_path_ref(blob_id: &str) -> String {
     format!("../../../../blobs/{algorithm}/{digest}.txt")
 }
 
-pub(super) fn workspace_root_for_collection_path(collection_path: &Path) -> Result<PathBuf, String> {
-    let collection_root = collection_path
-        .parent()
-        .ok_or_else(|| format!("collection path has no parent: {}", collection_path.display()))?;
-    let items_root = collection_root
-        .parent()
-        .ok_or_else(|| format!("collection root has no items parent: {}", collection_root.display()))?;
-    let collections_root = items_root
-        .parent()
-        .ok_or_else(|| format!("items root has no collections parent: {}", items_root.display()))?;
+pub(super) fn workspace_root_for_collection_path(
+    collection_path: &Path,
+) -> Result<PathBuf, String> {
+    let collection_root = collection_path.parent().ok_or_else(|| {
+        format!(
+            "collection path has no parent: {}",
+            collection_path.display()
+        )
+    })?;
+    let items_root = collection_root.parent().ok_or_else(|| {
+        format!(
+            "collection root has no items parent: {}",
+            collection_root.display()
+        )
+    })?;
+    let collections_root = items_root.parent().ok_or_else(|| {
+        format!(
+            "items root has no collections parent: {}",
+            items_root.display()
+        )
+    })?;
     collections_root
         .parent()
         .map(Path::to_path_buf)
-        .ok_or_else(|| format!("collections root has no workspace parent: {}", collections_root.display()))
+        .ok_or_else(|| {
+            format!(
+                "collections root has no workspace parent: {}",
+                collections_root.display()
+            )
+        })
 }
 
 pub(super) fn now_label() -> String {
@@ -206,7 +217,13 @@ pub(super) fn now_label() -> String {
 pub(super) fn slugish_id(input: &str) -> String {
     let normalized = input
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>();
     normalized
         .split('-')

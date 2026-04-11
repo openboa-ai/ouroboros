@@ -1,5 +1,7 @@
 use super::*;
-use crate::models::{BootstrapState, ImportBundleState, IngestSourceEntryInput, IngestSourceEntryResult};
+use crate::models::{
+    BootstrapState, ImportBundleState, IngestSourceEntryInput, IngestSourceEntryResult,
+};
 
 impl AppState {
     pub fn pause_global_automation(&self) -> Result<BootstrapState, String> {

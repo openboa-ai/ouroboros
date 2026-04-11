@@ -45,7 +45,10 @@ impl WorkspaceRepository {
             removed_count: comparison.removed_count,
             summary: format!(
                 "{} changed, {} added, {} removed between the current workspace and import {}.",
-                comparison.changed_count, comparison.added_count, comparison.removed_count, import_id
+                comparison.changed_count,
+                comparison.added_count,
+                comparison.removed_count,
+                import_id
             ),
             files: comparison.files,
         })

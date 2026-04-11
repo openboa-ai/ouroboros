@@ -14,51 +14,46 @@ fn bootstrap_surfaces_agent_and_environment_indexes() {
 
     let bootstrap = repo.load_bootstrap_state().expect("bootstrap");
 
-    assert!(
-        bootstrap
-            .workspace_index
-            .active
-            .orchestrator_ref
-            .ends_with("/orchestrator/orchestrator.json")
-    );
-    assert!(bootstrap.workspace_index.indexes.agents_ref.ends_with("/agents/index.json"));
-    assert!(
-        bootstrap
-            .workspace_index
-            .indexes
-            .environments_ref
-            .ends_with("/environments/index.json")
-    );
+    assert!(bootstrap
+        .workspace_index
+        .active
+        .orchestrator_ref
+        .ends_with("/orchestrator/orchestrator.json"));
+    assert!(bootstrap
+        .workspace_index
+        .indexes
+        .agents_ref
+        .ends_with("/agents/index.json"));
+    assert!(bootstrap
+        .workspace_index
+        .indexes
+        .environments_ref
+        .ends_with("/environments/index.json"));
     assert!(bootstrap.workspace_index.agent_count >= 1);
     assert!(bootstrap.workspace_index.environment_count >= 1);
-    assert_eq!(bootstrap.runtime_topology.orchestrator.mode, "managed-agent");
+    assert_eq!(
+        bootstrap.runtime_topology.orchestrator.mode,
+        "managed-agent"
+    );
     assert!(bootstrap.runtime_topology.agents.len() >= 1);
     assert!(bootstrap.runtime_topology.environments.len() >= 1);
-    assert!(
-        bootstrap
-            .runtime_topology
-            .agents
-            .iter()
-            .all(|agent| !agent.environment_ref.is_empty())
-    );
-    assert!(
-        bootstrap
-            .document_catalog
-            .iter()
-            .any(|entry| entry.path_ref.ends_with("/orchestrator/orchestrator.json"))
-    );
-    assert!(
-        bootstrap
-            .document_catalog
-            .iter()
-            .any(|entry| entry.category == "agent")
-    );
-    assert!(
-        bootstrap
-            .document_catalog
-            .iter()
-            .any(|entry| entry.category == "environment")
-    );
+    assert!(bootstrap
+        .runtime_topology
+        .agents
+        .iter()
+        .all(|agent| !agent.environment_ref.is_empty()));
+    assert!(bootstrap
+        .document_catalog
+        .iter()
+        .any(|entry| entry.path_ref.ends_with("/orchestrator/orchestrator.json")));
+    assert!(bootstrap
+        .document_catalog
+        .iter()
+        .any(|entry| entry.category == "agent"));
+    assert!(bootstrap
+        .document_catalog
+        .iter()
+        .any(|entry| entry.category == "environment"));
 
     let _ = fs::remove_dir_all(&root);
 }
@@ -86,13 +81,19 @@ fn restore_checkpoint_replays_snapshot_without_losing_generated_exports() {
         .clone()
         .expect("latest export bundle");
     let export_bundle_path = repo.project_root().join(&export_bundle_ref);
-    assert!(export_bundle_path.exists(), "export bundle should exist before restore");
+    assert!(
+        export_bundle_path.exists(),
+        "export bundle should exist before restore"
+    );
     let imported = repo
         .import_export_bundle(&export_bundle_ref)
         .expect("stage export as import");
 
     let flattened = repo.flatten_all_positions().expect("flatten");
-    assert!(flattened.positions.is_empty(), "flatten should clear live positions");
+    assert!(
+        flattened.positions.is_empty(),
+        "flatten should clear live positions"
+    );
 
     let restored = repo
         .restore_checkpoint(&target_checkpoint_id)
@@ -134,7 +135,10 @@ fn restore_checkpoint_replays_snapshot_without_losing_generated_exports() {
     let checkpoints_index = repo
         .read_json_path::<CheckpointIndexFile>(&root.join("checkpoints/index.json"))
         .expect("checkpoint index");
-    assert_eq!(checkpoints_index.current.checkpoint_id, target_checkpoint_id);
+    assert_eq!(
+        checkpoints_index.current.checkpoint_id,
+        target_checkpoint_id
+    );
     assert_eq!(checkpoints_index.current.alias, target_alias);
     assert!(
         checkpoints_index
@@ -171,15 +175,17 @@ fn activate_import_as_live_replaces_live_state_without_losing_service_roots() {
         .expect("stage import");
 
     let flattened = repo.flatten_all_positions().expect("flatten");
-    assert!(flattened.positions.is_empty(), "flatten should clear positions first");
+    assert!(
+        flattened.positions.is_empty(),
+        "flatten should clear positions first"
+    );
 
     let activated = repo
         .activate_import_as_live(&imported.import_id)
         .expect("activate staged import");
 
     assert_eq!(
-        activated.workspace.current_checkpoint_alias,
-        export_checkpoint.alias,
+        activated.workspace.current_checkpoint_alias, export_checkpoint.alias,
         "activation should re-anchor to the imported checkpoint when it exists locally"
     );
     assert_eq!(
@@ -187,7 +193,11 @@ fn activate_import_as_live_replaces_live_state_without_losing_service_roots() {
         serde_json::to_string(&baseline.positions).expect("serialize baseline positions"),
         "activating the staged import should restore the exported live positions"
     );
-    assert_eq!(activated.imports.len(), 1, "staged import catalog should survive activation");
+    assert_eq!(
+        activated.imports.len(),
+        1,
+        "staged import catalog should survive activation"
+    );
     assert_eq!(activated.imports[0].id, imported.import_id);
     assert!(
         activated
@@ -204,10 +214,9 @@ fn activate_import_as_live_replaces_live_state_without_losing_service_roots() {
         "previous import staging history should survive activation"
     );
     assert!(
-        activated
-            .checkpoints
-            .iter()
-            .any(|checkpoint| checkpoint.alias.starts_with("incident-import-activation-anchor-")),
+        activated.checkpoints.iter().any(|checkpoint| checkpoint
+            .alias
+            .starts_with("incident-import-activation-anchor-")),
         "activation should preserve a rollback anchor"
     );
 
@@ -216,7 +225,10 @@ fn activate_import_as_live_replaces_live_state_without_losing_service_roots() {
         .expect("strategy manifest");
     assert_eq!(
         strategy.active.current_checkpoint_ref,
-        format!("./checkpoints/items/{}/checkpoint.json", export_checkpoint.id),
+        format!(
+            "./checkpoints/items/{}/checkpoint.json",
+            export_checkpoint.id
+        ),
         "strategy.json should now point at the activated checkpoint"
     );
 
@@ -280,7 +292,9 @@ fn ingest_source_entry_creates_collection_blob_and_index_entry() {
             event_time: "2026-04-10T12:14:55Z".into(),
             ingested_at: "2026-04-10T12:15:02Z".into(),
             preview: Some("US CPI cooled more than expected.".into()),
-            body_text: Some("US CPI cooled more than expected across both headline and core prints.".into()),
+            body_text: Some(
+                "US CPI cooled more than expected across both headline and core prints.".into(),
+            ),
         })
         .expect("ingest source entry");
 
@@ -295,7 +309,9 @@ fn ingest_source_entry_creates_collection_blob_and_index_entry() {
     assert_eq!(collection.source_ref, "news:macro-wire:cpi");
 
     let entries = repo
-        .read_ndjson_path::<CollectionEntryFile>(&repo.collection_entries_path(&result.collection_id))
+        .read_ndjson_path::<CollectionEntryFile>(
+            &repo.collection_entries_path(&result.collection_id),
+        )
         .expect("entries shard");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].entry_id, result.entry_id);
@@ -305,7 +321,10 @@ fn ingest_source_entry_creates_collection_blob_and_index_entry() {
     assert!(blob_path.exists(), "blob should be persisted");
     let entry_document_path =
         repo.collection_entry_document_path(&result.collection_id, &result.entry_id);
-    assert!(entry_document_path.exists(), "entry document should be materialized");
+    assert!(
+        entry_document_path.exists(),
+        "entry document should be materialized"
+    );
 
     let collection_detail = repo
         .load_collection_detail(&result.collection_id)
@@ -318,7 +337,8 @@ fn ingest_source_entry_creates_collection_blob_and_index_entry() {
     let bootstrap = repo.load_bootstrap_state().expect("bootstrap after ingest");
     assert!(
         bootstrap.document_catalog.iter().any(|document| {
-            document.path_ref == repo.display_path(&entry_document_path) && document.category == "entry"
+            document.path_ref == repo.display_path(&entry_document_path)
+                && document.category == "entry"
         }),
         "entry document should be promoted into the workspace document catalog"
     );
@@ -326,7 +346,10 @@ fn ingest_source_entry_creates_collection_blob_and_index_entry() {
         bootstrap
             .document_catalog
             .iter()
-            .any(|document| document.path_ref == repo.display_path(&blob_path) && document.category == "blob"),
+            .any(
+                |document| document.path_ref == repo.display_path(&blob_path)
+                    && document.category == "blob"
+            ),
         "blob should be promoted into the workspace document catalog"
     );
     let entry_document = repo
@@ -384,7 +407,9 @@ fn ingest_source_entry_reuses_hour_bucket_and_blob_for_same_payload() {
             event_time: "2026-04-10T12:14:55Z".into(),
             ingested_at: "2026-04-10T12:15:02Z".into(),
             preview: Some("US CPI cooled more than expected.".into()),
-            body_text: Some("US CPI cooled more than expected across both headline and core prints.".into()),
+            body_text: Some(
+                "US CPI cooled more than expected across both headline and core prints.".into(),
+            ),
         })
         .expect("first ingest");
     let second = repo
@@ -394,7 +419,9 @@ fn ingest_source_entry_reuses_hour_bucket_and_blob_for_same_payload() {
             event_time: "2026-04-10T12:44:05Z".into(),
             ingested_at: "2026-04-10T12:44:06Z".into(),
             preview: Some("US CPI cooled more than expected.".into()),
-            body_text: Some("US CPI cooled more than expected across both headline and core prints.".into()),
+            body_text: Some(
+                "US CPI cooled more than expected across both headline and core prints.".into(),
+            ),
         })
         .expect("second ingest");
 
@@ -404,7 +431,9 @@ fn ingest_source_entry_reuses_hour_bucket_and_blob_for_same_payload() {
     assert_eq!(second.entry_count, 2);
 
     let entries = repo
-        .read_ndjson_path::<CollectionEntryFile>(&repo.collection_entries_path(&first.collection_id))
+        .read_ndjson_path::<CollectionEntryFile>(
+            &repo.collection_entries_path(&first.collection_id),
+        )
         .expect("entries shard");
     assert_eq!(entries.len(), 2);
 
@@ -426,14 +455,19 @@ fn import_export_bundle_stages_sanitized_bundle_without_mutating_live_workspace(
         .latest_export_bundle_ref
         .clone()
         .expect("latest export bundle ref");
-    let live_before = repo.load_bootstrap_state().expect("bootstrap before import");
+    let live_before = repo
+        .load_bootstrap_state()
+        .expect("bootstrap before import");
 
     let imported = repo
         .import_export_bundle(&export_bundle_ref)
         .expect("import export bundle");
 
     let live_after = repo.load_bootstrap_state().expect("bootstrap after import");
-    assert_eq!(live_before.workspace.artifact_id, live_after.workspace.artifact_id);
+    assert_eq!(
+        live_before.workspace.artifact_id,
+        live_after.workspace.artifact_id
+    );
     assert_eq!(
         serde_json::to_string(&live_before.positions).expect("serialize positions before"),
         serde_json::to_string(&live_after.positions).expect("serialize positions after")
@@ -444,7 +478,10 @@ fn import_export_bundle_stages_sanitized_bundle_without_mutating_live_workspace(
         .join("items")
         .join(&imported.import_id)
         .join("import.json");
-    assert!(import_metadata_path.exists(), "import metadata should be persisted");
+    assert!(
+        import_metadata_path.exists(),
+        "import metadata should be persisted"
+    );
     assert!(
         root.join("imports")
             .join("items")
@@ -565,8 +602,11 @@ fn export_checkpoint_excludes_protected_roots_from_sanitized_bundle() {
     fs::create_dir_all(root.join("secrets")).expect("create secrets dir");
     fs::create_dir_all(root.join("credentials")).expect("create credentials dir");
     fs::write(root.join("secrets/runtime.token"), "top-secret").expect("write secret");
-    fs::write(root.join("credentials/binance.json"), "{\"api_key\":\"redacted\"}")
-        .expect("write credential");
+    fs::write(
+        root.join("credentials/binance.json"),
+        "{\"api_key\":\"redacted\"}",
+    )
+    .expect("write credential");
 
     let export_state = repo.create_export_checkpoint().expect("export checkpoint");
     let export_bundle_ref = export_state
@@ -615,7 +655,8 @@ fn export_checkpoint_excludes_protected_roots_from_sanitized_bundle() {
         export_bundle
             .included_refs
             .iter()
-            .all(|path| !path.starts_with("./workspace/secrets") && !path.starts_with("./workspace/credentials")),
+            .all(|path| !path.starts_with("./workspace/secrets")
+                && !path.starts_with("./workspace/credentials")),
         "included refs should not leak secret-bearing roots"
     );
 
@@ -668,9 +709,14 @@ fn workspace_operations_are_recorded_for_service_mutations() {
     );
 
     let operation_path = repo.operation_file_path(&operations_index.items[0].operation_id);
-    assert!(operation_path.exists(), "operation record should be materialized");
+    assert!(
+        operation_path.exists(),
+        "operation record should be materialized"
+    );
 
-    let bootstrap = repo.load_bootstrap_state().expect("bootstrap with operations");
+    let bootstrap = repo
+        .load_bootstrap_state()
+        .expect("bootstrap with operations");
     assert_eq!(bootstrap.operations.len(), 2);
     assert_eq!(bootstrap.operations[0].kind, "ingest_source_entry");
     assert_eq!(bootstrap.workspace_index.operation_count, 2);
@@ -829,8 +875,11 @@ fn normalize_workspace_materializes_session_and_eval_documents() {
 
     repo.write_json_path(&root.join("indexes/sessions.json"), &legacy_sessions)
         .expect("write legacy sessions");
-    repo.write_json_path(&root.join("state/eval-summaries.json"), &legacy_eval_summaries)
-        .expect("write legacy eval summaries");
+    repo.write_json_path(
+        &root.join("state/eval-summaries.json"),
+        &legacy_eval_summaries,
+    )
+    .expect("write legacy eval summaries");
     let _ = fs::remove_dir_all(root.join("sessions"));
     let _ = fs::remove_dir_all(root.join("eval-summaries"));
 
@@ -863,7 +912,10 @@ fn normalize_workspace_materializes_session_and_eval_documents() {
         &root.join("state/eval-summaries.json"),
         summary.path_ref.as_deref().expect("summary path ref"),
     );
-    assert!(summary_path.exists(), "eval summary item should be materialized");
+    assert!(
+        summary_path.exists(),
+        "eval summary item should be materialized"
+    );
     assert!(
         bootstrap
             .document_catalog

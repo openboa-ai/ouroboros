@@ -34,8 +34,9 @@ impl WorkspaceRepository {
 
             let status = match (base_exists, target_exists) {
                 (true, true) => {
-                    let left = fs::read(&base_path)
-                        .map_err(|error| format!("failed to read {}: {error}", base_path.display()))?;
+                    let left = fs::read(&base_path).map_err(|error| {
+                        format!("failed to read {}: {error}", base_path.display())
+                    })?;
                     let right = fs::read(&target_path).map_err(|error| {
                         format!("failed to read {}: {error}", target_path.display())
                     })?;

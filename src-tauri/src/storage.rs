@@ -8,8 +8,8 @@ pub struct FileWorkspaceStore;
 
 impl FileWorkspaceStore {
     pub fn read_json_path<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
-        let bytes =
-            fs::read(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        let bytes = fs::read(path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
         serde_json::from_slice(&bytes)
             .map_err(|error| format!("failed to parse {}: {error}", path.display()))
     }

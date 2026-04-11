@@ -1,3 +1,4 @@
+use super::super::policies::exports as export_policies;
 use super::super::*;
 
 impl WorkspaceRepository {
@@ -10,36 +11,27 @@ impl WorkspaceRepository {
             "Export policy sanitized-live-centered".into(),
         )?;
 
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
-        let export_policy_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.export_policy_ref);
+        let export_policy_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.export_policy_ref,
+        );
 
-        let mut dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
-        let mut decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&export_policy_path)?;
+        let transition = export_policies::mark_export_checkpoint_created(dashboard, decisions);
 
-        dashboard.status_note = Some(
-            "A fresh export checkpoint was created from the current live-centered asset.".into(),
-        );
-        prepend_decision(
-            &mut decisions.decisions,
-            DecisionEntry {
-                id: uuid_v7_string(),
-                kind: "Export".into(),
-                tone: "neutral".into(),
-                headline: "Export checkpoint created".into(),
-                reason: "The service layer created a fresh checkpoint before export so the client can share a stable live-centered asset instead of a drifting mutable state.".into(),
-                timestamp: now_label(),
-            },
-        );
-
-        self.write_json_path(&dashboard_path, &dashboard)?;
-        self.write_json_path(&decisions_path, &decisions)?;
+        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&decisions_path, &transition.decisions)?;
         self.create_export_bundle(&checkpoint, &export_policy.policy_id)?;
         self.append_operation(
             "create_export_checkpoint",

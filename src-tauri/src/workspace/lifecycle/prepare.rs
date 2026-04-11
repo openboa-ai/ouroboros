@@ -30,7 +30,8 @@ impl WorkspaceRepository {
             return Ok(());
         }
 
-        let checkpoints_index = self.read_json_path::<CheckpointIndexFile>(&checkpoints_index_path)?;
+        let checkpoints_index =
+            self.read_json_path::<CheckpointIndexFile>(&checkpoints_index_path)?;
         let desired_ref = format!(
             "./checkpoints/items/{}/checkpoint.json",
             checkpoints_index.current.checkpoint_id
@@ -77,8 +78,10 @@ impl WorkspaceRepository {
                 self.read_json_path::<CollectionsIndexFile>(&collections_index_path)?;
             let mut collections_dirty = false;
             for collection in &mut collections_index.items {
-                let desired_path_ref =
-                    format!("../collections/items/{}/collection.json", collection.collection_id);
+                let desired_path_ref = format!(
+                    "../collections/items/{}/collection.json",
+                    collection.collection_id
+                );
                 if collection.path_ref != desired_path_ref {
                     collection.path_ref = desired_path_ref;
                     collections_dirty = true;
@@ -123,8 +126,7 @@ impl WorkspaceRepository {
         strategy_path: &Path,
         strategy: &StrategyManifestFile,
     ) -> Result<(), String> {
-        let orchestrator_path =
-            self.resolve_ref(strategy_path, &strategy.active.orchestrator_ref);
+        let orchestrator_path = self.resolve_ref(strategy_path, &strategy.active.orchestrator_ref);
         if !orchestrator_path.exists() {
             return Ok(());
         }
@@ -190,9 +192,8 @@ impl WorkspaceRepository {
             let mut dirty = false;
 
             if let Some(environment_id) = environment_id_from_ref(&agent_record.environment_ref) {
-                let desired_environment_ref = format!(
-                    "../../../environments/items/{environment_id}/environment.json"
-                );
+                let desired_environment_ref =
+                    format!("../../../environments/items/{environment_id}/environment.json");
                 if environment_ids.contains(environment_id.as_str())
                     && agent_record.environment_ref != desired_environment_ref
                 {
@@ -279,9 +280,12 @@ impl WorkspaceRepository {
         entries: &[CollectionEntryFile],
     ) -> Result<(), String> {
         let workspace_root = workspace_root_for_collection_path(collection_path)?;
-        let collection_root = collection_path
-            .parent()
-            .ok_or_else(|| format!("collection path has no parent: {}", collection_path.display()))?;
+        let collection_root = collection_path.parent().ok_or_else(|| {
+            format!(
+                "collection path has no parent: {}",
+                collection_path.display()
+            )
+        })?;
         let entries_dir = collection_root.join("entries");
         fs::create_dir_all(&entries_dir)
             .map_err(|error| format!("failed to create {}: {error}", entries_dir.display()))?;
@@ -320,7 +324,8 @@ impl WorkspaceRepository {
         for existing in fs::read_dir(&entries_dir)
             .map_err(|error| format!("failed to read {}: {error}", entries_dir.display()))?
         {
-            let existing = existing.map_err(|error| format!("failed to read entry doc: {error}"))?;
+            let existing =
+                existing.map_err(|error| format!("failed to read entry doc: {error}"))?;
             let path = existing.path();
             if path.extension().and_then(|value| value.to_str()) != Some("json") {
                 continue;
@@ -334,7 +339,10 @@ impl WorkspaceRepository {
             }
 
             fs::remove_file(&path).map_err(|error| {
-                format!("failed to remove stale entry doc {}: {error}", path.display())
+                format!(
+                    "failed to remove stale entry doc {}: {error}",
+                    path.display()
+                )
             })?;
         }
 
@@ -342,7 +350,10 @@ impl WorkspaceRepository {
         Ok(())
     }
 
-    pub(in crate::workspace) fn normalize_collections_index_file(&self, path: &Path) -> Result<(), String> {
+    pub(in crate::workspace) fn normalize_collections_index_file(
+        &self,
+        path: &Path,
+    ) -> Result<(), String> {
         if !path.exists() {
             return Ok(());
         }

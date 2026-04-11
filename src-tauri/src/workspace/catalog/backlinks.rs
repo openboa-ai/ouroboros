@@ -52,10 +52,19 @@ impl WorkspaceRepository {
             );
         }
         for (path_ref, reason) in [
-            (&bootstrap.live_context.dashboard_ref, "state_refs.dashboard_ref"),
-            (&bootstrap.live_context.decisions_ref, "state_refs.decisions_ref"),
+            (
+                &bootstrap.live_context.dashboard_ref,
+                "state_refs.dashboard_ref",
+            ),
+            (
+                &bootstrap.live_context.decisions_ref,
+                "state_refs.decisions_ref",
+            ),
             (&bootstrap.live_context.memory_ref, "state_refs.memory_ref"),
-            (&bootstrap.live_context.positions_ref, "state_refs.positions_ref"),
+            (
+                &bootstrap.live_context.positions_ref,
+                "state_refs.positions_ref",
+            ),
             (&bootstrap.live_context.orders_ref, "state_refs.orders_ref"),
         ] {
             if self.document_ref_matches_target(path_ref, &target_ref, &target_path) {
@@ -181,12 +190,20 @@ impl WorkspaceRepository {
             }
         }
 
-        if bootstrap.live_context.evaluation_summaries.iter().any(|summary| {
-            self.document_ref_matches_target(&summary.path_ref, &target_ref, &target_path)
-        }) {
+        if bootstrap
+            .live_context
+            .evaluation_summaries
+            .iter()
+            .any(|summary| {
+                self.document_ref_matches_target(&summary.path_ref, &target_ref, &target_path)
+            })
+        {
             push_backlink(
                 "eval summaries".into(),
-                format!("{}/state/eval-summaries.json", self.display_path(&self.root)),
+                format!(
+                    "{}/state/eval-summaries.json",
+                    self.display_path(&self.root)
+                ),
                 "index".into(),
                 "evaluation summary entry".into(),
             );
@@ -218,8 +235,10 @@ impl WorkspaceRepository {
             self.read_json_path::<CollectionsIndexFile>(&self.root.join("indexes/collections.json"))
         {
             for collection in &collections_index.items {
-                let collection_path =
-                    self.resolve_ref(&self.root.join("indexes/collections.json"), &collection.path_ref);
+                let collection_path = self.resolve_ref(
+                    &self.root.join("indexes/collections.json"),
+                    &collection.path_ref,
+                );
                 let Ok(collection_record) =
                     self.read_json_path::<CollectionRecordFile>(&collection_path)
                 else {
@@ -233,8 +252,8 @@ impl WorkspaceRepository {
                 };
 
                 for entry in entries {
-                    let entry_document_path =
-                        self.collection_entry_document_path(&collection.collection_id, &entry.entry_id);
+                    let entry_document_path = self
+                        .collection_entry_document_path(&collection.collection_id, &entry.entry_id);
                     if paths_match(&entry_document_path, &target_path) {
                         push_backlink(
                             format!("{} · {}", collection.source_ref, collection.time_bucket),

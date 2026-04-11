@@ -295,7 +295,9 @@ impl WorkspaceRepository {
 
         for collection in &collections.items {
             let collection_path = self.resolve_ref(collections_index_path, &collection.path_ref);
-            let collection_record = self.read_json_path::<CollectionRecordFile>(&collection_path).ok();
+            let collection_record = self
+                .read_json_path::<CollectionRecordFile>(&collection_path)
+                .ok();
             let entry_shard_path = collection_record
                 .as_ref()
                 .map(|record| self.resolve_ref(&collection_path, &record.entry_shard_ref));

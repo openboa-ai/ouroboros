@@ -43,10 +43,7 @@ impl AppState {
         self.application.operation_detail(operation_id)
     }
 
-    pub fn workspace_document(
-        &self,
-        document_ref: &str,
-    ) -> Result<WorkspaceDocumentState, String> {
+    pub fn workspace_document(&self, document_ref: &str) -> Result<WorkspaceDocumentState, String> {
         self.application.workspace_document(document_ref)
     }
 

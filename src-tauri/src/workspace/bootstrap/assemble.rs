@@ -119,9 +119,9 @@ impl WorkspaceRepository {
         strategy: &StrategyManifestFile,
     ) -> Result<BootstrapPaths, String> {
         let live_lane_path = self.resolve_ref(strategy_path, &strategy.active.live_lane_ref);
-        let orchestrator_path =
-            self.resolve_ref(strategy_path, &strategy.active.orchestrator_ref);
-        let export_policy_path = self.resolve_ref(strategy_path, &strategy.active.export_policy_ref);
+        let orchestrator_path = self.resolve_ref(strategy_path, &strategy.active.orchestrator_ref);
+        let export_policy_path =
+            self.resolve_ref(strategy_path, &strategy.active.export_policy_ref);
         let checkpoints_index_path =
             self.resolve_ref(strategy_path, &strategy.indexes.checkpoints_ref);
         let agents_index_path = self.resolve_ref(strategy_path, &strategy.indexes.agents_ref);
@@ -144,10 +144,8 @@ impl WorkspaceRepository {
             sessions_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.sessions_ref),
             positions_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref),
             orders_path: self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref),
-            eval_summaries_path: self.resolve_ref(
-                &live_lane_path,
-                &live_lane.state_refs.eval_summaries_ref,
-            ),
+            eval_summaries_path: self
+                .resolve_ref(&live_lane_path, &live_lane.state_refs.eval_summaries_ref),
             live_lane_path,
             export_policy_path,
             checkpoints_index_path,
@@ -227,8 +225,10 @@ impl WorkspaceRepository {
         let collections = self.build_collection_summaries(&context.files.collections_index);
         let imports = self.build_import_summaries(&context.files.imports_index);
         let operations = self.build_operation_summaries(&context.files.operations_index);
-        let lane_events =
-            lane_event_feed(&context.files.positions.events, &context.files.orders.events);
+        let lane_events = lane_event_feed(
+            &context.files.positions.events,
+            &context.files.orders.events,
+        );
 
         let BootstrapContext {
             files,
@@ -390,10 +390,13 @@ impl WorkspaceRepository {
                     .into_iter()
                     .flat_map(|map| map.iter())
                     .filter_map(|(label, value)| {
-                        value.as_str().map(|path_ref| RuntimeTopologyWorkspaceRefState {
-                            label: label.clone(),
-                            path_ref: self.display_path(&self.resolve_ref(&definition_path, path_ref)),
-                        })
+                        value
+                            .as_str()
+                            .map(|path_ref| RuntimeTopologyWorkspaceRefState {
+                                label: label.clone(),
+                                path_ref: self
+                                    .display_path(&self.resolve_ref(&definition_path, path_ref)),
+                            })
                     })
                     .collect::<Vec<_>>();
                 workspace_refs.sort_by(|left, right| left.label.cmp(&right.label));
@@ -423,34 +426,29 @@ impl WorkspaceRepository {
                 path_ref: self.display_path(&paths.orchestrator_path),
                 notes: files.orchestrator.notes.clone(),
                 topology_refs: OrchestratorTopologyRefsState {
-                    agents_ref: self.display_path(
-                        &self.resolve_ref(
-                            &paths.orchestrator_path,
-                            &files.orchestrator.topology_refs.agents_ref,
-                        ),
-                    ),
-                    environments_ref: self.display_path(
-                        &self.resolve_ref(
-                            &paths.orchestrator_path,
-                            &files.orchestrator.topology_refs.environments_ref,
-                        ),
-                    ),
-                    sessions_ref: self.display_path(
-                        &self.resolve_ref(
-                            &paths.orchestrator_path,
-                            &files.orchestrator.topology_refs.sessions_ref,
-                        ),
-                    ),
-                    live_lane_ref: self.display_path(
-                        &self.resolve_ref(
-                            &paths.orchestrator_path,
-                            &files.orchestrator.topology_refs.live_lane_ref,
-                        ),
-                    ),
+                    agents_ref: self.display_path(&self.resolve_ref(
+                        &paths.orchestrator_path,
+                        &files.orchestrator.topology_refs.agents_ref,
+                    )),
+                    environments_ref: self.display_path(&self.resolve_ref(
+                        &paths.orchestrator_path,
+                        &files.orchestrator.topology_refs.environments_ref,
+                    )),
+                    sessions_ref: self.display_path(&self.resolve_ref(
+                        &paths.orchestrator_path,
+                        &files.orchestrator.topology_refs.sessions_ref,
+                    )),
+                    live_lane_ref: self.display_path(&self.resolve_ref(
+                        &paths.orchestrator_path,
+                        &files.orchestrator.topology_refs.live_lane_ref,
+                    )),
                 },
             },
             agents,
-            environments: environments.into_iter().map(|(_, environment)| environment).collect(),
+            environments: environments
+                .into_iter()
+                .map(|(_, environment)| environment)
+                .collect(),
         }
     }
 
@@ -476,10 +474,9 @@ impl WorkspaceRepository {
                 .sessions
                 .iter()
                 .map(|session| {
-                    let session_id = session
-                        .session_id
-                        .clone()
-                        .unwrap_or_else(|| format!("legacy-session-{}", slugish_id(&session.label)));
+                    let session_id = session.session_id.clone().unwrap_or_else(|| {
+                        format!("legacy-session-{}", slugish_id(&session.label))
+                    });
                     let fallback_ref = format!("../sessions/items/{session_id}/session.json");
                     let path_ref = self.display_path(&self.resolve_optional_ref(
                         &paths.sessions_path,

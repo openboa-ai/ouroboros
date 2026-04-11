@@ -65,7 +65,8 @@ impl WorkspaceRepository {
             export_id: export_bundle.export_id,
             created_at: export_bundle.created_at,
             policy_id: export_bundle.policy_id,
-            checkpoint_ref: self.display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
+            checkpoint_ref: self
+                .display_path(&self.checkpoint_file_path(&checkpoint.checkpoint_id)),
             workspace_ref: self.display_path(&workspace_path),
             bundle_ref: self.display_path(&export_path),
             included_refs,
@@ -79,6 +80,8 @@ impl WorkspaceRepository {
         checkpoint: &CheckpointRecordFile,
     ) -> Option<String> {
         let export_path = self.export_bundle_path(&checkpoint.checkpoint_id);
-        export_path.exists().then(|| self.display_path(&export_path))
+        export_path
+            .exists()
+            .then(|| self.display_path(&export_path))
     }
 }

@@ -15,7 +15,10 @@ impl WorkspaceRepository {
             kind: collection.kind,
             source_ref: collection.source_ref,
             time_bucket: collection.time_bucket,
-            time_range_label: format!("{} -> {}", collection.time_range.start, collection.time_range.end),
+            time_range_label: format!(
+                "{} -> {}",
+                collection.time_range.start, collection.time_range.end
+            ),
             entry_count: collection.entry_count,
             content_hash: collection.content_hash,
             collection_ref: self.display_path(&collection_path),

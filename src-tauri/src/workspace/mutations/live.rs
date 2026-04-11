@@ -1,38 +1,24 @@
+use super::super::policies::live as live_policies;
 use super::super::*;
 
 impl WorkspaceRepository {
     pub fn pause_global_automation(&self) -> Result<BootstrapState, String> {
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
-        let mut live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
+        let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
-        let mut dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
-        let mut decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let transition = live_policies::pause_automation(live_lane, dashboard, decisions);
 
-        live_lane.mode = TradingMode::Observer;
-        dashboard.mode = TradingMode::Observer;
-        dashboard.automation_status = "paused".into();
-        dashboard.status_note = Some(
-            "Global automation was paused through the service layer while preserving live context."
-                .into(),
-        );
-        prepend_decision(
-            &mut decisions.decisions,
-            DecisionEntry {
-                id: uuid_v7_string(),
-                kind: "Control".into(),
-                tone: "warning".into(),
-                headline: "Global automation paused".into(),
-                reason: "The service layer switched the runtime into observer mode without exposing direct workspace mutation to the client.".into(),
-                timestamp: now_label(),
-            },
-        );
-
-        self.write_json_path(&live_lane_path, &live_lane)?;
-        self.write_json_path(&dashboard_path, &dashboard)?;
-        self.write_json_path(&decisions_path, &decisions)?;
+        self.write_json_path(&live_lane_path, &transition.live_lane)?;
+        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&decisions_path, &transition.decisions)?;
         self.append_operation(
             "pause_global_automation",
             "live",
@@ -49,69 +35,29 @@ impl WorkspaceRepository {
     }
 
     pub fn flatten_all_positions(&self) -> Result<BootstrapState, String> {
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
         let positions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.positions_ref);
         let orders_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.orders_ref);
 
-        let mut dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
-        let mut decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
-        let mut positions = self.read_json_path::<PositionsStateFile>(&positions_path)?;
-        let mut orders = self.read_json_path::<OrdersStateFile>(&orders_path)?;
+        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let positions = self.read_json_path::<PositionsStateFile>(&positions_path)?;
+        let orders = self.read_json_path::<OrdersStateFile>(&orders_path)?;
+        let transition =
+            live_policies::flatten_all_live_state(dashboard, decisions, positions, orders);
 
-        dashboard.status_note =
-            Some("Service-layer intervention flattened all live positions in the workspace.".into());
-        for metric in dashboard.metrics.iter_mut() {
-            if metric.label == "Risk Budget" {
-                metric.value = "0%".into();
-                metric.delta = "Reset after flatten-all intervention".into();
-            }
-            if metric.label == "Intervention Load" {
-                metric.value = "2 incidents".into();
-                metric.delta = "Includes the latest flatten-all incident checkpoint".into();
-            }
-        }
-
-        positions.current.clear();
-        positions.events.insert(
-            0,
-            LaneEvent {
-                event_id: uuid_v7_string(),
-                timestamp: now_label(),
-                kind: "flatten-all".into(),
-                summary: "All live positions were flattened through the service layer.".into(),
-            },
-        );
-        orders.current.clear();
-        orders.events.insert(
-            0,
-            LaneEvent {
-                event_id: uuid_v7_string(),
-                timestamp: now_label(),
-                kind: "flatten-all".into(),
-                summary: "All live orders were cleared after the flatten-all intervention.".into(),
-            },
-        );
-        prepend_decision(
-            &mut decisions.decisions,
-            DecisionEntry {
-                id: uuid_v7_string(),
-                kind: "Intervention".into(),
-                tone: "warning".into(),
-                headline: "All live positions flattened".into(),
-                reason: "The service layer executed a flatten-all command and reset current positions and orders without bypassing the workspace contract.".into(),
-                timestamp: now_label(),
-            },
-        );
-
-        self.write_json_path(&dashboard_path, &dashboard)?;
-        self.write_json_path(&decisions_path, &decisions)?;
-        self.write_json_path(&positions_path, &positions)?;
-        self.write_json_path(&orders_path, &orders)?;
+        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&decisions_path, &transition.decisions)?;
+        self.write_json_path(&positions_path, &transition.positions)?;
+        self.write_json_path(&orders_path, &transition.orders)?;
 
         let checkpoint = self.create_checkpoint(
             "incident",
@@ -138,7 +84,8 @@ impl WorkspaceRepository {
 
     pub fn restore_checkpoint(&self, checkpoint_id: &str) -> Result<BootstrapState, String> {
         let target_checkpoint_path = self.checkpoint_file_path(checkpoint_id);
-        let target_checkpoint = self.read_json_path::<CheckpointRecordFile>(&target_checkpoint_path)?;
+        let target_checkpoint =
+            self.read_json_path::<CheckpointRecordFile>(&target_checkpoint_path)?;
         let target_alias = target_checkpoint.alias.clone();
 
         self.create_checkpoint(
@@ -156,9 +103,12 @@ impl WorkspaceRepository {
         self.normalize_workspace()?;
         self.set_current_checkpoint(&target_checkpoint)?;
         self.record_restore_decision(&target_alias)?;
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);

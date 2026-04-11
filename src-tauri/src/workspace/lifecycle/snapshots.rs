@@ -1,10 +1,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::super::policies::exports as export_policies;
+use super::super::policies::live as live_policies;
 use super::super::*;
 
 impl WorkspaceRepository {
-    pub(in crate::workspace) fn update_active_checkpoint_ref(&self, checkpoint_id: &str) -> Result<(), String> {
+    pub(in crate::workspace) fn update_active_checkpoint_ref(
+        &self,
+        checkpoint_id: &str,
+    ) -> Result<(), String> {
         let strategy_path = self.root.join("strategy.json");
         let mut strategy = self.read_json_path::<StrategyManifestFile>(&strategy_path)?;
         strategy.active.current_checkpoint_ref =
@@ -58,7 +63,10 @@ impl WorkspaceRepository {
         Ok(checkpoint)
     }
 
-    pub(in crate::workspace) fn replace_workspace_from_root(&self, source_root: &Path) -> Result<(), String> {
+    pub(in crate::workspace) fn replace_workspace_from_root(
+        &self,
+        source_root: &Path,
+    ) -> Result<(), String> {
         if !source_root.exists() {
             return Err(format!(
                 "source workspace root does not exist: {}",
@@ -66,8 +74,10 @@ impl WorkspaceRepository {
             ));
         }
 
-        let temp_root =
-            std::env::temp_dir().join(format!("autokairos-workspace-mutation-{}", uuid_v7_string()));
+        let temp_root = std::env::temp_dir().join(format!(
+            "autokairos-workspace-mutation-{}",
+            uuid_v7_string()
+        ));
         let staged_source_root = temp_root.join("source");
         let staged_protected_root = temp_root.join("protected");
 
@@ -93,11 +103,11 @@ impl WorkspaceRepository {
             fs::create_dir_all(&self.root)
                 .map_err(|error| format!("failed to create {}: {error}", self.root.display()))?;
 
-            for entry in fs::read_dir(&staged_source_root)
-                .map_err(|error| format!("failed to read {}: {error}", staged_source_root.display()))?
-            {
-                let entry =
-                    entry.map_err(|error| format!("failed to read staged source entry: {error}"))?;
+            for entry in fs::read_dir(&staged_source_root).map_err(|error| {
+                format!("failed to read {}: {error}", staged_source_root.display())
+            })? {
+                let entry = entry
+                    .map_err(|error| format!("failed to read staged source entry: {error}"))?;
                 let name = entry.file_name();
                 let destination = self.root.join(&name);
                 let relative = PathBuf::from(&name);
@@ -132,7 +142,8 @@ impl WorkspaceRepository {
         for entry in fs::read_dir(&self.root)
             .map_err(|error| format!("failed to read workspace root: {error}"))?
         {
-            let entry = entry.map_err(|error| format!("failed to read workspace entry: {error}"))?;
+            let entry =
+                entry.map_err(|error| format!("failed to read workspace entry: {error}"))?;
             let path = entry.path();
 
             remove_path(&path)?;
@@ -141,35 +152,27 @@ impl WorkspaceRepository {
         Ok(())
     }
 
-    pub(in crate::workspace) fn record_restore_decision(&self, checkpoint_alias: &str) -> Result<(), String> {
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+    pub(in crate::workspace) fn record_restore_decision(
+        &self,
+        checkpoint_alias: &str,
+    ) -> Result<(), String> {
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
 
-        let mut dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
-        let mut decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let transition =
+            live_policies::mark_restore_checkpoint(dashboard, decisions, checkpoint_alias);
 
-        dashboard.status_note = Some(format!(
-            "Live workspace restored from checkpoint {} through the service layer.",
-            checkpoint_alias
-        ));
-        prepend_decision(
-            &mut decisions.decisions,
-            DecisionEntry {
-                id: uuid_v7_string(),
-                kind: "Restore".into(),
-                tone: "warning".into(),
-                headline: format!("Restored live workspace from {}", checkpoint_alias),
-                reason: "The service layer reapplied the selected checkpoint snapshot as the active live workspace while preserving checkpoint and export history.".into(),
-                timestamp: now_label(),
-            },
-        );
-
-        self.write_json_path(&dashboard_path, &dashboard)?;
-        self.write_json_path(&decisions_path, &decisions)?;
+        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&decisions_path, &transition.decisions)?;
         Ok(())
     }
 
@@ -179,37 +182,28 @@ impl WorkspaceRepository {
         source_bundle_ref: &str,
         checkpoint_alias: &str,
     ) -> Result<(), String> {
-        let strategy = self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
-        let live_lane_path =
-            self.resolve_ref(&self.root.join("strategy.json"), &strategy.active.live_lane_ref);
+        let strategy =
+            self.read_json_path::<StrategyManifestFile>(&self.root.join("strategy.json"))?;
+        let live_lane_path = self.resolve_ref(
+            &self.root.join("strategy.json"),
+            &strategy.active.live_lane_ref,
+        );
         let live_lane = self.read_json_path::<LiveLaneFile>(&live_lane_path)?;
         let dashboard_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.dashboard_ref);
         let decisions_path = self.resolve_ref(&live_lane_path, &live_lane.state_refs.decisions_ref);
 
-        let mut dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
-        let mut decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
-
-        dashboard.status_note = Some(format!(
-            "Staged import {} is now live and anchored at checkpoint {}.",
-            import_id, checkpoint_alias
-        ));
-        prepend_decision(
-            &mut decisions.decisions,
-            DecisionEntry {
-                id: uuid_v7_string(),
-                kind: "Import".into(),
-                tone: "neutral".into(),
-                headline: format!("Activated import {} as live", import_id),
-                reason: format!(
-                    "The service layer promoted the staged import sourced from {} into the live workspace while preserving local checkpoint and service history.",
-                    source_bundle_ref
-                ),
-                timestamp: now_label(),
-            },
+        let dashboard = self.read_json_path::<DashboardStateFile>(&dashboard_path)?;
+        let decisions = self.read_json_path::<DecisionLogFile>(&decisions_path)?;
+        let transition = live_policies::mark_import_activation(
+            dashboard,
+            decisions,
+            import_id,
+            source_bundle_ref,
+            checkpoint_alias,
         );
 
-        self.write_json_path(&dashboard_path, &dashboard)?;
-        self.write_json_path(&decisions_path, &decisions)?;
+        self.write_json_path(&dashboard_path, &transition.dashboard)?;
+        self.write_json_path(&decisions_path, &transition.decisions)?;
         Ok(())
     }
 
@@ -229,7 +223,8 @@ impl WorkspaceRepository {
         for entry in fs::read_dir(&self.root)
             .map_err(|error| format!("failed to read workspace root: {error}"))?
         {
-            let entry = entry.map_err(|error| format!("failed to read workspace entry: {error}"))?;
+            let entry =
+                entry.map_err(|error| format!("failed to read workspace entry: {error}"))?;
             let name = entry.file_name();
             let relative = PathBuf::from(&name);
             copy_tree(&entry.path(), &workspace_root.join(name), &relative)?;
@@ -266,16 +261,7 @@ impl WorkspaceRepository {
         let included_refs = list_relative_files(&export_workspace, "./workspace")?;
         self.write_json_path(
             &export_root.join("export.json"),
-            &ExportBundleFile {
-                export_id: checkpoint.checkpoint_id.clone(),
-                checkpoint_ref: checkpoint.path_ref.clone(),
-                policy_id: policy_id.into(),
-                created_at: now_label(),
-                sanitized: true,
-                workspace_ref: "./workspace".into(),
-                included_refs,
-                excluded_paths: export_excluded_paths(),
-            },
+            &export_policies::build_export_bundle_file(checkpoint, policy_id, included_refs),
         )?;
 
         Ok(())

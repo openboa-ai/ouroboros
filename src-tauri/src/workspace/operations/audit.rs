@@ -28,7 +28,10 @@ impl WorkspaceRepository {
                 .collect(),
         };
 
-        self.write_json_path(&self.operation_file_path(&operation.operation_id), &operation)?;
+        self.write_json_path(
+            &self.operation_file_path(&operation.operation_id),
+            &operation,
+        )?;
 
         let mut index = if self.operations_index_path().exists() {
             self.read_json_path::<OperationsIndexFile>(&self.operations_index_path())?
