@@ -305,6 +305,66 @@ pub struct AssetInspectorState {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RuntimeTopologyWorkspaceRefState {
+    pub label: String,
+    pub path_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrchestratorTopologyRefsState {
+    pub agents_ref: String,
+    pub environments_ref: String,
+    pub sessions_ref: String,
+    pub live_lane_ref: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrchestratorRuntimeState {
+    pub id: String,
+    pub name: String,
+    pub mode: String,
+    pub path_ref: String,
+    pub notes: Vec<String>,
+    pub topology_refs: OrchestratorTopologyRefsState,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRuntimeState {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub definition_ref: String,
+    pub provider_mode: String,
+    pub preferred_providers: Vec<String>,
+    pub environment_ref: String,
+    pub environment_name: String,
+    pub workspace_refs: Vec<RuntimeTopologyWorkspaceRefState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentRuntimeState {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub definition_ref: String,
+    pub capabilities: Vec<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeTopologyState {
+    pub orchestrator: OrchestratorRuntimeState,
+    pub agents: Vec<AgentRuntimeState>,
+    pub environments: Vec<EnvironmentRuntimeState>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StrategyActiveIndexState {
     pub orchestrator_ref: String,
     pub live_lane_ref: String,
@@ -413,6 +473,7 @@ pub struct BootstrapState {
     pub workspace: WorkspaceSummary,
     pub asset_inspector: AssetInspectorState,
     pub workspace_index: WorkspaceIndexState,
+    pub runtime_topology: RuntimeTopologyState,
     pub live_context: LiveContextState,
     pub export_inspector: ExportInspectorState,
     pub providers: Vec<ProviderStatus>,

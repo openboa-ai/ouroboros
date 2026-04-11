@@ -18,6 +18,7 @@ import type {
   ImportSummaryState,
   LiveContextState,
   OperationSummaryState,
+  RuntimeTopologyState,
   WorkspaceCatalogEntry,
   WorkspaceIndexState,
   WorkspaceSummary,
@@ -30,6 +31,7 @@ export type BootstrapState = {
   workspace: WorkspaceSummary;
   assetInspector: AssetInspectorState;
   workspaceIndex: WorkspaceIndexState;
+  runtimeTopology: RuntimeTopologyState;
   liveContext: LiveContextState;
   exportInspector: ExportInspectorState;
   providers: ProviderStatus[];

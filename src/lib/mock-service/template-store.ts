@@ -8,14 +8,20 @@ import type {
   TradingMode
 } from "../service-contract";
 import type {
+  AgentDefinition,
+  AgentsIndex,
   CheckpointIndex,
   CollectionRecord,
+  EnvironmentDefinition,
+  EnvironmentsIndex,
   LiveLaneState,
+  OrchestratorRecord,
   StrategyManifest
 } from "../workspace-contract";
 import checkpointIndexTemplate from "../../../templates/strategy-workspace/checkpoints/index.json";
 import agentsTemplate from "../../../templates/strategy-workspace/agents/index.json";
 import environmentsTemplate from "../../../templates/strategy-workspace/environments/index.json";
+import orchestratorTemplate from "../../../templates/strategy-workspace/orchestrator/orchestrator.json";
 import exportPolicyTemplate from "../../../templates/strategy-workspace/exports/policy.json";
 import collectionsTemplate from "../../../templates/strategy-workspace/indexes/collections.json";
 import importsTemplate from "../../../templates/strategy-workspace/imports/index.json";
@@ -36,14 +42,19 @@ import liveMemoryTemplate from "../../../templates/strategy-workspace/state/live
 import ordersTemplate from "../../../templates/strategy-workspace/state/orders.json";
 import positionsTemplate from "../../../templates/strategy-workspace/state/positions.json";
 import sessionsTemplate from "../../../templates/strategy-workspace/indexes/sessions.json";
+import liveManagerAgentTemplate from "../../../templates/strategy-workspace/agents/items/0196375e-6f98-7d61-9a1b-d12c8f95fd55/agent.json";
+import evaluatorAgentTemplate from "../../../templates/strategy-workspace/agents/items/01963760-0f86-7caf-8e5b-aecf7a760089/agent.json";
+import liveEnvironmentTemplate from "../../../templates/strategy-workspace/environments/items/01963762-0ed3-70ba-bdae-5edf57c9d1de/environment.json";
+import evaluationEnvironmentTemplate from "../../../templates/strategy-workspace/environments/items/01963763-147d-7488-acfb-77fd5c95dc0e/environment.json";
 import type { CollectionEntryRecord, MockWorkspaceStore } from "./types";
 
 export const mockStrategyManifest = strategyTemplate as StrategyManifest;
 
 const liveLaneSeed = liveLaneTemplate as LiveLaneState;
 const checkpointIndexSeed = checkpointIndexTemplate as CheckpointIndex;
-const agentsIndexSeed = agentsTemplate as MockWorkspaceStore["agentsIndex"];
-const environmentsIndexSeed = environmentsTemplate as MockWorkspaceStore["environmentsIndex"];
+const orchestratorSeed = orchestratorTemplate as OrchestratorRecord;
+const agentsIndexSeed = agentsTemplate as AgentsIndex;
+const environmentsIndexSeed = environmentsTemplate as EnvironmentsIndex;
 const exportPolicySeed = exportPolicyTemplate as MockWorkspaceStore["exportPolicy"];
 const collectionsSeed = collectionsTemplate as { items: CollectionRecord[] };
 const importsSeed = importsTemplate as MockWorkspaceStore["importsState"];
@@ -82,6 +93,7 @@ function parseEntries(raw: string): CollectionEntryRecord[] {
 export function createMockWorkspaceStore(): MockWorkspaceStore {
   return {
     strategyManifest: structuredClone(strategyTemplate) as StrategyManifest,
+    orchestrator: structuredClone(orchestratorSeed),
     liveLane: structuredClone(liveLaneSeed),
     checkpointIndexSeed: structuredClone(checkpointIndexSeed),
     exportPolicy: structuredClone(exportPolicySeed),
@@ -97,6 +109,22 @@ export function createMockWorkspaceStore(): MockWorkspaceStore {
     evalSummariesState: structuredClone(evalSummariesSeed),
     agentsIndex: structuredClone(agentsIndexSeed),
     environmentsIndex: structuredClone(environmentsIndexSeed),
+    agentDefinitions: {
+      "0196375e-6f98-7d61-9a1b-d12c8f95fd55": structuredClone(
+        liveManagerAgentTemplate
+      ) as AgentDefinition,
+      "01963760-0f86-7caf-8e5b-aecf7a760089": structuredClone(
+        evaluatorAgentTemplate
+      ) as AgentDefinition
+    },
+    environmentDefinitions: {
+      "01963762-0ed3-70ba-bdae-5edf57c9d1de": structuredClone(
+        liveEnvironmentTemplate
+      ) as EnvironmentDefinition,
+      "01963763-147d-7488-acfb-77fd5c95dc0e": structuredClone(
+        evaluationEnvironmentTemplate
+      ) as EnvironmentDefinition
+    },
     entriesByCollection: {
       "019626b0-4d0a-7a72-9b4e-9d8e11d0f901": parseEntries(btcAggEntriesRaw),
       "019626b6-c73a-7fe6-b0a5-64ac631d5102": parseEntries(macroNewsEntriesRaw)

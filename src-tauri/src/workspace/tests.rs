@@ -31,6 +31,16 @@ fn bootstrap_surfaces_agent_and_environment_indexes() {
     );
     assert!(bootstrap.workspace_index.agent_count >= 1);
     assert!(bootstrap.workspace_index.environment_count >= 1);
+    assert_eq!(bootstrap.runtime_topology.orchestrator.mode, "managed-agent");
+    assert!(bootstrap.runtime_topology.agents.len() >= 1);
+    assert!(bootstrap.runtime_topology.environments.len() >= 1);
+    assert!(
+        bootstrap
+            .runtime_topology
+            .agents
+            .iter()
+            .all(|agent| !agent.environment_ref.is_empty())
+    );
     assert!(
         bootstrap
             .document_catalog

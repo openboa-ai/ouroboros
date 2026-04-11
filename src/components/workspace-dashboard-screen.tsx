@@ -14,6 +14,7 @@ import { LiveContextPanel } from "./live-context-panel";
 import { OperationsPanel } from "./operations-panel";
 import { PositionsPanel } from "./positions-panel";
 import { PriceContextPanel } from "./price-context-panel";
+import { RuntimeTopologyPanel } from "./runtime-topology-panel";
 import { SourceIngestPanel } from "./source-ingest-panel";
 import { StrategyTimeline } from "./strategy-timeline";
 import { WorkspaceDocumentPanel } from "./workspace-document-panel";
@@ -180,6 +181,11 @@ export function WorkspaceDashboardScreen({
 
           <WorkspaceIndexPanel
             workspaceIndex={state.workspaceIndex}
+            onOpenDocument={openWorkspaceDocument}
+          />
+
+          <RuntimeTopologyPanel
+            runtimeTopology={state.runtimeTopology}
             onOpenDocument={openWorkspaceDocument}
           />
 

@@ -43,8 +43,59 @@ export type LiveLaneState = {
     sessions_ref: string;
     positions_ref: string;
     orders_ref: string;
-    eval_summaries_ref: string;
+  eval_summaries_ref: string;
   };
+};
+
+export type OrchestratorRecord = {
+  orchestrator_id: string;
+  name: string;
+  mode: string;
+  topology_refs: {
+    agents_ref: string;
+    environments_ref: string;
+    sessions_ref: string;
+    live_lane_ref: string;
+  };
+  notes?: string[];
+};
+
+export type AgentsIndex = {
+  agents: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    provider_mode: string;
+    definition_ref: string;
+  }>;
+};
+
+export type AgentDefinition = {
+  agent_id: string;
+  name: string;
+  kind: string;
+  environment_ref: string;
+  provider_policy: {
+    mode: string;
+    preferred_providers: string[];
+  };
+  workspace_refs: Record<string, string>;
+};
+
+export type EnvironmentsIndex = {
+  environments: Array<{
+    id: string;
+    name: string;
+    definition_ref: string;
+  }>;
+};
+
+export type EnvironmentDefinition = {
+  environment_id: string;
+  name: string;
+  kind: string;
+  capabilities: string[];
+  notes?: string;
 };
 
 export type CheckpointIndex = {

@@ -1,12 +1,16 @@
 import type {
   AssetInspectorState,
+  AgentRuntimeState,
   BootstrapState,
   CheckpointSummary,
   DecisionEntry,
+  EnvironmentRuntimeState,
   ExportBundleState,
   ExportInspectorState,
   LaneEventState,
   LiveContextState,
+  OrchestratorRuntimeState,
+  RuntimeTopologyState,
   WorkspaceIndexState
 } from "../service-contract";
 import { checkpointPath, exportBundlePath, WORKSPACE_ROOT } from "./paths";
@@ -81,6 +85,106 @@ export function buildWorkspaceIndex(
     collectionCount: store.collectionsState.items.length,
     operationCount: store.operationsState.items.length,
     sessionCount: store.sessionsState.sessions.length
+  };
+}
+
+function normalizeRef(pathRef: string) {
+  return pathRef
+    .split("/")
+    .reduce<string[]>((segments, segment) => {
+      if (!segment || segment === ".") {
+        return segments;
+      }
+      if (segment === "..") {
+        segments.pop();
+        return segments;
+      }
+      segments.push(segment);
+      return segments;
+    }, [])
+    .join("/");
+}
+
+function workspacePath(pathRef: string) {
+  return `${WORKSPACE_ROOT}/${normalizeRef(pathRef)}`;
+}
+
+function workspacePathFrom(basePath: string, pathRef: string) {
+  const baseSegments = normalizeRef(basePath).split("/");
+  baseSegments.pop();
+  return `${WORKSPACE_ROOT}/${normalizeRef([...baseSegments, pathRef].join("/"))}`;
+}
+
+export function buildRuntimeTopology(store: MockWorkspaceStore): RuntimeTopologyState {
+  const environments = store.environmentsIndex.environments.map<EnvironmentRuntimeState>(
+    (environment) => {
+      const definition = store.environmentDefinitions[environment.id];
+      return {
+        id: environment.id,
+        name: definition?.name ?? environment.name,
+        kind: definition?.kind ?? "unknown",
+        definitionRef: workspacePath(environment.definition_ref),
+        capabilities: definition?.capabilities ?? [],
+        notes: definition?.notes
+      };
+    }
+  );
+
+  const environmentNames = new Map(
+    environments.map((environment) => [environment.definitionRef, environment.name])
+  );
+
+  const agents = store.agentsIndex.agents.map<AgentRuntimeState>((agent) => {
+    const definition = store.agentDefinitions[agent.id];
+    const definitionRef = workspacePath(`agents/${agent.definition_ref}`);
+    const environmentRef = definition?.environment_ref
+      ? workspacePathFrom(`agents/${agent.definition_ref}`, definition.environment_ref)
+      : "";
+
+    return {
+      id: agent.id,
+      name: definition?.name ?? agent.name,
+      kind: definition?.kind ?? agent.kind,
+      definitionRef,
+      providerMode: definition?.provider_policy.mode ?? agent.provider_mode,
+      preferredProviders: definition?.provider_policy.preferred_providers ?? [],
+      environmentRef,
+      environmentName: environmentNames.get(environmentRef) ?? "unknown",
+      workspaceRefs: Object.entries(definition?.workspace_refs ?? {}).map(([label, pathRef]) => ({
+        label,
+        pathRef: workspacePathFrom(`agents/${agent.definition_ref}`, pathRef)
+      }))
+    };
+  });
+
+  const orchestrator = store.orchestrator;
+  const orchestratorState: OrchestratorRuntimeState = {
+    id: orchestrator.orchestrator_id,
+    name: orchestrator.name,
+    mode: orchestrator.mode,
+    pathRef: `${WORKSPACE_ROOT}/orchestrator/orchestrator.json`,
+    notes: orchestrator.notes ?? [],
+    topologyRefs: {
+      agentsRef: workspacePathFrom("orchestrator/orchestrator.json", orchestrator.topology_refs.agents_ref),
+      environmentsRef: workspacePathFrom(
+        "orchestrator/orchestrator.json",
+        orchestrator.topology_refs.environments_ref
+      ),
+      sessionsRef: workspacePathFrom(
+        "orchestrator/orchestrator.json",
+        orchestrator.topology_refs.sessions_ref
+      ),
+      liveLaneRef: workspacePathFrom(
+        "orchestrator/orchestrator.json",
+        orchestrator.topology_refs.live_lane_ref
+      )
+    }
+  };
+
+  return {
+    orchestrator: orchestratorState,
+    agents,
+    environments
   };
 }
 
@@ -188,6 +292,7 @@ export function buildDerivedState(
     currentCheckpointRef,
     assetInspector,
     workspaceIndex: buildWorkspaceIndex(store, currentCheckpointRef),
+    runtimeTopology: buildRuntimeTopology(store),
     liveContext: buildLiveContext(store),
     exportInspector,
     collections: buildCollections(store),
@@ -214,6 +319,7 @@ export function buildTemplateBootstrapState(store: MockWorkspaceStore): Bootstra
     },
     assetInspector: derived.assetInspector,
     workspaceIndex: derived.workspaceIndex,
+    runtimeTopology: derived.runtimeTopology,
     liveContext: derived.liveContext,
     exportInspector: derived.exportInspector,
     positions: structuredClone(store.positionsState.current),

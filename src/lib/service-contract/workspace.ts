@@ -292,6 +292,52 @@ export type AssetInspectorState = {
   exportCount: number;
 };
 
+export type RuntimeTopologyWorkspaceRefState = {
+  label: string;
+  pathRef: string;
+};
+
+export type OrchestratorRuntimeState = {
+  id: string;
+  name: string;
+  mode: string;
+  pathRef: string;
+  notes: string[];
+  topologyRefs: {
+    agentsRef: string;
+    environmentsRef: string;
+    sessionsRef: string;
+    liveLaneRef: string;
+  };
+};
+
+export type AgentRuntimeState = {
+  id: string;
+  name: string;
+  kind: string;
+  definitionRef: string;
+  providerMode: string;
+  preferredProviders: string[];
+  environmentRef: string;
+  environmentName: string;
+  workspaceRefs: RuntimeTopologyWorkspaceRefState[];
+};
+
+export type EnvironmentRuntimeState = {
+  id: string;
+  name: string;
+  kind: string;
+  definitionRef: string;
+  capabilities: string[];
+  notes?: string;
+};
+
+export type RuntimeTopologyState = {
+  orchestrator: OrchestratorRuntimeState;
+  agents: AgentRuntimeState[];
+  environments: EnvironmentRuntimeState[];
+};
+
 export type StrategyActiveIndexState = {
   orchestratorRef: string;
   liveLaneRef: string;

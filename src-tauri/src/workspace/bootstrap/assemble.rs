@@ -1,6 +1,11 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::*;
+use crate::models::{
+    AgentRuntimeState, EnvironmentRuntimeState, OrchestratorRuntimeState,
+    OrchestratorTopologyRefsState, RuntimeTopologyState, RuntimeTopologyWorkspaceRefState,
+};
 
 struct BootstrapPaths {
     strategy_path: PathBuf,
@@ -24,6 +29,7 @@ struct BootstrapPaths {
 
 struct BootstrapFiles {
     strategy: StrategyManifestFile,
+    orchestrator: OrchestratorFile,
     live_lane: LiveLaneFile,
     export_policy: ExportPolicyFile,
     checkpoints_index: CheckpointIndexFile,
@@ -158,7 +164,7 @@ impl WorkspaceRepository {
         strategy: StrategyManifestFile,
         paths: &BootstrapPaths,
     ) -> Result<BootstrapFiles, String> {
-        let _orchestrator = self.read_json_path::<OrchestratorFile>(&paths.orchestrator_path)?;
+        let orchestrator = self.read_json_path::<OrchestratorFile>(&paths.orchestrator_path)?;
         let live_lane = self.read_json_path::<LiveLaneFile>(&paths.live_lane_path)?;
         let export_policy = self.read_json_path::<ExportPolicyFile>(&paths.export_policy_path)?;
         let checkpoints_index =
@@ -181,6 +187,7 @@ impl WorkspaceRepository {
 
         Ok(BootstrapFiles {
             strategy,
+            orchestrator,
             live_lane,
             export_policy,
             checkpoints_index,
@@ -212,6 +219,7 @@ impl WorkspaceRepository {
             &context.files,
             &context.current_checkpoint_path,
         );
+        let runtime_topology = self.build_runtime_topology_state(&context.paths, &context.files);
         let live_context = self.build_live_context_state(&context.paths, &context.files);
         let export_inspector =
             self.build_export_inspector_state(&context.files, context.latest_export_bundle);
@@ -235,6 +243,7 @@ impl WorkspaceRepository {
             workspace,
             asset_inspector,
             workspace_index,
+            runtime_topology,
             live_context,
             export_inspector,
             providers: files.dashboard.providers,
@@ -311,6 +320,137 @@ impl WorkspaceRepository {
             collection_count: files.collections_index.items.len(),
             operation_count: files.operations_index.items.len(),
             session_count: files.sessions.sessions.len(),
+        }
+    }
+
+    fn build_runtime_topology_state(
+        &self,
+        paths: &BootstrapPaths,
+        files: &BootstrapFiles,
+    ) -> RuntimeTopologyState {
+        let environments: Vec<(String, EnvironmentRuntimeState)> = files
+            .environments_index
+            .environments
+            .iter()
+            .map(|environment| {
+                let definition_path =
+                    self.resolve_ref(&paths.environments_index_path, &environment.definition_ref);
+                let record = self
+                    .read_json_path::<EnvironmentRecordFile>(&definition_path)
+                    .unwrap_or(EnvironmentRecordFile {
+                        environment_id: environment.id.clone(),
+                        name: environment.name.clone(),
+                        kind: "unknown".into(),
+                        capabilities: Vec::new(),
+                        notes: None,
+                    });
+                let display_ref = self.display_path(&definition_path);
+                let state = EnvironmentRuntimeState {
+                    id: record.environment_id.clone(),
+                    name: record.name,
+                    kind: record.kind,
+                    definition_ref: display_ref.clone(),
+                    capabilities: record.capabilities,
+                    notes: record.notes,
+                };
+                (display_ref, state)
+            })
+            .collect::<Vec<_>>();
+
+        let environment_names = environments
+            .iter()
+            .map(|(path_ref, environment)| (path_ref.clone(), environment.name.clone()))
+            .collect::<BTreeMap<_, _>>();
+
+        let agents = files
+            .agents_index
+            .agents
+            .iter()
+            .map(|agent| {
+                let definition_path =
+                    self.resolve_ref(&paths.agents_index_path, &agent.definition_ref);
+                let record = self
+                    .read_json_path::<AgentRecordFile>(&definition_path)
+                    .unwrap_or(AgentRecordFile {
+                        agent_id: agent.id.clone(),
+                        name: agent.name.clone(),
+                        kind: agent.kind.clone(),
+                        environment_ref: String::new(),
+                        provider_policy: AgentProviderPolicyFile {
+                            mode: agent.provider_mode.clone(),
+                            preferred_providers: Vec::new(),
+                        },
+                        workspace_refs: serde_json::json!({}),
+                    });
+                let environment_path = self.resolve_ref(&definition_path, &record.environment_ref);
+                let environment_ref = self.display_path(&environment_path);
+                let mut workspace_refs = record
+                    .workspace_refs
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|map| map.iter())
+                    .filter_map(|(label, value)| {
+                        value.as_str().map(|path_ref| RuntimeTopologyWorkspaceRefState {
+                            label: label.clone(),
+                            path_ref: self.display_path(&self.resolve_ref(&definition_path, path_ref)),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                workspace_refs.sort_by(|left, right| left.label.cmp(&right.label));
+
+                AgentRuntimeState {
+                    id: record.agent_id,
+                    name: record.name,
+                    kind: record.kind,
+                    definition_ref: self.display_path(&definition_path),
+                    provider_mode: record.provider_policy.mode,
+                    preferred_providers: record.provider_policy.preferred_providers,
+                    environment_ref: environment_ref.clone(),
+                    environment_name: environment_names
+                        .get(&environment_ref)
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".into()),
+                    workspace_refs,
+                }
+            })
+            .collect();
+
+        RuntimeTopologyState {
+            orchestrator: OrchestratorRuntimeState {
+                id: files.orchestrator.orchestrator_id.clone(),
+                name: files.orchestrator.name.clone(),
+                mode: files.orchestrator.mode.clone(),
+                path_ref: self.display_path(&paths.orchestrator_path),
+                notes: files.orchestrator.notes.clone(),
+                topology_refs: OrchestratorTopologyRefsState {
+                    agents_ref: self.display_path(
+                        &self.resolve_ref(
+                            &paths.orchestrator_path,
+                            &files.orchestrator.topology_refs.agents_ref,
+                        ),
+                    ),
+                    environments_ref: self.display_path(
+                        &self.resolve_ref(
+                            &paths.orchestrator_path,
+                            &files.orchestrator.topology_refs.environments_ref,
+                        ),
+                    ),
+                    sessions_ref: self.display_path(
+                        &self.resolve_ref(
+                            &paths.orchestrator_path,
+                            &files.orchestrator.topology_refs.sessions_ref,
+                        ),
+                    ),
+                    live_lane_ref: self.display_path(
+                        &self.resolve_ref(
+                            &paths.orchestrator_path,
+                            &files.orchestrator.topology_refs.live_lane_ref,
+                        ),
+                    ),
+                },
+            },
+            agents,
+            environments: environments.into_iter().map(|(_, environment)| environment).collect(),
         }
     }
 

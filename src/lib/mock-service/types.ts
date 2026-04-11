@@ -9,14 +9,20 @@ import type {
   LaneEventState,
   LiveContextState,
   OperationSummaryState,
+  RuntimeTopologyState,
   WorkspaceCatalogEntry,
   WorkspaceIndexState
 } from "../service-contract";
 import type {
+  AgentDefinition,
+  AgentsIndex,
   BlobId,
   CheckpointIndex,
   CollectionRecord,
+  EnvironmentDefinition,
+  EnvironmentsIndex,
   LiveLaneState,
+  OrchestratorRecord,
   StrategyManifest
 } from "../workspace-contract";
 
@@ -106,28 +112,6 @@ export type EvalSummariesState = {
   summaries: EvalSummaryRecord[];
 };
 
-export type AgentIndexItem = {
-  id: string;
-  kind: string;
-  name: string;
-  provider_mode: string;
-  definition_ref: string;
-};
-
-export type EnvironmentIndexItem = {
-  id: string;
-  name: string;
-  definition_ref: string;
-};
-
-export type AgentsIndexState = {
-  agents: AgentIndexItem[];
-};
-
-export type EnvironmentsIndexState = {
-  environments: EnvironmentIndexItem[];
-};
-
 export type ImportsState = {
   items: ImportRecord[];
 };
@@ -146,6 +130,7 @@ export type DashboardSeedState = Omit<
   BootstrapState,
   | "assetInspector"
   | "workspaceIndex"
+  | "runtimeTopology"
   | "liveContext"
   | "exportInspector"
   | "workspace"
@@ -162,6 +147,7 @@ export type DashboardSeedState = Omit<
 
 export type MockWorkspaceStore = {
   strategyManifest: StrategyManifest;
+  orchestrator: OrchestratorRecord;
   liveLane: LiveLaneState;
   checkpointIndexSeed: CheckpointIndexSeed;
   exportPolicy: ExportPolicyRecord;
@@ -175,8 +161,10 @@ export type MockWorkspaceStore = {
   liveMemoryState: LiveMemoryState;
   sessionsState: SessionsState;
   evalSummariesState: EvalSummariesState;
-  agentsIndex: AgentsIndexState;
-  environmentsIndex: EnvironmentsIndexState;
+  agentsIndex: AgentsIndex;
+  environmentsIndex: EnvironmentsIndex;
+  agentDefinitions: Record<string, AgentDefinition>;
+  environmentDefinitions: Record<string, EnvironmentDefinition>;
   entriesByCollection: Record<string, CollectionEntryRecord[]>;
   blobContents: Record<BlobId | string, string>;
 };
@@ -186,6 +174,7 @@ export type MockDerivedState = {
   currentCheckpointRef: string;
   assetInspector: AssetInspectorState;
   workspaceIndex: WorkspaceIndexState;
+  runtimeTopology: RuntimeTopologyState;
   liveContext: LiveContextState;
   exportInspector: ExportInspectorState;
   collections: CollectionSummaryState[];
