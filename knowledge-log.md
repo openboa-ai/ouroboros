@@ -141,3 +141,5 @@
 - Split backend workspace mutations into `sources`, `imports`, `exports`, and `live` submodules so ingestion, import activation, export flows, and live control mutations no longer share one write-heavy file.
 - Split backend workspace catalog logic into dedicated `build` and `backlinks` submodules, keeping catalog materialization and document-reference resolution isolated instead of mixing both read paths in one module.
 - Split backend workspace lifecycle into `prepare` and `snapshots` submodules so workspace normalization/materialization and checkpoint/export/restore mechanics no longer sit in one monolithic lifecycle file.
+- Split backend workspace query logic into dedicated `checkpoints`, `collections`, `imports`, `blobs`, `operations`, `documents`, and `search` submodules so read-side detail loaders no longer accumulate in one monolithic query file.
+- Split backend bootstrap logic into `assemble` and `exports` submodules, turning bootstrap loading into an explicit assembly step while keeping export-bundle lookup helpers isolated from the live bootstrap state builder.
