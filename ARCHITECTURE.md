@@ -54,6 +54,9 @@ agent platform.
 - `client`
   The React UI that renders read models and sends commands, but does not mutate the workspace
   directly.
+- `transport`
+  Tauri command handlers that translate desktop invocations into application-layer queries and
+  mutations.
 - `application service`
   The official machine boundary for validation, invariants, locking, checkpoint/export/import
   workflows, and read/write orchestration.
