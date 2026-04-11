@@ -24,6 +24,11 @@ If code, docs, or comments use older names, prefer the terms in this file.
 - `state transition`
   A pure or mostly-pure mutation step that transforms live/import/export state before repository
   persistence happens.
+- `typed runtime state`
+  A shared enum-backed state value such as trading mode, automation status, managed-agent
+  orchestrator mode, import preflight status/severity, or operation status. Typed runtime states
+  are the canonical way to represent guarded runtime state across backend, service contract, and
+  client code.
 - `client`
   The official UI surface that reads via the application service and sends commands through it.
 - `orchestrator`

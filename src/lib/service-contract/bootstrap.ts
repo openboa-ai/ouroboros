@@ -1,4 +1,5 @@
 import type {
+  AutomationStatus,
   DecisionEntry,
   EquityPoint,
   ExposurePoint,
@@ -26,7 +27,7 @@ import type {
 
 export type BootstrapState = {
   mode: TradingMode;
-  automationStatus: "active" | "paused";
+  automationStatus: AutomationStatus;
   statusNote?: string;
   workspace: WorkspaceSummary;
   assetInspector: AssetInspectorState;

@@ -53,25 +53,7 @@ export function resolveMockDocumentContent(
     return JSON.stringify(store.strategyManifest, null, 2);
   }
   if (documentRef === `${WORKSPACE_ROOT}/orchestrator/orchestrator.json`) {
-    return JSON.stringify(
-      {
-        orchestrator_id: "01963759-7f8a-74ad-92ce-b40d0643dc93",
-        name: "kairos-orchestrator",
-        mode: "managed-agent",
-        topology_refs: {
-          agents_ref: "../agents/index.json",
-          environments_ref: "../environments/index.json",
-          sessions_ref: "../indexes/sessions.json",
-          live_lane_ref: "../live/live-lane.json"
-        },
-        notes: [
-          "The orchestrator owns agent session flow and service-mediated workspace mutations.",
-          "Execution core remains outside the orchestrator boundary."
-        ]
-      },
-      null,
-      2
-    );
+    return JSON.stringify(store.orchestrator, null, 2);
   }
   if (documentRef === `${WORKSPACE_ROOT}/live/live-lane.json`) {
     return JSON.stringify(store.liveLane, null, 2);

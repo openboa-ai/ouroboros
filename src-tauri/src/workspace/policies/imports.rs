@@ -13,9 +13,9 @@ pub(in crate::workspace) fn build_import_preflight(
     builder.push(
         "sanitized-bundle",
         if import_record.sanitized {
-            "ok"
+            ImportPreflightSeverity::Ok
         } else {
-            "blocked"
+            ImportPreflightSeverity::Blocked
         },
         "Sanitized bundle",
         if import_record.sanitized {
@@ -212,9 +212,9 @@ pub(in crate::workspace) fn build_import_preflight(
         builder.push(
             "agent-definitions",
             if missing_agent_defs == 0 {
-                "ok"
+                ImportPreflightSeverity::Ok
             } else {
-                "blocked"
+                ImportPreflightSeverity::Blocked
             },
             "Agent definitions",
             if missing_agent_defs == 0 {
@@ -240,7 +240,11 @@ pub(in crate::workspace) fn build_import_preflight(
             .count();
         builder.push(
             "agent-environment-links",
-            if invalid_agent_environments == 0 { "ok" } else { "blocked" },
+            if invalid_agent_environments == 0 {
+                ImportPreflightSeverity::Ok
+            } else {
+                ImportPreflightSeverity::Blocked
+            },
             "Agent environment links",
             if invalid_agent_environments == 0 {
                 "Every managed-agent definition resolves its environment ref.".into()
@@ -270,9 +274,9 @@ pub(in crate::workspace) fn build_import_preflight(
         builder.push(
             "environment-definitions",
             if missing_environment_defs == 0 {
-                "ok"
+                ImportPreflightSeverity::Ok
             } else {
-                "blocked"
+                ImportPreflightSeverity::Blocked
             },
             "Environment definitions",
             if missing_environment_defs == 0 {
@@ -289,7 +293,7 @@ pub(in crate::workspace) fn build_import_preflight(
     match repo.resolve_checkpoint_record_by_ref(&import_record.checkpoint_ref)? {
         Some(checkpoint) => builder.push(
             "checkpoint-ref",
-            "ok",
+            ImportPreflightSeverity::Ok,
             "Checkpoint ref",
             format!(
                 "Imported checkpoint ref resolves to local checkpoint {}.",
@@ -298,7 +302,7 @@ pub(in crate::workspace) fn build_import_preflight(
         ),
         None => builder.push(
             "checkpoint-ref",
-            "warning",
+            ImportPreflightSeverity::Warning,
             "Checkpoint ref",
             "Imported checkpoint ref does not resolve locally; activation will anchor a fresh local incident checkpoint.".into(),
         ),
@@ -347,10 +351,10 @@ impl<'a> ImportPreflightBuilder<'a> {
         }
     }
 
-    fn push(&mut self, id: &str, severity: &str, label: &str, detail: String) {
+    fn push(&mut self, id: &str, severity: ImportPreflightSeverity, label: &str, detail: String) {
         self.checks.push(ImportPreflightCheckState {
             id: id.into(),
-            severity: severity.into(),
+            severity,
             label: label.into(),
             detail,
         });
@@ -370,25 +374,29 @@ impl<'a> ImportPreflightBuilder<'a> {
         } else {
             format!("{blocked_prefix} {}.", self.repo.display_path(path))
         };
-        self.push(id, if exists { "ok" } else { "blocked" }, label, detail);
+        self.push(
+            id,
+            if exists {
+                ImportPreflightSeverity::Ok
+            } else {
+                ImportPreflightSeverity::Blocked
+            },
+            label,
+            detail,
+        );
     }
 
     fn finish(self) -> ImportPreflightState {
         let blocked_count = self
             .checks
             .iter()
-            .filter(|check| check.severity == "blocked")
+            .filter(|check| check.severity == ImportPreflightSeverity::Blocked)
             .count();
         let warning_count = self
             .checks
             .iter()
-            .filter(|check| check.severity == "warning")
+            .filter(|check| check.severity == ImportPreflightSeverity::Warning)
             .count();
-        let status = if blocked_count > 0 {
-            "blocked"
-        } else {
-            "ready"
-        };
         let summary = if blocked_count > 0 {
             format!(
                 "{blocked_count} blocking issue(s) and {warning_count} warning(s) must be resolved before activation."
@@ -405,7 +413,11 @@ impl<'a> ImportPreflightBuilder<'a> {
         };
 
         ImportPreflightState {
-            status: status.into(),
+            status: if blocked_count > 0 {
+                ImportPreflightStatus::Blocked
+            } else {
+                ImportPreflightStatus::Ready
+            },
             summary,
             checks: self.checks,
         }

@@ -1,6 +1,7 @@
 use std::fs;
 
 use super::*;
+use crate::models::{ImportPreflightSeverity, ImportPreflightStatus, OrchestratorMode};
 
 fn test_root() -> PathBuf {
     std::env::temp_dir().join(format!("autokairos-workspace-test-{}", uuid_v7_string()))
@@ -33,7 +34,7 @@ fn bootstrap_surfaces_agent_and_environment_indexes() {
     assert!(bootstrap.workspace_index.environment_count >= 1);
     assert_eq!(
         bootstrap.runtime_topology.orchestrator.mode,
-        "managed-agent"
+        OrchestratorMode::ManagedAgent
     );
     assert!(bootstrap.runtime_topology.agents.len() >= 1);
     assert!(bootstrap.runtime_topology.environments.len() >= 1);
@@ -257,13 +258,17 @@ fn import_preflight_blocks_activation_when_strategy_entrypoint_is_missing() {
     let import_detail = repo
         .load_import_detail(&imported.import_id)
         .expect("load staged import detail");
-    assert_eq!(import_detail.preflight.status, "blocked");
+    assert_eq!(
+        import_detail.preflight.status,
+        ImportPreflightStatus::Blocked
+    );
     assert!(
         import_detail
             .preflight
             .checks
             .iter()
-            .any(|check| check.id == "strategy-entrypoint" && check.severity == "blocked"),
+            .any(|check| check.id == "strategy-entrypoint"
+                && check.severity == ImportPreflightSeverity::Blocked),
         "preflight should flag the missing strategy entrypoint"
     );
 

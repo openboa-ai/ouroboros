@@ -3,6 +3,10 @@ import type {
   ImportDetailState,
   ImportSummaryState
 } from "../lib/service-contract";
+import {
+  importPreflightSeverityTone,
+  importPreflightStatusTone
+} from "../lib/runtime-state-presenters";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -104,7 +108,7 @@ export function ImportsPanel({
               <h3 className="text-[11px] uppercase tracking-[0.18em] text-ink-300">Activation preflight</h3>
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={importDetail.preflight.status === "ready" ? "positive" : "danger"}>
+                  <Badge tone={importPreflightStatusTone(importDetail.preflight.status)}>
                     {importDetail.preflight.status}
                   </Badge>
                   <Badge tone="neutral">{importDetail.preflight.checks.length} checks</Badge>
@@ -118,13 +122,7 @@ export function ImportsPanel({
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge
-                          tone={
-                            check.severity === "ok"
-                              ? "positive"
-                              : check.severity === "warning"
-                                ? "warning"
-                                : "danger"
-                          }
+                          tone={importPreflightSeverityTone(check.severity)}
                         >
                           {check.severity}
                         </Badge>

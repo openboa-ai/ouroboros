@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    DecisionEntry, EquityPoint, ExposurePoint, LaneEventState, LiveOrder, LivePosition,
-    MetricCardData, PricePoint, ProviderStatus, TradingMode,
+    AutomationStatus, DecisionEntry, EquityPoint, ExposurePoint, ImportPreflightSeverity,
+    ImportPreflightStatus, LaneEventState, LiveOrder, LivePosition, MetricCardData,
+    OperationStatus, OrchestratorMode, PricePoint, ProviderStatus, TradingMode,
 };
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -133,7 +134,7 @@ pub struct ImportSummaryState {
 #[serde(rename_all = "camelCase")]
 pub struct ImportPreflightCheckState {
     pub id: String,
-    pub severity: String,
+    pub severity: ImportPreflightSeverity,
     pub label: String,
     pub detail: String,
 }
@@ -141,7 +142,7 @@ pub struct ImportPreflightCheckState {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPreflightState {
-    pub status: String,
+    pub status: ImportPreflightStatus,
     pub summary: String,
     pub checks: Vec<ImportPreflightCheckState>,
 }
@@ -201,7 +202,7 @@ pub struct OperationDetailState {
     pub id: String,
     pub kind: String,
     pub scope: String,
-    pub status: String,
+    pub status: OperationStatus,
     pub summary: String,
     pub details: String,
     pub created_at: String,
@@ -324,7 +325,7 @@ pub struct OrchestratorTopologyRefsState {
 pub struct OrchestratorRuntimeState {
     pub id: String,
     pub name: String,
-    pub mode: String,
+    pub mode: OrchestratorMode,
     pub path_ref: String,
     pub notes: Vec<String>,
     pub topology_refs: OrchestratorTopologyRefsState,
@@ -403,7 +404,7 @@ pub struct OperationSummaryState {
     pub id: String,
     pub kind: String,
     pub scope: String,
-    pub status: String,
+    pub status: OperationStatus,
     pub summary: String,
     pub details: String,
     pub created_at: String,
@@ -468,7 +469,7 @@ pub struct ExportInspectorState {
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapState {
     pub mode: TradingMode,
-    pub automation_status: String,
+    pub automation_status: AutomationStatus,
     pub status_note: Option<String>,
     pub workspace: WorkspaceSummary,
     pub asset_inspector: AssetInspectorState,

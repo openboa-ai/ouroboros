@@ -1,3 +1,5 @@
+import type { OrchestratorMode, TradingMode } from "./service-contract/states";
+
 export type ArtifactId = string;
 export type CheckpointId = string;
 export type CollectionId = string;
@@ -35,7 +37,7 @@ export type StrategyIndexRefs = {
 export type LiveLaneState = {
   lane_id: string;
   label: string;
-  mode: "observer" | "paper" | "live";
+  mode: TradingMode;
   state_refs: {
     dashboard_ref: string;
     decisions_ref: string;
@@ -50,7 +52,7 @@ export type LiveLaneState = {
 export type OrchestratorRecord = {
   orchestrator_id: string;
   name: string;
-  mode: string;
+  mode: OrchestratorMode;
   topology_refs: {
     agents_ref: string;
     environments_ref: string;

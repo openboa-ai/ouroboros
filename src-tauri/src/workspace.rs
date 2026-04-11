@@ -15,13 +15,14 @@ use contracts::*;
 use helpers::*;
 
 use crate::models::{
-    AssetInspectorState, BlobDetailState, BootstrapState, CheckpointComparisonFileState,
-    CheckpointComparisonState, CheckpointDetailState, CheckpointSummary, CollectionDetailState,
-    CollectionEntryState, CollectionSummaryState, DecisionEntry, ExportBundleState,
-    ExportInspectorState, ImportBundleState, ImportComparisonState, ImportDetailState,
-    ImportPreflightCheckState, ImportPreflightState, ImportSummaryState, IngestSourceEntryInput,
+    AssetInspectorState, AutomationStatus, BlobDetailState, BootstrapState,
+    CheckpointComparisonFileState, CheckpointComparisonState, CheckpointDetailState,
+    CheckpointSummary, CollectionDetailState, CollectionEntryState, CollectionSummaryState,
+    DecisionEntry, ExportBundleState, ExportInspectorState, ImportBundleState,
+    ImportComparisonState, ImportDetailState, ImportPreflightCheckState, ImportPreflightSeverity,
+    ImportPreflightState, ImportPreflightStatus, ImportSummaryState, IngestSourceEntryInput,
     IngestSourceEntryResult, LiveContextState, LiveEvaluationSummaryState, LiveSessionState,
-    OperationDetailState, OperationRelatedDocumentState, OperationSummaryState,
+    OperationDetailState, OperationRelatedDocumentState, OperationStatus, OperationSummaryState,
     StrategyActiveIndexState, StrategyIndexesState, TradingMode, WorkspaceCatalogEntryState,
     WorkspaceDocumentBacklinkState, WorkspaceDocumentState, WorkspaceIndexState,
     WorkspaceSearchResultState, WorkspaceSummary,

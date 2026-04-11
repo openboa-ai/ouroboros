@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::{
-    CheckpointComparisonFileState, DecisionEntry, EquityPoint, ExposurePoint, LiveOrder,
-    LivePosition, MetricCardData, PricePoint, ProviderStatus, TradingMode,
+    AutomationStatus, CheckpointComparisonFileState, DecisionEntry, EquityPoint, ExposurePoint,
+    LiveOrder, LivePosition, MetricCardData, OperationStatus, OrchestratorMode, PricePoint,
+    ProviderStatus, TradingMode,
 };
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -50,7 +51,7 @@ pub(super) struct LiveLaneFile {
 pub(super) struct OrchestratorFile {
     pub orchestrator_id: String,
     pub name: String,
-    pub mode: String,
+    pub mode: OrchestratorMode,
     pub topology_refs: OrchestratorTopologyRefsFile,
     #[serde(default)]
     pub notes: Vec<String>,
@@ -79,7 +80,7 @@ pub(super) struct LiveLaneRefsFile {
 #[serde(rename_all = "camelCase")]
 pub(super) struct DashboardStateFile {
     pub mode: TradingMode,
-    pub automation_status: String,
+    pub automation_status: AutomationStatus,
     pub status_note: Option<String>,
     pub providers: Vec<ProviderStatus>,
     pub metrics: Vec<MetricCardData>,
@@ -214,7 +215,7 @@ pub(super) struct OperationRecordFile {
     pub operation_id: String,
     pub kind: String,
     pub scope: String,
-    pub status: String,
+    pub status: OperationStatus,
     pub summary: String,
     pub details: String,
     pub created_at: String,

@@ -1,14 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TradingMode {
-    Observer,
-    Paper,
-    Live,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderStatus {
     pub name: String,

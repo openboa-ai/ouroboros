@@ -66,6 +66,10 @@ agent platform.
 - `policy and transition objects`
   Explicit import/export/live-state rules that keep preflight logic, sanitization rules, and state
   transitions out of transport and file-IO glue.
+- `typed runtime states`
+  Shared enum-backed state values that define live mode, automation status, managed-agent
+  orchestrator mode, import preflight state, and operation status across backend, service
+  contract, and client rendering.
 - `workspace asset`
   The local strategy workspace that acts as the primary strategy-asset boundary.
 - `orchestrator`
@@ -130,6 +134,8 @@ The agent plane and the execution plane are different bounded contexts.
   application service
 - import/export/live mutations should flow through repository-owned IO plus explicit policy or
   transition objects, not through ad hoc branching in transport handlers
+- runtime modes and service-owned mutation statuses should stay enum-backed across backend and
+  client contracts instead of drifting into ad hoc string flags
 
 ## Documentation Map
 

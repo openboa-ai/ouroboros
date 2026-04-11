@@ -1,3 +1,10 @@
+import type {
+  ImportPreflightSeverity,
+  ImportPreflightStatus,
+  OperationStatus,
+  OrchestratorMode
+} from "./common";
+
 export type WorkspaceCatalogCategory =
   | "entrypoint"
   | "active"
@@ -164,13 +171,13 @@ export type ImportSummaryState = {
 
 export type ImportPreflightCheckState = {
   id: string;
-  severity: "ok" | "warning" | "blocked";
+  severity: ImportPreflightSeverity;
   label: string;
   detail: string;
 };
 
 export type ImportPreflightState = {
-  status: "ready" | "blocked";
+  status: ImportPreflightStatus;
   summary: string;
   checks: ImportPreflightCheckState[];
 };
@@ -227,7 +234,7 @@ export type OperationSummaryState = {
   id: string;
   kind: string;
   scope: "live" | "workspace";
-  status: "succeeded";
+  status: OperationStatus;
   summary: string;
   details: string;
   createdAt: string;
@@ -247,7 +254,7 @@ export type OperationDetailState = {
   id: string;
   kind: string;
   scope: "live" | "workspace";
-  status: "succeeded";
+  status: OperationStatus;
   summary: string;
   details: string;
   createdAt: string;
@@ -300,7 +307,7 @@ export type RuntimeTopologyWorkspaceRefState = {
 export type OrchestratorRuntimeState = {
   id: string;
   name: string;
-  mode: string;
+  mode: OrchestratorMode;
   pathRef: string;
   notes: string[];
   topologyRefs: {

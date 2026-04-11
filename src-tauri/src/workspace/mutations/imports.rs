@@ -98,7 +98,7 @@ impl WorkspaceRepository {
         let import_workspace = self.resolve_ref(&import_path, &import_record.workspace_ref);
         let preflight =
             self.build_import_preflight(&import_record, &import_path, &import_workspace)?;
-        if preflight.status != "ready" {
+        if preflight.status != ImportPreflightStatus::Ready {
             return Err(format!(
                 "import {} failed activation preflight: {}",
                 import_id, preflight.summary

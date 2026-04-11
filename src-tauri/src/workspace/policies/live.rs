@@ -18,7 +18,7 @@ pub(in crate::workspace) fn pause_automation(
 ) -> PauseAutomationTransition {
     live_lane.mode = TradingMode::Observer;
     dashboard.mode = TradingMode::Observer;
-    dashboard.automation_status = "paused".into();
+    dashboard.automation_status = AutomationStatus::Paused;
     dashboard.status_note = Some(
         "Global automation was paused through the service layer while preserving live context."
             .into(),
@@ -114,6 +114,7 @@ pub(in crate::workspace) fn flatten_all_live_state(
     mut positions: PositionsStateFile,
     mut orders: OrdersStateFile,
 ) -> FlattenAllTransition {
+    dashboard.automation_status = AutomationStatus::Intervention;
     dashboard.status_note =
         Some("Service-layer intervention flattened all live positions in the workspace.".into());
     for metric in dashboard.metrics.iter_mut() {

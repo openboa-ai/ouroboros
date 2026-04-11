@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, Bot, CandlestickChart, ShieldCheck } from "lucide-react";
 import type { WorkspaceControllerViewModel } from "../hooks/use-workspace-controller";
+import { automationStatusTone } from "../lib/runtime-state-presenters";
 import { AppShell } from "./app-shell";
 import { AssetInspectorPanel } from "./asset-inspector-panel";
 import { BundleImportPanel } from "./bundle-import-panel";
@@ -209,7 +210,7 @@ export function WorkspaceDashboardScreen({
                 <Badge tone={state.mode}>{state.mode.toUpperCase()}</Badge>
                 <Badge tone="neutral">Artifact {state.workspace.slug}</Badge>
                 <Badge tone="positive">Checkpoint {state.workspace.currentCheckpointAlias}</Badge>
-                <Badge tone={state.automationStatus === "active" ? "positive" : "warning"}>
+                <Badge tone={automationStatusTone(state.automationStatus)}>
                   Automation {state.automationStatus}
                 </Badge>
               </div>

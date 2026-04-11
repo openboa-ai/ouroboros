@@ -13,7 +13,7 @@ impl WorkspaceRepository {
             operation_id: uuid_v7_string(),
             kind: kind.into(),
             scope: scope.into(),
-            status: "succeeded".into(),
+            status: OperationStatus::Succeeded,
             summary,
             details,
             created_at: now_label(),
