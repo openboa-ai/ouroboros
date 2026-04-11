@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import type {
   BlobDetailState,
   BootstrapState,
@@ -16,8 +16,10 @@ import type {
 import { workspaceService } from "../lib/service-gateway";
 
 export function useWorkspaceController() {
+  const refreshInFlightRef = useRef(false);
   const [state, setState] = useState<BootstrapState | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [selectedCheckpointDetail, setSelectedCheckpointDetail] = useState<CheckpointDetailState | null>(
     null
@@ -73,8 +75,10 @@ export function useWorkspaceController() {
       selectedOperationId?: string | null;
       selectedDocumentId?: string | null;
       selectedDocumentRef?: string | null;
+      preserveDetailState?: boolean;
     }
   ) {
+    const preserveDetailState = options?.preserveDetailState ?? false;
     const nextCheckpointId =
       options?.selectedCheckpointId ??
       nextState.checkpoints.find(
@@ -99,26 +103,50 @@ export function useWorkspaceController() {
       null;
     const nextDocumentId = options?.selectedDocumentId ?? "strategy";
     const nextDocumentRef = options?.selectedDocumentRef ?? nextState.assetInspector.strategyRef;
+    const checkpointChanged = nextCheckpointId !== selectedCheckpointId;
+    const collectionChanged = nextCollectionId !== selectedCollectionId;
+    const importChanged = nextImportId !== selectedImportId;
+    const operationChanged = nextOperationId !== selectedOperationId;
+    const documentChanged =
+      nextDocumentId !== selectedDocumentId || nextDocumentRef !== selectedDocumentRef;
+    const shouldClearSearchResults = !preserveDetailState || !workspaceSearchQuery.trim();
 
     startTransition(() => {
       setState(nextState);
-      setDetailErrors({});
+      setLastSyncedAt(new Date().toISOString());
+      if (!preserveDetailState) {
+        setDetailErrors({});
+      }
       setSelectedCheckpointId(nextCheckpointId);
-      setSelectedCheckpointDetail(null);
-      setSelectedCheckpointComparison(null);
+      if (!preserveDetailState || checkpointChanged) {
+        setSelectedCheckpointDetail(null);
+        setSelectedCheckpointComparison(null);
+      }
       setSelectedCollectionId(nextCollectionId);
-      setSelectedCollectionDetail(null);
+      if (!preserveDetailState || collectionChanged) {
+        setSelectedCollectionDetail(null);
+      }
       setSelectedImportId(nextImportId);
-      setSelectedImportDetail(null);
-      setSelectedImportComparison(null);
+      if (!preserveDetailState || importChanged) {
+        setSelectedImportDetail(null);
+        setSelectedImportComparison(null);
+      }
       setSelectedBlobId(null);
-      setSelectedBlobDetail(null);
+      if (!preserveDetailState || collectionChanged) {
+        setSelectedBlobDetail(null);
+      }
       setSelectedOperationId(nextOperationId);
-      setSelectedOperationDetail(null);
+      if (!preserveDetailState || operationChanged) {
+        setSelectedOperationDetail(null);
+      }
       setSelectedDocumentId(nextDocumentId);
       setSelectedDocumentRef(nextDocumentRef);
-      setSelectedDocumentDetail(null);
-      setWorkspaceSearchResults(null);
+      if (!preserveDetailState || documentChanged) {
+        setSelectedDocumentDetail(null);
+      }
+      if (shouldClearSearchResults) {
+        setWorkspaceSearchResults(null);
+      }
     });
   }
 
@@ -137,6 +165,31 @@ export function useWorkspaceController() {
       applyNextState(nextState);
     } catch (error) {
       setBootstrapError(`Failed to boot workspace: ${errorMessage(error)}`);
+    }
+  }
+
+  async function refreshWorkspace(options?: { silent?: boolean }) {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    try {
+      const nextState = await workspaceService.getBootstrapState();
+      setBootstrapError(null);
+      applyNextState(nextState, {
+        preserveDetailState: true
+      });
+      if (!options?.silent) {
+        setCommandStatus("Workspace refreshed through the service layer.");
+      }
+    } catch (error) {
+      if (!options?.silent) {
+        setCommandStatus(`Workspace refresh failed: ${errorMessage(error)}`);
+      }
+      setBootstrapError((current) => current ?? `Failed to refresh workspace: ${errorMessage(error)}`);
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }
 
@@ -168,6 +221,16 @@ export function useWorkspaceController() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshWorkspace({ silent: true });
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -497,6 +560,7 @@ export function useWorkspaceController() {
     state,
     bootstrapError,
     commandStatus,
+    lastSyncedAt,
     serviceAlerts,
     selections: {
       selectedCheckpointId,
@@ -526,6 +590,7 @@ export function useWorkspaceController() {
     setSelectedBlobId,
     setWorkspaceSearchQuery,
     loadBootstrapState,
+    refreshWorkspace,
     openWorkspaceDocument,
     selectDocument(documentId: string, pathRef: string) {
       setSelectedDocumentId(documentId);

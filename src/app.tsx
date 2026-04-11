@@ -27,6 +27,7 @@ export function App() {
     state,
     bootstrapError,
     commandStatus,
+    lastSyncedAt,
     serviceAlerts,
     selections: {
       selectedBlobId,
@@ -50,6 +51,7 @@ export function App() {
     },
     workspaceDocuments,
     loadBootstrapState,
+    refreshWorkspace,
     openWorkspaceDocument,
     selectDocument,
     setSelectedBlobId,
@@ -135,9 +137,22 @@ export function App() {
               >
                 Create Export Checkpoint
               </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  void refreshWorkspace();
+                }}
+              >
+                Refresh Workspace
+              </Button>
             </div>
             {commandStatus ? (
               <p className="mt-4 text-sm leading-6 text-ink-200">{commandStatus}</p>
+            ) : null}
+            {lastSyncedAt ? (
+              <p className="mt-2 text-xs uppercase tracking-[0.16em] text-ink-300">
+                Last sync {lastSyncedAt}
+              </p>
             ) : null}
           </Card>
 
