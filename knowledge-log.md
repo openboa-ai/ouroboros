@@ -109,6 +109,7 @@
 - Updated the background refresh loop to rehydrate selected checkpoint, collection, import, blob, operation, and document details so open inspector surfaces do not go stale while the live workspace keeps syncing.
 - Split workspace mutation commands into a dedicated client hook so action policy and service-owned mutation flows are no longer mixed into the selection/detail controller.
 - Added a generic service-resource hook plus dedicated workspace detail-state types so checkpoint/import/blob/document loaders now share one async contract instead of duplicating fetch/error/cancel logic inside the controller.
+- Split client workspace orchestration again so bootstrap/polling and selection/apply-next-state logic live in dedicated hooks instead of remaining entangled inside the top-level workspace controller.
 - Split the Rust workspace repository's read-side API into a dedicated `workspace/query.rs` module so checkpoint/import/collection/document inspection is no longer mixed into the mutation-heavy core file.
 - Split the Rust workspace repository's write-side API into a dedicated `workspace/mutations.rs` module so ingestion, import activation, export, restore, and live interventions now share a separate mutation boundary from read-only queries.
 - Added workspace normalization for legacy collection-index shapes and canonicalized collection `path_ref` values so older workspaces still boot under the current contract.
