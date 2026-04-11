@@ -143,3 +143,4 @@
 - Split backend workspace lifecycle into `prepare` and `snapshots` submodules so workspace normalization/materialization and checkpoint/export/restore mechanics no longer sit in one monolithic lifecycle file.
 - Split backend workspace query logic into dedicated `checkpoints`, `collections`, `imports`, `blobs`, `operations`, `documents`, and `search` submodules so read-side detail loaders no longer accumulate in one monolithic query file.
 - Split backend bootstrap logic into `assemble` and `exports` submodules, turning bootstrap loading into an explicit assembly step while keeping export-bundle lookup helpers isolated from the live bootstrap state builder.
+- Split backend workspace operations helpers into `diff`, `audit`, and `imports` submodules so workspace comparisons, operation journal writes, and import-preflight/checkpoint-reference logic are no longer mixed in one cross-cutting helper file.
