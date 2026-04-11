@@ -20,6 +20,7 @@ export function useWorkspaceController() {
   const [state, setState] = useState<BootstrapState | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [detailRefreshVersion, setDetailRefreshVersion] = useState(0);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [selectedCheckpointDetail, setSelectedCheckpointDetail] = useState<CheckpointDetailState | null>(
     null
@@ -116,6 +117,9 @@ export function useWorkspaceController() {
       setLastSyncedAt(new Date().toISOString());
       if (!preserveDetailState) {
         setDetailErrors({});
+      }
+      if (preserveDetailState) {
+        setDetailRefreshVersion((current) => current + 1);
       }
       setSelectedCheckpointId(nextCheckpointId);
       if (!preserveDetailState || checkpointChanged) {
@@ -264,7 +268,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCheckpointId]);
+  }, [selectedCheckpointId, detailRefreshVersion]);
 
   useEffect(() => {
     if (!state || !selectedCheckpointId) {
@@ -312,7 +316,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [state, selectedCheckpointId]);
+  }, [state, selectedCheckpointId, detailRefreshVersion]);
 
   useEffect(() => {
     if (!selectedCollectionId) {
@@ -344,7 +348,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCollectionId]);
+  }, [selectedCollectionId, detailRefreshVersion]);
 
   useEffect(() => {
     if (!selectedImportId) {
@@ -399,7 +403,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [selectedImportId]);
+  }, [selectedImportId, detailRefreshVersion]);
 
   useEffect(() => {
     const nextBlobId = selectedCollectionDetail?.entries.find((entry) => entry.blobRef)?.blobRef ?? null;
@@ -438,7 +442,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [selectedBlobId]);
+  }, [selectedBlobId, detailRefreshVersion]);
 
   useEffect(() => {
     if (!selectedOperationId) {
@@ -470,7 +474,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [selectedOperationId]);
+  }, [selectedOperationId, detailRefreshVersion]);
 
   useEffect(() => {
     if (!selectedDocumentRef) {
@@ -502,7 +506,7 @@ export function useWorkspaceController() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDocumentRef]);
+  }, [selectedDocumentRef, detailRefreshVersion]);
 
   useEffect(() => {
     const normalized = workspaceSearchQuery.trim();
