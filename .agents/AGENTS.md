@@ -1,46 +1,32 @@
-# AGENTS.md
+# Repo Local Agents
 
-This directory is the repo-local agent control layer for AutoKairos.
+This repository is currently design-first.
 
-## Purpose
+## Rules
 
-- Keep Codex-facing workflow rules out of the main product docs.
-- Define which local skills should be used for recurring repository knowledge work.
-- Keep selected upstream skills available locally when the repository wants to compose with them.
-- Keep the `docs/` tree coherent as the source of truth.
+- Treat [README.md](../README.md) as the top-level thesis.
+- Treat [knowledge-index.md](../knowledge-index.md) as the navigation layer.
+- Treat [knowledge-log.md](../knowledge-log.md) as the append-only chronology.
+- Treat [wiki/index.md](../wiki/index.md) as the internal wiki root.
+- Treat [wiki/product/README.md](../wiki/product/README.md) as the canonical product workspace.
+- Treat [wiki/product/mlp-01/07-implementation-plan.md](../wiki/product/mlp-01/07-implementation-plan.md) as the canonical implementation entry point once PRDs and architecture are locked.
+- Treat [wiki/architecture/01-pr1-path-becomes-real-design.md](../wiki/architecture/01-pr1-path-becomes-real-design.md) as the canonical PR1 implementation-shape page before touching Slice 1 code.
+- Treat [wiki/architecture/README.md](../wiki/architecture/README.md) as the canonical technical design workspace downstream of product truth.
+- Treat old subsystem-level implementation-plan pages as background unless a newer doc explicitly promotes them back to the active baseline.
+- Treat [wiki/architecture/foundation/02-documentation-doctrine.md](../wiki/architecture/foundation/02-documentation-doctrine.md) as the rule for what counts as a real design doc.
+- Treat [wiki/architecture/adrs/README.md](../wiki/architecture/adrs/README.md) as the rule for major architectural decisions.
+- Treat [wiki/sources/README.md](../wiki/sources/README.md) as the raw-source layer rule.
+- Treat [docs/README.md](../docs/README.md) as reserved future space for external service documentation rather than the current internal design wiki.
+- Prefer updating the product docs first, then the architecture docs, over inventing chat-only answers when the result has durable value.
+- Keep major design decisions in ADRs instead of burying them in README or section prose.
+- Use repo-local skills under `.agents/skills/` when they match the task.
 
-## Read Order
+## Current Focus
 
-1. Read [../knowledge-index.md](../knowledge-index.md).
-2. Read [../ARCHITECTURE.md](../ARCHITECTURE.md).
-3. Read [../docs/design-docs/vocabulary.md](../docs/design-docs/vocabulary.md) before inventing new top-level architecture terms.
-4. Read [../docs/index.md](../docs/index.md) for the documentation tree.
-5. Read [../docs/exec-plans/active/product-definition.md](../docs/exec-plans/active/product-definition.md) for the current active summary.
-6. Read [../docs/exec-plans/active/discovery-log-2026-04-09.md](../docs/exec-plans/active/discovery-log-2026-04-09.md) when product-definition context matters.
-7. Read the relevant local skill in `.agents/skills/` before changing knowledge workflows.
-8. When a task needs generic engineering workflow guidance, read the selected upstream skills under `.agents/skills/agent-skills/`.
+- AutoKairos core architecture
+- PR1 candidate materialization boundary
+- staged evaluation
+- persistent agent model
+- external evaluation and governed promotion
 
-## Operating Rules
-
-- Keep active discovery in `docs/exec-plans/active/` until it stabilizes.
-- Do not silently overwrite discovery history with polished durable docs.
-- When a session produces new durable understanding, update both:
-  - `docs/exec-plans/active/product-definition.md`
-  - `knowledge-log.md`
-- Promote stable design beliefs into `docs/design-docs/`.
-- Promote stable product behavior into `docs/product-specs/`.
-- Keep live-trading execution narrow and deterministic.
-- Treat `.agents/skills/` as the home for repo-local Codex skills.
-- Keep upstream-derived skills under `.agents/skills/agent-skills/` and keep AutoKairos-specific rules separate.
-
-## Local Skills
-
-- `autokairos-wiki`
-  Use when discovery, architecture, or product-spec work changes the repo's markdown system.
-- `coding-harness`
-  Use when doing bounded coding work inside AutoKairos and you need repo-first orientation, evidence-based completion, and stronger live-safety guardrails.
-
-## Upstream Skill Set
-
-- `skills/agent-skills/`
-  Selected skills copied from `addyosmani/agent-skills`. Use them as generic engineering workflow companions and keep AutoKairos-specific behavior in local skills instead of mutating the upstream-derived copies unless there is a repo-specific reason.
+UI remains out of scope unless explicitly brought back later.

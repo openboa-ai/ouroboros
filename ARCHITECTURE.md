@@ -1,157 +1,100 @@
 # Architecture
 
-AutoKairos is an installable trading app with a built-in managed-agent control plane.
+This page is the root technical overview for autokairos.
 
-The product should feel like one local application, not a bundle of scripts.
-The agent side should feel alive by default, but the live-trading path must remain narrow,
-auditable, and structurally harder to mutate than the rest of the system.
+Product truth lives upstream in [wiki/product/README.md](wiki/product/README.md).
 
-## Design Sources
+## Current Architecture Input
 
-This architecture intentionally combines two families of ideas:
+The current architecture baseline implements only these locked product contracts:
 
-- Anthropic managed-agent concepts:
-  - `agent`
-  - `environment`
-  - `session`
-  - `events`
-  - `brain / hands / session` separation
-- AutoKairos core system patterns:
-  - `Hexagonal Architecture`
-  - `CQRS-light`
-  - `Supervisor / Worker`
-  - `Snapshot + Event Journal`
-  - `State Machine + Policy`
-  - `Adapter / Strategy`
+1. [wiki/product/mlp-01/prds/01-hypothesis-to-candidate.md](wiki/product/mlp-01/prds/01-hypothesis-to-candidate.md)
+2. [wiki/product/mlp-01/prds/02-candidate-evaluation-and-live-gate.md](wiki/product/mlp-01/prds/02-candidate-evaluation-and-live-gate.md)
+3. [wiki/product/mlp-01/prds/03-live-deployment-and-autonomous-execution.md](wiki/product/mlp-01/prds/03-live-deployment-and-autonomous-execution.md)
+4. [wiki/product/mlp-01/prds/04-operator-trust-wake-and-intervention.md](wiki/product/mlp-01/prds/04-operator-trust-wake-and-intervention.md)
 
-The product also borrows the feel of an `orchestrator + agent workforce + runtime` system from
-Multica, while remaining local-first and trading-specific instead of becoming a general cloud
-agent platform.
+Everything technical should now be read as downstream of those four PRDs.
 
-## Pattern Stack
+After the reduced architecture baseline is understood, implementation should start from
+[wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
+rather than from old subsystem-level implementation plans.
 
-- `Hexagonal Architecture`
-  Domain and application logic stay independent from Tauri, Binance, provider CLIs, storage
-  engines, and UI concerns.
-- `CQRS-light`
-  Read models and write commands stay separate, but the system does not force full event sourcing.
-- `Supervisor / Worker`
-  The orchestrator owns scheduling and lifecycle; workers perform ingest, evaluation, export,
-  import, and execution tasks.
-- `Snapshot + Event Journal`
-  Current state is snapshot-oriented, while critical activity remains replayable through journals.
-- `State Machine + Policy`
-  Live mode, intervention mode, import activation, export flow, and execution safety use explicit
-  state and policy objects instead of ad hoc branching.
-- `Adapter / Strategy`
-  Providers, exchange APIs, storage backends, and evaluators stay swappable behind stable
-  contracts.
+For PR1 specifically, the implementation shape is locked in
+[wiki/architecture/01-pr1-path-becomes-real-design.md](wiki/architecture/01-pr1-path-becomes-real-design.md).
 
-## Bounded Contexts
+## Technical Thesis
 
-- `app shell`
-  The installable desktop shell and trading dashboard users launch.
-- `client`
-  The React UI that renders read models and sends commands, but does not mutate the workspace
-  directly.
-- `transport`
-  Tauri command handlers that translate desktop invocations into application-layer queries and
-  mutations.
-- `application service`
-  The official machine boundary for validation, invariants, locking, checkpoint/export/import
-  workflows, and read/write orchestration.
-- `workspace repository`
-  The persistence-facing boundary that reads and writes the workspace asset, but delegates state
-  rules and preflight decisions to explicit policy/transition objects.
-- `policy and transition objects`
-  Explicit import/export/live-state rules that keep preflight logic, sanitization rules, and state
-  transitions out of transport and file-IO glue.
-- `typed runtime states`
-  Shared enum-backed state values that define live mode, automation status, managed-agent
-  orchestrator mode, import preflight state, and operation status across backend, service
-  contract, and client rendering.
-- `workspace asset`
-  The local strategy workspace that acts as the primary strategy-asset boundary.
-- `orchestrator`
-  The local control plane that coordinates agent sessions, environment usage, background work, and
-  promotion logic.
-- `agents`
-  Provider-neutral task workers declared inside the workspace asset and run by the orchestrator.
-- `environments`
-  Configured execution surfaces used by agents for tools, files, and runtime dependencies.
-- `sessions and event logs`
-  Durable ordered work history that lives outside any one model context window.
-- `execution core`
-  The safety-critical live-trading bounded context for order placement, position safety, and
-  invariant enforcement.
-- `adapters`
-  Provider, exchange, storage, and external-data implementations that satisfy domain/application
-  interfaces.
-- `docs tree`
-  The durable markdown operating memory for design, product, and implementation decisions.
+autokairos is not currently documenting a broad architecture encyclopedia.
 
-## Managed-Agent Adaptation
+It is documenting the minimum technical baseline needed to implement one believable delegated live
+path.
 
-AutoKairos adopts Anthropic's managed-agent vocabulary, but it adapts it for a local,
-workspace-centered, trading-specific product.
+The active baseline is:
 
-- `agent`
-  A provider-neutral worker definition that bundles brain choice, prompts, tools, skills, and
-  policy refs.
-- `environment`
-  The configured runtime boundary where an agent is allowed to act.
-- `session`
-  A durable running unit of work for one agent inside one environment.
-- `events`
-  The append-only ordered activity record for a session.
-- `orchestrator`
-  The AutoKairos-specific control plane that creates sessions, routes work, manages retries,
-  coordinates evaluation, and promotes artifacts.
+- durable truth outside runtime state
+- explicit candidate, evidence, promotion, live, and wake boundaries
+- one real first-venue trading path on Binance BTC perpetual futures
+- bounded live execution within explicit limits
+- meaningful wake and control recovery above routine live execution
+- adapter-friendly seams without first-cut market broadening
 
-AutoKairos does not copy the hosted Anthropic product shape.
-It keeps the managed-agent concepts while relocating them into the local workspace asset and local
-application service.
+## System Layers
 
-## Live-Path Separation
+```mermaid
+flowchart LR
+    T["Trading Substrate"] --> A["Agent System"]
+    T --> P["Proactive Operations"]
+    A --> E["Evaluation And Progression"]
+    P --> C["Control Plane"]
+    E --> C
+    A --> C
+```
 
-The agent plane and the execution plane are different bounded contexts.
+### Trading Substrate
 
-- agents may inspect code, docs, data, and runtime context
-- agents may propose or materialize future strategy changes inside the workspace asset
-- live execution must remain deterministic and harder to mutate
-- candidate changes must pass isolated backtest and isolated paper trading before promotion
-- live trading must never depend directly on an unreviewed experimental workspace
-- the current scaffold seeds a mutable workspace from `templates/strategy-workspace/` into
-  `var/dev-workspace/`
+Keeps first-venue market, order, fill, account, risk, and liveness facts continuously available.
 
-## Current Live-Path Invariants
+### Agent System
 
-- every live position must have an exchange-native protective stop
-- critical execution failures are owned by the execution core, not delegated to agents
-- model issues may block new entries, but execution invariants may trigger stronger intervention
-- users always keep ultimate control over trading state and emergency actions
-- official clients never mutate workspace files directly; all machine writes go through the
-  application service
-- import/export/live mutations should flow through repository-owned IO plus explicit policy or
-  transition objects, not through ad hoc branching in transport handlers
-- runtime modes and service-owned mutation statuses should stay enum-backed across backend and
-  client contracts instead of drifting into ad hoc string flags
+Turns governed requests into candidate-linked runtime behavior without owning durable truth.
 
-## Documentation Map
+### Evaluation And Progression
 
-- [docs/design-docs/index.md](docs/design-docs/index.md)
-  Durable design beliefs and technical model
-- [docs/design-docs/vocabulary.md](docs/design-docs/vocabulary.md)
-  Canonical architecture vocabulary and naming rules
-- [docs/design-docs/agent-runtime.md](docs/design-docs/agent-runtime.md)
-  Orchestrator, agent, environment, session, and event-log model
-- [docs/design-docs/client-architecture.md](docs/design-docs/client-architecture.md)
-  Desktop client and service-boundary model
-- [docs/design-docs/workspace-asset-model.md](docs/design-docs/workspace-asset-model.md)
-  Strategy workspace, entity model, and entrypoint contract
-- [docs/product-specs/index.md](docs/product-specs/index.md)
-  Product behavior and trading-spec documents
-- [docs/exec-plans/active/product-definition.md](docs/exec-plans/active/product-definition.md)
-  Current active product-definition summary
-- [docs/references/index.md](docs/references/index.md)
-  Source-backed analysis and external reference notes
+Turns raw history into counted evidence, candidate status meaning, and live-gate rationale.
+
+### Proactive Operations
+
+Owns meaningful wake generation and urgency semantics above the runtime.
+
+### Control Plane
+
+Owns durable candidate, evidence, promotion, execution, wake, operator action, and audit truth.
+
+## PRD Support Matrix
+
+| PRD | Main supporting subsystems |
+| --- | --- |
+| PRD 1 | `agent-system + control-plane + foundation` |
+| PRD 2 | `evaluation-and-progression + control-plane + foundation` |
+| PRD 3 | `trading-substrate + agent-system + control-plane` |
+| PRD 4 | `proactive-operations + control-plane + agent-system` |
+
+## Current Baseline Rules
+
+- architecture does not redefine user, market, lovable proof, gate meaning, or autonomy posture
+- specs are active only when current PRD implementation still needs lower-level precision
+- ADRs remain history unless explicitly called out as part of the current baseline
+- speculative proactive-standing, rebuild, read-admission, coalescing, and similar families are not
+  part of the default read path
+
+## Read Next
+
+1. [wiki/product/mlp-01/00-mlp-brief.md](wiki/product/mlp-01/00-mlp-brief.md)
+2. [wiki/product/mlp-01/prds/README.md](wiki/product/mlp-01/prds/README.md)
+3. [wiki/architecture/README.md](wiki/architecture/README.md)
+4. [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md)
+5. [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
+6. [wiki/architecture/01-pr1-path-becomes-real-design.md](wiki/architecture/01-pr1-path-becomes-real-design.md)
+7. the subsystem README that matches the PRD you are implementing
+8. [wiki/architecture/specs/README.md](wiki/architecture/specs/README.md) only when needed
+9. [wiki/architecture/adrs/README.md](wiki/architecture/adrs/README.md) for decision history
