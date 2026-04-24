@@ -2,223 +2,170 @@
 
 ## Purpose
 
-This page defines the product strategy above any single MLP.
-
-It exists to answer the PM-level questions that should already be settled before an MLP, a PRD, or
-technical architecture gets deeper:
-
-- who the product is really for
-- what hard problem is worth solving
-- why this matters now
-- what wedge the first lovable product should use
-- what kind of company or platform autokairos is not trying to become
+This page defines the product strategy above any single MLP, PRD, or architecture page.
 
 ## Product Thesis
 
-autokairos exists to help one serious solo crypto operator move from strategy idea to live trading
-without the path breaking across search, evaluation, promotion, deployment, and intervention.
+**autokairos is an automated weak-to-strong trader: a control plane for evolving agent-built
+trader-system pods across backtest, paper, and live bindings.**
 
-The strategy is not to build the broadest agent shell.
+The strategy is not to build another trading dashboard, research notebook, generic agent shell, or
+manual strategy workbench.
 
-The strategy is to build the narrowest product that lets a comparatively weak human operator create,
-govern, and supervise a stronger always-on trading system while still retaining trust, control, and
-auditability.
+The strategy is to let a weak human supervisor create, run, evaluate, promote, and control a small
+pool of stronger agent-built trading systems without becoming the runtime.
+
+In this strategy, the unit of product value is not a strategy note. It is a
+`TraderSystemCandidate`: a versioned candidate trading system that can run as the same
+`TradingSystemImage` under different bindings.
+
+## Source-Role Hierarchy
+
+autokairos uses the reference set with explicit weights.
+
+| Source family | Product role | What transfers |
+| --- | --- | --- |
+| AAR / Automated W2S / automated-w2s-research | Thesis spine | weak human supervision, evaluation bottleneck, external evaluator truth, legitimacy modes |
+| Claude Managed Agents | Interface spine | `brain / hands / session`, versioned agent config, environment templates, event streams, resource injection |
+| Google A2A | Agent communication spine | interoperable agent endpoints, agent cards, task/message/artifact exchange, A2A-vs-MCP boundary |
+| Paperclip | Governance spine | wake, approval, intervention, rollback-like control, audit |
+| Codex / Claude Code / OpenClaw / Multica | Harness/orchestration spine | external runtime adapters, background work, task/session management, operator re-entry |
+
+autokairos is not cloning any one source. It is extracting the boundary lessons that matter for
+trading-system evaluation and live control.
 
 ## Target User
 
-The primary user is one serious solo crypto operator.
+The first user is still one serious solo crypto operator.
 
 This user:
 
 - trades real capital
-- wants leverage from an always-on system rather than another chat interface
-- cannot sit in front of the market all day
-- cares more about legitimate live execution than idea abundance
-- will tolerate autonomy only when legitimacy, limits, and intervention stay explicit
-
-autokairos is not initially for:
-
-- teams with layered operational approval chains
-- retail investing education users
-- discretionary traders looking for a notebook or dashboard
-- firms that primarily want broad venue coverage before one live path is credible
+- wants leverage from autonomous agent systems rather than another copilot surface
+- cannot continuously supervise many candidate systems manually
+- will trust autonomy only when evaluation, promotion, limits, and intervention are visible
+- needs one narrow live proof before believing broader venue or marketplace claims
 
 ## Core Problem
 
-The strategic problem is not "agents are hard to run."
+The root problem is not that the operator lacks ideas.
 
-The strategic problem is that a human operator becomes a weak supervisor relative to an always-on
-trading system:
+The root problem is that a human becomes a weak supervisor relative to stronger, always-on,
+agent-built trader systems.
 
-- the human cannot watch continuously
-- the human cannot evaluate every transition at the same quality
-- the human cannot manually carry every stage without becoming the bottleneck
+That creates three product failures:
 
-So the product problem is that the operator's workflow breaks between:
+- promising candidate systems stay trapped in transient harness output
+- evaluation is not external, legitimate, or comparable enough to promote safely
+- live operation either becomes reckless direct automation or collapses back into hidden human labor
 
-- strategy generation
-- candidate formation
-- credible evaluation
-- live approval
-- bounded live execution
-- meaningful intervention
-
-When those stages are disconnected, the operator gets the worst of both worlds:
-
-- too many disposable ideas
-- too little trustworthy evidence
-- too much manual decision burden
-- too little confidence to let anything trade live
-
-autokairos therefore should not be framed as "an AI that has better ideas than humans."
-
-It should be framed as a product that makes a stronger trading system governable under weak human
-oversight.
-
-## Why Now
-
-The timing matters for two reasons.
-
-First, always-on agent systems and proactive runtimes are becoming real enough that a live operator
-system is now plausible.
-
-Second, the strongest research references suggest that the bottleneck is no longer raw idea search.
-The bottleneck is governed progression, legitimacy, and trustworthy deployment.
-
-That changes the product opportunity:
-
-- the value is no longer "generate more ideas"
-- the value is "close one believable strategy-to-live path under weak human oversight"
+autokairos solves this by making trader-system candidates durable, runnable, evaluable,
+promotable, and controllable.
 
 ## Strategic Wedge
 
-The wedge is intentionally narrow:
+The first wedge stays deliberately narrow:
 
-- one user: serious solo operator
+- one user: serious solo crypto operator
 - one market: Binance BTC perpetual futures
-- one proof: agent-originated strategy reaches live safely
+- one candidate shape: small pool of agent-built trader-system candidates
+- one proof: one promoted bounded trader-system pod can run live and remain controllable
 
-This wedge is narrow on purpose.
+The first market is narrow, but the candidate model is not a one-off static note. It is the
+smallest product proof of a system that can later support richer candidate pools, package exchange,
+and multiple execution environments.
 
-autokairos wins its first lovable product by going deep on one live path, not by claiming broad
-generality early.
+## Product Shape
 
-## Market Category And Shape
+The product shape is:
 
-The relevant market is not "AI tools" in the abstract.
+```text
+weak human operator
+-> small pool of TraderSystemCandidates
+-> TradingSystemImage + CapabilityPackage
+-> backtest / paper / live StageBindings
+-> external evidence
+-> promotion decision
+-> bounded live pod
+-> wake / intervention / audit
+```
 
-The relevant market is the overlap between:
+Key definitions:
 
-- always-on agent systems
-- crypto derivatives trading workflows
-- evaluation and promotion systems
-- operator trust and intervention surfaces
+- `TraderSystemCandidate` is the promotable candidate trading system.
+- `TradingSystemImage` is the versioned system artifact that should remain stable across
+  environments.
+- `CapabilityPackage` is the packageable context/tool/skill/data-access artifact injected into the
+  pod.
+- `StageBinding` defines how the same system is run in `backtest`, `paper`, or `live`.
+- `TradingSystemPod` is the stage-bound execution instance of the candidate system.
+- `AgentRuntimeUnit` is one brain/hands/session participant inside or beside a pod.
+- `AgentRuntimeUnit.provider` defines which backend runs that participant:
+  Codex, Claude Code, Claude Managed Agents, OpenClaw/ACP, local container, or a future equivalent.
+- `PodCommunicationPolicy` is one unified policy for all participants in the pod. It defines
+  topology, allowed channels, shared context, artifact routing, and isolation rules. It is not a
+  provider selector.
 
-That is why the product should be framed as an operator system rather than as a chat assistant, a
-research IDE, or an exchange front end.
+Single-agent pods are the first proof. Multi-agent pods are allowed only when they preserve the
+same control-plane boundaries:
 
-A stronger framing is:
-
-**autokairos is an automated weak-to-strong trader: it helps a weak human operator create,
-evaluate, authorize, and supervise a stronger trading system.**
-
-## Why This Market Is Attractive
-
-The market is attractive because the underlying user workflow is already expensive and broken.
-
-The user is already spending time and attention across:
-
-- idea origination
-- evaluation
-- deployment judgment
-- live monitoring
-- intervention
-
-That means autokairos is not trying to create a new behavior from nothing. It is trying to compress
-and legitimize an existing high-friction workflow.
-
-## Alternative Baseline
-
-The real alternative is not one competitor.
-
-The real alternative is a stitched-together operating stack:
-
-- discretionary judgment
-- ad hoc scripts
-- backtesting tools
-- dashboards and alerts
-- manual deployment
-- manual monitoring
-
-This matters strategically because the first win condition is not "look more powerful than a
-copilot." The first win condition is "replace enough of the fragmented operator workflow that one
-live path becomes believable."
+```text
+many AgentRuntimeUnits, possibly with different providers
+-> explicit shared context surface
+-> traceable task/message/artifact exchange
+-> external evaluation
+-> bounded live authority
+```
 
 ## Differentiation
 
-autokairos is differentiated by product posture, not surface area.
+autokairos differentiates through product boundaries:
 
-The key differentiators are:
+- candidate identity is the trader system, not a strategy note
+- context and tools are packaged as explicit artifacts
+- the same system artifact can be evaluated across stronger bindings
+- multi-agent trader systems can use independent agent runtime units without becoming an
+  uncontrolled agent mesh
+- counted evidence comes from external evaluation, not agent self-report
+- live agent authority is bounded through an autokairos gateway
+- self-evolution happens through cloned candidate versions, not live in-place mutation
+- wake, intervention, and audit are part of the product value
 
-- agent-originated strategy path instead of manual-strategy-first workflow
-- counted versus non-counted evidence made product-visible
-- one explicit live deployment gate instead of fuzzy approval posture
-- fully autonomous live operation within explicit limits after promotion
-- operator wake, intervention, and audit treated as core product value
+## Why Now
 
-Taken together, these make the product meaning sharper:
+The timing matters because external agent harnesses are becoming good enough to create and iterate
+candidate systems, while W2S-style research makes the bottleneck clear: the hard part is not idea
+generation, but legitimate evaluation and promotion.
 
-autokairos is not branded as "AI trading intelligence."
+Claude Managed Agents adds one important interface lesson: do not couple the brain, hands, and
+session into one fragile runtime. autokairos should own the control plane and evaluation truth while
+letting external harnesses provide the evolving agent brain.
 
-It is branded as **an automated weak-to-strong trader** with product-level governance.
+## What The Strategy Avoids
 
-## Why Binance BTC Perpetual Futures Is The First Wedge
+autokairos should not drift into:
 
-The first wedge should be narrow, liquid, and easy to explain.
-
-Binance BTC perpetual futures satisfies that better than a broader first-market claim because:
-
-- the instrument is familiar and legible
-- perpetuals fit always-on runtime behavior
-- one venue avoids premature abstraction
-- BTC is the cleanest first trust asset for a live proof
-
-This is why venue portability belongs in architecture, but venue breadth does not belong in the
-first product promise.
-
-## Strategic Bets
-
-The current strategy depends on these bets being true:
-
-1. one operator cares more about trustworthy live progression than about idea volume
-2. a narrow single-market proof is more valuable than early multi-venue breadth
-3. operator trust is won through legitimacy clarity, wake clarity, and intervention clarity
-4. a strong MLP and PRD stack will reduce architecture drift and implementation churn
-
-## What The Strategy Explicitly Avoids
-
-autokairos should not strategically drift into:
-
-- a generalized agent platform
-- a generic quant research workbench
-- a multi-team operating system before solo-operator trust is solved
-- a venue-agnostic marketing promise before one venue works deeply
-- a product whose value is mostly dashboards, analytics, or clerical workflow
+- full Kubernetes cloning
+- full marketplace scope in the first MLP
+- direct exchange access from agent harnesses
+- a generic multi-agent platform
+- venue breadth before one venue proof works
+- treating Claude outcomes, agent self-critique, or custom tool results as legitimate trading
+  evidence
 
 ## Strategy Success Signals
 
-The product strategy is on track when:
+The strategy is on track when:
 
-- the first MLP is narrow, coherent, and easy to reject off-scope work against
-- one serious operator can explain why the product is worth trusting
-- product documents read from strategy to MLP to PRD without forcing architecture to define the
-  product
-- implementation work can be sequenced by product milestones rather than taxonomy growth
+- readers understand that `Candidate` means `TraderSystemCandidate`
+- backtest, paper, and live are understood as bindings for the same artifact
+- `CapabilityPackage` is understood as a future-tradable artifact boundary
+- one serious operator can explain why a promoted live pod is trusted
+- implementation can start from pod/image/capability/evaluator boundaries without rediscovering the
+  product thesis
 
 ## Read Next
-1. [01-product-principles.md](01-product-principles.md)
-2. [02-market-icp-and-alternatives.md](02-market-icp-and-alternatives.md)
-3. [mlp-01/00-mlp-brief.md](mlp-01/00-mlp-brief.md)
+
 1. [01-product-principles.md](01-product-principles.md)
 2. [02-market-icp-and-alternatives.md](02-market-icp-and-alternatives.md)
 3. [mlp-01/00-mlp-brief.md](mlp-01/00-mlp-brief.md)

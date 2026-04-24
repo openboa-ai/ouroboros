@@ -1,331 +1,161 @@
-# MLP-01 Problem, JTBD, And Value
+# Problem, JTBD, And Value
 
 ## Purpose
 
-This page makes the MLP-01 user problem decision-complete.
+This page defines the user, pain, and value logic underneath MLP-01.
 
-It should leave no ambiguity about:
+## Problem Thesis
 
-- who the first user really is
-- what pain is serious enough to justify the product
-- what job the product is being hired to do
-- what value exchange must happen for the product to feel worth adopting
-- what conditions make the user hire or fire the product
+The user is not weak because they cannot think of trading ideas.
 
-## Root Pain Thesis
+The user is weak because they cannot continuously supervise stronger agent-built trader systems
+across creation, evaluation, promotion, live execution, and recovery.
 
-The first user problem is not lack of ideas and not lack of intelligence.
+The product problem is therefore:
 
-The first user problem is that one mostly manual operator is trying to supervise something closer
-to a stronger always-on trading system.
-
-The user is weak only in the relevant sense:
-
-- they cannot observe continuously
-- they cannot evaluate every transition at the same quality
-- they cannot manually carry a stronger system without becoming its bottleneck
-
-Because of that mismatch, the operator's workflow breaks in predictable ways:
-
-- progression from idea to live loses meaning between stages
-- evidence standards drift and remain hard to trust
-- live delegation feels either reckless or fake
-- manual burden returns whenever the system stops feeling legible
-
-MLP-01 should therefore treat `weak supervision under a stronger trading system` as the root
-problem.
-
-Everything else in this page should read as a consequence of that root problem.
+```text
+weak human supervisor
+-> stronger trader-system candidate pool
+-> insufficient external evaluation and control
+-> hidden human runtime burden
+```
 
 ## Primary User Archetype
 
-The first user is one serious solo crypto operator.
+The first user is a mostly manual serious solo crypto operator approaching automation.
 
-This operator is not a casual trader, not a team workflow coordinator, and not an automation-native
-quant user.
+They:
 
-The concrete profile is:
-
-- trades real capital on crypto derivatives
-- still makes most serious trading decisions manually today
-- has started reaching for scripts, alerts, dashboards, or ad hoc LLM help
-- uses automation as assistive input, not as a governed operating system
-- cannot stay in front of the screen all day
-- wants leverage from a stronger system, not another interface to babysit
-- is willing to delegate only when legitimacy, limits, and intervention stay explicit
-- cares more about trustworthy delegation than about raw idea volume
-
-This user should be understood as a **weak supervisor**, not as a weak thinker.
-
-Their thinking may be good enough.
-
-Their supervision is weak because the system they want to use can search, evaluate, and operate
-more continuously than they can personally watch or justify.
+- trade real capital
+- understand crypto market behavior
+- use scripts, dashboards, alerts, and ad hoc AI help
+- want agent leverage but do not yet trust live delegation
+- need one narrow proof before they trust broader automation
 
 ## Anti-Personas
 
-MLP-01 is not for the following users.
+MLP-01 is not first for:
 
-| User type | Why they are not first ICP |
-| --- | --- |
-| Retail learner or hobby trader | Their first problem is education and confidence-building, not supervising a stronger system |
-| Manual discretionary trader who wants ideas only | They may value signal flow, but they do not need governed delegation |
-| Small team with layered approvals | Coordination and role management become the main problem too early |
-| Institutional desk | Compliance, procurement, and integration complexity distort the first lovable cut |
-| Automation-native quant researcher | They optimize for broad experimentation and system breadth, not one believable delegation loop |
+- automation-native quant teams that already own mature eval/live infrastructure
+- retail learners who need education before execution
+- discretionary traders who only want a prettier dashboard
+- marketplace buyers who want packaged systems before the first proof exists
+- venue-general platform users who require broad exchange coverage immediately
 
 ## Current Day-In-The-Life
 
-The current operator day is fragmented rather than continuous.
+Today the operator stitches together:
 
-### Before the product
+- market watching
+- idea generation
+- manual backtests
+- scripts and notebooks
+- alerts
+- exchange dashboards
+- private notes
+- live judgment
 
-The operator typically moves through this loop:
+The hidden failure is that the human remains the real system of record.
 
-1. watches the market in bursts around other obligations
-2. notices or generates ideas through discretion, feeds, notes, rough automation, or ad hoc LLM
-   help
-3. manually decides what seems worth testing
-4. runs backtests or paper checks across separate tools
-5. manually interprets whether the evidence is meaningful enough to matter
-6. hesitates at the jump to live because approval meaning is unclear
-7. if anything goes live, keeps checking in because delegation never feels fully earned
+They remember what seemed promising, which run mattered, which context was used, and why a live
+deployment did or did not feel safe.
 
-### What this reveals
+## JTBD
 
-This operator is still living inside a mostly manual operating model:
+### Functional JTBD
 
-- manual judgment is still central
-- automation is partial and weakly trusted
-- every serious transition still depends on human interpretation
-- the operator is compensating for weak supervision with manual glue
+Help me create and supervise a small pool of agent-built trader-system candidates, evaluate them
+externally, and promote one into bounded live operation without making me the runtime.
 
-The current workflow is not missing tools.
+### Emotional JTBD
 
-It is missing one believable delegation surface.
+Help me stop feeling that live agent trading is either fake autonomy or reckless delegation.
 
-## Main JTBD
+### Accountability JTBD
 
-The main functional job is:
+Help me explain:
 
-**Help me supervise and delegate one stronger strategy path into legitimate live execution without
-forcing me to become the runtime.**
-
-The main emotional job is:
-
-**Help me stop feeling that live automation is either reckless or fake.**
-
-The main accountability job is:
-
-**Help me explain why a candidate counted, why it was promoted, and why it was allowed to operate
-live.**
-
-These jobs are product-level jobs, not market-level wording.
-
-This page defines the supervision problem and the value exchange.
-
-The first-market specifics stay explicit elsewhere in the wedge and reference-scenario context.
-
-## The Weak-To-Strong Problem In Product Form
-
-This is the conceptual spine of the page.
-
-Weak-to-strong is not mainly about ordinary people having weak ideas.
-
-It is about a weaker supervisor trying to govern a stronger system.
-
-In product form, that means:
-
-- the operator is weaker than the desired trading system in continuity, coverage, and operational
-  consistency
-- the operator cannot directly supervise every transition well enough for live use
-- the product therefore has to turn weak human oversight into governed, delegable trading behavior
-
-autokairos is not trying to eliminate the human.
-
-It is trying to make a stronger trading system inspectable, authorizable, and interruptible under
-weak human oversight.
+- what system was built
+- which capability packages it used
+- which binding it ran under
+- what evidence counted
+- why it was promoted
+- what authority it has live
+- how I can intervene
 
 ## Current Workaround Stack
 
-The current workaround is a stitched stack that compensates for weak supervision with manual glue.
+The current workaround compensates for weak supervision with manual glue.
 
-| Layer | Typical workaround | Why it still leaves the operator as the supervisor |
-| --- | --- | --- |
-| Idea origination | discretion, feeds, notes, LLM prompts, rough scripts | possibilities appear, but no durable governed path is created |
-| Candidate selection | memory, tabs, folders, filenames, ad hoc notes | the human must remember why one path matters |
-| Evaluation | scattered backtests, paper runs, notebook output | evidence remains manually interpreted and hard to compare |
-| Approval | gut feel, checklist, manual live switch | the hard live decision still happens outside product meaning |
-| Live operation | dashboards, alerts, repeated checking | the operator becomes the fallback runtime whenever trust drops |
-
-This is the real competitor:
-
-not one product, but a stitched workflow that helps a weak supervisor survive by doing more hidden
-labor manually.
+| Workaround | Why it fails |
+| --- | --- |
+| Chat or coding agent output | system identity disappears into conversation history |
+| Backtest notebooks | hard to prove what system and context were actually evaluated |
+| Manual tool/context setup | capability injection is not reusable or tradable |
+| Exchange dashboard monitoring | live control remains human-runtime heavy |
+| Private notes | promotion rationale is not durable product truth |
 
 ## Pain Hierarchy
 
-The pain stack is ordered below from root cause to downstream symptom.
-
-### 1. Weak supervision is the root constraint
-
-The operator wants stronger system behavior than they can personally supervise in real time.
-
-That is the core mismatch the product must solve.
-
-### 2. Trustworthy progression breaks under that constraint
-
-The operator cannot move from "interesting idea" to "candidate that deserves live risk" without
-personally carrying the meaning of each stage.
-
-### 3. Evidence legitimacy stays ambiguous
-
-Runs happen, but the operator still cannot easily tell:
-
-- what should count
-- what should not count
-- why the system believes one path is stronger than another
-
-### 4. Live approval meaning stays fuzzy
-
-The jump from paper to live still feels like a judgment call outside the product.
-
-That means the product has not actually absorbed the serious delegation decision.
-
-### 5. Live operation collapses back into manual supervision
-
-Even after deployment, the operator still feels compelled to keep checking in because the runtime
-does not feel trustworthy enough to leave alone.
-
-### 6. Idea abundance becomes noise
-
-More idea volume is not value if the product cannot help the operator govern and delegate one path
-credibly.
-
-## Why This Hurts Emotionally
-
-The emotional burden is not secondary.
-
-It is part of the product requirement.
-
-The operator is usually experiencing some combination of:
-
-- fear of missing the one opportunity that matters
-- fear of trusting the wrong output
-- fear that live deployment is more reckless than it appears
-- fear that "automation" is really just hidden manual labor relocated into a new UI
-
-If autokairos does not reduce this burden, it has not solved the real problem.
+1. The operator cannot safely supervise a stronger trader-system pool.
+2. Candidate systems are not durable, versioned, or comparable.
+3. Context/tool injection is ad hoc rather than packaged.
+4. Evaluation legitimacy is unclear.
+5. Promotion to live feels emotionally unsafe.
+6. Live autonomy collapses into hidden monitoring labor.
+7. Idea abundance creates noise instead of usable leverage.
 
 ## Value Exchange
 
-For MLP-01 to be worth adopting, the exchange must be clear.
+The operator gives:
 
-### What the operator gives
+- market scope
+- capital constraints
+- attention at serious gates
+- willingness to run candidate systems through staged evaluation
 
-- attention to review one candidate path seriously
-- willingness to delegate bounded autonomy after promotion
-- acceptance of explicit counted versus non-counted rules
-- some loss of direct manual control over normal live actions
+The operator gets:
 
-### What the operator gets, in order
-
-1. **Trustworthy delegation**
-   The system can carry one path into live operation without the operator feeling blind.
-2. **Reduced manual burden**
-   The operator no longer has to be the manual bridge between every stage.
-3. **Usable stronger search**
-   Stronger strategy search becomes valuable only because the product can now govern and delegate
-   its output.
-4. **Preserved control**
-   Intervention paths stay meaningful without restoring full-time manual operation.
-
-If this exchange is not better than the current stitched workflow, the user will not keep the
-product.
-
-## Hiring Criteria
-
-The operator hires autokairos when all of the following feel true:
-
-- the product lets them delegate one serious path without feeling blind
-- the product makes counted versus non-counted evidence legible
-- the live gate feels serious, bounded, and product-owned
-- after approval, normal operation no longer requires constant presence
-- wake and intervention preserve control without collapsing back into manual runtime
-- stronger search matters because the system can actually carry it toward live use
-
-## Firing Criteria
-
-The operator will stop trusting or using autokairos if any of the following become persistently
-true:
-
-- the operator still feels like the real runtime behind the scenes
-- live approval remains symbolic while serious judgment still happens outside the product
-- counted versus non-counted evidence remains ambiguous
-- wake reasons are noisy, vague, or hard to act on
-- automation feels reckless or fake rather than governed
-- output volume increases but delegation confidence does not
+- trustworthy delegation
+- durable trader-system candidates
+- packageable context/tool/capability boundaries
+- external evidence and promotion clarity
+- bounded live autonomy
+- decisive intervention and audit
 
 ## Reference Scenario
 
-MLP-01 should stay strategy-agnostic, but all planning should be understandable through one
-reference scenario.
+The operator wants autokairos to explore a narrow Binance BTC perpetual futures opportunity.
 
-### Reference operator situation
+Instead of asking the operator to hand-author a strategy, autokairos launches a small pool of
+agent-built trader-system candidates. Each candidate has a versioned system image, capability
+package references, and an execution binding. One candidate runs in backtest, produces external
+evidence, earns promotion, runs live through a bounded gateway, and can later propose a cloned
+version for re-evaluation.
 
-- the operator is away from the desk for meaningful parts of the day
-- the operator is still mostly manual today, even if they already use some alerts and rough
-  automation
-- Binance BTC perpetual futures remain the first market being watched
-- a market condition change produces one concrete hypothesis worth following
-- the operator wants to review one serious candidate path, not sift through idea spam
-- the operator is willing to approve live deployment only if the trust chain is readable
-- once approved, the operator expects the system to trade within limits until a meaningful wake or
-  intervention need appears
+## Hiring Criteria
 
-### Why this scenario matters
+The operator will hire autokairos if:
 
-It anchors the product around the hardest believable promise:
+- candidate systems are real artifacts, not chat residue
+- backtest/paper/live are bindings for the same candidate artifact
+- evidence is external and legible
+- live authority is bounded
+- self-evolution is versioned and auditable
 
-- a mostly manual operator is not continuously watching
-- the agent still originates something worth following
-- the system still progresses it credibly
-- the operator still feels safe enough to delegate bounded live behavior
+## Firing Criteria
 
-It also keeps first-market specificity where it belongs:
+The operator will fire autokairos if:
 
-- inside the wedge and reference scenario
-- not inside the primary JTBD sentence
+- it becomes idea spam
+- it hides capability/context/tool assumptions
+- it treats local convenience runs as legitimate evidence
+- it lets agents mutate live systems in place
+- it requires continuous shadow monitoring
 
 ## Product Value Thesis
 
-MLP-01 is valuable only if it proves one specific thing:
+autokairos helps a weak human operator govern and delegate stronger agent-built trader-system pods.
 
-**autokairos helps a weak human operator govern and delegate a stronger trading system well enough
-that live trading no longer requires the operator to be the permanent runtime.**
-
-That is why stronger search is not the primary value claim on this page.
-
-Stronger search becomes practically valuable only once supervision, legitimacy, and delegation are
-governable.
-
-## What This Page Settles
-
-This page should now settle the following decisions for `mlp-01`:
-
-- the first ICP is a serious solo crypto operator who is still mostly manual today
-- the root pain is weak human supervision under a stronger trading system
-- progression break, evidence ambiguity, and hidden manual burden are consequences of that root
-  problem
-- the core JTBD is product-level, not market-level
-- the top value is trustworthy delegation
-- the product competes with stitched manual workflow, not just another tool surface
-- stronger search is a downstream value, not the primary value claim
-- Binance BTC perpetual futures should stay explicit in wedge and reference-scenario context, not in
-  the primary JTBD sentence
-
-## Read Next
-
-1. [00-mlp-brief.md](00-mlp-brief.md)
-2. [02-journey-map.md](02-journey-map.md)
-3. [03-story-map-and-release-slices.md](03-story-map-and-release-slices.md)
+The top value is trustworthy delegation. Stronger search becomes useful only after candidate
+identity, capability packaging, external evaluation, live authority, and intervention are governed.

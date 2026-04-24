@@ -3,12 +3,31 @@
 This page synthesizes the sources most relevant to external truth, audit, staged progression, and
 promotion discipline.
 
+For autokairos, this source cluster is not just helpful background. It is the primary thesis spine
+for product truth.
+
 ## Sources Used
 
 - [anthropic-automated-alignment-researchers.md](../library/anthropic-automated-alignment-researchers.md)
 - [anthropic-automated-w2s-researcher.md](../library/anthropic-automated-w2s-researcher.md)
 - [repo-safety-research-automated-w2s-research.md](../library/repo-safety-research-automated-w2s-research.md)
 - [repo-paperclip.md](../library/repo-paperclip.md)
+
+## Source Role In autokairos
+
+The role split should be explicit:
+
+- [Automated Alignment Researchers](../library/anthropic-automated-alignment-researchers.md),
+  [Automated W2S Researcher](../library/anthropic-automated-w2s-researcher.md), and the
+  [automated-w2s-research repo](../library/repo-safety-research-automated-w2s-research.md)
+  define the primary product mindset for:
+  weak supervision, evaluation bottlenecks, external truth, and legitimacy.
+- [Paperclip](../library/repo-paperclip.md)
+  is the strongest adjacent governance reference for:
+  approval, intervention, audit, and wake/control surfaces.
+
+This means autokairos should treat this page as upstream of product rules, not as a nice-to-have
+architecture comparison.
 
 ## Comparison Table
 
@@ -35,6 +54,10 @@ outside the active agent loop.
 All four sources point to the same rule: the thing that decides whether a run counts should not be
 fully writable by the run itself.
 
+For autokairos, that translates directly into a product rule:
+
+- candidate, evidence, promotion, and audit truth must remain outside runtime self-report
+
 ### Sandboxes should be disposable; evidence should not be
 
 [Automated W2S Researcher](../library/anthropic-automated-w2s-researcher.md) and the
@@ -57,12 +80,23 @@ as explicit approvals, budgets, and rollback.
 The shared pattern is that exploration is relatively cheap, but advancement is expensive and
 governed.
 
+For autokairos, that means:
+
+- idea generation is not the primary product value
+- one path counting credibly is the primary product value
+
 ### Containerization can be a legitimacy boundary, not just an ops detail
 
 The [automated-w2s-research repo](../library/repo-safety-research-automated-w2s-research.md)
 adds an especially useful lesson: local subprocess mode and Docker mode are not presented as
 equally legitimate. Docker exists there to restrict what the worker can see and touch. That means
 containerization is part of the evaluation architecture, not merely deployment.
+
+The repo README makes this very concrete. It says local subprocess mode is useful for quick
+debugging, but the result "might not be legit" because the agent could read labeled data, while
+Docker mode restricts visibility so the agent cannot cheat by reading ground truth. This is the
+strongest current reference for the rule that convenience mode and legitimate mode must be kept
+separate. [Source](https://github.com/safety-research/automated-w2s-research)
 
 ## What Each Source Treats As The Hard Part
 
@@ -101,6 +135,12 @@ The terminology shift matters. The research sources talk about `evaluation`, `PG
 hacking`, while Paperclip talks about `governance`, `approvals`, and `budgets`. They point at
 overlapping control problems, but they are not the same abstraction layer.
 
+For autokairos, the right translation is:
+
+- W2S/AAR language should anchor the product thesis
+- Paperclip language should anchor the governance surface
+- Paperclip should not displace the W2S/AAR framing of the core problem
+
 ## Source Classification
 
 - Research-pattern references:
@@ -110,6 +150,25 @@ overlapping control problems, but they are not the same abstraction layer.
   [repo-safety-research-automated-w2s-research.md](../library/repo-safety-research-automated-w2s-research.md)
 - Governance and promotion reference:
   [repo-paperclip.md](../library/repo-paperclip.md)
+
+## Transferable Mindset Vs Non-Transferable Baggage
+
+What is transferable:
+
+- evaluation is the bottleneck
+- weak supervisors need external truth they can rely on
+- counted and non-counted outcomes must be distinguishable
+- legitimate execution conditions matter before advancement should count
+- governance must sit above the worker/runtime
+
+What is not transferable by default:
+
+- the exact AAR benchmark setup
+- PGR as a literal trading KPI
+- the exact dashboard structure of the automated-w2s-research repo
+- Paperclip's company metaphor or org chart as product language
+
+The point is to extract the constraint system, not to clone the research stack.
 
 ## Tensions To Preserve
 

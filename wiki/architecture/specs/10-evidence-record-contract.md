@@ -1,242 +1,135 @@
 # Evidence Record Contract
 
-This page defines what an `EvidenceRecord` is in autokairos.
+This page defines the minimum `EvidenceRecord` contract needed by the current MLP-01 baseline.
 
 It follows:
 
-- [02-core-primitives.md](02-core-primitives.md)
 - [03-staged-evaluation.md](03-staged-evaluation.md)
 - [04-boundaries.md](04-boundaries.md)
 - [08-candidate-contract.md](08-candidate-contract.md)
 - [09-trace-contract.md](09-trace-contract.md)
-- [../sources/library/anthropic-automated-alignment-researchers.md](../../sources/library/anthropic-automated-alignment-researchers.md)
-- [../sources/library/anthropic-automated-w2s-researcher.md](../../sources/library/anthropic-automated-w2s-researcher.md)
-- [../sources/library/repo-paperclip.md](../../sources/library/repo-paperclip.md)
-- [../sources/library/repo-safety-research-automated-w2s-research.md](../../sources/library/repo-safety-research-automated-w2s-research.md)
-- [../sources/synthesis/evaluation-governance-and-promotion.md](../../sources/synthesis/evaluation-governance-and-promotion.md)
-
-It is also strengthened by current official OpenAI evaluation docs:
-
-- [Evaluate agent workflows](https://developers.openai.com/api/docs/guides/agent-evals)
-- [Trace grading](https://developers.openai.com/api/docs/guides/trace-grading)
+- [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
 
 ## Thesis
 
-`EvidenceRecord` is the sealed, judged artifact that sits between raw execution history and stage
-advancement.
+`EvidenceRecord` is the sealed judged artifact between raw `Trace` history and live-gate meaning.
 
-It is not the raw trace.
+It is where autokairos says:
 
-It is not the final promotion decision.
+- what was judged
+- under which stage
+- by which method
+- whether it counted or did not count
+- why that disposition was correct
 
-It is the object that says:
+Without this object, PR2 collapses into raw logs plus private human interpretation.
 
-- which traces or runs were judged
-- by what method
-- under which stage and legitimacy conditions
-- with what findings
-- with what degree of freshness and trust
+## Current Active Applicability
 
-Without this object, autokairos collapses into one of two failures:
+This spec is currently active for PR2.
 
-- trusting raw logs too directly
-- letting promotion decisions float without a stable evidence basis
+Its job is not to model every future evidence family.
 
-## Why This Spec Exists
+Its job is to make counted versus non-counted evidence durable, explainable, and safe to cite in a
+later `ReviewItem` or `PromotionDecision`.
 
-The source set keeps forcing this object into existence.
-
-### 1. OpenAI evaluation posture
-
-OpenAI separates traces from graders and eval runs. A trace is the raw end-to-end record of one
-run. Trace grading then assigns structured scores or labels to those traces, and eval runs extend
-that judgment across repeatable datasets and comparisons.
-
-That implies a layer above raw trace and below architecture change or rollout decisions.
-
-### 2. Anthropic W2S posture
-
-Anthropic's AAR and W2S work show that the hard part is not only search, but trustworthy
-evaluation. Labels are removed from the worker sandbox, results come back from remote scoring, and
-important logs stay outside the sandbox.
-
-That means the thing that later counts toward progression cannot just be the worker's own account
-of what happened.
-
-### 3. Paperclip governance posture
-
-Paperclip keeps approvals, budgets, audit, and rollback outside the active agent loop. That is a
-strong product-level version of the same principle: advancement needs an explicit, reviewable
-basis.
-
-autokairos needs a local object that captures that basis.
-
-That object is `EvidenceRecord`.
-
-## What This Spec Is Not
+## What This Is Not
 
 `EvidenceRecord` is not:
 
-- a `Candidate`
-- a `Session`
-- a `Workspace`
 - a `Trace`
+- a `TraderSystemCandidate`
+- a `ReviewItem`
 - a `PromotionDecision`
-- a single metric
-- a leaderboard row
-- a free-form operator note
+- a generic operator note
 
 Most importantly:
 
-**Trace is raw record. EvidenceRecord is judged record.**
+- `Trace` is raw history
+- `EvidenceRecord` is judged history
+- `EvidenceRecord` is still not the live gate
 
-And:
-
-**EvidenceRecord is not yet promotion.**
-
-It is what promotion should cite.
-
-## Evidence Record Definition
-
-An `EvidenceRecord` should be understood as:
-
-> a sealed, stage-scoped, methodology-scoped judgment artifact that links one or more traces or
-> evaluation runs to explicit findings, scores, flags, and interpretation metadata.
-
-The phrases `stage-scoped` and `methodology-scoped` matter.
-
-An evidence record should never pretend to be universal.
-
-It should always be possible to answer:
-
-- what was evaluated?
-- under which stage?
-- by what rubric or evaluator?
-- using which raw inputs?
-- with what freshness horizon?
-
-## Evidence Record In The System
+## Canonical Role In The System
 
 ```mermaid
 flowchart LR
     A["Candidate"] --> B["Trace"]
     B --> C["EvidenceRecord"]
-    C --> D["PromotionDecision"]
+    C --> D["ReviewItem"]
+    C --> E["PromotionDecision"]
 ```
 
-Operationally:
+The separation must remain explicit:
 
-```mermaid
-flowchart LR
-    A["Runtime bridge"] --> B["Trace sink"]
-    B --> C["Evaluator / grader / reviewer"]
-    C --> D["EvidenceRecord"]
-    D --> E["Promotion surface"]
-```
+- execution emits trace
+- evaluation seals evidence
+- governance cites evidence
 
-This separation must remain explicit.
+## Minimum Contract
 
-- the runtime bridge emits trace
-- evaluators or reviewers derive evidence
-- governance consumes evidence
+An `EvidenceRecord` must carry at least:
 
-## Evidence Record Contract
+| Field | Meaning |
+| --- | --- |
+| `evidence_id` | Stable durable identity |
+| `candidate_ref` | Candidate being judged |
+| `stage` | Stage context for the judgment |
+| `input_trace_refs` | Raw runs or traces being judged |
+| `method_ref` | Evaluator, rubric, or methodology used |
+| `evidence_disposition` | `counted` or `non_counted` |
+| `disposition_reason` | Why it counted or did not count |
+| `finding_summary` | Durable explanation of what was found |
+| `candidate_effect_hint` | `strengthens`, `weakens`, or `inconclusive` |
+| `created_at` | When the judged record was first created |
+| `sealed_at` | When the judged record became citeable |
+| `status` | `draft`, `sealed`, `superseded`, or `invalidated` |
 
-The evidence-record contract should carry at least these categories of information.
+## Required Interpretation
 
-## 1. Identity
+### Counted evidence
 
-The evidence record needs stable identity and sealing state.
+Counted evidence is evidence the product allows to influence candidate progression meaning and
+live-gate basis.
 
-### Required fields
+If evidence is counted, the record must make that legitimacy visible.
 
-- `evidence_id`
-- `created_at`
-- `sealed_at`
-- `status`
+### Non-counted evidence
 
-### Suggested status values
+Non-counted evidence is still durable and visible, but it must not silently influence candidate
+standing.
 
-- `draft`
-- `sealed`
-- `superseded`
-- `invalidated`
+Typical reasons include:
 
-### Why
+- wrong stage
+- wrong method
+- insufficient quality
+- convenience-only run
+- stale or otherwise non-legitimate basis
 
-Evidence should be append-oriented and reviewable. It should be possible to supersede or invalidate
-old evidence without rewriting history.
+### Sealing boundary
 
-## 2. Scope Of Judgment
+Once sealed, the evidence record is the citeable judgment artifact for review and gate meaning.
 
-The record must say exactly what it claims to be about.
+The raw trace may still exist underneath, but promotion logic should cite the sealed evidence
+record, not re-interpret the trace ad hoc.
 
-### Required fields
+## Boundary Rules
 
-- `candidate_ref`
-- `stage`
-- optional `stage_binding_ref`
-- `evidence_kind`
+- one evidence record may reference one or more traces, but it must preserve a narrow claim boundary
+- evidence disposition must be explicit, never inferred from later candidate status
+- non-counted evidence must remain visible enough to explain exclusion
+- counted evidence must still stop short of live execution authority
 
-### Candidate evidence kinds
+## Not In The Active Baseline
 
-- `trace_grade`
-- `eval_run_summary`
-- `human_review`
-- `risk_review`
-- `market_performance_summary`
-- `regression_comparison`
+The current active baseline does not require:
 
-### Why
+- broad evidence leaderboards
+- speculative future evidence taxonomies
+- richer historical comparison objects beyond what PR2 needs
 
-An evidence record should always carry a narrow claim boundary.
-
-It must not be ambiguous whether the record is:
-
-- about backtesting or paper
-- about correctness or risk
-- about one trace or a batch of traces
-
-## 3. Input Basis
-
-The record must link to the raw inputs that were judged.
-
-### Required fields
-
-- one or more `trace_refs`
-- optional eval-run or dataset references
-- optional artifact refs used during judgment
-
-### Why
-
-Promotion should never rely on evidence that cannot be traced back to underlying records.
-
-This is the main guard against narrative drift and unverifiable summaries.
-
-## 4. Evaluation Method
-
-The record must preserve how the judgment was made.
-
-### Required fields
-
-- `evaluator_kind`
-- `method_ref` or rubric reference
-- optional model / grader / reviewer identity
-- optional dataset or benchmark reference
-
-### Candidate evaluator kinds
-
-- `llm_grader`
-- `remote_eval_service`
-- `human_review`
-- `hybrid_review`
-- `metric_aggregation`
-
-### Why
-
-OpenAI's eval posture is clear here: traces, graders, datasets, and eval runs are distinct
-surfaces. autokairos should preserve that methodological distinction rather than flattening every
-judgment into one opaque score.
+If later work needs more, it should add that deliberately rather than expanding this contract by
+default.
 
 ## 5. Findings
 

@@ -17,8 +17,9 @@ The current north-star is not volume.
 
 It is:
 
-**one agent-originated Binance BTC perpetual futures strategy reaches live safely and remains
-trustworthy enough that the operator does not become the permanent runtime loop.**
+**one agent-built `TraderSystemCandidate` is externally evaluated, promoted, run as a bounded live
+`TradingSystemPod` on Binance BTC perpetual futures, and remains trustworthy enough that the
+operator does not become the permanent runtime loop.**
 
 Everything else is secondary to proving that path.
 
@@ -28,16 +29,19 @@ The current phase should track four classes of signals.
 
 ### 1. Progression Signals
 
-- one hypothesis becomes one durable candidate
-- one candidate accumulates counted evidence
-- one candidate reaches a clear live gate
-- one promoted candidate reaches live execution
+- one agent-built trader-system candidate becomes durable
+- one candidate can be run under backtest/paper/live bindings without changing identity
+- one candidate accumulates counted evidence outside runtime self-report
+- one candidate reaches a clear promotion decision
+- one promoted candidate runs as a bounded live pod
 
 ### 2. Trust Signals
 
+- the operator can explain what the candidate is
+- the operator can explain what capability package and binding were used
 - the operator can explain why evidence counted
 - the operator can explain what was approved for live
-- the operator can explain why the system woke them
+- the operator can explain why the live pod woke them
 
 ### 3. Autonomy Signals
 
@@ -63,7 +67,7 @@ The current wedge should continue if all of the following remain true:
 
 The current wedge should slow down if any of the following becomes true:
 
-- users value hypothesis generation but do not value governed live progression
+- users value idea generation but do not value governed trader-system candidate progression
 - live legitimacy remains too fuzzy for a serious gate
 - the operator still has to supervise normal execution constantly
 - intervention and wake surfaces remain too confusing to trust
@@ -74,7 +78,7 @@ Scope should widen only after the first lovable proof is credible.
 
 That means at minimum:
 
-- one believable live path exists on Binance BTC perpetual futures
+- one believable bounded live pod exists on Binance BTC perpetual futures
 - the operator can explain why it counted and what was approved
 - bounded autonomy and intervention both work
 
@@ -89,17 +93,17 @@ Only after those are true should the product seriously consider:
 
 The current wedge should be killed or reframed if:
 
-- users consistently prefer manual-strategy-first behavior over agent-originated behavior
+- users consistently prefer manual system design over agent-built candidate evolution
 - trustworthy live promotion cannot be made legible enough for operator confidence
 - the product collapses into an idea copilot or monitoring dashboard instead of a living trading
   system
-- the product requires broadening scope before one believable path can be made lovable
+- the product requires broadening scope before one bounded live pod can be made lovable
 
 ## What This Means For Current Planning
 
 Current planning should optimize for:
 
-- one credible live path
+- one credible externally evaluated live pod
 - one serious user
 - one serious market
 - one readable trust loop

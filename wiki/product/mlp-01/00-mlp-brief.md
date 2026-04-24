@@ -2,224 +2,196 @@
 
 ## Purpose
 
-This is the one-document contract for MLP-01.
-
-If a reader can read only one page and still understand the first lovable autokairos product,
-it should be this one.
+This is the one-document contract for the first lovable autokairos product.
 
 ## One-Sentence Promise
 
-**autokairos is an automated weak-to-strong trader: it helps a weak human operator turn one
-agent-originated strategy path into governed live trading without becoming the runtime.**
+**autokairos is an automated weak-to-strong trader: a control plane for evolving agent-built
+trader-system pods across backtest, paper, and live bindings.**
 
 MLP-01 proves that first for one serious solo crypto operator on Binance BTC perpetual futures.
 
-## Why This Product Exists
+## Product Contract
 
-The first product does not exist to generate more ideas.
+MLP-01 does not prove "AI can write one trading idea."
 
-It exists because the serious solo operator already has too many fragmented tools and too little
-confidence in the path between:
+It proves:
 
-`idea -> candidate -> believable evaluation -> live approval -> bounded live execution`
+```text
+small pool of TraderSystemCandidates
+-> one candidate becomes durable
+-> the same candidate artifact runs under backtest/paper/live bindings
+-> external evidence decides progression
+-> one candidate is promoted into bounded live operation
+-> the operator can intervene without becoming the runtime
+```
 
-MLP-01 exists to close that path credibly.
-
-More precisely, MLP-01 exists because the operator is a weak supervisor relative to the stronger
-always-on trading system they want to use.
-
-The product has to make that asymmetry workable.
-
-## Brand Frame
-
-autokairos should not be framed as:
-
-- an AI idea generator
-- a quant research workbench
-- a generic autonomous trading bot
-
-The right frame is:
-
-**an automated weak-to-strong trader**
-
-That means the product's job is not just to create stronger strategy search.
-
-Its job is to make a stronger trading system governable, promotable, deployable, and interruptible
-under weak human oversight.
+The first lovable proof is one promoted trader-system pod, not a static note.
 
 ## Primary User
 
-The first product is for one serious solo crypto operator who:
+The first user is a serious solo crypto operator who:
 
 - trades real capital
-- cannot continuously watch the market or the agent
-- wants an always-on system, not just a copilot interface
-- values legitimate progression to live more than raw ideation volume
-- will accept autonomy only when the trust chain is explicit
+- wants autonomous leverage from agent-built trader systems
+- cannot manually supervise every candidate run
+- needs evidence and promotion to be external and legible
+- will accept live autonomy only through explicit limits and decisive intervention
 
-## Core User Job
+## Core Job
 
-The product is being hired to do one job:
+Help a weak human supervisor create, evaluate, promote, and control one stronger trader-system
+candidate without becoming the continuous runtime.
 
-**help the operator turn one agent-originated strategy path into legitimate live execution, govern
-what counts, approve it once for live, and supervise it without becoming the runtime.**
+## Lovable Moment
 
-In research language, this is the product translation of a weak-to-strong problem:
+The operator sees a candidate system move through a credible trust chain:
 
-the human cannot fully supervise the stronger system directly, so the product must make the path to
-strong live behavior governed, legible, and bounded.
+- a trader-system candidate is created by an external agent harness
+- its `TradingSystemImage` and `CapabilityPackage` references are durable
+- its agent runtime unit and communication boundaries are inspectable enough to know what is
+  actually running
+- it runs in a backtest binding without changing identity
+- evidence is judged outside the pod
+- promotion makes the live binding meaningful
+- the live pod acts within an autokairos gateway, not with unrestricted exchange access
+- wake/intervention preserves control
 
-## Lovable Proof
+The operator should feel:
 
-The product is lovable only if one concrete path feels real from end to end:
-
-- the agent proposes one hypothesis worth following
-- that hypothesis becomes one durable candidate
-- the candidate earns counted evidence through governed evaluation
-- the operator faces one serious live deployment decision
-- after approval the system actually trades live within explicit limits
-- the operator can still explain why it counted and intervene without becoming the loop
-
-This is the first branded proof point for autokairos:
-
-**weak human oversight -> stronger governed trading behavior**
-
-In product language, that means:
-
-- stronger search than the operator can do alone
-- stronger delivery than a stitched workflow can support
-- stronger live operation than the operator can supervise manually
+> this is not a disposable AI idea; this is a candidate trading system I can evaluate, promote, and
+> control.
 
 ## Locked Product Decisions
 
-The following decisions are fixed for MLP-01.
-
 | Decision area | Locked answer | Why it is locked |
 | --- | --- | --- |
-| Product form | Operator system | Prevents drift into assistant or platform ambiguity |
-| Lovable core | Trustworthy live path | Keeps focus on progression to live rather than tool breadth |
-| First ICP | Serious solo crypto operator | Strongest pain with the lowest workflow coordination overhead |
-| First market | Binance BTC perpetual futures only | Narrowest believable live wedge |
-| Hypothesis origin | Agent-originated only | Core proof is agent leverage, not manual authoring |
-| Human gate | Per-candidate live deployment | One serious gate is clearer than per-action approval |
-| Autonomy posture | Full within explicit limits after promotion | Product must feel alive without becoming reckless |
-| Portability rule | Adapter-friendly architecture only | Portability matters, but not as first-cut scope |
+| Product category | automated weak-to-strong trader | Keeps the brand anchored in weak supervision and stronger systems |
+| Product form | trader-system control plane | Prevents drift into dashboard, notebook, or generic agent shell |
+| Candidate identity | `TraderSystemCandidate` | Candidate is the system under judgment, not a strategy note |
+| Execution unit | `TradingSystemPod` | Same artifact runs under different bindings |
+| First ICP | serious solo crypto operator | Strongest pain with lowest coordination overhead |
+| First market | Binance BTC perpetual futures | Narrow, liquid, legible first live wedge |
+| Candidate pool | small pool | Proves selection/evaluation without full portfolio scope |
+| Capability model | versioned `CapabilityPackage` artifacts | Enables future sharing/marketplace without putting secrets in packages |
+| Live authority | bounded agent through autokairos gateway | Agent can reason; gateway controls execution |
+| Self-evolution | clone -> evaluate -> promote | Prevents silent live mutation |
+| Human gate | per-candidate live deployment | One serious gate before bounded live autonomy |
 
-## Operator Language Definition
+## Core Objects
 
-In operator language, the product promise is:
+| Object | Meaning |
+| --- | --- |
+| `TraderSystemCandidate` | promotable candidate trading system |
+| `TradingSystemImage` | versioned artifact for the system's brain/team contract and trading behavior |
+| `CapabilityPackage` | packageable context/tool/skill/data-access artifact |
+| `StageBinding` | backtest, paper, or live execution binding |
+| `TradingSystemPod` | stage-bound execution instance of the candidate system |
+| `AgentRuntimeUnit` | one brain/hands/session participant inside or beside a pod |
+| `BrainSession` | provider or harness session for model reasoning and coordination |
+| `HandsEnvironment` | tools, sandbox, data, gateway, and side-effect environment |
+| `ToolProxy` | authority boundary between agent requests and real tools |
+| `PodCommunicationPolicy` | one unified communication, sharing, routing, and isolation policy for all agent runtime units in a pod |
+| `TeamTrace` | durable trace of multi-agent task, message, and artifact exchange |
+| `EvidenceRecord` | externally judged evidence |
+| `PromotionDecision` | governance decision that changes candidate standing |
 
-"Show me one serious candidate path, make it obvious what counts, ask me for one real live
-decision, then let it trade within limits unless something meaningful requires my attention."
+## Hard Constraints From Sources
 
-If MLP-01 cannot be described this simply, it is not yet sharp enough.
+### AAR / Automated W2S
 
-In research-grounded product language, the promise is:
-
-"Help me safely supervise a stronger trading system without forcing me to be its permanent manual
-runtime."
-
-These are two views of the same product:
-
-- operator wording explains the immediate user value
-- research-grounded wording explains the deeper thesis
-
-## What The Product Must Make Visible
-
-The product must make the following visible to the operator:
-
-- where the hypothesis came from
-- why it became a candidate
-- what evidence counted
-- what evidence did not count
-- what the live decision means
-- what the live candidate is allowed to do
-- why the operator was or was not woken later
-
-## Hard Constraints From Research
-
-MLP-01 carries four source-driven rules directly into the product contract.
-
-### AAR
-
-- evaluation is the bottleneck, not search volume
-- search and progression are distinct jobs
-- strong autonomous search is useful only when the scoring and advancement path remain external and
-  inspectable
-
-### Automated W2S
-
-- humans become weak supervisors relative to stronger systems
-- what counts must be visible
-- what does not count must be visible
-- who decides promotion must be visible
+- evaluation is the bottleneck, not idea count
+- weak human supervision must be compensated by external scoring and explicit progression
+- agent self-report cannot define what counted
 
 ### automated-w2s-research
 
-- convenient execution and legitimate execution are not equivalent
-- legitimacy boundaries matter before evidence should influence live progression
+- local convenience and legitimate evaluation are different modes
+- evaluator truth must sit outside the worker environment
+- candidate systems should run in isolated environments when evidence is meant to count
+
+### Claude Managed Agents
+
+- split `brain`, `hands`, and `session`
+- treat agent config as versioned
+- treat environment as a template, not identity
+- stream and preserve events outside the active model context
+- inject files, memory, tools, and credentials through explicit resources
+- use provider-native multiagent only as a managed-team reference, not as a hard MLP dependency
+
+### Google A2A
+
+- use A2A as the reference for communication between independent agent endpoints
+- keep MCP/tool-proxy style access for tools, resources, data, and side effects
+- keep provider selection on `AgentRuntimeUnit`, so one pod can mix Codex, Claude Code, Claude
+  Managed Agents, OpenClaw/ACP, or future providers
+- keep `PodCommunicationPolicy` provider-neutral and unified across the pod
+- treat A2A tasks, messages, and artifacts as traceable communication, not counted evidence or
+  promotion authority
+- prevent multi-agent pods from becoming uncontrolled meshes by requiring explicit
+  `PodCommunicationPolicy`
 
 ### Paperclip
 
-- wake, approval, intervention, and audit are product value
-- persistent operational control is part of the product, not mere admin garnish
+- approval, wake, intervention, and audit are product value
+- operator control must be visible, not hidden in backend operations
 
 ## Explicit Non-Goals
 
-MLP-01 is not trying to be:
+MLP-01 is not:
 
+- a full marketplace
+- a full Kubernetes clone
+- a general agent platform
 - a multi-venue product
-- a multi-team workflow system
-- a broad quant research workbench
-- a retail education tool
-- a generic autonomous agent platform
-- a manual-strategy-first workflow
+- a direct-agent exchange access system
+- a manual strategy authoring workflow
+- an uncontrolled multi-agent mesh
+- a hard dependency on A2A or Claude Managed Agents multiagent in the first cut
+- a product that treats rubric outcomes or agent self-critique as trading evidence
 
 ## Success Criteria
 
-MLP-01 is successful only if:
+MLP-01 succeeds if:
 
-- one agent-originated Binance BTC perp hypothesis can reach live safely
-- the operator can explain the trust chain from hypothesis to live
-- the operator understands what was approved for live
-- the system trades live autonomously within explicit limits after promotion
-- intervention is meaningful without making the operator the permanent runtime loop
+- one small candidate pool can produce one durable `TraderSystemCandidate`
+- the candidate's image and capability package references are inspectable
+- the same candidate can run through backtest/paper/live bindings without becoming a new object
+- counted evidence is produced outside the pod
+- one candidate reaches bounded live trading on Binance BTC perpetual futures
+- the operator can inspect, pause, stop, or override without becoming the runtime loop
 
 ## Rejection Criteria
 
-MLP-01 has failed if it becomes any of the following:
+MLP-01 fails if:
 
-- idea generation dressed up as a trading product
-- a paper-only system with no believable live path
-- a live system with fuzzy legitimacy and unclear gates
-- a pseudo-autonomous system that still relies on hidden operator labor
-- a broad scope claim that exists before one believable path feels lovable
-
-## What Downstream Docs May Elaborate
-
-Downstream documents may still define:
-
-- exact UX wording and screen structure
-- exact risk envelope defaults
-- exact wake channel choices
-- evidence thresholds and cadence details
-- implementation slicing and system architecture
+- the product still reads as one idea moving through a workflow rather than a
+  trader-system candidate being packaged, evaluated, promoted, and controlled
+- capability/context/tool injection is buried inside candidate text
+- live authority is direct and unbounded inside an agent harness
+- evidence depends on agent self-report or hidden operator judgment
+- self-evolution mutates the live system in place
+- the first wedge expands into full marketplace, full platform, or full venue breadth before one pod
+  proof lands
 
 ## What Downstream Docs May Not Change
 
-Until MLP-01 is explicitly redefined, downstream docs may not silently change:
+Downstream docs may not silently change:
 
-- the first user
-- the first market
-- the lovable proof
-- the hypothesis origin
-- the live gate placement
-- the bounded autonomy posture
-- the meaning of operator trust, wake, and intervention
+- `Candidate` meaning as `TraderSystemCandidate`
+- `TradingSystemPod` as the execution unit
+- `CapabilityPackage` as a versioned artifact boundary
+- `AgentRuntimeUnit` as the agent participant boundary inside or beside a pod
+- `PodCommunicationPolicy` as the explicit boundary for multi-agent communication
+- backtest/paper/live as bindings for the same artifact
+- external evaluator ownership of counted evidence
+- bounded live authority through autokairos gateway
+- clone/evaluate/promote as the self-evolution path
+- first user and first market
 
 ## Read Next
 
 1. [01-problem-jtbd-and-value.md](01-problem-jtbd-and-value.md)
 2. [02-journey-map.md](02-journey-map.md)
-3. [04-scope-and-cutline.md](04-scope-and-cutline.md)
-4. [05-success-metrics-and-launch-bar.md](05-success-metrics-and-launch-bar.md)
+3. [03-story-map-and-release-slices.md](03-story-map-and-release-slices.md)
+4. [prds/README.md](prds/README.md)

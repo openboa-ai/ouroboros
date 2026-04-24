@@ -713,7 +713,7 @@
   subsystem-level implementation plans remain background only.
 - 2026-04-23: Locked the pre-implementation docs baseline for PR1 as a docs-only normalization
   pass instead of mixing it with the broader repo reset state.
-  Added [wiki/architecture/01-pr1-path-becomes-real-design.md](wiki/architecture/01-pr1-path-becomes-real-design.md)
+  Added [wiki/architecture/01-pr1-trader-system-candidate-becomes-real-design.md](wiki/architecture/01-pr1-trader-system-candidate-becomes-real-design.md)
   as the canonical PR1 implementation-shape document, rewrote
   [wiki/architecture/specs/08-candidate-contract.md](wiki/architecture/specs/08-candidate-contract.md)
   and [wiki/architecture/specs/04-boundaries.md](wiki/architecture/specs/04-boundaries.md) around
@@ -728,3 +728,118 @@
   [knowledge-index.md](knowledge-index.md), [wiki/index.md](wiki/index.md), and
   [.agents/AGENTS.md](.agents/AGENTS.md) so the active implementation path now reads
   `PRDs -> architecture baseline -> implementation plan -> PR1 design note -> active PR1 specs -> subsystem docs`.
+- 2026-04-23: Completed the next slice-design layer before any sequential code PR work by adding
+  [wiki/architecture/02-pr2-candidate-becomes-externally-evaluated-design.md](wiki/architecture/02-pr2-candidate-becomes-externally-evaluated-design.md),
+  [wiki/architecture/03-pr3-bounded-live-trading-system-pod-design.md](wiki/architecture/03-pr3-bounded-live-trading-system-pod-design.md),
+  and [wiki/architecture/04-pr4-live-pod-remains-controllable-design.md](wiki/architecture/04-pr4-live-pod-remains-controllable-design.md)
+  as the canonical implementation-shape documents for Slice 2 through Slice 4.
+- 2026-04-23: Narrowed the active PR2, PR3, and PR4 supporting specs so they now behave like
+  slice-safe contracts rather than broad lifecycle essays.
+  Rewrote [wiki/architecture/specs/03-staged-evaluation.md](wiki/architecture/specs/03-staged-evaluation.md),
+  [wiki/architecture/specs/10-evidence-record-contract.md](wiki/architecture/specs/10-evidence-record-contract.md),
+  [wiki/architecture/specs/11-promotion-decision-contract.md](wiki/architecture/specs/11-promotion-decision-contract.md),
+  [wiki/architecture/specs/12-governed-execution-request-contract.md](wiki/architecture/specs/12-governed-execution-request-contract.md),
+  [wiki/architecture/specs/13-execution-attempt-contract.md](wiki/architecture/specs/13-execution-attempt-contract.md),
+  [wiki/architecture/specs/14-review-item-contract.md](wiki/architecture/specs/14-review-item-contract.md),
+  [wiki/architecture/specs/21-wake-policy-contract.md](wiki/architecture/specs/21-wake-policy-contract.md),
+  and [wiki/architecture/specs/23-wake-trigger-record-contract.md](wiki/architecture/specs/23-wake-trigger-record-contract.md)
+  around the current trust-proof milestones.
+- 2026-04-23: Updated the active implementation read path across
+  [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md),
+  [wiki/architecture/README.md](wiki/architecture/README.md),
+  [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md),
+  [wiki/architecture/specs/README.md](wiki/architecture/specs/README.md),
+  [wiki/architecture/evaluation-and-progression/README.md](wiki/architecture/evaluation-and-progression/README.md),
+  [wiki/architecture/trading-substrate/README.md](wiki/architecture/trading-substrate/README.md),
+  [wiki/architecture/proactive-operations/README.md](wiki/architecture/proactive-operations/README.md),
+  [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+  [wiki/index.md](wiki/index.md), [knowledge-index.md](knowledge-index.md), and
+  [.agents/AGENTS.md](.agents/AGENTS.md) so the canonical order is now
+  `PRDs -> architecture baseline -> implementation plan -> matching slice design note -> matching subsystem README -> active specs when needed`.
+- 2026-04-23: Formalized the current repo as a **docs-only reset baseline** rather than an
+  implementation-ready legacy app tree.
+  Updated [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+  [wiki/architecture/README.md](wiki/architecture/README.md),
+  [wiki/product/05-product-decision-log.md](wiki/product/05-product-decision-log.md),
+  [wiki/index.md](wiki/index.md), [knowledge-index.md](knowledge-index.md), and
+  [.agents/AGENTS.md](.agents/AGENTS.md) so implementers should not infer the deleted app/runtime
+  tree as active implementation truth.
+- 2026-04-23: Added [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
+  as the next planning artifact beneath the current design lock.
+  This page fixes the first code step as a greenfield bootstrap substrate:
+  browser-based operator surface, local runtime/service process, file-backed non-relational store,
+  shared `Candidate` boundary, and deferred live/wake behavior until later PRs.
+- 2026-04-23: Updated
+  [wiki/product/mlp-01/README.md](wiki/product/mlp-01/README.md),
+  [wiki/product/README.md](wiki/product/README.md),
+  [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md),
+  [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+  [wiki/index.md](wiki/index.md), and [knowledge-index.md](knowledge-index.md)
+  so the active build path now reads
+  `docs-only reset baseline -> implementation plan -> greenfield bootstrap plan -> slice design -> feature PRs`.
+- 2026-04-24: Reset the active docs around the managed-agents-aligned trader-system pod model.
+  Updated source, product, MLP, PRD, architecture, specs, and read-path pages so `Candidate` now
+  means `TraderSystemCandidate`, execution means `TradingSystemPod`, and backtest/paper/live are
+  `StageBinding` differences for the same artifact rather than separate product systems. Added
+  Claude Managed Agents as the strongest runtime interface reference for `brain / hands / session`,
+  Agent/Environment/Session/Events, custom tool execution, files/memory/vault resources, and
+  provider-neutral harness seams. The active product thesis is now:
+  `weak human -> agent-built trader-system candidates -> external evaluation -> promotion -> bounded live pod -> wake/control`.
+  `CapabilityPackage` is locked as a versioned context/tool/skill/data-access artifact boundary,
+  while secrets remain in vault/binding/tool-proxy layers. Legacy static-note/path terminology
+  was removed from the active read path, and PRD/slice design filenames were renamed to match the
+  new model.
+- 2026-04-24: Added Google Agent2Agent as the agent-communication/interoperability source and
+  threaded it through the active product and architecture model.
+  The current decision is that autokairos keeps W2S/AAR as the thesis spine, Claude Managed Agents
+  as the brain/hands/session reference, and Google A2A as the reference for communication between
+  independent agent endpoints.
+  Updated
+  [google-agent2agent-a2a.md](wiki/sources/library/google-agent2agent-a2a.md),
+  [agent-runtime-and-harness-principles.md](wiki/sources/synthesis/agent-runtime-and-harness-principles.md),
+  [01-product-principles.md](wiki/product/01-product-principles.md),
+  [02-core-primitives.md](wiki/architecture/specs/02-core-primitives.md), and
+  [04-boundaries.md](wiki/architecture/specs/04-boundaries.md)
+  so `AgentRuntimeUnit`, `PodCommunicationPolicy`, A2A-compatible task/message/artifact exchange,
+  and `TeamTrace` are communication seams, not evidence, promotion, or live authority.
+- 2026-04-24: Tightened the pod/provider model so `PodCommunicationPolicy` is now one unified
+  provider-neutral policy per pod, while provider/driver selection lives on each
+  `AgentRuntimeUnit`.
+  This preserves the ability for one `TradingSystemPod` to mix Codex, Claude Code, Claude Managed
+  Agents, OpenClaw/ACP, local drivers, or A2A endpoints without turning provider choice into
+  product truth or separate pod types.
+- 2026-04-24: Added the runtime-provider feasibility layer so provider support is no longer a vague
+  label.
+  [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)
+  records the actual invocation surfaces checked for MLP-01:
+  local Codex CLI `codex exec` is available and is the first real adapter target, Codex SDK and
+  Codex Cloud are later OpenAI surfaces, Claude should use Claude Agent SDK, and OpenClaw/ACP or A2A
+  endpoint support remains future bridge work.
+  Updated the architecture read path, bootstrap specs, runtime bridge interface, core primitives,
+  agent-system overview, implementation plan, and product decision log so `AgentRuntimeUnit`
+  provider selection must name `provider_kind`, invocation surface, auth mode, sandbox policy,
+  trace mode, and output contract before implementation.
+- 2026-04-24: Closed the pre-implementation architecture hardening findings before Bootstrap/PR1.
+  Added [wiki/architecture/specs/15-agent-loop-policy-contract.md](wiki/architecture/specs/15-agent-loop-policy-contract.md)
+  so agent-driven pods have explicit loop semantics without introducing a central workflow engine.
+  Added [wiki/architecture/specs/16-order-intent-and-gateway-decision-contract.md](wiki/architecture/specs/16-order-intent-and-gateway-decision-contract.md)
+  so PR3 live authority is bounded by `OrderIntent -> GatewayDecision -> ExecutionAttempt`.
+  Tightened runtime role/provider separation, Codex CLI `gpt-5.4` PR1 feasibility, PR1
+  materialization failure states, typed stage binding profiles, capability package manifest
+  boundaries, multi-agent admission rules, and PR-specific architecture read paths across the
+  active product and architecture docs.
+- 2026-04-24: Reworked [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md)
+  into the diagram-first architecture map for the active MLP-01 design.
+  The page now shows the end-to-end product-to-architecture flow, core object model,
+  `TradingSystemPod` anatomy, stage progression, agent loop policy, provider/role split,
+  multi-agent admission rule, live authority boundary, PR slice flow, subsystem ownership, and
+  PR-specific spec read paths in one canonical entry document.
+- 2026-04-24: Added [wiki/architecture/07-production-design-method.md](wiki/architecture/07-production-design-method.md)
+  as the production-level design bar for Bootstrap and PR1 through PR4.
+  Updated the system map, architecture README, knowledge index, and repo-local agent rules so
+  slice design now flows through:
+  `00-system-map -> 07-production-design-method -> Bootstrap/PR slice design -> active specs`.
+  Added compact production-readiness sections to the Bootstrap, PR1, PR2, PR3, and PR4 design
+  notes covering lifecycle, durable truth, validation/rejection, idempotency, recovery, security,
+  observability, audit, and operator inspectability without reactivating old central-FSM or
+  speculative production-agent documents.

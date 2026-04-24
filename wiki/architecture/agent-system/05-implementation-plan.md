@@ -137,7 +137,7 @@ The first implementation does not need every stage or optimization, but it shoul
 
 - what stays always on outside the runtime
 - what counts as `cold`, `warm`, and `hot`
-- that the first serious path defaults to `cold`
+- that the first serious candidate run defaults to `cold`
 
 ### 6. Workspace materializer
 
@@ -215,7 +215,8 @@ The first implementation should prove all of the following.
 6. The system can survive container loss without losing durable truth.
 7. The same agent identity can be resumed through a session continuity path.
 8. Stage semantics are resolved outside prompt text.
-9. The first serious path can explain why it is `cold`, not just that it happens to start cold.
+9. The first serious candidate run can explain why it is `cold`, not just that it happens to start
+   cold.
 
 ## Explicitly Deferred
 

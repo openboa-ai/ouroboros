@@ -31,7 +31,7 @@ Every source note in this directory follows the same schema:
 
 The notes are intentionally mostly neutral. They are evidence files, not architecture pages.
 
-This library currently covers the 13 explicit source links collected for the current autokairos
+This library currently covers the explicit source links collected for the current autokairos
 research pass.
 
 ## Coverage View
@@ -39,7 +39,8 @@ research pass.
 | Primary source | Adjacent docs inspected | Local note | Consumed by synthesis |
 | --- | --- | --- | --- |
 | [Anthropic: Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) | article sections on workflows, agents, appendices | [anthropic-building-effective-agents.md](anthropic-building-effective-agents.md) | [agent-runtime-and-harness-principles.md](../synthesis/agent-runtime-and-harness-principles.md) |
-| [Anthropic: Managed agents](https://www.anthropic.com/engineering/managed-agents) | article passages on `session / harness / sandbox`, security boundary, pets vs cattle | [anthropic-managed-agents.md](anthropic-managed-agents.md) | [agent-runtime-and-harness-principles.md](../synthesis/agent-runtime-and-harness-principles.md) |
+| [Anthropic: Managed agents](https://www.anthropic.com/engineering/managed-agents) | engineering post plus official docs for Agent, Environment, Session, Events, tools, files, memory, vaults, multiagent, outcomes, observability, and migration | [anthropic-managed-agents.md](anthropic-managed-agents.md) | [agent-runtime-and-harness-principles.md](../synthesis/agent-runtime-and-harness-principles.md), [reference-systems-and-product-postures.md](../synthesis/reference-systems-and-product-postures.md) |
+| [Google: Agent2Agent Protocol](https://developers.googleblog.com/ko/a2a-a-new-era-of-agent-interoperability/) | Google announcement, current A2A protocol specification, A2A/MCP comparison, purchasing concierge codelab | [google-agent2agent-a2a.md](google-agent2agent-a2a.md) | [agent-runtime-and-harness-principles.md](../synthesis/agent-runtime-and-harness-principles.md), [reference-systems-and-product-postures.md](../synthesis/reference-systems-and-product-postures.md) |
 | [Anthropic: Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) | article sections on initializer/coding agents, artifacts, future work | [anthropic-effective-harnesses-for-long-running-agents.md](anthropic-effective-harnesses-for-long-running-agents.md) | [agent-runtime-and-harness-principles.md](../synthesis/agent-runtime-and-harness-principles.md) |
 | [OpenAI: The next evolution of the Agents SDK](https://openai.com/index/the-next-evolution-of-the-agents-sdk/) | article sections on harness primitives, native sandbox, Manifest, harness/compute split | [openai-next-evolution-of-the-agents-sdk.md](openai-next-evolution-of-the-agents-sdk.md) | [agent-runtime-and-harness-principles.md](../synthesis/agent-runtime-and-harness-principles.md) |
 | [Anthropic: Automated Alignment Researchers](https://www.anthropic.com/research/automated-alignment-researchers) | article sections on setup, results, implications, reward hacking | [anthropic-automated-alignment-researchers.md](anthropic-automated-alignment-researchers.md) | [evaluation-governance-and-promotion.md](../synthesis/evaluation-governance-and-promotion.md) |
@@ -62,6 +63,12 @@ research pass.
 - [anthropic-effective-harnesses-for-long-running-agents.md](anthropic-effective-harnesses-for-long-running-agents.md)
   Harness patterns for fresh-session continuity: initializer setup, progress artifacts, feature
   lists, and end-to-end verification.
+
+## Google Agent Interoperability
+
+- [google-agent2agent-a2a.md](google-agent2agent-a2a.md)
+  Agent-to-agent interoperability protocol centered on agent cards, tasks, messages, artifacts,
+  streaming updates, and the MCP-vs-A2A boundary.
 
 ## OpenAI Engineering
 

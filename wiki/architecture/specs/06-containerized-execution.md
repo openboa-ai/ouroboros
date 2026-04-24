@@ -1,299 +1,175 @@
 # Containerized Execution
 
-This page defines how autokairos should use containers as part of its execution architecture.
+## Purpose
 
-It follows:
-
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [03-staged-evaluation.md](03-staged-evaluation.md)
-- [04-boundaries.md](04-boundaries.md)
-- [../sources/library/repo-safety-research-automated-w2s-research.md](../../sources/library/repo-safety-research-automated-w2s-research.md)
-- [../sources/synthesis/evaluation-governance-and-promotion.md](../../sources/synthesis/evaluation-governance-and-promotion.md)
+This page defines how containers support trader-system pods without becoming the whole model.
 
 ## Thesis
 
-autokairos should treat containerization as more than deployment convenience.
+Containers are important because they create execution and legitimacy boundaries.
 
-For execution that is meant to count as legitimate staged evidence, the bounded workspace should be
-container-backed by default.
+But a `TradingSystemPod` is not simply "the container."
 
-The core lesson from the W2S implementation is not merely "Docker is useful." It is:
+The pod is the stage-bound execution instance assembled from:
 
-- local subprocess execution is convenient but weakly trustworthy
-- containerized execution creates a stronger legitimacy boundary
-- cloud execution can extend the same container model outward
+- `TradingSystemImage`
+- `CapabilityPackage`
+- `StageBinding`
+- one or more `AgentRuntimeUnit` records
+- `ToolProxy`
+- external trace/evidence sinks
 
-autokairos should preserve that distinction.
-
-## Why This Spec Exists
-
-This spec exists to answer one question:
-
-**how should autokairos use containers so execution legitimacy is stronger than raw host-local
-convenience?**
-
-## Why Containers Matter Here
-
-The execution architecture already says that workspaces are bounded execution surfaces rather than
-sources of truth. Containers make that statement operational.
-
-Containers give autokairos a practical way to control:
-
-- filesystem visibility
-- tool and connector exposure
-- stage-specific mount policy
-- network posture
-- process isolation
-- non-root execution posture
-
-That is exactly what the W2S repo uses local Docker mode for: not speed alone, but legitimacy.
+The hands environment may be container-backed. The brain may be provider-managed. A multi-agent pod
+may use provider-native subagent threads or A2A-compatible remote endpoints. The session truth must
+remain external.
 
 ## Legitimacy Levels
 
-autokairos should distinguish three execution-environment legitimacy levels.
+| Mode | Purpose | Evidence posture |
+| --- | --- | --- |
+| `host-local` | debugging and harness iteration | convenience only |
+| `containerized-local` | serious local evaluation | eligible for legitimate local evidence if evaluator boundary is preserved |
+| `containerized-remote` | scalable or stronger-isolation runs | eligible for larger legitimate evaluations |
 
-1. `host-local`
-2. `containerized-local`
-3. `containerized-remote`
+These modes are not the same as `backtest`, `paper`, and `live`. They are execution-environment
+legitimacy levels that can support those bindings.
 
-These are not the same as `backtesting`, `paper`, and `live`. They are execution-environment
-levels that can support those stages differently.
+## Brain / Hands / Session Mapping
 
-### 1. Host-local
+| Managed Agents concept | autokairos concept |
+| --- | --- |
+| brain / harness | `BrainSession` |
+| hands / sandbox | `HandsEnvironment` |
+| session log | external `Trace` and control-plane records |
+| resources | `CapabilityPackage` plus binding resources |
+| vault | credential injection through vault/gateway |
+| multiagent thread | possible `AgentRuntimeUnit` implementation detail for a provider-managed team |
 
-Host-local execution is the weakest legitimacy mode.
+## Single-Agent And Multi-Agent Container Shapes
 
-Use it for:
+MLP-01 may start with one `AgentRuntimeUnit`.
 
-- quick debugging
-- harness iteration
-- runtime development
+Later pod shapes are allowed only if the communication boundary stays explicit:
 
-Do not treat it as default promotable evidence.
+| Shape | Hands model | Communication model | Provider posture |
+| --- | --- | --- | --- |
+| single runtime unit | one hands environment | no agent-to-agent channel | one provider |
+| shared-hands team | shared container/filesystem | coordinator-routed or provider-native threads | one or many providers, depending on bridge support |
+| independent-hands team | separate hands environments per unit | A2A-compatible or bridge-mediated | can mix providers |
+| distributed pod team | separate pod/session endpoints | control-plane mediated plus optional A2A-compatible exchange | can mix providers |
 
-This directly follows the W2S repo, which states that local subprocess mode may not be legitimate
-because the worker can reach labels.
+The architecture should not assume that all agents in a team share a container. Claude Managed
+Agents does for provider-native multiagent sessions, while A2A is useful when agents are
+independent endpoints.
 
-### 2. Containerized-local
+Provider choice is independent of the communication shape. Codex, Claude Code, Claude Managed
+Agents, OpenClaw/ACP, local containers, and A2A endpoints are runtime-unit providers or drivers;
+they are not separate communication policies.
 
-Containerized-local execution should be the default serious mode for local development and
-evaluation.
+## Multi-Agent Admission Rule
 
-Use it for:
+MLP-01 starts single-agent.
 
-- most `backtesting`
-- most `paper`
-- reproducible execution while still on local hardware
+A pod may become multi-agent only when a current PRD acceptance criterion cannot be met by one
+runtime unit.
 
-This is the autokairos equivalent of the W2S repo's `Local Docker` mode.
+Admission requires:
 
-### 3. Containerized-remote
+- explicit `runtime_unit_role` for every `AgentRuntimeUnit`
+- one `PodCommunicationPolicy`
+- `TeamTrace`
+- non-secret `SharedContextSurface` declarations
+- no communication path to live authority except `ToolProxy` / gateway
 
-Containerized-remote execution extends the same worker-image model into a remote environment.
+This prevents container shape from becoming an excuse to build an uncontrolled agent mesh.
 
-Use it for:
+## Container Role
 
-- parallel candidate sweeps
-- expensive backtests
-- paper fleets
-- controlled remote live-adjacent operations if later justified
+A container may host the `HandsEnvironment`.
 
-This is the autokairos equivalent of the W2S repo's `RunPod` pattern: the image stays the same,
-but orchestration, artifact transport, and supervision move outward.
+It can provide:
 
-## Default Rule
+- filesystem isolation
+- package/runtime dependencies
+- limited network access
+- mounted context files
+- tool proxy clients
+- non-root execution
+- output directories
 
-The default autokairos rule should be:
+It must not own:
 
-- host-local is for convenience
-- containerized-local is for legitimate local runs
-- containerized-remote is for scalable legitimate runs
-
-This means `host-local` should not silently become the same thing as a stage-valid run.
-
-## Container As Workspace Host
-
-In autokairos, the bounded workspace should normally be hosted inside a container.
-
-That means:
-
-- the control plane resolves `StageBinding`
-- the runtime bridge selects a worker image
-- the container starts with a prepared mount set
-- the runtime session executes inside that container-backed workspace
-
-The container is not the source of truth.
-
-It is the host for the bounded workspace.
+- candidate identity
+- package registry truth
+- evaluator secrets
+- promotion decisions
+- live exchange credentials
+- the only trace copy
 
 ## Mount Policy
 
-The W2S repo is especially useful here because it treats visibility as the core question.
+Inputs may include:
 
-autokairos should define container mount policy explicitly.
+- trading system image contents
+- capability package files
+- stage binding files
+- read-only market data
+- tool proxy configuration
+- communication policy
+- shared context surface for multi-agent pods
 
-### Inputs
+Restricted inputs:
 
-Inputs should be mounted or materialized intentionally:
-
-- candidate-specific instructions
-- stage-specific tool surfaces
-- datasets or market data views
-- prior approved artifacts that are safe to expose
-
-### Restricted inputs
-
-Some material must remain outside the container unless the stage explicitly permits it:
-
+- evaluator ground truth
+- live credentials
 - promotion decisions
-- evaluator secrets
-- approval credentials
-- raw ground truth not meant for the current run
-- privileged live connector secrets
+- hidden labels
+- gateway signing keys
+- secrets in shared context surfaces
 
-### Outputs
+Outputs:
 
-Outputs should land in container-visible output locations, but then be extracted into external
-trace and artifact stores.
+- trace fragments
+- artifacts
+- reports
+- proposed order intents
+- proposed candidate versions
+- A2A-compatible task/message/artifact records when remote agent endpoints participate
 
-The container should not be the only place they exist.
+Outputs must be exported to durable stores outside the container.
 
-## Image Strategy
+## Backtest / Paper / Live Bindings
 
-autokairos should prefer a stable worker-image strategy.
+The same candidate image can run with:
 
-### The worker image should contain
+- backtest binding: historical data, simulated exchange, evaluator
+- paper binding: live data, paper exchange/gateway, paper risk envelope
+- live binding: live data, real gateway, strict risk envelope, wake policy
 
-- the runtime binary or client
-- baseline dependencies needed for the stage
-- a non-root execution user
-- standard bootstrap and entrypoint logic
-- common filesystem locations for inputs, outputs, and traces
+The container mode can vary independently from the binding.
 
-### The worker image should not contain
+## Lifecycle
 
-- stage-valid durable truth
-- approval state
-- promotion history
-- the only copy of candidate state
+```text
+resolve candidate
+-> resolve image/package refs
+-> resolve stage binding
+-> resolve agent loop policy
+-> provision hands environment
+-> attach brain session
+-> stream trace externally
+-> export artifacts
+-> tear down or checkpoint
+```
 
-The W2S repo is useful here because it uses the same image idea across local Docker and RunPod.
-autokairos should copy that posture, even if it uses different infrastructure.
+No lifecycle step may make the container the system of record.
 
-## What This Spec Is Not
+## Acceptance Test
 
-This spec is not:
+A reader should be able to explain:
 
-- a Dockerfile
-- a compose file contract
-- the full runtime-bridge interface
-- a complete secret-management policy
-
-## Non-Root Execution
-
-The W2S Dockerfile explicitly avoids running Claude Code as root.
-
-autokairos should adopt the same default:
-
-- containerized execution should run as a non-root user
-- mounted workspaces should be writable by that user where necessary
-- privileged host access should not be granted by default
-
-This is not just Linux hygiene. It is part of the execution trust boundary.
-
-## Container Lifecycle
-
-The runtime bridge should treat containers as cattle, not pets.
-
-Container lifecycle should look like this:
-
-1. select worker image
-2. materialize mount set
-3. start container
-4. bootstrap workspace
-5. attach runtime session
-6. stream trace outward
-7. stop and discard container or archive limited artifacts
-
-The container may survive long enough for a session continuation, but the architecture should not
-depend on one specific container instance being immortal.
-
-## Stage Interaction
-
-Containerization does not replace stages. It supports them.
-
-### Backtesting
-
-Backtesting should usually run in `containerized-local` or `containerized-remote` mode.
-
-The container can expose:
-
-- replay data
-- simulation tools
-- strategy code
-
-without exposing higher-stage secrets.
-
-### Paper
-
-Paper should also default to containerized execution.
-
-The container can expose:
-
-- mock or simulated execution connectors
-- current market data
-- approval interaction surfaces if needed
-
-without exposing real-money credentials directly.
-
-### Live
-
-Live may still use containerized execution, but its binding rules must be stricter.
-
-The important point is that `live` should not imply "run directly on the host with every secret
-available." It should still be a bounded execution surface, only with stronger stage bindings and
-more tightly governed side effects.
-
-## Execution-Mode Table
-
-| Mode | Main purpose | Trust posture | Typical use |
-| --- | --- | --- | --- |
-| `host-local` | debugging and iteration | weak legitimacy | runtime development, harness debugging |
-| `containerized-local` | local legitimate runs | strong local legitimacy | backtesting, paper, evaluation runs |
-| `containerized-remote` | scalable legitimate runs | strong remote legitimacy | parallel sweeps, remote workers, expensive evaluations |
-
-## Failure Modes / Invariants
-
-The key invariants are:
-
-- containerization is a legitimacy boundary, not only a packaging choice
-- promotable execution must be distinguishable from convenience execution
-- the container hosts the workspace but does not become the source of truth
-
-The design is failing if:
-
-- host-local debug runs are treated as equivalent to serious staged runs
-- worker images silently contain durable governance truth
-- the only copy of outputs remains inside a container
-- compose becomes the system contract instead of a convenience layer
-
-## Design Consequence
-
-If autokairos follows this document, then:
-
-1. the bounded workspace becomes concretely enforceable
-2. local convenience mode is clearly separated from promotable execution
-3. the same image model can support both local and remote execution
-4. stage legitimacy can build on top of execution legitimacy instead of assuming it
-5. later runtime-bridge interfaces can target container-backed workspaces directly
-
-## Relationship To Adjacent Specs
-
-This spec depends on:
-
-- [03-staged-evaluation.md](03-staged-evaluation.md)
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-
-It is operationalized by:
-
-- [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
+- why pod is larger than container
+- why brain and hands can be separated
+- why secrets are not mounted as package data
+- why containerized execution may support legitimacy
+- why trace and evidence remain external

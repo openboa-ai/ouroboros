@@ -1,242 +1,120 @@
 # Promotion Decision Contract
 
-This page defines what a `PromotionDecision` is in autokairos.
+This page defines the minimum `PromotionDecision` contract needed by the current MLP-01 baseline.
 
 It follows:
 
 - [03-staged-evaluation.md](03-staged-evaluation.md)
 - [04-boundaries.md](04-boundaries.md)
-- [08-candidate-contract.md](08-candidate-contract.md)
-- [09-trace-contract.md](09-trace-contract.md)
 - [10-evidence-record-contract.md](10-evidence-record-contract.md)
-- [../sources/library/anthropic-building-effective-agents.md](../../sources/library/anthropic-building-effective-agents.md)
-- [../sources/library/anthropic-automated-alignment-researchers.md](../../sources/library/anthropic-automated-alignment-researchers.md)
-- [../sources/library/anthropic-automated-w2s-researcher.md](../../sources/library/anthropic-automated-w2s-researcher.md)
-- [../sources/library/repo-anthropics-claude-code.md](../../sources/library/repo-anthropics-claude-code.md)
-- [../sources/library/repo-paperclip.md](../../sources/library/repo-paperclip.md)
-- [../sources/synthesis/evaluation-governance-and-promotion.md](../../sources/synthesis/evaluation-governance-and-promotion.md)
-
-It is also strengthened by current official Anthropic Claude Code administration docs:
-
-- [Security](https://code.claude.com/docs/en/security)
-- [Configure permissions](https://code.claude.com/docs/en/permissions)
-- [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works)
+- [14-review-item-contract.md](14-review-item-contract.md)
+- [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
+- [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
 
 ## Thesis
 
-`PromotionDecision` is the explicit governance act that changes a candidate's standing.
+`PromotionDecision` is the sealed governance act that gives one live gate its explicit meaning.
 
-It is not a trace.
+It is where autokairos says:
 
-It is not evidence.
+- which candidate was governed
+- which evidence basis was cited
+- what the live-gate outcome was
+- which governing surface committed it
 
-It is not a runtime permission prompt.
+Without this object, live approval collapses into informal memory or vague UI state.
 
-It is the formal record that says:
+## Current Active Applicability
 
-- what governance action was taken
-- against which candidate
-- from which stage position
-- toward which new stage position or status
-- on the basis of which evidence
-- by which governing surface
+This spec is currently active for PR2 and PR3.
 
-Without this object, stage progression becomes implicit, operator memory becomes authoritative, and
-promotion starts to look like a side effect of execution rather than a deliberate act of
-governance.
+Its first job is to make the live gate real in PR2.
 
-## Why This Spec Exists
+Its second job is to give PR3 one durable upstream approval basis before any live execution starts.
 
-The source layer points toward this object from several directions.
-
-### 1. Anthropic research posture
-
-AAR and Automated W2S Researcher both make the same structural point: search can scale, but
-evaluation becomes the bottleneck, and human oversight remains essential. That only makes sense if
-there is some explicit act of accepting, rejecting, or constraining advancement based on external
-results.
-
-### 2. Paperclip governance posture
-
-Paperclip is especially direct here. It treats approvals, budgets, rollback, and agent reviews as
-first-class governance surfaces rather than incidental UX. That implies a distinct layer where a
-governing authority commits an action that changes what the agent is allowed to do next.
-
-### 3. Claude Code approval posture
-
-Claude Code's permission and security docs are useful mostly as a boundary contrast. They show that
-runtime approvals, command permissions, and side-effect prompts are important, but they are still
-local execution controls. They are not the same thing as a promotion decision over a candidate's
-stage standing.
-
-autokairos therefore needs a separate, higher-level object for progression governance.
-
-That object is `PromotionDecision`.
-
-## What This Spec Is Not
+## What This Is Not
 
 `PromotionDecision` is not:
 
-- a `Candidate`
-- a `Session`
-- a `Workspace`
 - a `Trace`
 - an `EvidenceRecord`
-- a runtime approval response
-- a connector permission grant
-- a tool-call allowlist entry
-- a free-form reviewer comment
+- a `ReviewItem`
+- a runtime approval prompt
+- a `GovernedExecutionRequest`
 
 Most importantly:
 
-**Evidence says what counted and why. PromotionDecision says what changed because of it.**
+- evidence says what counted and why
+- `PromotionDecision` says what changed because of that evidence
+- `PromotionDecision` is still not live execution
 
-And:
-
-**Runtime approval is about whether an active run may do something now. PromotionDecision is about
-whether a candidate may advance, stay, pause, demote, or terminate.**
-
-## Promotion Decision Definition
-
-A `PromotionDecision` should be understood as:
-
-> a sealed governance record that changes or preserves a candidate's stage standing on the basis of
-> explicit evidence and an identified decision surface.
-
-The phrase `changes or preserves` matters.
-
-A decision can promote, but it can also intentionally choose:
-
-- stay
-- pause
-- demote
-- reject
-- rollback
-
-## Promotion Decision In The System
+## Canonical Role In The System
 
 ```mermaid
 flowchart LR
-    A["Candidate"] --> B["Trace"]
-    B --> C["EvidenceRecord"]
-    C --> D["PromotionDecision"]
-    D --> A
-```
-
-Operationally:
-
-```mermaid
-flowchart LR
-    A["Evidence surface"] --> B["Promotion surface"]
+    A["EvidenceRecord"] --> B["ReviewItem"]
     B --> C["PromotionDecision"]
-    C --> D["Candidate stage/status update"]
+    C --> D["GovernedExecutionRequest"]
 ```
 
-This loop is deliberate.
+The separation must remain explicit:
 
-- trace does not promote
 - evidence does not promote
-- governance promotes
+- review does not commit
+- promotion does not execute
 
-## Promotion Decision Contract
+## Minimum Contract
 
-The promotion-decision contract should carry at least these categories of information.
+A `PromotionDecision` must carry at least:
 
-## 1. Identity
+| Field | Meaning |
+| --- | --- |
+| `promotion_decision_id` | Stable durable identity |
+| `candidate_ref` | Candidate whose standing was governed |
+| `decision_scope` | Current baseline uses `live_gate` |
+| `evidence_record_refs` | Counted evidence basis cited by the gate |
+| `originating_review_item_ref` | Review item resolved by the gate act |
+| `decision_outcome` | `promote_to_live`, `hold`, or `reject` |
+| `decision_summary` | Durable rationale in operator language |
+| `decided_by_surface_kind` | Which governing surface committed the act |
+| `created_at` | When the decision was first created |
+| `sealed_at` | When the decision became citeable and binding |
+| `status` | `draft`, `committed`, `superseded`, or `rescinded` |
 
-The decision needs stable identity and sealing state.
+## Required Interpretation
 
-### Required fields
+### `promote_to_live`
 
-- `promotion_decision_id`
-- `created_at`
-- `sealed_at`
-- `status`
+The candidate is eligible to enter PR3 through a governed execution request.
 
-### Suggested status values
+This is the only outcome that may open live execution.
 
-- `draft`
-- `committed`
-- `superseded`
-- `rescinded`
+### `hold`
 
-### Why
+The candidate is not rejected, but more evidence or review is required before live execution may
+open.
 
-The decision should be reviewable as a historical governance act, not just a mutable status flag
-on the candidate.
+### `reject`
 
-## 2. Candidate Scope
+The candidate is not eligible for live execution on the current basis.
 
-The decision must say which candidate it governs.
+## Boundary Rules
 
-### Required fields
+- current active baseline treats `PromotionDecision` as the per-candidate live gate
+- live gate meaning must cite counted evidence, not raw trace alone
+- a committed promotion decision must still stop before creating runtime behavior
+- `PromotionDecision` should be inspectable without knowing private implementation details
 
-- `candidate_ref`
-- `current_stage`
-- optional `current_stage_binding_ref`
+## Not In The Active Baseline
 
-### Why
+The current active baseline does not require:
 
-There should be no ambiguity about which candidate's standing changed or was preserved.
+- full multi-stage decision taxonomies
+- rollback families for later live operations
+- broad decision outcome catalogs beyond the current live-gate posture
 
-## 3. Decision Outcome
-
-The record must carry the actual governance outcome.
-
-### Required fields
-
-- `decision_kind`
-- `outcome`
-
-### Candidate outcome values
-
-- `promote`
-- `stay`
-- `pause`
-- `demote`
-- `reject`
-- `rollback`
-
-### Why
-
-autokairos should not encode progression as a boolean `approved / denied` only.
-
-Trading candidates need richer governance outcomes because:
-
-- good evidence may still not be sufficient for promotion
-- live execution may need pause without full rejection
-- bad changes may require rollback rather than simple demotion
-
-## 4. Stage Transition
-
-The decision must say what stage relationship changed.
-
-### Required fields
-
-- `from_stage`
-- optional `to_stage`
-- optional resulting `candidate_status`
-
-### Why
-
-Some outcomes move stages and some do not.
-
-Examples:
-
-- `promote`: `from_stage = backtesting`, `to_stage = paper`
-- `stay`: `from_stage = paper`, no `to_stage`
-- `pause`: `from_stage = live`, no `to_stage`, resulting status `paused`
-- `demote`: `from_stage = live`, `to_stage = paper`
-- `reject`: `from_stage = backtesting`, no `to_stage`, resulting status `rejected`
-
-## 5. Evidence Basis
-
-The decision must point to what justified it.
-
-### Required fields
-
-- one or more `evidence_record_refs`
-- optional `trace_refs` when relevant for direct audit convenience
+If later work needs those, it should add them deliberately rather than broadening this contract by
+default.
 
 ### Why
 

@@ -1,242 +1,115 @@
 # Execution Attempt Contract
 
-This page defines the durable record for one concrete attempt to execute work from an
-`ExecutionRequest`.
+This page defines the minimum `ExecutionAttempt` contract needed by the current MLP-01 baseline.
 
 It follows:
 
 - [12-governed-execution-request-contract.md](12-governed-execution-request-contract.md)
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
 - [09-trace-contract.md](09-trace-contract.md)
-- [23-wake-trigger-record-contract.md](23-wake-trigger-record-contract.md)
-- [../../sources/library/anthropic-managed-agents.md](../../sources/library/anthropic-managed-agents.md)
-- [../../sources/library/repo-multica.md](../../sources/library/repo-multica.md)
-- [../../sources/library/repo-safety-research-automated-w2s-research.md](../../sources/library/repo-safety-research-automated-w2s-research.md)
-
-It is also informed by additional official documentation:
-
-- [OpenAI Sessions](https://openai.github.io/openai-agents-js/guides/sessions/)
-- [OpenAI Results](https://openai.github.io/openai-agents-js/guides/results/)
-- [Docker Bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)
-- [Docker Storage](https://docs.docker.com/engine/storage/)
+- [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
 
 ## Thesis
 
-`ExecutionAttempt` is the durable record for one concrete try to run one request under one stage
-binding and one execution mode.
+`ExecutionAttempt` is the durable record for one concrete live try launched from one governed
+execution request.
 
-It is the object that lets autokairos answer:
+It is where autokairos says:
 
-**what exactly was launched, where did it run, what trace did it emit, and how did that one try
-end?**
+- what exactly was launched
+- which candidate and venue scope it belongs to
+- which raw trace it emitted
+- whether the live attempt is active, failed, completed, or otherwise no longer usable
 
-## Why This Spec Exists
+Without this object, "candidate is live" becomes vague and unreconstructable.
 
-This spec exists because request intent and concrete execution are not the same thing.
+## Current Active Applicability
 
-The source layer repeatedly separates durable continuity and control from disposable runtime hosts:
+This spec is currently active for PR3.
 
-- Anthropic can recreate a harness from session state after failure
-- OpenAI can resume work from serialized run state while keeping session continuity
-- W2S treats worker containers as disposable while keeping evaluation-relevant state outside them
-- Multica treats task progress and runtime supervision as external managed state
+Its job is to make one real live attempt durable outside runtime memory.
 
-autokairos therefore needs a durable record for one execution try that is still distinct from:
+## What This Is Not
 
-- the higher-level request
-- the candidate lineage
-- the raw trace itself
+`ExecutionAttempt` is not:
 
-## Canonical Object
+- a `GovernedExecutionRequest`
+- a `TraderSystemCandidate`
+- a wake-trigger record
+- the whole runtime system
 
-`ExecutionAttempt` is a control-plane execution reference record.
+Most importantly:
 
-It ties together:
+- the request is the governed launch intent
+- the attempt is the concrete live try
+- the trace is the raw history emitted by that try
 
-- one `ExecutionRequest`
-- one candidate-stage context
-- one resolved execution posture
-- one runtime launch or attach
-- one primary trace stream
-
-Operationally:
+## Canonical Role In The System
 
 ```mermaid
 flowchart LR
-    A["ExecutionRequest"] --> B["ExecutionAttempt"]
-    B --> C["Workspace host"]
-    B --> D["Runtime bridge handle"]
-    B --> E["Trace"]
+    A["GovernedExecutionRequest"] --> B["ExecutionAttempt"]
+    B --> C["Trace"]
+    B --> D["Trading Substrate Surfaces"]
+    B --> E["OrderIntent / GatewayDecision"]
 ```
 
-## Required Fields Or Required Behaviors
+The separation must remain explicit:
 
-## 1. Identity
+- one request may produce one or more attempts over time
+- one attempt must still be traceable as one concrete live try
 
-### Required fields
+## Minimum Contract
 
-- `execution_attempt_id`
-- `execution_request_ref`
-- `created_at`
-- `status`
+An `ExecutionAttempt` must carry at least:
 
-### Why
+| Field | Meaning |
+| --- | --- |
+| `execution_attempt_id` | Stable durable identity |
+| `execution_request_ref` | Upstream governed request |
+| `candidate_ref` | Candidate whose live pod is running |
+| `stage` | Current baseline requires `live` |
+| `execution_mode` | Concrete runtime mode used for this attempt |
+| `venue_binding_ref` | Venue/product scope for the attempt |
+| `workspace_ref` | Bounded runtime environment |
+| `trace_ref` | Primary raw run history |
+| `agent_loop_policy_ref` | loop envelope used by this attempt |
+| `gateway_decision_refs` | accepted, rejected, or clipped gateway decisions produced during the attempt |
+| `created_at` | When the attempt record was created |
+| `started_at` | When the attempt became live |
+| `last_heartbeat_at` | Latest sign of continuing activity |
+| `status` | `pending`, `launching`, `active`, `completed`, `failed`, `abandoned`, or `canceled` |
 
-Every concrete try must be durable and distinct, even when many attempts come from one request.
+## Required Interpretation
 
-## 2. Target Context
+The attempt must preserve enough meaning to answer:
 
-### Required fields
+- which approved candidate is actually live?
+- where is it trading?
+- is it still running?
+- which raw trace captures its behavior?
+- which gateway decisions explain accepted, rejected, or clipped trading actions?
 
-- `agent_identity_ref`
-- `candidate_ref`
-- `session_ref`
-- `stage`
-- `stage_binding_ref`
+The attempt is also the durable place where live execution can later connect to wake and
+intervention history, but PR3 does not need those downstream contracts yet.
 
-### Why
+## Boundary Rules
 
-An attempt must preserve both the requested work context and the resolved semantics under which it
-was actually run.
+- every live pod that claims to be real must have an execution attempt
+- the attempt must stay linked to one governed request and one candidate
+- substrate facts remain separate from the attempt record even when they explain current live posture
+- PR3 does not require wake or operator-action fields on the attempt itself
+- PR3 does require gateway decision linkage when order intents occur
 
-## 3. Execution Selection
+## Not In The Active Baseline
 
-### Required fields
+The current active baseline does not require:
 
-- `execution_mode`
-  - `host-local`
-  - `containerized-local`
-  - `containerized-remote`
-- execution driver selection metadata
+- deeper host/container orchestration metadata
+- richer wake-origin inheritance
+- detailed retry/resume planning
 
-### Optional fields
-
-- `worker_image_ref`
-- runtime family or harness identifier
-- runtime host reference
-
-### Why
-
-Execution legitimacy partly depends on how the attempt was run, not only on what it was trying to
-do.
-
-## 4. Wake Provenance Inheritance
-
-### Required behavior
-
-An `ExecutionAttempt` must be able to resolve back to the request's wake provenance without reading
-runtime-local logs or scheduler memory.
-
-### Optional denormalized fields
-
-- `primary_wake_trigger_record_ref`
-- `wake_origin_posture`
-
-### Why
-
-The request is the canonical invocation object.
-
-The attempt may denormalize some wake-origin context for operational joins and observability, but
-the attempt must not become the source of truth for:
-
-- precedence resolution
-- coalescing history
-- wake-authority interpretation
-
-That truth remains upstream in the `ExecutionRequest` and `WakeTriggerRecord` family.
-
-## 5. Workspace And Trace References
-
-### Required fields
-
-- `workspace_ref`
-- `trace_ref`
-
-### Optional fields
-
-- runtime-local execution handle
-- artifact bundle reference
-
-### Why
-
-The attempt is the durable place where autokairos ties one launch to one workspace surface and one
-primary raw run record.
-
-## 6. Lifecycle Timestamps
-
-### Required fields
-
-- `accepted_at` or equivalent
-- `started_at` when launch actually begins
-- `last_heartbeat_at`
-
-### Terminal timestamps
-
-- `completed_at`
-- `failed_at`
-- `abandoned_at`
-- `canceled_at`
-
-### Why
-
-The system should be able to reconstruct:
-
-- when the attempt became real
-- whether it stalled
-- whether it ended cleanly
-- whether it needs resume or investigation
-
-## 7. Failure And Recovery Context
-
-### Required behavior
-
-The attempt record must preserve enough structured failure context for the control plane to decide
-between retry, resume, pause, or abandon.
-
-### Suggested fields
-
-- `failure_code`
-- `failure_summary`
-- `interrupt_reason`
-- `resumable`
-
-## Lifecycle Or State Model
-
-The attempt lifecycle should be more detailed than the request lifecycle.
-
-### Suggested states
-
-1. `pending`
-2. `preparing`
-3. `launching`
-4. `active`
-5. `interrupted`
-6. `completed`
-7. `failed`
-8. `abandoned`
-9. `canceled`
-
-### Meaning
-
-- `pending`
-  the attempt record exists but environment preparation has not begun
-- `preparing`
-  stage binding, workspace shaping, or host preparation is in progress
-- `launching`
-  the runtime bridge is creating or attaching the runtime session
-- `active`
-  the runtime is live and expected to emit trace
-- `interrupted`
-  the run is paused or awaiting an explicit resume path
-- `completed`
-  the attempt ended cleanly
-- `failed`
-  the attempt ended in explicit failure
-- `abandoned`
-  the attempt stopped without a clean completion path but remains durable
-- `canceled`
-  the control plane intentionally stopped the attempt
+If later work needs those, it should add them deliberately rather than broadening this contract by
+default.
 
 ## What This Spec Is Not
 
@@ -260,13 +133,14 @@ The key invariants are:
 - one attempt references one primary trace stream
 - wake provenance may be copied onto the attempt for joins, but the request remains the canonical
   owner of primary wake cause and coalesced origins
-- destroying a workspace or container must not erase the attempt record
+- destroying a hands environment or container must not erase the attempt record
 - attempt status and trace status are related but not identical
 
 The design is failing if:
 
 - retries mutate one old attempt instead of creating a new concrete try
 - the only durable record of an attempt is the trace blob
+- gateway decisions are only visible in provider text
 - the attempt cannot be interpreted without reading one surviving container
 - stage binding or execution mode disappears from the attempt record
 - wake provenance is only knowable from one scheduler log instead of the request and proactive
@@ -279,6 +153,8 @@ This spec depends on:
 - [12-governed-execution-request-contract.md](12-governed-execution-request-contract.md)
 - [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
 - [09-trace-contract.md](09-trace-contract.md)
+- [15-agent-loop-policy-contract.md](15-agent-loop-policy-contract.md)
+- [16-order-intent-and-gateway-decision-contract.md](16-order-intent-and-gateway-decision-contract.md)
 - [23-wake-trigger-record-contract.md](23-wake-trigger-record-contract.md)
 
 It is used by:

@@ -1,393 +1,419 @@
 # Core Primitives
 
-This page defines the smallest autokairos-local object set that currently appears justified by the
-source base.
+## Purpose
 
-It does not try to mirror every upstream noun. It tries to answer a narrower question:
-
-**which objects must autokairos itself treat as first-class if it wants to preserve durable truth,
-bounded execution, staged progression, and external governance?**
-
-This page follows:
-
-- [00-first-principles-architecture-thesis.md](00-first-principles-architecture-thesis.md)
-- [foundation/01-naming-and-vocabulary.md](../foundation/01-naming-and-vocabulary.md)
-- [../sources/synthesis/agent-runtime-and-harness-principles.md](../../sources/synthesis/agent-runtime-and-harness-principles.md)
-- [../sources/synthesis/evaluation-governance-and-promotion.md](../../sources/synthesis/evaluation-governance-and-promotion.md)
+This page defines the smallest autokairos-owned object set for the current MLP-01 architecture.
 
 ## Thesis
 
-autokairos should keep a small set of first-class primitives and refuse to promote convenience
-objects into durable truth.
+autokairos must model the candidate as a trader system, not as a strategy note.
 
-## Why This Spec Exists
+The primitive set therefore centers on:
 
-This spec exists to answer one question:
-
-**what are the smallest autokairos-owned objects that the architecture must treat as canonical?**
-
-## Primitive Selection Rules
-
-An object belongs in the primitive set only if at least one of these is true.
-
-1. It carries durable truth the system cannot lose.
-2. It marks a boundary the system cannot safely blur.
-3. It is required to explain staged progression.
-4. It survives a specific runtime or harness choice.
-
-That rule matters because the source set contains many nouns:
-
-- `session`, `harness`, `sandbox`, `manifest`
-- `plugin`, `skill`, `hook`, `MCP`
-- `trace`, `grader`, `eval run`
-- `task`, `goal`, `budget`, `approval`, `rollback`
-
-autokairos should not promote all of them into local architecture primitives.
-
-## Primitive Families
-
-The current primitive set is best read in four families.
-
-### Acting and continuity
-
-- `AgentIdentity`
-- `Session`
-
-### Progression and execution
-
-- `Candidate`
-- `Stage`
-- `StageBinding`
-- `Workspace`
-
-### Raw run record
-
-- `Trace`
-
-### Judgment and governance
-
-- `EvidenceRecord`
-- `PromotionDecision`
-
-That grouping is more important than the exact order of the list.
+```text
+TraderSystemCandidate
+-> TradingSystemImage
+-> CapabilityPackage
+-> StageBinding
+-> TradingSystemPod
+-> AgentRuntimeUnit
+-> Trace
+-> EvidenceRecord
+-> PromotionDecision
+```
 
 ## Primitive Matrix
 
-| Primitive | Family | Durable? | What it answers |
-| --- | --- | --- | --- |
-| `AgentIdentity` | acting and continuity | yes | who is acting? |
-| `Session` | acting and continuity | yes | what continuity surface carries work across runs? |
-| `Candidate` | progression and execution | yes | what promotable line of work is being judged? |
-| `Stage` | progression and execution | yes | under what legitimacy level is the candidate operating? |
-| `StageBinding` | progression and execution | recomputable but must be explicit | what does this stage mean operationally right now? |
-| `Workspace` | progression and execution | no | what bounded execution surface does the runtime see? |
-| `Trace` | raw run record | yes | what happened during one execution attempt? |
-| `EvidenceRecord` | judgment and governance | yes | what counted from evaluation? |
-| `PromotionDecision` | judgment and governance | yes | what governance action changed candidate standing? |
-
-## 1. AgentIdentity
-
-`AgentIdentity` is the durable acting identity in the autokairos model.
-
-It exists because the design does not currently justify splitting the actor into separate
-`research` and `execution` identities by default.
-
-### It answers
-
-- who is acting across runs and stages?
-
-### It is not
-
-- a runtime session
-- a workspace
-- a candidate
-- a model name
-
-### Naming note
-
-`AgentIdentity` is an autokairos-local abstraction, not an upstream standard term. It should be
-kept distinct from the live runtime loop.
-
-## 2. Session
-
-`Session` is the continuity surface across runs.
-
-It exists because the source layer repeatedly separates durable continuity from the current
-workspace or current process.
-
-### It answers
-
-- what lets work continue coherently after interruption, resume, or runtime replacement?
-
-### It should hold or reference
-
-- continuity of interaction over time
-- links to traces and execution attempts
-- links to the currently relevant candidate-stage line of work
-
-### It is not
-
-- the promotable object
-- the workspace
-- the final source of success judgment
-
-## 3. Candidate
-
-`Candidate` is the promotable line of work.
-
-This is the object that persists across `backtesting`, `paper`, and `live`.
-
-### It answers
-
-- what is being judged, advanced, paused, rejected, or demoted?
-
-### It should hold or reference
-
-- lineage or origin
-- current stage standing
-- links to traces
-- links to evidence
-- links to promotion decisions
-
-### It is not
-
-- a session
-- a task-local runtime attempt
-- a workspace
-
-## 4. Stage
-
-`Stage` is the governance-level progression state.
-
-Initial stages remain:
-
-- `backtesting`
-- `paper`
-- `live`
-
-### It answers
-
-- what level of legitimacy and risk is currently in effect for this candidate?
-
-### It changes
-
-- permitted side effects
-- evaluator expectations
-- review expectations
-- operational risk posture
-
-### It is not
-
-- a runtime configuration blob
-- a prompt label
-
-## 5. StageBinding
-
-`StageBinding` is the concrete operational meaning attached to a stage for one run.
-
-### It answers
-
-- what do the current stage's permissions, connectors, evaluator surfaces, and execution semantics
-  actually resolve to?
-
-### It may include
-
-- connector semantics
-- permission posture
-- evaluator posture
-- stage-specific instruction surfaces
-- execution-mode selection
-
-### It is not
-
-- the same thing as `Stage`
-
-`Stage` is governance meaning.
-
-`StageBinding` is execution meaning.
-
-### Naming note
-
-`StageBinding` is also an autokairos-local abstraction. It is justified, but it must be treated as
-local vocabulary rather than assumed-standard vocabulary.
-
-## 6. Workspace
-
-`Workspace` is the bounded execution surface presented to the runtime.
-
-### It answers
-
-- what local surface does the runtime see and manipulate during one execution attempt?
-
-### It may contain
-
-- files
-- instructions
-- task-local artifacts
-- output directories
-- mounted stage-local data
-
-### It is
-
-- isolated
-- disposable
-- execution-scoped
-
-### It is not
-
-- durable truth
-- evidence
-- promotion history
-- continuity by itself
-
-## 7. Trace
-
-`Trace` is the raw external record of one execution attempt.
-
-### It answers
-
-- what happened during the run?
-
-### It should capture
-
-- runtime status changes
-- model outputs
-- tool and connector activity
-- interruptions and failures
-- stage and workspace references where relevant
-
-### It is not
-
-- judged evidence
-- a promotion act
-
-## 8. EvidenceRecord
-
-`EvidenceRecord` is the judged artifact derived from traces and evaluators.
-
-### It answers
-
-- what counted from evaluation?
-
-### It may include
-
-- backtest metrics
-- paper-trading outcomes
-- live results
-- grader outputs
-- risk or policy findings
-
-### It is not
-
-- the raw trace
-- the final governance action
-
-## 9. PromotionDecision
-
-`PromotionDecision` is the explicit governance action that changes candidate standing.
-
-### It answers
-
-- what changed because of the evidence?
-
-### It should capture
-
-- candidate reference
-- stage relationship
-- evidence basis
-- outcome
-- rationale
-- responsible governing surface
-
-### It is not
-
-- an approval prompt
-- an evidence record
-- a runtime event
-
-## Primitive Relationships
+| Primitive | Meaning | Durable owner |
+| --- | --- | --- |
+| `TraderSystemCandidate` | promotable candidate trading system | control plane |
+| `TradingSystemImage` | versioned artifact for system behavior, brain/team contract, and required interfaces | artifact store / control plane |
+| `CapabilityPackage` | versioned context/tool/skill/data-access artifact | artifact store / control plane |
+| `CapabilityPackageManifest` | inspectable trust and permission declaration for one capability package | artifact store / control plane |
+| `CandidateVersion` | cloned version used for safe self-evolution | control plane |
+| `Stage` | product-level legitimacy stage: backtest, paper, live | control plane |
+| `StageBinding` | concrete execution binding for a stage | control plane / runtime bridge |
+| `BacktestBindingProfile` | typed binding profile for historical/simulated evaluation | control plane / runtime bridge |
+| `PaperBindingProfile` | typed binding profile for live-like simulated execution | control plane / runtime bridge |
+| `LiveBindingProfile` | typed binding profile for real-risk execution behind gateway limits | control plane / runtime bridge |
+| `TradingSystemPod` | stage-bound execution instance of a candidate | runtime bridge with control-plane record |
+| `AgentRuntimeUnit` | one brain/hands/session participant plus provider/driver selection in a pod or pod team | runtime bridge with control-plane reference |
+| `AgentLoopPolicy` | autonomy envelope for one-shot, evaluation, or continuous-live agent loops | control plane / runtime bridge |
+| `RuntimeProviderAdapter` | executable adapter contract for a concrete provider invocation surface | runtime bridge |
+| `BrainSession` | provider/harness reasoning session | runtime bridge / provider, referenced durably |
+| `HandsEnvironment` | sandbox/tool/data/gateway environment | runtime bridge |
+| `ToolProxy` | authority boundary for tools, credentials, and side effects | control plane / runtime bridge |
+| `PodCommunicationPolicy` | unified provider-neutral policy for communication, sharing, routing, and isolation between agent runtime units | control plane / runtime bridge |
+| `A2AAgentEndpoint` | discoverable independent agent endpoint | runtime bridge / endpoint registry |
+| `A2ATaskRecord` | traceable agent-to-agent task exchange | trace store / control plane |
+| `A2AArtifact` | output from an A2A task | artifact store / trace store |
+| `SharedContextSurface` | explicit non-secret shared context made available to multiple agents | control plane / artifact store |
+| `TeamTrace` | durable trace of multi-agent messages, tasks, and artifacts | trace store |
+| `Trace` | raw external record of a run | trace store |
+| `EvidenceRecord` | externally judged evidence | evaluation-and-progression / control plane |
+| `PromotionDecision` | governance decision changing candidate standing | evaluation-and-progression / control plane |
+| `OrderIntent` | agent proposal for a possible live trading action | control plane / trace store |
+| `GatewayDecision` | gateway decision to accept, reject, or clip one order intent | trading-substrate / control plane |
+| `ExecutionAttempt` | durable live execution attempt | control plane |
+| `WakeTriggerRecord` | durable wake event and reason | control plane |
+
+## Object Relationships
 
 ```mermaid
 flowchart TD
-    A["AgentIdentity"] --> B["Session"]
-    A --> C["Candidate"]
-    C --> D["Stage"]
-    D --> E["StageBinding"]
-    C --> F["Workspace"]
-    F --> G["Trace"]
-    E --> G
-    G --> H["EvidenceRecord"]
-    H --> I["PromotionDecision"]
-    I --> C
+    C["TraderSystemCandidate"] --> I["TradingSystemImage"]
+    C --> P["CapabilityPackage"]
+    C --> V["CandidateVersion"]
+    C --> B["StageBinding"]
+    B --> POD["TradingSystemPod"]
+    POD --> ARU["AgentRuntimeUnit"]
+    POD --> ALP["AgentLoopPolicy"]
+    ARU --> BS["BrainSession"]
+    ARU --> HE["HandsEnvironment"]
+    HE --> TP["ToolProxy"]
+    POD --> CPOL["PodCommunicationPolicy"]
+    POD --> T["Trace"]
+    T --> E["EvidenceRecord"]
+    E --> D["PromotionDecision"]
+    D --> X["ExecutionAttempt / stronger binding"]
+    TP --> OI["OrderIntent"]
+    OI --> GD["GatewayDecision"]
 ```
 
-## What Is Not Primitive Yet
+## `TraderSystemCandidate`
 
-The following are important, but not yet core local primitives:
+The candidate is the system under judgment.
 
-- `plugin`
-- `skill`
-- `hook`
-- `MCP server`
-- `manifest`
-- `budget`
-- `approval policy`
-- `connector`
-- `UI projection`
+It should reference:
 
-These may become extension surfaces, bindings, policy objects, or subsystem concerns later, but
-the current source base does not force them into the smallest core object model.
+- candidate id
+- current standing
+- image ref
+- capability package refs
+- version lineage
+- first market scope
+- provenance
+- evaluation and promotion history
 
-## What This Spec Is Not
+It is not a prompt, brain session, hands environment, or one run.
 
-This spec is not:
+## `TradingSystemImage`
 
-- a database schema
-- a transport or API definition
-- a full subsystem narrative
-- a list of every runtime-local object that may ever exist
+The image is the stable artifact that should remain the same across bindings.
 
-## Summary
+It may include:
 
-The primitive set should stay small.
+- system manifest
+- agent/team contract
+- required tool contracts
+- trading behavior source or artifact refs
+- expected inputs and outputs
+- version metadata
 
-autokairos currently needs primitives for:
+It should not include secrets, live credentials, or counted evidence.
 
-- actor continuity
-- promotable work
-- execution meaning
-- raw run history
-- judged evidence
-- explicit progression decisions
+## `CapabilityPackage`
 
-Anything beyond that should face a higher burden of proof.
+The package is a versioned artifact for context/tool/skill/data-access injection.
 
-## Failure Modes / Invariants
+It may include:
 
-The key invariants are:
+- tool contract declarations
+- MCP/tool proxy requirements
+- market context
+- skills
+- data access requirements
+- compatibility rules
+- allowed stages
+- future license/marketplace metadata
 
-- primitives must represent durable truth or durable architectural seams
-- a workspace must not be promoted into truth merely because it is convenient
-- runtime-local helper objects must not silently become canonical records
+It must not include secrets or exchange credentials.
 
-Failure begins when:
+### `CapabilityPackageManifest`
 
-- tasks, prompts, or containers are treated as promotable units
-- stage semantics are inferred without `StageBinding`
-- trace, evidence, and decision collapse into one generic run record
+Every active package must expose a manifest.
 
-## Relationship To Adjacent Specs
+The minimum manifest fields are:
 
-This primitive set is constrained by:
+- package id and version
+- package kind
+- provenance
+- declared tools
+- declared data access
+- allowed stages
+- required permissions
+- forbidden contents
+- compatibility notes
 
-- [00-first-principles-architecture-thesis.md](00-first-principles-architecture-thesis.md)
-- [04-boundaries.md](04-boundaries.md)
+The manifest does not grant access by itself. `StageBinding` and `ToolProxy` decide actual runtime
+access.
 
-It is elaborated by:
+Forbidden package contents include:
 
-- [03-staged-evaluation.md](03-staged-evaluation.md)
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [08-candidate-contract.md](08-candidate-contract.md)
-- [09-trace-contract.md](09-trace-contract.md)
-- [10-evidence-record-contract.md](10-evidence-record-contract.md)
-- [11-promotion-decision-contract.md](11-promotion-decision-contract.md)
+- exchange credentials
+- gateway signing keys
+- evaluator secrets or hidden labels
+- live gateway tokens
+- undeclared executable side-effect paths
+
+## `StageBinding`
+
+`StageBinding` is the concrete environment injection for `backtest`, `paper`, or `live`.
+
+It resolves:
+
+- data source
+- clock
+- evaluator
+- exchange or simulated exchange
+- risk envelope
+- tool proxy endpoints
+- credential policy
+- execution legitimacy mode
+
+Backtest, paper, and live are bindings for the same candidate artifact, not separate systems.
+
+### Binding Profiles
+
+All binding profiles implement `StageBinding`, but they must not share one vague field bag.
+
+`BacktestBindingProfile` must define at least:
+
+- historical or replay data source
+- deterministic clock
+- simulator reference
+- evaluator reference
+- no live credentials
+
+`PaperBindingProfile` must define at least:
+
+- live or delayed market data source
+- simulated order gateway
+- paper risk envelope
+- no real exchange execution
+
+`LiveBindingProfile` must define at least:
+
+- live market data source
+- real gateway reference
+- risk envelope reference
+- credential binding reference outside packages
+- wake policy reference
+
+Live binding cannot be constructed from prompt text alone. It must be downstream of a
+`PromotionDecision` and a `GovernedExecutionRequest`.
+
+## `TradingSystemPod`
+
+The pod is the execution instance of a candidate under one binding.
+
+It is composed from:
+
+- `TradingSystemImage`
+- `CapabilityPackage`
+- `StageBinding`
+- one or more `AgentRuntimeUnit` records
+- `ToolProxy`
+
+It does not own candidate truth, evidence truth, promotion authority, or unrestricted live
+execution authority.
+
+## `AgentRuntimeUnit`
+
+`AgentRuntimeUnit` is the participant boundary for a single agent brain/hands/session loop.
+
+It may represent:
+
+- one local harness process
+- one Claude Managed Agents thread/session participant
+- one Codex or Claude Code run
+- one A2A-compatible remote agent endpoint
+- one future OpenClaw/ACP or Multica-like runtime participant
+
+It should reference:
+
+- `runtime_unit_role`:
+  `builder_agent`, `evaluation_runner`, `live_operator_agent`, `critic_agent`, or
+  `remote_specialist`
+- concrete `provider_kind`:
+  `codex_cli`, `codex_sdk_ts`, `codex_cloud`, `claude_agent_sdk_python`,
+  `claude_agent_sdk_ts`, `claude_cli`, `openclaw_acp`, `a2a_endpoint`, `local_process`, or a
+  future explicitly designed equivalent
+- invocation surface:
+  subprocess, TypeScript SDK, Python SDK, cloud task, ACP bridge, A2A endpoint, or local process
+- auth reference
+- sandbox and working-directory policy
+- output contract reference
+- trace destination
+- brain/session provider
+- hands environment
+- allowed tools
+- allowed communication channels
+- trace export destination
+
+A single-agent pod has one `AgentRuntimeUnit`.
+
+A multi-agent pod has several `AgentRuntimeUnit` records plus explicit communication policy and
+shared context surfaces.
+
+The provider/driver is per runtime unit. A `TradingSystemPod` can therefore contain mixed provider
+participants without becoming several product objects.
+
+`runtime_unit_role` answers why the unit exists.
+
+`provider_kind` answers how the unit runs.
+
+PR1 defaults to:
+
+```text
+runtime_unit_role = builder_agent
+provider_kind = codex_cli
+model = gpt-5.4
+```
+
+PR3 requires at least one `live_operator_agent`. It must not inherit builder-agent semantics from
+PR1.
+
+Provider labels alone are not implementation-grade. The runtime bridge must use a
+`RuntimeProviderAdapter` contract, defined in
+[../06-runtime-provider-adapter-feasibility.md](../06-runtime-provider-adapter-feasibility.md),
+before a real provider run can materialize a candidate or run a pod.
+
+## `AgentLoopPolicy`
+
+`AgentLoopPolicy` defines the autonomy envelope around an agent runtime unit.
+
+It does not direct each reasoning step. It defines:
+
+- trigger source
+- loop mode
+- cadence
+- max turns or live heartbeat expectations
+- timeout and cancellation policy
+- retry and resume posture
+- trace export requirement
+- tool access posture
+- stop conditions
+
+The current loop modes are:
+
+- `one_shot_builder`
+- `bounded_batch_evaluation`
+- `continuous_live`
+
+See [15-agent-loop-policy-contract.md](15-agent-loop-policy-contract.md).
+
+## `RuntimeProviderAdapter`
+
+`RuntimeProviderAdapter` is the executable seam between autokairos and provider runtimes.
+
+It must answer:
+
+- how availability and version are probed
+- how working directories, prompts, schemas, and policies are prepared
+- how the run starts
+- how events stream into trace
+- how cancellation works
+- how artifacts, final output, and provider metadata are collected
+- whether resume is supported
+
+The first concrete adapter target is `codex_cli` through local `codex exec`. Claude should be added
+through Claude Agent SDK, not by treating "Claude" as an abstract runtime label.
+
+## `BrainSession` And `HandsEnvironment`
+
+Claude Managed Agents provides the key reference: brain, hands, and session must stay decoupled.
+
+- `BrainSession` is the provider/harness reasoning session.
+- `HandsEnvironment` is where tools, sandboxed code, data, and gateways live.
+- The durable event log and candidate truth stay outside both.
+
+## Multi-Agent Communication Primitives
+
+`PodCommunicationPolicy` is one unified policy object for the pod.
+
+It defines:
+
+- topology:
+  `isolated`, `coordinator_routed`, `direct_allowed`, or `external_endpoint_routed`
+- allowed channels:
+  provider-native thread, A2A-compatible task/message/artifact, control-plane mediated message,
+  or none
+- shared context surfaces
+- artifact export requirements
+- forbidden communication edges
+- live-stage restrictions
+
+It does not choose the provider. Provider selection lives on each `AgentRuntimeUnit`.
+
+MLP-01 starts single-agent.
+
+Multi-agent admission is allowed only when a current PRD acceptance criterion cannot be met by one
+runtime unit. It requires:
+
+- explicit `runtime_unit_role` for each unit
+- one `PodCommunicationPolicy`
+- `TeamTrace`
+- shared context declared as non-secret
+- no communication path to live authority except `ToolProxy` / gateway
+
+`A2AAgentEndpoint` is a discoverable independent agent endpoint, inspired by A2A agent cards.
+
+`A2ATaskRecord` records one task/message exchange with an independent agent endpoint.
+
+`A2AArtifact` records an output produced by that exchange.
+
+`SharedContextSurface` is the explicit context made available to multiple agent runtime units. It
+must not carry secrets.
+
+`TeamTrace` is the durable trace for multi-agent collaboration.
+
+These primitives are communication and trace surfaces. They are not evidence, promotion, or live
+authority by themselves.
+
+## `ToolProxy`
+
+The tool proxy is the boundary between agent intent and real capability.
+
+For live trading:
+
+```text
+BrainSession -> OrderIntent -> ToolProxy / Gateway -> GatewayDecision -> ExecutionAttempt
+```
+
+The agent may propose. autokairos decides what is executed.
+
+`OrderIntent` and `GatewayDecision` are defined in
+[16-order-intent-and-gateway-decision-contract.md](16-order-intent-and-gateway-decision-contract.md).
+
+## Self-Evolution Primitive
+
+Self-evolution uses `CandidateVersion`.
+
+Valid flow:
+
+```text
+live insight -> proposed CandidateVersion -> backtest binding -> evidence -> promotion
+```
+
+Invalid flow:
+
+```text
+live pod mutates itself in place
+```
+
+## Acceptance Test
+
+A reader should be able to explain:
+
+- what candidate means
+- why image and package are separate
+- why binding changes do not create a new system
+- why binding profiles prevent backtest/paper/live ambiguity
+- why pod execution does not own truth
+- why `runtime_unit_role` and `provider_kind` are separate
+- why agent loops are autonomous but bounded by policy
+- why packages need manifests and permission boundaries
+- why provider labels must resolve to a callable adapter surface
+- why multi-agent communication does not automatically create evidence or authority
+- why live action is bounded through gateway

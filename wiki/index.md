@@ -18,6 +18,25 @@ The repository keeps a separate role for:
 - `docs/`
   Future user-facing service documentation
 
+## Current Product Model
+
+The active product model is:
+
+`weak human -> agent-built TraderSystemCandidates -> TradingSystemPods with explicit AgentRuntimeUnits -> externally evaluated candidates -> promoted bounded live pod -> wake / inspect / pause / stop / override`
+
+Candidate identity, pod identity, capability packaging, and stage binding are product truth, not
+implementation garnish.
+
+Multi-agent execution is also product-sensitive: agents may collaborate through provider-native
+team threads or A2A-compatible endpoints, but communication outputs remain trace inputs until
+autokairos evaluation and governance decide otherwise.
+
+Provider choice is per `AgentRuntimeUnit`; communication and sharing are governed by one
+provider-neutral `PodCommunicationPolicy` for the pod.
+
+Provider choice is not implementation-ready until it names a callable adapter surface, such as
+`codex_cli` through `codex exec` or `claude_agent_sdk_python` through Claude Agent SDK.
+
 ## Read Order
 
 1. [sources/README.md](sources/README.md)
@@ -36,10 +55,17 @@ The repository keeps a separate role for:
 14. [architecture/README.md](architecture/README.md)
 15. [architecture/00-system-map.md](architecture/00-system-map.md)
 16. [product/mlp-01/07-implementation-plan.md](product/mlp-01/07-implementation-plan.md)
-17. [architecture/01-pr1-path-becomes-real-design.md](architecture/01-pr1-path-becomes-real-design.md)
-18. the subsystem README that matches the PRD you are implementing
-19. [architecture/specs/README.md](architecture/specs/README.md) only when needed
-20. [architecture/adrs/README.md](architecture/adrs/README.md) for decision history
+17. [product/mlp-01/08-greenfield-bootstrap-plan.md](product/mlp-01/08-greenfield-bootstrap-plan.md)
+18. [architecture/05-bootstrap-tech-spec.md](architecture/05-bootstrap-tech-spec.md)
+19. [architecture/06-runtime-provider-adapter-feasibility.md](architecture/06-runtime-provider-adapter-feasibility.md)
+20. the slice design note that matches the PRD you are implementing:
+    [architecture/01-pr1-trader-system-candidate-becomes-real-design.md](architecture/01-pr1-trader-system-candidate-becomes-real-design.md),
+    [architecture/02-pr2-candidate-becomes-externally-evaluated-design.md](architecture/02-pr2-candidate-becomes-externally-evaluated-design.md),
+    [architecture/03-pr3-bounded-live-trading-system-pod-design.md](architecture/03-pr3-bounded-live-trading-system-pod-design.md), or
+    [architecture/04-pr4-live-pod-remains-controllable-design.md](architecture/04-pr4-live-pod-remains-controllable-design.md)
+21. the subsystem README that matches the PRD you are implementing
+22. [architecture/specs/README.md](architecture/specs/README.md) only when needed
+23. [architecture/adrs/README.md](architecture/adrs/README.md) for decision history
 
 ## Rule
 
@@ -49,10 +75,12 @@ Use `product/` to define what must matter to the user and what the product must 
 
 Use `architecture/` only after `mlp-01` PRDs are clear enough to constrain technical design.
 
-Use `product/mlp-01/07-implementation-plan.md` as the canonical build-order page once product and
-architecture lock is complete.
+Use `product/mlp-01/08-greenfield-bootstrap-plan.md` and
+`architecture/05-bootstrap-tech-spec.md` as the bridge from docs-only reset baseline into the
+Bootstrap PR. Use `architecture/06-runtime-provider-adapter-feasibility.md` before implementing
+real Codex, Claude, OpenClaw/ACP, or A2A runtime adapters.
 
-Use `architecture/01-pr1-path-becomes-real-design.md` as the canonical PR1 implementation-shape
-page before touching code for Slice 1.
+Use the `architecture/01-04` slice design notes as the canonical implementation-shape layer before
+touching code for each slice.
 
 Use [../knowledge-index.md](../knowledge-index.md) as the top-level navigation layer.

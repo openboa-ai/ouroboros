@@ -1,223 +1,105 @@
 # Review Item Contract
 
-This page defines what a `ReviewItem` is in autokairos.
+This page defines the minimum `ReviewItem` contract needed by the current MLP-01 baseline.
 
 It follows:
 
-- [03-staged-evaluation.md](03-staged-evaluation.md)
 - [10-evidence-record-contract.md](10-evidence-record-contract.md)
 - [11-promotion-decision-contract.md](11-promotion-decision-contract.md)
-- [../control-plane/02-governance-surfaces.md](../control-plane/02-governance-surfaces.md)
-- [../control-plane/03-record-model.md](../control-plane/03-record-model.md)
-- [../sources/library/anthropic-building-effective-agents.md](../../sources/library/anthropic-building-effective-agents.md)
-- [../sources/library/repo-multica.md](../../sources/library/repo-multica.md)
-- [../sources/library/repo-paperclip.md](../../sources/library/repo-paperclip.md)
-- [../sources/synthesis/evaluation-governance-and-promotion.md](../../sources/synthesis/evaluation-governance-and-promotion.md)
-- [../sources/synthesis/reference-systems-and-product-postures.md](../../sources/synthesis/reference-systems-and-product-postures.md)
+- [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
 
 ## Thesis
 
-`ReviewItem` is the durable control-plane work object that represents a pending governance question.
+`ReviewItem` is the durable work object for one pending governance question.
 
-It is not evidence.
+In the current active baseline, that question is the per-candidate live gate.
 
-It is not the final promotion decision.
+Without this object, evidence may exist, but the system still has no durable answer to:
 
-It is not an execution task.
+- what question is actually pending?
+- what evidence packet supports it?
+- who is expected to resolve it?
 
-It is the object that says:
+## Current Active Applicability
 
-- this candidate now has a review-worthy stage question
-- here is the evidence packet relevant to that question
-- here is the governing surface expected to resolve it
-- here is the current review status
+This spec is currently active for PR2.
 
-Without this object, autokairos ends up with either:
+Its main job is to package one candidate's live-gate question after counted evidence becomes strong
+enough to justify serious review.
 
-- evidence accumulating with no explicit governance intake
-- promotion decisions written ad hoc without a tracked question
-
-## Why This Spec Exists
-
-The source set points toward a work object between evidence and committed governance.
-
-### 1. Anthropic workflow posture
-
-`Building effective agents` argues that open-ended agentic search should still be surrounded by
-explicit workflow where the path should be predictable. Review is one of those predictable paths.
-
-### 2. Paperclip ticket posture
-
-Paperclip is useful because it treats governance-heavy work as durable ticketed work rather than as
-ephemeral operator memory. autokairos does not need the full company metaphor, but it does need the
-same instinct: governance questions should become explicit work objects.
-
-### 3. Multica task posture
-
-Multica is useful as a contrast. Its `AgentTask` is an externally tracked execution task. That
-shows the value of durable work objects, but autokairos needs a different work object above
-execution and below governance commitment.
-
-That object is `ReviewItem`.
-
-## What This Spec Is Not
+## What This Is Not
 
 `ReviewItem` is not:
 
-- a `Candidate`
-- a `Trace`
-- an `EvidenceRecord`
-- a `PromotionDecision`
-- an execution task
-- a runtime approval prompt
-- a free-form checklist comment
+- raw evidence
+- the final gate decision
+- an execution request
+- a generic inbox item
 
 Most importantly:
 
-**EvidenceRecord says what counted and why. ReviewItem says what governance question is now pending
-because of that evidence.**
+- `EvidenceRecord` says what counted and why
+- `ReviewItem` says what question is now pending because of that evidence
+- `PromotionDecision` resolves that question
 
-And:
-
-**PromotionDecision resolves the question. ReviewItem carries the question until it is resolved.**
-
-## Review Item Definition
-
-A `ReviewItem` should be understood as:
-
-> a durable control-plane record that packages one candidate-stage governance question together
-> with its evidence basis, routing metadata, and review status until a decision is committed or the
-> item is otherwise closed.
-
-The phrase `candidate-stage governance question` matters.
-
-The review item is not a generic inbox item.
-
-It should always be possible to answer:
-
-- what candidate is under review?
-- at which stage?
-- what is the actual question?
-- what evidence packet is attached?
-- who or what is expected to resolve it?
-
-## Review Item In The System
+## Canonical Role In The System
 
 ```mermaid
 flowchart LR
-    A["Candidate"] --> B["Trace"]
-    B --> C["EvidenceRecord"]
-    C --> D["ReviewItem"]
-    D --> E["PromotionDecision"]
+    A["EvidenceRecord"] --> B["ReviewItem"]
+    B --> C["PromotionDecision"]
 ```
 
-Operationally:
-
-```mermaid
-flowchart LR
-    A["Evaluation surfaces"] --> B["Evidence packet"]
-    B --> C["Review queue"]
-    C --> D["ReviewItem"]
-    D --> E["Decision surface"]
-```
-
-This separation must remain explicit.
+The separation must remain explicit:
 
 - evaluation creates evidence
-- review packages the pending governance question
-- decision commits the outcome
+- review packages the pending live-gate question
+- governance commits the decision
 
-## Review Item Contract
+## Minimum Contract
 
-The review-item contract should carry at least these categories of information.
+A `ReviewItem` must carry at least:
 
-## 1. Identity
+| Field | Meaning |
+| --- | --- |
+| `review_item_id` | Stable durable identity |
+| `candidate_ref` | Candidate under review |
+| `review_kind` | Current baseline uses `live_gate_review` |
+| `evidence_record_refs` | Counted evidence packet being reviewed |
+| `question_summary` | What the governing surface must decide |
+| `assigned_surface_kind` | Which review surface should resolve it |
+| `created_at` | When the review item was opened |
+| `status` | `open`, `ready`, `in_review`, `resolved`, or `canceled` |
 
-The review item needs stable identity and queue lifecycle state.
+## Required Interpretation
 
-### Required fields
+In the current active baseline, a `ReviewItem` should exist only when:
 
-- `review_item_id`
-- `created_at`
-- `status`
+- the candidate already has a real counted evidence basis
+- the next serious product question is whether live permission should open
 
-### Suggested status values
+It should not be used as:
 
-- `open`
-- `ready`
-- `in_review`
-- `blocked`
-- `resolved`
-- `cancelled`
+- a general-purpose notes queue
+- a substitute for evidence
+- a substitute for the final gate decision
 
-### Why
+## Boundary Rules
 
-The queue should not be reconstructed from loose evidence records and operator notes every time.
+- the review item must cite durable evidence rather than private notes or memory
+- the review item must preserve the live-gate question in operator language
+- resolving the review item should yield a `PromotionDecision`, not runtime behavior directly
 
-## 2. Candidate Scope
+## Not In The Active Baseline
 
-The item must say which candidate and stage it concerns.
+The current active baseline does not require:
 
-### Required fields
+- broader review taxonomies
+- enterprise routing or escalation chains
+- generic task-system behavior beyond the one serious live-gate question
 
-- `candidate_ref`
-- `stage`
-- optional `stage_binding_ref`
-
-### Why
-
-Review questions are not generic. They belong to one candidate in one stage context.
-
-## 3. Question Definition
-
-The item must carry the actual governance question.
-
-### Required fields
-
-- `question_kind`
-- short `question_summary`
-
-### Candidate question kinds
-
-- `promote_to_next_stage`
-- `stay_in_stage`
-- `pause_candidate`
-- `demote_candidate`
-- `reject_candidate`
-- `rollback_live_candidate`
-- `risk_recheck_required`
-
-### Why
-
-The governing surface should not have to infer the question from attached evidence alone.
-
-## 4. Evidence Packet
-
-The item must point to the evidence packet under review.
-
-### Required fields
-
-- one or more `evidence_record_refs`
-- optional `trace_refs`
-- optional supporting artifact refs
-
-### Why
-
-Review should not create its own private evidence store. It should package and route evidence that
-already exists as external judged artifacts.
-
-## 5. Routing Metadata
-
-The item should say how it should be handled.
-
-### Example fields
-
-- `assigned_surface_kind`
-- `assigned_surface_ref`
-- `priority`
-- `review_due_at`
-
-### Why
+If later work needs those, it should add them deliberately rather than broadening this contract by
+default.
 
 Some review items may go to:
 

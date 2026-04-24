@@ -5,9 +5,9 @@ This page defines what a `Trace` is in autokairos.
 It follows:
 
 - [02-core-primitives.md](02-core-primitives.md)
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
 - [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
 - [08-candidate-contract.md](08-candidate-contract.md)
+- [../../sources/library/anthropic-managed-agents.md](../../sources/library/anthropic-managed-agents.md)
 - [../sources/library/openai-next-evolution-of-the-agents-sdk.md](../../sources/library/openai-next-evolution-of-the-agents-sdk.md)
 - [../sources/library/repo-multica.md](../../sources/library/repo-multica.md)
 - [../sources/library/repo-safety-research-automated-w2s-research.md](../../sources/library/repo-safety-research-automated-w2s-research.md)
@@ -61,9 +61,10 @@ surfaces rather than implicit CLI output only. autokairos should adopt the same 
 
 `Trace` is not:
 
-- a `Candidate`
-- a `Session`
-- a `Workspace`
+- a `TraderSystemCandidate`
+- a `BrainSession`
+- a `HandsEnvironment`
+- a `TradingSystemPod`
 - an `EvidenceRecord`
 - a `PromotionDecision`
 - a metrics summary
@@ -85,16 +86,16 @@ A `Trace` should be understood as:
 
 The phrase `one execution attempt` matters.
 
-One candidate may accumulate many traces over time.
+One `TraderSystemCandidate` may accumulate many traces over time.
 
-One trace should correspond to one attempt to execute work under a particular stage and runtime
-binding.
+One trace should correspond to one attempt to execute work under a particular `StageBinding` and
+pod runtime boundary.
 
 ## Trace In The System
 
 ```mermaid
 flowchart LR
-    A["Candidate"] --> B["Trace"]
+    A["TraderSystemCandidate"] --> B["Trace"]
     B --> C["EvidenceRecord"]
     C --> D["PromotionDecision"]
 ```
@@ -144,10 +145,13 @@ The trace must say what it is about.
 ### Required fields
 
 - `candidate_ref`
-- `agent_identity_ref`
-- `session_ref`
+- `trading_system_image_ref`
+- `capability_package_refs`
+- `pod_ref`
+- `brain_session_ref`
+- `hands_environment_ref`
 - `stage`
-- optional `stage_binding_ref`
+- `stage_binding_ref`
 
 ### Why
 
@@ -155,10 +159,10 @@ Without these references, a trace becomes hard to interpret later.
 
 The system should always be able to answer:
 
-- which candidate was being worked on?
-- by which acting identity?
-- under which stage?
-- with what continuity surface?
+- which trader-system candidate was being worked on?
+- which image and packages were active?
+- under which stage and binding?
+- which brain session and hands environment produced the events?
 
 ## 3. Execution Context
 
@@ -171,7 +175,9 @@ The trace must say how the run was executed.
   - `containerized-local`
   - `containerized-remote`
 - runtime/provider selection metadata
-- optional `worker_image_ref`
+- optional `trading_system_image_ref`
+- optional `hands_environment_ref`
+- optional `tool_proxy_ref`
 - optional runtime-bridge execution handle reference
 
 ### Why
@@ -179,21 +185,21 @@ The trace must say how the run was executed.
 The W2S repo makes legitimacy depend partly on execution mode. Therefore the trace must preserve
 that environment context.
 
-## 4. Workspace Context
+## 4. Hands Environment Context
 
-The trace should include enough workspace context to make the run interpretable without making the
-workspace the source of truth.
+The trace should include enough hands-environment context to make the run interpretable without
+making the hands environment the source of truth.
 
 ### Required fields
 
-- `workspace_ref`
+- `hands_environment_ref`
 - relevant instruction-surface refs when available
 - output location refs when relevant
 
 ### Why
 
-You often need to know which workspace host and which instruction surfaces were in play when
-diagnosing behavior.
+You often need to know which hands environment, tool proxy, and instruction surfaces were in play
+when diagnosing behavior.
 
 ## 5. Event Stream
 
@@ -292,10 +298,10 @@ This matters because not all events originate inside the model loop.
 
 These must stay separate.
 
-### Session
+### BrainSession
 
-- continuity surface
-- long-lived interaction history
+- provider or harness reasoning continuity
+- may have its own interaction history
 - may span multiple execution attempts
 
 ### Trace
@@ -303,16 +309,16 @@ These must stay separate.
 - one execution attempt
 - raw external run record
 
-One session may be linked to many traces.
+One `BrainSession` may be linked to many traces.
 
-One trace should point to one session context for continuity, but it should not become the session
-itself.
+One trace should point to brain-session context for continuity, but it should not become the
+brain-session context itself.
 
-## Trace vs Candidate
+## Trace vs TraderSystemCandidate
 
 These also must stay separate.
 
-### Candidate
+### TraderSystemCandidate
 
 - judged line of work
 - durable across stages and attempts
@@ -321,7 +327,7 @@ These also must stay separate.
 
 - raw record of one attempt
 
-One candidate may have:
+One `TraderSystemCandidate` may have:
 
 - many traces
 - many sealed traces
@@ -376,13 +382,13 @@ record.
 
 If the contract is correct, the following should remain true.
 
-### 1. A trace survives the workspace
+### 1. A trace survives the hands environment
 
-Destroying or replacing the workspace must not erase the trace.
+Destroying or replacing the hands environment must not erase the trace.
 
 ### 2. A trace is candidate-addressable
 
-The system can gather all traces associated with one candidate.
+The system can gather all traces associated with one `TraderSystemCandidate`.
 
 ### 3. A trace is externally readable while the run is alive
 

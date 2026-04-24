@@ -12,9 +12,9 @@ Current product focus is:
 
 - lock the PM document stack
 - complete MLP-01 planning
-- ship one lovable path on Binance BTC perpetual futures
-- prove agent-originated hypothesis -> counted evaluation -> live gate -> live execution ->
-  intervention
+- ship one lovable trader-system pod proof on Binance BTC perpetual futures
+- prove agent-built `TraderSystemCandidate` -> externally counted evaluation -> promotion decision
+  -> bounded live `TradingSystemPod` -> intervention
 
 Anything that does not strengthen that proof is not `Now`.
 
@@ -22,10 +22,11 @@ Anything that does not strengthen that proof is not `Now`.
 
 After the first lovable proof is credible, the next logical layer is:
 
-- harden the live path operationally
+- harden bounded live pod operation
 - improve candidate quality and promotion readability
 - refine wake and intervention confidence
 - tighten adapter seams for later venue portability
+- improve CapabilityPackage packaging and reuse without turning marketplace into current scope
 
 `Next` still serves the same wedge. It does not redefine the company.
 
@@ -49,7 +50,7 @@ The following are explicitly not current roadmap commitments:
 - consumer investing assistant experiences
 - generic quant research environment
 - broad venue-agnostic marketing promises
-- plugin marketplace breadth as a first-class goal
+- full CapabilityPackage marketplace as a first-class goal
 
 ## Roadmap Rule
 
@@ -57,7 +58,7 @@ If a proposed item does not strengthen:
 
 - the lovable proof
 - the serious solo operator workflow
-- the governed path to live
+- the governed candidate-to-pod path
 
 it should not enter `Now`.
 

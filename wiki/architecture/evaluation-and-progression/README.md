@@ -1,25 +1,27 @@
 # Evaluation And Progression
 
-This section defines the subsystem that turns candidate activity into trusted progression meaning.
+This section defines the subsystem that turns trader-system candidate runs into trusted progression
+meaning.
 
 ## Why This Exists For MLP-01
 
-MLP-01 depends on one candidate becoming trustworthy before it becomes live.
+MLP-01 depends on one `TraderSystemCandidate` becoming trustworthy before it can run as a bounded
+live `TradingSystemPod`.
 
 This subsystem exists to make clear:
 
 - what counted
 - what did not count
-- why a candidate is stronger, weaker, held, or rejected
-- what one serious live gate means
+- why a candidate version is stronger, weaker, held, or rejected
+- what one serious promotion decision means before live binding
 
 ## What This Section Owns
 
 - stage semantics
 - counted versus non-counted evidence meaning
-- candidate status meaning during progression
+- candidate-version status meaning during progression
 - hold, reject, and promotion eligibility meaning
-- live-gate meaning above raw run activity
+- promotion-decision meaning above raw run activity
 
 ## What This Section Does Not Own
 
@@ -32,8 +34,8 @@ This subsystem exists to make clear:
 
 | PRD | What evaluation and progression must support |
 | --- | --- |
-| PRD 2 | counted versus non-counted evidence, candidate-status meaning, and one explicit live gate |
-| PRD 3 | promotion eligibility that can safely hand off one candidate into real live execution |
+| PRD 2 | counted versus non-counted evidence, candidate-version status meaning, and one explicit promotion decision |
+| PRD 3 | promotion eligibility that can safely hand off one candidate into a bounded live pod |
 
 ## Durable Truth, Interfaces, And Recovery Boundaries
 
@@ -41,11 +43,11 @@ This subsystem owns judgment meaning, not runtime state.
 
 Its interfaces sit between:
 
-- raw trace and candidate-linked run history coming from execution
+- raw trace and candidate-linked run history coming from brain sessions and hands environments
 - durable evidence, review, and decision truth stored in the control plane
 
-Recovery depends on keeping raw run activity, judged evidence, and committed promotion meaning
-separate.
+Recovery depends on keeping raw run activity, custom tool results, outcome/rubric results, judged
+evidence, and committed promotion meaning separate.
 
 ## Current Active Docs
 
@@ -58,12 +60,16 @@ separate.
 
 The current active supporting specs are:
 
+- [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
 - [../specs/03-staged-evaluation.md](../specs/03-staged-evaluation.md)
 - [../specs/08-candidate-contract.md](../specs/08-candidate-contract.md)
 - [../specs/09-trace-contract.md](../specs/09-trace-contract.md)
 - [../specs/10-evidence-record-contract.md](../specs/10-evidence-record-contract.md)
 - [../specs/11-promotion-decision-contract.md](../specs/11-promotion-decision-contract.md)
 - [../specs/14-review-item-contract.md](../specs/14-review-item-contract.md)
+
+Read [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
+first when implementing Slice 2.
 
 ## Not In The Default Baseline
 

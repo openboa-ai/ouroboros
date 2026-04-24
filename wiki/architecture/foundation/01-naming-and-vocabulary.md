@@ -10,6 +10,7 @@ It is grounded in:
 - [../../sources/synthesis/agent-runtime-and-harness-principles.md](../../sources/synthesis/agent-runtime-and-harness-principles.md)
 - [../../sources/synthesis/reference-systems-and-product-postures.md](../../sources/synthesis/reference-systems-and-product-postures.md)
 - [../../sources/library/anthropic-managed-agents.md](../../sources/library/anthropic-managed-agents.md)
+- [../../sources/library/google-agent2agent-a2a.md](../../sources/library/google-agent2agent-a2a.md)
 - [../../sources/library/anthropic-building-effective-agents.md](../../sources/library/anthropic-building-effective-agents.md)
 - [../../sources/library/openai-next-evolution-of-the-agents-sdk.md](../../sources/library/openai-next-evolution-of-the-agents-sdk.md)
 - [../../sources/library/openai-harness-engineering.md](../../sources/library/openai-harness-engineering.md)
@@ -29,11 +30,12 @@ Naming is part of the architecture.
 
 The source set makes this unavoidable:
 
-- Anthropic uses `session`, `harness`, and `sandbox`
+- Anthropic uses `Agent`, `Environment`, `Session`, `Events`, `session`, `harness`, and `sandbox`
 - OpenAI uses `harness`, `compute`, `manifest`, `session`, `state`, and `trace`
 - Claude Code uses `CLAUDE.md`, `rules`, `skills`, `hooks`, `checkpoints`, `permissions`
 - OpenClaw uses `Gateway`, `session`, `runtime`, `ACP`
 - Multica uses `daemon`, `runtime`, `agent`, `task`, `autopilot`
+- Google A2A uses `AgentCard`, `Task`, `Message`, `Artifact`, and agent endpoints
 
 If autokairos flattens these into one fuzzy vocabulary, the design will drift even if the diagrams
 look clean.
@@ -69,6 +71,7 @@ Examples:
 - use Claude Code's `CLAUDE.md / rules / skills / hooks / checkpoints / permissions`
 - use OpenClaw's `Gateway / ACP / session`
 - use Multica's `daemon / runtime / task / autopilot`
+- use Google A2A's `AgentCard / Task / Message / Artifact` when discussing the protocol
 
 Do not silently rewrite those into autokairos-local terms inside source notes.
 
@@ -82,8 +85,18 @@ The following terms are the current autokairos-local canonical object language.
 
 | Local term | Meaning | Why it stays |
 | --- | --- | --- |
-| `Candidate` | the promotable line of work | no good upstream universal equivalent |
-| `Stage` | legitimacy level such as `backtesting`, `paper`, `live` | central product concept |
+| `TraderSystemCandidate` | the promotable candidate trading system under judgment | active meaning of Candidate |
+| `TradingSystemImage` | versioned runnable trader-system artifact | separates candidate identity from runnable artifact |
+| `CapabilityPackage` | versioned context/tool/skill/data-access artifact | keeps packageable capability separate from secrets |
+| `Stage` | product stage such as `backtest`, `paper`, `live` | central product concept |
+| `StageBinding` | concrete environment injection for a stage | makes same-artifact execution possible across stages |
+| `TradingSystemPod` | stage-bound execution instance assembled from image, package, binding, brain, hands, and tool proxy | active execution unit |
+| `AgentRuntimeUnit` | one brain/hands/session participant plus provider/driver selection inside or beside a pod | prevents multi-agent pods from becoming one blended runtime |
+| `BrainSession` | provider/harness reasoning session | preserves Managed Agents brain/session distinction |
+| `HandsEnvironment` | sandbox/tool/data/gateway environment | preserves Managed Agents hands distinction |
+| `ToolProxy` | authority boundary around tools, credentials, and side effects | prevents direct credential or exchange authority inside packages |
+| `PodCommunicationPolicy` | one provider-neutral policy for communication, sharing, routing, and isolation between agent runtime units | keeps A2A/provider-native communication explicit without making provider choice the policy |
+| `SharedContextSurface` | non-secret shared context for multi-agent pods | prevents shared context from becoming a secret store |
 | `Trace` | raw external record of one execution attempt | aligned with OpenAI eval vocabulary and generally stable |
 | `EvidenceRecord` | judged artifact derived from traces and evaluators | needed to keep judged evidence distinct from raw trace |
 | `PromotionDecision` | explicit governance act over candidate standing | keeps progression explicit |
@@ -96,20 +109,20 @@ The following terms are the current autokairos-local canonical object language.
 | `Control plane` | the subsystem that owns durable truth and governance records | clear systems term, not borrowed as a primitive from one source |
 | `Runtime bridge` | stable interface between control plane and runtime execution | needed to avoid coupling to one runtime |
 | `Execution driver` | environment-specific launcher/attachment layer | clarifies that the bridge and the concrete launcher are not the same |
-| `ExecutionRequest` | governed invocation object before a live run exists | keeps invocation separate from concrete execution |
+| `GovernedExecutionRequest` | governed invocation object before a live run exists | keeps invocation separate from concrete execution |
 | `ExecutionAttempt` | durable record of one concrete execution try | keeps request intent separate from run history |
 
 ### Local terms that must be treated carefully
 
 | Local term | Meaning | Risk |
 | --- | --- | --- |
-| `AgentIdentity` | durable acting identity across runs and stages | easy to confuse with the live runtime loop or with a product-level "agent" |
-| `StageBinding` | resolved execution semantics attached to a stage | useful, but not an upstream-standard term |
+| historical acting identity terms | older durable-actor vocabulary | now secondary to `TraderSystemCandidate`, `BrainSession`, and `TradingSystemPod` |
+| `Session` | source-specific or provider-specific continuity surface | easy to confuse with durable autokairos trace or pod record |
 
 These are still acceptable terms, but they must always be introduced as autokairos-local
 abstractions, not as if they were standard industry vocabulary.
 
-## Rule 3: Separate Identity, Loop, And Host
+## Rule 3: Separate Candidate, Brain, Hands, And Pod
 
 The word `agent` is too overloaded to use by itself for every layer.
 
@@ -117,30 +130,64 @@ So autokairos should distinguish:
 
 | Term | What it means |
 | --- | --- |
-| `AgentIdentity` | the durable acting identity in the autokairos model |
-| `runtime session` | the currently live harness/runtime loop |
-| `agent system` | the execution subsystem that invokes, hosts, and traces the run |
+| `TraderSystemCandidate` | the system under product judgment and promotion |
+| `BrainSession` | the model/harness reasoning session |
+| `HandsEnvironment` | the sandbox/tool/data/gateway environment |
+| `TradingSystemPod` | the stage-bound execution instance assembled from candidate artifact, capability, binding, brain, hands, and tool proxy |
+| `AgentRuntimeUnit` | one participant inside or beside a pod, with its own brain/hands/session boundary |
+| `agent-system` | the subsystem that invokes and manages brain/hands runtime behavior |
 
 This is why plain `Agent` should usually be avoided in architecture contracts unless the meaning is
 obvious from context.
 
-## Rule 4: Separate Session, Workspace, And Sandbox
+Provider names such as Codex, Claude Code, Claude Managed Agents, OpenClaw/ACP, local container,
+or A2A endpoint belong on `AgentRuntimeUnit` records. They should not become separate pod types or
+separate communication-policy names.
+
+## Rule 4: Separate Agent Communication From Tools And Evidence
+
+Google A2A adds another overloaded surface.
+
+Use these terms carefully:
+
+| Term | Meaning in autokairos |
+| --- | --- |
+| `A2AAgentEndpoint` | an independent remote agent endpoint discoverable through A2A-style metadata |
+| `A2ATaskRecord` | a task/message exchange with an agent endpoint |
+| `A2AArtifact` | output from an agent-to-agent task |
+| `TeamTrace` | durable trace of multi-agent collaboration |
+
+These are communication and trace terms.
+
+They are not:
+
+- `CapabilityPackage`
+- `EvidenceRecord`
+- `PromotionDecision`
+- live execution authority
+
+MCP/tool-proxy style terms should be used for tools, APIs, resources, and side effects. A2A-style
+terms should be used only when the other participant is an agent system.
+
+## Rule 5: Separate Session, Trace, Hands Environment, And Sandbox
 
 These words must not be used interchangeably.
 
 | Term | Meaning in autokairos |
 | --- | --- |
-| `Session` | continuity surface across runs |
-| `Workspace` | bounded execution surface presented to the runtime |
+| `BrainSession` | provider/harness reasoning continuity |
+| `Trace` | durable raw event record outside the active brain context |
+| `HandsEnvironment` | bounded execution surface presented to the runtime |
 | `sandbox` | source-specific term for the isolated compute environment or policy boundary around execution |
 
 Practical rule:
 
-- `Session` survives runs
-- `Workspace` may be recreated
+- provider session context is not autokairos truth
+- `Trace` must survive the active run
+- `HandsEnvironment` may be recreated
 - `sandbox` describes the isolation posture or source-specific execution boundary
 
-## Rule 5: Separate Approval From Promotion
+## Rule 6: Separate Approval From Promotion
 
 This distinction is mandatory.
 
@@ -156,7 +203,7 @@ The source layer already supports this split:
 
 So docs must never imply that a runtime approval is equivalent to promotion governance.
 
-## Rule 6: Use `governance` Carefully
+## Rule 7: Use `governance` Carefully
 
 `Governance` is a useful umbrella word, but too broad to be precise on its own.
 
@@ -174,14 +221,15 @@ Use `governance` when referring to the whole family of these surfaces together.
 
 The current design is not fundamentally broken, but it has two real naming weaknesses.
 
-### 1. Some local terms sound more universal than they are
+### 1. Some historical local terms sound more universal than they are
 
 This applies most to:
 
-- `AgentIdentity`
-- `StageBinding`
+- historical acting identity terms
+- `Session`
 
-They are still acceptable, but they must be documented as local autokairos abstractions.
+They may appear in historical docs, but active contracts should prefer `TraderSystemCandidate`,
+`BrainSession`, `HandsEnvironment`, `TradingSystemPod`, and `StageBinding`.
 
 ### 2. Some section titles are broader than the objects they discuss
 
@@ -197,25 +245,33 @@ Examples:
 Avoid these unless they are explicitly source-specific.
 
 - `harness` as the name for the whole autokairos product
-- `runtime` as if it means the same thing as `driver`, `workspace host`, and `live loop`
-- `session` when you really mean `workspace`
-- `workspace` when you really mean durable truth
+- `runtime` as if it means the same thing as `driver`, `hands environment`, and `live loop`
+- `session` when you really mean `BrainSession` or `Trace`
+- `hands environment` when you really mean durable truth
 - `approval` when you really mean promotion
-- `agent` when you really mean `AgentIdentity` or `runtime session`
+- `agent` when you really mean `TraderSystemCandidate`, `BrainSession`, `HandsEnvironment`, or
+  `TradingSystemPod`
+- `A2A` when you really mean tool access, evidence, or live authority
 
 ## Canonical Vocabulary Snapshot
 
 If a new architecture page needs a short canonical vocabulary, use this one.
 
-- `AgentIdentity`
-- `Candidate`
+- `TraderSystemCandidate`
+- `TradingSystemImage`
+- `CapabilityPackage`
 - `Stage`
 - `StageBinding`
-- `Session`
-- `Workspace`
+- `TradingSystemPod`
+- `AgentRuntimeUnit`
+- `BrainSession`
+- `HandsEnvironment`
+- `ToolProxy`
+- `PodCommunicationPolicy`
+- `SharedContextSurface`
 - `Runtime bridge`
 - `Execution driver`
-- `ExecutionRequest`
+- `GovernedExecutionRequest`
 - `ExecutionAttempt`
 - `Trace`
 - `EvidenceRecord`
@@ -233,6 +289,7 @@ The main fix is to make the naming contract explicit:
 
 - preserve upstream vocabulary in source notes
 - use autokairos-local names only for autokairos objects
-- never collapse identity, runtime loop, workspace, and governance into one shared noun
+- never collapse candidate identity, brain session, hands environment, pod runtime, and governance
+  into one shared noun
 
 That is the naming discipline the rest of the architecture should now follow.

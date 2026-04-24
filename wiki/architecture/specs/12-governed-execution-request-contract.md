@@ -1,243 +1,116 @@
 # Governed Execution Request Contract
 
-This page defines the canonical request object that asks autokairos to start or resume execution.
+This page defines the minimum `GovernedExecutionRequest` contract needed by the current MLP-01
+baseline.
 
 It follows:
 
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
-- [08-candidate-contract.md](08-candidate-contract.md)
-- [23-wake-trigger-record-contract.md](23-wake-trigger-record-contract.md)
-- [28-wake-policy-precedence-and-overlap-contract.md](28-wake-policy-precedence-and-overlap-contract.md)
-- [../agent-system/06-first-code-seam.md](../agent-system/06-first-code-seam.md)
-- [../../sources/library/anthropic-managed-agents.md](../../sources/library/anthropic-managed-agents.md)
-- [../../sources/library/openai-next-evolution-of-the-agents-sdk.md](../../sources/library/openai-next-evolution-of-the-agents-sdk.md)
-- [../../sources/library/repo-multica.md](../../sources/library/repo-multica.md)
-
-It is also informed by additional official documentation:
-
-- [OpenAI Sessions](https://openai.github.io/openai-agents-js/guides/sessions/)
-- [OpenAI Results](https://openai.github.io/openai-agents-js/guides/results/)
-- [OpenAI Human-in-the-loop](https://openai.github.io/openai-agents-python/human_in_the_loop/)
-- [OpenClaw Automation](https://docs.openclaw.ai/automation)
-- [Claude Code Scheduled Tasks](https://code.claude.com/docs/en/scheduled-tasks)
+- [11-promotion-decision-contract.md](11-promotion-decision-contract.md)
+- [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
 
 ## Thesis
 
-`ExecutionRequest` is the governed invocation object that exists before any runtime session,
-workspace host, or execution attempt becomes live.
+`GovernedExecutionRequest` is the durable invocation object between sealed live approval and real
+runtime launch.
 
-It is the control-plane answer to:
+It is where autokairos says:
 
-**what work is being requested, on which candidate and stage, and under what governing context,
-before the system launches anything?**
+- which approved candidate should start live work
+- which promotion decision authorized that start
+- which first-venue scope should be used
+- which explicit limit envelope must be honored
 
-## Why This Spec Exists
+Without this object, live approval and real execution collapse into one unsafe step.
 
-This spec exists because autokairos must not start runs from ad hoc prompt strings or directly from
-one runtime driver's launch API.
+## Current Active Applicability
 
-The source layer points toward the same pattern repeatedly:
+This spec is currently active for PR3.
 
-- Anthropic keeps `session` outside the currently running `harness` and `sandbox`
-- OpenAI keeps resumable `state` outside the currently running turn
-- Multica keeps task/runtime supervision outside the currently active CLI
+Its job is to make one live launch request durable before any concrete runtime attempt exists.
 
-Taken together, that means autokairos needs one explicit invocation object before it creates an
-execution attempt.
+## What This Is Not
 
-## Canonical Object
+`GovernedExecutionRequest` is not:
 
-`ExecutionRequest` is a durable control-plane record that asks the system to create or continue
-work for one candidate-stage line of work.
+- a `PromotionDecision`
+- an `ExecutionAttempt`
+- a wake-trigger record
+- a brain session or pod runtime handle
 
-It exists above:
+Most importantly:
 
-- runtime session handles
-- container hosts
-- workspaces
-- traces
+- `PromotionDecision` is the gate
+- `GovernedExecutionRequest` is the governed launch request
+- `ExecutionAttempt` is the concrete live try
 
-And below:
-
-- review and operator intent
-- scheduling or automation
-- candidate/stage governance
-
-Operationally:
+## Canonical Role In The System
 
 ```mermaid
 flowchart LR
-    A["Review / operator / scheduler intent"] --> B["ExecutionRequest"]
-    P["WakeTriggerRecord(s)"] --> B
-    B --> C["Stage-binding resolution"]
-    C --> D["ExecutionAttempt"]
-    D --> E["Trace"]
+    A["PromotionDecision"] --> B["GovernedExecutionRequest"]
+    B --> C["ExecutionAttempt"]
 ```
 
-## Required Fields Or Required Behaviors
+The separation must remain explicit:
 
-The contract should carry at least these categories of information.
+- gate meaning does not yet launch runtime
+- governed request does not yet prove the path is live
 
-## 1. Identity
+## Minimum Contract
 
-### Required fields
+A `GovernedExecutionRequest` must carry at least:
 
-- `execution_request_id`
-- `created_at`
-- `status`
+| Field | Meaning |
+| --- | --- |
+| `governed_execution_request_id` | Stable durable identity |
+| `candidate_ref` | Candidate being launched |
+| `promotion_decision_ref` | Live-gate act authorizing execution |
+| `requested_stage` | Current baseline requires `live` |
+| `venue_binding_ref` | First-venue binding for Binance BTC perpetual futures |
+| `live_limit_profile_ref` | Explicit limit envelope for routine live behavior |
+| `live_binding_profile_ref` | Concrete `LiveBindingProfile` to resolve live data, gateway, credentials, risk, and wake policy |
+| `agent_loop_policy_ref` | `continuous_live` loop envelope for the launched pod |
+| `origin` | Why this request exists |
+| `created_at` | When the request became durable |
+| `status` | `queued`, `accepted`, `fulfilled`, `canceled`, or `superseded` |
 
-### Why
+## Required Interpretation
 
-The request must be durable and referenceable before any attempt exists.
+The request must preserve enough meaning to answer:
 
-## 2. Target Context
+- which candidate is being launched?
+- what gate act authorized it?
+- what live scope is intended?
+- which limits must be honored before routine live actions begin?
+- which live binding and loop envelope are being launched?
 
-### Required fields
+It must not require:
 
-- `agent_identity_ref`
-- `candidate_ref`
-- `session_ref`
-- `requested_stage`
+- private operator memory
+- runtime-local config as the only authority
+- a later wake contract to explain the initial live launch
 
-### Why
+## Boundary Rules
 
-The request must identify:
+- every real live launch must be attributable to one governed execution request
+- the request must cite the upstream `PromotionDecision`
+- the request must stay upstream of runtime launch and downstream of live-gate approval
+- live binding cannot be created from prompt text alone; it must cite this request and the
+  promotion decision
+- the request may authorize a live loop, but it does not authorize any specific exchange order
+- the request may later be referenced by wake/intervention history, but wake provenance is not part
+  of the current PR3 minimum
 
-- who is acting
-- what promotable line of work is being advanced
-- what continuity surface the work belongs to
-- what legitimacy level is being requested
+## Not In The Active Baseline
 
-## 3. Origin And Intent
+The current active baseline does not require:
 
-### Required fields
+- broad scheduler or overlap-resolution metadata
+- multi-venue routing plans
+- complex retry orchestration
 
-- `origin`
-  - `manual`
-  - `scheduler`
-  - `review_followup`
-  - `retry`
-  - another explicitly named system origin
-- `objective`
-  or `objective_ref`
-
-### Optional but likely useful fields
-
-- `requested_by_ref`
-- `reason`
-- `notes`
-
-### Why
-
-The request should say why execution is being asked for, not just where it should run.
-
-## 4. Wake Origin And Resolution Context
-
-### Required fields when the request was proactively emitted
-
-- `primary_wake_trigger_record_ref`
-- `wake_origin_posture`
-  - `single_trigger`
-  - `overlap_primary`
-
-### Optional but likely useful fields
-
-- `coalesced_wake_trigger_record_refs`
-- `originating_proactive_evaluation_record_ref`
-- `originating_wake_policy_ref`
-- `originating_standing_order_ref`
-- `wake_resolution_summary`
-
-### Required behavior
-
-If the request came from proactive orchestration, the request must preserve the primary wake cause
-that actually emitted it.
-
-If overlapping candidates were coalesced into one request, the request must also preserve enough
-linkage to explain:
-
-- which trigger became primary
-- which additional candidates were coalesced
-- which originating proactive evaluation justified the emitted primary wake
-- which upstream wake policy and standing authority shaped the outcome
-
-For non-proactive origins such as direct operator action, this wake-origin block may be absent or
-explicitly marked `not_applicable`.
-
-### Why
-
-`origin = scheduler` is not enough.
-
-The system needs a durable answer to:
-
-- which evaluated wake actually caused this request to exist?
-- was this request the primary result of overlap resolution?
-- which wake candidates were merged into this one request?
-
-Without that linkage, wake precedence remains durable on paper but disappears at the exact point
-where execution starts.
-
-## 5. Execution Posture Hints
-
-### Required fields
-
-- `preferred_execution_mode`
-  or an explicit null meaning "resolver decides"
-- timeout or duration profile reference
-
-### Optional fields
-
-- preferred runtime family
-- priority
-- retry budget
-
-### Why
-
-The request may express constraints, but it should not yet collapse into a concrete attempt.
-
-## 6. Governance Context
-
-### Required fields
-
-- any blocking governance reference that caused the request
-  when applicable
-
-### Examples
-
-- `review_item_ref`
-- `evidence_record_ref`
-- `promotion_decision_ref`
-
-### Why
-
-Requests often come from explicit governance work, and that provenance should not be lost.
-
-## 7. Idempotency And Deduplication
-
-### Required behavior
-
-The request layer should be able to prevent accidental duplicate launches when the same operator or
-automation action is replayed.
-
-### Suggested fields
-
-- `idempotency_key`
-- optional `supersedes_execution_request_ref`
-
-## Lifecycle Or State Model
-
-The request lifecycle should remain simple.
-
-### Suggested states
-
-1. `queued`
-2. `accepted`
-3. `fulfilled`
-4. `canceled`
-5. `superseded`
-
-### Meaning
+If later work needs those, it should add them deliberately rather than broadening this contract by
+default.
 
 - `queued`
   the request exists but has not yet produced an execution attempt
@@ -254,12 +127,12 @@ One request may later be associated with multiple attempts if retries are allowe
 
 ## What This Spec Is Not
 
-`ExecutionRequest` is not:
+`GovernedExecutionRequest` is not:
 
 - a prompt string
 - an execution attempt
-- a runtime session handle
-- a workspace
+- a brain session handle
+- a hands environment
 - a trace
 - a review item
 - a promotion decision
@@ -282,6 +155,7 @@ The design is failing if:
 
 - the runtime bridge is called without a durable request object
 - prompt text becomes the only invocation boundary
+- live binding or loop policy exists only inside provider context
 - request provenance from review or scheduling disappears
 - a proactively emitted request can only be traced back to a generic `scheduler` origin instead of
   one primary wake record
@@ -295,6 +169,8 @@ This spec depends on:
 - [08-candidate-contract.md](08-candidate-contract.md)
 - [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
 - [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
+- [15-agent-loop-policy-contract.md](15-agent-loop-policy-contract.md)
+- [16-order-intent-and-gateway-decision-contract.md](16-order-intent-and-gateway-decision-contract.md)
 - [23-wake-trigger-record-contract.md](23-wake-trigger-record-contract.md)
 - [28-wake-policy-precedence-and-overlap-contract.md](28-wake-policy-precedence-and-overlap-contract.md)
 

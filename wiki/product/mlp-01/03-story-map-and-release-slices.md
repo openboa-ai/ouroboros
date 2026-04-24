@@ -1,257 +1,125 @@
-# MLP-01 Story Map And Release Slices
+# Story Map And Release Slices
 
 ## Purpose
 
-This page turns the trust journey into a delivery model.
-
-Its job is not to list product features by subsystem.
-
-Its job is to define the minimum sequence of proofs required for a weak human operator to trust
-delegation.
-
-It must answer:
-
-- what operator-visible activities exist in the lovable path
-- what tasks sit under those activities
-- how those tasks bundle into trust-proof release slices
-- why the slices must happen in the chosen order
+This page converts the MLP-01 trust journey into releaseable proof milestones.
 
 ## Story-Mapping Thesis
 
-This page is not a feature breakdown.
+Slices follow trust proof, not subsystem taxonomy.
 
-This page defines the minimum sequence of proofs needed for the operator to believe:
-
-- this path is real
-- this path is trustworthy
-- this path can really trade
-- I can still stay in control after I let it trade
-
-A slice belongs in MLP-01 only if it closes a user-visible trust question that the next slice
-depends on.
-
-## Why Slices Follow Trust Proof, Not Taxonomy
-
-Release slices are not allowed to follow technical taxonomy.
-
-They must follow visible operator trust formation through the lovable loop.
-
-That means:
-
-- a slice is not "whatever one subsystem can implement"
-- a slice is not "whatever one PRD section happens to contain"
-- a slice is not "whatever is easiest to build first"
-
-A slice is only valid if it creates a new believable proof for the operator.
+Each slice must close one user-visible question about whether a weak human can delegate to a
+stronger trader-system candidate.
 
 ## User Activities And Tasks
 
-| User activity | User task | Why the task matters |
-| --- | --- | --- |
-| See one serious path | See one agent-originated path instead of idea spam | Proves the system can surface something worth following |
-| Understand whether it became real | Know the path is now a durable candidate | Proves the product owns the path, not the operator's memory |
-| Understand what counts | Distinguish counted from non-counted evidence | Proves progression is governed rather than opaque |
-| Make one live decision | Understand one bounded live approval | Proves promotion has serious meaning |
-| Let the system trade | Allow bounded live operation without shadowing it | Proves this is a live operator system, not a paper artifact |
-| Intervene decisively when needed | Inspect, pause, stop, or override on meaningful wake | Proves trust and control survive live delegation |
-
-## Canonical Story Map
-
-```mermaid
-flowchart LR
-    A["See one serious path"] --> B["Understand whether it became real"]
-    B --> C["Understand what counts"]
-    C --> D["Make one live decision"]
-    D --> E["Let the system trade"]
-    E --> F["Intervene decisively when needed"]
-```
-
-This is the happy-path story map.
-
-It stays centered on operator progress, not subsystem boundaries.
+| Activity | User-visible tasks |
+| --- | --- |
+| See candidate systems | inspect small pool, compare candidate identity, understand provenance |
+| Understand system artifact | inspect image version, brain/team spec, capability packages |
+| Evaluate under bindings | see backtest/paper runs as bindings for the same artifact |
+| Decide promotion | inspect counted evidence and live-gate meaning |
+| Let one pod trade live | see bounded order intent, gateway decision, live status |
+| Stay in control | inspect, pause, stop, override, audit |
 
 ## Canonical Release Slices
 
-### Slice 1: Path Becomes Real
+### Slice 1: Trader-System Candidate Becomes Real
 
-#### What it closes
+Trust question:
 
-- one serious path appears
-- the path becomes a durable candidate
-- the operator no longer has to carry the record manually
+**What system is this?**
 
-#### Visible proof
+Closes:
 
-This is not disposable output anymore.
+- small pool can produce durable `TraderSystemCandidate` records
+- candidate image and capability package references are inspectable
+- candidate is no longer chat/runtime residue
 
-#### Trust question resolved
+Visible proof:
 
-"Is this path real?"
+- the operator can inspect one candidate system and know what artifact will be evaluated
 
-#### Exit criteria
+### Slice 2: Candidate Becomes Externally Evaluated
 
-- the operator can see one serious path instead of generic commentary
-- the operator can see that it became one durable candidate
-- the candidate remains inspectable without depending on transient runtime state
+Trust question:
 
-### Slice 2: Path Becomes Trustworthy
+**Why should I trust this candidate?**
 
-#### What it closes
+Closes:
 
-- counted versus non-counted evidence is visible
-- the operator can explain why the path is or is not becoming stronger
-- one explicit live gate appears with clear meaning
+- same artifact can run under a backtest binding
+- trace is externalized
+- counted and non-counted evidence are separated
+- hold/reject/promotion meaning is visible
 
-#### Visible proof
+Visible proof:
 
-This product governs progression instead of just running checks.
+- the product governs evaluation instead of trusting agent self-report
 
-#### Trust question resolved
+### Slice 3: One Candidate Runs As Bounded Live Trader-System Pod
 
-"Why should I trust this path?"
+Trust question:
 
-#### Exit criteria
+**Can I actually let this system trade?**
 
-- the operator can explain what counted
-- the operator can explain what did not count
-- the operator can explain why the path is stronger, weaker, held, or rejected
-- the operator can explain what one live deployment decision means
+Closes:
 
-### Slice 3: Path Can Really Trade
+- one promoted candidate runs under live binding
+- agent produces bounded `OrderIntent`
+- autokairos gateway owns execution authority
+- live state is inspectable
 
-#### What it closes
+Visible proof:
 
-- one promoted candidate actually runs live
-- bounded delegation becomes real
-- the operator is no longer required for routine live actions
+- this is real live delegation, not paper theater or direct unbounded agent access
 
-#### Visible proof
+### Slice 4: Live Pod Remains Controllable
 
-This is a live operator system, not a paper artifact.
+Trust question:
 
-#### Trust question resolved
+**Can I stay in control after delegation?**
 
-"Can I actually let it trade?"
-
-#### Exit criteria
-
-- one promoted candidate can trade live on Binance BTC perpetual futures
-- the operator is not required for routine live actions
-- explicit live limits remain visible and meaningful
-
-### Slice 4: Delegation Stays Safe Under Live Conditions
-
-#### What it closes
+Closes:
 
 - meaningful wake reasons exist
-- inspect, pause, stop, and override are decisive
-- intervention preserves control without collapsing back into manual runtime
+- inspect context is available
+- pause, stop, override are decisive
+- operator action history is auditable
+- self-evolution creates cloned candidate versions for re-evaluation
 
-#### Visible proof
+Visible proof:
 
-The operator can delegate and still trust recovery and control.
-
-#### Trust question resolved
-
-"Can I stay in control after I let it trade?"
-
-#### Exit criteria
-
-- wake reasons are understandable
-- intervention actions are clear and decisive
-- operator trust improves rather than collapsing under live conditions
+- the operator can delegate without becoming the permanent runtime
 
 ## Slice Dependency Logic
 
-The slice order is fixed because each slice answers a prerequisite trust question.
-
-| Slice | Trust question answered | Why it must happen before the next slice |
-| --- | --- | --- |
-| Slice 1 | "Is this path real?" | Without this, the operator is still the system of record |
-| Slice 2 | "Why should I trust this path?" | Without this, live approval has no credible basis |
-| Slice 3 | "Can I actually let it trade?" | Without this, there is no believable delegation proof |
-| Slice 4 | "Can I stay in control after I let it trade?" | Without this, live delegation still feels emotionally unsafe |
-
-### Why the order must not flip
-
-#### Slice 2 cannot follow Slice 3
-
-If the system trades live before visible legitimacy exists, the product becomes reckless rather than
-trustworthy.
-
-#### Slice 4 cannot be deferred outside the lovable proof
-
-If live delegation exists without credible intervention, the operator still experiences autonomy as
-unsafe or fake.
-
-#### Slice 1 cannot be skipped
-
-Without durable path ownership, the operator still carries the meaning of the system manually.
+- Slice 1 must come first because evaluation cannot judge an undefined system.
+- Slice 2 must come before Slice 3 because live without external evidence is reckless.
+- Slice 3 must come before Slice 4 because intervention needs a real live pod to control.
+- Slice 4 is still part of MLP-01 because live delegation without recovery/control is not lovable.
 
 ## Branch Markers
 
-The main story map stays centered on the happy path.
-
-Non-happy-path behavior should appear as trust-preserving branch markers, not as equal-weight story
-lanes.
-
-### Slice 2 branch markers
-
-- `hold`
-  The path remains visible but not yet delegable.
-- `reject`
-  The path is explicitly disqualified and the operator can explain why.
-
-These branches preserve trust because non-promotion is legible rather than silent.
-
-### Slice 4 branch marker
-
-- `intervene`
-  Live delegation is interrupted for a meaningful reason and control returns cleanly.
-
-This branch preserves trust because intervention is decisive without forcing the operator back into
-permanent manual runtime.
-
-## Reference Scenario Through The Slices
-
-In the reference scenario:
-
-- Slice 1 makes one surfaced path become a real candidate instead of a fleeting event
-- Slice 2 makes the operator understand why that path should or should not earn live risk
-- Slice 3 makes the operator see the product actually carry the path into live execution
-- Slice 4 makes the operator willing to trust that live path without staying glued to the runtime
-
-This is where first-market specificity stays explicit.
-
-The story-map activity model itself remains product-level.
+- `hold` and `reject` belong to Slice 2 as trust-preserving evaluation outcomes.
+- `clone` belongs to Slice 4 as the safe self-evolution branch.
+- `intervene` belongs to Slice 4 as the live-control branch.
 
 ## Relationship To PRDs
 
-- Slice 1 -> [prds/01-hypothesis-to-candidate.md](prds/01-hypothesis-to-candidate.md)
-- Slice 2 -> [prds/02-candidate-evaluation-and-live-gate.md](prds/02-candidate-evaluation-and-live-gate.md)
-- Slice 3 -> [prds/03-live-deployment-and-autonomous-execution.md](prds/03-live-deployment-and-autonomous-execution.md)
-- Slice 4 -> [prds/04-operator-trust-wake-and-intervention.md](prds/04-operator-trust-wake-and-intervention.md)
-
-PRDs should elaborate the slice contracts.
-
-They should not redefine the slice order or the proof each slice is supposed to earn.
+| Slice | PRD |
+| --- | --- |
+| Slice 1 | [prds/01-trader-system-candidate-becomes-real.md](prds/01-trader-system-candidate-becomes-real.md) |
+| Slice 2 | [prds/02-candidate-becomes-externally-evaluated.md](prds/02-candidate-becomes-externally-evaluated.md) |
+| Slice 3 | [prds/03-bounded-live-trading-system-pod.md](prds/03-bounded-live-trading-system-pod.md) |
+| Slice 4 | [prds/04-live-pod-remains-controllable.md](prds/04-live-pod-remains-controllable.md) |
 
 ## Slice Acceptance Test
 
-This page is good enough only if one reader can explain:
+The slice map is correct only if a reader can explain:
 
-- what the operator-visible activities are in the lovable path
-- why slices are ordered the way they are
-- what new trust proof each slice earns
-- why live operation without visible legitimacy is unsafe
-- why intervention must be included in the first lovable proof
-- how hold, reject, and intervene are handled without overwhelming the main story map
-- how this page differs from `02-journey-map`
-
-without falling back to subsystem or implementation language.
-
-## Read Next
-
-1. [04-scope-and-cutline.md](04-scope-and-cutline.md)
-2. [05-success-metrics-and-launch-bar.md](05-success-metrics-and-launch-bar.md)
-3. [prds/README.md](prds/README.md)
+- why the first slice is candidate-system identity
+- why capability packages are inspectable before evaluation
+- why external evidence precedes live promotion
+- why bounded live authority precedes wake/control
+- why self-evolution is clone/evaluate/promote

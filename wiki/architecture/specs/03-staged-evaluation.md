@@ -1,224 +1,143 @@
 # Staged Evaluation
 
-This page defines how autokairos should think about stage progression.
+This page defines the minimum stage semantics needed by the current MLP-01 baseline.
 
-The point of staging is not just to have nicer labels than `dev` and `prod`. The point is to make
-search cheap, risk legible, and advancement explicit.
+It follows directly from:
 
-This page follows directly from:
-
-- [00-first-principles-architecture-thesis.md](00-first-principles-architecture-thesis.md)
 - [02-core-primitives.md](02-core-primitives.md)
-- [../sources/synthesis/evaluation-governance-and-promotion.md](../../sources/synthesis/evaluation-governance-and-promotion.md)
+- [04-boundaries.md](04-boundaries.md)
+- [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
 
 ## Thesis
 
-Stages are legitimacy boundaries that change execution semantics, evidence expectations, and
-promotion posture without requiring a new agent identity.
+Stages are legitimacy boundaries.
+
+They do not exist to add taxonomy.
+
+They exist so autokairos can keep:
+
+- search cheap
+- evidence legitimacy explicit
+- live risk gated rather than implied
 
 ## Why This Spec Exists
 
-This spec exists to answer one question:
+This spec exists to answer one implementation question:
 
-**how should autokairos structure progression so search stays cheap while risk and legitimacy open
-gradually?**
+**under what stage conditions may raw activity become counted evidence, and when may one live gate
+open?**
 
-## Why Staging Exists
+## Current Active Applicability
 
-The source layer pushes toward one consistent conclusion:
+This spec is currently active mainly for PR2.
 
-- search should be cheap
-- trustworthy evaluation should be harder
-- real-world side effects should open gradually
+It provides the stage meaning that lets the system say:
 
-Anthropic's AAR and W2S material show that once search scales, evaluation becomes the bottleneck.
-The automated-w2s-research repo shows that execution mode changes legitimacy, not just convenience.
-Paperclip reinforces that advancement should be governed explicitly, not inferred from the active
-agent loop.
+- which raw runs belong to which legitimacy context
+- whether an `EvidenceRecord` can count or not count
+- whether one candidate is merely accumulating activity or is actually becoming eligible for one
+  serious live review
 
-For autokairos, staging is the mechanism that turns those lessons into system structure.
+PR3 and PR4 still depend on these stage boundaries, but they should not redefine them.
 
-## The Three Initial Stages
+## Current Stage Ladder
 
-The initial staged ladder remains:
+The active stage ladder remains:
 
 1. `backtesting`
 2. `paper`
 3. `live`
 
-These are not merely UI labels. They are different legitimacy levels with different bindings,
-evidence standards, and risk surfaces.
+## Stage Meaning
 
-## Stage Model
+Every stage must answer these questions:
 
-Each stage should define five things:
+1. what kind of execution is happening here?
+2. what kind of side effects are allowed here?
+3. what kind of evidence may count here?
+4. what kind of progression act may happen next?
 
-1. `execution semantics`
-2. `allowed side effects`
-3. `evidence expectations`
-4. `promotion requirements`
-5. `failure consequences`
+That means a stage is not just a label on a candidate.
 
-That means a stage is not just a string attached to a candidate. It is a contract that changes how
-the same candidate is allowed to run and how the results are judged.
+It is the legitimacy context that keeps evidence, promotion, and live risk from collapsing into one
+blurred path.
 
-## What Stays Stable Across Stages
+## Stage Definitions
 
-The agent should not need to become a different architectural species at every stage.
-
-What should stay relatively stable:
-
-- the `AgentIdentity`
-- the `Candidate`
-- the high-level task shape
-- the agent-facing capability surface where possible
-- the external promotion model
-
-This is the key reason for using stages instead of hard-coded role splits.
-
-## What Changes Across Stages
-
-What should change across stages:
-
-- the `StageBinding`
-- the legitimacy of the execution environment
-- the allowed side effects
-- the evaluator strictness
-- the evidence threshold for advancement
-- the human approval burden
-
-This lets the same high-level action mean different things in different stages.
-
-Example:
-
-- `place_order` in `backtesting` means a historical simulation action
-- `place_order` in `paper` means a non-risk-bearing simulated live-market action
-- `place_order` in `live` means a real external side effect
-
-The interface can stay stable while the meaning underneath changes materially.
-
-## Stage As A Legitimacy Boundary
-
-The `automated-w2s-research` implementation is useful here because it makes a crucial distinction:
-some execution modes are convenient, but not legitimate enough to count as promotable evidence.
-
-autokairos should adopt the same principle.
-
-A stage is partly a legitimacy boundary.
-
-It should answer:
-
-- does this run count as promotable evidence?
-- what kind of evidence does it produce?
-- what risks are still excluded?
-- what evaluator is authoritative here?
-
-That matters because not every successful run should count equally.
-
-## The Stage Definitions
-
-### 1. Backtesting
+### `backtesting`
 
 `backtesting` is the cheap rejection stage.
 
-Its main job is not to prove a candidate is good. Its main job is to kill weak candidates cheaply.
+Its main job is to eliminate weak paths cheaply and produce early judged evidence without implying
+that the candidate is ready for live review.
 
-#### Purpose
+Minimum meaning:
 
-- fast search
-- wide candidate branching
-- cheap negative selection
-- early evaluator feedback
+- historical or replay-driven execution
+- no real external trading side effects
+- may produce counted or non-counted evidence
+- may strengthen or weaken the candidate
+- does not by itself justify live deployment
 
-#### Execution semantics
+### `paper`
 
-- historical or replay-based environment
-- no real side effects
-- relaxed runtime cost relative to later stages
+`paper` is the live-like validation stage.
 
-#### Expected evidence
+Its main job is to test whether the candidate behaves acceptably under more realistic conditions
+without opening real financial risk.
 
-- strategy metrics
-- robustness checks
-- trace-derived failure patterns
-- policy or risk violations detected in simulation
+Minimum meaning:
 
-#### Promotion posture
+- simulated or non-risk-bearing live-like execution
+- stronger legitimacy than `backtesting`
+- may produce counted or non-counted evidence
+- may support one serious live-gate review when the judged basis is strong enough
+- does not itself start live execution
 
-- passing backtesting should not be read as "this is live-worthy"
-- it only means "this candidate deserves more expensive scrutiny"
+### `live`
 
-### 2. Paper
+`live` is the real-risk stage.
 
-`paper` is the behavior-validation stage.
+Its main job is not broad search.
 
-Its main job is to test whether the candidate behaves acceptably under live-ish conditions without
-opening real financial risk.
+Its main job is controlled real execution after explicit promotion.
 
-#### Purpose
+Minimum meaning:
 
-- validate that the candidate survives contact with a live-like environment
-- check runtime behavior and decision quality under current market conditions
-- expose failures that historical replay may miss
+- real external trading side effects
+- explicit live limits and stronger governance
+- real live outcome evidence can be produced here
+- live posture remains subject to later wake, pause, stop, and override
 
-#### Execution semantics
+## Progression Rules
 
-- mock or simulated execution against real or near-real market conditions
-- no final real-money side effect
-- stronger legitimacy than backtesting, but still not final
+The current progression rules are:
 
-#### Expected evidence
+- traces alone do not change stage standing
+- counted evidence may change candidate progression meaning
+- non-counted evidence must remain visible but non-authoritative
+- live-gate meaning opens only through explicit review and `PromotionDecision`
+- live execution starts only after the live-gate act, not during evaluation
 
-- paper-trading outcomes
-- live-ish timing and behavior traces
-- connector/runtime stability signals
-- approval and policy interaction traces
+## Current Boundary Rules
 
-#### Promotion posture
+- stage is not the same thing as execution mode details
+- stage does not equal candidate status meaning
+- stage does not equal live permission
+- `paper` success must not be read as implicit `live` approval
+- `live` must remain downstream of explicit gate meaning
 
-- passing paper means "eligible for real-risk review"
-- it should not auto-open live execution
+## Not In The Active Baseline
 
-### 3. Live
+The current active baseline does not need:
 
-`live` is the risk-bearing stage.
+- deeper future stage taxonomies
+- multi-venue stage variants
+- speculative rollout ladders beyond `backtesting -> paper -> live`
 
-Its purpose is not broad exploration. Its purpose is controlled real-world execution under the
-strictest governance.
-
-#### Purpose
-
-- execute in the real environment
-- gather real outcome evidence
-- continue under explicit oversight and reversible controls
-
-#### Execution semantics
-
-- real external side effects
-- strongest approval and safety requirements
-- most expensive failure mode
-
-#### Expected evidence
-
-- real execution outcomes
-- risk incidents and near-misses
-- audited traces of action and response
-- promotion, pause, or rollback decisions over time
-
-#### Promotion posture
-
-`live` is not the end of evaluation. It is the stage where the system is judged under the highest
-stakes, and therefore where pause, demotion, or rollback remain necessary.
-
-## Stage Progression Rules
-
-A candidate should move between stages only through explicit `PromotionDecision` records.
-
-That means:
-
-- no implicit promotion based on current state alone
-- no promotion based on agent self-report
-- no promotion because a workspace "looks good"
+If later work needs those, it should justify them explicitly rather than expanding this spec by
+default.
+- no promotion because a hands environment or pod output "looks good"
 
 A stage transition must point to:
 
@@ -292,37 +211,80 @@ For each stage, binding should specify at least:
 
 Without stage bindings, staging becomes a naming exercise rather than a control mechanism.
 
+## Typed Binding Profiles
+
+`StageBinding` must be implemented through typed profiles, not one vague field bag.
+
+### `BacktestBindingProfile`
+
+Minimum fields:
+
+- historical or replay data source
+- deterministic clock
+- simulator reference
+- evaluator reference
+- side-effect policy: no real trading side effects
+- credential policy: no live credentials
+
+### `PaperBindingProfile`
+
+Minimum fields:
+
+- live, delayed, or replay-like market data source
+- simulated order gateway
+- paper risk envelope
+- evidence sink
+- side-effect policy: no real exchange execution
+- credential policy: no real exchange execution credentials
+
+### `LiveBindingProfile`
+
+Minimum fields:
+
+- live market data source
+- real gateway reference
+- risk envelope reference
+- credential binding reference outside packages
+- wake policy reference
+- side-effect policy: real trading side effects only through gateway
+
+`LiveBindingProfile` cannot be constructed without:
+
+- upstream `PromotionDecision`
+- downstream `GovernedExecutionRequest`
+- explicit live limit / risk envelope reference
+
 ## Evidence By Stage
 
 Different stages produce different evidence shapes.
 
 ```mermaid
 flowchart LR
-    A["Candidate"] --> B["Backtesting workspace"]
+    A["TraderSystemCandidate"] --> B["Backtest StageBinding"]
     B --> C["Backtest trace"]
     C --> D["Backtest evidence"]
     D --> E["Promotion decision"]
-    E --> F["Paper workspace"]
+    E --> F["Paper StageBinding"]
     F --> G["Paper trace"]
     G --> H["Paper evidence"]
     H --> I["Promotion decision"]
-    I --> J["Live workspace"]
+    I --> J["Live StageBinding"]
     J --> K["Live trace"]
     K --> L["Live evidence"]
     L --> M["Continue / Pause / Demote / Reject"]
 ```
 
-The point of this flow is that the workspace does not directly promote itself. Evidence and
+The point of this flow is that the pod does not directly promote itself. Evidence and
 promotion sit outside the active execution environment.
 
-## Candidate Lineage Over Workspace Lineage
+## Candidate Lineage Over Hands-Environment Lineage
 
-What advances through stages is the `Candidate`, not the workspace itself.
+What advances through stages is the `TraderSystemCandidate`, not the hands environment itself.
 
 This is an important distinction.
 
-- workspaces are disposable
-- sessions may resume
+- hands environments are disposable
+- brain sessions may resume
 - traces accumulate
 - evidence accumulates
 - promotion decisions accumulate
@@ -371,14 +333,14 @@ Those should be derived from the stage model, not guessed before it.
 The important invariants are:
 
 - a stage is a contract, not a label
-- stage progression operates on candidates, not workspaces
+- stage progression operates on trader-system candidates, not hands environments
 - promotion must remain explicit and external
 - the same agent-facing interface may persist while underlying semantics change
 
 The design is failing if:
 
 - `host-local` convenience is treated as equivalent to stage-valid evidence
-- a workspace promotes itself
+- a pod promotes itself
 - stage differences are encoded only in prompts
 - role splits replace legitimacy boundaries without source justification
 
@@ -389,7 +351,7 @@ The next design question is no longer "should autokairos have stages?"
 The next design question is:
 
 **what exact contracts connect `Stage`, `StageBinding`, `Trace`, `EvidenceRecord`, and
-`PromotionDecision` without letting the workspace become the source of truth?**
+`PromotionDecision` without letting the hands environment or pod become the source of truth?**
 
 ## Relationship To Adjacent Specs
 

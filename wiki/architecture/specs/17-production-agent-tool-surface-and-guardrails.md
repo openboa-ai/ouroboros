@@ -122,9 +122,9 @@ The production agent should not receive broad raw host mutation tools by default
 
 Required default rule:
 
-- no broad shell access in the live trading path
-- no arbitrary patch or edit surface in the live trading path
-- no blanket interpreter escape rules in the live trading path
+- no broad shell access in the live pod execution surface
+- no arbitrary patch or edit surface in the live pod execution surface
+- no blanket interpreter escape rules in the live pod execution surface
 
 Narrow execution helpers may exist in lower-risk stages if explicitly justified.
 

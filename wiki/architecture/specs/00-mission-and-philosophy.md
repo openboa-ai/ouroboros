@@ -89,8 +89,8 @@ That matters because the source layer repeatedly suggests the same pattern:
 autokairos assumes that in AI-based trading, search will scale faster than manual idea production.
 That changes the human role.
 
-Humans should not remain the permanent source of every strategy idea or the only engine of
-iteration. Their role shifts upward:
+Humans should not remain the permanent source of every trader-system candidate or the only engine
+of iteration. Their role shifts upward:
 
 - define the arena
 - define the standards of evidence

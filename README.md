@@ -2,164 +2,144 @@
 
 **autokairos is an automated weak-to-strong trader.**
 
-It is a product for a serious operator who wants an always-on system to originate a trading
-hypothesis, drive it through governed evaluation, and put it into live trading autonomously within
-limits without losing trust, control, or auditability.
+It is a control plane for a weak human operator to create, run, evaluate, promote, and control
+agent-built trader-system pods across backtest, paper, and live bindings.
 
 ## Why This Exists
 
-The hard problem is not "how do we spin up an agent?"
+The hard problem is not "can an agent write a trading idea?"
 
 The hard problem is:
 
-how does a weak human operator safely create, govern, and supervise a stronger trading system?
+can a weak human supervisor build a reliable environment where stronger agent-built trader systems
+can be generated, externally evaluated, promoted, and bounded in live trading?
 
-In product terms:
+That makes the product thesis:
 
-how do we turn `ship strategy -> execute trading` into one continuous governed product path?
+- weak humans are weak supervisors relative to stronger always-on trader systems
+- the product wins by making trader-system candidates count credibly, not by producing idea volume
+- backtest, paper, and live should be the same artifact under different bindings
+- live authority must be bounded through the autokairos control plane, not hidden inside an agent
+  harness
 
-Today that path usually breaks in the middle.
+## Product Model
 
-- ideas do not become durable candidates
-- evidence is hard to trust
-- paper success does not cleanly become live deployment
-- live execution either feels unsafe or requires constant human babysitting
+The current active model is:
 
-autokairos exists to close that path.
+```text
+TraderSystemCandidate
+  -> TradingSystemImage + CapabilityPackage
+  -> StageBinding(backtest | paper | live)
+  -> TradingSystemPod
+  -> Trace
+  -> EvidenceRecord
+  -> PromotionDecision
+  -> bounded live execution
+  -> wake / inspect / pause / stop / override
+```
 
-It should not be read as:
-
-- an AI idea generator
-- a generic autonomous trading bot
-- a broad quant research environment
-
-It should be read as:
-
-- stronger search
-- stronger delivery
-- stronger bounded operation
-
-under weak human oversight.
+The important boundary is that a `Candidate` is not a static strategy note. It is a
+`TraderSystemCandidate`: a versioned trader-system candidate that can be packaged, run, evaluated,
+and promoted.
 
 ## First Wedge
 
-The first lovable product is for a **serious solo crypto operator**.
+The first lovable wedge is still deliberately narrow:
 
-This operator:
+- user: one serious solo crypto operator
+- market: Binance BTC perpetual futures
+- proof: one agent-built `TraderSystemCandidate` becomes a bounded live `TradingSystemPod` and
+  remains inspectable and controllable
 
-- cannot watch the market and the agent all the time
-- wants more than a copilot chat window
-- wants agent-originated ideas to become real trading paths
-- wants autonomy in live trading, but only inside explicit limits
+This wedge is not the whole company. It is the first proof that the control-plane model works.
 
-This is the first ICP and wedge, not the whole brand.
+## Source Spine
 
-## The First Lovable Product
+The source hierarchy is now explicit:
 
-The first lovable proof is simple:
+- **AAR / Automated W2S / automated-w2s-research** define the thesis spine:
+  weak supervision, external evaluation, legitimacy boundaries, and counted evidence.
+- **Paperclip** defines the governance spine:
+  wake, approval, intervention, audit, and recovery control.
+- **Claude Managed Agents / Google A2A / Codex / Claude Code / OpenClaw / Multica** inform the
+  runtime and interoperability spine:
+  brain/hands/session separation, agent-to-agent communication, harness posture, external tools,
+  background work, and operator re-entry.
 
-one agent-originated trading hypothesis becomes one real candidate, survives governed evaluation,
-passes a live gate, runs live on Binance BTC perpetual futures, and stays controllable through
-meaningful wake and intervention.
+Runtime references are only actionable when they map to a callable adapter surface. The current
+first feasible local provider path is Codex CLI `codex exec`; Claude should be integrated through
+Claude Agent SDK rather than a vague provider label.
 
-The first product posture is fixed as:
+Claude Managed Agents is used as an interface reference, not as a direct clone target. The key
+lesson is that brain, hands, session, tools, resources, and vault-backed credentials must be
+separable.
 
-- Binance BTC perpetual futures only
-- agent-originated hypothesis only
-- per-candidate live deployment as the human gate
-- full autonomous execution within limits after promotion
-- adapter-based venue portability as a technical requirement, not a first-release marketing claim
-
-## What The Research Forces
-
-autokairos is mainly inspired by four source clusters:
-
-- **Automated Alignment Researchers**
-  Search scales, but evaluation becomes the bottleneck.
-- **Automated W2S Researcher**
-  What counts, what does not count, and who decides promotion must stay explicit.
-- **automated-w2s-research repo**
-  Convenience mode and legitimate mode are not the same thing.
-- **Paperclip**
-  Persistent wake, approvals, intervention, and audit are product value, not admin garnish.
-
-Those sources force five product rules:
-
-- search and progression are different
-- humans become weak supervisors relative to stronger systems
-- legitimacy boundaries must be explicit
-- operator trust must be product-visible
-- live autonomy must stay governed rather than fuzzy
+Google A2A is used as an interoperability reference, not as evidence or governance truth. The key
+lesson is that independent agent endpoints need explicit task/message/artifact communication
+boundaries, while tools and side effects remain MCP/tool-proxy concerns.
 
 ## Document Stack
 
 autokairos now follows this order:
 
-`sources -> strategy -> principles -> market/ICP -> metrics/decision rules -> roadmap -> mlp-01 planning pack -> mlp-01 PRDs -> architecture -> active specs when needed -> ADR history -> PR`
+`sources -> product -> mlp-01 -> PRDs -> architecture -> active specs when needed -> PR`
 
 That means:
 
-- research grounds the product
 - product truth lives in `wiki/product/`
 - the current planning spine lives in `wiki/product/mlp-01/`
 - architecture is downstream of the PRDs
-- specs are active only when current PRD implementation needs them
+- specs are active only when current implementation safety needs them
 - ADRs preserve decision history rather than defining the current read path
 
-The repository directory split now follows:
+The repository directory split is:
 
 - `wiki/`
   Internal research, product, and architecture wiki
 - `docs/`
-  Future user-facing service documentation, intentionally kept light for now
+  Future user-facing service documentation, intentionally light for now
 
 ## Repository Status
 
-This repository is still documentation-first, but the current center of gravity has moved.
+This repository should be read as a **design-locked docs-only reset workspace**.
 
-The current goal is:
+The deleted legacy app/runtime tree is historical context, not the active implementation baseline.
+The next code work is greenfield bootstrap, not legacy restoration.
 
-use the locked `mlp-01` PRDs to reset the active architecture baseline, then cut implementation PRs
-against one believable delegated live path.
+The canonical implementation path is:
 
-The canonical implementation entry point after PRD and architecture lock is:
+1. [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
+2. [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
+3. [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md)
+4. [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)
+5. [wiki/architecture/01-pr1-trader-system-candidate-becomes-real-design.md](wiki/architecture/01-pr1-trader-system-candidate-becomes-real-design.md)
+6. [wiki/architecture/02-pr2-candidate-becomes-externally-evaluated-design.md](wiki/architecture/02-pr2-candidate-becomes-externally-evaluated-design.md)
+7. [wiki/architecture/03-pr3-bounded-live-trading-system-pod-design.md](wiki/architecture/03-pr3-bounded-live-trading-system-pod-design.md)
+8. [wiki/architecture/04-pr4-live-pod-remains-controllable-design.md](wiki/architecture/04-pr4-live-pod-remains-controllable-design.md)
 
-- [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
-  Build order and first PR breakdown for MLP-01
-
-Current canonical areas:
+## Current Canonical Areas
 
 - [wiki/index.md](wiki/index.md)
-  Internal wiki root
 - [wiki/sources/README.md](wiki/sources/README.md)
-  Source grounding and synthesis
 - [wiki/product/README.md](wiki/product/README.md)
-  Product truth through strategy, market analysis, `mlp-01`, and PRDs
 - [wiki/product/mlp-01/README.md](wiki/product/mlp-01/README.md)
-  Current planning pack for the first lovable product
 - [wiki/product/mlp-01/prds/README.md](wiki/product/mlp-01/prds/README.md)
-  Locked product-to-architecture input contract
 - [wiki/architecture/README.md](wiki/architecture/README.md)
-  Technical design downstream of the PRDs
 - [wiki/architecture/specs/README.md](wiki/architecture/specs/README.md)
-  Minimal active spec gate
 - [wiki/architecture/adrs/README.md](wiki/architecture/adrs/README.md)
-  Architecture decision history
 - [docs/README.md](docs/README.md)
-  Reserved future home for external service docs
 - [knowledge-index.md](knowledge-index.md)
-  Top-level navigation
 
 ## Read Next
 
 1. [wiki/sources/README.md](wiki/sources/README.md)
 2. [wiki/sources/synthesis/evaluation-governance-and-promotion.md](wiki/sources/synthesis/evaluation-governance-and-promotion.md)
-3. [wiki/sources/synthesis/proactive-operations-and-wake-orchestration.md](wiki/sources/synthesis/proactive-operations-and-wake-orchestration.md)
+3. [wiki/sources/synthesis/agent-runtime-and-harness-principles.md](wiki/sources/synthesis/agent-runtime-and-harness-principles.md)
 4. [wiki/product/README.md](wiki/product/README.md)
 5. [wiki/product/mlp-01/README.md](wiki/product/mlp-01/README.md)
 6. [wiki/product/mlp-01/prds/README.md](wiki/product/mlp-01/prds/README.md)
 7. [wiki/architecture/README.md](wiki/architecture/README.md)
 8. [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md)
-9. [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
-10. [wiki/architecture/01-pr1-path-becomes-real-design.md](wiki/architecture/01-pr1-path-becomes-real-design.md)
-11. [ARCHITECTURE.md](ARCHITECTURE.md)
+9. [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
+10. [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md)
+11. [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)

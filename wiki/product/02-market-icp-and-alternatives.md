@@ -26,13 +26,21 @@ autokairos is not entering the market as:
 
 The relevant product category is:
 
-**always-on trading operator system for governed strategy progression and bounded live execution**
+**automated weak-to-strong trader for governed trader-system candidate evolution and bounded live
+execution**
+
+At the wedge level, that still takes operator-system form:
+
+- one serious operator
+- one small candidate pool
+- one promoted bounded live trader-system pod
 
 That category matters because the product value is not pure ideation and not pure execution alone.
 It sits across:
 
-- strategy origination
-- candidate formation
+- trader-system candidate creation
+- image and capability packaging
+- candidate formation and versioning
 - legitimacy-aware evaluation
 - promotion gating
 - bounded live execution
@@ -83,8 +91,9 @@ Several plausible user segments exist, but they are not equally good first wedge
 
 The chosen first user is:
 
-**one serious solo crypto operator who trades real capital and wants an always-on agent to move one
-strategy all the way into live trading without requiring constant babysitting**
+**one serious solo crypto operator who trades real capital and wants always-on agents to create a
+small pool of trader-system candidates, evaluate them externally, and promote one into bounded live
+trading without requiring constant babysitting**
 
 Why this segment wins first:
 
@@ -112,13 +121,13 @@ The user pain is not "I need more ideas."
 
 The user pain is:
 
-**I cannot continuously watch the market, I cannot fully trust ad hoc agent output, and I do not
-have a believable system that turns one strategy into legitimate live trading without making me the
-permanent runtime loop.**
+**I cannot continuously watch the market, I cannot fully trust ad hoc agent-built systems, and I do
+not have a believable control plane that turns trader-system candidates into legitimate bounded
+live pods without making me the permanent runtime loop.**
 
 That breaks down into four pain clusters:
 
-- search pain: too many ideas, too little durable progression
+- search pain: too many agent outputs, too little durable candidate progression
 - legitimacy pain: unclear what evidence should count
 - deployment pain: paper success does not naturally justify live risk
 - operating pain: once live, the human becomes the fallback runtime
@@ -201,6 +210,7 @@ This analysis forces several downstream product choices:
 - the first UX should optimize for one operator, not team collaboration
 - counted versus non-counted evidence must be visible before live promotion
 - live gate meaning must be extremely explicit
+- `CapabilityPackage` boundaries must keep context/tool/skill/data-access separate from secrets
 - wake and intervention cannot be treated as admin-only surfaces
 - venue portability is real, but it belongs in architecture rather than first-cut scope
 
@@ -209,10 +219,10 @@ This analysis forces several downstream product choices:
 This page should settle the following for the current product strategy:
 
 - the first user is a serious solo operator
-- the product category is an always-on trading operator system
+- the product category is an automated weak-to-strong trader
 - the product is competing with fragmented operator workflows, not just other AI tools
 - the first market wedge is Binance BTC perpetual futures
-- a narrow believable live path is strategically better than early breadth
+- a narrow believable live pod proof is strategically better than early breadth
 
 ## Read Next
 

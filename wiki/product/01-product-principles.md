@@ -2,126 +2,218 @@
 
 ## Purpose
 
-This page translates the strongest research lessons into product rules.
+These principles translate the source hierarchy into product rules. Downstream PRDs, architecture,
+and implementation plans may elaborate them, but must not contradict them.
 
-These principles are not architecture slogans. They are the constraints that every MLP, PRD, and
-delivery slice must respect.
+## Principle 1: The Candidate Is A Trader System
 
-## Principle 1: Evaluation Matters More Than Idea Volume
+The active meaning of `Candidate` is `TraderSystemCandidate`.
 
-autokairos does not win by generating many hypotheses.
+It is not:
 
-autokairos wins by making one hypothesis progress credibly toward live trading.
+- a strategy note
+- a chat output
+- a single prompt result
+- a one-off backtest artifact
 
-Implication:
+It is a versioned candidate trading system that can be run, evaluated, promoted, and controlled.
 
-- product surfaces should prioritize progression clarity over raw idea count
+## Principle 2: The Pod Is The Execution Instance
 
-## Principle 2: Weak Human Oversight Is A First-Class Design Constraint
+A `TradingSystemPod` is the stage-bound execution instance of a trader-system candidate.
 
-The first user is not weak in the sense of being uninformed.
+It is assembled from:
 
-The user is weak in the weak-to-strong sense: they cannot continuously or perfectly supervise a
-stronger always-on trading system.
+- `TradingSystemImage`
+- `CapabilityPackage`
+- `StageBinding`
+- one or more `AgentRuntimeUnit` records
+- `ToolProxy`
+- external trace and evidence sinks
 
-Implication:
+The pod is not merely "an agent inside a container." Claude Managed Agents makes the critical
+separation clear: brain, hands, and session must remain separate interfaces.
 
-- the product must help a weak supervisor govern a stronger system rather than pretending the human
-  can manually evaluate every transition
-- product trust depends on making strong-system behavior legible, bounded, and interruptible
+An `AgentRuntimeUnit` is one agent participant:
 
-## Principle 3: Legitimacy Comes Before Promotion
+- `BrainSession`
+- `HandsEnvironment`
+- allowed tools
+- allowed communication channels
+- trace/export boundary
 
-Helpful-looking output is not automatically legitimate evidence.
+For MLP-01, the default pod can be single-agent. The product model must still allow later
+managed-team or distributed-agent pods without redefining candidate identity.
 
-The product must distinguish between:
+## Principle 3: Backtest, Paper, And Live Are Bindings
 
-- evidence that counts
-- evidence that is visible but does not count
-- the actor that decides progression
+Backtest, paper, and live are not separate systems.
 
-Implication:
-
-- promotion cannot be a fuzzy side effect of runtime convenience
-
-## Principle 4: The Product Needs One Serious Human Gate
-
-The first product should not spread human approval across every action.
-
-It should place one serious human gate at the point where one candidate is allowed to enter live
-bounded execution.
-
-Implication:
-
-- the operator approves one candidate deployment, not every live micro-action after promotion
-
-## Principle 5: Autonomy Must Be Real But Bounded
-
-Fake autonomy is not lovable.
-
-If the operator still has to babysit every serious action, the product has failed.
-
-Real autonomy does not mean unrestricted autonomy.
+They are different `StageBindings` injected into the same candidate artifact.
 
 Implication:
 
-- live operation should be fully autonomous only within explicit limits, risk boundaries, and
-  intervention surfaces
+- promotion means the same candidate system earns the right to run under a stronger binding
+- live should not require rewriting the candidate into a different product object
+- evaluation legitimacy depends on controlling which binding was used
 
-## Principle 6: Operator Trust Is A Product Surface
+## Principle 4: Capability Is A Packageable Artifact
 
-Wake reason, approval meaning, intervention, and audit are not backoffice details.
+Context, tools, skills, data access, market notes, and adapter requirements must be packaged as
+`CapabilityPackage` artifacts.
 
-They are part of the product experience.
-
-Implication:
-
-- the user-facing experience must make it obvious why the system acted, why it woke the operator,
-  and how the operator can intervene
-
-## Principle 7: Go Deep On One Market Before Broadening
-
-Breadth too early weakens product truth.
-
-The first product should prove one believable market path before claiming multi-venue portability
-as product scope.
+Secrets and credentials are not package contents.
 
 Implication:
 
-- Binance BTC perpetual futures is a product boundary for the first lovable cut
-- adapter portability remains an architecture requirement, not a marketing promise for the first cut
+- packages can later become shareable or tradable units
+- package provenance and versioning matter from the beginning
+- package usage must be auditable
+- vaults, bindings, or tool proxies inject credentials at runtime
 
-## Principle 8: Product Truth Must Precede Architecture
+## Principle 5: Evaluation Is The Bottleneck
 
-Architecture is downstream of product decisions.
+autokairos does not win by producing many candidate systems.
 
-If architecture has to infer who the user is, where the live gate sits, or what autonomy means, the
-product layer is incomplete.
-
-Implication:
-
-- strategy, principles, MLP, and journey docs must become stable before deep spec growth
-
-## Principle 9: PRDs Should Follow The User Journey, Not Subsystem Boundaries
-
-The user experiences an end-to-end path, not separate internal subsystems.
+It wins by making a small pool of candidate systems externally evaluable and legitimately
+promotable.
 
 Implication:
 
-- PRDs should describe journey contracts such as hypothesis-to-candidate, candidate-to-evidence,
-  live gate, live execution, and operator intervention
-- subsystem docs belong in architecture, not product definition
+- counted evidence must come from an evaluator outside the trader-system pod
+- convenience runs and legitimate runs must remain distinct
+- outcome rubrics, self-critiques, and tool results are not automatically trading evidence
+
+## Principle 6: Weak Human Supervision Is The Root Problem
+
+The user is not weak as a thinker.
+
+The user is weak as a continuous supervisor of stronger, always-on trader systems.
+
+Implication:
+
+- the product must reduce hidden human runtime labor
+- the operator should inspect and decide at key gates, not manually carry every stage
+- trust comes from external truth, bounded authority, and intervention clarity
+
+## Principle 7: Live Authority Is Bounded
+
+An agent brain may observe, reason, propose, and explain.
+
+It must not hold direct unrestricted exchange authority.
+
+Live execution flows through autokairos-owned gateways:
+
+```text
+agent judgment -> OrderIntent -> risk gateway -> GatewayDecision -> ExecutionAttempt
+```
+
+## Principle 8: Multi-Agent Communication Is Explicit
+
+Multi-agent does not mean blending several agents into one hidden runtime.
+
+A multi-agent `TradingSystemPod` must be modeled as:
+
+```text
+AgentRuntimeUnit[]
++ SharedContextSurface
++ PodCommunicationPolicy
++ TeamTrace
+```
+
+Google A2A is the reference for communication between independent agent endpoints. Claude Managed
+Agents is the reference for provider-native coordinator/subagent threads in a shared environment.
+MCP and `ToolProxy` remain the reference for tools, data, and side-effecting capabilities.
+
+Provider choice belongs to `AgentRuntimeUnit`, not to `PodCommunicationPolicy`.
+
+A single `TradingSystemPod` may contain heterogeneous runtime units, for example:
+
+```text
+coordinator: Claude Managed Agents
+researcher: Codex
+implementation-checker: Claude Code
+runtime-bridge: OpenClaw / ACP
+```
+
+`PodCommunicationPolicy` remains one unified policy over that mixed team. It answers:
+
+- which runtime units may talk
+- whether communication is coordinator-routed, direct, or disabled
+- which shared context surfaces are visible
+- which artifacts must be exported to `TeamTrace`
+- which channels are forbidden near live execution
+
+Implication:
+
+- `AgentRuntimeUnit` outputs become trace inputs unless the evaluator later seals them as evidence
+- A2A tasks and artifacts are not promotion decisions
+- shared context is not shared secrets
+- agent-to-agent messages never grant live execution authority
+- MLP-01 may start single-agent, but must not block a future team-pod or distributed-pod model
+
+## Principle 9: Self-Evolution Is Versioned
+
+Self-evolution never means mutating the active live system in place.
+
+The valid path is:
+
+```text
+live insight -> clone CandidateVersion -> backtest binding -> evidence -> promotion decision
+```
+
+This preserves auditability and prevents the live system from silently becoming something else.
+
+## Principle 10: Operator Trust Is A Product Surface
+
+Wake reason, approval meaning, intervention, and audit are core product value.
+
+The operator must be able to answer:
+
+- what system is running?
+- which image and capability packages are active?
+- which binding is active?
+- what evidence counted?
+- what authority does the live pod have?
+- why was I woken?
+- what happens if I pause, stop, or override?
+
+## Principle 11: Runtime References Do Not Own Product Truth
+
+Codex, Claude Code, Claude Managed Agents, Google A2A, OpenClaw, and Multica can inform runtime
+posture.
+
+They cannot own:
+
+- candidate identity
+- evidence legitimacy
+- promotion meaning
+- live trading authority
+- operator trust semantics
+
+## Principle 12: Product Truth Precedes Architecture
+
+Architecture implements the product model:
+
+```text
+MLP -> PRD -> Architecture -> Slice Design -> PR
+```
+
+Architecture must not redefine the user, candidate identity, first wedge, evaluation legitimacy,
+live gate, or bounded autonomy posture.
 
 ## What These Principles Force Downstream
 
 Any downstream document that changes one of the following must first update product truth:
 
-- the primary user
-- the first market
-- what counts as legitimate evidence
-- where the human gate lives
-- what autonomy means
-- whether operator trust is treated as product behavior
+- `TraderSystemCandidate` as the active candidate meaning
+- `TradingSystemPod` as the execution unit
+- `CapabilityPackage` as the context/tool artifact boundary
+- backtest/paper/live as bindings
+- external evaluator ownership of counted evidence
+- bounded live authority through autokairos gateway
+- clone/evaluate/promote as the only self-evolution path
+- explicit multi-agent communication boundaries when pods use more than one agent runtime unit
 
 ## Read Next
 

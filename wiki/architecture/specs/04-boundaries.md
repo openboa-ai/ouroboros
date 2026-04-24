@@ -1,456 +1,257 @@
 # Boundaries
 
-This page defines the separations autokairos must preserve.
+## Purpose
 
-The biggest architectural risk at this stage is not missing one more abstraction. It is allowing
-unlike things to collapse into the same layer.
-
-This page follows:
-
-- [../../product/mlp-01/prds/01-hypothesis-to-candidate.md](../../product/mlp-01/prds/01-hypothesis-to-candidate.md)
-- [../01-pr1-path-becomes-real-design.md](../01-pr1-path-becomes-real-design.md)
-- [02-core-primitives.md](02-core-primitives.md)
-- [03-staged-evaluation.md](03-staged-evaluation.md)
+This page defines the separations autokairos must preserve after the trader-system pod reset.
 
 ## Thesis
 
-autokairos must preserve four high-level separations:
-
-1. execution is not truth
-2. truth is not governance
-3. governance is not presentation
-4. runtime-local control is not progression control
-
-Every more specific boundary in this document is a consequence of those four.
-
-## Why This Spec Exists
-
-This spec exists to answer one question:
-
-**what separations must autokairos preserve so that execution, truth, governance, and
-presentation do not collapse into one fuzzy layer?**
-
-## The Four System Zones
-
-```mermaid
-flowchart LR
-    A["Bounded execution"] --> B["Durable truth"]
-    B --> C["External governance"]
-    C --> D["Downstream presentation"]
-```
-
-This flow is directional.
-
-- execution produces run history
-- durable truth preserves what matters
-- governance judges and changes standing
-- presentation reads downstream
-
-The arrows must not silently reverse.
-
-## Boundary Families
-
-The detailed boundaries are easiest to read in four families.
-
-### Identity and continuity boundaries
-
-- `AgentIdentity` vs `Candidate`
-- `Session` vs `Workspace`
-
-### Execution and truth boundaries
-
-- `Workspace` vs durable truth
-- `Stage` vs `StageBinding`
-- `Trace` vs `EvidenceRecord`
-
-### Governance boundaries
-
-- `EvidenceRecord` vs `PromotionDecision`
-- runtime-local approval vs promotion governance
-- runtime vs control plane
-- native runtime vs external runtime bridge
-
-### Product-shape boundaries
-
-- convenience mode vs promotable mode
-- system core vs presentation
-
-## PR1 Boundary Focus
-
-For the current implementation pass, four PR1 boundaries matter most.
-
-### 1. Surfaced path vs durable candidate
-
-- a surfaced path belongs to the runtime-side origination flow
-- a durable candidate begins only when the control plane materializes it
-- path appearance alone must not be treated as system-owned truth
-
-The agent system surfaces the path.
-
-The control plane makes it real.
-
-### 2. Runtime or session output vs durable candidate truth
-
-- chat output is not durable candidate truth
-- session memory is not durable candidate truth
-- workspace notes are not durable candidate truth
-- transient runtime artifacts are not durable candidate truth
-
-If the runtime can disappear and the path meaning disappears with it, PR1 has failed.
-
-### 3. Provenance capture vs later evaluation
-
-- provenance explains why the path appeared and where it came from
-- provenance is required in PR1
-- provenance does not count as judged evidence
-- provenance must not silently imply legitimacy
-
-PR1 preserves origin.
-
-PRD 2 decides what counts.
-
-### 4. Candidate existence vs legitimacy, promotion, and live meaning
-
-- candidate materialization proves:
-  this path is now real
-- candidate materialization does not prove:
-  this path counted,
-  this path is stronger,
-  this path is promotable,
-  this path is approved,
-  this path is live
-
-This is the most important anti-blur rule for the first implementation slice.
-
-## What This Spec Is Not
-
-This spec is not:
-
-- the full object model
-- the runtime-bridge interface
-- a UI composition guide
-- an operator runbook
-
-## 1. AgentIdentity vs Candidate
-
-These must not collapse into one object.
-
-### `AgentIdentity`
-
-The durable acting identity.
-
-### `Candidate`
-
-The promotable line of work.
-
-### Why the split matters
-
-The system must be able to say:
-
-- this agent worked on this candidate
-- this candidate advanced, stalled, or failed
-
-without implying they are the same thing.
-
-## 2. Session vs Workspace
-
-These must not collapse into one object.
-
-### `Session`
-
-The continuity surface across runs.
-
-### `Workspace`
-
-The bounded execution surface for one active attempt.
-
-### Why the split matters
-
-If `Session == Workspace`, then:
-
-- restart looks like identity loss
-- discarding a workspace destroys continuity
-- the current directory becomes the implicit source of truth
-
-The source layer argues strongly against all three.
-
-## 3. Workspace vs Durable Truth
-
-This is the single most important boundary.
-
-The workspace may contain:
-
-- instructions
-- temporary artifacts
-- generated files
-- task-local notes
-- runtime outputs
-
-But the workspace must not become the final authority on:
-
-- whether a path became a durable candidate
-- whether a run counts
-- whether evidence is legitimate
-- whether a candidate is promotable
-- whether governance requirements were satisfied
-
-### Durable truth must live outside the workspace
-
-At minimum, durable truth belongs in:
-
-- `Session`
-- `Candidate`
-- `Trace`
-- `EvidenceRecord`
-- `PromotionDecision`
-
-That is the only way to survive workspace loss without truth loss.
-
-## 4. Stage vs StageBinding
-
-These are related, but not identical.
-
-### `Stage`
-
-Governance meaning:
-
-- what legitimacy level is in effect?
-
-### `StageBinding`
-
-Execution meaning:
-
-- what permissions, connectors, evaluators, and side-effect rules are actually in force?
-
-### Why the split matters
-
-If `Stage` collapses into `StageBinding`, progression becomes a pile of environment configs.
-
-If `StageBinding` disappears, stage becomes a label with no operational force.
-
-The system needs both.
-
-## 5. Trace vs EvidenceRecord
-
-These must not collapse into one object.
-
-### `Trace`
-
-What happened during execution.
-
-### `EvidenceRecord`
-
-What counted from evaluation.
-
-### Why the split matters
-
-If raw traces become judged evidence automatically:
-
-- every log line becomes promotable fact
-- external evaluation disappears into runtime exhaust
-- the system loses the distinction between history and judgment
-
-PR1 stops before this boundary becomes active.
-
-That is exactly why candidate materialization must stay separate from evaluation meaning.
-
-## 6. EvidenceRecord vs PromotionDecision
-
-These must not collapse into one object.
-
-### `EvidenceRecord`
-
-What the system knows from evaluation.
-
-### `PromotionDecision`
-
-What the system decides because of that evidence.
-
-### Why the split matters
-
-Evidence may accumulate without immediate advancement.
-
-Advancement must never occur without evidence.
-
-That asymmetry is the point.
-
-## 7. Runtime-Local Approval vs Promotion Governance
-
-This distinction must stay explicit.
-
-### Runtime-local approval
-
-Examples:
-
-- tool permission prompts
-- shell approvals
-- local side-effect gates
-
-These belong inside execution.
-
-### Promotion governance
-
-Examples:
-
-- promote candidate to `paper`
-- pause candidate for review
-- reject or demote candidate
-
-These belong after execution.
-
-### Why the split matters
-
-If local approval and promotion collapse together, the system will confuse "allowed to act now"
-with "deserves to advance."
-
-Those are not the same question.
-
-## 8. Runtime vs Control Plane
-
-This is the largest product-level boundary.
-
-### Runtime side
-
-- live loop
-- workspace execution
-- tool and connector invocation
-- runtime-local controls
-
-### Control-plane side
-
-- candidate standing
-- session continuity records
-- trace ownership
-- evidence ownership
-- review work
-- promotion decisions
-- audit and policy records
-
-### Why the split matters
-
-If runtime and control plane collapse:
-
-- truth drifts into runtime state
-- governance drifts into runtime config
-- product boundaries become unclear
-
-## 9. Native Runtime vs External Runtime Bridge
-
-The system must also distinguish:
-
-- a runtime autokairos owns directly
-- a runtime autokairos governs through a bridge
-
-This is how autokairos can supervise work without claiming to own every upstream harness loop.
-
-## 10. Convenience Mode vs Promotable Mode
-
-Not every successful run should count equally.
-
-Examples of convenience surfaces:
-
-- raw host-local execution
-- ad hoc debugging modes
-- local scratch notes
-
-Examples of promotable surfaces:
-
-- serious staged execution
-- stage-valid trace
-- explicit evidence records
-
-This boundary is what prevents convenience from silently becoming governance truth.
-
-## 11. System Core vs Presentation
-
-Presentation is downstream.
-
-It may display:
-
-- candidate state
-- traces
-- evidence
-- review queues
-- decision history
-
-But it must not become the canonical place where:
-
-- stage logic lives
-- promotion is implicitly encoded
-- truth is stored
-
-The system must remain coherent even if there is no UI at all.
+The architecture fails if it collapses unlike things:
+
+- candidate system vs one run
+- image vs pod
+- capability package vs credential
+- stage vs binding
+- agent runtime unit vs pod
+- runtime unit role vs provider kind
+- agent loop policy vs central workflow engine
+- agent-to-agent communication vs evidence
+- brain session vs durable truth
+- trace vs evidence
+- order intent vs real execution
+- gateway decision vs venue result
 
 ## Boundary Matrix
 
-| Boundary | Left side | Right side | Why the split matters |
-| --- | --- | --- | --- |
-| identity | `AgentIdentity` | `Candidate` | actor is not the promotable object |
-| continuity | `Session` | `Workspace` | continuity must survive disposable execution |
-| truth | `Workspace` | durable records | execution is not final truth |
-| stage meaning | `Stage` | `StageBinding` | progression meaning differs from runtime semantics |
-| evaluation | `Trace` | `EvidenceRecord` | raw history is not judged evidence |
-| governance | `EvidenceRecord` | `PromotionDecision` | knowledge is not yet decision |
-| approval | runtime-local approval | promotion governance | permission is not advancement |
-| product | runtime | control plane | execution and governance must not collapse |
-| integration | native runtime | external bridge | governance can outlive one runtime implementation |
-| legitimacy | convenience mode | promotable mode | not every run should count equally |
-| presentation | system core | UI/projection | truth must not depend on presentation |
+| Boundary | Must not collapse because |
+| --- | --- |
+| `TraderSystemCandidate` vs `TradingSystemImage` | candidate standing changes while image versions are artifacts |
+| `TradingSystemImage` vs `TradingSystemPod` | the same image can run under many bindings |
+| `CapabilityPackage` vs credentials/secrets | packages may be shared; secrets must not be packaged |
+| `Stage` vs `StageBinding` | product legitimacy differs from concrete environment injection |
+| `AgentRuntimeUnit` vs `TradingSystemPod` | a pod may contain one or many agent participants, but the pod remains the stage-bound execution instance |
+| `runtime_unit_role` vs `provider_kind` | role defines why a unit exists; provider kind defines how it is invoked |
+| `AgentLoopPolicy` vs central workflow engine | policy bounds an autonomous loop; it does not direct every agent reasoning step |
+| `A2AAgentEndpoint` vs `CapabilityPackage` | a remote agent endpoint is not a packaged tool/context artifact |
+| `A2ATaskRecord` / `A2AArtifact` vs `EvidenceRecord` | agent communication output is not judged evidence |
+| `agent-to-agent message` vs live execution authority | collaboration does not grant exchange authority |
+| `SharedContextSurface` vs secrets | shared context can be mounted or communicated; secrets must remain in vault/binding/gateway layers |
+| `BrainSession` vs durable event log | provider context is not autokairos truth |
+| `HandsEnvironment` vs control plane | tools/sandboxes do not own governance |
+| `Trace` vs `EvidenceRecord` | history is not judgment |
+| `custom tool result` vs counted evidence | tool output may inform evaluation but does not count automatically |
+| `outcome/rubric result` vs legitimate trading evidence | artifact quality checks are not trading performance evidence |
+| `OrderIntent` vs exchange execution | agent proposal is not authority to trade |
+| `GatewayDecision` vs venue result | gateway acceptance is not the same as a successful exchange fill |
+| `CandidateVersion` vs live mutation | self-evolution must be clone/evaluate/promote |
 
-## Failure Modes / Invariants
+## Candidate Identity Boundary
 
-### Workspace-as-truth failure
+`TraderSystemCandidate` is the promotable system under judgment.
 
-- promotion inferred from files in the current workspace
-- auditability becomes weak
-- restart looks like amnesia
+It is not:
 
-### Runtime-as-control-plane failure
+- a strategy note
+- a chat transcript
+- an agent identity
+- a provider session
+- one execution attempt
 
-- governance hidden in runtime config
-- evaluator and review ownership become unclear
+## Image / Pod Boundary
 
-### Stage-as-label failure
+`TradingSystemImage` is the versioned artifact.
 
-- `backtesting`, `paper`, and `live` differ only in wording
-- risk increases without stronger governance
+`TradingSystemPod` is an execution instance assembled from image, packages, binding, brain session,
+hands environment, and tool proxy.
 
-### Approval-as-promotion failure
+If a live run requires rewriting the image into a different object, progression meaning is broken.
 
-- runtime-local permissions get mistaken for advancement
-- candidate standing drifts implicitly
+## Capability / Secret Boundary
 
-### UI-as-core failure
+`CapabilityPackage` may contain:
 
-- truth hides in dashboards or operator flows
-- headless operation becomes incoherent
+- tool contracts
+- context
+- skills
+- data access requirements
+- compatibility metadata
 
-## Summary
+It must not contain:
 
-The architecture should not be judged only by what objects it names.
+- API keys
+- exchange credentials
+- evaluator secrets
+- privileged live gateway tokens
 
-It should be judged by what it refuses to collapse.
+Secrets are injected through vault, binding, or gateway layers.
 
-autokairos is viable only if:
+## Stage / Binding Boundary
 
-- execution remains bounded
-- truth remains externalized
-- governance remains explicit
-- presentation remains downstream
+`Stage` answers product legitimacy:
 
-## Relationship To Adjacent Specs
+- backtest
+- paper
+- live
 
-This spec depends on:
+`StageBinding` answers operational injection:
 
-- [00-first-principles-architecture-thesis.md](00-first-principles-architecture-thesis.md)
-- [02-core-primitives.md](02-core-primitives.md)
+- data source
+- clock
+- evaluator
+- exchange adapter
+- risk envelope
+- tool proxy
+- credential policy
 
-It constrains:
+Each active binding should use one typed profile:
 
-- [03-staged-evaluation.md](03-staged-evaluation.md)
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
-- [08-candidate-contract.md](08-candidate-contract.md)
-- [09-trace-contract.md](09-trace-contract.md)
-- [10-evidence-record-contract.md](10-evidence-record-contract.md)
-- [11-promotion-decision-contract.md](11-promotion-decision-contract.md)
+- `BacktestBindingProfile`
+- `PaperBindingProfile`
+- `LiveBindingProfile`
+
+## Agent Runtime Unit / Pod Boundary
+
+`AgentRuntimeUnit` is one agent participant.
+
+`TradingSystemPod` is the whole execution instance of the trader-system candidate under one
+binding.
+
+This matters because a trader-system candidate may be:
+
+- single-agent
+- provider-native managed team
+- A2A-compatible distributed team
+
+The candidate and pod cannot collapse into any one participant's provider session, prompt, thread,
+or remote endpoint.
+
+`runtime_unit_role` and `provider_kind` must also remain separate.
+
+Examples:
+
+- `builder_agent` can run through `codex_cli`
+- `live_operator_agent` may later run through a different provider
+- `remote_specialist` can use `a2a_endpoint`
+
+Changing provider does not change role. Changing role changes the product meaning of the runtime
+unit.
+
+## Agent Loop Policy Boundary
+
+`AgentLoopPolicy` bounds an autonomous agent loop.
+
+It may define trigger, cadence, timeout, cancellation, retry, resume, trace export, tool posture,
+and stop conditions.
+
+It must not become a central workflow engine that tells the agent every reasoning step.
+
+## A2A / Evidence Boundary
+
+A2A-compatible tasks, messages, and artifacts are communication records.
+
+They may become:
+
+- trace events
+- artifact references
+- candidate materialization inputs
+- evaluator inputs
+
+They are not automatically:
+
+- counted evidence
+- promotion decisions
+- live gate approval
+- exchange execution authority
+
+Only the autokairos evaluation path can seal an A2A artifact into an `EvidenceRecord`.
+
+## Agent Card / Capability Package Boundary
+
+An `AgentCard`-like endpoint description tells autokairos what a remote agent says it can do.
+
+A `CapabilityPackage` is a versioned context/tool/skill/data-access artifact that autokairos can
+package, inspect, and eventually exchange.
+
+The two may reference each other, but they are not the same object.
+
+## Shared Context / Secret Boundary
+
+Multi-agent pods may use `SharedContextSurface` for:
+
+- market context
+- task instructions
+- package files
+- read-only reference material
+- shared artifacts
+
+They must not use shared context for:
+
+- exchange credentials
+- evaluator secrets
+- gateway signing keys
+- privileged live tokens
+
+## Brain / Hands / Session Boundary
+
+Claude Managed Agents makes this boundary explicit:
+
+- brain: model plus harness loop
+- hands: tools, sandbox, containers, gateways
+- session: durable event history
+
+autokairos translates that into:
+
+- `BrainSession`
+- `HandsEnvironment`
+- external `Trace` / control-plane records
+
+The provider session may be useful, but it is not the autokairos system of record.
+
+## Trace / Evidence Boundary
+
+`Trace` records what happened.
+
+`EvidenceRecord` records what was judged and whether it counted.
+
+No trace, tool result, outcome result, or agent report becomes evidence without evaluator
+adjudication.
+
+## Live Authority Boundary
+
+Live agent authority stops at `OrderIntent`.
+
+Real execution requires:
+
+```text
+OrderIntent -> risk gateway -> GatewayDecision -> exchange request when accepted -> ExecutionAttempt
+```
+
+The agent harness must not hold unrestricted exchange credentials.
+
+Rejected and clipped gateway decisions remain durable product records.
+
+## Self-Evolution Boundary
+
+The live pod may propose improvement.
+
+It may not mutate itself in place.
+
+Valid flow:
+
+```text
+proposal -> CandidateVersion -> backtest binding -> evidence -> promotion
+```
+
+## Acceptance Test
+
+This boundary spec is correct if a reader can explain:
+
+- why candidate is not image
+- why image is not pod
+- why packages do not carry secrets
+- why stage is not binding
+- why one agent runtime unit is not the whole pod
+- why A2A messages and artifacts are not counted evidence
+- why custom tool results are not counted evidence
+- why order intent is not execution
+- why self-evolution is versioned

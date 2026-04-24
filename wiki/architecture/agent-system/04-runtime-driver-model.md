@@ -73,7 +73,7 @@ Examples:
 | Driver posture | What it means | Strengths | Risks | autokairos posture |
 | --- | --- | --- | --- | --- |
 | `host-local` | runtime executes directly on the host machine | fast to develop, low setup friction | weak legitimacy boundary, host pollution | debug-only or convenience path |
-| `containerized-local` | runtime executes in a local worker container | strong local isolation, reproducible workspace, good first serious mode | container orchestration complexity | preferred first serious path |
+| `containerized-local` | runtime executes in a local worker container | strong local isolation, reproducible workspace, good first serious mode | container orchestration complexity | preferred first serious candidate-run mode |
 | `containerized-remote` | runtime executes in a remote container environment | stronger resource isolation, remote scale-out | higher ops complexity, remote coordination | later expansion path |
 | external bridge | runtime is reached through another session bridge or gateway | flexible integration with external harness ecosystems | extra indirection, runtime semantics may vary | supported through the bridge interface, not as a default assumption |
 

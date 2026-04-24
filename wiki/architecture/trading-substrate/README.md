@@ -5,7 +5,8 @@ generation.
 
 ## Why This Exists For MLP-01
 
-MLP-01 needs one live path that can really trade on Binance BTC perpetual futures.
+MLP-01 needs one promoted candidate to run as a bounded live `TradingSystemPod` on Binance BTC
+perpetual futures.
 
 The trading substrate exists to keep that first-venue reality available as stable operational
 surfaces rather than burying it inside runtime-local logic.
@@ -29,7 +30,7 @@ surfaces rather than burying it inside runtime-local logic.
 
 | PRD | What the trading substrate must support |
 | --- | --- |
-| PRD 3 | one promoted candidate can really trade on Binance BTC perpetual futures within explicit live limits |
+| PRD 3 | one promoted candidate can run as a bounded live `TradingSystemPod` on Binance BTC perpetual futures within explicit live limits |
 | PRD 4 | meaningful wake and intervention context can be grounded in live market, order, fill, account, and risk facts |
 
 ## Durable Truth, Interfaces, And Recovery Boundaries
@@ -39,7 +40,7 @@ The substrate keeps domain facts live even when the runtime is cold.
 Its interfaces sit between:
 
 - external venue and account systems
-- the agent system that needs stage-facing execution surfaces
+- the agent system that needs stage-binding execution surfaces
 - proactive operations that need meaningful signal candidates
 
 Recovery must assume degraded connectors, stale surfaces, and partial liveness.
@@ -57,10 +58,14 @@ The substrate should make those conditions explicit rather than hiding them behi
 
 The current active supporting specs are:
 
+- [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
 - [../specs/24-always-on-trading-substrate-contract.md](../specs/24-always-on-trading-substrate-contract.md)
 - [../specs/25-substrate-signal-contract.md](../specs/25-substrate-signal-contract.md)
 - [../specs/26-substrate-state-surface-contract.md](../specs/26-substrate-state-surface-contract.md)
 - [../specs/27-order-fill-surface-contract.md](../specs/27-order-fill-surface-contract.md)
+
+Read [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
+first when implementing Slice 3.
 
 ## Not In The Default Baseline
 

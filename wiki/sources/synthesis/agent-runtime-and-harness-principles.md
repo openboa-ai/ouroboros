@@ -6,6 +6,7 @@ engineering notes, and reference runtime products.
 ## Sources Used
 
 - [anthropic-managed-agents.md](../library/anthropic-managed-agents.md)
+- [google-agent2agent-a2a.md](../library/google-agent2agent-a2a.md)
 - [anthropic-effective-harnesses-for-long-running-agents.md](../library/anthropic-effective-harnesses-for-long-running-agents.md)
 - [anthropic-building-effective-agents.md](../library/anthropic-building-effective-agents.md)
 - [openai-next-evolution-of-the-agents-sdk.md](../library/openai-next-evolution-of-the-agents-sdk.md)
@@ -19,6 +20,7 @@ engineering notes, and reference runtime products.
 | Source | What the core system is | Where durable truth lives | Where autonomy lives | Where governance lives |
 | --- | --- | --- | --- | --- |
 | [Managed Agents](../library/anthropic-managed-agents.md) | A hosted agent system split into brain, hands, and session | Session service outside the harness container | The agent brain plus harness loop | Session interface, harness boundary, credential isolation |
+| [Google A2A](../library/google-agent2agent-a2a.md) | An interoperability protocol between independent agent systems | Task/message/artifact records outside either agent's hidden state | The participating remote agents | Agent card, task boundary, auth, communication policy |
 | [Effective Harnesses For Long-Running Agents](../library/anthropic-effective-harnesses-for-long-running-agents.md) | A harness workflow that keeps fresh sessions productive over long tasks | Progress files and setup artifacts in the workspace | The coding agent operating inside a prepared task environment | Harness setup, initializer flow, verification loop |
 | [Building Effective Agents](../library/anthropic-building-effective-agents.md) | A spectrum from workflows to agents | Mostly the surrounding application and tool outputs | The model where paths are open-ended | Code-defined workflows and tool design |
 | [Next Evolution Of The Agents SDK](../library/openai-next-evolution-of-the-agents-sdk.md) | A model-native harness plus native compute platform | Snapshots, manifests, and external runtime state | The model-native harness | Harness/compute separation, manifests, resumability surfaces |
@@ -39,6 +41,21 @@ the agent runtime. [Harness Engineering](../library/openai-harness-engineering.m
 idea indirectly by treating repository docs and human steering as part of the real system.
 
 Across these sources, the harness is the execution loop, not the full source of truth.
+
+### Agent-to-agent communication is not tool access
+
+[Google A2A](../library/google-agent2agent-a2a.md) adds a missing distinction for multi-agent
+systems. It treats a remote agent as an independent, often opaque participant with its own
+capabilities, task lifecycle, messages, and artifacts. The A2A/MCP comparison is the cleanest
+boundary: MCP-style protocols are for tools and resources; A2A-style protocols are for agents.
+
+For autokairos, that means:
+
+- a market-data lookup, backtest run, or exchange gateway request is a tool-proxy concern
+- a researcher agent, evaluator agent, risk reviewer agent, or external trader-system pod is an
+  agent-communication concern
+- A2A task results and artifacts are trace inputs unless the autokairos evaluator later seals them
+  as counted evidence
 
 ### Durable truth should survive the current run
 
@@ -111,6 +128,14 @@ They all speak to harness design, but they do not represent the same product pos
 | workspace surface | progress artifacts, feature lists, setup scripts | manifest-described workspace, `AGENTS.md`, skills | repo guidance, plugin surfaces, local project files | bound chat/thread session plus runtime workspace |
 | governance term | workflow constraints, credential isolation | harness/compute split, invariants, merge philosophy | approval mode, sandbox mode, user config | gateway ownership, pairing, session routing |
 
+| Concept | Google A2A |
+| --- | --- |
+| core loop | client agent delegates work to remote agent through task/message protocol |
+| durable truth | task, message, artifact, and status records outside either agent's hidden runtime |
+| execution boundary | remote agent endpoint with its own runtime and tools |
+| workspace surface | agent card, supported interfaces, skills, task artifacts |
+| governance term | communication policy, auth, task lifecycle, status updates |
+
 The main terminology warning is that the same word does not always indicate the same layer.
 `Harness` in the Anthropic/OpenAI essays is an execution-loop concept. In the product repos,
 similar responsibilities are sometimes spread across `CLI`, `plugin`, `Gateway`, `runtime`, or
@@ -129,6 +154,8 @@ similar responsibilities are sometimes spread across `CLI`, `plugin`, `Gateway`,
   [repo-anthropics-claude-code.md](../library/repo-anthropics-claude-code.md),
   [repo-openai-codex.md](../library/repo-openai-codex.md),
   [repo-openclaw.md](../library/repo-openclaw.md)
+- Agent communication / interoperability:
+  [google-agent2agent-a2a.md](../library/google-agent2agent-a2a.md)
 
 ## Tensions To Preserve
 
@@ -137,3 +164,5 @@ similar responsibilities are sometimes spread across `CLI`, `plugin`, `Gateway`,
 - How much workspace preparation is a reusable runtime concern versus product-specific scaffolding?
 - Which systems are truly runtime references, and which are partly control-plane products wearing a
   runtime face?
+- When should a multi-agent trader system use provider-native subagent threads versus
+  A2A-compatible independent endpoints?

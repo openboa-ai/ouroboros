@@ -1,273 +1,111 @@
-# MLP-01 Journey Map
+# Journey Map
 
 ## Purpose
 
-This page turns the locked MLP into a concrete operator trust journey.
-
-It must show:
-
-- the broken as-is journey
-- the target to-be journey
-- the exact trust breakpoints
-- the branches where the product can hold, reject, or interrupt without collapsing trust
+This page defines the trust journey for a weak human operator delegating to stronger
+trader-system candidates.
 
 ## Journey Thesis
 
-The journey problem is not lack of activity.
+Trust forms when the operator can see the same candidate system move across stronger bindings
+without losing identity, evidence, or control.
 
-The journey problem is that the operator currently has to carry trust and meaning manually across
-too many transitions.
+The journey fails when the operator must mentally stitch together:
 
-MLP-01 succeeds only if the product absorbs those trust transitions without hiding why they
-happened.
-
-The real journey question is:
-
-- when does the operator still feel like the runtime?
-- when does the operator finally feel safe delegating?
+- what the system is
+- which tools/context it used
+- what environment it ran in
+- what evidence counted
+- why it can trade live
+- how control returns during live operation
 
 ## As-Is Narrative
 
-Before the product, the operator is still living inside a mostly manual loop.
+Today the operator sees fragments:
 
-Ideas appear in bursts from discretion, feeds, rough automation, or ad hoc LLM help.
+- a coding agent proposes or writes something
+- a backtest runs somewhere
+- context and tools are mixed into prompts or local files
+- live deployment requires manual translation
+- the operator watches because they cannot tell what is really trusted
 
-The operator filters them manually, runs scattered checks, interprets the results by hand, and
-still has to decide whether anything deserves live risk.
-
-Even if some automation already exists, it does not feel like a system the operator can safely
-delegate to.
-
-It feels more like partial assistance wrapped around the same old responsibility.
-
-So the operator never really leaves the loop:
-
-- they still carry the meaning of each stage
-- they still decide what evidence matters
-- they still hesitate at live approval
-- they still keep shadowing live behavior because trust never fully lands
+The human carries trust manually across every transition.
 
 ## To-Be Narrative
 
-The target journey should feel different in one specific way:
+With autokairos:
 
-the operator is no longer manually carrying trust from step to step.
-
-Instead, one serious path appears, becomes real, earns legible evidence, reaches one meaningful
-live decision, and then continues under bounded delegation unless something important requires
-attention.
-
-The operator should feel:
-
-- this is one serious path, not idea spam
-- I understand what became real and why
-- I can tell what counts and what does not
-- I know exactly what I am approving for live
-- I can step away after approval because delegation now feels earned
-- if I am interrupted, it is for a meaningful reason and I can act decisively
-
-If the journey still feels like hidden manual supervision, the product has failed even if all the
-stages technically exist.
-
-## As-Is Journey Map
-
-| Stage | What the operator experiences now | Trust question in the operator's head | What trust failure feels like |
-| --- | --- | --- | --- |
-| Something appears | Ideas show up from many places in bursts | "Is this even worth tracking?" | Most ideas feel disposable or noisy |
-| Manual filtering | The operator decides what deserves attention | "Am I wasting time on noise?" | Filtering stays inconsistent and tiring |
-| Scattered checking | Backtests, paper checks, and notes live across uneven tools | "Did any of this actually mean something?" | Evidence is hard to compare and easy to over- or under-trust |
-| Manual legitimacy judgment | The operator decides what counts by hand | "What should count here?" | Counted versus non-counted remains fuzzy |
-| Separate live judgment | Live approval feels like a new risky leap | "What am I actually approving?" | Approval meaning is unclear and outside the product |
-| Shadow monitoring | The operator keeps checking because trust never lands | "Can I safely stop watching?" | The operator still feels like the real runtime |
+- a small candidate pool appears as durable trader-system candidates
+- each candidate exposes image, capability packages, and binding history
+- backtest and paper runs are understood as environment bindings for the same candidate artifact
+- counted evidence is external and visible
+- one live gate promotes a specific candidate into a bounded live pod
+- live actions pass through a gateway
+- wake and intervention preserve control
 
 ## To-Be Journey Map
 
-| Stage | What the operator experiences in the product | Trust question answered by the product | What the product must prove |
+| Stage | Operator question | Product proof | Trust failure if missing |
 | --- | --- | --- | --- |
-| Serious path appears | One concrete path is surfaced instead of a wall of ideas | "Why is this worth following?" | The system can originate something serious enough to matter |
-| Candidate becomes real | The path becomes a durable tracked candidate | "Is this now a real thing in the system?" | The operator does not have to hold the record manually |
-| Evidence becomes legible | Counted and non-counted evidence are separated clearly | "What should influence my trust?" | The product knows what counts and makes it visible |
-| Live decision becomes clear | One serious live gate appears with explicit meaning | "What exactly am I approving?" | The hard delegation decision is product-owned and bounded |
-| Delegation becomes believable | The promoted path runs within explicit limits | "Can I actually step away now?" | Normal live behavior no longer requires constant human shadowing |
-| Intervention stays decisive | The system wakes the operator only when something meaningful happens | "Why am I being interrupted, and what can I do now?" | Control returns cleanly without restoring full manual operation |
+| Candidate pool appears | What systems are being tried? | Durable `TraderSystemCandidate` records | output feels like chat residue |
+| Candidate artifact is inspectable | What exactly is this system? | `TradingSystemImage` and `CapabilityPackage` refs | operator cannot compare or rerun it |
+| Backtest binding runs | Did the same system get evaluated? | `StageBinding=backtest` with external trace | evaluation feels detached from the candidate |
+| Evidence is sealed | What counted? | `EvidenceRecord` from evaluator outside the pod | agent self-report becomes truth |
+| Live gate appears | What am I approving? | `PromotionDecision` for one candidate and binding | gate feels ceremonial |
+| Live pod runs | Is this really bounded live autonomy? | `OrderIntent -> GatewayDecision -> ExecutionAttempt` | agent has either no autonomy or unsafe authority |
+| Intervention remains decisive | Can I still control it? | pause, stop, override, audit | operator becomes shadow runtime |
 
 ## Canonical Trust Journey
 
-The first lovable journey is:
-
-```mermaid
-flowchart LR
-    A["One serious path appears"] --> B["Candidate becomes real"]
-    B --> C["Evidence becomes legible"]
-    C --> D["One live decision becomes clear"]
-    D --> E["Delegation becomes believable"]
-    E --> F["Intervention stays decisive"]
+```text
+small candidate pool
+-> one TraderSystemCandidate becomes inspectable
+-> same artifact runs under backtest binding
+-> evidence is externally judged
+-> live gate promotes one candidate
+-> live binding runs through bounded gateway
+-> wake/intervention preserves control
 ```
-
-This is not just a stage flow.
-
-It is the trust journey the operator must feel all the way through.
-
-If the operator still has to mentally reconnect the meaning between those moments, the journey is
-not lovable yet.
 
 ## Trust Breakpoints
 
-The first MLP either wins or loses trust at four moments.
-
-### 1. When a path first appears
-
-#### The operator's real question
-
-"Why did the system surface this now, and why should I care?"
-
-#### What must be visible
-
-- why the path exists at all
-- enough context to see that it is serious
-- enough specificity to distinguish it from commentary or spam
-
-#### What failure feels like
-
-The system looks chatty, generic, or noisy.
-
-#### Why this matters
-
-If the first moment feels weak, the operator will not even enter the journey seriously.
-
-### 2. When counted and non-counted evidence diverge
-
-#### The operator's real question
-
-"What should actually change my trust here?"
-
-#### What must be visible
-
-- what counted
-- what did not count
-- why the difference matters
-- how the path is getting stronger, weaker, or held back
-
-#### What failure feels like
-
-Runs happen, but the operator still cannot tell what matters.
-
-#### Why this matters
-
-This is the moment where the product either becomes a legitimate evaluator or stays a bag of runs.
-
-### 3. When the live gate asks for one serious decision
-
-#### The operator's real question
-
-"What exactly am I putting live, and on what basis?"
-
-#### What must be visible
-
-- what the candidate is
-- what evidence supports promotion
-- what live approval means
-- what the approved path is allowed to do
-
-#### What failure feels like
-
-Approval feels ceremonial, fuzzy, or detached from the real path.
-
-#### Why this matters
-
-If this moment is weak, the product has not actually absorbed the hard delegation decision.
-
-### 4. When the system wakes the operator during live operation
-
-#### The operator's real question
-
-"Why am I being interrupted, and what decisive action can I take?"
-
-#### What must be visible
-
-- the wake reason
-- why it matters now
-- what actions are available
-- what happens if no action is taken
-
-#### What failure feels like
-
-Wakes are noisy, vague, or too slow to act on confidently.
-
-#### Why this matters
-
-If this moment is weak, the operator will fall back into constant manual shadowing.
+1. Candidate identity:
+   Can the operator tell this is a durable trader-system candidate, not a disposable message?
+2. Capability packaging:
+   Can the operator tell what context/tools/skills/data access were used?
+3. Binding continuity:
+   Can the operator tell backtest, paper, and live are running the same artifact?
+4. Evidence legitimacy:
+   Can the operator tell what counted and why?
+5. Live authority:
+   Can the operator tell the agent is bounded by the gateway?
+6. Intervention:
+   Can the operator stop or override without rebuilding trust manually?
 
 ## Failure Branches
 
-The journey must preserve trust even when the happy path does not happen.
-
-### Hold
-
-- the path remains visible
-- it is not yet delegable
-- the operator can tell why progression stopped
-- trust is preserved because the product makes non-promotion legible
-
-### Reject
-
-- the path is explicitly disqualified
-- the operator can explain why it should not count
-- trust is preserved because the system rejects visibly rather than failing silently
-
-### Intervene
-
-- live delegation is interrupted for a meaningful reason
-- the operator can inspect that reason and act decisively
-- control returns cleanly without collapsing back into permanent manual oversight
+- `Hold`: candidate remains durable but lacks enough legitimate evidence.
+- `Reject`: candidate is disqualified with explicit evidence/rationale.
+- `Clone`: candidate proposes a new version for re-evaluation.
+- `Intervene`: live pod is paused, stopped, or overridden with audit.
 
 ## Reference Scenario
 
-Use this reference scenario when evaluating whether the journey is vivid enough.
+For Binance BTC perpetual futures, the same candidate image can run with:
 
-### Scenario
+- backtest binding: historical market data, simulated exchange, evaluator
+- paper binding: live market data, paper gateway, paper risk envelope
+- live binding: live market data, live gateway, strict risk envelope, wake policy
 
-- the operator is away from the desk for a meaningful period
-- the operator is still mostly manual today, even if they already use some alerts and rough
-  automation
-- Binance BTC perpetual futures remain the first market being watched
-- a market condition change produces one concrete hypothesis worth following
-- the operator later reviews one serious candidate path, not a wall of ideas
-- the operator can see what counted before facing one live decision
-- after approval, the system runs live until either normal bounded execution continues or a
-  meaningful wake is required
-
-### Why this scenario matters
-
-It anchors the product around the hardest believable promise:
-
-- the operator is not continuously watching
-- the agent still originates something worth following
-- the system still progresses it credibly
-- the operator still feels safe enough to delegate bounded live behavior
-
-It also keeps first-market specificity where it belongs:
-
-- inside the wedge and reference scenario
-- not inside the primary journey thesis
-- not inside the core trust breakpoint definitions
+The candidate's identity must remain stable across those bindings.
 
 ## Journey Acceptance Test
 
-The journey is good enough only if one reader can explain:
+A reader of this page should be able to explain:
 
-- what the operator's current journey feels like before the product
-- what changes emotionally and operationally in the target journey
-- where trust breaks today
-- where trust must be earned in the target product
-- what the operator is really asking at each critical moment
-- what happens when the path is held, rejected, or interrupted
-- why the product is lovable only if the operator can delegate without becoming the runtime
-
-without falling back to architecture jargon or private implementation knowledge.
-
-## Read Next
-
-1. [03-story-map-and-release-slices.md](03-story-map-and-release-slices.md)
-2. [04-scope-and-cutline.md](04-scope-and-cutline.md)
-3. [05-success-metrics-and-launch-bar.md](05-success-metrics-and-launch-bar.md)
+- why the candidate is a system, not a strategy note
+- why tools/context are packaged
+- why backtest/paper/live are bindings
+- why evidence must be external
+- why live agent authority is bounded
+- why intervention is part of the lovable journey

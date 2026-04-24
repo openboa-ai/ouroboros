@@ -1,405 +1,243 @@
 # Runtime Bridge Interface
 
-This page defines the interface autokairos needs between its control plane and whatever runtime
-actually executes the agent loop.
+## Purpose
 
-It follows:
+This page defines the stable interface between the control plane and external or local execution
+runtimes.
 
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [06-containerized-execution.md](06-containerized-execution.md)
-- [03-staged-evaluation.md](03-staged-evaluation.md)
-- [04-boundaries.md](04-boundaries.md)
-- [../sources/library/repo-multica.md](../../sources/library/repo-multica.md)
-- [../sources/library/repo-openclaw.md](../../sources/library/repo-openclaw.md)
-- [../sources/library/openai-next-evolution-of-the-agents-sdk.md](../../sources/library/openai-next-evolution-of-the-agents-sdk.md)
-- [../sources/library/anthropic-managed-agents.md](../../sources/library/anthropic-managed-agents.md)
-- [../sources/library/repo-safety-research-automated-w2s-research.md](../../sources/library/repo-safety-research-automated-w2s-research.md)
-
-It is also informed by additional official Docker documentation:
-
-- [Docker Compose](https://docs.docker.com/compose/)
-- [How Compose works](https://docs.docker.com/compose/intro/compose-application-model/)
-- [Running containers](https://docs.docker.com/engine/containers/run/)
-- [Bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)
+It is paired with
+[../06-runtime-provider-adapter-feasibility.md](../06-runtime-provider-adapter-feasibility.md),
+which turns provider names into concrete invocation surfaces.
 
 ## Thesis
 
-autokairos should define one explicit runtime-bridge interface that:
+The runtime bridge launches and supervises `TradingSystemPod` sessions.
 
-- takes governed execution state from the control plane
-- turns it into a live runtime session
-- keeps run visibility outside the runtime
-- does not become the source of candidate truth or promotion authority
+It does not own candidate truth, evidence truth, promotion authority, or live execution authority.
 
-This interface is where autokairos becomes executable without collapsing into one provider's CLI,
-one container instance, or one orchestration tool.
+The bridge also does not micromanage each agent reasoning step. It applies an `AgentLoopPolicy`
+that bounds an autonomous agent loop.
 
-## Why This Spec Exists
+## Bridge Input
 
-The source set points to the same boundary from several angles:
+The bridge accepts a governed pod launch request.
 
-- Anthropic separates `session`, `harness`, and `sandbox`
-- OpenAI separates `harness` from `compute`
-- OpenClaw separates Gateway-owned session/control state from ACP-backed runtime sessions
-- Multica separates daemon/runtime-bridge behavior from higher-level task and runtime records
-- W2S separates the worker container from the server-side evaluator and findings surfaces
+Minimum fields:
 
-Taken together, these sources imply that autokairos cannot let the runtime process itself become:
-
-- the candidate registry
-- the session authority
-- the trace sink
-- the evaluator
-- the promotion engine
-
-So it needs an interface layer that is powerful enough to start real runs, but narrow enough to
-keep truth and governance elsewhere.
-
-## What The Runtime Bridge Is
-
-The runtime bridge is the per-run execution contract between:
-
-- the autokairos control plane
-- the selected execution environment
-- the chosen harness/runtime implementation
-
-It is the layer that:
-
-- chooses the execution driver
-- materializes the workspace
-- launches or wakes the runtime
-- streams trace outward
-- reports liveness and completion back to the control plane
-
-## What This Spec Is Not
-
-The runtime bridge is not:
-
-- a candidate registry
-- a promotion engine
-- a source of durable evidence
-- a full control plane
-- a dashboard
-- a Docker Compose file
-
-This last point matters enough to state explicitly.
-
-## Compose Is Optional, Not Core
-
-Official Docker docs describe Compose as a tool for defining and running **multi-container
-applications** and their application model. That makes it useful for local support stacks, not as
-the fundamental per-run runtime contract.
-
-For autokairos, `docker compose` can be useful for local development when you want to start things
-such as:
-
-- an evaluator API
-- a local database
-- an artifact store
-- a dashboard or observability stack
-
-But Compose should not be the primary abstraction the runtime bridge speaks.
-
-The runtime bridge should speak in terms of:
-
-- execution driver
-- worker image
-- mount policy
-- session attach/resume
-- trace streaming
-- liveness
-- teardown
-
-If Compose is present, it should remain a convenience layer around supporting services, not the
-authoritative execution protocol.
-
-## Interface Boundary
-
-The runtime bridge should sit between the control plane and the execution environment.
-
-```mermaid
-flowchart LR
-    A["Control plane"] --> B["Runtime bridge interface"]
-    B --> C["Execution driver"]
-    C --> D["Worker image / runtime session"]
-    D --> E["Bounded workspace"]
-    D --> F["External trace stream"]
-    F --> A
-```
-
-The bridge interface is not the same as the driver.
-
-- the **interface** is the stable autokairos contract
-- the **driver** is the implementation path behind that contract
-
-## Required Inputs
-
-The runtime bridge should accept a governed execution request with at least these fields.
-
-### Identity and continuity
-
-- `agent_identity_ref`
 - `candidate_ref`
-- `session_ref`
-
-### Stage and semantics
-
+- `trading_system_image_ref`
+- `capability_package_refs`
+- `candidate_version_ref`
 - `stage`
-- `stage_binding`
+- `stage_binding_ref`
+- `agent_runtime_units`
+- `agent_loop_policy_ref`
+- per-runtime-unit `runtime_unit_role`
+- per-runtime-unit `provider_kind`
+- per-runtime-unit invocation surface
+- per-runtime-unit auth reference
+- per-runtime-unit sandbox and working-directory policy
+- per-runtime-unit output contract reference
+- per-runtime-unit brain profile
+- per-runtime-unit hands environment spec
+- `tool_proxy_policy`
+- `pod_communication_policy`
+- `shared_context_surface_refs`
+- `trace_destination`
+- `timeout_policy`
+- `interrupt_policy`
 
-### Workspace shaping
+## Bridge Output
 
-- `workspace_spec`
-- `mount_policy`
-- `instruction_surfaces`
+The bridge returns:
 
-### Execution environment
-
-- `execution_mode`
-  - `host-local`
-  - `containerized-local`
-  - `containerized-remote`
-- `worker_image_ref` when container-backed
-- runtime/provider selection data
-
-### Governance-linked parameters
-
-- timeout / max duration
-- interrupt policy
-- trace destination
-- approval hooks if required by the stage
-
-## Required Outputs
-
-The runtime bridge should produce external records and a narrow operational handle.
-
-### Operational output
-
+- `pod_session_ref`
+- `brain_session_ref`
+- `hands_environment_ref`
+- `agent_runtime_unit_refs`
 - `execution_handle`
-  an interface-local handle for an active execution attempt
-
-This is not a core primitive. It is a bridge-local reference used to:
-
-- query liveness
-- interrupt
-- stop
-- attach to an active run
-
-### Externalized outputs
-
-- trace events
-- runtime status transitions
-- heartbeat/liveness signals
-- completion or failure result
-- artifact references if outputs were produced
-
-These outputs should flow outward while the runtime is still active, not only after it exits.
+- trace stream reference
+- artifact export references
+- completion status
 
 ## Required Operations
 
-The runtime bridge interface should support the following operations.
+| Operation | Purpose |
+| --- | --- |
+| `probeDriver` | confirm the selected provider/container/external bridge is available |
+| `resolveRuntimeProviderAdapter` | map concrete `provider_kind` to a callable adapter implementation |
+| `resolveAgentLoopPolicy` | apply the loop envelope without turning the bridge into a step-by-step orchestrator |
+| `prepareHandsEnvironment` | materialize tools, package files, mounts, and network policy |
+| `prepareAgentRuntimeUnits` | resolve one or more brain/hands/session participants |
+| `startPod` | launch a `TradingSystemPod` from image, packages, and binding |
+| `routeAgentCommunication` | route task/message/artifact exchange according to the pod's communication policy |
+| `attachOrResume` | reattach to a resumable brain/session when allowed |
+| `streamTrace` | emit external trace events while the pod runs |
+| `interruptPod` | pause or stop current execution |
+| `exportArtifacts` | move outputs out of runtime-local storage |
+| `teardown` | discard or checkpoint the hands environment |
 
-### 1. `probeDriver`
+## Concrete Provider Kinds
 
-Ask whether the selected driver is available and healthy.
+The bridge may support only provider kinds that map to a known invocation surface.
 
-Examples:
+| `provider_kind` | Invocation surface | First use |
+| --- | --- | --- |
+| `codex_cli` | local subprocess via `codex exec` | first real local provider adapter |
+| `codex_sdk_ts` | server-side TypeScript SDK | richer runtime integration after bootstrap |
+| `codex_cloud` | Codex cloud task submission | later background engineering or artifact work |
+| `claude_agent_sdk_python` | Python Claude Agent SDK | production-oriented Claude adapter |
+| `claude_agent_sdk_ts` | TypeScript Claude Agent SDK | production-oriented Claude adapter |
+| `claude_cli` | local Claude CLI prompt mode | prototype only when installed |
+| `openclaw_acp` | ACP/OpenClaw bridge | later external harness sessions |
+| `a2a_endpoint` | independent remote-agent endpoint | later communication participant |
+| `local_process` | local internal process | fixtures or first-party runtime workers |
 
-- local container driver reachable
-- remote container backend reachable
-- native CLI present
-- external bridge endpoint reachable
+Driver choice must not change product truth. It must change only invocation mechanics.
 
-### 2. `prepareWorkspace`
+## Provider Rule
 
-Materialize the bounded workspace before runtime activation.
+Provider selection is per `AgentRuntimeUnit`, not per pod.
 
-This includes:
+`runtime_unit_role` is separate from `provider_kind`.
 
-- filesystem layout
-- bind mounts or staged copies
-- instruction surfaces
-- stage-specific connectors/tools
-- output locations
+Allowed initial roles are:
 
-### 3. `startExecution`
+- `builder_agent`
+- `evaluation_runner`
+- `live_operator_agent`
+- `critic_agent`
+- `remote_specialist`
 
-Start a new execution attempt under the selected driver.
+`runtime_unit_role` answers why the unit exists. `provider_kind` answers how it is invoked.
 
-This should:
+PR1 uses `builder_agent` with `codex_cli` and explicit `gpt-5.4` until feasibility evidence
+changes.
 
-- select the runtime path
-- create or start the worker host
-- attach the runtime session to the prepared workspace
-- begin streaming trace outward immediately
+PR3 requires `live_operator_agent`; a builder-agent adapter cannot be silently reused as a live
+trading loop.
 
-### 4. `attachOrResume`
+One pod may launch mixed participants:
 
-Reattach to an active or resumable runtime session when continuity exists.
+| Runtime unit role | Example provider / driver |
+| --- | --- |
+| `builder_agent` | `codex_cli` or `codex_sdk_ts` |
+| `evaluation_runner` | `local_process`, `claude_agent_sdk_python`, or evaluator service adapter |
+| `live_operator_agent` | `local_process`, `claude_agent_sdk_ts`, or future managed-agent driver behind gateway policy |
+| `critic_agent` | `claude_agent_sdk_python`, `codex_sdk_ts`, or local evaluator helper |
+| `remote_specialist` | `a2a_endpoint` |
 
-This should be anchored in:
+The runtime bridge may still choose a simple single-provider implementation for MLP-01, but the
+interface must not make same-provider teams the only valid shape.
 
-- `Session`
-- control-plane execution state
-- externally visible trace/progress
+For first implementation, prefer `codex_cli` because it is locally available and can emit structured
+output through a schema. Claude Agent SDK is the second serious adapter once dependency and API-key
+setup are explicit.
 
-It must not rely solely on one prior container still being alive.
+## Multi-Agent Admission Rule
 
-### 5. `streamTrace`
+MLP-01 starts single-agent.
 
-Emit execution events to the external trace sink in a normalized way.
+The runtime bridge may launch multiple `AgentRuntimeUnit` records only when a current PRD
+acceptance criterion cannot be met by one runtime unit.
 
-At minimum this should cover:
+Admission requires:
 
-- model output
-- tool/connector calls
-- failures
-- interruptions
-- status transitions
+- explicit `runtime_unit_role` for each unit
+- one `PodCommunicationPolicy`
+- `TeamTrace` export
+- shared context declared as non-secret
+- no communication path to live authority except `ToolProxy` / gateway
 
-### 6. `heartbeat`
+## Agent Loop Rule
 
-Report bridge-side liveness for active execution.
+`AgentLoopPolicy` is the active loop contract.
 
-Multica is especially useful here: daemon heartbeats and task progress are outside the harness and
-therefore visible to the platform.
+The bridge must support these loop modes:
 
-autokairos should do the same.
+| Loop mode | Meaning |
+| --- | --- |
+| `one_shot_builder` | run once and produce candidate materialization input |
+| `bounded_batch_evaluation` | run until evaluation trace is complete, timeout, or failure |
+| `continuous_live` | keep a promoted live pod active while heartbeat, limits, and gateway policy remain valid |
 
-### 7. `interruptExecution`
+The policy defines trigger, cadence, timeout, cancellation, retry, resume, trace export, tool
+posture, and stop conditions.
 
-Interrupt an active run without losing external visibility into what was happening.
+It must not define the agent's internal reasoning steps.
 
-Interrupt should be distinct from destroy.
+## Communication Rule
 
-### 8. `stopExecution`
+`PodCommunicationPolicy` is one unified policy over all runtime units.
 
-End the active execution attempt cleanly when possible.
+It may allow:
 
-### 9. `teardownWorkspaceHost`
+- no inter-agent channel
+- coordinator-routed provider-native threads
+- A2A-compatible task/message/artifact exchange
+- control-plane mediated messages
+- shared read-only context surfaces
 
-Stop and clean up the workspace host when the run is complete, failed, or abandoned.
+It may forbid:
 
-This is where disposable-workspace discipline is enforced.
+- direct lateral messaging
+- shared writeable context
+- live-stage communication channels that bypass the gateway
+- untraced artifact exchange
 
-## Driver Modes
+Communication outputs are trace inputs first. They do not become evidence, promotion, live
+approval, or execution authority without the relevant autokairos subsystem.
 
-The interface should allow multiple drivers behind one contract.
+## Tool Proxy Rule
 
-## 1. Host-local driver
+The pod does not get unrestricted tool access.
 
-Use for:
+For trading:
 
-- harness debugging
-- runtime development
-- non-legitimate convenience runs
+```text
+BrainSession -> tool request / OrderIntent -> ToolProxy -> gateway/evaluator -> result event
+```
 
-This driver should be supported, but clearly marked as weak legitimacy.
+The bridge must make custom tool requests traceable and must not treat tool success as counted
+evidence.
 
-## 2. Containerized-local driver
+## Credential Rule
 
-Use for:
+Credentials are resolved through vault, binding, or gateway surfaces.
 
-- default serious local execution
-- most `backtesting`
-- most `paper`
+They are not stored in:
 
-This should likely be the default driver for stage-valid local runs.
+- `TradingSystemImage`
+- `CapabilityPackage`
+- provider prompt context
+- container-visible package files
+- shared context surfaces
 
-## 3. Containerized-remote driver
+## Truth Rule
 
-Use for:
+Runtime-local state may help execution continue.
 
-- scalable remote workers
-- expensive or parallel runs
-- stronger infrastructure separation
+It must not be the only durable record of:
 
-This is the natural extension of the same bridge contract outward.
+- candidate identity
+- image/package refs
+- binding used
+- trace
+- evidence
+- promotion
+- live execution
+- wake/intervention
+- multi-agent task/message/artifact exchange
 
-## Failure Modes / Invariants
+## Acceptance Test
 
-Regardless of the driver, the bridge should preserve these invariants.
+The runtime bridge is correct if an implementer can launch a pod without deciding:
 
-### 1. Candidate truth stays outside
+- what the candidate means
+- what evidence counts
+- who owns live authority
+- how self-evolution is promoted
+- whether the run is a builder, evaluator, or live operator loop
+- how the autonomous loop is bounded without central step orchestration
 
-The bridge can execute work for a candidate. It does not own candidate lineage.
-
-### 2. Session continuity stays outside the current workspace host
-
-The bridge may attach to or help resume a session, but it does not define session truth by itself.
-
-### 3. Trace is external while the run is alive
-
-The run should not need to finish before the system can see what it is doing.
-
-### 4. Evidence is derived later
-
-The bridge emits trace and execution state. It does not issue final evidence or promotion
-judgments.
-
-### 5. Stage semantics are injected, not inferred
-
-The bridge should receive `StageBinding`; it should not guess risk level from prompt wording.
-
-## Bind-Mount And Workspace Cautions
-
-Official Docker docs matter here.
-
-`docker run` bind mounts are read-write by default, and bind-mounting over an existing container
-path obscures the pre-existing container contents at that path.
-
-That means autokairos should not treat mount configuration as an incidental implementation detail.
-The runtime bridge must define mount policy explicitly:
-
-- what is mounted read-only
-- what is writable
-- what paths must not be obscured
-- what should be copied into the workspace instead of mounted directly
-
-This is one more reason the bridge interface must own `mount_policy` explicitly.
-
-## Compose Guidance
-
-If a local development stack needs:
-
-- evaluator API
-- local DB
-- object store
-- dashboard
-- metrics/log aggregation
-
-then `docker compose` is reasonable.
-
-But Compose should remain outside the runtime-bridge contract itself.
-
-Put differently:
-
-- `docker compose` may orchestrate supporting services
-- the runtime bridge should still talk about one execution attempt at a time
-
-autokairos should not let per-run legitimacy depend on the details of a Compose file merge graph.
-
-## Design Consequence
-
-After this document, the most natural next contract pages are:
-
-1. `candidate contract`
-2. `trace contract`
-3. `evidence contract`
-4. `promotion decision contract`
-5. concrete driver contract for container-backed execution
-
-Those should all be written assuming this runtime-bridge interface exists.
-
-## Relationship To Adjacent Specs
-
-This spec depends on:
-
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
-- [06-containerized-execution.md](06-containerized-execution.md)
-- [04-boundaries.md](04-boundaries.md)
-
-It is adjacent to:
-
-- [08-candidate-contract.md](08-candidate-contract.md)
-- [09-trace-contract.md](09-trace-contract.md)
+Those decisions belong above the bridge.

@@ -1,6 +1,6 @@
 # Product Requirements
 
-These PRDs define MLP-01 as user-journey contracts.
+These PRDs define MLP-01 as trader-system trust contracts.
 
 They are not subsystem specs, and they are not the top-level product-definition layer.
 
@@ -26,23 +26,33 @@ Each PRD answers:
 
 ## PRD Order
 
-1. [01-hypothesis-to-candidate.md](01-hypothesis-to-candidate.md)
-   Agent-generated strategy ideas must become real candidates rather than disposable chat output.
-2. [02-candidate-evaluation-and-live-gate.md](02-candidate-evaluation-and-live-gate.md)
-   Candidates must accumulate counted evidence and reach a clear live-gate decision.
-3. [03-live-deployment-and-autonomous-execution.md](03-live-deployment-and-autonomous-execution.md)
-   A promoted candidate must actually run live within explicit risk and policy limits.
-4. [04-operator-trust-wake-and-intervention.md](04-operator-trust-wake-and-intervention.md)
-   The operator must trust, inspect, and intervene without becoming the permanent runtime loop.
+1. [01-trader-system-candidate-becomes-real.md](01-trader-system-candidate-becomes-real.md)
+   A `TraderSystemCandidate` must become durable and inspectable rather than disappearing into
+   harness output.
+2. [02-candidate-becomes-externally-evaluated.md](02-candidate-becomes-externally-evaluated.md)
+   The candidate must run under an evaluation binding and produce externally judged evidence.
+3. [03-bounded-live-trading-system-pod.md](03-bounded-live-trading-system-pod.md)
+   One promoted candidate must run as a bounded live `TradingSystemPod`.
+4. [04-live-pod-remains-controllable.md](04-live-pod-remains-controllable.md)
+   The live pod must remain inspectable, interruptible, auditable, and version-safe.
 
 ## PRD Rule
 
 Architecture and specs should only add detail that is necessary to implement one of these journey
 contracts safely.
 
-While the MLP is being locked, do not deepen PRDs in ways that reopen:
+Implementation should begin from:
+
+- [../07-implementation-plan.md](../07-implementation-plan.md)
+- [../08-greenfield-bootstrap-plan.md](../08-greenfield-bootstrap-plan.md)
+
+and not by jumping directly from PRDs into assumed legacy code structure.
+
+Do not deepen PRDs in ways that reopen:
 
 - first market scope
-- hypothesis origin
+- `TraderSystemCandidate` as candidate identity
+- `TradingSystemPod` as execution unit
+- `CapabilityPackage` as context/tool artifact boundary
 - live gate placement
-- autonomy posture
+- bounded live authority posture

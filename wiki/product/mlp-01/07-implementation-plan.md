@@ -2,210 +2,191 @@
 
 This page is the canonical implementation entry point for MLP-01.
 
-It turns the locked product stack into one build sequence and first PR breakdown that an
-implementer can execute without rediscovering product meaning.
-
-It is downstream of:
-
-- [00-mlp-brief.md](00-mlp-brief.md)
-- [01-problem-jtbd-and-value.md](01-problem-jtbd-and-value.md)
-- [02-journey-map.md](02-journey-map.md)
-- [03-story-map-and-release-slices.md](03-story-map-and-release-slices.md)
-- [04-scope-and-cutline.md](04-scope-and-cutline.md)
-- [05-success-metrics-and-launch-bar.md](05-success-metrics-and-launch-bar.md)
-- [06-risks-and-open-questions.md](06-risks-and-open-questions.md)
-- [prds/README.md](prds/README.md)
-- [../../architecture/README.md](../../architecture/README.md)
-
-Old subsystem-level implementation plans remain background only.
-
-They are not the current canonical build path.
-
 ## Goal
 
-Build one believable delegated live path in the same order the user must learn to trust it.
+Build one believable delegated trader-system pod in the same order the operator must learn to trust
+it.
 
-That means implementation must follow the locked trust-proof milestones rather than subsystem
-taxonomy.
+The implementation contract is:
 
-The active implementation contract is:
+```text
+TraderSystemCandidate
+-> TradingSystemImage + CapabilityPackage
+-> StageBinding run
+-> external evidence
+-> promotion decision
+-> bounded live TradingSystemPod
+-> wake/intervention/audit
+```
 
-- PRD 1 through PRD 4 are fixed
-- architecture is downstream support, not competing truth
-- one PR should close one visible milestone whenever possible
-- plumbing-only PRs are allowed only when they directly unblock the current milestone
-
-There is also one operational prerequisite before implementation PRs begin:
-
-- normalize the current repo state so canonical docs are tracked or intentionally staged rather than
-  living inside an effectively untrusted `wiki/` state
-
-This prerequisite is not product work, but it is required before serious implementation starts.
+Old subsystem-level implementation plans are background only.
 
 ## Build Order
 
 The build order is fixed.
 
-It must not be reordered for technical convenience.
+### 0. Bootstrap Substrate
 
-### 1. Slice 1 / PRD 1: Path Becomes Real
+Create the minimal code substrate for:
 
-Build the minimum path that proves:
+- candidate/image/package durable records
+- capability package manifest records
+- agent loop policy references
+- local store
+- operator inspect surface
+- runtime provider adapter seam
+- trace/evaluator seam
 
-- one serious agent-originated path can surface
-- that path becomes one durable candidate
-- provenance is inspectable
-- the operator no longer carries the record manually
+This is plumbing-first because the repo is a docs-only reset baseline.
 
-This stage does **not** prove legitimacy, promotion, live execution, or intervention.
+Bootstrap may keep provider execution as a seam, but PR1 cannot treat "Codex" or "Claude" as a
+complete implementation plan. Real provider work must follow
+[../../architecture/06-runtime-provider-adapter-feasibility.md](../../architecture/06-runtime-provider-adapter-feasibility.md).
 
-### 2. Slice 2 / PRD 2: Path Becomes Trustworthy
+### 1. Slice 1: Trader-System Candidate Becomes Real
 
-Build the minimum path that proves:
+Prove:
 
-- trace can become judged evidence
-- counted versus non-counted evidence is visible
-- candidate status meaning is readable:
-  stronger, weaker, hold, reject
-- one explicit live gate exists with clear promotion meaning
+- one candidate system is durable
+- image and capability package references are inspectable
+- one `builder_agent` runtime unit can be selected without implying live-agent semantics
+- provider output is not the system of record
+- failed provider/schema/materialization runs are inspectable without creating a false candidate
 
-This stage does **not** yet prove real live execution or wake/control recovery.
+### 2. Slice 2: Candidate Becomes Externally Evaluated
 
-### 3. Slice 3 / PRD 3: Path Can Really Trade
+Prove:
 
-Build the minimum path that proves:
+- same candidate artifact runs under evaluation binding
+- evaluation uses a `bounded_batch_evaluation` loop policy
+- trace is externalized
+- evidence is judged outside the pod
+- live gate meaning is evidence-backed
 
-- one governed request can become real live execution
-- Binance BTC perpetual futures is a usable first-venue substrate
-- routine live actions can continue without per-action operator approval
-- explicit live limits and bounded autonomy are real
+### 3. Slice 3: One Candidate Runs As Bounded Live Trader-System Pod
 
-This stage does **not** yet prove trustworthy wake or control recovery.
+Prove:
 
-### 4. Slice 4 / PRD 4: Delegation Stays Safe Under Live Conditions
+- promoted candidate runs under live binding
+- live runtime uses a `live_operator_agent` role and `continuous_live` loop policy
+- agent can produce `OrderIntent`
+- autokairos gateway turns every order intent into durable `GatewayDecision`
+- `ExecutionAttempt` links gateway decisions, not just provider status
+- live status is inspectable
 
-Build the minimum path that proves:
+### 4. Slice 4: Live Pod Remains Controllable
 
-- meaningful wake reasons exist
-- the operator can inspect the situation quickly
-- pause, stop, and override are decisive
-- operator action and wake history remain durable and auditable
+Prove:
 
-This stage closes the lovable proof.
+- wake reason is meaningful
+- operator can inspect, pause, stop, override
+- action history is auditable
+- self-evolution creates candidate versions for re-evaluation
 
 ## Interfaces To Define First
 
-The first implementation-critical interface set is intentionally small.
+| Interface / object | Why it must exist first |
+| --- | --- |
+| `TraderSystemCandidate` | promotable candidate trading system |
+| `TradingSystemImage` | stable versioned system artifact |
+| `CapabilityPackage` | packageable context/tool/skill/data-access artifact |
+| `CapabilityPackageManifest` | declared provenance, permissions, allowed stages, tool/data access, and forbidden contents for package injection |
+| `StageBinding` | backtest/paper/live execution semantics |
+| `BacktestBindingProfile` / `PaperBindingProfile` / `LiveBindingProfile` | typed binding profiles so stage injection is not an untyped bag of values |
+| `TradingSystemPod` | stage-bound execution instance |
+| `AgentRuntimeUnit` | one agent participant and its selected provider/driver inside or beside the pod |
+| `runtime_unit_role` | why a runtime unit exists: `builder_agent`, `evaluation_runner`, `live_operator_agent`, `critic_agent`, or `remote_specialist` |
+| `AgentLoopPolicy` | autonomy envelope for one-shot builder, bounded evaluation, and continuous live loops without central workflow orchestration |
+| `BrainSession` | provider/harness reasoning session |
+| `HandsEnvironment` | tools, sandbox, data, gateway, and side-effect surface |
+| `ToolProxy` | authority boundary around tools and credentials |
+| `PodCommunicationPolicy` | unified provider-neutral policy for agent-to-agent routing, sharing, artifact export, and isolation |
+| `TeamTrace` | durable multi-agent task/message/artifact trace when more than one runtime unit participates |
+| `Trace` | external raw execution record |
+| `EvidenceRecord` | externally judged evidence |
+| `PromotionDecision` | governance decision for stronger binding |
+| `OrderIntent` | live-agent proposal for a trade; never direct exchange execution authority |
+| `GatewayDecision` | durable accepted/rejected/clipped gateway judgment for an order intent |
+| `ExecutionAttempt` | durable live execution record |
+| `WakeTriggerRecord` | durable wake reason and outcome |
 
-These interfaces exist to preserve PRD boundaries before coding expands.
+Role and provider are separate contracts:
 
-| Interface / boundary | Why it must exist first | Primary owner |
-| --- | --- | --- |
-| `Candidate` | Makes one surfaced path durable and inspectable | `control-plane` |
-| provenance / candidate materialization boundary | Separates path origination from durable truth | `control-plane` |
-| `Trace` | Preserves raw execution history before judgment | `agent-system` |
-| `EvidenceRecord` | Separates judged evidence from raw trace | `evaluation-and-progression` |
-| `PromotionDecision` | Makes live-gate meaning explicit and durable | `evaluation-and-progression` |
-| `ReviewItem` | Preserves pending governance work between evidence and decision | `control-plane` |
-| `GovernedExecutionRequest` | Separates promotion meaning from real live execution | `control-plane` |
-| `ExecutionAttempt` | Makes concrete live execution reconstructable outside runtime state | `agent-system` |
-| `WakePolicy` | Keeps wake authority above the runtime | `proactive-operations` |
-| `WakeTriggerRecord` | Makes wake reason durable and explainable | `control-plane` |
+- `runtime_unit_role` answers why the unit exists.
+- `provider_kind` answers how the unit runs.
+- PR1 defaults to `runtime_unit_role=builder_agent`, `provider_kind=codex_cli`, `model=gpt-5.4`.
+- PR3 must introduce `runtime_unit_role=live_operator_agent`; it cannot reuse PR1 builder-agent
+  execution semantics.
 
-These are the minimum object boundaries needed to keep:
+The first concrete provider adapter sequence is:
 
-- candidate creation distinct from legitimacy
-- legitimacy distinct from live execution
-- live execution distinct from wake and intervention history
+1. `codex_cli` through local `codex exec --model gpt-5.4`
+2. `claude_agent_sdk_python` or `claude_agent_sdk_ts`
+3. `codex_sdk_ts`
+4. `openclaw_acp`
+5. `a2a_endpoint`
+6. `codex_cloud`
 
-## First PR Breakdown
+This order may change only with prototype evidence. It prevents implementation from becoming a
+generic provider abstraction before a real provider can run.
 
-The first PR sequence should be:
+Current local evidence:
 
-### PR 1
+- default `gpt-5.5` access failed in the current environment
+- explicit `gpt-5.4` schema-output smoke succeeded
+- Bootstrap and PR1 must therefore probe model access and use `codex_cli + gpt-5.4 + schema
+  output` until new evidence changes the default
 
-- one serious path surfaces
-- one durable candidate is created
-- provenance is inspectable
-- no legitimacy, promotion, or live meaning yet
+## Delivery Sequence
 
-### PR 2
+1. Bootstrap PR: minimal app/runtime/store/domain substrate for candidate/image/package inspection.
+2. PR1: materialize and inspect one `TraderSystemCandidate` from a `builder_agent` provider run.
+3. PR2: run one candidate through evaluation binding and produce externally judged evidence.
+4. PR3: launch one promoted candidate as bounded live pod through
+   `OrderIntent -> GatewayDecision -> ExecutionAttempt`.
+5. PR4: add wake/intervention/audit and clone-based self-evolution.
 
-- trace and evidence path exists
-- counted versus non-counted evidence becomes visible
-- candidate progression meaning becomes readable
+## PR Rules
 
-### PR 3
-
-- one explicit live gate exists
-- promotion rationale is durable and inspectable
-- live approval meaning is clear before any real live execution begins
-
-### PR 4
-
-- one promoted candidate can trade live on Binance BTC perpetual futures
-- routine live behavior runs within explicit limits
-- the live path is clearly real rather than ceremonial
-
-### PR 5
-
-- meaningful wake reason
-- inspect context
-- pause, stop, and override
-- durable operator action and wake history
-
-PR sequence rules:
-
-- do not split candidate creation from durable candidate materialization unless absolutely necessary
-- do not ship live execution before legitimacy visibility and gate meaning exist
-- do not move wake/intervention earlier in a way that blurs the Slice 3 / Slice 4 boundary
-- do not quietly broaden venue scope, operator model, or platform ambition inside delivery PRs
-
-## Risks And Failure Modes
-
-The implementation must guard against these failures:
-
-- candidate creation stays transient and the operator remains the system of record
-- evidence looks plentiful but counted versus non-counted meaning stays ambiguous
-- live gate exists only as a ceremonial approval surface
-- exchange connectivity is mistaken for a believable delegated live path
-- hidden operator labor remains the real runtime behind the product
-- wake surfaces are noisy or vague enough that the operator returns to constant shadow monitoring
-- subsystem-first work expands faster than trust-proof milestones land
-- repo-state ambiguity causes implementation to target documentation that is not safely versioned
-
-## Test And Acceptance Criteria
-
-The implementation-planning layer is correct only if:
-
-1. one reader can explain what gets built first and why the order is fixed
-2. the build order matches the PRD trust-proof order exactly:
-   PRD 1 -> PRD 2 -> PRD 3 -> PRD 4
-3. the first interface set is clear enough that an implementer does not invent new product meaning
-   at the boundary lines
-4. the first PR sequence does not blur:
-   candidate creation with legitimacy,
-   legitimacy with live execution,
-   live execution with wake/intervention
-5. the implementation path still honors the launch and fake-success rules from
-   [05-success-metrics-and-launch-bar.md](05-success-metrics-and-launch-bar.md)
-6. canonical implementation docs are tracked or intentionally staged before coding begins
+- one PR should close one visible trust proof where possible
+- bootstrap is the only planned plumbing-first exception
+- do not broaden venue scope
+- do not implement full marketplace
+- do not give agent harness direct exchange authority
+- do not mutate live systems in place
+- do not add multi-agent pod behavior unless a PRD acceptance criterion cannot be met by one
+  runtime unit
+- do not let provider output create a candidate unless schema validation and materialization rules
+  pass
 
 ## Explicitly Deferred
 
-The first implementation sequence does not include:
+- full marketplace
+- full Kubernetes clone
+- dynamic multi-level agent scheduling
+- full A2A mesh or remote-agent marketplace
+- venue breadth
+- remote execution fleets
+- direct Claude Managed Agents dependency as the only harness path
+- PR3 trading APIs during Bootstrap/PR1
+- PR4 wake/control APIs during Bootstrap/PR1
 
-- additional venues beyond Binance BTC perpetual futures
-- broader multi-strategy or portfolio orchestration
-- team approvals or multi-operator workflow
-- public platform breadth or generic plugin expansion
-- wider analytics suites that do not directly strengthen the first lovable proof
-- subsystem-deep speculative work that is not required by the current PRD milestones
+## Acceptance Criteria
+
+This plan is correct if a reader can explain:
+
+- what gets built first
+- why candidate means trader-system
+- how image/package/binding/pod fit together
+- why role and provider are separate
+- how agent loops stay autonomous without becoming a central workflow engine
+- why evaluation precedes live
+- why gateway authority bounds live agents through `OrderIntent -> GatewayDecision`
+- why self-evolution is versioned
 
 ## Read Next
 
-1. [prds/README.md](prds/README.md)
-2. [../../architecture/README.md](../../architecture/README.md)
-3. [../../architecture/00-system-map.md](../../architecture/00-system-map.md)
-4. [../../architecture/01-pr1-path-becomes-real-design.md](../../architecture/01-pr1-path-becomes-real-design.md)
-   for the canonical PR1 implementation shape
+1. [08-greenfield-bootstrap-plan.md](08-greenfield-bootstrap-plan.md)
+2. [../../architecture/05-bootstrap-tech-spec.md](../../architecture/05-bootstrap-tech-spec.md)
+3. [../../architecture/06-runtime-provider-adapter-feasibility.md](../../architecture/06-runtime-provider-adapter-feasibility.md)
+4. [../../architecture/01-pr1-trader-system-candidate-becomes-real-design.md](../../architecture/01-pr1-trader-system-candidate-becomes-real-design.md)
