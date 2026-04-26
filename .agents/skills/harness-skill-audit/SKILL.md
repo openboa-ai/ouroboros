@@ -1,6 +1,6 @@
 ---
 name: harness-skill-audit
-description: Use when deciding whether repo-local skills should exist, be removed, be merged, rewritten, renamed, or re-routed to fit the current project harness.
+description: Use when auditing repo-local skills for trigger precision, overlap, context cost, workflow utility, validation, generic portability, writeback behavior, or deciding whether skills should be removed, merged, rewritten, renamed, or re-routed.
 ---
 
 # Harness Skill Audit
@@ -9,28 +9,27 @@ description: Use when deciding whether repo-local skills should exist, be remove
 
 `harness-skill-audit` keeps the local skill surface small and useful.
 
-## Use When
-
-- Skills overlap or trigger poorly.
-- A new workflow is being added to `.agents/skills/`.
-- A skill may duplicate `.agents/AGENTS.md`, active wiki truth, or another skill.
-- The user asks to improve project harness skills.
-
 ## Workflow
 
 1. List existing skills and roles.
-2. Compare each skill to recurring project work.
+2. Check trigger precision, overlap, context cost, workflow utility, validation, portability, and
+   writeback behavior.
 3. Find duplication, missing routing, and trigger gaps.
-4. Prefer update/merge/remove over adding a new skill.
+4. Prefer update, merge, remove, or rename over adding a new skill.
 5. Route durable changes through `llm-wiki`.
 
 ## Required Output
 
+- goal
+- owned boundary
 - existing skill map
+- evidence
 - suggested updates
 - suggested removals
 - suggested new skills, if any
+- decision: `keep`, `update`, `merge`, `remove`, `rename`, or `add`
 - priority order
+- next owner
 - `writeback_needed`
 
 ## Handoff

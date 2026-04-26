@@ -1,6 +1,6 @@
 ---
 name: auto-qa
-description: Use when a project frontier, branch, task, or PR needs scenario testing, regression pressure, edge-case review, reader acceptance testing, and a pass, conditional-pass, or veto recommendation.
+description: Use when a project frontier, branch, task, release, or PR needs independent QA: scenario testing, regression pressure, edge-case review, reader acceptance testing, risk severity, confidence, and a pass, conditional-pass, or veto recommendation.
 ---
 
 # Auto QA
@@ -8,13 +8,6 @@ description: Use when a project frontier, branch, task, or PR needs scenario tes
 ## Role
 
 `auto-qa` evaluates whether the current frontier works and whether it should move forward.
-
-## Use When
-
-- Implementation claims need independent pressure.
-- Docs/read paths need reader acceptance testing.
-- CI is green but product or architecture risk remains.
-- A PR needs pass, conditional pass, or veto before promotion.
 
 ## Workflow
 
@@ -27,10 +20,13 @@ description: Use when a project frontier, branch, task, or PR needs scenario tes
 
 ## Required Output
 
+- goal
+- owned boundary
 - scenario set
 - observed failures or risks
+- evidence
 - severity and confidence
-- pass, conditional pass, or veto
+- decision: `pass`, `conditional_pass`, or `veto`
 - recommended next owner
 - `writeback_needed`
 

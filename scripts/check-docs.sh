@@ -211,6 +211,15 @@ def check_skill_frontmatter() -> None:
         except ValueError:
             problems.append(f"{path}: malformed YAML frontmatter")
             continue
+        keys = []
+        for line in frontmatter.splitlines():
+            if not line.strip():
+                continue
+            key = line.split(":", 1)[0].strip()
+            keys.append(key)
+        unexpected = [key for key in keys if key not in {"name", "description"}]
+        if unexpected:
+            problems.append(f"{path}: unexpected frontmatter keys: {', '.join(unexpected)}")
         if not re.search(r"^name:\s*\S+", frontmatter, re.MULTILINE):
             problems.append(f"{path}: missing name")
         else:
@@ -219,11 +228,53 @@ def check_skill_frontmatter() -> None:
                 problems.append(
                     f"{path}: name {name_match.group(1)!r} does not match directory {path.parent.name!r}"
                 )
-        if not re.search(r"^description:\s*\S+", frontmatter, re.MULTILINE):
+        desc_match = re.search(r"^description:\s*(.+)", frontmatter, re.MULTILINE)
+        if not desc_match:
             problems.append(f"{path}: missing description")
+        elif not desc_match.group(1).startswith("Use when"):
+            problems.append(f"{path}: description must start with 'Use when'")
     if problems:
         fail("Skill frontmatter check failed:\n" + "\n".join(problems))
     print(f"Skill frontmatter OK: {len(skill_files)} skills")
+
+
+def check_skill_quality() -> None:
+    skill_files = sorted(Path(".agents/skills").glob("*/SKILL.md"))
+    required_headings = [
+        "## Role",
+        "## Workflow",
+        "## Required Output",
+        "## Handoff",
+        "## Hard Boundaries",
+    ]
+    required_output_terms = [
+        "goal",
+        "owned",
+        "evidence",
+        "decision",
+        "next owner",
+        "writeback_needed",
+    ]
+    problems: list[str] = []
+    for path in skill_files:
+        text = read_text(path)
+        for heading in required_headings:
+            if heading not in text:
+                problems.append(f"{path}: missing heading {heading}")
+        output_match = re.search(
+            r"## Required Output\n(?P<body>.*?)(?:\n## |\Z)",
+            text,
+            re.DOTALL,
+        )
+        if not output_match:
+            continue
+        output_body = output_match.group("body").lower()
+        for term in required_output_terms:
+            if term not in output_body:
+                problems.append(f"{path}: Required Output missing {term!r}")
+    if problems:
+        fail("Skill quality check failed:\n" + "\n".join(problems[:200]))
+    print("Skill quality check OK")
 
 
 def check_skill_routing_rules() -> None:
@@ -280,6 +331,7 @@ check_stale_terms()
 check_active_spec_count()
 check_required_terms()
 check_skill_frontmatter()
+check_skill_quality()
 check_skill_routing_rules()
 check_generic_agents_harness()
 print("Docs design baseline checks passed")

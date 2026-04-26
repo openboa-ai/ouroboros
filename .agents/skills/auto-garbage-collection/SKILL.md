@@ -1,6 +1,6 @@
 ---
 name: auto-garbage-collection
-description: Use when stale run notes, duplicate syntheses, outdated docs, historical drift, dead branches, or obsolete skill instructions make a repository hard to resume.
+description: Use when stale run notes, duplicate syntheses, outdated docs, historical drift, dead branches, obsolete skill instructions, or competing memory records make a repository hard to resume and a cleanup decision is needed.
 ---
 
 # Auto Garbage Collection
@@ -8,13 +8,6 @@ description: Use when stale run notes, duplicate syntheses, outdated docs, histo
 ## Role
 
 `auto-garbage-collection` keeps project memory readable.
-
-## Use When
-
-- Stale docs or skill rules contradict active truth.
-- Duplicate summaries compete as canon.
-- Historical material leaks into active read paths.
-- Dead branch, PR, or run notes obscure current work.
 
 ## Workflow
 
@@ -26,11 +19,17 @@ description: Use when stale run notes, duplicate syntheses, outdated docs, histo
 
 ## Required Output
 
+- goal
+- owned boundary
 - kept truth
 - removed or historicalized material
+- evidence
+- decision: `keep`, `delete`, `merge`, `historicalize`, or `reroute`
 - reason for cleanup
 - verification
-- writeback location
+- next owner
+- `writeback_needed`
+- `llm_wiki_target`
 
 ## Handoff
 

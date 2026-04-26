@@ -1,6 +1,6 @@
 ---
 name: auto-coding
-description: Use when a locked project frontier needs one bounded code, docs, config, or CI change, verification, and a keep/discard decision without widening interfaces or scope.
+description: Use when a locked project frontier needs exactly one bounded code, docs, config, or CI change; the task has an owned boundary; verification can run locally or in CI; and the result needs a keep/discard/reroute decision without widening interfaces, docs truth, or scope.
 ---
 
 # Auto Coding
@@ -8,12 +8,6 @@ description: Use when a locked project frontier needs one bounded code, docs, co
 ## Role
 
 `auto-coding` changes the repo to close one bounded gap.
-
-## Use When
-
-- The user or `auto-pm` has locked the frontier.
-- A code, docs, CI, or reliability change is needed.
-- The change can be verified in the current repo.
 
 ## Workflow
 
@@ -26,9 +20,12 @@ description: Use when a locked project frontier needs one bounded code, docs, co
 
 ## Required Output
 
+- goal
+- owned boundary
 - what changed
 - verification run
-- keep/discard/reroute decision
+- evidence
+- decision: `keep`, `discard`, or `reroute`
 - remaining gap
 - next owner
 - `writeback_needed`

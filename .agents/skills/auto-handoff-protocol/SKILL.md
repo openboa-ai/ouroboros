@@ -1,6 +1,6 @@
 ---
 name: auto-handoff-protocol
-description: Use when repository work moves between PM, coding, QA, wiki, CI recovery, skill audit, or final review and needs explicit ownership, evidence, next owner, and writeback status.
+description: Use when repository work moves between PM, coding, QA, wiki, CI recovery, skill audit, or final review and needs a standard handoff packet with ownership, evidence, decision, next owner, and writeback status.
 ---
 
 # Auto Handoff Protocol
@@ -8,12 +8,6 @@ description: Use when repository work moves between PM, coding, QA, wiki, CI rec
 ## Role
 
 `auto-handoff-protocol` keeps ownership and latest truth explicit.
-
-## Use When
-
-- Work moves between skills or workers.
-- A PR/frontier is being parked, rerouted, or promoted.
-- The next owner needs enough evidence to continue without chat archaeology.
 
 ## Workflow
 
@@ -33,6 +27,8 @@ description: Use when repository work moves between PM, coding, QA, wiki, CI rec
 - `evidence`
 - `remaining_quality_gap`
 - `open_risks`
+- `decision`
+- `next owner`
 - `recommended_next_owner`
 - `writeback_needed`
 - `llm_wiki_target`

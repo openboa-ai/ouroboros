@@ -1,6 +1,6 @@
 ---
 name: auto-promotion-protocol
-description: Use when deciding whether a project frontier, branch, task, or PR can move to final signoff, ready-to-land, reroute, looping, or discard based on current evidence.
+description: Use when deciding whether a project frontier, branch, task, release, or PR can move to final signoff, ready-to-land, reroute, looping, or discard based on acceptance, verification, QA, CI, and writeback evidence.
 ---
 
 # Auto Promotion Protocol
@@ -8,12 +8,6 @@ description: Use when deciding whether a project frontier, branch, task, or PR c
 ## Role
 
 `auto-promotion-protocol` decides whether the current frontier can move forward.
-
-## Use When
-
-- A worker claims acceptance is met.
-- QA, CI, or docs checks need promotion judgment.
-- The PR is being moved toward review or merge.
 
 ## Workflow
 
@@ -24,7 +18,11 @@ description: Use when deciding whether a project frontier, branch, task, or PR c
 
 ## Required Output
 
+- goal
+- owned boundary
 - promotion state
+- evidence
+- decision
 - acceptance status
 - latest verification
 - latest QA judgment when applicable
@@ -32,6 +30,7 @@ description: Use when deciding whether a project frontier, branch, task, or PR c
 - wiki/writeback status
 - open risks
 - next owner
+- `writeback_needed`
 
 ## Promotion States
 

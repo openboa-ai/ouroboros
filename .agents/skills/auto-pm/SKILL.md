@@ -1,6 +1,6 @@
 ---
 name: auto-pm
-description: Use when a rough request, blocked branch, or drifting work item needs one bounded frontier with goal, non-goals, acceptance criteria, validation, owner, and writeback expectations.
+description: Use when a rough request, blocked branch, ambiguous design/code task, or drifting work item needs one bounded frontier with goal, owned boundary, non-goals, acceptance criteria, validation evidence, next owner, and writeback expectations.
 ---
 
 # Auto PM
@@ -8,13 +8,6 @@ description: Use when a rough request, blocked branch, or drifting work item nee
 ## Role
 
 `auto-pm` turns ambiguous work into one bounded frontier.
-
-## Use When
-
-- The request mixes design, code, QA, docs, and operations.
-- Implementation, design, infrastructure, or release scope could drift.
-- Acceptance criteria are implicit.
-- The next owner cannot continue without inventing requirements.
 
 ## Workflow
 
@@ -27,11 +20,13 @@ description: Use when a rough request, blocked branch, or drifting work item nee
 
 ## Required Output
 
-- one-sentence goal
+- goal
 - owned boundary
 - explicit non-goals
 - acceptance criteria
 - validation commands or evidence
+- evidence
+- decision: `ready`, `blocked`, or `reroute`
 - next owner
 - `writeback_needed`
 

@@ -1,6 +1,6 @@
 ---
 name: project-context
-description: Use when a worker needs the current repository's thesis, domain, product, architecture, or wiki-grounded context before planning, coding, QA, or explaining a decision.
+description: Use when a worker needs the current repository's thesis, domain, product, architecture, constraints, active docs, or wiki-grounded context before planning, coding, QA, reviewing, or explaining a decision.
 ---
 
 # Project Context
@@ -11,13 +11,6 @@ description: Use when a worker needs the current repository's thesis, domain, pr
 
 It reads the current repo's own truth sources. It must not embed one project's domain assumptions in
 the skill itself.
-
-## Use When
-
-- The user asks what the system or project is.
-- A worker needs a product, domain, or architecture boundary check.
-- Delivery slicing is being confused with product or system behavior.
-- A durable explanation may need wiki writeback.
 
 ## Workflow
 
@@ -31,10 +24,15 @@ the skill itself.
 
 ## Required Output
 
+- goal
+- owned boundary
 - concise context answer
 - source pages used
+- evidence
+- decision: `answered`, `reroute`, or `blocked`
 - key tradeoffs or tensions
 - affected docs or owner
+- next owner
 - `writeback_needed`
 
 ## Handoff

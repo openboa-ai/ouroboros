@@ -1,6 +1,6 @@
 ---
 name: auto-run-memory
-description: Use when a worker needs to reconstruct current project state, assumptions, failed attempts, winning evidence, owner, and writeback gaps from repo state instead of chat history.
+description: Use when a worker needs to reconstruct current project state from repo evidence instead of chat history: branch/task/PR status, assumptions, failed attempts, winning evidence, owner, open risks, and writeback gaps.
 ---
 
 # Auto Run Memory
@@ -8,12 +8,6 @@ description: Use when a worker needs to reconstruct current project state, assum
 ## Role
 
 `auto-run-memory` recovers project state without relying on chat history.
-
-## Use When
-
-- A thread resumes after context loss.
-- The branch, PR, task, or run has multiple changes and current owner is unclear.
-- A worker needs latest accepted assumptions and failed attempts.
 
 ## Workflow
 
@@ -27,12 +21,17 @@ description: Use when a worker needs to reconstruct current project state, assum
 
 ## Required Output
 
+- goal
+- owned boundary
 - current frontier
 - latest accepted assumptions
 - failed attempts
 - latest winning evidence
+- evidence
+- decision: `recovered`, `blocked`, or `reroute`
 - current owner
 - open risks
+- next owner
 - `writeback_needed`
 
 ## Handoff

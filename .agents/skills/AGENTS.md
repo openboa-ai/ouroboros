@@ -35,6 +35,23 @@ Use the smallest skill set that fits the work.
 
 One active owner is the default. Do not route every task through every skill.
 
+## Skill Quality Standard
+
+Every `SKILL.md` must stay small, generic, and triggerable.
+
+- Frontmatter must contain only `name` and `description`.
+- `name` must match the skill directory name.
+- `description` must start with `Use when` and carry the trigger context; this is the primary
+  loading surface.
+- Body must contain `Role`, `Workflow`, `Required Output`, `Handoff`, and `Hard Boundaries`.
+- Body should avoid repeating the full trigger logic from the description. Use the body for
+  activation guardrails, procedure, and output contract.
+- Skills must not embed project-specific product truth. Read root `AGENTS.md`, `README.md`,
+  `knowledge-index.md`, and `wiki/**` for project context.
+- Add `references/`, `scripts/`, or `assets/` only when repeated work, fragile execution, or
+  deterministic output justifies the extra surface.
+- Prefer updating, merging, or deleting existing skills before adding new ones.
+
 ## Mandatory llm-wiki Gate
 
 Use `llm-wiki` when any of these become durable:

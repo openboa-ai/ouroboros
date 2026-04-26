@@ -1,6 +1,6 @@
 ---
 name: auto-loop-protocol
-description: Use when a worker must baseline, try one bounded change, measure it, and decide whether to keep, discard, reroute, or stop.
+description: Use when a worker needs a bounded attempt loop: establish baseline, try one hypothesis, measure evidence, and decide whether to keep, discard, reroute, or stop without accumulating speculative edits.
 ---
 
 # Auto Loop Protocol
@@ -8,12 +8,6 @@ description: Use when a worker must baseline, try one bounded change, measure it
 ## Role
 
 `auto-loop-protocol` is the common bounded-attempt contract.
-
-## Use When
-
-- The worker needs one experiment, patch, cleanup, or recovery attempt.
-- Scope drift is likely.
-- Evidence must decide whether the attempt survives.
 
 ## Workflow
 
@@ -26,11 +20,13 @@ description: Use when a worker must baseline, try one bounded change, measure it
 
 ## Required Output
 
+- goal
 - baseline
-- one hypothesis
 - owned boundary
+- one hypothesis
 - verification evidence
-- keep/discard/reroute/stop decision
+- decision: `keep`, `discard`, `reroute`, or `stop`
+- next owner
 - `writeback_needed`
 
 ## Handoff

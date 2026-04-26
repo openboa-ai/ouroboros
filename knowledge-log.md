@@ -1245,3 +1245,12 @@
   is to read the current repo's own README, knowledge index, and wiki before giving context.
   Added a docs check that fails if project-specific terms reappear under `.agents/**`, preserving
   `.agents` as a reusable harness while keeping project truth in root docs and `wiki/**`.
+- 2026-04-26: Upgraded repo-local skill quality checks and trigger precision.
+  Updated [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) with a `Skill Quality Standard`
+  based on the Skill Creator guidance: frontmatter must contain only `name` and `description`,
+  descriptions must start with `Use when`, skill bodies must remain concise and include the common
+  workflow/output/handoff/boundary sections, and project-specific truth must stay outside
+  `.agents/**`.
+  Tightened all repo-local `SKILL.md` descriptions and required outputs so `evidence`, `decision`,
+  `next_owner`, and `writeback_needed` are consistently surfaced.
+  Extended [scripts/check-docs.sh](scripts/check-docs.sh) to enforce these skill-quality rules in CI.

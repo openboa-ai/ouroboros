@@ -1,6 +1,6 @@
 ---
 name: ci-recovery
-description: Use when GitHub Actions or local checks fail and a repository needs failing check evidence, smallest root cause, bounded fix owner, and writeback status.
+description: Use when GitHub Actions, CI services, or local validation checks fail and the repository needs failing check evidence, smallest actionable root cause, bounded fix owner, scope status, and writeback status.
 ---
 
 # CI Recovery
@@ -8,12 +8,6 @@ description: Use when GitHub Actions or local checks fail and a repository needs
 ## Role
 
 `ci-recovery` extracts actionable CI failure evidence.
-
-## Use When
-
-- A PR check is failing.
-- A local validation command fails and the next owner is unclear.
-- CI evidence must be summarized without broadening the PR.
 
 ## Workflow
 
@@ -25,9 +19,13 @@ description: Use when GitHub Actions or local checks fail and a repository needs
 
 ## Required Output
 
+- goal
+- owned boundary
 - failing check name
 - run URL or local command
 - smallest root cause
+- evidence
+- decision: `fix-in-scope`, `reroute`, `blocked`, or `external-action`
 - recommended next owner
 - whether the fix is inside current PR scope
 - `writeback_needed`

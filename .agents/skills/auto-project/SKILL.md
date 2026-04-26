@@ -1,6 +1,6 @@
 ---
 name: auto-project
-description: Use when a project branch, PR, task, or implementation thread needs one active frontier, one next owner, keep/discard discipline, CI/QA/wiki routing, or a clear stop state.
+description: Use when project work needs routing: a branch, PR, task, or implementation thread has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
 ---
 
 # Auto Project
@@ -11,13 +11,6 @@ description: Use when a project branch, PR, task, or implementation thread needs
 
 It schedules work in the repository. It must not be confused with the product runtime of whatever
 system the repository builds.
-
-## Use When
-
-- A branch, PR, task, or work item must be opened, resumed, repaired, or moved toward review.
-- The next owner is unclear.
-- Scope is drifting across PM, coding, QA, wiki, or CI work.
-- A run needs keep, discard, reroute, final-signoff, or ready-to-land decision.
 
 ## Workflow
 
@@ -31,9 +24,13 @@ system the repository builds.
 
 ## Required Output
 
+- goal
+- owned boundary
 - active frontier
+- evidence
 - current owner
 - evidence required to keep the work
+- decision: `route`, `park`, `discard`, `ready`, or `blocked`
 - next owner or stop state
 - `writeback_needed`
 - reason this is repo-work routing, not product behavior

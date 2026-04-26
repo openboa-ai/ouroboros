@@ -1,6 +1,6 @@
 ---
 name: auto-eval-rubrics
-description: Use when judging PM clarity, coding quality, QA outcomes, wiki writeback, CI recovery, promotion readiness, or keep/discard decisions with shared pass/fail language.
+description: Use when a worker needs shared pass/fail language for PM clarity, coding quality, QA outcomes, wiki writeback, CI recovery, promotion readiness, evidence confidence, or keep/discard/reroute decisions.
 ---
 
 # Auto Eval Rubrics
@@ -8,12 +8,6 @@ description: Use when judging PM clarity, coding quality, QA outcomes, wiki writ
 ## Role
 
 `auto-eval-rubrics` gives workers shared judgment language.
-
-## Use When
-
-- A worker needs a consistent pass/fail/veto standard.
-- A frontier is being promoted, rerouted, or discarded.
-- Evidence quality is unclear.
 
 ## Workflow
 
@@ -24,11 +18,14 @@ description: Use when judging PM clarity, coding quality, QA outcomes, wiki writ
 
 ## Required Output
 
+- goal
+- owned boundary
 - judged surface
 - evidence used
-- stop language
+- decision: one stop language value
 - confidence
 - missing evidence
+- next owner
 - `writeback_needed`
 
 ## Axes

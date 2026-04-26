@@ -1,6 +1,6 @@
 ---
 name: llm-wiki
-description: Use when a repository needs source ingestion, source-to-synthesis promotion, wiki health checks, stale naming repair, cross-reference repair, or durable branch/task/PR/run/design/CI writeback.
+description: Use when a repository needs durable knowledge maintenance: source ingestion, source-to-synthesis promotion, wiki health checks, stale naming repair, cross-reference repair, active/historical cleanup, or durable branch/task/PR/run/design/CI writeback.
 ---
 
 # LLM Wiki
@@ -12,15 +12,6 @@ description: Use when a repository needs source ingestion, source-to-synthesis p
 It does not schedule project work; use `auto-project` when routing or next-owner selection is
 unclear. It does own the final writeback gate for durable source, design, PR, frontier, run, CI, and
 workflow outcomes.
-
-## Use When
-
-- New source material must be ingested.
-- Source notes must be promoted into synthesis or active docs.
-- Wiki links, stale terms, or active/historical boundaries need repair.
-- A branch, task, PR, run, or CI result must survive outside chat history.
-- A skill or harness rule changes.
-- Another worker returns `writeback_needed: yes`.
 
 ## Workflow
 
@@ -43,13 +34,23 @@ workflow outcomes.
 
 ## Required Output
 
+- goal
+- owned boundary
 - operation
 - pages read
 - pages changed
 - durable truth recorded
+- evidence
+- decision: `written`, `no-op`, `reroute`, or `blocked`
 - unresolved gaps
 - next owner, if any
+- `writeback_needed`
 - `writeback_complete: yes/no`
+
+## Handoff
+
+If writeback is incomplete, return the smallest unresolved gap and next owner. If writeback is
+complete, return the durable page or log location a future worker should read first.
 
 ## References
 
