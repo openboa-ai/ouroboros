@@ -2,3 +2,4 @@
 set -euo pipefail
 
 bash scripts/check-docs.sh
+bash scripts/check-secrets.sh
