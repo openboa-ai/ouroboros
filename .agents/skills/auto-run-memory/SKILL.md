@@ -11,18 +11,36 @@ description: Use when a worker needs to reconstruct current project state from r
 
 ## Workflow
 
-1. Read current branch and available task/PR metadata.
-2. Read repo-level `AGENTS.md`.
-3. Read `.agents/AGENTS.md`.
-4. Read `.agents/skills/AGENTS.md`.
-5. Read `knowledge-index.md` and `knowledge-log.md`.
-6. Read relevant active wiki pages.
-7. Inspect CI/check outputs and raw diffs only when needed.
+1. Identify branch, upstream, dirty files, latest local commits, and the intended work item.
+2. Read repo-level `AGENTS.md`, then `.agents/AGENTS.md`, then `.agents/skills/AGENTS.md`.
+3. Read `knowledge-index.md` and the latest relevant entries in `knowledge-log.md`.
+4. Read only the active docs or wiki pages needed to recover the current frontier.
+5. Inspect open diffs, staged changes, recent commits, and CI/check outputs only when they affect the
+   frontier.
+6. Compare repo truth against chat/user claims; prefer repo truth and name any gaps.
+7. Emit a `Recovered State Packet` and route the next owner.
+
+## Read Order
+
+- Start with `git status --short --branch`.
+- Check recent commits with a narrow log when branch history matters.
+- Inspect `git diff --stat`, `git diff --name-status`, and staged diff only when dirty state exists.
+- Read task/PR metadata only when branch state alone does not explain the frontier.
+- Read docs through the repo navigation path instead of scanning the whole repo.
+
+## Recovery Rules
+
+- Repo files, commits, checks, and maintained wiki outrank chat memory.
+- If two repo truth sources conflict, name both and route to `auto-project` or `llm-wiki`.
+- If recovery requires unavailable external permissions, mark the state `blocked` rather than
+  guessing.
+- Do not continue implementation until the current owner and owned boundary are explicit.
 
 ## Required Output
 
 - goal
 - owned boundary
+- context read
 - current frontier
 - latest accepted assumptions
 - failed attempts
@@ -33,6 +51,26 @@ description: Use when a worker needs to reconstruct current project state from r
 - open risks
 - next owner
 - `writeback_needed`
+
+## Recovered State Packet
+
+Return this shape when recovery is the main output:
+
+```text
+goal:
+owned_boundary:
+context_read:
+current_frontier:
+latest_accepted_assumptions:
+failed_attempts:
+latest_winning_evidence:
+dirty_or_staged_state:
+open_risks:
+decision:
+next owner:
+writeback_needed:
+llm_wiki_target:
+```
 
 ## Handoff
 

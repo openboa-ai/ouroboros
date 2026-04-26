@@ -18,14 +18,40 @@ description: Use when a worker needs a bounded attempt loop: establish baseline,
 5. Decide keep, discard, reroute, or stop.
 6. Emit handoff including writeback status.
 
+## Attempt Contract
+
+```text
+baseline:
+hypothesis:
+owned_boundary:
+expected_signal:
+verification:
+decision:
+```
+
+## Decision Criteria
+
+- `keep`: evidence supports the expected signal and no blocker remains.
+- `discard`: evidence disproves the hypothesis or the change cannot be made safe.
+- `reroute`: the next useful action belongs to another owner or boundary.
+- `stop`: the user asked to stop, the work is complete, or further attempts would be speculative.
+
+## Loop Rules
+
+- One active hypothesis at a time.
+- A failed attempt must produce evidence, not another unbounded attempt.
+- New scope requires a new route through `auto-project` or `auto-pm`.
+
 ## Required Output
 
 - goal
+- context read
 - baseline
 - owned boundary
 - one hypothesis
 - verification evidence
 - decision: `keep`, `discard`, `reroute`, or `stop`
+- risks
 - next owner
 - `writeback_needed`
 

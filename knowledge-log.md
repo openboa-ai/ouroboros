@@ -1254,3 +1254,11 @@
   Tightened all repo-local `SKILL.md` descriptions and required outputs so `evidence`, `decision`,
   `next_owner`, and `writeback_needed` are consistently surfaced.
   Extended [scripts/check-docs.sh](scripts/check-docs.sh) to enforce these skill-quality rules in CI.
+- 2026-04-26: Deepened the generic `.agents/skills` project harness from trigger-quality wording into
+  practical operating procedures.
+  Updated [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) around the reusable project flow:
+  `Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clean`.
+  Expanded each repo-local `SKILL.md` with concrete read order, decision criteria, failure handling,
+  output templates, and handoff/writeback rules while keeping `.agents/**` generic and reusable.
+  Strengthened [scripts/check-docs.sh](scripts/check-docs.sh) so CI now rejects skills that lack
+  context/risk fields or a substantive procedure, criteria, or template section.

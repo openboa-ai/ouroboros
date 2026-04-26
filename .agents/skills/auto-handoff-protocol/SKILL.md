@@ -18,12 +18,40 @@ description: Use when repository work moves between PM, coding, QA, wiki, CI rec
 5. Choose next owner or stop state.
 6. Decide writeback status.
 
+## Handoff Packet Template
+
+```text
+goal:
+context_read:
+current_truth:
+owned_boundary:
+attempts_made:
+changes_or_findings:
+evidence:
+remaining_quality_gap:
+open_risks:
+decision:
+next owner:
+writeback_needed:
+llm_wiki_target:
+```
+
+## Quality Bar
+
+- The next owner can continue from repo evidence without chat memory.
+- The owned boundary names what may change and what must not.
+- Evidence includes commands, files, docs, CI runs, review notes, or source refs.
+- Risks distinguish blockers from acceptable residual risk.
+- `writeback_needed` is explicit even when the answer is `no`.
+
 ## Required Output
 
 - `goal`
+- `context_read`
 - `current_truth`
 - `owned_boundary`
 - `attempts_made`
+- `changes_or_findings`
 - `evidence`
 - `remaining_quality_gap`
 - `open_risks`

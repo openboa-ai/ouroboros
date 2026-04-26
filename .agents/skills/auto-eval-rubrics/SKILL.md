@@ -16,15 +16,35 @@ description: Use when a worker needs shared pass/fail language for PM clarity, c
 3. Return one stop language value.
 4. State confidence and missing evidence.
 
+## Rubric Table
+
+| Surface | Pass | Conditional pass | Fail | Veto | Reroute |
+| --- | --- | --- | --- | --- | --- |
+| PM | Goal, boundary, non-goals, acceptance, validation, and owner are clear | Minor unresolved risk is named | Missing acceptance or validation | Conflicting scope would cause harmful work | Needs context, research, QA, or cleanup first |
+| Coding | Bounded change meets acceptance and checks | Works with named residual risk | Does not meet acceptance | Breaks critical behavior or safety boundary | Root cause outside owned boundary |
+| QA | Scenarios cover material risk | Usable with tracked gaps | Evidence is insufficient | Critical defect or unsafe ambiguity | Needs PM, coding, CI, or wiki owner |
+| Wiki | Durable truth is minimal, linked, and current | Small navigation or wording gap remains | Writeback incomplete | Active truth is contradictory | Needs source/context or cleanup first |
+| CI | Root cause and fix path are clear | Repro or permission gap is explicit | Failure remains unexplained | Red check blocks promotion | Needs different owner or external action |
+| Promotion | Acceptance, validation, QA, CI, and writeback are current | Ready except named non-blocker | Important gate is stale | Critical gate failed | Needs bounded loop or owner change |
+
+## Evidence Rules
+
+- Evidence may be command output, diff, source citation, active doc, test result, CI run, review note,
+  or reproducible observation.
+- Confidence must reflect evidence freshness and directness.
+- Missing evidence is not neutral; it usually produces `conditional_pass`, `fail`, or `reroute`.
+
 ## Required Output
 
 - goal
 - owned boundary
+- context read
 - judged surface
 - evidence used
 - decision: one stop language value
 - confidence
 - missing evidence
+- risks
 - next owner
 - `writeback_needed`
 

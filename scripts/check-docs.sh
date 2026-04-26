@@ -250,10 +250,37 @@ def check_skill_quality() -> None:
     required_output_terms = [
         "goal",
         "owned",
+        "context",
         "evidence",
         "decision",
+        "risk",
         "next owner",
         "writeback_needed",
+    ]
+    substantive_markers = [
+        "## Read Order",
+        "## Recovery Rules",
+        "## Context Extraction",
+        "## Routing Decision Table",
+        "## Stop States",
+        "## Frontier Spec",
+        "## Ready Criteria",
+        "## Implementation Loop",
+        "## Keep / Discard / Reroute",
+        "## QA Modes",
+        "## Decision Criteria",
+        "## Triage Procedure",
+        "## Rubric Table",
+        "## Promotion Criteria",
+        "## Gate Checklist",
+        "## Handoff Packet Template",
+        "## Quality Bar",
+        "## Attempt Contract",
+        "## Cleanup Classification",
+        "## Writeback Location Rules",
+        "## Operation Details",
+        "## Audit Checklist",
+        "## Actions",
     ]
     problems: list[str] = []
     for path in skill_files:
@@ -261,6 +288,8 @@ def check_skill_quality() -> None:
         for heading in required_headings:
             if heading not in text:
                 problems.append(f"{path}: missing heading {heading}")
+        if not any(marker in text for marker in substantive_markers):
+            problems.append(f"{path}: missing substantive procedure, criteria, or template section")
         output_match = re.search(
             r"## Required Output\n(?P<body>.*?)(?:\n## |\Z)",
             text,

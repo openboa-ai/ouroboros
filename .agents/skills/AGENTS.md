@@ -5,23 +5,44 @@ on demand, not always-on policy. Always-on policy belongs in [../AGENTS.md](../A
 
 This harness works on a repository. It is not the product runtime for any specific project.
 
-## Workflow Map
+## Project Operating Flow
 
-Use the smallest skill set that fits the work.
+Use the smallest skill set that fits the work. A normal project loop is:
+
+```text
+Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clean
+```
+
+Do not force every task through every phase. Skip directly to the right owner when the frontier is
+already bounded and current evidence is known.
 
 | Phase | Default skill | Use when |
 | --- | --- | --- |
 | Recover | `auto-run-memory` | current branch, task, assumptions, failed attempts, or evidence must be reconstructed from repo state |
-| Frame | `project-context` | current repo thesis, domain, or wiki-grounded context is needed |
+| Context | `project-context` | current repo thesis, domain, constraints, active docs, or wiki-grounded context is needed |
 | Shape | `auto-project` | ownership, route, stop state, or work direction is unclear |
 | Shape | `auto-pm` | a rough request needs one bounded frontier with acceptance and validation |
 | Execute | `auto-coding` | one bounded code/docs/config change must be made and verified |
 | Evaluate | `auto-qa` | a frontier needs scenario, regression, edge-case, or reader acceptance pressure |
 | Evaluate | `auto-eval-rubrics` | a worker needs shared pass/fail language |
 | Evaluate | `ci-recovery` | local checks or remote CI fail and need root-cause routing |
+| Promote | `auto-promotion-protocol` | a frontier, branch, release, or PR needs a landing/readiness decision |
 | Persist | `llm-wiki` | durable source/wiki/project-memory writeback is needed |
 | Clean | `auto-garbage-collection` | stale docs, duplicate memory, or old run notes block resumption |
 | Clean | `harness-skill-audit` | the skill surface itself may need merging, removal, or rewrite |
+
+## Phase Evidence
+
+- Recover produces a `Recovered State Packet`: current branch, frontier, latest accepted assumptions,
+  failed attempts, winning evidence, open risks, owner, and writeback gaps.
+- Context produces a repo-grounded answer with exact pages read and the smallest relevant boundary.
+- Shape produces a bounded frontier or route, not implementation.
+- Execute produces a diff plus verification evidence and a keep/discard/reroute decision.
+- Evaluate produces pass/conditional-pass/veto evidence without fixing by default.
+- Promote produces a stop state: `looping`, `final-signoff`, `ready-to-land`, `reroute`, or
+  `discarded`.
+- Persist records only durable facts that future work needs.
+- Clean removes or historicalizes stale state only after identifying active truth.
 
 ## Default Routing
 
@@ -78,12 +99,18 @@ back through `llm-wiki`.
 Every worker should return:
 
 - `goal`
+- `context_read`
 - `owned_boundary`
+- `changes_or_findings`
 - `evidence`
 - `decision`: `keep`, `discard`, `reroute`, `blocked`, or `ready`
+- `risks`
 - `next_owner`
 - `writeback_needed`
 - `llm_wiki_target` when writeback is needed
+
+The handoff must be enough for the next owner to continue from repo evidence without relying on
+chat history. If it is not enough, route to `auto-run-memory` or `llm-wiki` before continuing.
 
 ## Boundary Rules
 

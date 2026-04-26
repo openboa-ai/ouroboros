@@ -16,10 +16,30 @@ description: Use when deciding whether a project frontier, branch, task, release
 3. Identify the next owner or stop state.
 4. Record whether durable writeback is complete.
 
+## Promotion Criteria
+
+- `looping`: the frontier is valid but needs another bounded implementation or docs pass.
+- `final-signoff`: acceptance appears met, verification is current, and a human or final reviewer
+  should decide.
+- `ready-to-land`: acceptance is met, current checks are green, QA did not veto, and durable writeback
+  is complete or explicitly unnecessary.
+- `reroute`: a different owner must resolve scope, QA, CI, docs, cleanup, or external action.
+- `discarded`: the approach is obsolete, unsafe, duplicate, or not worth continuing.
+
+## Gate Checklist
+
+- acceptance status: met, partial, failed, or unknown
+- verification status: command/check name, timestamp or commit, result
+- QA status: pass, conditional pass, veto, or not needed
+- CI status: green, red, pending, unavailable, or not applicable
+- writeback status: complete, not needed, or missing
+- risk status: material risks and whether they block landing
+
 ## Required Output
 
 - goal
 - owned boundary
+- context read
 - promotion state
 - evidence
 - decision

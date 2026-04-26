@@ -32,10 +32,30 @@ workflow outcomes.
 - `writeback`: record durable branch/task/PR/run/CI/workflow outcomes in `knowledge-log.md`, active
   wiki pages, or future `wiki/prs/` and `wiki/runs/`.
 
+## Writeback Location Rules
+
+- chronology: append to `knowledge-log.md`
+- navigation or read path: update `knowledge-index.md` or nearest index page
+- durable external source: update `wiki/sources/**`
+- cross-source lesson: update synthesis pages under the maintained source layer
+- active product, design, or process truth: update the relevant active wiki page
+- branch, run, PR, release, or CI state: use the existing project memory location, or create a
+  dedicated run/PR page only when repeated resumption needs it
+- transient chat, discarded attempt, or redundant command output: no writeback unless it changes
+  future decisions
+
+## Operation Details
+
+- For `ingest`, register provenance, summarize transferable lessons, and state what not to copy.
+- For `query`, answer from maintained truth first and name the pages used.
+- For `lint`, fix broken links, stale naming, duplicated truth, and active/historical confusion.
+- For `writeback`, record the decision, evidence, owner, and next read location.
+
 ## Required Output
 
 - goal
 - owned boundary
+- context read
 - operation
 - pages read
 - pages changed
@@ -43,6 +63,7 @@ workflow outcomes.
 - evidence
 - decision: `written`, `no-op`, `reroute`, or `blocked`
 - unresolved gaps
+- risks
 - next owner, if any
 - `writeback_needed`
 - `writeback_complete: yes/no`

@@ -22,16 +22,41 @@ system the repository builds.
 5. Require every owner to return `writeback_needed: yes/no`.
 6. Route to `llm-wiki` when durable decisions need writeback.
 
+## Routing Decision Table
+
+| Situation | Route |
+| --- | --- |
+| Current state, branch, or assumptions are unclear | `auto-run-memory` |
+| Project framing or active docs are unclear | `project-context` |
+| Scope, owner, non-goals, or acceptance are unclear | `auto-pm` |
+| One bounded change is ready to make | `auto-coding` |
+| Work is claimed done or risky | `auto-qa` |
+| Local checks or remote CI fail | `ci-recovery` |
+| Promotion or landing state is unclear | `auto-promotion-protocol` |
+| Durable decision or result must survive chat | `llm-wiki` |
+| Repo memory is stale, duplicated, or hard to resume | `auto-garbage-collection` |
+| Skill surface itself is drifting | `harness-skill-audit` |
+
+## Stop States
+
+- `routed`: next owner is known and has enough context.
+- `blocked`: work cannot continue without external input, permission, or missing evidence.
+- `ready`: acceptance, validation, and writeback posture are current.
+- `discarded`: the change or route should not continue.
+- `parked`: valid work exists but is not the active frontier now.
+
 ## Required Output
 
 - goal
 - owned boundary
+- context read
 - active frontier
 - evidence
 - current owner
 - evidence required to keep the work
 - decision: `route`, `park`, `discard`, `ready`, or `blocked`
 - next owner or stop state
+- risks
 - `writeback_needed`
 - reason this is repo-work routing, not product behavior
 
