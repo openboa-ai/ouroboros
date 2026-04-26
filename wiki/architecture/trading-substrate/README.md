@@ -5,7 +5,7 @@ generation.
 
 ## Why This Exists For MLP-01
 
-MLP-01 needs one promoted candidate to run as a bounded live `TradingSystemPod` on Binance BTC
+MLP-01 needs one promoted candidate to run as a bounded live `TraderSystemRuntime` on Binance BTC
 perpetual futures.
 
 The trading substrate exists to keep that first-venue reality available as stable operational
@@ -30,7 +30,7 @@ surfaces rather than burying it inside runtime-local logic.
 
 | PRD | What the trading substrate must support |
 | --- | --- |
-| PRD 3 | one promoted candidate can run as a bounded live `TradingSystemPod` on Binance BTC perpetual futures within explicit live limits |
+| PRD 3 | one promoted candidate can run as a bounded live `TraderSystemRuntime` on Binance BTC perpetual futures within explicit live limits |
 | PRD 4 | meaningful wake and intervention context can be grounded in live market, order, fill, account, and risk facts |
 
 ## Durable Truth, Interfaces, And Recovery Boundaries
@@ -58,13 +58,13 @@ The substrate should make those conditions explicit rather than hiding them behi
 
 The current active supporting specs are:
 
-- [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
+- [../03-pr3-bounded-live-trader-system-runtime-design.md](../03-pr3-bounded-live-trader-system-runtime-design.md)
 - [../specs/24-always-on-trading-substrate-contract.md](../specs/24-always-on-trading-substrate-contract.md)
 - [../specs/25-substrate-signal-contract.md](../specs/25-substrate-signal-contract.md)
 - [../specs/26-substrate-state-surface-contract.md](../specs/26-substrate-state-surface-contract.md)
 - [../specs/27-order-fill-surface-contract.md](../specs/27-order-fill-surface-contract.md)
 
-Read [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
+Read [../03-pr3-bounded-live-trader-system-runtime-design.md](../03-pr3-bounded-live-trader-system-runtime-design.md)
 first when implementing Slice 3.
 
 ## Not In The Default Baseline

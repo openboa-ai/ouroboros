@@ -9,14 +9,15 @@ This page defines the active candidate contract for autokairos.
 The active meaning of `Candidate` is `TraderSystemCandidate`.
 
 It is the durable, promotable trading-system candidate that can be evaluated and later run as a
-bounded live pod.
+bounded live runtime.
 
 ## PR1 Applicability
 
 PR1 only needs the minimum shape that makes the candidate system real:
 
 - durable candidate identity
-- image reference
+- spec reference
+- executable program reference when present
 - capability package references
 - agent runtime shape reference
 - provenance
@@ -33,10 +34,12 @@ PR1 does not need evidence, promotion, live execution, or wake records.
 | `candidate_kind` | must be `trader_system` for the active MLP |
 | `created_at` | when control plane materialized the candidate |
 | `created_by_harness_ref` | provider/harness provenance, including concrete `provider_kind` and provider run reference when available |
-| `trading_system_image_ref` | versioned system artifact |
+| `trader_system_spec_ref` | versioned system artifact |
+| `trader_system_program_ref` | agent-authored executable behavior bundle associated with the spec, if present |
 | `capability_package_refs` | context/tool/skill/data-access package refs |
-| `agent_runtime_unit_refs` | one or more agent participants that define the current pod shape |
-| `pod_communication_policy` | single-agent or future team/distributed communication mode |
+| `agent_spec_refs` | one or more configured agent participants that define the intended runtime shape |
+| `agent_session_refs` | one or more running agent participant refs when a runtime run has occurred |
+| `runtime_communication_policy` | single-agent or future team/distributed communication mode |
 | `first_market_scope` | Binance BTC perpetual futures for MLP-01 |
 | `title` | short operator-facing label |
 | `system_summary` | what the candidate system is intended to do |
@@ -57,20 +60,32 @@ These values do not imply:
 - live approval
 - live operation
 
-## Relationship To Image And Packages
+## Relationship To Trader-System Spec And Packages
 
 The candidate must reference:
 
-- one `TradingSystemImage`
+- one `TraderSystemSpec`
+- one optional `TraderSystemProgram` artifact when the candidate includes executable behavior
+- one `ProgramManifest` and one `ProgramValidationRecord` for executable program artifacts once
+  execution is possible
 - one or more `CapabilityPackage` artifacts
-- at least one `AgentRuntimeUnit` or equivalent runtime-unit placeholder
-- one `PodCommunicationPolicy`
+- at least one `AgentSpec` and, after execution, an `AgentSession` placeholder or ref
+- one `RuntimeCommunicationPolicy`
 
 The candidate must not inline all context/tool details as unstructured prose. Package references are
 part of the product contract because they enable reuse, audit, and future marketplace boundaries.
 
-The candidate also must not hide its agent runtime shape. A single-agent candidate and a future
-team-based candidate can share the same product model only if the runtime-unit boundary is explicit.
+The candidate must also not reduce executable behavior to a human-authored strategy DSL. If there is
+a `TraderSystemProgram`, it is an agent-authored executable artifact whose authority is limited by
+sandbox, trace, evaluation, and gateway contracts.
+
+The candidate must not treat program validation as promotion. `ProgramValidationRecord` only decides
+whether a program is safe enough to mount or execute; it does not prove performance, counted
+evidence, legitimacy, or live readiness.
+
+The candidate also must not hide its agent-session shape. A single-agent candidate and a future
+team-based candidate can share the same product model only if the agent-session boundary is
+explicit.
 
 When a real provider creates the candidate, provenance must be concrete enough to answer:
 
@@ -99,14 +114,19 @@ Self-evolution creates a `CandidateVersion`.
 
 The live candidate is not patched in place.
 
+If a runtime proposes changed program behavior, the result is a candidate-version proposal with a
+new or revised `TraderSystemSpec` / `TraderSystemProgram` path. It must pass evaluation and
+promotion again before becoming live authority.
+
 ## Operator-Visible Meaning
 
 From the candidate record, the operator must be able to answer:
 
 - what system is this?
-- what image/version represents it?
+- what trader-system spec/version represents it?
+- what trader-system program/artifact represents its executable behavior?
 - what packages does it use?
-- does it have one runtime unit or multiple runtime units?
+- does it have one agent session or multiple agent sessions?
 - where did it come from?
 - is it ready for evaluation?
 - what is not yet proven?

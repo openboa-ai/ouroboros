@@ -1,22 +1,27 @@
 # Trading Substrate Signal And Liveness Model
 
-This page defines how the trading substrate should emit domain-relevant signals and liveness
-posture without collapsing them into wake-policy decisions.
+This page defines how the trading substrate exposes market, order, position, risk, and connector
+state without becoming the trader-system brain or the runtime control plane.
 
 It follows:
 
 - [01-overview.md](01-overview.md)
 - [02-state-surfaces.md](02-state-surfaces.md)
-- [../proactive-operations/02-trigger-model.md](../proactive-operations/02-trigger-model.md)
-- [../specs/19-wake-orchestration-and-trigger-model.md](../specs/19-wake-orchestration-and-trigger-model.md)
-- [../specs/23-wake-trigger-record-contract.md](../specs/23-wake-trigger-record-contract.md)
+- [../specs/24-always-on-trading-substrate-contract.md](../specs/24-always-on-trading-substrate-contract.md)
+- [../specs/25-substrate-signal-contract.md](../specs/25-substrate-signal-contract.md)
+- [../specs/26-substrate-state-surface-contract.md](../specs/26-substrate-state-surface-contract.md)
+- [../specs/27-order-fill-surface-contract.md](../specs/27-order-fill-surface-contract.md)
 
 ## Purpose
 
 Define the line between:
 
-- domain facts the substrate notices
-- orchestration decisions about whether those facts should wake the system
+- domain facts the substrate observes
+- state surfaces a trader system can read
+- lifecycle/intervention decisions the control plane may make
+
+The substrate does not decide trader-system actions. It provides current state and signal records
+that runtimes, evaluation, gateway, and operator inspection can consume.
 
 ## Scope And Non-Goals
 
@@ -24,34 +29,14 @@ This page covers:
 
 - substrate signal families
 - freshness and liveness posture
-- the separation between substrate signal and wake-trigger record
+- the boundary between domain facts and runtime lifecycle control
 
 This page does not cover:
 
 - exact policy evaluation logic
+- runtime internal strategy
+- direct exchange side effects
 - review routing
-- runtime tool behavior
-
-## Responsibilities
-
-The signal and liveness model should:
-
-- expose domain-relevant change candidates
-- make stale or degraded ingress visible
-- preserve enough posture for proactive orchestration to decide whether to wake
-- avoid turning every signal into a wake
-
-## System Boundaries
-
-The substrate may notice facts.
-
-The substrate should not decide:
-
-- whether a governed execution request is emitted
-- whether a heartbeat should be suppressed
-- whether a standing order authorizes action
-
-Those belong above it.
 
 ## Signal Families
 
@@ -101,20 +86,21 @@ Examples:
 - connector disconnected
 - liveness restored
 
-## Signal Versus Wake Trigger
-
-This distinction must stay explicit.
+## Signal Versus Runtime Control
 
 | Layer | Meaning |
 | --- | --- |
 | `SubstrateSignal` | the substrate noticed a domain-relevant fact |
-| `WakeTriggerRecord` | proactive orchestration evaluated a candidate and emitted or suppressed a governed wake |
+| `SubstrateStateSurface` | the current readable state exposed to runtimes, gateway, evaluation, and operator inspection |
+| `RuntimeControlDecision` | the control plane accepted, rejected, or applied a lifecycle/intervention action |
 
 A substrate signal is therefore:
 
-- upstream of wake orchestration
-- not yet authority-checked
-- not yet a governed execution decision
+- upstream of runtime reads, trace, evaluation, and operator inspection
+- not a lifecycle command
+- not an order
+- not evidence
+- not a promotion decision
 
 ## Freshness And Liveness Classes
 
@@ -146,10 +132,14 @@ At minimum the substrate should expose:
 
 ```mermaid
 flowchart LR
-    A["External delta"] --> B["Substrate surface update"]
+    A["External market / venue / account delta"] --> B["Substrate surface update"]
     B --> C["SubstrateSignal"]
-    C --> D["Wake-policy and standing-order evaluation"]
-    D --> E["WakeTriggerRecord: emitted or suppressed"]
+    C --> D["SubstrateStateSurface"]
+    D --> RT["TraderSystemRuntime read"]
+    D --> GW["TradingGateway risk/read"]
+    D --> OP["Operator inspect"]
+    D --> EVAL["Evaluation input"]
+    OP --> RC["Optional RuntimeControlDecision"]
 ```
 
 ## Failure And Recovery Model
@@ -158,23 +148,15 @@ The model is failing if:
 
 - stale data looks fresh
 - connector failure disappears into runtime-local logs
-- every substrate signal becomes a wake by default
-- emitted wake history cannot be traced back to a substrate signal family
+- substrate records are treated as trader-system decisions
+- substrate records directly create evidence, promotion, or live authority
 
 Recovery depends on:
 
 - explicit liveness posture
 - inspectable signal families
-- dedupe and burst control above the substrate
-
-## What Is Still Delegated To Specs / ADRs
-
-- substrate-signal object semantics remain in
-  [../specs/25-substrate-signal-contract.md](../specs/25-substrate-signal-contract.md)
-- trigger-family semantics remain in
-  [../specs/19-wake-orchestration-and-trigger-model.md](../specs/19-wake-orchestration-and-trigger-model.md)
-- durable emitted-or-suppressed wake history remains in
-  [../specs/23-wake-trigger-record-contract.md](../specs/23-wake-trigger-record-contract.md)
+- traceable state reads
+- gateway and runtime-control boundaries above the substrate
 
 ## Core Claim
 
@@ -184,9 +166,9 @@ The substrate should be able to say:
 - when it happened
 - how fresh the relevant surfaces are
 
-But not:
+It should not say:
 
-- whether the system was authorized to wake
-- whether work was emitted
-
-That separation is what keeps signal, policy, and runtime from collapsing into one layer.
+- what the trader system should decide internally
+- whether a candidate should be promoted
+- whether an order should bypass the gateway
+- whether the control plane should lifecycle-control a runtime

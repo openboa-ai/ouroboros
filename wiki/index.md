@@ -22,17 +22,17 @@ The repository keeps a separate role for:
 
 The active product model is:
 
-`weak human -> agent-built TraderSystemCandidates -> TradingSystemPods with explicit AgentRuntimeUnits -> externally evaluated candidates -> promoted bounded live pod -> wake / inspect / pause / stop / override`
+`weak human -> agent-built TraderSystemCandidates -> TraderSystemRuntimes with explicit AgentSpecs, AgentSessions, AgentRuns, and AgentEvents -> externally evaluated candidates -> promoted bounded live runtime -> wake / inspect / pause / stop / override`
 
-Candidate identity, pod identity, capability packaging, and stage binding are product truth, not
+Candidate identity, runtime identity, capability packaging, and stage binding are product truth, not
 implementation garnish.
 
 Multi-agent execution is also product-sensitive: agents may collaborate through provider-native
 team threads or A2A-compatible endpoints, but communication outputs remain trace inputs until
 autokairos evaluation and governance decide otherwise.
 
-Provider choice is per `AgentRuntimeUnit`; communication and sharing are governed by one
-provider-neutral `PodCommunicationPolicy` for the pod.
+Provider choice is per `AgentSession`; communication and sharing are governed by one
+provider-neutral `RuntimeCommunicationPolicy` for the pod.
 
 Provider choice is not implementation-ready until it names a callable adapter surface, such as
 `codex_cli` through `codex exec` or `claude_agent_sdk_python` through Claude Agent SDK.
@@ -54,18 +54,20 @@ Provider choice is not implementation-ready until it names a callable adapter su
 13. [product/mlp-01/prds/README.md](product/mlp-01/prds/README.md)
 14. [architecture/README.md](architecture/README.md)
 15. [architecture/00-system-map.md](architecture/00-system-map.md)
-16. [product/mlp-01/07-implementation-plan.md](product/mlp-01/07-implementation-plan.md)
-17. [product/mlp-01/08-greenfield-bootstrap-plan.md](product/mlp-01/08-greenfield-bootstrap-plan.md)
-18. [architecture/05-bootstrap-tech-spec.md](architecture/05-bootstrap-tech-spec.md)
-19. [architecture/06-runtime-provider-adapter-feasibility.md](architecture/06-runtime-provider-adapter-feasibility.md)
-20. the slice design note that matches the PRD you are implementing:
+16. [architecture/08-runtime-authority-model.md](architecture/08-runtime-authority-model.md)
+17. [architecture/09-trader-system-runtime-operating-model.md](architecture/09-trader-system-runtime-operating-model.md)
+18. [product/mlp-01/07-implementation-plan.md](product/mlp-01/07-implementation-plan.md)
+19. [product/mlp-01/08-greenfield-bootstrap-plan.md](product/mlp-01/08-greenfield-bootstrap-plan.md)
+20. [architecture/05-bootstrap-tech-spec.md](architecture/05-bootstrap-tech-spec.md)
+21. [architecture/06-runtime-provider-adapter-feasibility.md](architecture/06-runtime-provider-adapter-feasibility.md)
+22. the slice design note that matches the PRD you are implementing:
     [architecture/01-pr1-trader-system-candidate-becomes-real-design.md](architecture/01-pr1-trader-system-candidate-becomes-real-design.md),
     [architecture/02-pr2-candidate-becomes-externally-evaluated-design.md](architecture/02-pr2-candidate-becomes-externally-evaluated-design.md),
-    [architecture/03-pr3-bounded-live-trading-system-pod-design.md](architecture/03-pr3-bounded-live-trading-system-pod-design.md), or
-    [architecture/04-pr4-live-pod-remains-controllable-design.md](architecture/04-pr4-live-pod-remains-controllable-design.md)
-21. the subsystem README that matches the PRD you are implementing
-22. [architecture/specs/README.md](architecture/specs/README.md) only when needed
-23. [architecture/adrs/README.md](architecture/adrs/README.md) for decision history
+    [architecture/03-pr3-bounded-live-trader-system-runtime-design.md](architecture/03-pr3-bounded-live-trader-system-runtime-design.md), or
+    [architecture/04-pr4-live-runtime-remains-controllable-design.md](architecture/04-pr4-live-runtime-remains-controllable-design.md)
+23. the subsystem README that matches the PRD you are implementing
+24. [architecture/specs/README.md](architecture/specs/README.md) for the active spec gate
+25. [architecture/adrs/README.md](architecture/adrs/README.md) for decision history
 
 ## Rule
 

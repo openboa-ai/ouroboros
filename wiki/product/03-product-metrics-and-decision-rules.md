@@ -18,7 +18,7 @@ The current north-star is not volume.
 It is:
 
 **one agent-built `TraderSystemCandidate` is externally evaluated, promoted, run as a bounded live
-`TradingSystemPod` on Binance BTC perpetual futures, and remains trustworthy enough that the
+`TraderSystemRuntime` on Binance BTC perpetual futures, and remains trustworthy enough that the
 operator does not become the permanent runtime loop.**
 
 Everything else is secondary to proving that path.
@@ -33,7 +33,7 @@ The current phase should track four classes of signals.
 - one candidate can be run under backtest/paper/live bindings without changing identity
 - one candidate accumulates counted evidence outside runtime self-report
 - one candidate reaches a clear promotion decision
-- one promoted candidate runs as a bounded live pod
+- one promoted candidate runs as a bounded live runtime
 
 ### 2. Trust Signals
 
@@ -41,7 +41,7 @@ The current phase should track four classes of signals.
 - the operator can explain what capability package and binding were used
 - the operator can explain why evidence counted
 - the operator can explain what was approved for live
-- the operator can explain why the live pod woke them
+- the operator can explain why the live runtime woke them
 
 ### 3. Autonomy Signals
 
@@ -78,7 +78,7 @@ Scope should widen only after the first lovable proof is credible.
 
 That means at minimum:
 
-- one believable bounded live pod exists on Binance BTC perpetual futures
+- one believable bounded live runtime exists on Binance BTC perpetual futures
 - the operator can explain why it counted and what was approved
 - bounded autonomy and intervention both work
 
@@ -97,13 +97,13 @@ The current wedge should be killed or reframed if:
 - trustworthy live promotion cannot be made legible enough for operator confidence
 - the product collapses into an idea copilot or monitoring dashboard instead of a living trading
   system
-- the product requires broadening scope before one bounded live pod can be made lovable
+- the product requires broadening scope before one bounded live runtime can be made lovable
 
 ## What This Means For Current Planning
 
 Current planning should optimize for:
 
-- one credible externally evaluated live pod
+- one credible externally evaluated live runtime
 - one serious user
 - one serious market
 - one readable trust loop

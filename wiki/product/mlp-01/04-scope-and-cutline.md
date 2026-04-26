@@ -9,13 +9,13 @@ This page defends the first lovable cut from adjacent but premature scope.
 MLP-01 includes:
 
 - small pool of `TraderSystemCandidates`
-- durable `TradingSystemImage` references
+- durable `TraderSystemSpec` references
 - durable `CapabilityPackage` references
 - backtest, paper, and live as `StageBindings`
 - external trace and evidence boundary
 - one live promotion gate
 - bounded live agent authority through autokairos gateway
-- wake, inspect, pause, stop, override, and audit for the first live pod
+- wake, inspect, pause, stop, override, and audit for the first live runtime
 - clone/evaluate/promote path for self-evolution
 
 ## Out Of Scope
@@ -26,7 +26,7 @@ MLP-01 excludes:
 - full Kubernetes clone
 - broad venue support
 - dynamic multi-level agent organization
-- multi-agent pods unless a PRD acceptance criterion cannot be met by one runtime unit
+- multi-agent runtimes unless a PRD acceptance criterion cannot be met by one agent session
 - direct exchange access from external agent harnesses
 - unbounded live mutation
 - treating Claude outcomes or agent self-critique as trading evidence
@@ -52,7 +52,7 @@ Include work now only if it helps prove:
 one trader-system candidate
 -> same artifact under bindings
 -> external evidence
--> bounded live pod
+-> bounded live runtime
 -> operator control
 ```
 
@@ -63,7 +63,7 @@ Reject work now if it primarily proves:
 - venue breadth
 - harness feature completeness
 - dashboard breadth
-- speculative future package trading without the first pod proof
+- speculative future package trading without the first runtime proof
 
 ## False-Positive Scope
 
@@ -85,13 +85,13 @@ Scope cannot violate:
 - tools/context are packaged as `CapabilityPackage`
 - secrets live in vault/binding/gateway layers, not packages
 - bindings define environment-specific execution semantics
-- evidence is external to pods
+- evidence is external to runtimes
 - live authority is bounded by autokairos gateway
 - active live systems cannot mutate in place
-- MLP starts single-agent; multi-agent admission requires explicit runtime-unit roles,
-  `PodCommunicationPolicy`, `TeamTrace`, and no live-authority bypass
+- MLP starts single-agent; multi-agent admission requires explicit run purposes,
+  `RuntimeCommunicationPolicy`, `TeamTrace`, and no live-authority bypass
 
 ## Scope Acceptance Test
 
-A new request belongs in MLP-01 only if it makes the first promoted bounded trader-system pod more
+A new request belongs in MLP-01 only if it makes the first promoted bounded trader-system runtime more
 believable without expanding into platform or marketplace breadth.

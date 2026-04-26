@@ -40,7 +40,7 @@ The architecture now separates:
 
 The new subsystem is responsible for:
 
-- trigger taxonomy
+- semantic attention and wake-policy truth
 - wake-policy truth
 - periodic vs exact vs event-driven wake semantics
 - standing authority

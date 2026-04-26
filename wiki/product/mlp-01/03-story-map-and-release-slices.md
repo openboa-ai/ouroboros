@@ -16,10 +16,10 @@ stronger trader-system candidate.
 | Activity | User-visible tasks |
 | --- | --- |
 | See candidate systems | inspect small pool, compare candidate identity, understand provenance |
-| Understand system artifact | inspect image version, brain/team spec, capability packages |
+| Understand system artifact | inspect spec version, brain/team spec, capability packages |
 | Evaluate under bindings | see backtest/paper runs as bindings for the same artifact |
 | Decide promotion | inspect counted evidence and live-gate meaning |
-| Let one pod trade live | see bounded order intent, gateway decision, live status |
+| Let one runtime trade live | see bounded order intent, gateway decision, live status |
 | Stay in control | inspect, pause, stop, override, audit |
 
 ## Canonical Release Slices
@@ -33,7 +33,7 @@ Trust question:
 Closes:
 
 - small pool can produce durable `TraderSystemCandidate` records
-- candidate image and capability package references are inspectable
+- candidate spec and capability package references are inspectable
 - candidate is no longer chat/runtime residue
 
 Visible proof:
@@ -57,7 +57,7 @@ Visible proof:
 
 - the product governs evaluation instead of trusting agent self-report
 
-### Slice 3: One Candidate Runs As Bounded Live Trader-System Pod
+### Slice 3: One Candidate Runs As Bounded Live Trader-System Runtime
 
 Trust question:
 
@@ -74,7 +74,7 @@ Visible proof:
 
 - this is real live delegation, not paper theater or direct unbounded agent access
 
-### Slice 4: Live Pod Remains Controllable
+### Slice 4: Live Runtime Remains Controllable
 
 Trust question:
 
@@ -96,7 +96,7 @@ Visible proof:
 
 - Slice 1 must come first because evaluation cannot judge an undefined system.
 - Slice 2 must come before Slice 3 because live without external evidence is reckless.
-- Slice 3 must come before Slice 4 because intervention needs a real live pod to control.
+- Slice 3 must come before Slice 4 because intervention needs a real live runtime to control.
 - Slice 4 is still part of MLP-01 because live delegation without recovery/control is not lovable.
 
 ## Branch Markers
@@ -111,8 +111,8 @@ Visible proof:
 | --- | --- |
 | Slice 1 | [prds/01-trader-system-candidate-becomes-real.md](prds/01-trader-system-candidate-becomes-real.md) |
 | Slice 2 | [prds/02-candidate-becomes-externally-evaluated.md](prds/02-candidate-becomes-externally-evaluated.md) |
-| Slice 3 | [prds/03-bounded-live-trading-system-pod.md](prds/03-bounded-live-trading-system-pod.md) |
-| Slice 4 | [prds/04-live-pod-remains-controllable.md](prds/04-live-pod-remains-controllable.md) |
+| Slice 3 | [prds/03-bounded-live-trader-system-runtime.md](prds/03-bounded-live-trader-system-runtime.md) |
+| Slice 4 | [prds/04-live-runtime-remains-controllable.md](prds/04-live-runtime-remains-controllable.md) |
 
 ## Slice Acceptance Test
 
@@ -121,5 +121,5 @@ The slice map is correct only if a reader can explain:
 - why the first slice is candidate-system identity
 - why capability packages are inspectable before evaluation
 - why external evidence precedes live promotion
-- why bounded live authority precedes wake/control
+- why bounded live authority precedes operator intervention
 - why self-evolution is clone/evaluate/promote

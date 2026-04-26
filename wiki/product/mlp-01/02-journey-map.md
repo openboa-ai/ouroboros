@@ -36,10 +36,10 @@ The human carries trust manually across every transition.
 With autokairos:
 
 - a small candidate pool appears as durable trader-system candidates
-- each candidate exposes image, capability packages, and binding history
+- each candidate exposes trader-system spec, capability packages, and binding history
 - backtest and paper runs are understood as environment bindings for the same candidate artifact
 - counted evidence is external and visible
-- one live gate promotes a specific candidate into a bounded live pod
+- one live gate promotes a specific candidate into a bounded live runtime
 - live actions pass through a gateway
 - wake and intervention preserve control
 
@@ -48,11 +48,11 @@ With autokairos:
 | Stage | Operator question | Product proof | Trust failure if missing |
 | --- | --- | --- | --- |
 | Candidate pool appears | What systems are being tried? | Durable `TraderSystemCandidate` records | output feels like chat residue |
-| Candidate artifact is inspectable | What exactly is this system? | `TradingSystemImage` and `CapabilityPackage` refs | operator cannot compare or rerun it |
+| Candidate artifact is inspectable | What exactly is this system? | `TraderSystemSpec` and `CapabilityPackage` refs | operator cannot compare or rerun it |
 | Backtest binding runs | Did the same system get evaluated? | `StageBinding=backtest` with external trace | evaluation feels detached from the candidate |
-| Evidence is sealed | What counted? | `EvidenceRecord` from evaluator outside the pod | agent self-report becomes truth |
+| Evidence is sealed | What counted? | `EvidenceRecord` from evaluator outside the runtime | agent self-report becomes truth |
 | Live gate appears | What am I approving? | `PromotionDecision` for one candidate and binding | gate feels ceremonial |
-| Live pod runs | Is this really bounded live autonomy? | `OrderIntent -> GatewayDecision -> ExecutionAttempt` | agent has either no autonomy or unsafe authority |
+| Live runtime runs | Is this really bounded live autonomy? | `OrderIntent -> GatewayDecision -> ExecutionAttempt` | agent has either no autonomy or unsafe authority |
 | Intervention remains decisive | Can I still control it? | pause, stop, override, audit | operator becomes shadow runtime |
 
 ## Canonical Trust Journey
@@ -87,11 +87,11 @@ small candidate pool
 - `Hold`: candidate remains durable but lacks enough legitimate evidence.
 - `Reject`: candidate is disqualified with explicit evidence/rationale.
 - `Clone`: candidate proposes a new version for re-evaluation.
-- `Intervene`: live pod is paused, stopped, or overridden with audit.
+- `Intervene`: live runtime is paused, stopped, or overridden with audit.
 
 ## Reference Scenario
 
-For Binance BTC perpetual futures, the same candidate image can run with:
+For Binance BTC perpetual futures, the same candidate spec can run with:
 
 - backtest binding: historical market data, simulated exchange, evaluator
 - paper binding: live market data, paper gateway, paper risk envelope

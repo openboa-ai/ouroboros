@@ -31,10 +31,10 @@ Each PRD answers:
    harness output.
 2. [02-candidate-becomes-externally-evaluated.md](02-candidate-becomes-externally-evaluated.md)
    The candidate must run under an evaluation binding and produce externally judged evidence.
-3. [03-bounded-live-trading-system-pod.md](03-bounded-live-trading-system-pod.md)
-   One promoted candidate must run as a bounded live `TradingSystemPod`.
-4. [04-live-pod-remains-controllable.md](04-live-pod-remains-controllable.md)
-   The live pod must remain inspectable, interruptible, auditable, and version-safe.
+3. [03-bounded-live-trader-system-runtime.md](03-bounded-live-trader-system-runtime.md)
+   One promoted candidate must run as a bounded live `TraderSystemRuntime`.
+4. [04-live-runtime-remains-controllable.md](04-live-runtime-remains-controllable.md)
+   The live runtime must remain inspectable, interruptible, auditable, and version-safe.
 
 ## PRD Rule
 
@@ -52,7 +52,7 @@ Do not deepen PRDs in ways that reopen:
 
 - first market scope
 - `TraderSystemCandidate` as candidate identity
-- `TradingSystemPod` as execution unit
+- `TraderSystemRuntime` as execution unit
 - `CapabilityPackage` as context/tool artifact boundary
 - live gate placement
 - bounded live authority posture

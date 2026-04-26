@@ -2,399 +2,201 @@
 
 This page is the diagram-first technical map for the current MLP-01 architecture.
 
-It is not a product thesis, PRD, or implementation backlog. It shows how the locked product
-contracts flow into the active architecture, which boundaries must not collapse, and which specs to
-read for each implementation slice.
+It is not a product thesis, requirements document, implementation backlog, or project-management
+read path.
 
-## Purpose
-
-Use this page to answer:
-
-- how product truth flows into implementation
-- what a `TraderSystemCandidate` becomes over time
-- what a `TradingSystemPod` is made of
-- how an agent loop stays autonomous without becoming unbounded
-- where provider execution, evaluation, live execution, and wake/control boundaries sit
-- which specs are mandatory for Bootstrap, PR1, PR2, PR3, and PR4
+Its first job is to explain how autokairos itself operates as a trader-system control plane.
+Delivery sequencing is secondary and must not be mistaken for the system design.
 
 ## One-Line Architecture
 
 ```text
-autokairos is a control plane for creating, evaluating, promoting, running, and controlling
-agent-built trader-system pods without letting runtime self-report, provider sessions, or live
-agent output become durable truth or unrestricted trading authority.
+autokairos is a control plane for registering, deploying, observing, evaluating, promoting, and
+controlling agent-built trader-system runtimes without becoming the trader-system brain or handing
+provider sessions unrestricted trading authority.
 ```
 
-## End-To-End Product / Architecture Flow
+## System Boundary
+
+Primary question:
+
+> what does autokairos own, and what does it borrow?
+
+```mermaid
+flowchart LR
+    OP["Operator"] --> CP["autokairos Control Plane"]
+
+    AGENT["External Agent Providers<br/>Codex / Claude / OpenClaw / A2A"] --> ART["TraderSystem Artifact<br/>Spec + Program + CapabilityPackage"]
+    ART --> CP
+
+    CP --> STORE["Durable Store<br/>candidate / artifact / trace / evidence / execution / audit"]
+    CP --> RT["TraderSystemRuntime"]
+
+    RT --> PLACE["RuntimePlacement"]
+    RT --> TOOLS["Tool / Data Providers<br/>through ToolProxy"]
+    RT --> GW["TradingGateway"]
+    GW --> EXCHANGE["Exchange<br/>Binance BTC Perpetual Futures"]
+
+    STORE --> EVAL["External Evaluation"]
+    EVAL --> CP
+
+    VAULT["Vault / Credentials"] --> GW
+    VAULT --> TOOLS
+```
+
+Boundary rule:
+
+```text
+External agents build or update trader-system artifacts.
+autokairos operates those artifacts through lifecycle, placement, trace, evaluation, gateway, and audit boundaries.
+```
+
+## Current Locked Boundaries
+
+| Boundary | Locked meaning |
+| --- | --- |
+| autokairos != trader-system author | autokairos operates agent-built systems; it does not own internal trading logic |
+| `RuntimeControl != internal strategy loop` | lifecycle/governance commands are not step orchestration |
+| `TraderSystemRuntime != RuntimePlacement` | runtime is durable logical identity; placement is replaceable process/container/provider/endpoint execution |
+| `Provider output != EvidenceRecord` | provider output enters as `AgentEvent -> Trace`; counted evidence requires evaluation sealing |
+| `RuntimeMemorySurface != EvidenceRecord` | memory is scoped context, not objective proof, promotion truth, or provider-private state |
+| `TraderSystemSpec != Docker image` | spec is the versioned trader-system definition, not physical packaging |
+| `TraderSystemProgram != human DSL` | program is agent-authored executable behavior, not a human-predefined strategy language |
+| `ProgramValidationRecord != PromotionDecision` | validation permits mount/execute consideration; it does not prove performance |
+| `CapabilityManifest != CapabilityGrant` | package manifests request access; stage/tool/vault/gateway surfaces grant or deny it |
+| `CapabilityPackage != secrets` | packages must not carry credentials, evaluator labels, live approval, or gateway signing material |
+| `Trace != EvidenceRecord` | trace is recoverable runtime history; evidence exists only after sealing |
+| `OrderIntent != GatewayDecision` | runtime may propose intent; gateway owns accept, reject, clip, and execution linkage |
+| `A2A != MCP != ACP` | A2A is remote agent communication; MCP is tool/resource access; ACP/OpenClaw is harness bridge |
+
+## Canonical Diagram Index
+
+| View | Primary question | Canonical page |
+| --- | --- | --- |
+| System boundary | What is inside autokairos and what is external? | this page |
+| Durable object model | What is official product/control-plane truth? | this page |
+| Logical versus physical execution | What is `TraderSystemRuntime` versus `RuntimePlacement`? | [08-runtime-authority-model.md](08-runtime-authority-model.md) |
+| Runtime operating model | How does autokairos deploy and operate an agent-built trader system? | [09-trader-system-runtime-operating-model.md](09-trader-system-runtime-operating-model.md) |
+| Provider execution | How do Codex, Claude, OpenClaw, A2A, or local process calls enter trace? | [specs/07-runtime-connector-contract.md](specs/07-runtime-connector-contract.md) |
+| Runtime operating policy | What lifecycle, placement, trace, stop, recovery, and audit policy bounds a runtime? | [specs/15-runtime-operating-policy-contract.md](specs/15-runtime-operating-policy-contract.md) |
+| Stage progression | How does the same artifact move through backtest, paper, and live bindings? | [08-runtime-authority-model.md](08-runtime-authority-model.md) |
+| Live authority | Who can submit or reject real orders? | [specs/16-order-intent-and-gateway-decision-contract.md](specs/16-order-intent-and-gateway-decision-contract.md) |
+| Recovery | How does the same logical runtime survive physical execution failure? | [09-trader-system-runtime-operating-model.md](09-trader-system-runtime-operating-model.md) |
+| Bootstrap substrate | What minimal code substrate exists before feature implementation? | [05-bootstrap-tech-spec.md](05-bootstrap-tech-spec.md) |
+
+## Core Object Model
+
+Primary question:
+
+> which records are durable product/control-plane truth?
 
 ```mermaid
 flowchart TD
-    S["Sources / research spine"] --> P["Product truth"]
-    P --> M["MLP-01"]
-    M --> R["PRD 1-4"]
-    R --> A["Architecture baseline"]
-    A --> B["Bootstrap substrate"]
-    A --> PM["Production design method"]
-    B --> P1["PR1: Trader-System Candidate Becomes Real"]
-    P1 --> P2["PR2: Candidate Becomes Externally Evaluated"]
-    P2 --> P3["PR3: Candidate Runs As Bounded Live Pod"]
-    P3 --> P4["PR4: Live Pod Remains Controllable"]
+    C["TraderSystemCandidate"] --> V["CandidateVersion"]
+    V --> SPEC["TraderSystemSpec"]
+    SPEC --> PROGRAM["TraderSystemProgram"]
+    PROGRAM --> PMAN["ProgramManifest"]
+    PROGRAM --> PVAL["ProgramValidationRecord"]
+    V --> CAP["CapabilityPackage[]"]
+    CAP --> MAN["CapabilityManifest"]
+    MAN --> CADM["CapabilityPackageAdmissionRecord"]
+    CADM --> CGRANT["CapabilityGrant"]
+    CGRANT --> CMOUNT["CapabilityMountRecord"]
+    V --> BIND["StageBinding"]
+    V --> RT["TraderSystemRuntime"]
 
-    A --> F["Runtime provider feasibility"]
-    A --> SD["Slice design notes"]
-    A --> SP["Active specs when needed"]
+    RT --> RCTRL["RuntimeControl"]
+    RT --> ROP["RuntimeOperatingPolicy"]
+    RT --> STATUS["RuntimeStatus"]
+    RT --> PLACE["RuntimePlacement History"]
+    RT --> MEM["RuntimeMemorySurface"]
+    RT --> TRACE["Trace"]
+    CMOUNT --> TRACE
+
+    TRACE --> ERUN["EvaluationRunRecord"]
+    ERUN --> ESEAL["EvidenceSealingDecision"]
+    ESEAL --> EV["EvidenceRecord"]
+    EV --> PD["PromotionDecision"]
+
+    RT --> OI["OrderIntent"]
+    OI --> GD["GatewayDecision"]
+    GD --> EX["ExecutionAttempt"]
+
+    RCTRL --> AUDIT["OperatorActionRecord / Audit"]
 ```
 
-The important ordering rule is:
+The core boundary is:
 
-```text
-MLP -> PRD -> Architecture -> Slice Design -> PR
+- candidate and artifact truth belongs to the control plane
+- trader-system logic belongs to the agent-built program
+- provider/runtime sessions produce bounded events and trace
+- runtime memory is versioned scoped context, not evidence
+- evaluation truth is externalized into evidence records
+- live authority passes through gateway decisions
+- lifecycle/control/audit truth is durable and operator-visible
+
+## Runtime Control View
+
+Primary question:
+
+> how does autokairos operate a trader system without becoming its internal brain?
+
+```mermaid
+flowchart TD
+    ART["TraderSystem Artifact"]
+    CP["autokairos Control Plane"]
+    RC["RuntimeControl<br/>register / deploy / start / pause / resume / stop / inspect / override / kill"]
+    RT["TraderSystemRuntime"]
+    PLACE["RuntimePlacement"]
+    PROGRAM["TraderSystemProgram"]
+    AGENT["Provider-backed AgentSession<br/>called internally if needed"]
+    TRACE["Trace / Metrics / Audit"]
+    TOOL["ToolProxy"]
+    GW["TradingGateway"]
+
+    ART --> CP
+    CP --> RC
+    RC --> RT
+    RT --> PLACE
+    PLACE --> PROGRAM
+    PROGRAM --> AGENT
+    PROGRAM --> TRACE
+    AGENT --> TRACE
+    PROGRAM --> TOOL
+    AGENT --> TOOL
+    PROGRAM -->|"OrderIntent"| GW
+    AGENT -->|"OrderIntent"| GW
+    GW --> TRACE
 ```
 
-PRs are cut by trust-proof milestone, not by subsystem taxonomy.
+`RuntimeControl` is lifecycle/governance. It is not a strategy workflow or event-handler map.
 
 ## Production Design Read Path
 
-Production-level design starts from the map, then applies the shared method to the current slice:
-
 ```text
 00-system-map
+-> 08-runtime-authority-model
+-> 09-trader-system-runtime-operating-model
 -> 07-production-design-method
--> Bootstrap / PR slice design note
--> active specs required by that slice
+-> Bootstrap / focused implementation design note
+-> active specs required by that concern
 ```
 
 [07-production-design-method.md](07-production-design-method.md) defines the common bar for
 lifecycle, durable truth, validation, idempotency, recovery, credentials, observability, audit, and
 operator inspectability.
 
-## Core Object Model
+## Concern-Specific Spec Read Paths
 
-```mermaid
-flowchart TD
-    C["TraderSystemCandidate"] --> I["TradingSystemImage"]
-    C --> PKG["CapabilityPackage"]
-    PKG --> MAN["CapabilityPackageManifest"]
-    C --> CV["CandidateVersion"]
-    C --> B["StageBinding"]
-    B --> POD["TradingSystemPod"]
-    POD --> RU["AgentRuntimeUnit"]
-    RU --> ROLE["runtime_unit_role"]
-    RU --> PROVIDER["provider_kind"]
-    POD --> LOOP["AgentLoopPolicy"]
-    POD --> COMM["PodCommunicationPolicy"]
-    POD --> TRACE["Trace / TeamTrace"]
-    TRACE --> E["EvidenceRecord"]
-    E --> PD["PromotionDecision"]
-    PD --> GER["GovernedExecutionRequest"]
-    GER --> EX["ExecutionAttempt"]
-    EX --> WAKE["WakeTriggerRecord / OperatorActionRecord"]
-```
-
-The core boundary is:
-
-- candidate truth belongs to the control plane
-- provider/runtime sessions produce bounded artifacts and trace
-- evaluation truth is externalized into evidence records
-- live authority passes through gateway decisions
-- wake/control/audit truth is durable and operator-visible
-
-## TradingSystemPod Anatomy
-
-```mermaid
-flowchart TD
-    subgraph CandidateArtifact["Candidate artifact"]
-        I["TradingSystemImage"]
-        PKG["CapabilityPackage"]
-        MAN["CapabilityPackageManifest"]
-    end
-
-    subgraph Binding["StageBinding profile"]
-        DATA["data source"]
-        CLOCK["clock"]
-        RISK["risk envelope"]
-        CRED["credential binding ref"]
-        LEGIT["legitimacy mode"]
-    end
-
-    subgraph Pod["TradingSystemPod"]
-        RU["AgentRuntimeUnit"]
-        LOOP["AgentLoopPolicy"]
-        COMM["PodCommunicationPolicy"]
-        HANDS["HandsEnvironment"]
-        TOOL["ToolProxy / Gateway"]
-        TRACE["Trace export"]
-    end
-
-    I --> Pod
-    PKG --> Pod
-    MAN --> Pod
-    Binding --> Pod
-    RU --> ROLE["runtime_unit_role"]
-    RU --> PROVIDER["provider_kind"]
-    HANDS --> TOOL
-    Pod --> TRACE
-```
-
-A pod is not just a container. It is the stage-bound execution instance of a candidate artifact.
-
-For MLP-01:
-
-- the same candidate artifact can run under backtest, paper, or live binding
-- `CapabilityPackage` injects context/tool/data access declarations, not secrets
-- `AgentRuntimeUnit` chooses a concrete provider driver per participant
-- `AgentLoopPolicy` bounds autonomous execution without directing every reasoning step
-- `ToolProxy` and gateway own side-effect and live-execution authority
-
-## Stage Progression Flow
-
-```mermaid
-flowchart LR
-    C["TraderSystemCandidate"] --> BT["BacktestBindingProfile"]
-    C --> PP["PaperBindingProfile"]
-    C --> LV["LiveBindingProfile"]
-
-    BT --> T1["Trace"]
-    PP --> T2["Trace"]
-    T1 --> EV["EvidenceRecord"]
-    T2 --> EV
-    EV --> PD["PromotionDecision"]
-    PD --> GER["GovernedExecutionRequest"]
-    GER --> LV
-    LV --> POD["Bounded live TradingSystemPod"]
-```
-
-Backtest, paper, and live are not different product objects.
-
-They are different `StageBinding` profiles for the same candidate artifact:
-
-- `BacktestBindingProfile`: historical/replay data, deterministic clock, simulator, evaluator, no
-  live credentials
-- `PaperBindingProfile`: live-like data, simulated order gateway, paper risk envelope, no real
-  exchange execution
-- `LiveBindingProfile`: live data, real gateway ref, risk envelope, credential binding ref, wake
-  policy ref
-
-Live binding cannot be constructed from prompt text alone. It must be downstream of a
-`PromotionDecision` and a `GovernedExecutionRequest`.
-
-## Agent Runtime Loop
-
-```mermaid
-sequenceDiagram
-    participant CP as Control Plane
-    participant Bridge as Runtime Bridge
-    participant Provider as Provider Adapter
-    participant Agent as AgentRuntimeUnit
-    participant Tools as ToolProxy / HandsEnvironment
-    participant Trace as Trace Store
-
-    CP->>Bridge: launch with AgentLoopPolicy
-    Bridge->>Provider: resolve provider_kind and invocation surface
-    Provider->>Agent: start bounded agent loop
-    loop inside policy envelope
-        Agent->>Tools: request observation / tool / order intent
-        Tools-->>Agent: bounded result
-        Agent->>Trace: export event
-    end
-    Provider-->>Bridge: complete / timeout / cancelled / failed
-    Bridge->>CP: durable run outcome and trace refs
-```
-
-`AgentLoopPolicy` defines the envelope:
-
-- trigger source
-- loop mode
-- cadence
-- max turns or heartbeat expectation
-- timeout and cancellation
-- retry and resume posture
-- trace export requirement
-- tool access posture
-- stop conditions
-
-It does not define the agent's internal reasoning steps.
-
-Current modes:
-
-- `one_shot_builder` for PR1
-- `bounded_batch_evaluation` for PR2
-- `continuous_live` for PR3 and PR4
-
-## Provider / Runtime Unit Role Split
-
-```mermaid
-flowchart TD
-    RU["AgentRuntimeUnit"] --> ROLE["runtime_unit_role: why this unit exists"]
-    RU --> PROVIDER["provider_kind: how this unit runs"]
-    ROLE --> BUILDER["builder_agent"]
-    ROLE --> EVAL["evaluation_runner"]
-    ROLE --> LIVE["live_operator_agent"]
-    ROLE --> CRITIC["critic_agent"]
-    ROLE --> REMOTE["remote_specialist"]
-    PROVIDER --> CODEX["codex_cli / codex_sdk_ts / codex_cloud"]
-    PROVIDER --> CLAUDE["claude_agent_sdk_python / claude_agent_sdk_ts / claude_cli"]
-    PROVIDER --> OPENCLAW["openclaw_acp"]
-    PROVIDER --> A2A["a2a_endpoint"]
-    PROVIDER --> LOCAL["local_process"]
-```
-
-Rules:
-
-- `runtime_unit_role` answers why the unit exists
-- `provider_kind` answers how it is invoked
-- PR1 default is `runtime_unit_role=builder_agent`, `provider_kind=codex_cli`, `model=gpt-5.4`
-- PR3 requires `runtime_unit_role=live_operator_agent`
-- a PR1 builder adapter cannot silently become a PR3 live trading loop
-- provider labels such as Codex or Claude are not executable until they resolve through the runtime
-  provider feasibility contract
-
-## Multi-Agent Admission
-
-```mermaid
-flowchart TD
-    START["MLP-01 default"] --> SINGLE["single AgentRuntimeUnit"]
-    SINGLE --> NEED["PRD acceptance cannot be met by one unit?"]
-    NEED -->|no| KEEP["stay single-agent"]
-    NEED -->|yes| ADMIT["multi-agent admission"]
-    ADMIT --> ROLES["explicit runtime_unit_role per unit"]
-    ADMIT --> POLICY["one PodCommunicationPolicy"]
-    ADMIT --> TEAM["TeamTrace export"]
-    ADMIT --> SHARED["non-secret SharedContextSurface"]
-    ADMIT --> GATE["no live-authority path except ToolProxy / Gateway"]
-```
-
-Multi-agent support is a future-compatible seam, not the MLP default.
-
-## Live Authority Boundary
-
-```mermaid
-sequenceDiagram
-    participant Agent as live_operator_agent
-    participant ToolProxy as ToolProxy / Risk Gateway
-    participant Store as Control Plane Store
-    participant Venue as Binance BTC Perp
-
-    Agent->>ToolProxy: OrderIntent
-    ToolProxy->>Store: persist OrderIntent
-    ToolProxy->>ToolProxy: risk / limit check
-    ToolProxy->>Store: GatewayDecision accepted/rejected/clipped
-    alt accepted
-        ToolProxy->>Venue: exchange order request
-        Venue-->>ToolProxy: order/fill result
-        ToolProxy->>Store: ExecutionAttempt linkage
-    else rejected or clipped
-        ToolProxy->>Store: durable rejection/clipping reason
-    end
-```
-
-Rules:
-
-- live agent authority stops at `OrderIntent`
-- every real exchange order must be downstream of `GatewayDecision`
-- rejected and clipped decisions are durable, inspectable outcomes
-- exchange credentials never enter agent context
-- A2A messages, provider reports, and subagent outputs cannot bypass the gateway
-
-## PR Slice Flow
-
-```mermaid
-flowchart LR
-    BOOT["Bootstrap: code substrate"] --> PR1["PR1: candidate real"]
-    PR1 --> PR2["PR2: evidence and live gate"]
-    PR2 --> PR3["PR3: bounded live pod"]
-    PR3 --> PR4["PR4: wake / intervention / audit"]
-
-    PR1 --> Q1["Is this system real?"]
-    PR2 --> Q2["Why should I trust it?"]
-    PR3 --> Q3["Can I let it trade?"]
-    PR4 --> Q4["Can I stay in control?"]
-```
-
-| Slice | Trust question | Must prove |
-| --- | --- | --- |
-| Bootstrap | Can the repo carry the model? | app/runtime/store/domain substrate exists without legacy restore |
-| PR1 | Is this system real? | one `TraderSystemCandidate` is durable and inspectable |
-| PR2 | Why should I trust it? | trace becomes external evidence and promotion gate meaning |
-| PR3 | Can I let it trade? | promoted candidate runs live through bounded gateway authority |
-| PR4 | Can I stay in control? | wake, inspect, pause, stop, override, and audit remain decisive |
-
-## Production Concern Matrix
-
-| Work slice | Production concerns that must be closed before implementation |
+| Concern | Required active docs |
 | --- | --- |
-| Bootstrap | record versioning, atomic file writes, validation boundary, fixture reset, runtime restart, no evidence/live/wake meaning |
-| PR1 | provider probe, `codex_cli + gpt-5.4` run attempt, schema validation, semantic validation, materialization rejection, trace retention, duplicate candidate prevention |
-| PR2 | evaluator ownership, counted/non-counted evidence, legitimate vs convenience mode, partial/ambiguous evaluation, rerun behavior, promotion eligibility |
-| PR3 | `continuous_live` loop lifecycle, heartbeat, stop conditions, gateway failure, rejected/clipped decision durability, venue submission failure, fill reconciliation, credential/risk/kill-switch boundaries |
-| PR4 | wake severity, operator inspect context, pause/stop/override semantics, audit record, post-intervention resume/reject behavior, candidate versioning for self-evolution |
+| Bootstrap | [09-trader-system-runtime-operating-model.md](09-trader-system-runtime-operating-model.md), [05-bootstrap-tech-spec.md](05-bootstrap-tech-spec.md), [specs/02-core-primitives.md](specs/02-core-primitives.md), [specs/19-trader-system-artifact-contract.md](specs/19-trader-system-artifact-contract.md), [specs/18-capability-package-trust-and-permission-contract.md](specs/18-capability-package-trust-and-permission-contract.md), [specs/17-evaluation-comparability-and-sealing-contract.md](specs/17-evaluation-comparability-and-sealing-contract.md), [specs/09-trace-contract.md](specs/09-trace-contract.md), [specs/08-candidate-contract.md](specs/08-candidate-contract.md), [specs/04-boundaries.md](specs/04-boundaries.md) |
+| Candidate materialization | [09-trader-system-runtime-operating-model.md](09-trader-system-runtime-operating-model.md), [06-runtime-provider-adapter-feasibility.md](06-runtime-provider-adapter-feasibility.md), [specs/19-trader-system-artifact-contract.md](specs/19-trader-system-artifact-contract.md), [specs/07-runtime-connector-contract.md](specs/07-runtime-connector-contract.md), [specs/15-runtime-operating-policy-contract.md](specs/15-runtime-operating-policy-contract.md), [specs/09-trace-contract.md](specs/09-trace-contract.md), [specs/08-candidate-contract.md](specs/08-candidate-contract.md) |
+| External evaluation | [specs/03-staged-evaluation.md](specs/03-staged-evaluation.md), [specs/09-trace-contract.md](specs/09-trace-contract.md), [specs/17-evaluation-comparability-and-sealing-contract.md](specs/17-evaluation-comparability-and-sealing-contract.md), [specs/10-evidence-record-contract.md](specs/10-evidence-record-contract.md), [specs/11-promotion-decision-contract.md](specs/11-promotion-decision-contract.md), [specs/14-review-item-contract.md](specs/14-review-item-contract.md) |
+| Bounded live runtime | [09-trader-system-runtime-operating-model.md](09-trader-system-runtime-operating-model.md), [specs/07-runtime-connector-contract.md](specs/07-runtime-connector-contract.md), [specs/15-runtime-operating-policy-contract.md](specs/15-runtime-operating-policy-contract.md), [specs/09-trace-contract.md](specs/09-trace-contract.md), [specs/12-governed-execution-request-contract.md](specs/12-governed-execution-request-contract.md), [specs/16-order-intent-and-gateway-decision-contract.md](specs/16-order-intent-and-gateway-decision-contract.md), [specs/13-execution-attempt-contract.md](specs/13-execution-attempt-contract.md), [specs/24-always-on-trading-substrate-contract.md](specs/24-always-on-trading-substrate-contract.md), [specs/26-substrate-state-surface-contract.md](specs/26-substrate-state-surface-contract.md), [specs/27-order-fill-surface-contract.md](specs/27-order-fill-surface-contract.md) |
+| Operator intervention | [09-trader-system-runtime-operating-model.md](09-trader-system-runtime-operating-model.md), [specs/15-runtime-operating-policy-contract.md](specs/15-runtime-operating-policy-contract.md), [specs/13-execution-attempt-contract.md](specs/13-execution-attempt-contract.md), [specs/04-boundaries.md](specs/04-boundaries.md) |
 
-## Subsystem Ownership
+## Historical Material
 
-| Subsystem | Owns | Must not own |
-| --- | --- | --- |
-| foundation | naming, doctrine, invariants, primitive restraint | product truth or PRD meaning |
-| agent-system | brain sessions, harness adapters, pod runtime behavior, loop application | durable candidate/evidence/promotion truth |
-| evaluation-and-progression | counted evidence, status meaning, promotion and live-gate meaning | runtime self-report as truth |
-| trading-substrate | Binance BTC perpetual futures market/order/fill/risk surfaces | agent-side unrestricted exchange authority |
-| proactive-operations | wake semantics, urgency, interruption posture | hidden workflow control or evidence truth |
-| control-plane | durable candidate, image, package, evidence, promotion, execution, wake, audit truth | agent reasoning or provider-owned truth |
-
-## Active Invariants
-
-- candidate means `TraderSystemCandidate`
-- pod means stage-bound execution instance
-- image and pod are distinct
-- capability packages never contain secrets
-- package access is declared by `CapabilityPackageManifest` and granted by `StageBinding` /
-  `ToolProxy`, not by the package itself
-- agent runtime unit is not the whole pod
-- runtime unit role is separate from provider kind
-- agent loop policy bounds autonomy without central step orchestration
-- provider labels must map to concrete invocation surfaces before implementation
-- A2A task/message/artifact exchange is communication, not evidence
-- backtest/paper/live are bindings for the same artifact
-- trace is not evidence
-- order intent is not exchange execution
-- gateway decision is durable and inspectable
-- live mutation is replaced by candidate versioning
-
-## Active Read Path
-
-1. [../product/mlp-01/00-mlp-brief.md](../product/mlp-01/00-mlp-brief.md)
-2. [../product/mlp-01/prds/README.md](../product/mlp-01/prds/README.md)
-3. [../product/mlp-01/07-implementation-plan.md](../product/mlp-01/07-implementation-plan.md)
-4. [../product/mlp-01/08-greenfield-bootstrap-plan.md](../product/mlp-01/08-greenfield-bootstrap-plan.md)
-5. [05-bootstrap-tech-spec.md](05-bootstrap-tech-spec.md)
-6. [06-runtime-provider-adapter-feasibility.md](06-runtime-provider-adapter-feasibility.md)
-7. [07-production-design-method.md](07-production-design-method.md)
-8. the relevant slice design note
-9. [specs/README.md](specs/README.md)
-10. the specific specs required by the current PR slice
-
-## PR-Specific Spec Read Paths
-
-| Work slice | First specs to read |
-| --- | --- |
-| Bootstrap | [05-bootstrap-tech-spec.md](05-bootstrap-tech-spec.md), [specs/02-core-primitives.md](specs/02-core-primitives.md) for `CapabilityPackageManifest` and loop/role primitives, [specs/08-candidate-contract.md](specs/08-candidate-contract.md), [specs/04-boundaries.md](specs/04-boundaries.md) |
-| PR1 | [06-runtime-provider-adapter-feasibility.md](06-runtime-provider-adapter-feasibility.md), [specs/07-runtime-bridge-interface.md](specs/07-runtime-bridge-interface.md), [specs/15-agent-loop-policy-contract.md](specs/15-agent-loop-policy-contract.md), [specs/08-candidate-contract.md](specs/08-candidate-contract.md) |
-| PR2 | [specs/03-staged-evaluation.md](specs/03-staged-evaluation.md), [specs/09-trace-contract.md](specs/09-trace-contract.md), [specs/10-evidence-record-contract.md](specs/10-evidence-record-contract.md), [specs/11-promotion-decision-contract.md](specs/11-promotion-decision-contract.md), [specs/14-review-item-contract.md](specs/14-review-item-contract.md) |
-| PR3 | [specs/07-runtime-bridge-interface.md](specs/07-runtime-bridge-interface.md), [specs/15-agent-loop-policy-contract.md](specs/15-agent-loop-policy-contract.md), [specs/12-governed-execution-request-contract.md](specs/12-governed-execution-request-contract.md), [specs/16-order-intent-and-gateway-decision-contract.md](specs/16-order-intent-and-gateway-decision-contract.md), [specs/13-execution-attempt-contract.md](specs/13-execution-attempt-contract.md), [specs/24-always-on-trading-substrate-contract.md](specs/24-always-on-trading-substrate-contract.md), [specs/26-substrate-state-surface-contract.md](specs/26-substrate-state-surface-contract.md), [specs/27-order-fill-surface-contract.md](specs/27-order-fill-surface-contract.md) |
-| PR4 | [specs/21-wake-policy-contract.md](specs/21-wake-policy-contract.md), [specs/23-wake-trigger-record-contract.md](specs/23-wake-trigger-record-contract.md), [specs/13-execution-attempt-contract.md](specs/13-execution-attempt-contract.md) |
-
-## Implementation Safety Rules
-
-- do not start code from old legacy app/runtime assumptions
-- do not treat provider runtime state as durable truth
-- do not treat trace as counted evidence
-- do not treat schema-valid builder output as legitimacy
-- do not let package manifests grant permissions by themselves
-- do not add multi-agent runtime behavior unless a PRD acceptance criterion requires it
-- do not implement live trading before gateway decision and execution-attempt linkage are clear
-- do not use `Codex`, `Claude`, `OpenClaw`, or `A2A` as vague labels; name concrete adapter
-  invocation surfaces
-
-## Not Default Baseline
-
-Historical proactive-standing, read-admission, coalescing, rebuild, and older strategy-workspace
-families remain history unless a newer page promotes them back to active baseline.
+Older proactive-activation, standing-order, and attention-routing documents remain under
+[historical/](historical/) as background. They are not active runtime truth.

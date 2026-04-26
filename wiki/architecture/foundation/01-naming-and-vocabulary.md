@@ -20,7 +20,7 @@ It is grounded in:
 
 And it follows:
 
-- [../00-first-principles-architecture-thesis.md](../specs/00-first-principles-architecture-thesis.md)
+- [../00-first-principles-architecture-thesis.md](../historical/specs/00-first-principles-architecture-thesis.md)
 - [../02-core-primitives.md](../specs/02-core-primitives.md)
 - [../04-boundaries.md](../specs/04-boundaries.md)
 
@@ -86,18 +86,22 @@ The following terms are the current autokairos-local canonical object language.
 | Local term | Meaning | Why it stays |
 | --- | --- | --- |
 | `TraderSystemCandidate` | the promotable candidate trading system under judgment | active meaning of Candidate |
-| `TradingSystemImage` | versioned runnable trader-system artifact | separates candidate identity from runnable artifact |
+| `TraderSystemSpec` | versioned runnable trader-system artifact | separates candidate identity from runnable artifact |
+| `TraderSystemProgram` | agent-authored executable behavior bundle inside a trader-system spec | preserves open-ended W2S system generation without forcing a human-authored strategy DSL |
 | `CapabilityPackage` | versioned context/tool/skill/data-access artifact | keeps packageable capability separate from secrets |
 | `Stage` | product stage such as `backtest`, `paper`, `live` | central product concept |
 | `StageBinding` | concrete environment injection for a stage | makes same-artifact execution possible across stages |
-| `TradingSystemPod` | stage-bound execution instance assembled from image, package, binding, brain, hands, and tool proxy | active execution unit |
-| `AgentRuntimeUnit` | one brain/hands/session participant plus provider/driver selection inside or beside a pod | prevents multi-agent pods from becoming one blended runtime |
+| `TraderSystemRuntime` | stage-bound execution instance assembled from trader-system spec, program, package, binding, brain, hands, and tool proxy | active execution unit |
+| `AgentSpec` | configured agent participant definition, close to OpenAI / Claude / Google `Agent` concepts | separates participant configuration from execution |
+| `AgentSession` | running participant context plus provider/driver selection inside or beside a runtime | preserves session continuity without making it durable product truth |
+| `AgentRun` | one invocation or attempt inside or against an `AgentSession` | separates run purpose, status, failure, and output from session continuity |
+| `AgentEvent` | provider-normalized raw event from an agent run or session | keeps Claude Events, Google ADK Events, OpenAI trace/span items, Codex events, and A2A updates outside counted evidence |
 | `BrainSession` | provider/harness reasoning session | preserves Managed Agents brain/session distinction |
 | `HandsEnvironment` | sandbox/tool/data/gateway environment | preserves Managed Agents hands distinction |
 | `ToolProxy` | authority boundary around tools, credentials, and side effects | prevents direct credential or exchange authority inside packages |
-| `PodCommunicationPolicy` | one provider-neutral policy for communication, sharing, routing, and isolation between agent runtime units | keeps A2A/provider-native communication explicit without making provider choice the policy |
-| `SharedContextSurface` | non-secret shared context for multi-agent pods | prevents shared context from becoming a secret store |
-| `Trace` | raw external record of one execution attempt | aligned with OpenAI eval vocabulary and generally stable |
+| `RuntimeCommunicationPolicy` | one provider-neutral policy for communication, sharing, routing, and isolation between agent sessions | keeps A2A/provider-native communication explicit without making provider choice the policy |
+| `SharedContextSurface` | non-secret shared context for multi-agent runtimes | prevents shared context from becoming a secret store |
+| `Trace` | autokairos durable normalized history for one execution attempt or collaboration | separates raw provider events from durable system truth |
 | `EvidenceRecord` | judged artifact derived from traces and evaluators | needed to keep judged evidence distinct from raw trace |
 | `PromotionDecision` | explicit governance act over candidate standing | keeps progression explicit |
 | `ReviewItem` | durable governance-work object before a decision is committed | keeps review work explicit |
@@ -107,7 +111,7 @@ The following terms are the current autokairos-local canonical object language.
 | Local term | Meaning | Why it stays |
 | --- | --- | --- |
 | `Control plane` | the subsystem that owns durable truth and governance records | clear systems term, not borrowed as a primitive from one source |
-| `Runtime bridge` | stable interface between control plane and runtime execution | needed to avoid coupling to one runtime |
+| `Runtime connector` | stable interface between control plane and runtime execution | needed to avoid coupling to one runtime |
 | `Execution driver` | environment-specific launcher/attachment layer | clarifies that the bridge and the concrete launcher are not the same |
 | `GovernedExecutionRequest` | governed invocation object before a live run exists | keeps invocation separate from concrete execution |
 | `ExecutionAttempt` | durable record of one concrete execution try | keeps request intent separate from run history |
@@ -116,13 +120,13 @@ The following terms are the current autokairos-local canonical object language.
 
 | Local term | Meaning | Risk |
 | --- | --- | --- |
-| historical acting identity terms | older durable-actor vocabulary | now secondary to `TraderSystemCandidate`, `BrainSession`, and `TradingSystemPod` |
-| `Session` | source-specific or provider-specific continuity surface | easy to confuse with durable autokairos trace or pod record |
+| historical acting identity terms | older durable-actor vocabulary | now secondary to `TraderSystemCandidate`, `BrainSession`, and `TraderSystemRuntime` |
+| `Session` | source-specific or provider-specific continuity surface | easy to confuse with durable autokairos trace or runtime record |
 
 These are still acceptable terms, but they must always be introduced as autokairos-local
 abstractions, not as if they were standard industry vocabulary.
 
-## Rule 3: Separate Candidate, Brain, Hands, And Pod
+## Rule 3: Separate Candidate, Brain, Hands, Runtime, And ExecutionPod
 
 The word `agent` is too overloaded to use by itself for every layer.
 
@@ -131,18 +135,22 @@ So autokairos should distinguish:
 | Term | What it means |
 | --- | --- |
 | `TraderSystemCandidate` | the system under product judgment and promotion |
+| `TraderSystemProgram` | the executable behavior bundle authored by an agent and run inside bounded hands environments |
 | `BrainSession` | the model/harness reasoning session |
 | `HandsEnvironment` | the sandbox/tool/data/gateway environment |
-| `TradingSystemPod` | the stage-bound execution instance assembled from candidate artifact, capability, binding, brain, hands, and tool proxy |
-| `AgentRuntimeUnit` | one participant inside or beside a pod, with its own brain/hands/session boundary |
+| `TraderSystemRuntime` | the stage-bound execution instance assembled from candidate artifact, capability, binding, brain, hands, and tool proxy |
+| `AgentSpec` | configured participant definition |
+| `AgentSession` | one running participant inside or beside a runtime, with its own brain/hands/session boundary |
+| `AgentRun` | one invocation attempt with a slice-local purpose |
+| `AgentEvent` | provider-normalized raw event emitted during a run/session |
 | `agent-system` | the subsystem that invokes and manages brain/hands runtime behavior |
 
 This is why plain `Agent` should usually be avoided in architecture contracts unless the meaning is
 obvious from context.
 
 Provider names such as Codex, Claude Code, Claude Managed Agents, OpenClaw/ACP, local container,
-or A2A endpoint belong on `AgentRuntimeUnit` records. They should not become separate pod types or
-separate communication-policy names.
+or A2A endpoint belong on `AgentSession.provider_kind`. The reason for a concrete invocation
+belongs on `AgentRun.purpose`. Neither should become a runtime type or communication-policy name.
 
 ## Rule 4: Separate Agent Communication From Tools And Evidence
 
@@ -229,7 +237,7 @@ This applies most to:
 - `Session`
 
 They may appear in historical docs, but active contracts should prefer `TraderSystemCandidate`,
-`BrainSession`, `HandsEnvironment`, `TradingSystemPod`, and `StageBinding`.
+`BrainSession`, `HandsEnvironment`, `TraderSystemRuntime`, and `StageBinding`.
 
 ### 2. Some section titles are broader than the objects they discuss
 
@@ -250,7 +258,7 @@ Avoid these unless they are explicitly source-specific.
 - `hands environment` when you really mean durable truth
 - `approval` when you really mean promotion
 - `agent` when you really mean `TraderSystemCandidate`, `BrainSession`, `HandsEnvironment`, or
-  `TradingSystemPod`
+  `TraderSystemRuntime`
 - `A2A` when you really mean tool access, evidence, or live authority
 
 ## Canonical Vocabulary Snapshot
@@ -258,18 +266,21 @@ Avoid these unless they are explicitly source-specific.
 If a new architecture page needs a short canonical vocabulary, use this one.
 
 - `TraderSystemCandidate`
-- `TradingSystemImage`
+- `TraderSystemSpec`
 - `CapabilityPackage`
 - `Stage`
 - `StageBinding`
-- `TradingSystemPod`
-- `AgentRuntimeUnit`
+- `TraderSystemRuntime`
+- `AgentSpec`
+- `AgentSession`
+- `AgentRun`
+- `AgentEvent`
 - `BrainSession`
 - `HandsEnvironment`
 - `ToolProxy`
-- `PodCommunicationPolicy`
+- `RuntimeCommunicationPolicy`
 - `SharedContextSurface`
-- `Runtime bridge`
+- `Runtime connector`
 - `Execution driver`
 - `GovernedExecutionRequest`
 - `ExecutionAttempt`
@@ -289,7 +300,7 @@ The main fix is to make the naming contract explicit:
 
 - preserve upstream vocabulary in source notes
 - use autokairos-local names only for autokairos objects
-- never collapse candidate identity, brain session, hands environment, pod runtime, and governance
+- never collapse candidate identity, brain session, hands environment, runtime, and governance
   into one shared noun
 
 That is the naming discipline the rest of the architecture should now follow.

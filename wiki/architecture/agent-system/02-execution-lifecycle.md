@@ -6,8 +6,8 @@ It follows:
 
 - [01-overview.md](01-overview.md)
 - [../03-staged-evaluation.md](../specs/03-staged-evaluation.md)
-- [../05-agent-execution-architecture.md](../specs/05-agent-execution-architecture.md)
-- [../07-runtime-bridge-interface.md](../specs/07-runtime-bridge-interface.md)
+- [../05-agent-execution-architecture.md](../historical/specs/05-agent-execution-architecture.md)
+- [../specs/07-runtime-connector-contract.md](../specs/07-runtime-connector-contract.md)
 - [../12-governed-execution-request-contract.md](../specs/12-governed-execution-request-contract.md)
 - [../13-execution-attempt-contract.md](../specs/13-execution-attempt-contract.md)
 - [../../sources/library/anthropic-managed-agents.md](../../sources/library/anthropic-managed-agents.md)
@@ -138,7 +138,7 @@ The workspace should not become:
 
 ## Phase 6: Runtime Attach Or Launch
 
-Once the workspace exists, the runtime bridge should choose one of two paths.
+Once the workspace exists, the runtime connector should choose one of two paths.
 
 ### Fresh launch
 

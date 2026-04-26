@@ -30,7 +30,7 @@ integration.
 ## Decision
 
 autokairos will start implementation from the smallest governed execution shell rather than from
-the runtime bridge alone.
+the runtime connector alone.
 
 The first implementation seam is:
 
@@ -43,7 +43,7 @@ Only after those exist should autokairos implement:
 4. stage-binding resolution
 5. workspace materialization
 6. container host
-7. runtime bridge integration
+7. runtime connector integration
 
 The first serious execution posture remains:
 
@@ -52,7 +52,7 @@ The first serious execution posture remains:
 
 ## Alternatives Considered
 
-### 1. Start with the runtime bridge first
+### 1. Start with the runtime connector first
 
 Rejected because it would push durable truth into whichever CLI, container, or harness wrapper got
 built first.

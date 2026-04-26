@@ -9,11 +9,11 @@ decision-complete before implementation starts.
 
 MLP-01 proves that one serious solo crypto operator can use autokairos to evolve a small pool of
 agent-built `TraderSystemCandidates`, externally evaluate them, promote one, run it as a bounded
-live `TradingSystemPod` on Binance BTC perpetual futures, and keep control through wake and
+live `TraderSystemRuntime` on Binance BTC perpetual futures, and keep control through wake and
 intervention.
 
 This pack no longer defines a single static-note flow. It defines the first control-plane proof
-for trader-system candidates and pods.
+for trader-system candidates and runtimes.
 
 ## Purpose
 

@@ -6,7 +6,7 @@ meaning.
 ## Why This Exists For MLP-01
 
 MLP-01 depends on one `TraderSystemCandidate` becoming trustworthy before it can run as a bounded
-live `TradingSystemPod`.
+live `TraderSystemRuntime`.
 
 This subsystem exists to make clear:
 
@@ -35,7 +35,7 @@ This subsystem exists to make clear:
 | PRD | What evaluation and progression must support |
 | --- | --- |
 | PRD 2 | counted versus non-counted evidence, candidate-version status meaning, and one explicit promotion decision |
-| PRD 3 | promotion eligibility that can safely hand off one candidate into a bounded live pod |
+| PRD 3 | promotion eligibility that can safely hand off one candidate into a bounded live runtime |
 
 ## Durable Truth, Interfaces, And Recovery Boundaries
 

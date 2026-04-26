@@ -10,12 +10,12 @@ It follows:
 - [04-stage-facing-bindings.md](04-stage-facing-bindings.md)
 - [../specs/24-always-on-trading-substrate-contract.md](../specs/24-always-on-trading-substrate-contract.md)
 - [../specs/26-substrate-state-surface-contract.md](../specs/26-substrate-state-surface-contract.md)
-- [../proactive-operations/02-trigger-model.md](../proactive-operations/02-trigger-model.md)
 
 ## Goal
 
-Define the first serious implementation order for the always-on trading substrate so proactive
-orchestration and the agent runtime do not need to rediscover domain state ad hoc.
+Define the first serious implementation order for the always-on trading substrate so deployed
+trader-system runtimes, gateway decisions, evaluation, and operator inspection do not need to
+rediscover domain state ad hoc.
 
 ## Build Order
 
@@ -62,8 +62,8 @@ The system must explicitly classify:
 
 ### 4. Substrate signal emission
 
-Implement substrate signals as domain-fact candidates above state updates and below wake
-evaluation.
+Implement substrate signals as domain-fact records above state updates and below runtime reads,
+gateway decisions, evaluation, and operator inspection.
 
 ### 5. Stage-facing projections
 
@@ -75,9 +75,10 @@ Implement the stage-facing read surface so:
 
 consume stable concepts with different backing semantics.
 
-### 6. Proactive handoff
+### 6. Runtime and gateway handoff
 
-Only after the substrate emits inspectable signals should proactive orchestration evaluate them
+Only after the substrate emits inspectable state and signal records should runtime/gateway
+integration consume them.
 against wake policy and standing authority.
 
 ## Risks And Failure Modes

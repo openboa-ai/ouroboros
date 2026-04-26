@@ -2,22 +2,37 @@
 
 ## Purpose
 
-This page turns the provider names in `AgentRuntimeUnit` into actual callable surfaces.
+This page turns provider names on `AgentSession` records into actual callable surfaces.
 
-It exists because a pod design is not implementation-grade unless autokairos knows how it would
+It exists because a runtime design is not implementation-grade unless autokairos knows how it would
 invoke Codex, Claude, or another harness and how provider output becomes traceable product input.
 
 ## Current Feasibility Verdict
 
-| Provider / surface | Can autokairos call it? | Best first use | Hard limitation |
-| --- | --- | --- | --- |
-| Codex CLI `codex exec` | yes, locally smoke-tested with explicit `--model gpt-5.4` | first local provider adapter for PR1 builder-agent work | process/subprocess control; default `gpt-5.5` failed access in this workspace |
-| Codex SDK `@openai/codex-sdk` | yes, official TypeScript SDK | richer local app integration after bootstrap | server-side Node dependency and local Codex app-server behavior |
-| Codex Cloud `codex cloud exec` | possible if Codex Cloud environment exists | later background engineering tasks / PR work | requires environment id and cloud repo setup; not first trading runtime |
-| Claude Agent SDK | yes, official Python/TypeScript SDK | strongest Claude-side production adapter | not installed locally yet; requires Anthropic API key |
-| Claude CLI `claude -p` | possible when installed | quick prototype only | not installed in this workspace; weaker contract than SDK |
-| OpenClaw / ACP | possible conceptually | later bridge to external runtime sessions | not current first adapter; requires separate ACP/OpenClaw setup |
-| A2A endpoint | possible conceptually | later independent remote-agent participant | communication only; not evaluation or execution authority |
+Provider names are not runnable by themselves. A provider becomes runnable only through a concrete
+`ProviderReadinessRecord` produced by `RuntimeProviderAdapter.probe()`.
+
+Readiness status values:
+
+| Status | Meaning |
+| --- | --- |
+| `active_verified` | Current environment evidence shows the provider surface can run with the required output and trace posture. |
+| `candidate_unverified` | Official or plausible provider surface exists, but this repo has not verified install, auth, model access, output contract, and trace export. |
+| `future_bridge` | Useful later as an external bridge or remote participant, but not an immediate local runtime surface. |
+| `blocked_or_not_installed` | The provider cannot be used in this workspace until installation/auth/environment setup changes. |
+| `reference_only` | Source reference informs design, but is not an executable autokairos provider surface. |
+
+| Provider / surface | `provider_kind` | Readiness | Allowed first use | Hard limitation |
+| --- | --- | --- | --- | --- |
+| Codex CLI `codex exec` | `codex_cli` | `active_verified` with explicit `--model gpt-5.4` and schema output | first local candidate-generation provider | subprocess control; default `gpt-5.5` failed access in this workspace |
+| Codex SDK `@openai/codex-sdk` | `codex_sdk_ts` | `candidate_unverified` | later richer Node/runtime integration | SDK dependency, auth, thread behavior, output contract, and trace export must be probed |
+| Codex Cloud `codex cloud exec` | `codex_cloud` | `future_bridge` | later background artifact/code work | requires cloud environment and repo setup; not first trading runtime |
+| Claude Agent SDK Python | `claude_agent_sdk_python` | `candidate_unverified` | second serious provider path after live source refresh and auth/probe | not installed locally yet; requires Anthropic API key and SDK event/export probe |
+| Claude Agent SDK TypeScript | `claude_agent_sdk_ts` | `candidate_unverified` | second serious provider path after live source refresh and auth/probe | not installed locally yet; requires Anthropic API key and SDK event/export probe |
+| Claude CLI `claude -p` | `claude_cli` | `blocked_or_not_installed` | prototype only | not installed in this workspace; weaker contract than SDK |
+| OpenClaw / ACP | `openclaw_acp` | `future_bridge` | later external harness bridge | not a control-plane replacement; requires ACP/OpenClaw setup |
+| A2A endpoint | `a2a_endpoint` | `future_bridge` | later remote-agent communication participant | communication only; not tool access, evidence, promotion, or live authority |
+| Local process | `local_process` | `candidate_unverified` | fixtures or first-party workers | cannot bypass adapter semantics, trace, permission, or output contracts |
 
 Local check on `2026-04-24`:
 
@@ -74,23 +89,101 @@ Useful source page:
 
 - [Claude Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)
 
-## Provider Adapter Model
+## Provider Readiness Records
 
-`AgentRuntimeUnit.provider_kind` should be concrete, not aspirational.
+`ProviderReadinessRecord` is the control-plane record that makes a provider label usable.
 
-`runtime_unit_role` must be separate from `provider_kind`.
-
-Allowed initial roles:
+Minimum shape:
 
 ```text
-builder_agent
-evaluation_runner
-live_operator_agent
-critic_agent
-remote_specialist
+provider_readiness_record_id
+provider_kind
+invocation_surface
+readiness_status
+checked_at
+version
+auth_state
+model_access
+sandbox_posture
+tool_access_posture
+output_contract_support
+schema_output_smoke
+trace_export_support
+artifact_export_support
+cancel_support
+resume_support
+known_failure_reasons
+allowed_first_use
+source_refs
 ```
 
-`runtime_unit_role` answers why the unit exists. `provider_kind` answers how it runs.
+Readiness records expire operationally. Before a real adapter implementation depends on Claude,
+OpenAI SDK, Codex Cloud, OpenClaw/ACP, or A2A behavior, the relevant official docs and repository
+surface must be live-reread and a fresh probe must be recorded.
+
+`ProviderProbeAttempt` is one attempted verification run behind a readiness record.
+
+Minimum shape:
+
+```text
+provider_probe_attempt_id
+provider_kind
+invocation_surface
+command_or_api_surface
+model
+expected_output_contract
+result
+failure_reason
+sandbox_posture
+tool_access_posture
+trace_ref
+artifact_refs
+checked_at
+```
+
+Standard failure reasons:
+
+- `provider_unavailable`
+- `auth_missing`
+- `model_inaccessible`
+- `schema_output_failed`
+- `trace_export_missing`
+- `sandbox_unsupported`
+- `tool_policy_unknown`
+- `artifact_export_failed`
+- `cancel_unsupported`
+- `resume_unsupported`
+
+Provider readiness is not product authority. Even an `active_verified` provider can only emit
+`AgentEvent -> Trace`. It cannot directly create evidence, promotion, live execution, or durable
+runtime truth.
+
+Current recorded readiness:
+
+```text
+provider_kind = codex_cli
+invocation_surface = local subprocess via codex exec
+readiness_status = active_verified
+model = gpt-5.4
+allowed_first_use = candidate_generation
+output_contract_support = --output-schema
+trace_export_support = --json event stream
+known_failure_reasons = default gpt-5.5 model access failed in this workspace
+```
+
+## Provider Adapter Model
+
+`AgentSession.provider_kind` should be concrete, not aspirational.
+
+`AgentRun.purpose` must be separate from `provider_kind`.
+
+`AgentRun.purpose` is slice-local. It answers why one invocation exists for the current slice, but it is
+not a global role enum.
+
+PR1 may use `AgentRun.purpose = candidate_generation`. Future purposes must be introduced by the slice
+design that needs them.
+
+`provider_kind` answers how the session runs.
 
 Recommended enum:
 
@@ -106,12 +199,11 @@ a2a_endpoint
 local_process
 ```
 
-`AgentRuntimeUnit` should also carry:
+`AgentSession` should carry provider continuity:
 
 ```text
-agent_runtime_unit_id
-role
-runtime_unit_role
+agent_session_id
+agent_spec_ref
 provider_kind
 provider_version
 model
@@ -123,6 +215,21 @@ allowed_tool_policy
 prompt_contract_ref
 output_contract_ref
 trace_destination
+```
+
+`AgentRun` should carry invocation meaning and outcome:
+
+```text
+agent_run_id
+agent_session_ref
+AgentRun.purpose
+input_artifact_ref
+output_contract_ref
+status
+failure_reason
+raw_provider_output_ref
+trace_ref
+agent_event_refs
 ```
 
 The provider is the execution backend. It does not own candidate identity, evidence, promotion, or
@@ -148,14 +255,26 @@ For real provider execution, `probe` must check:
 - version
 - auth state
 - requested model access
+- sandbox posture
+- tool access posture
+- output contract support
 - schema-output smoke path when the adapter claims structured output support
+- trace/event export
+- cancellation behavior
+- artifact export
+- resume support
+
+`probe` produces `ProviderProbeAttempt` records and updates or creates a `ProviderReadinessRecord`.
+The control plane should not call `start` for a real provider unless the relevant readiness record is
+`active_verified` for that `provider_kind`, invocation surface, model, output contract, and allowed
+first use.
 
 Provider-specific behavior belongs behind this adapter.
 
 The rest of autokairos should see only:
 
 ```text
-AgentRuntimeUnit
+AgentSession
 -> RuntimeProviderAdapter
 -> Trace / TeamTrace
 -> CandidateMaterializationInput or EvaluationInput
@@ -192,7 +311,7 @@ What to record:
 
 - command
 - CLI version
-- model/profile/config overrides; PR1 currently defaults to explicit `gpt-5.4`
+- model/spec/config overrides; PR1 currently defaults to explicit `gpt-5.4`
 - sandbox mode
 - working directory
 - JSONL event stream
@@ -215,7 +334,7 @@ Until new evidence changes this, PR1 must use:
 
 ```text
 provider_kind = codex_cli
-runtime_unit_role = builder_agent
+AgentRun.purpose = candidate_generation
 model = gpt-5.4
 ```
 
@@ -244,7 +363,7 @@ Codex Cloud should not be the first trading-system runtime.
 It is useful later for:
 
 - background engineering work
-- creating or improving `TradingSystemImage` artifacts
+- creating or improving `TraderSystemSpec` artifacts
 - opening PRs against code repositories
 - large parallel coding tasks
 
@@ -321,13 +440,8 @@ surface for sessions, hooks, subagents, and programmatic control.
 
 ## Why This Changes The Architecture
 
-The current architecture should not say:
-
-```text
-provider_kind = Codex
-```
-
-as if that is enough.
+The current architecture should not use an abstract provider label such as "Codex" as if that is
+enough.
 
 It must say:
 
@@ -359,18 +473,23 @@ That is the difference between a real adapter and provider-name decoration.
 Use this order unless prototype evidence contradicts it:
 
 1. `codex_cli`
-   Locally available and smoke-tested with `gpt-5.4`. Best for proving runtime adapter plumbing
-   and schema output for `builder_agent`.
+   Locally available and smoke-tested with `gpt-5.4`. Best for proving runtime adapter plumbing,
+   trace export, and schema output for first `candidate_generation`.
 2. `claude_agent_sdk_python` or `claude_agent_sdk_ts`
-   Best second adapter because it is explicitly designed as a production SDK.
+   Best second adapter because it is explicitly designed as a production SDK. It remains
+   `candidate_unverified` until install, auth, model access, event export, artifact export, and
+   cancellation behavior are probed.
 3. `codex_sdk_ts`
-   Use when the runtime service needs thread-level Codex control instead of subprocess runs.
+   Use when the runtime service needs thread-level Codex control instead of subprocess runs. It is
+   not a Bootstrap default.
 4. `openclaw_acp`
-   Use later if OpenClaw/ACP becomes the preferred bridge for external harness sessions.
+   Use later if OpenClaw/ACP becomes the preferred bridge for external harness sessions. It cannot
+   replace autokairos control-plane truth.
 5. `a2a_endpoint`
-   Use later for independent remote-agent participants, not for first candidate generation.
+   Use later for independent remote-agent participants, not for first candidate generation, tool
+   access, evidence, promotion, or live authority.
 6. `codex_cloud`
-   Use later for background engineering and PR-producing tasks, not first trading pod runtime.
+   Use later for background engineering and artifact/code work, not first trading runtime.
 
 ## MLP-01 Constraint
 
@@ -400,9 +519,13 @@ Then Claude Agent SDK can be added as the second provider adapter using the same
 This page is sufficient if an implementer can answer:
 
 - how to invoke Codex locally today
-- why PR1 uses explicit `gpt-5.4` today
+- why the first real candidate-generation provider uses explicit `gpt-5.4` today
 - how to invoke Claude programmatically after installing the SDK
 - which provider path is first
+- which provider surfaces are `active_verified`, `candidate_unverified`, `future_bridge`,
+  `blocked_or_not_installed`, or `reference_only`
+- what `probe()` must verify before a provider label becomes runnable
+- what a `ProviderReadinessRecord` and `ProviderProbeAttempt` contain
 - what command/API output becomes trace
 - what output schema candidate materialization expects
 - why provider output is not evidence, promotion, or live authority

@@ -7,9 +7,10 @@ It follows:
 - [03-staged-evaluation.md](03-staged-evaluation.md)
 - [04-boundaries.md](04-boundaries.md)
 - [10-evidence-record-contract.md](10-evidence-record-contract.md)
+- [17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md)
 - [14-review-item-contract.md](14-review-item-contract.md)
 - [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
-- [../03-pr3-bounded-live-trading-system-pod-design.md](../03-pr3-bounded-live-trading-system-pod-design.md)
+- [../03-pr3-bounded-live-trader-system-runtime-design.md](../03-pr3-bounded-live-trader-system-runtime-design.md)
 
 ## Thesis
 
@@ -72,7 +73,9 @@ A `PromotionDecision` must carry at least:
 | `promotion_decision_id` | Stable durable identity |
 | `candidate_ref` | Candidate whose standing was governed |
 | `decision_scope` | Current baseline uses `live_gate` |
-| `evidence_record_refs` | Counted evidence basis cited by the gate |
+| `evidence_record_refs` | Counted sealed evidence basis cited by the gate |
+| `evidence_sealing_decision_refs` | Sealing decisions that made the evidence citeable |
+| `comparison_set_refs` | Comparison sets that justify comparability when relevant |
 | `originating_review_item_ref` | Review item resolved by the gate act |
 | `decision_outcome` | `promote_to_live`, `hold`, or `reject` |
 | `decision_summary` | Durable rationale in operator language |
@@ -102,6 +105,10 @@ The candidate is not eligible for live execution on the current basis.
 
 - current active baseline treats `PromotionDecision` as the per-candidate live gate
 - live gate meaning must cite counted evidence, not raw trace alone
+- live gate meaning must not cite raw evaluator output, provider output, A2A artifacts, memory
+  summaries, or operator satisfaction directly
+- ambiguous, partial, non-comparable, `non_counted`, or `quarantined_for_review` results cannot open
+  live gate
 - a committed promotion decision must still stop before creating runtime behavior
 - `PromotionDecision` should be inspectable without knowing private implementation details
 
@@ -126,6 +133,8 @@ The system should always be able to answer:
 
 - which sealed evidence records supported this decision?
 - what were those records actually about?
+- which evaluation runs and comparison sets made those records comparable enough to count?
+- what was excluded or marked non-counted?
 
 ## 6. Governing Surface
 
@@ -258,6 +267,20 @@ Examples:
 
 - a risk review may block promotion but not yet reject the candidate
 - a trace-grade batch may reveal regressions that require more study
+
+Promotion may cite only sealed counted `EvidenceRecord`.
+
+It must not cite:
+
+- raw `Trace`
+- raw provider output
+- raw evaluator output
+- unsealed `EvaluationRunRecord`
+- `non_counted` evidence
+- quarantined evaluation output
+- subjective operator satisfaction without objective counted evidence
+
+This keeps the live gate from becoming a UI ceremony around a convenient run.
 - a paper-stage performance summary may strengthen a case without being decisive alone
 
 Promotion decisions consume that evidence and commit the actual governance action.

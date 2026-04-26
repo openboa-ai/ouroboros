@@ -4,7 +4,7 @@
 
 autokairos needs a canonical `SubstrateStateSurface` object so continuously live trading posture can
 exist outside the runtime as an inspectable operational mirror rather than being rediscovered ad
-hoc from raw connectors on every wake.
+hoc from raw connectors on every runtime placement or provider run.
 
 ## Why This Spec Exists
 
@@ -12,13 +12,13 @@ The broader substrate contract says the system needs:
 
 - continuously maintained market, account, position, order/fill, risk, and connector-liveness views
 - explicit freshness and liveness posture
-- inspectable state beneath proactive wake logic and beneath runtime execution
+- inspectable state beneath runtime execution and operator/control-plane inspection
 
 Without a state-surface contract, the architecture drifts toward:
 
 - connector-specific payloads becoming the only current truth
 - runtime-local caches becoming de facto operational state
-- no stable object for proactive logic, runtime reads, or operator inspection to consume
+- no stable object for runtime reads, evaluation inputs, or operator inspection to consume
 
 Official trading-platform docs keep reinforcing the same pattern.
 
@@ -37,7 +37,7 @@ A `SubstrateStateSurface` is:
 
 - one continuously maintained operational mirror for one stable surface family and scope
 - downstream of external venues, brokers, and connectors
-- upstream of `SubstrateSignal`, proactive wake evaluation, and runtime read surfaces
+- upstream of `SubstrateSignal`, runtime read surfaces, trace, and evaluation
 
 It is the local durable-enough current posture object for:
 
@@ -120,7 +120,7 @@ A `SubstrateStateSurface` is not:
 
 - the venue's canonical ledger
 - a `SubstrateSignal`
-- a `WakeTriggerRecord`
+- a runtime-control decision
 - a `Trace`
 - an `EvidenceRecord`
 - a prompt-local runtime cache
@@ -133,7 +133,7 @@ It answers:
 
 It does not answer:
 
-- should the system wake?
+- should the operator inspect or intervene?
 - should the agent act?
 - how should the candidate be judged?
 
@@ -144,7 +144,7 @@ It does not answer:
 - every surface must be inspectable outside the runtime
 - freshness and provenance must be explicit, not inferred from polling frequency
 - the same surface family must preserve stable semantics across stages even when backing sources change
-- the surface must remain distinct from signal emission and from wake-trigger history
+- the surface must remain distinct from signal emission, runtime-control decisions, and audit history
 
 ### Failure modes
 
@@ -160,7 +160,7 @@ It does not answer:
   defines the broader substrate boundary that owns these surfaces.
 - [25-substrate-signal-contract.md](25-substrate-signal-contract.md)
   defines the domain-fact signal emitted above surface updates.
-- [15-persistent-operations-and-wake-policy.md](15-persistent-operations-and-wake-policy.md)
-  defines the runtime wake posture that must stay downstream of current substrate state.
-- [19-wake-orchestration-and-trigger-model.md](19-wake-orchestration-and-trigger-model.md)
-  defines how orchestration evaluates candidate wake sources above surface and signal layers.
+- [09-trace-contract.md](09-trace-contract.md)
+  defines when current state and signals become trace inputs.
+- [15-runtime-operating-policy-contract.md](15-runtime-operating-policy-contract.md)
+  defines lifecycle, recovery, and operating boundaries above current state and signal layers.

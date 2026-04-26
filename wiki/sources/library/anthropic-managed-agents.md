@@ -22,7 +22,7 @@
   - [Observability](https://platform.claude.com/docs/en/managed-agents/observability)
   - [Migration](https://platform.claude.com/docs/en/managed-agents/migration)
 - Source type: official engineering post and official platform documentation
-- Checked: `2026-04-24`
+- Checked: `2026-04-25`
 - Research scope:
   - engineering post on `brain / hands / session`
   - Managed Agents overview
@@ -47,10 +47,10 @@ The platform documentation presents four product primitives:
 
 | Primitive | Managed Agents meaning | autokairos reading |
 | --- | --- | --- |
-| `Agent` | reusable, versioned configuration for model, system prompt, tools, MCP servers, skills, and callable agents | `BrainSpec` or `AgentTeamSpec` |
-| `Environment` | configured container template with packages, networking, and mounted resources | `HandsEnvironmentTemplate` |
-| `Session` | running agent instance in an environment, with persistent conversation/event history | `BrainSession` / `PodSession` |
-| `Events` | event stream between application and agent, including messages, tool requests, status, and spans | external trace/event log |
+| `Agent` | reusable, versioned configuration for model, system prompt, tools, MCP servers, skills, and callable agents | `AgentSpec` |
+| `Environment` | configured container template with packages, networking, and mounted resources | `HandsEnvironment` / `StageBinding` input |
+| `Session` | running agent instance in an environment, with persistent conversation/event history | `AgentSession` plus durable `Trace` |
+| `Events` | event stream between application and agent, including messages, tool requests, status, and spans | `AgentEvent` and external trace/event log |
 
 The engineering post provides the deeper architectural lesson:
 
@@ -61,6 +61,11 @@ not be modeled as one magic container that owns everything. It should be modeled
 system whose brain, hands, and durable session truth can be replaced, inspected, and governed
 independently.
 
+The lesson is not that the external control plane should choose every internal action. Managed
+Agents is valuable because it lets the agent work inside a managed session/environment while the
+application keeps event streams, tool calls, files, memory, vault access, and observability outside
+the model's private reasoning.
+
 ## Core Thesis
 
 - Harness assumptions go stale as model capability changes.
@@ -70,6 +75,7 @@ independently.
   - `hands`: tools, sandboxes, containers, MCP servers, and external systems
   - `session`: durable event history outside the active model context
 - Containers and sessions should be treated as cattle, not pets.
+- The recoverable unit is the durable session/event log, not one live harness process or sandbox.
 - Credentials should not be reachable from the sandbox where generated code runs.
 - Resource injection should be explicit: files, memory stores, tools, MCP credentials, and session
   resources are distinct surfaces.
@@ -85,9 +91,8 @@ servers, skills, metadata, and optional callable agents.
 
 autokairos should translate this into:
 
-- `BrainSpec`
-- `AgentTeamSpec`
-- `HarnessProfile`
+- `AgentSpec`
+- `TraderSystemSpec` references to one or more `AgentSpec` records
 
 The important lesson is versioning. A trader-system candidate must be able to pin exactly which
 brain configuration produced or ran it.
@@ -101,11 +106,11 @@ isolated container instance.
 autokairos should translate this into:
 
 - `HandsEnvironmentTemplate`
-- `EnvironmentBinding`
+- `RuntimePlacement`
 - `StageBinding`
 
 The important lesson is separation. Environment is not the candidate identity and not the session
-truth.
+truth. It is physical execution placement.
 
 ### Session
 
@@ -114,12 +119,17 @@ interrupted through events.
 
 autokairos should translate this into:
 
-- `BrainSession`
-- `PodSession`
+- `AgentSession`
+- `AgentEvent`
 - external `Trace`
+- recoverable session checkpoints
 
 The important lesson is that durable continuity must sit outside any one workspace, container, or
 model context window.
+
+For autokairos this also means a `TraderSystemProgram` can run inside a replaceable
+`HandsEnvironment`, while the control-plane event log, candidate identity, and evaluation truth stay
+outside that sandbox.
 
 ### Events
 
@@ -129,6 +139,7 @@ client responds.
 
 autokairos should translate this into:
 
+- `AgentEvent`
 - trace events
 - tool proxy requests and responses
 - operator approval events
@@ -175,8 +186,9 @@ configured agents, but those called agents do not recursively call further agent
 
 autokairos should translate this into:
 
-- `AgentTeamSpec`
-- `AgentRuntimeUnit`
+- `AgentSpec`
+- `AgentSession`
+- `AgentRun`
 - fixed small team configurations for MLP
 - coordinator and specialist roles
 
@@ -199,7 +211,7 @@ Trading evidence must remain owned by the autokairos evaluator because:
 - trading metrics are domain-specific
 - legitimacy mode matters
 - agent self-improvement pressure creates reward-hacking risk
-- promotion evidence must be external to the trader-system pod
+- promotion evidence must be external to the trader-system runtime
 
 ## Transferable Lessons
 
@@ -207,10 +219,15 @@ Trading evidence must remain owned by the autokairos evaluator because:
   one harness.
 - Treat `Agent` configuration as versioned artifact input to a candidate system.
 - Treat `Environment` as a reusable execution template, not as candidate identity.
-- Treat `Session` event history as durable trace, not as model context.
+- Treat `Session` event history as durable trace, not as model context or container memory.
+- Treat physical execution as replaceable: `RuntimePlacement` can change while the logical
+  `TraderSystemRuntime` remains the same product/runtime boundary.
 - Put credentials behind vaults or tool proxies, never inside context/tool packages.
 - Use mounted files and memory stores as a model for packageable context resources.
 - Use custom tool events as the model for trading tool proxy calls.
+- Treat observability as a first-class boundary: session events, span/tool events, artifacts,
+  runtime status, and errors must be inspectable without turning the control plane into the runtime's
+  step-by-step orchestrator.
 - Use multiagent as a role-spec pattern, not a required first-release platform feature.
 - Use outcomes only for qualitative artifact checks unless external trading evaluation validates the
   result.
@@ -230,10 +247,10 @@ The active autokairos model should be:
 
 ```text
 TraderSystemCandidate
-  -> references a TradingSystemImage
-  -> references BrainSpec / AgentTeamSpec
+  -> references a TraderSystemSpec
+  -> references AgentSpec definitions
   -> references CapabilityPackage artifacts
-  -> runs as TradingSystemPod sessions under StageBinding
+  -> runs as TraderSystemRuntime sessions under StageBinding
   -> produces Trace
   -> is judged by external EvidenceRecord
   -> can be promoted through PromotionDecision
@@ -241,17 +258,44 @@ TraderSystemCandidate
 
 The Managed Agents source updates the architecture in one important way:
 
-**a `TradingSystemPod` is not simply an agent inside a container.**
+**a `TraderSystemRuntime` is not simply an agent inside a container.**
 
 It is a stage-bound execution instance assembled from:
 
-- `TradingSystemImage`
+- `TraderSystemSpec`
+- `TraderSystemProgram`
 - `CapabilityPackage`
 - `StageBinding`
+- `RuntimePlacement`
 - `BrainSession`
 - `HandsEnvironment`
 - `ToolProxy`
 - external trace/evidence sinks
+
+The runtime may decide internally whether to invoke an agent run, execute program code, use local
+scratch state, call a tool, or do nothing. The autokairos translation of Managed Agents should
+therefore focus on the externally visible event stream and control surfaces:
+
+- `AgentEvent` and `ProgramEvent`
+- tool-proxy request/result events
+- file/artifact exports
+- session status and error events
+- operator-wake and intervention events
+- gateway decisions for any live side effect
+
+Those events are audit and trace material. They are not automatically counted trading evidence.
+
+The critical mapping is:
+
+```text
+TraderSystemRuntime = logical stage-bound trader-system runtime
+RuntimePlacement = physical process/container/provider/endpoint placement
+Trace = durable recoverable session/event log outside both brain and hands
+```
+
+This is why autokairos should not use a parent-process control mental model. The core interface is not a
+parent process that controls every child step; it is a connector that can attach, observe,
+interrupt, checkpoint, and recover replaceable physical execution around a stable logical runtime.
 
 ## Open Questions / Tensions
 

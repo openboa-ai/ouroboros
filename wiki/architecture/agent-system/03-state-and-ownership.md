@@ -39,7 +39,7 @@ or one container disappears?**
 | runtime session | harness-local active loop state | runtime / driver | semi-durable at best | may be lost |
 | checkpoint state | runtime-local rewind aid | runtime / workspace | local convenience | may be lost or recreated |
 | project memory / local notes | runtime-local continuity aid | runtime / host-local storage | medium | may survive only if intentionally externalized |
-| execution handle | bridge-local operational reference for an active attempt | runtime bridge | temporary | becomes invalid |
+| execution handle | bridge-local operational reference for an active attempt | runtime connector | temporary | becomes invalid |
 | `Trace` | external raw run history | control plane trace sink | durable | should survive |
 | `EvidenceRecord` | judged artifact derived from trace | evaluation system / control plane | durable | unaffected |
 | `PromotionDecision` | explicit governance act | control plane | durable | unaffected |

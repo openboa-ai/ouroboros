@@ -6,7 +6,7 @@ This page defines how MLP-01 is judged.
 
 ## Judgment Thesis
 
-MLP-01 is launchable only when it creates one believable delegated trader-system pod.
+MLP-01 is launchable only when it creates one believable delegated trader-system runtime.
 
 It is not enough for features to exist. The product must prove that one candidate system can be
 created, externally evaluated, promoted, run live under bounded authority, and controlled.
@@ -20,7 +20,7 @@ permanent runtime.
 
 ### Secondary: Credible Live Trading Outcome
 
-The live pod produces meaningful live behavior on the first wedge rather than ceremonial live
+The live runtime produces meaningful live behavior on the first wedge rather than ceremonial live
 presence.
 
 ## Launch Bar
@@ -28,7 +28,7 @@ presence.
 Launch-ready means:
 
 - one candidate system is durable and inspectable
-- image and capability package references are visible
+- spec and capability package references are visible
 - backtest/paper/live are represented as bindings
 - evidence is externally judged
 - live gate meaning is explicit
@@ -43,7 +43,7 @@ Launch-ready means:
 The object model and execution path work end to end:
 
 ```text
-candidate -> image/package -> binding -> trace -> evidence -> promotion -> live pod -> wake/control
+candidate -> spec/package -> binding -> trace -> evidence -> promotion -> live runtime -> intervention/audit
 ```
 
 ### Product success
@@ -53,7 +53,7 @@ monitoring for the chosen wedge.
 
 ### Lovable success
 
-The operator feels safe delegating to one live trader-system pod without becoming the runtime again.
+The operator feels safe delegating to one live trader-system runtime without becoming the runtime again.
 
 ## Leading Signals
 
@@ -69,7 +69,7 @@ The operator feels safe delegating to one live trader-system pod without becomin
 - operator keeps using the system after novelty fades
 - hidden manual labor decreases
 - intervention is exceptional rather than constant
-- one live pod behavior is meaningful enough to justify continued use
+- one live runtime behavior is meaningful enough to justify continued use
 - self-evolution proposals become new candidate versions, not manual patchwork
 
 ## Evidence Required Before Claiming Success
@@ -77,7 +77,7 @@ The operator feels safe delegating to one live trader-system pod without becomin
 The team must show:
 
 - one candidate artifact survived across at least backtest and live-intent contexts
-- evidence was produced outside the pod
+- evidence was produced outside the runtime
 - live execution authority stayed with autokairos gateway
 - operator action history was auditable
 - no private human judgment was required to explain why the candidate was promoted
@@ -89,12 +89,12 @@ The clearest fake success is hidden human labor.
 Other fake successes:
 
 - many candidate systems exist but none is trustworthy
-- a live pod exists but agent has unbounded direct exchange access
+- a live runtime exists but agent has unbounded direct exchange access
 - backtest and live use different untracked system artifacts
 - capability/context assumptions are hidden in prompts
 - agent self-report is treated as counted evidence
 - self-evolution patches the live system in place
-- marketplace or platform breadth expands before the first pod proof lands
+- marketplace or platform breadth expands before the first runtime proof lands
 
 ## Kill Or Reframe Criteria
 

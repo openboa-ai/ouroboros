@@ -128,7 +128,7 @@ The operator gets:
 The operator wants autokairos to explore a narrow Binance BTC perpetual futures opportunity.
 
 Instead of asking the operator to hand-author a strategy, autokairos launches a small pool of
-agent-built trader-system candidates. Each candidate has a versioned system image, capability
+agent-built trader-system candidates. Each candidate has a versioned trader-system spec, capability
 package references, and an execution binding. One candidate runs in backtest, produces external
 evidence, earns promotion, runs live through a bounded gateway, and can later propose a cloned
 version for re-evaluation.
@@ -155,7 +155,7 @@ The operator will fire autokairos if:
 
 ## Product Value Thesis
 
-autokairos helps a weak human operator govern and delegate stronger agent-built trader-system pods.
+autokairos helps a weak human operator govern and delegate stronger agent-built trader-system runtimes.
 
 The top value is trustworthy delegation. Stronger search becomes useful only after candidate
 identity, capability packaging, external evaluation, live authority, and intervention are governed.

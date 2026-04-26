@@ -37,7 +37,7 @@ An `OrderFillSurface` is:
 
 - the current operational posture for one order scope or one bounded execution scope
 - downstream of venue order events, broker order endpoints, and fill streams
-- upstream of `SubstrateSignal`, wake evaluation, runtime execution decisions, and operator review
+- upstream of `SubstrateSignal`, runtime execution decisions, trace, evaluation, and operator review
 
 It must preserve both:
 
@@ -169,7 +169,7 @@ It answers:
 It does not answer:
 
 - every raw event that ever happened
-- whether the system should wake
+- whether the operator should inspect or intervene
 - whether the runtime should submit a new order
 
 ## Failure Modes / Invariants
@@ -198,8 +198,6 @@ It does not answer:
   defines the signal object emitted above order/fill surface changes.
 - [24-always-on-trading-substrate-contract.md](24-always-on-trading-substrate-contract.md)
   defines the broader substrate boundary that owns the `order_fill` family.
-- [23-wake-trigger-record-contract.md](23-wake-trigger-record-contract.md)
-  defines wake history that may later reference signals emitted from order/fill changes.
 - [09-trace-contract.md](09-trace-contract.md)
   defines runtime execution history, which must remain separate from the always-on order/fill
   surface.

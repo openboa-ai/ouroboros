@@ -12,9 +12,9 @@ Current product focus is:
 
 - lock the PM document stack
 - complete MLP-01 planning
-- ship one lovable trader-system pod proof on Binance BTC perpetual futures
+- ship one lovable trader-system runtime proof on Binance BTC perpetual futures
 - prove agent-built `TraderSystemCandidate` -> externally counted evaluation -> promotion decision
-  -> bounded live `TradingSystemPod` -> intervention
+  -> bounded live `TraderSystemRuntime` -> intervention
 
 Anything that does not strengthen that proof is not `Now`.
 
@@ -22,7 +22,7 @@ Anything that does not strengthen that proof is not `Now`.
 
 After the first lovable proof is credible, the next logical layer is:
 
-- harden bounded live pod operation
+- harden bounded live runtime operation
 - improve candidate quality and promotion readability
 - refine wake and intervention confidence
 - tighten adapter seams for later venue portability
@@ -58,7 +58,7 @@ If a proposed item does not strengthen:
 
 - the lovable proof
 - the serious solo operator workflow
-- the governed candidate-to-pod path
+- the governed candidate-to-runtime path
 
 it should not enter `Now`.
 

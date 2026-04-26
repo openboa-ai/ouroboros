@@ -80,7 +80,7 @@ Each canonical document should answer one primary question.
 Examples:
 
 - `What is the first lovable product?`
-- `What must happen from agent-built TraderSystemCandidate to bounded live TradingSystemPod?`
+- `What must happen from agent-built TraderSystemCandidate to bounded live TraderSystemRuntime?`
 - `How does the trading substrate support that product journey?`
 - `Why did we choose this documentation system?`
 

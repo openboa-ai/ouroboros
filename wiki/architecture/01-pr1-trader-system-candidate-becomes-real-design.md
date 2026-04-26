@@ -13,14 +13,17 @@ PR1 proves one concrete provider-built trader system can become a durable, inspe
 
 ```text
 codex_cli provider run with explicit gpt-5.4
+-> AgentRun purpose = candidate_generation
+-> AgentEvent stream / raw provider output
 -> structured candidate proposal JSON
 -> trace/artifact export
 -> candidate materialization request
 -> TraderSystemCandidate
--> TradingSystemImage ref
+-> TraderSystemSpec ref
 -> CapabilityPackage refs
--> AgentRuntimeUnit ref
--> PodCommunicationPolicy
+-> AgentSpec ref
+-> AgentSession ref
+-> RuntimeCommunicationPolicy
 -> operator inspect surface
 ```
 
@@ -33,10 +36,12 @@ prototype evidence.
 ## Ownership And Boundaries
 
 - agent-system `RuntimeProviderAdapter` invokes the selected concrete provider
-- first default runtime unit is `runtime_unit_role=builder_agent`,
-  `provider_kind=codex_cli`, `model=gpt-5.4`
+- `AgentSpec` defines the candidate-generation behavior and output contract
+- first default `AgentSession.provider_kind = codex_cli`, `model=gpt-5.4`
+- first default `AgentRun.purpose = candidate_generation`
+- `AgentRun` may fail without creating a `TraderSystemCandidate`
 - control-plane materializes durable candidate truth
-- local store persists candidate/image/package/runtime-unit refs
+- local store persists candidate/spec/package/agent-spec/agent-session/agent-run/agent-event refs
 - operator web reads inspect models only
 
 PR1 does not own:
@@ -55,10 +60,12 @@ Use the PR1 subset from [specs/08-candidate-contract.md](specs/08-candidate-cont
 - `created_at`
 - `created_by_harness_ref`
 - `materialized_from_provider_run_ref`
-- `trading_system_image_ref`
+- `trader_system_spec_ref`
+- `trader_system_program_ref`
 - `capability_package_refs`
-- `agent_runtime_unit_refs`
-- `pod_communication_policy`
+- `agent_spec_refs`
+- `agent_session_refs`
+- `runtime_communication_policy`
 - `first_market_scope`
 - `title`
 - `system_summary`
@@ -70,7 +77,8 @@ Use the PR1 subset from [specs/08-candidate-contract.md](specs/08-candidate-cont
 The operator must see:
 
 - what candidate system exists
-- which image represents it
+- which trader-system spec represents it
+- which executable program artifact represents its behavior, if present
 - which capability packages it uses
 - whether the candidate is currently single-agent or shaped for future team/distributed execution
 - where it came from
@@ -122,6 +130,7 @@ letting provider output become durable truth by default.
 probe provider
 -> create provider run attempt
 -> execute codex_cli with explicit gpt-5.4 and schema output
+-> capture AgentEvents / raw provider output
 -> retain trace/artifacts
 -> validate schema
 -> validate materialization semantics
@@ -138,8 +147,8 @@ probe provider
 
 - provider output is proposal input, not candidate truth
 - candidate truth begins only after schema validation and materialization acceptance
-- materialized candidate must link to provider run attempt, trace/artifact refs, image refs,
-  package refs, runtime-unit refs, and communication policy
+- materialized candidate must link to provider run attempt, trace/artifact refs, spec refs,
+  package refs, agent-spec/agent-session refs, and communication policy
 - schema-valid JSON is still not evaluation legitimacy
 
 ### Validation And Rejection
@@ -151,7 +160,7 @@ PR1 must validate:
 - required candidate fields
 - first market scope
 - package manifest refs and forbidden contents
-- runtime unit role/provider separation
+- session-purpose/provider separation
 - no evidence, promotion, live binding, wake, or direct exchange authority fields
 
 Rejection outcomes must remain inspectable and must not create a candidate.
@@ -184,7 +193,7 @@ Rejection outcomes must remain inspectable and must not create a candidate.
 - no candidate is created when provider output is missing, invalid, or rejected
 - first real provider materialization can explain command/API invocation, output schema, trace, and
   artifact export path
-- image/package/runtime-unit refs are inspectable
+- spec/package/agent-spec/agent-session refs are inspectable
 - candidate can be handed to PR2 without reauthoring
 - no evidence/promotion/live meaning appears
 
@@ -193,7 +202,7 @@ Rejection outcomes must remain inspectable and must not create a candidate.
 - backtest evaluator
 - counted evidence
 - live gate
-- live pod
-- wake/control
+- live runtime
+- operator intervention
 - real A2A networking
 - marketplace packaging

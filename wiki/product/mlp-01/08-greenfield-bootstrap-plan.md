@@ -2,166 +2,145 @@
 
 ## Purpose
 
-This page defines the first engineering step after the docs-only reset baseline.
+This page defines the first engineering step after the docs/design baseline.
 
-## Goal
+Bootstrap is not a product proof. It is the smallest executable substrate that lets a developer and
+operator inspect durable trader-system records before real provider execution, evaluation, runtime
+actions, operator intervention, or live trading exists.
 
-Create the smallest executable substrate that can later prove:
+## Bootstrap Goal
+
+Create a local inspect path for:
 
 ```text
-TraderSystemCandidate -> TradingSystemImage + CapabilityPackage -> inspectable operator surface
+TraderSystemCandidate
+-> CandidateVersion
+-> TraderSystemSpec
+-> TraderSystemProgram
+-> CapabilityPackage
+-> TraderSystemRuntime seam
+-> trace/evaluation placeholders
 ```
 
-Bootstrap does not prove evaluation or live trading. It creates the substrate that makes PR1 real
-feature work rather than product rediscovery.
+The important proof is persistence and inspectability, not trading performance.
 
-## Current Repo Posture
+## Build Now
 
-- the repo is a design-locked docs-only reset workspace
-- deleted legacy app/runtime code is historical context
-- implementation proceeds through greenfield bootstrap
-- old strategy-workspace assumptions are not active implementation truth
+Bootstrap builds only:
 
-## Bootstrap Product Requirements
+- `apps/operator-web`: inspect-first browser UI
+- `apps/runtime`: local read-only runtime service
+- `packages/domain`: shared record and read-model contracts
+- `packages/local-store`: local file-backed fixture store and projections
+- read-only APIs: `GET /health`, `GET /api/candidates`, `GET /api/candidates/:candidate_id`
+- idempotent fixture seeding
+- restart recovery from item files
 
-Bootstrap must establish:
+## Fixture Only
 
-- durable local records for `TraderSystemCandidate`
-- durable references for `TradingSystemImage`
-- durable references for `CapabilityPackage`
-- a minimal `CapabilityPackageManifest` shape so context/tool/skill/data-access artifacts declare
-  provenance, permissions, allowed stages, and forbidden contents before runtime injection
-- a minimal `AgentRuntimeUnit` placeholder so a candidate can declare whether it is single-agent or
-  team-capable later, and which provider/driver would run each participant
-- a minimal `AgentLoopPolicy` placeholder so PR1 can add a real one-shot builder run without
-  inventing loop semantics
-- a thin operator inspect surface
-- a local runtime/service boundary
-- a file-backed non-relational store
-- a runtime provider adapter seam grounded in concrete invocation surfaces
-- a trace/evaluator placeholder seam
-- one unified provider-neutral communication policy placeholder without implementing remote-agent
-  networking
+Bootstrap may show placeholders for future seams:
 
-Bootstrap must not leave provider execution as a vague label. The seam should already be able to
-name `provider_kind`, invocation surface, auth reference, sandbox policy, trace mode, and output
-contract even if no real provider run happens in the Bootstrap PR.
+- provider readiness and provider probe attempts
+- `AgentSpec`, `AgentSession`, `AgentRun`, and `AgentEvent`
+- `ProgramManifest` and `ProgramValidationRecord`
+- `CapabilityManifest`, `CapabilityPackageAdmissionRecord`, `CapabilityGrant`, and
+  `CapabilityMountRecord`
+- `RuntimePlacement` and `HandsEnvironment`
+- `RuntimeMemorySurface`
+- trace placeholders
+- `EvaluationRunRecord`, `EvaluationComparisonSet`, and `EvidenceSealingDecision`
 
-Bootstrap must also keep `runtime_unit_role` separate from `provider_kind`:
+These records are fixture/convenience-mode state. They are visible so later implementation can
+attach real behavior without changing product identity.
 
-- `runtime_unit_role` says whether the unit is a builder, evaluator, live operator, critic, or
-  remote specialist.
-- `provider_kind` says whether the unit runs through Codex CLI, Claude SDK, OpenClaw/ACP, A2A, or
-  another driver.
-- Bootstrap may fixture these fields, but it must not merge them.
+## Do Not Build
 
-## First Code Shape
+Bootstrap must not implement:
 
-Recommended roots:
-
-- `apps/operator-web`
-- `apps/runtime`
-- `packages/domain`
-- `packages/local-store`
-
-This keeps operator UI, runtime behavior, domain contracts, and durable truth separate.
+- Codex, Claude, OpenClaw/ACP, A2A, or local-process provider execution
+- provider probing against real systems
+- program execution
+- sandbox/container execution
+- package scanning, marketplace, real grants, or real mounts
+- runtime memory write/review/rollback workflow
+- evaluator execution
+- evidence sealing
+- promotion
+- runtime control action APIs
+- live gateway, exchange access, or order execution
+- operator intervention controls
+- A2A networking or multi-agent routing
 
 ## Storage Posture
 
-Use a local-first file-backed store.
+Use `.autokairos/dev-store/` as a local file-backed store.
 
-It must preserve:
+Rules:
 
-- candidate identity
-- image refs
-- package refs
-- package manifest refs
-- agent runtime unit refs
-- agent loop policy refs
-- communication policy refs
-- provenance
-- inspect read models
-- future trace/evidence attachment points
-
-It must not treat runtime memory, provider session state, or workspace files as the only source of
-truth.
+- item files are authoritative truth
+- indexes and read models are projections
+- every fixture record has `record_kind`, `version`, and a stable id/ref
+- fixture seeding is idempotent
+- writes use temp-write then rename posture
+- runtime restart must rebuild the same inspect read model
+- provider memory, runtime memory, scratch files, and workspace files are not durable product truth
 
 ## Operator Surface
 
-The first UI is inspect-first, not dashboard-first.
+The first UI is inspect-first.
 
 It should show:
 
-- candidate list
-- candidate detail
-- image reference
-- capability package references
-- package manifest summary:
-  provenance, allowed stages, declared tools/data access, required permissions, and forbidden
-  contents
-- agent runtime shape:
-  single-agent or future team-capable, including runtime role, concrete provider kind, and model
-  selection per runtime unit
-- loop policy summary:
-  loop mode, trigger source, timeout, stop conditions, trace requirement, and tool posture
-- provenance
-- current bootstrap status
+- candidate list and candidate detail
+- candidate version, spec ref, and supported stage-binding profiles
+- program ref, program manifest summary, and validation placeholder status
+- capability package, manifest, admission, grant, and mount placeholder summaries
+- agent/provider placeholder shape
+- runtime placement and hands-environment placeholders
+- runtime memory surface placeholder with trust class, access mode, version, visibility, and
+  quarantine status
+- trace/evaluation placeholders
+- explicit fixture/convenience-mode labels
 
-It should not show:
+It must not show:
 
-- live controls
-- wake console
-- marketplace
-- full portfolio optimization
+- action buttons
+- provider-run controls
+- program-run controls
+- evaluator-run controls
+- evidence claims
+- promotion controls
+- runtime control or operator intervention surfaces
+- live execution controls
+- marketplace surfaces
 
-## Convenience vs Legitimate Mode
+## Boundary Rules
 
-Bootstrap is local convenience mode.
-
-It must still preserve future seams for legitimate mode:
-
-- trace is not evidence
-- local fixture state is not counted evidence
-- provider session output is not promotion truth
-- schema-valid builder output is not evaluation legitimacy
-- local `AgentLoopPolicy` execution is not a proof that a later live loop is safe
-- evaluator-owned evidence can attach later without redesign
-
-## Explicitly Deferred
-
-- external evaluator implementation
-- real agent harness execution
-- real A2A networking
-- multi-agent scheduling
-- real `continuous_live` loop execution
-- paper/live bindings
-- exchange gateway
-- `OrderIntent` / `GatewayDecision` execution flow
-- wake/intervention
-- package marketplace
-- remote pod orchestration
+- `ProviderReadinessRecordRef` is not proof that a provider is executable.
+- `ProgramValidationRecordRef` is not proof that a program is safe, performant, or runnable.
+- `CapabilityGrantRef` is not real access authorization.
+- `RuntimeMemorySurfaceRef` is context metadata, not evidence.
+- `TracePlaceholderRef` is runtime-history shape, not counted evidence.
+- `EvaluationRunRecordRef`, `EvaluationComparisonSetRef`, and `EvidenceSealingDecisionRef` are seam
+  refs only; Bootstrap produces no `EvidenceRecord`.
+- `TraderSystemRuntimeRef` and `RuntimePlacementRef` are visible as logical/physical seams, but no
+  runtime placement is launched.
 
 ## Acceptance Criteria
 
 Bootstrap is complete only if:
 
-- one local app can inspect candidate/image/package fixture state
+- one local app can inspect candidate/spec/program/package/runtime fixture state
 - one local runtime owns durable record access
 - durable truth survives runtime restart
-- domain contracts already name `TraderSystemCandidate`, `TradingSystemImage`, and
-  `CapabilityPackage`
-- domain contracts already name `CapabilityPackageManifest`, `AgentRuntimeUnit.runtime_unit_role`,
-  and `AgentLoopPolicy`
-- domain contracts leave a narrow seam for `AgentRuntimeUnit.provider` and unified
-  `PodCommunicationPolicy` without making multi-agent behavior part of bootstrap
-- the provider seam points to the runtime-provider feasibility layer and does not imply that a
-  generic `Codex` or `Claude` label is executable
-- the first real PR1 provider path can use `runtime_unit_role=builder_agent`,
-  `provider_kind=codex_cli`, and `model=gpt-5.4` without changing bootstrap contracts
-- PR1 can add real materialization without changing the product model
+- read APIs are read-only
+- fixture records expose all required seam refs
+- the UI marks fixture/convenience-mode status clearly
+- no placeholder is presented as evidence, permission, readiness, promotion, or live authority
+- later candidate materialization can attach real provider output without changing the product model
 
 ## Read Next
 
-1. [07-implementation-plan.md](07-implementation-plan.md)
-2. [../../architecture/05-bootstrap-tech-spec.md](../../architecture/05-bootstrap-tech-spec.md)
-3. [../../architecture/06-runtime-provider-adapter-feasibility.md](../../architecture/06-runtime-provider-adapter-feasibility.md)
+1. [../../architecture/05-bootstrap-tech-spec.md](../../architecture/05-bootstrap-tech-spec.md)
+2. [../../architecture/00-system-map.md](../../architecture/00-system-map.md)
+3. [../../architecture/specs/README.md](../../architecture/specs/README.md)

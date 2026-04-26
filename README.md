@@ -3,7 +3,7 @@
 **autokairos is an automated weak-to-strong trader.**
 
 It is a control plane for a weak human operator to create, run, evaluate, promote, and control
-agent-built trader-system pods across backtest, paper, and live bindings.
+agent-built trader-system runtimes across backtest, paper, and live bindings.
 
 ## Why This Exists
 
@@ -28,9 +28,9 @@ The current active model is:
 
 ```text
 TraderSystemCandidate
-  -> TradingSystemImage + CapabilityPackage
+  -> TraderSystemSpec + TraderSystemProgram + CapabilityPackage
   -> StageBinding(backtest | paper | live)
-  -> TradingSystemPod
+  -> TraderSystemRuntime
   -> Trace
   -> EvidenceRecord
   -> PromotionDecision
@@ -42,13 +42,17 @@ The important boundary is that a `Candidate` is not a static strategy note. It i
 `TraderSystemCandidate`: a versioned trader-system candidate that can be packaged, run, evaluated,
 and promoted.
 
+`TraderSystemProgram` is the agent-authored executable behavior bundle. It can run inside a
+container-backed sandbox, but secrets, counted evidence, promotion, and live trading authority stay
+outside that sandbox.
+
 ## First Wedge
 
 The first lovable wedge is still deliberately narrow:
 
 - user: one serious solo crypto operator
 - market: Binance BTC perpetual futures
-- proof: one agent-built `TraderSystemCandidate` becomes a bounded live `TradingSystemPod` and
+- proof: one agent-built `TraderSystemCandidate` becomes a bounded live `TraderSystemRuntime` and
   remains inspectable and controllable
 
 This wedge is not the whole company. It is the first proof that the control-plane model works.
@@ -61,10 +65,10 @@ The source hierarchy is now explicit:
   weak supervision, external evaluation, legitimacy boundaries, and counted evidence.
 - **Paperclip** defines the governance spine:
   wake, approval, intervention, audit, and recovery control.
-- **Claude Managed Agents / Google A2A / Codex / Claude Code / OpenClaw / Multica** inform the
-  runtime and interoperability spine:
-  brain/hands/session separation, agent-to-agent communication, harness posture, external tools,
-  background work, and operator re-entry.
+- **OpenAI Agents SDK / Claude Managed Agents / Claude Agent SDK / Google ADK / A2A / ACP / MCP /
+  Codex / Claude Code / OpenClaw / Multica** inform the runtime and interoperability spine:
+  agent spec/session/run/event separation, brain/hands/session separation, agent-to-agent
+  communication, harness posture, external tools, background work, and operator re-entry.
 
 Runtime references are only actionable when they map to a callable adapter surface. The current
 first feasible local provider path is Codex CLI `codex exec`; Claude should be integrated through
@@ -108,14 +112,14 @@ The next code work is greenfield bootstrap, not legacy restoration.
 
 The canonical implementation path is:
 
-1. [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
-2. [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
-3. [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md)
-4. [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)
-5. [wiki/architecture/01-pr1-trader-system-candidate-becomes-real-design.md](wiki/architecture/01-pr1-trader-system-candidate-becomes-real-design.md)
-6. [wiki/architecture/02-pr2-candidate-becomes-externally-evaluated-design.md](wiki/architecture/02-pr2-candidate-becomes-externally-evaluated-design.md)
-7. [wiki/architecture/03-pr3-bounded-live-trading-system-pod-design.md](wiki/architecture/03-pr3-bounded-live-trading-system-pod-design.md)
-8. [wiki/architecture/04-pr4-live-pod-remains-controllable-design.md](wiki/architecture/04-pr4-live-pod-remains-controllable-design.md)
+1. [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md)
+2. [wiki/architecture/08-runtime-authority-model.md](wiki/architecture/08-runtime-authority-model.md)
+3. [wiki/architecture/09-trader-system-runtime-operating-model.md](wiki/architecture/09-trader-system-runtime-operating-model.md)
+4. [wiki/product/mlp-01/07-implementation-plan.md](wiki/product/mlp-01/07-implementation-plan.md)
+5. [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
+6. [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md)
+7. [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)
+8. the focused design note for the implementation concern being changed
 
 ## Current Canonical Areas
 
@@ -125,6 +129,7 @@ The canonical implementation path is:
 - [wiki/product/mlp-01/README.md](wiki/product/mlp-01/README.md)
 - [wiki/product/mlp-01/prds/README.md](wiki/product/mlp-01/prds/README.md)
 - [wiki/architecture/README.md](wiki/architecture/README.md)
+- [wiki/architecture/09-trader-system-runtime-operating-model.md](wiki/architecture/09-trader-system-runtime-operating-model.md)
 - [wiki/architecture/specs/README.md](wiki/architecture/specs/README.md)
 - [wiki/architecture/adrs/README.md](wiki/architecture/adrs/README.md)
 - [docs/README.md](docs/README.md)
@@ -140,6 +145,8 @@ The canonical implementation path is:
 6. [wiki/product/mlp-01/prds/README.md](wiki/product/mlp-01/prds/README.md)
 7. [wiki/architecture/README.md](wiki/architecture/README.md)
 8. [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md)
-9. [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
-10. [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md)
-11. [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)
+9. [wiki/architecture/08-runtime-authority-model.md](wiki/architecture/08-runtime-authority-model.md)
+10. [wiki/architecture/09-trader-system-runtime-operating-model.md](wiki/architecture/09-trader-system-runtime-operating-model.md)
+11. [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md)
+12. [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md)
+13. [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md)

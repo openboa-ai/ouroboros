@@ -15,7 +15,7 @@ It is grounded in:
 
 And it follows:
 
-- [../00-first-principles-architecture-thesis.md](../specs/00-first-principles-architecture-thesis.md)
+- [../00-first-principles-architecture-thesis.md](../historical/specs/00-first-principles-architecture-thesis.md)
 - [../02-core-primitives.md](../specs/02-core-primitives.md)
 - [../04-boundaries.md](../specs/04-boundaries.md)
 

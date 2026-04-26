@@ -9,7 +9,7 @@ This page manages uncertainty without reopening product truth casually.
 The current product truth is:
 
 - candidate identity is `TraderSystemCandidate`
-- execution unit is `TradingSystemPod`
+- execution unit is `TraderSystemRuntime`
 - tools/context are `CapabilityPackage` artifacts
 - backtest/paper/live are bindings
 - evidence is external
@@ -24,10 +24,10 @@ quality.
 | Risk | Why it matters | Evidence that reduces it | If it flips, update first |
 | --- | --- | --- | --- |
 | Operators do not value trader-system candidates over strategy authoring | Product thesis fails | operator interviews and prototype reactions | product strategy |
-| Same-artifact binding model is not practical for trading systems | Pod model fails | one candidate image run through backtest and paper bindings | MLP brief and architecture primitives |
+| Same-artifact binding model is not practical for trading systems | Runtime model fails | one candidate spec run through backtest and paper bindings | MLP brief and architecture primitives |
 | Capability packages are not separable enough from candidate systems | Marketplace-ready boundary fails | package reuse across two candidate systems | product principles |
 | External evaluation cannot judge candidate systems credibly | W2S thesis fails | evaluator produces trusted evidence for one candidate | PRD 2 and evaluation architecture |
-| Bounded live authority is too weak to feel autonomous | lovable proof fails | operator accepts live pod with gateway-controlled order intent | PRD 3 |
+| Bounded live authority is too weak to feel autonomous | lovable proof fails | operator accepts live runtime with gateway-controlled order intent | PRD 3 |
 
 ## Lovable-Quality Risks
 
@@ -46,17 +46,17 @@ These risks can block launch quality without immediately changing product identi
 These may be resolved in implementation design without reopening product truth.
 
 - Which first harness adapter should be built first?
-- What is the minimum `TradingSystemImage` manifest?
+- What is the minimum `TraderSystemSpec` manifest?
 - What is the first `CapabilityPackage` manifest shape?
 - Which package resources are read-only versus read-write?
-- What local store layout best supports pod/image/package references?
+- What local store layout best supports runtime/spec/package references?
 - What first evaluator boundary is enough for PRD 2?
 - What first live gateway API is enough for order-intent control?
 
 ## Questions Already Settled
 
 - Candidate is not a static note.
-- A pod is not a single magic container.
+- A runtime is not a single magic container.
 - Backtest, paper, and live are bindings.
 - Capability packages cannot contain secrets.
 - Agent self-report is not counted evidence.
@@ -65,7 +65,7 @@ These may be resolved in implementation design without reopening product truth.
 
 ## Decision Escalation Rule
 
-If new evidence would change candidate identity, pod model, capability packaging, evidence
+If new evidence would change candidate identity, runtime model, capability packaging, evidence
 ownership, live authority, or self-evolution semantics, it is not an open question here.
 
 Escalate first to:

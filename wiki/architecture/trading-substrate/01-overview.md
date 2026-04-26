@@ -7,8 +7,8 @@ It follows:
 - [README.md](README.md)
 - [../foundation/01-naming-and-vocabulary.md](../foundation/01-naming-and-vocabulary.md)
 - [../specs/04-boundaries.md](../specs/04-boundaries.md)
-- [../specs/15-persistent-operations-and-wake-policy.md](../specs/15-persistent-operations-and-wake-policy.md)
-- [../../sources/synthesis/proactive-operations-and-wake-orchestration.md](../../sources/synthesis/proactive-operations-and-wake-orchestration.md)
+- [../historical/specs/15-persistent-operations-and-wake-policy.md](../historical/specs/15-persistent-operations-and-wake-policy.md)
+- [../../sources/synthesis/proactive-operations-and-runtime-control.md](../../sources/synthesis/proactive-operations-and-runtime-control.md)
 
 It is also informed by additional official documentation:
 

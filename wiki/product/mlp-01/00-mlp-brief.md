@@ -7,7 +7,7 @@ This is the one-document contract for the first lovable autokairos product.
 ## One-Sentence Promise
 
 **autokairos is an automated weak-to-strong trader: a control plane for evolving agent-built
-trader-system pods across backtest, paper, and live bindings.**
+trader-system runtimes across backtest, paper, and live bindings.**
 
 MLP-01 proves that first for one serious solo crypto operator on Binance BTC perpetual futures.
 
@@ -26,7 +26,24 @@ small pool of TraderSystemCandidates
 -> the operator can intervene without becoming the runtime
 ```
 
-The first lovable proof is one promoted trader-system pod, not a static note.
+The first lovable proof is one promoted trader-system runtime, not a static note.
+
+The runtime's agent brain is provider-backed, not autokairos-owned:
+
+```text
+TraderSystemRuntime
+-> RuntimePlacement
+-> AgentSession
+-> RuntimeProviderAdapter
+-> Codex / Claude / OpenClaw-ACP / A2A / local process
+-> AgentRun
+-> AgentEvent
+-> Trace
+```
+
+MLP-01 may use external agent execution capability to create and run candidate systems, but provider
+sessions do not own candidate truth, counted evidence, promotion, live gateway authority, wake
+semantics, or audit.
 
 ## Primary User
 
@@ -48,13 +65,13 @@ candidate without becoming the continuous runtime.
 The operator sees a candidate system move through a credible trust chain:
 
 - a trader-system candidate is created by an external agent harness
-- its `TradingSystemImage` and `CapabilityPackage` references are durable
-- its agent runtime unit and communication boundaries are inspectable enough to know what is
+- its `TraderSystemSpec` and `CapabilityPackage` references are durable
+- its agent spec, agent session, and communication boundaries are inspectable enough to know what is
   actually running
 - it runs in a backtest binding without changing identity
-- evidence is judged outside the pod
+- evidence is judged outside the runtime
 - promotion makes the live binding meaningful
-- the live pod acts within an autokairos gateway, not with unrestricted exchange access
+- the live runtime acts within an autokairos gateway, not with unrestricted exchange access
 - wake/intervention preserves control
 
 The operator should feel:
@@ -69,7 +86,7 @@ The operator should feel:
 | Product category | automated weak-to-strong trader | Keeps the brand anchored in weak supervision and stronger systems |
 | Product form | trader-system control plane | Prevents drift into dashboard, notebook, or generic agent shell |
 | Candidate identity | `TraderSystemCandidate` | Candidate is the system under judgment, not a strategy note |
-| Execution unit | `TradingSystemPod` | Same artifact runs under different bindings |
+| Execution unit | `TraderSystemRuntime` | Same artifact runs under different bindings |
 | First ICP | serious solo crypto operator | Strongest pain with lowest coordination overhead |
 | First market | Binance BTC perpetual futures | Narrow, liquid, legible first live wedge |
 | Candidate pool | small pool | Proves selection/evaluation without full portfolio scope |
@@ -83,15 +100,20 @@ The operator should feel:
 | Object | Meaning |
 | --- | --- |
 | `TraderSystemCandidate` | promotable candidate trading system |
-| `TradingSystemImage` | versioned artifact for the system's brain/team contract and trading behavior |
+| `TraderSystemSpec` | versioned artifact for the system's brain/team contract and trading behavior |
+| `TraderSystemProgram` | agent-authored executable behavior bundle; not a human-authored strategy DSL |
 | `CapabilityPackage` | packageable context/tool/skill/data-access artifact |
 | `StageBinding` | backtest, paper, or live execution binding |
-| `TradingSystemPod` | stage-bound execution instance of the candidate system |
-| `AgentRuntimeUnit` | one brain/hands/session participant inside or beside a pod |
+| `TraderSystemRuntime` | stage-bound execution instance of the candidate system |
+| `AgentSpec` | configured agent participant definition |
+| `AgentSession` | one provider-backed running brain/session participant inside or beside a runtime |
+| `RuntimeProviderAdapter` | concrete bridge from `AgentSession` to Codex, Claude, OpenClaw/ACP, A2A, or local process |
+| `AgentRun` | one invocation, task, turn, or attempt against an agent session |
+| `AgentEvent` | raw provider/runtime event emitted during a run or session |
 | `BrainSession` | provider or harness session for model reasoning and coordination |
 | `HandsEnvironment` | tools, sandbox, data, gateway, and side-effect environment |
 | `ToolProxy` | authority boundary between agent requests and real tools |
-| `PodCommunicationPolicy` | one unified communication, sharing, routing, and isolation policy for all agent runtime units in a pod |
+| `RuntimeCommunicationPolicy` | one unified communication, sharing, routing, and isolation policy for all agent sessions in a runtime |
 | `TeamTrace` | durable trace of multi-agent task, message, and artifact exchange |
 | `EvidenceRecord` | externally judged evidence |
 | `PromotionDecision` | governance decision that changes candidate standing |
@@ -123,13 +145,13 @@ The operator should feel:
 
 - use A2A as the reference for communication between independent agent endpoints
 - keep MCP/tool-proxy style access for tools, resources, data, and side effects
-- keep provider selection on `AgentRuntimeUnit`, so one pod can mix Codex, Claude Code, Claude
+- keep provider selection on `AgentSession`, so one runtime can mix Codex, Claude Code, Claude
   Managed Agents, OpenClaw/ACP, or future providers
-- keep `PodCommunicationPolicy` provider-neutral and unified across the pod
+- keep `RuntimeCommunicationPolicy` provider-neutral and unified across the runtime
 - treat A2A tasks, messages, and artifacts as traceable communication, not counted evidence or
   promotion authority
-- prevent multi-agent pods from becoming uncontrolled meshes by requiring explicit
-  `PodCommunicationPolicy`
+- prevent multi-agent runtimes from becoming uncontrolled meshes by requiring explicit
+  `RuntimeCommunicationPolicy`
 
 ### Paperclip
 
@@ -155,9 +177,9 @@ MLP-01 is not:
 MLP-01 succeeds if:
 
 - one small candidate pool can produce one durable `TraderSystemCandidate`
-- the candidate's image and capability package references are inspectable
+- the candidate's spec and capability package references are inspectable
 - the same candidate can run through backtest/paper/live bindings without becoming a new object
-- counted evidence is produced outside the pod
+- counted evidence is produced outside the runtime
 - one candidate reaches bounded live trading on Binance BTC perpetual futures
 - the operator can inspect, pause, stop, or override without becoming the runtime loop
 
@@ -169,9 +191,10 @@ MLP-01 fails if:
   trader-system candidate being packaged, evaluated, promoted, and controlled
 - capability/context/tool injection is buried inside candidate text
 - live authority is direct and unbounded inside an agent harness
+- provider sessions are treated as the runtime, truth owner, evaluator, or gateway
 - evidence depends on agent self-report or hidden operator judgment
 - self-evolution mutates the live system in place
-- the first wedge expands into full marketplace, full platform, or full venue breadth before one pod
+- the first wedge expands into full marketplace, full platform, or full venue breadth before one runtime
   proof lands
 
 ## What Downstream Docs May Not Change
@@ -179,10 +202,11 @@ MLP-01 fails if:
 Downstream docs may not silently change:
 
 - `Candidate` meaning as `TraderSystemCandidate`
-- `TradingSystemPod` as the execution unit
+- `TraderSystemRuntime` as the execution unit
 - `CapabilityPackage` as a versioned artifact boundary
-- `AgentRuntimeUnit` as the agent participant boundary inside or beside a pod
-- `PodCommunicationPolicy` as the explicit boundary for multi-agent communication
+- `AgentSpec` / `AgentSession` as the configured-vs-running agent participant boundary inside
+  or beside a runtime
+- `RuntimeCommunicationPolicy` as the explicit boundary for multi-agent communication
 - backtest/paper/live as bindings for the same artifact
 - external evaluator ownership of counted evidence
 - bounded live authority through autokairos gateway

@@ -81,7 +81,7 @@ and ACP-based integration of external harnesses such as Codex and Claude Code.
 
 - OpenClaw is partly a runtime reference and partly a platform product.
 - Its strongest invariant is that session and transport ownership stay centralized in the Gateway.
-- ACP is treated as an external-runtime bridge, not as the native default runtime model.
+- ACP is treated as an external-runtime connector, not as the native default runtime model.
 
 ## Important Passages Or Facts
 
@@ -135,7 +135,7 @@ and ACP-based integration of external harnesses such as Codex and Claude Code.
 
 - A persistent assistant system benefits from a clearly owned control plane.
 - Session truth can be centralized outside clients and outside transient runtime loops.
-- Native runtime and external-runtime bridge paths can coexist if they are named and separated
+- Native runtime and external-runtime connector paths can coexist if they are named and separated
   cleanly.
 - Product posture matters: an always-on assistant has different constraints than a terminal coding
   harness.

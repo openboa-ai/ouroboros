@@ -8,13 +8,13 @@ them implicitly.
 At the top level, the product should be read as:
 
 **autokairos is an automated weak-to-strong trader: a control plane for evolving agent-built
-trader-system pods across backtest, paper, and live bindings.**
+trader-system runtimes across backtest, paper, and live bindings.**
 
 The first lovable wedge under that brand is narrower:
 
 - one serious solo crypto operator
 - one market: Binance BTC perpetual futures
-- one proof: one `TraderSystemCandidate` becomes a bounded live `TradingSystemPod` and remains
+- one proof: one `TraderSystemCandidate` becomes a bounded live `TraderSystemRuntime` and remains
   externally evaluated, inspectable, and controllable
 
 ## Purpose
@@ -34,18 +34,24 @@ The active product model is:
 
 - `TraderSystemCandidate`
   the candidate system under judgment
-- `TradingSystemImage`
+- `TraderSystemSpec`
   the packaged trader-system definition
+- `TraderSystemProgram`
+  agent-authored executable behavior bundle inside the spec; not a human-authored strategy DSL
 - `CapabilityPackage`
   versioned context, tool, skill, and data-access artifact; no secrets inside
 - `StageBinding`
   backtest, paper, or live environment injection
-- `TradingSystemPod`
-  the running composite of image, package, binding, brain session, hands environment, and tool proxy
-- `AgentRuntimeUnit`
-  one brain/hands/session participant inside or beside a pod, including provider/driver choice
-- `PodCommunicationPolicy`
-  one provider-neutral rule for communication, sharing, routing, and isolation across runtime units
+- `TraderSystemRuntime`
+  the running composite of trader-system spec, trader-system program, package, binding, brain
+  session, hands environment, and tool proxy
+- `AgentSpec`
+  configured agent participant definition
+- `AgentSession`
+  one running brain/hands/session participant inside or beside a runtime, including provider/driver
+  choice
+- `RuntimeCommunicationPolicy`
+  one provider-neutral rule for communication, sharing, routing, and isolation across agent sessions
 
 The product does not treat backtest, paper, and live as separate product systems. They are different
 bindings for the same candidate artifact.
@@ -91,9 +97,9 @@ locked.
 - product decisions must be explicit before architecture grows
 - brand/category is upstream of wedge
 - Candidate means `TraderSystemCandidate`
-- Pod means `TradingSystemPod`, not merely a container
+- Runtime means `TraderSystemRuntime`, not merely a container
 - `CapabilityPackage` is an artifact boundary and never a secret store
-- multi-agent means explicit `AgentRuntimeUnit` records plus one pod-level communication policy,
+- multi-agent means explicit `AgentSession` records plus one runtime-level communication policy,
   not a hidden agent mesh
 - A2A-style communication is a traceable collaboration seam, not evidence, promotion, or live
   authority
@@ -108,7 +114,7 @@ locked.
 
 1. [../sources/synthesis/evaluation-governance-and-promotion.md](../sources/synthesis/evaluation-governance-and-promotion.md)
 2. [../sources/synthesis/agent-runtime-and-harness-principles.md](../sources/synthesis/agent-runtime-and-harness-principles.md)
-3. [../sources/synthesis/proactive-operations-and-wake-orchestration.md](../sources/synthesis/proactive-operations-and-wake-orchestration.md)
+3. [../sources/synthesis/proactive-operations-and-runtime-control.md](../sources/synthesis/proactive-operations-and-runtime-control.md)
 4. [../sources/synthesis/reference-systems-and-product-postures.md](../sources/synthesis/reference-systems-and-product-postures.md)
 5. [00-product-strategy.md](00-product-strategy.md)
 6. [01-product-principles.md](01-product-principles.md)
@@ -128,7 +134,7 @@ locked.
 ## Rule
 
 If a document is trying to decide user, market, lovable proof, live gate meaning, autonomy posture,
-or candidate/pod identity, it belongs here.
+or candidate/runtime identity, it belongs here.
 
 If it is trying to explain subsystem ownership or implementation-critical boundaries, it belongs in
 `wiki/architecture/`.

@@ -37,9 +37,10 @@ handoff.
 ## In-Scope Behavior
 
 - create one or more `TraderSystemCandidate` records in a small pool
-- capture `TradingSystemImage` reference
+- capture `TraderSystemSpec` reference
+- capture `TraderSystemProgram` reference when the candidate includes executable behavior
 - capture `CapabilityPackage` references
-- capture `AgentRuntimeUnit` shape and `PodCommunicationPolicy`
+- capture `AgentSpec` / `AgentSession` shape and `RuntimeCommunicationPolicy`
 - capture brain/harness provenance
 - capture first-market scope as Binance BTC perpetual futures
 - make the candidate inspectable to the operator
@@ -63,7 +64,8 @@ handoff.
 The operator should immediately understand:
 
 - this is a candidate trading system
-- what image/artifact represents it
+- what spec/artifact represents it
+- what executable program/artifact represents its behavior, if present
 - what capability packages it expects
 - whether it is single-agent now or shaped for a future managed/distributed team
 - what harness or brain created it
@@ -77,8 +79,14 @@ The operator should immediately understand:
 - agent runtime output is not durable product truth
 - Codex, Claude, OpenClaw/ACP, or A2A labels are not enough; implementation must specify an
   invocation surface, trace mode, and output contract
-- first active provider path is `runtime_unit_role=builder_agent`, `provider_kind=codex_cli`,
-  `model=gpt-5.4` until feasibility evidence changes
+- `AgentSpec` defines candidate-generation behavior and the structured output contract
+- first active provider path is `AgentSession.provider_kind = codex_cli`, `model=gpt-5.4`, and
+  `AgentRun.purpose = candidate_generation` until feasibility evidence changes
+- `AgentRun` may fail without creating a `TraderSystemCandidate`
+- `TraderSystemProgram` is open-ended agent-authored executable behavior, not a human-authored
+  strategy DSL
+- any executable program output is trace/artifact context until materialized or evaluated by
+  autokairos
 - agent-to-agent messages or artifacts are not durable candidate truth unless materialized by
   autokairos
 - candidate identity must survive across runs and bindings
@@ -95,9 +103,11 @@ The operator should immediately understand:
 ## Acceptance Criteria
 
 - one `TraderSystemCandidate` exists durably
-- the candidate links to a `TradingSystemImage`
+- the candidate links to a `TraderSystemSpec`
+- the candidate can link to a `TraderSystemProgram` without giving that program secrets, evidence, or
+  live authority
 - the candidate links to at least one `CapabilityPackage`
-- the candidate exposes its current runtime-unit shape and communication policy
+- the candidate exposes its current agent-session shape and communication policy
 - the operator can inspect provenance and current status
 - the candidate can enter evaluation without reauthoring
 - no evidence, promotion, or live meaning is implied
@@ -111,9 +121,10 @@ The operator should immediately understand:
 
 ## Open Questions
 
-- minimum first `TradingSystemImage` manifest shape
+- minimum first `TraderSystemSpec` manifest shape
+- minimum first `TraderSystemProgram` manifest/ref shape
 - minimum first `CapabilityPackage` manifest shape
-- minimum first `AgentRuntimeUnit` placeholder shape
+- minimum first `AgentSpec` / `AgentSession` placeholder shape
 - whether first pool size is one, two, or three candidates
 
 These are execution-detail questions only.
@@ -121,7 +132,7 @@ These are execution-detail questions only.
 ## Subsystem Impact Map
 
 - agent-system: concrete runtime-provider invocation and handoff
-- control-plane: durable candidate/image/package/runtime-unit references
+- control-plane: durable candidate/spec/package/agent-spec/agent-session/agent-run/agent-event references
 - foundation: naming and artifact invariants
 
 ## PR Slicing Guidance

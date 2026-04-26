@@ -8,6 +8,7 @@ It follows:
 - [04-boundaries.md](04-boundaries.md)
 - [08-candidate-contract.md](08-candidate-contract.md)
 - [09-trace-contract.md](09-trace-contract.md)
+- [17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md)
 - [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
 
 ## Thesis
@@ -17,6 +18,7 @@ It follows:
 It is where autokairos says:
 
 - what was judged
+- which evaluation run and comparison basis were used
 - under which stage
 - by which method
 - whether it counted or did not count
@@ -54,7 +56,9 @@ Most importantly:
 ```mermaid
 flowchart LR
     A["Candidate"] --> B["Trace"]
-    B --> C["EvidenceRecord"]
+    B --> R["EvaluationRunRecord"]
+    R --> S["EvidenceSealingDecision"]
+    S --> C["EvidenceRecord"]
     C --> D["ReviewItem"]
     C --> E["PromotionDecision"]
 ```
@@ -62,7 +66,9 @@ flowchart LR
 The separation must remain explicit:
 
 - execution emits trace
-- evaluation seals evidence
+- evaluation records what it inspected
+- sealing decides what counted
+- evidence stores the sealed judged artifact
 - governance cites evidence
 
 ## Minimum Contract
@@ -75,14 +81,38 @@ An `EvidenceRecord` must carry at least:
 | `candidate_ref` | Candidate being judged |
 | `stage` | Stage context for the judgment |
 | `input_trace_refs` | Raw runs or traces being judged |
+| `evaluation_run_refs` | Evaluation runs that inspected the traces |
+| `comparison_set_ref` | Comparison set used to decide comparability, when applicable |
+| `evidence_sealing_decision_ref` | Sealing decision that created the evidence |
 | `method_ref` | Evaluator, rubric, or methodology used |
-| `evidence_disposition` | `counted` or `non_counted` |
+| `evidence_disposition` | `counted`, `non_counted`, or `quarantined_for_review` |
 | `disposition_reason` | Why it counted or did not count |
 | `finding_summary` | Durable explanation of what was found |
 | `candidate_effect_hint` | `strengthens`, `weakens`, or `inconclusive` |
+| `leakage_or_gaming_flags` | Reward-hacking, leakage, or anti-tamper flags considered during sealing |
 | `created_at` | When the judged record was first created |
 | `sealed_at` | When the judged record became citeable |
 | `status` | `draft`, `sealed`, `superseded`, or `invalidated` |
+
+## Evidence After Sealing
+
+Raw evaluator output is not an `EvidenceRecord`.
+
+An `EvidenceRecord` exists only after an `EvidenceSealingDecision` says whether the evaluation
+output is `counted`, `non_counted`, or `quarantined_for_review`.
+
+That sealing decision must preserve:
+
+- evaluator method and version
+- evaluation run refs
+- comparison set ref when comparison was relevant
+- disposition reason
+- ambiguity or partial-run status
+- leakage and gaming flags
+- resulting evidence refs
+
+This keeps OpenAI eval output, Google evaluation records, A2A artifacts, tool results, memory
+summaries, and operator satisfaction as judgment inputs rather than evidence by themselves.
 
 ## Required Interpretation
 
@@ -92,6 +122,9 @@ Counted evidence is evidence the product allows to influence candidate progressi
 live-gate basis.
 
 If evidence is counted, the record must make that legitimacy visible.
+
+Counted evidence requires a sealing decision with no unresolved leakage, gaming,
+non-comparability, or partial-evaluation blocker for the claim being made.
 
 ### Non-counted evidence
 
@@ -105,6 +138,21 @@ Typical reasons include:
 - insufficient quality
 - convenience-only run
 - stale or otherwise non-legitimate basis
+- non-comparable run
+- partial evaluator output
+- subjective satisfaction without objective performance basis
+- possible evaluator-target or ground-truth leakage
+
+### Quarantined evaluation output
+
+Quarantined evaluation output is excluded from normal progression until review.
+
+Typical reasons include:
+
+- runtime access to hidden labels, benchmark answers, or scoring ground truth
+- credential or live-authority leakage
+- strong reward-hacking signal
+- false provenance or suspected trace tampering
 
 ### Sealing boundary
 
@@ -261,7 +309,12 @@ One evidence record may be derived from:
 
 But in all cases the relation should remain explicit.
 
-Evidence should always be able to point backward to what was judged.
+Evidence should always be able to point backward to:
+
+- what traces were judged
+- what evaluation run inspected them
+- what comparison set admitted or excluded them
+- what sealing decision allowed the evidence to count or not count
 
 ## Evidence Versus Promotion
 
@@ -289,8 +342,10 @@ The key invariants are:
 The design is failing if:
 
 - raw trace is treated as already-judged evidence
+- raw evaluator output is treated as already-sealed evidence
 - evidence silently implies stage advancement
 - evaluator output loses its legitimacy context or freshness assumptions
+- non-comparable or quarantined output becomes counted evidence
 
 ## Design Implications
 
@@ -318,6 +373,7 @@ This spec depends on:
 
 - [09-trace-contract.md](09-trace-contract.md)
 - [03-staged-evaluation.md](03-staged-evaluation.md)
+- [17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md)
 
 It feeds directly into:
 

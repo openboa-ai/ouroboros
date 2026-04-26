@@ -20,7 +20,7 @@
 | Artifact | Type | Inspected areas | Why it mattered |
 | --- | --- | --- | --- |
 | `README.md` | repo root readme | product framing, features, daemon/runtime model, Paperclip comparison | establishes product posture |
-| `CLI_AND_DAEMON.md` | operational guide | daemon lifecycle, polling, heartbeat, workspace-root, runtime registration | clarifies actual runtime-bridge behavior |
+| `CLI_AND_DAEMON.md` | operational guide | daemon lifecycle, polling, heartbeat, workspace-root, runtime registration | clarifies actual runtime-connector behavior |
 | `packages/core/types/agent.ts` | type surface | `Agent`, `RuntimeDevice`, `AgentTask`, skill types | shows managed entities and control-plane schema |
 | `packages/core/types/events.ts` | type surface | task event stream and daemon lifecycle events | clarifies external progress and liveness surfaces |
 | `packages/core/types/autopilot.ts` | type surface | recurring/scheduled work objects | clarifies orchestration above task assignment |
@@ -96,13 +96,13 @@ skills, and isolated workspaces.
 | Term | Meaning in this source | Where it appears | Why it matters |
 | --- | --- | --- | --- |
 | `managed agents` | agents treated as teammates under platform control | `README.md`, opening framing | central product identity |
-| `daemon` | local runtime bridge | `README.md`, `Getting Started`; `agents.mdx` | key control-plane/runtime bridge |
+| `daemon` | local runtime connector | `README.md`, `Getting Started`; `agents.mdx` | key control-plane/runtime connector |
 | `runtime` | compute environment that can execute agent tasks | `README.md`, `What is a Runtime?`; `agent.ts` | platform-level execution primitive |
 | `runtime device` | typed registered runtime object | `packages/core/types/agent.ts` | durable runtime inventory record |
 | `agent` | managed teammate profile, not just an active loop | `README.md`, `agents.mdx`, `agent.ts` | human-facing management primitive |
 | `agent task` | externally tracked execution attempt linked to agent, runtime, issue, and status | `packages/core/types/agent.ts` | durable task-lifecycle primitive |
 | `task progress` | externally streamed execution surface rather than implicit CLI output only | `packages/core/types/events.ts` | trace/progress primitive |
-| `daemon heartbeat` | explicit liveness record for the runtime bridge | `packages/core/types/events.ts`; `CLI_AND_DAEMON.md` | control-plane liveness primitive |
+| `daemon heartbeat` | explicit liveness record for the runtime connector | `packages/core/types/events.ts`; `CLI_AND_DAEMON.md` | control-plane liveness primitive |
 | `workspace skills` | team-shared skills injected by the platform | `README.md`, `agents.mdx` | shared knowledge primitive |
 | `local skills` | skills already installed in the underlying runtime | `agents.mdx` | runtime-local capability primitive |
 | `autopilot` | scheduled or API-triggered external work surface above task assignment | `packages/core/types/autopilot.ts` | recurring control-plane primitive |

@@ -6,6 +6,7 @@ It follows directly from:
 
 - [02-core-primitives.md](02-core-primitives.md)
 - [04-boundaries.md](04-boundaries.md)
+- [17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md)
 - [../02-pr2-candidate-becomes-externally-evaluated-design.md](../02-pr2-candidate-becomes-externally-evaluated-design.md)
 
 ## Thesis
@@ -119,6 +120,34 @@ The current progression rules are:
 - live-gate meaning opens only through explicit review and `PromotionDecision`
 - live execution starts only after the live-gate act, not during evaluation
 
+## Comparability Before Countability
+
+Stage legitimacy is not enough by itself. Before a result can become counted evidence, the evaluator
+must be able to say whether the run is comparable to the claim being made.
+
+Minimum comparability dimensions:
+
+- same candidate or explicit candidate-version lineage
+- same `TraderSystemSpec` version or explicit spec-difference rationale
+- same relevant `CapabilityPackage` versions or explicit package-difference rationale
+- same `StageBinding` profile and legitimacy mode
+- same data window, replay window, live-like window, or explicit mismatch reason
+- provider, model, version, and invocation surface attribution
+- evaluator method and evaluator version
+- trace refs with enough context to reproduce what the evaluator inspected
+
+The stage system should treat non-comparable results as visible evaluation context, not as automatic
+progression basis.
+
+Examples:
+
+- a local convenience backtest can be useful, but it is not equivalent to legitimate counted
+  evidence
+- a different provider/model run can be informative, but it cannot silently compare against another
+  run without attribution
+- a result with possible ground-truth leakage should become `non_counted` or
+  `quarantined_for_review`
+
 ## Current Boundary Rules
 
 - stage is not the same thing as execution mode details
@@ -137,7 +166,7 @@ The current active baseline does not need:
 
 If later work needs those, it should justify them explicitly rather than expanding this spec by
 default.
-- no promotion because a hands environment or pod output "looks good"
+- no promotion because a hands environment or runtime output "looks good"
 
 A stage transition must point to:
 
@@ -274,7 +303,7 @@ flowchart LR
     L --> M["Continue / Pause / Demote / Reject"]
 ```
 
-The point of this flow is that the pod does not directly promote itself. Evidence and
+The point of this flow is that the runtime does not directly promote itself. Evidence and
 promotion sit outside the active execution environment.
 
 ## Candidate Lineage Over Hands-Environment Lineage
@@ -314,7 +343,7 @@ This spec is not:
 
 - the exact evidence schema
 - the exact promotion-decision schema
-- the runtime-bridge interface
+- the runtime-connector interface
 - a complete policy engine
 
 ## What This Page Intentionally Does Not Define Yet
@@ -325,8 +354,10 @@ This page does not yet define:
 - the exact promotion-decision schema
 - the exact runtime adapter surface
 - the exact connector contracts
+- evaluator implementation APIs or storage schemas
 
-Those should be derived from the stage model, not guessed before it.
+The comparability and sealing contract is defined in
+[17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md).
 
 ## Failure Modes / Invariants
 
@@ -340,18 +371,16 @@ The important invariants are:
 The design is failing if:
 
 - `host-local` convenience is treated as equivalent to stage-valid evidence
-- a pod promotes itself
+- a runtime promotes itself
 - stage differences are encoded only in prompts
 - role splits replace legitimacy boundaries without source justification
 
 ## Design Consequence
 
-The next design question is no longer "should autokairos have stages?"
-
-The next design question is:
-
-**what exact contracts connect `Stage`, `StageBinding`, `Trace`, `EvidenceRecord`, and
-`PromotionDecision` without letting the hands environment or pod become the source of truth?**
+The stage model becomes implementation-grade only when paired with
+[17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md).
+That spec connects `Stage`, `StageBinding`, `Trace`, `EvaluationRunRecord`, `EvidenceRecord`, and
+`PromotionDecision` without letting the hands environment or runtime become the source of truth.
 
 ## Relationship To Adjacent Specs
 
@@ -362,8 +391,9 @@ This spec depends on:
 
 It is made concrete by:
 
-- [05-agent-execution-architecture.md](05-agent-execution-architecture.md)
+- [07-runtime-connector-contract.md](07-runtime-connector-contract.md)
 - [06-containerized-execution.md](06-containerized-execution.md)
 - [08-candidate-contract.md](08-candidate-contract.md)
 - [10-evidence-record-contract.md](10-evidence-record-contract.md)
 - [11-promotion-decision-contract.md](11-promotion-decision-contract.md)
+- [17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md)

@@ -13,10 +13,10 @@ judged evidence.
 
 ```text
 TraderSystemCandidate
--> TradingSystemImage + CapabilityPackage refs
--> AgentRuntimeUnit refs + PodCommunicationPolicy
+-> TraderSystemSpec + TraderSystemProgram + CapabilityPackage refs
+-> AgentSpec + AgentSession refs + RuntimeCommunicationPolicy
 -> backtest StageBinding
--> TradingSystemPod run
+-> TraderSystemRuntime run
 -> Trace
 -> EvidenceRecord
 -> hold / reject / live-gate-ready
@@ -24,9 +24,9 @@ TraderSystemCandidate
 
 ## Ownership And Boundaries
 
-- runtime bridge launches the pod
+- runtime connector launches the runtime
 - trace sink stores what happened
-- evaluator judges outside the pod
+- evaluator judges outside the runtime
 - evaluation-and-progression owns evidence meaning
 - control-plane persists status and gate readiness
 
@@ -36,9 +36,10 @@ messages, or outcome rubrics count automatically.
 ## Minimum Objects
 
 - `StageBinding`
-- `TradingSystemPod`
-- `AgentRuntimeUnit`
-- `PodCommunicationPolicy`
+- `TraderSystemRuntime`
+- `AgentSpec`
+- `AgentSession`
+- `RuntimeCommunicationPolicy`
 - `Trace`
 - `EvidenceRecord`
 - `PromotionDecision` only when live-gate readiness is reached
@@ -50,7 +51,7 @@ The operator must see:
 - which candidate artifact ran
 - which binding was used
 - which packages were active
-- which runtime units or communication artifacts were trace context only
+- which agent sessions or communication artifacts were trace context only
 - what counted
 - what did not count
 - why the candidate is held, rejected, or live-gate ready
@@ -73,14 +74,14 @@ turning runtime self-report into truth.
 ```text
 candidate selected
 -> evaluation StageBinding resolved
--> bounded_batch_evaluation AgentLoopPolicy applied
--> TradingSystemPod run emits Trace
--> evaluator judges outside the pod
+-> bounded RuntimeOperatingPolicy applied
+-> TraderSystemRuntime run emits Trace
+-> evaluator judges outside the runtime
 -> EvidenceRecord sealed as counted or non-counted
 -> PromotionDecision or ReviewItem records gate readiness, hold, or reject
 ```
 
-- runtime bridge owns pod launch under evaluation binding
+- runtime connector owns runtime launch under evaluation binding
 - trace sink owns raw run chronology
 - evaluator owns judged evidence output
 - evaluation-and-progression owns evidence meaning and stage status
@@ -91,8 +92,8 @@ candidate selected
 - trace is raw chronology, not evidence
 - custom tool output, A2A artifact, remote-agent message, or outcome rubric is not counted evidence
   until evaluator seals it
-- `EvidenceRecord` must link to candidate, image/package refs, binding, trace, evaluator identity,
-  and legitimacy mode
+- `EvidenceRecord` must link to candidate, spec/program/package refs, binding, trace, evaluator
+  identity, and legitimacy mode
 - `PromotionDecision` must cite evidence basis; it cannot cite provider narration alone
 
 ### Validation And Rejection
@@ -129,7 +130,7 @@ PR2 must reject or hold when:
 
 - one candidate produces trace from an evaluation binding
 - evaluator creates counted or non-counted evidence
-- evidence links to candidate/image/package/runtime-unit/binding when applicable
+- evidence links to candidate/spec/package/agent-session/binding when applicable
 - operator can explain status from product records
 - candidate is not live
 
@@ -137,5 +138,5 @@ PR2 must reject or hold when:
 
 - live execution
 - order intent
-- wake/intervention
+- operator intervention
 - self-evolution rollout

@@ -7,7 +7,7 @@ This page defines the product strategy above any single MLP, PRD, or architectur
 ## Product Thesis
 
 **autokairos is an automated weak-to-strong trader: a control plane for evolving agent-built
-trader-system pods across backtest, paper, and live bindings.**
+trader-system runtimes across backtest, paper, and live bindings.**
 
 The strategy is not to build another trading dashboard, research notebook, generic agent shell, or
 manual strategy workbench.
@@ -17,7 +17,7 @@ pool of stronger agent-built trading systems without becoming the runtime.
 
 In this strategy, the unit of product value is not a strategy note. It is a
 `TraderSystemCandidate`: a versioned candidate trading system that can run as the same
-`TradingSystemImage` under different bindings.
+`TraderSystemSpec` under different bindings.
 
 ## Source-Role Hierarchy
 
@@ -69,7 +69,7 @@ The first wedge stays deliberately narrow:
 - one user: serious solo crypto operator
 - one market: Binance BTC perpetual futures
 - one candidate shape: small pool of agent-built trader-system candidates
-- one proof: one promoted bounded trader-system pod can run live and remain controllable
+- one proof: one promoted bounded trader-system runtime can run live and remain controllable
 
 The first market is narrow, but the candidate model is not a one-off static note. It is the
 smallest product proof of a system that can later support richer candidate pools, package exchange,
@@ -82,35 +82,43 @@ The product shape is:
 ```text
 weak human operator
 -> small pool of TraderSystemCandidates
--> TradingSystemImage + CapabilityPackage
+-> TraderSystemSpec + TraderSystemProgram + CapabilityPackage
 -> backtest / paper / live StageBindings
 -> external evidence
 -> promotion decision
--> bounded live pod
+-> bounded live runtime
 -> wake / intervention / audit
 ```
 
 Key definitions:
 
 - `TraderSystemCandidate` is the promotable candidate trading system.
-- `TradingSystemImage` is the versioned system artifact that should remain stable across
+- `TraderSystemSpec` is the versioned system artifact that should remain stable across
   environments.
+- `TraderSystemProgram` is the agent-authored executable behavior bundle inside the spec.
 - `CapabilityPackage` is the packageable context/tool/skill/data-access artifact injected into the
-  pod.
+  runtime.
 - `StageBinding` defines how the same system is run in `backtest`, `paper`, or `live`.
-- `TradingSystemPod` is the stage-bound execution instance of the candidate system.
-- `AgentRuntimeUnit` is one brain/hands/session participant inside or beside a pod.
-- `AgentRuntimeUnit.provider` defines which backend runs that participant:
+- `TraderSystemRuntime` is the stage-bound execution instance of the candidate system.
+- `AgentSpec` is the configured agent participant definition.
+- `AgentSession` is one running brain/hands/session participant inside or beside a runtime.
+- `AgentRun` is one provider invocation, task, turn, or attempt against that session.
+- `AgentEvent` is raw provider/runtime output that may become trace but is not evidence by itself.
+- `AgentSession.provider_kind` defines which backend runs that participant:
   Codex, Claude Code, Claude Managed Agents, OpenClaw/ACP, local container, or a future equivalent.
-- `PodCommunicationPolicy` is one unified policy for all participants in the pod. It defines
+- `RuntimeCommunicationPolicy` is one unified policy for all participants in the runtime. It defines
   topology, allowed channels, shared context, artifact routing, and isolation rules. It is not a
   provider selector.
 
-Single-agent pods are the first proof. Multi-agent pods are allowed only when they preserve the
+Single-agent runtimes are the first proof. Multi-agent runtimes are allowed only when they preserve the
 same control-plane boundaries:
 
+`TraderSystemProgram` must remain open-ended. autokairos should not constrain the agent to a
+human-authored strategy DSL. The product defines sandbox, trace, evaluation, permission, and gateway
+contracts; the agent-built trader system defines its own trading behavior inside those contracts.
+
 ```text
-many AgentRuntimeUnits, possibly with different providers
+many AgentSessions, possibly with different providers
 -> explicit shared context surface
 -> traceable task/message/artifact exchange
 -> external evaluation
@@ -124,7 +132,7 @@ autokairos differentiates through product boundaries:
 - candidate identity is the trader system, not a strategy note
 - context and tools are packaged as explicit artifacts
 - the same system artifact can be evaluated across stronger bindings
-- multi-agent trader systems can use independent agent runtime units without becoming an
+- multi-agent trader systems can use independent agent sessions without becoming an
   uncontrolled agent mesh
 - counted evidence comes from external evaluation, not agent self-report
 - live agent authority is bounded through an autokairos gateway
@@ -160,8 +168,8 @@ The strategy is on track when:
 - readers understand that `Candidate` means `TraderSystemCandidate`
 - backtest, paper, and live are understood as bindings for the same artifact
 - `CapabilityPackage` is understood as a future-tradable artifact boundary
-- one serious operator can explain why a promoted live pod is trusted
-- implementation can start from pod/image/capability/evaluator boundaries without rediscovering the
+- one serious operator can explain why a promoted live runtime is trusted
+- implementation can start from runtime/spec/capability/evaluator boundaries without rediscovering the
   product thesis
 
 ## Read Next

@@ -76,8 +76,8 @@ An A2A remote agent should be understood as an endpoint with its own:
 
 That maps well to autokairos' need to support both:
 
-- single-agent pods
-- multi-agent pods or distributed pod teams
+- single-agent runtimes
+- multi-agent runtimes or distributed runtime teams
 
 ### Communication artifact is not evidence
 
@@ -94,13 +94,13 @@ autokairos must preserve the W2S/AAR boundary: external evaluation decides what 
 
 ## Transferable Lessons
 
-- Model a multi-agent trader system as multiple `AgentRuntimeUnit` records, not as one blended
+- Model a multi-agent trader system as multiple `AgentSession` records, not as one blended
   prompt.
 - Give each agent participant an explicit communication identity and capability declaration.
 - Treat agent-to-agent work as task-oriented, statusful, and traceable.
 - Preserve a shared control-plane surface when multiple agents collaborate in one trader-system
-  pod.
-- Use A2A-compatible concepts for communication seams between independent pods or external agents.
+  runtime.
+- Use A2A-compatible concepts for communication seams between independent runtimes or external agents.
 - Keep MCP/tool-proxy style interfaces for structured tools and side-effecting capabilities.
 
 ## Non-transferable Baggage
@@ -108,7 +108,7 @@ autokairos must preserve the W2S/AAR boundary: external evaluation decides what 
 - Google Cloud Agent Engine, Cloud Run, and the codelab's commerce workflow are not autokairos
   product truth.
 - A2A should not be a hard dependency for MLP-01 if a simpler local harness can prove the first
-  trader-system pod.
+  trader-system runtime.
 - A2A does not replace the autokairos evaluator, risk gateway, vault, audit log, or promotion
   decision.
 - A2A does not make a remote agent trustworthy merely because it is discoverable.
@@ -118,20 +118,20 @@ autokairos must preserve the W2S/AAR boundary: external evaluation decides what 
 The active autokairos model should become:
 
 ```text
-TradingSystemPod
-  -> one or more AgentRuntimeUnits
-  -> optional PodCommunicationPolicy
+TraderSystemRuntime
+  -> one or more AgentSessions
+  -> optional RuntimeCommunicationPolicy
   -> shared control-plane context surface
   -> traceable A2A-compatible task/message/artifact records
   -> external evaluator decides what counts
 ```
 
-For MLP-01, single-agent pod execution remains the simplest first proof.
+For MLP-01, single-agent runtime execution remains the simplest first proof.
 
 But the architecture must preserve the seam for:
 
-- managed-team pods inside one execution environment
-- distributed multi-pod trader systems
+- managed-team runtimes inside one execution environment
+- distributed multi-runtime trader systems
 - external specialist agents reached through A2A-compatible endpoints
 
 ## Open Questions / Tensions

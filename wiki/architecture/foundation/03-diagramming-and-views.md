@@ -60,7 +60,7 @@ Use when the question is:
 Typical autokairos elements:
 
 - control plane
-- runtime bridge
+- runtime connector
 - workspace host
 - evaluator surfaces
 - trace sink
@@ -140,6 +140,39 @@ Rules:
 - do not overload one diagram with multiple stories
 - prefer one diagram per question
 - update the diagram in the same change as the surrounding text when the design changes
+
+## Runtime Diagram Policy
+
+Runtime architecture diagrams must separate four concerns:
+
+- durable product/control-plane truth
+- logical runtime identity
+- physical execution placement
+- external authority boundaries
+
+Do not combine those concerns into one large diagram unless the page is explicitly introducing a
+map of maps.
+
+The canonical runtime diagram set is:
+
+| Diagram | Question |
+| --- | --- |
+| System boundary | What does autokairos own versus borrow? |
+| Durable object model | What is official product/control-plane truth? |
+| Logical versus physical execution | What is `TraderSystemRuntime` versus `RuntimePlacement`? |
+| Runtime autonomy boundary | How does autonomous behavior stay bounded? |
+| Stage progression | How does one artifact run under backtest, paper, and live bindings? |
+| Live authority | Who can accept, reject, clip, or submit orders? |
+| Recovery | What survives process, provider, or container failure? |
+| Bootstrap substrate | What minimal code substrate exists before PR1? |
+
+Forbidden runtime diagram patterns:
+
+- using any pod-named term as durable logical product truth
+- drawing a stage binding as if it creates a runtime by itself
+- drawing provider sessions as if they write candidate, evidence, promotion, or execution truth
+- using PR sequence as the main explanation of runtime architecture
+- mixing delivery process, object model, execution placement, and trading authority in one diagram
 
 ## Diagram Quality Rules
 

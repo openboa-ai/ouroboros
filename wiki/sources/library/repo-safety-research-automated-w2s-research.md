@@ -51,7 +51,7 @@ execution legitimacy levels, and a shared findings surface separate from the act
 | `Evaluation API` | returns PGR while keeping ground truth server-side | `README.md`, `Automated Researcher` and data-prep sections |
 | `Local subprocess mode` | easiest but not fully trustworthy because labels are reachable | `README.md`, `Mode A: Local (subprocess)` |
 | `Local Docker mode` | isolated single-agent local mode with restricted mounts | `README.md`, `Mode B: Local Docker` |
-| `RunPod mode` | cloud deployment with S3-backed artifacts and multiple concurrent pods | `README.md`, `Mode C: RunPod` |
+| `RunPod mode` | cloud deployment with S3-backed artifacts and multiple concurrent runtimes | `README.md`, `Mode C: RunPod` |
 | `Worker image` | shared Docker image used for both local Docker and RunPod execution | `README.md`, `Mode B/C`; `Dockerfile`; `scripts/docker-build-push.sh` |
 | `Container bootstrap` | entrypoint that prepares `/workspace`, sets permissions, copies code, and drops to a non-root user | `entrypoint.sh` |
 | `Findings forum` | shared surface for workers to publish/read findings | `README.md`, dashboard description |
@@ -75,7 +75,7 @@ execution legitimacy levels, and a shared findings surface separate from the act
 | the dashboard provides experiment management, an evaluation API, a leaderboard, and a findings forum | `README.md`, dashboard description |
 | local subprocess mode is explicitly described as potentially illegitimate because the AAR can find labeled data | `README.md`, `Mode A: Local (subprocess)` |
 | local Docker mode is justified as isolation: only `data/` and read-only cached artifacts are visible | `README.md`, `Mode B: Local Docker` |
-| RunPod mode adds S3 artifact syncing, pod monitoring, and concurrent cloud execution | `README.md`, `Mode C: RunPod` |
+| RunPod mode adds S3 artifact syncing, runtime monitoring, and concurrent cloud execution | `README.md`, `Mode C: RunPod` |
 | findings are synced between workers in RunPod mode | `README.md`, RunPod description |
 | the project structure separates core training, ideas, research loop, tools, web backend, and infrastructure | `README.md`, `Project Structure` |
 | the same Docker image is used for both local Docker mode and RunPod mode | `README.md`, `Mode B: Local Docker` |
@@ -96,7 +96,7 @@ execution legitimacy levels, and a shared findings surface separate from the act
 | `local Docker mode` | first isolated local legitimacy mode | `Mode B` | containerization as an evaluation boundary |
 | `evaluation API` | scoring interface that keeps ground truth server-side | dashboard and data-prep sections | authoritative external truth surface |
 | `findings forum` | cross-agent knowledge-sharing surface | dashboard description | shared memory layer outside a single run |
-| `RunPod` | cloud execution environment for parallel pods | `Mode C` | scalable isolated execution mode |
+| `RunPod` | cloud execution environment for parallel runtimes | `Mode C` | scalable isolated execution mode |
 | `worker image` | Docker image that standardizes the worker runtime across local and cloud execution | `Mode B/C`, `Dockerfile` | execution-environment primitive |
 | `/workspace` | mounted runtime workspace that is populated at container start | `entrypoint.sh` | bounded execution surface |
 

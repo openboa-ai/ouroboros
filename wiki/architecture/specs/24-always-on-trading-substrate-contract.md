@@ -3,21 +3,21 @@
 ## Thesis
 
 autokairos needs an explicit always-on trading substrate that keeps domain-relevant operational
-surfaces live beneath proactive orchestration and beneath the wakeable agent runtime.
+surfaces live beneath deployed trader-system runtimes and operator/control-plane inspection.
 
 ## Why This Spec Exists
 
 The architecture already depends on:
 
 - an always-on substrate
-- proactive wake orchestration
-- a wakeable runtime
+- runtime state refresh and trace
+- deployed trader-system runtimes
 
 Without a substrate contract, that first layer remains vague and the system drifts toward:
 
 - direct connector calls from runtime code
-- market/account/risk truth rediscovered ad hoc on each wake
-- no clean line between domain facts and wake-policy decisions
+- market/account/risk truth rediscovered ad hoc by each runtime
+- no clean line between domain facts and runtime-control decisions
 
 ## Canonical Object / Interface / Boundary
 
@@ -33,7 +33,7 @@ That boundary owns:
 It sits:
 
 - above external feeds, venues, brokers, and connectors
-- below proactive wake orchestration
+- below runtime control and operator inspection
 - below agent-runtime reads and execution bindings
 
 ## Required Fields Or Required Behaviors
@@ -94,7 +94,7 @@ Each state surface or connector posture must be able to express at minimum:
 
 This substrate is not:
 
-- the wake-policy authority
+- runtime-control authority
 - the standing-order authority
 - the scheduler
 - the control plane
@@ -103,13 +103,13 @@ This substrate is not:
 
 The substrate may notice facts.
 
-It should not decide whether work is authorized to wake.
+It should not decide runtime lifecycle, operator intervention, or internal trader-system behavior.
 
 ## Failure Modes / Invariants
 
 ### Invariants
 
-- substrate signal is upstream of wake-trigger evaluation
+- substrate signal is upstream of runtime state, trace, evaluation, and operator inspection
 - freshness must be explicit, not guessed from polling behavior
 - runtime death must not erase substrate posture
 - stage-facing bindings must preserve stable trading concepts
@@ -118,18 +118,12 @@ It should not decide whether work is authorized to wake.
 
 - stale surfaces appear usable
 - runtime reconnect logic becomes the only place market or risk truth exists
-- every substrate signal becomes a wake by default
+- every substrate signal becomes runtime control or operator interruption by default
 - stage changes require different conceptual trading objects instead of different bindings
 
 ## Relationship To Adjacent Specs
 
-- [15-persistent-operations-and-wake-policy.md](15-persistent-operations-and-wake-policy.md)
-  defines the policy boundary between substrate continuity and runtime wake posture.
-- [19-wake-orchestration-and-trigger-model.md](19-wake-orchestration-and-trigger-model.md)
-  defines the orchestration layer that evaluates candidate wake sources.
-- [21-wake-policy-contract.md](21-wake-policy-contract.md)
-  defines durable wake authority above the substrate.
-- [22-standing-order-contract.md](22-standing-order-contract.md)
-  defines durable operating authority above the substrate.
-- [23-wake-trigger-record-contract.md](23-wake-trigger-record-contract.md)
-  defines emitted-or-suppressed wake history above substrate signals.
+- [25-substrate-signal-contract.md](25-substrate-signal-contract.md)
+  defines normalized domain facts emitted by the substrate.
+- [09-trace-contract.md](09-trace-contract.md)
+  defines when substrate facts become trace inputs.

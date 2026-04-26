@@ -33,13 +33,13 @@ At the wedge level, that still takes operator-system form:
 
 - one serious operator
 - one small candidate pool
-- one promoted bounded live trader-system pod
+- one promoted bounded live trader-system runtime
 
 That category matters because the product value is not pure ideation and not pure execution alone.
 It sits across:
 
 - trader-system candidate creation
-- image and capability packaging
+- spec and capability packaging
 - candidate formation and versioning
 - legitimacy-aware evaluation
 - promotion gating
@@ -123,7 +123,7 @@ The user pain is:
 
 **I cannot continuously watch the market, I cannot fully trust ad hoc agent-built systems, and I do
 not have a believable control plane that turns trader-system candidates into legitimate bounded
-live pods without making me the permanent runtime loop.**
+live runtimes without making me the permanent runtime loop.**
 
 That breaks down into four pain clusters:
 
@@ -222,7 +222,7 @@ This page should settle the following for the current product strategy:
 - the product category is an automated weak-to-strong trader
 - the product is competing with fragmented operator workflows, not just other AI tools
 - the first market wedge is Binance BTC perpetual futures
-- a narrow believable live pod proof is strategically better than early breadth
+- a narrow believable live runtime proof is strategically better than early breadth
 
 ## Read Next
 

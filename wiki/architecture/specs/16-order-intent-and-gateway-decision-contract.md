@@ -13,7 +13,7 @@ turn that proposal into exchange execution.
 
 `GatewayDecision` is the autokairos decision about that proposal.
 
-`ExecutionAttempt` is the durable live attempt that links the running pod, the trace, and any
+`ExecutionAttempt` is the durable live attempt that links the running runtime, the trace, and any
 gateway decisions.
 
 The agent never owns unrestricted exchange authority.
@@ -25,7 +25,7 @@ This spec is active for PR3 and later PR4 intervention work.
 ## Canonical Flow
 
 ```text
-live_operator_agent
+live AgentSession
 -> OrderIntent
 -> ToolProxy / Risk Gateway
 -> GatewayDecision
@@ -40,9 +40,9 @@ An `OrderIntent` must carry at least:
 | Field | Meaning |
 | --- | --- |
 | `order_intent_id` | stable durable identity |
-| `candidate_ref` | candidate whose live pod produced the intent |
+| `candidate_ref` | candidate whose live runtime produced the intent |
 | `execution_attempt_ref` | live attempt in which the intent was produced |
-| `agent_runtime_unit_ref` | runtime unit that emitted the intent |
+| `agent_session_ref` | agent session that emitted the intent |
 | `instrument` | first MLP scope is Binance BTC perpetual futures |
 | `side` | buy / sell or equivalent venue-normalized side |
 | `order_type` | market, limit, stop, or supported normalized type |
@@ -96,7 +96,7 @@ The design is failing if:
 
 This spec depends on:
 
-- [07-runtime-bridge-interface.md](07-runtime-bridge-interface.md)
+- [07-runtime-connector-contract.md](07-runtime-connector-contract.md)
 - [12-governed-execution-request-contract.md](12-governed-execution-request-contract.md)
 - [13-execution-attempt-contract.md](13-execution-attempt-contract.md)
 

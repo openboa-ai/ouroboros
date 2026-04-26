@@ -8,7 +8,7 @@ It follows:
 - [../specs/24-always-on-trading-substrate-contract.md](../specs/24-always-on-trading-substrate-contract.md)
 - [../specs/25-substrate-signal-contract.md](../specs/25-substrate-signal-contract.md)
 - [../specs/26-substrate-state-surface-contract.md](../specs/26-substrate-state-surface-contract.md)
-- [../specs/15-persistent-operations-and-wake-policy.md](../specs/15-persistent-operations-and-wake-policy.md)
+- [../historical/specs/15-persistent-operations-and-wake-policy.md](../historical/specs/15-persistent-operations-and-wake-policy.md)
 
 It is also informed by additional official trading-platform documentation:
 

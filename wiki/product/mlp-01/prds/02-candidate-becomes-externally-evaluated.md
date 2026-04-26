@@ -8,7 +8,7 @@ Trust question:
 
 ## Problem
 
-A durable trader-system candidate is not trustworthy until it is evaluated outside its own pod and
+A durable trader-system candidate is not trustworthy until it is evaluated outside its own runtime and
 its evidence is made legible.
 
 Without external evaluation:
@@ -35,10 +35,12 @@ and reaches a clear hold/reject/promote-ready state.
 
 ## In-Scope Behavior
 
-- run the same `TradingSystemImage` under a backtest binding
+- run the same `TraderSystemSpec` under a backtest binding
 - inject declared `CapabilityPackage` resources
-- preserve trace outside the pod
+- preserve trace outside the runtime
 - create counted and non-counted `EvidenceRecord` objects
+- preserve `EvaluationRunRecord`, `EvaluationComparisonSet`, and `EvidenceSealingDecision` context
+  before any evidence counts
 - make legitimacy mode visible
 - show why the candidate is stronger, weaker, held, rejected, or live-gate ready
 - present one explicit live gate when eligible
@@ -46,7 +48,7 @@ and reaches a clear hold/reject/promote-ready state.
 ## Out-Of-Scope Behavior
 
 - actual live execution
-- wake/control
+- operator intervention
 - direct exchange access
 - broad optimizer or portfolio ranking
 - treating Claude outcomes, rubric checks, or self-critique as trading evidence
@@ -66,10 +68,12 @@ The operator can tell:
 
 ## Critical Constraints
 
-- evaluator truth is outside the pod
+- evaluator truth is outside the runtime
 - trace is not evidence by default
 - A2A messages, task results, and artifacts are not evidence by default
 - convenience mode and legitimate mode stay distinct
+- comparable evidence requires provider/model/run, binding, package, and data-window attribution
+- evaluator output is not counted evidence until sealed
 - live gate is per candidate and evidence-backed
 - no promotion can be inferred from successful runtime completion alone
 
@@ -86,14 +90,16 @@ The operator can tell:
 
 - one candidate run produces external trace
 - one evidence record explicitly marks counted or non-counted status
-- evidence links to candidate, image, capability packages, binding, and evaluator
+- evidence links to candidate, trader-system spec, capability packages, binding, and evaluator
+- sealing decision shows what evaluator output counted, did not count, or required quarantine/review
+- non-comparable or partial runs are visible but cannot create live-gate readiness
 - live-gate readiness is visible only when evidence supports it
 - the candidate is still not live
 
 ## Metrics / Proof
 
 - operator can explain why a candidate advanced, held, or failed
-- no counted evidence is sourced from pod self-report alone
+- no counted evidence is sourced from runtime self-report alone
 - evaluation can be repeated against the same candidate artifact and binding
 
 ## Open Questions
@@ -106,7 +112,7 @@ The operator can tell:
 
 - evaluation-and-progression: judged evidence and status meaning
 - control-plane: evidence and promotion readiness records
-- agent-system/runtime bridge: trace export from candidate run
+- agent-system/runtime connector: trace export from candidate run
 
 ## PR Slicing Guidance
 

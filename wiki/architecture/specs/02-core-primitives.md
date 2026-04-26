@@ -6,18 +6,30 @@ This page defines the smallest autokairos-owned object set for the current MLP-0
 
 ## Thesis
 
-autokairos must model the candidate as a trader system, not as a strategy note.
+autokairos models agent-built trader systems as deployable, observable, governable artifacts.
+
+It does not author the internal trading loop and does not activate every agent step. External agents
+create or update `TraderSystemSpec`, `TraderSystemProgram`, and `CapabilityPackage` artifacts.
+autokairos registers, deploys, starts, pauses, stops, inspects, gates, evaluates, promotes, and
+audits those artifacts.
 
 The primitive set therefore centers on:
 
 ```text
 TraderSystemCandidate
--> TradingSystemImage
+-> CandidateVersion
+-> TraderSystemSpec
+-> TraderSystemProgram
 -> CapabilityPackage
 -> StageBinding
--> TradingSystemPod
--> AgentRuntimeUnit
+-> RuntimeControl
+-> TraderSystemRuntime
+-> RuntimePlacement
+-> RuntimeOperatingPolicy
+-> AgentSession / AgentRun / AgentEvent
 -> Trace
+-> EvaluationRunRecord
+-> EvidenceSealingDecision
 -> EvidenceRecord
 -> PromotionDecision
 ```
@@ -27,393 +39,360 @@ TraderSystemCandidate
 | Primitive | Meaning | Durable owner |
 | --- | --- | --- |
 | `TraderSystemCandidate` | promotable candidate trading system | control plane |
-| `TradingSystemImage` | versioned artifact for system behavior, brain/team contract, and required interfaces | artifact store / control plane |
-| `CapabilityPackage` | versioned context/tool/skill/data-access artifact | artifact store / control plane |
-| `CapabilityPackageManifest` | inspectable trust and permission declaration for one capability package | artifact store / control plane |
 | `CandidateVersion` | cloned version used for safe self-evolution | control plane |
+| `TraderSystemSpec` | versioned artifact defining the trader system | artifact store / control plane |
+| `TraderSystemProgram` | agent-authored executable behavior bundle | artifact store / control plane |
+| `ProgramManifest` | declaration for one executable program bundle | artifact store / control plane |
+| `ProgramValidationRecord` | decision on whether a program is safe enough to mount or execute | control plane / artifact store |
+| `CapabilityPackage` | versioned context/tool/skill/data-access artifact | artifact store / control plane |
+| `CapabilityManifest` | package trust and permission declaration | artifact store / control plane |
+| `CapabilityPackageAdmissionRecord` | validation record deciding whether a package can be considered for runtime injection | control plane / artifact store |
+| `CapabilityGrant` | stage-bound grant of actual package access through ToolProxy, binding, vault, or gateway surfaces | control plane / runtime connector |
+| `CapabilityMountRecord` | record of package content injected into one placement/hands environment | runtime connector / trace store |
 | `Stage` | product-level legitimacy stage: backtest, paper, live | control plane |
-| `StageBinding` | concrete execution binding for a stage | control plane / runtime bridge |
-| `BacktestBindingProfile` | typed binding profile for historical/simulated evaluation | control plane / runtime bridge |
-| `PaperBindingProfile` | typed binding profile for live-like simulated execution | control plane / runtime bridge |
-| `LiveBindingProfile` | typed binding profile for real-risk execution behind gateway limits | control plane / runtime bridge |
-| `TradingSystemPod` | stage-bound execution instance of a candidate | runtime bridge with control-plane record |
-| `AgentRuntimeUnit` | one brain/hands/session participant plus provider/driver selection in a pod or pod team | runtime bridge with control-plane reference |
-| `AgentLoopPolicy` | autonomy envelope for one-shot, evaluation, or continuous-live agent loops | control plane / runtime bridge |
-| `RuntimeProviderAdapter` | executable adapter contract for a concrete provider invocation surface | runtime bridge |
-| `BrainSession` | provider/harness reasoning session | runtime bridge / provider, referenced durably |
-| `HandsEnvironment` | sandbox/tool/data/gateway environment | runtime bridge |
-| `ToolProxy` | authority boundary for tools, credentials, and side effects | control plane / runtime bridge |
-| `PodCommunicationPolicy` | unified provider-neutral policy for communication, sharing, routing, and isolation between agent runtime units | control plane / runtime bridge |
-| `A2AAgentEndpoint` | discoverable independent agent endpoint | runtime bridge / endpoint registry |
+| `StageBinding` | concrete execution binding for a stage | control plane / runtime connector |
+| `BacktestBindingProfile` | typed profile for historical/simulated evaluation | control plane / runtime connector |
+| `PaperBindingProfile` | typed profile for live-like simulated execution | control plane / runtime connector |
+| `LiveBindingProfile` | typed profile for real-risk execution behind gateway limits | control plane / runtime connector |
+| `RuntimeControl` | lifecycle/governance command surface: register, deploy, start, pause, resume, stop, inspect, override, kill | control plane |
+| `RuntimeControlDecision` | durable result of accepting, rejecting, or applying a runtime-control command | control plane / audit |
+| `RuntimeLifecycleEvent` | trace/audit event for runtime lifecycle state changes | trace store / control plane |
+| `TraderSystemRuntime` | logical deployed runtime instance of a candidate version | control plane / runtime connector |
+| `RuntimeOperatingPolicy` | lifecycle, placement, trace, tool/gateway, stop, recovery, and audit boundary for a runtime | control plane / runtime connector |
+| `RuntimePlacement` | physical execution placement and handles for one launch/resume | runtime connector / trace store |
+| `ExecutionPod` | optional pod-like physical execution group under a runtime placement | runtime connector / execution substrate |
+| `AgentSpec` | configured agent participant definition | artifact store / control plane |
+| `AgentSession` | running provider-backed participant used by the trader system when needed | runtime connector with control-plane reference |
+| `AgentRun` | one provider invocation, task, turn, or attempt | runtime connector / trace store |
+| `AgentEvent` | normalized raw provider output | trace store |
+| `RuntimeProviderAdapter` | executable adapter contract for a concrete provider invocation surface | runtime connector |
+| `BrainSession` | provider/harness reasoning session | runtime connector / provider, referenced durably |
+| `HandsEnvironment` | sandbox/tool/data/program execution surface | runtime connector |
+| `ToolProxy` | authority boundary for tools, credentials, and side effects | control plane / runtime connector |
+| `RuntimeCommunicationPolicy` | provider-neutral policy for communication, sharing, routing, and isolation between agent sessions | control plane / runtime connector |
+| `RuntimeMemorySurface` | scoped runtime context derived from trace, approved artifacts, and explicit memory resources | control plane / trace store / artifact store |
+| `A2AAgentEndpoint` | discoverable independent remote agent endpoint | runtime connector / endpoint registry |
 | `A2ATaskRecord` | traceable agent-to-agent task exchange | trace store / control plane |
 | `A2AArtifact` | output from an A2A task | artifact store / trace store |
 | `SharedContextSurface` | explicit non-secret shared context made available to multiple agents | control plane / artifact store |
 | `TeamTrace` | durable trace of multi-agent messages, tasks, and artifacts | trace store |
-| `Trace` | raw external record of a run | trace store |
+| `ProgramEvent` | normalized event from `TraderSystemProgram` execution | trace store |
+| `Trace` | recoverable runtime history | trace store |
+| `EvaluationRunRecord` | evaluator pass over trace inputs with provider/model/run attribution | evaluation-and-progression / control plane |
+| `EvaluationComparisonSet` | record of which evaluation runs are comparable and why | evaluation-and-progression / control plane |
+| `EvidenceSealingDecision` | decision that turns evaluator output into counted, non-counted, or quarantined evidence | evaluation-and-progression / control plane |
 | `EvidenceRecord` | externally judged evidence | evaluation-and-progression / control plane |
 | `PromotionDecision` | governance decision changing candidate standing | evaluation-and-progression / control plane |
-| `OrderIntent` | agent proposal for a possible live trading action | control plane / trace store |
+| `OrderIntent` | trader-system proposal for a possible live trading action | control plane / trace store |
 | `GatewayDecision` | gateway decision to accept, reject, or clip one order intent | trading-substrate / control plane |
 | `ExecutionAttempt` | durable live execution attempt | control plane |
-| `WakeTriggerRecord` | durable wake event and reason | control plane |
 
 ## Object Relationships
 
 ```mermaid
 flowchart TD
-    C["TraderSystemCandidate"] --> I["TradingSystemImage"]
-    C --> P["CapabilityPackage"]
-    C --> V["CandidateVersion"]
-    C --> B["StageBinding"]
-    B --> POD["TradingSystemPod"]
-    POD --> ARU["AgentRuntimeUnit"]
-    POD --> ALP["AgentLoopPolicy"]
-    ARU --> BS["BrainSession"]
-    ARU --> HE["HandsEnvironment"]
-    HE --> TP["ToolProxy"]
-    POD --> CPOL["PodCommunicationPolicy"]
-    POD --> T["Trace"]
-    T --> E["EvidenceRecord"]
-    E --> D["PromotionDecision"]
-    D --> X["ExecutionAttempt / stronger binding"]
-    TP --> OI["OrderIntent"]
+    C["TraderSystemCandidate"] --> V["CandidateVersion"]
+    V --> SPEC["TraderSystemSpec"]
+    SPEC --> PRG["TraderSystemProgram"]
+    PRG --> PMF["ProgramManifest"]
+    PRG --> PVR["ProgramValidationRecord"]
+    V --> CAP["CapabilityPackage"]
+    CAP --> CMAN["CapabilityManifest"]
+    CMAN --> CADM["CapabilityPackageAdmissionRecord"]
+    CADM --> CGRANT["CapabilityGrant"]
+    CGRANT --> CMOUNT["CapabilityMountRecord"]
+    V --> BIND["StageBinding"]
+    BIND --> RT["TraderSystemRuntime"]
+    SPEC --> RT
+    PRG --> RT
+    CAP --> RT
+    RT --> RCTRL["RuntimeControl"]
+    RT --> ROP["RuntimeOperatingPolicy"]
+    RT --> PLACE["RuntimePlacement"]
+    PLACE --> HE["HandsEnvironment"]
+    HE --> PRG
+    PRG --> AS["AgentSession"]
+    AS --> RUN["AgentRun"]
+    RUN --> AE["AgentEvent"]
+    PRG --> PE["ProgramEvent"]
+    AE --> T["Trace"]
+    PE --> T
+    PRG --> OI["OrderIntent"]
     OI --> GD["GatewayDecision"]
+    GD --> EX["ExecutionAttempt"]
+    T --> ERUN["EvaluationRunRecord"]
+    ERUN --> ECMP["EvaluationComparisonSet"]
+    ERUN --> ESEAL["EvidenceSealingDecision"]
+    ECMP --> ESEAL
+    ESEAL --> EV["EvidenceRecord"]
+    EV --> PD["PromotionDecision"]
 ```
 
 ## `TraderSystemCandidate`
 
 The candidate is the system under judgment.
 
-It should reference:
+It is not a prompt, provider session, hands environment, or one run. It references candidate id,
+current standing, candidate versions, spec refs, capability package refs, first market scope,
+provenance, evaluation history, and promotion history.
 
-- candidate id
-- current standing
-- image ref
-- capability package refs
-- version lineage
-- first market scope
-- provenance
-- evaluation and promotion history
+## `TraderSystemSpec`
 
-It is not a prompt, brain session, hands environment, or one run.
+The spec is the stable trader-system definition that can run under different bindings.
 
-## `TradingSystemImage`
+It may include system manifest refs, program refs, agent/team contract, required tool contracts,
+expected inputs and outputs, supported stage binding profiles, and version metadata.
 
-The image is the stable artifact that should remain the same across bindings.
+It must not include secrets, live credentials, evaluator ground truth, counted evidence, promotion
+state, or live approval.
 
-It may include:
+See [19-trader-system-artifact-contract.md](19-trader-system-artifact-contract.md).
 
-- system manifest
-- agent/team contract
-- required tool contracts
-- trading behavior source or artifact refs
-- expected inputs and outputs
-- version metadata
+## `TraderSystemProgram`
 
-It should not include secrets, live credentials, or counted evidence.
+`TraderSystemProgram` is the agent-authored executable behavior bundle for one trader-system spec.
+
+It is not a human-defined strategy DSL. It may include Python scripts, TypeScript modules,
+generated policies, local planners, indicators, experiment scripts, internal state files, and
+adapter code for allowed tool-proxy surfaces.
+
+The program owns internal trading behavior. It may decide when to call provider-backed agents. It
+may process streams, maintain local state, and emit boundary outputs.
+
+Allowed boundary outputs:
+
+- `ProgramEvent`
+- `AgentRun` / `AgentEvent`
+- `ToolRequest`
+- `OrderIntent`
+- diagnostic artifact
+- metric snapshot
+- review request
+- candidate-version proposal
+
+Forbidden behavior:
+
+- direct exchange API calls
+- raw secret or credential reads
+- hidden network side effects outside `ToolProxy`
+- self-promotion
+- writing counted evidence
+- live mutation without `CandidateVersion` and re-evaluation
 
 ## `CapabilityPackage`
 
 The package is a versioned artifact for context/tool/skill/data-access injection.
 
-It may include:
+It declares capabilities. It does not grant access.
 
-- tool contract declarations
-- MCP/tool proxy requirements
-- market context
-- skills
-- data access requirements
-- compatibility rules
-- allowed stages
-- future license/marketplace metadata
+Actual runtime access is granted by `StageBinding`, `ToolProxy`, vault or credential binding,
+gateway policy, and `CapabilityGrant`.
 
-It must not include secrets or exchange credentials.
+The active package flow is:
 
-### `CapabilityPackageManifest`
+```text
+CapabilityPackage
+-> CapabilityManifest
+-> CapabilityPackageAdmissionRecord
+-> CapabilityGrant
+-> CapabilityMountRecord
+-> Trace
+```
 
-Every active package must expose a manifest.
-
-The minimum manifest fields are:
-
-- package id and version
-- package kind
-- provenance
-- declared tools
-- declared data access
-- allowed stages
-- required permissions
-- forbidden contents
-- compatibility notes
-
-The manifest does not grant access by itself. `StageBinding` and `ToolProxy` decide actual runtime
-access.
-
-Forbidden package contents include:
-
-- exchange credentials
-- gateway signing keys
-- evaluator secrets or hidden labels
-- live gateway tokens
-- undeclared executable side-effect paths
+See [18-capability-package-trust-and-permission-contract.md](18-capability-package-trust-and-permission-contract.md).
 
 ## `StageBinding`
 
-`StageBinding` is the concrete environment injection for `backtest`, `paper`, or `live`.
+`Stage` answers product legitimacy. `StageBinding` answers operational injection.
 
-It resolves:
+Typed profiles:
 
-- data source
-- clock
-- evaluator
-- exchange or simulated exchange
-- risk envelope
-- tool proxy endpoints
-- credential policy
-- execution legitimacy mode
+- `BacktestBindingProfile`: historical data, deterministic clock, simulator, evaluator ref, no
+  live credentials
+- `PaperBindingProfile`: live-like data, simulated order gateway, paper risk envelope, no real
+  exchange execution
+- `LiveBindingProfile`: live data, real gateway ref, risk envelope, credential binding ref, kill
+  switch posture
 
-Backtest, paper, and live are bindings for the same candidate artifact, not separate systems.
+Backtest, paper, and live are not different systems. They are bindings for the same artifact.
 
-### Binding Profiles
+## `RuntimeControl`
 
-All binding profiles implement `StageBinding`, but they must not share one vague field bag.
+`RuntimeControl` is how autokairos operates a deployed trader system.
 
-`BacktestBindingProfile` must define at least:
+Minimum control commands:
 
-- historical or replay data source
-- deterministic clock
-- simulator reference
-- evaluator reference
-- no live credentials
+- `register`
+- `deploy`
+- `start`
+- `pause`
+- `resume`
+- `stop`
+- `inspect`
+- `override`
+- `kill`
 
-`PaperBindingProfile` must define at least:
+`RuntimeControlDecision` records whether a command was accepted, rejected, clipped, modified, or
+applied and why.
 
-- live or delayed market data source
-- simulated order gateway
-- paper risk envelope
-- no real exchange execution
+`RuntimeLifecycleEvent` records lifecycle changes such as registered, deployed, starting, running,
+paused, resumed, stopping, stopped, failed, killed, superseded, or review_required.
 
-`LiveBindingProfile` must define at least:
+Runtime control is not internal step orchestration. It must not choose each market reaction, agent
+call, script execution, or local planner step.
 
-- live market data source
-- real gateway reference
-- risk envelope reference
-- credential binding reference outside packages
-- wake policy reference
+## `TraderSystemRuntime`
 
-Live binding cannot be constructed from prompt text alone. It must be downstream of a
-`PromotionDecision` and a `GovernedExecutionRequest`.
+`TraderSystemRuntime` is the logical deployed runtime instance of a candidate version under one
+stage binding.
 
-## `TradingSystemPod`
+It is assembled from:
 
-The pod is the execution instance of a candidate under one binding.
+- candidate version
+- trader-system spec
+- trader-system program
+- capability packages
+- stage binding
+- runtime operating policy
+- runtime communication policy
+- runtime placement history
+- trace cursor
+- memory surface refs
 
-It is composed from:
+It is not a process, Docker container, Kubernetes Pod, provider session, or remote endpoint.
 
-- `TradingSystemImage`
-- `CapabilityPackage`
-- `StageBinding`
-- one or more `AgentRuntimeUnit` records
-- `ToolProxy`
+## `RuntimeOperatingPolicy`
 
-It does not own candidate truth, evidence truth, promotion authority, or unrestricted live
-execution authority.
+`RuntimeOperatingPolicy` defines the governance envelope around one runtime.
 
-## `AgentRuntimeUnit`
+It may define:
 
-`AgentRuntimeUnit` is the participant boundary for a single agent brain/hands/session loop.
-
-It may represent:
-
-- one local harness process
-- one Claude Managed Agents thread/session participant
-- one Codex or Claude Code run
-- one A2A-compatible remote agent endpoint
-- one future OpenClaw/ACP or Multica-like runtime participant
-
-It should reference:
-
-- `runtime_unit_role`:
-  `builder_agent`, `evaluation_runner`, `live_operator_agent`, `critic_agent`, or
-  `remote_specialist`
-- concrete `provider_kind`:
-  `codex_cli`, `codex_sdk_ts`, `codex_cloud`, `claude_agent_sdk_python`,
-  `claude_agent_sdk_ts`, `claude_cli`, `openclaw_acp`, `a2a_endpoint`, `local_process`, or a
-  future explicitly designed equivalent
-- invocation surface:
-  subprocess, TypeScript SDK, Python SDK, cloud task, ACP bridge, A2A endpoint, or local process
-- auth reference
-- sandbox and working-directory policy
-- output contract reference
-- trace destination
-- brain/session provider
-- hands environment
-- allowed tools
-- allowed communication channels
-- trace export destination
-
-A single-agent pod has one `AgentRuntimeUnit`.
-
-A multi-agent pod has several `AgentRuntimeUnit` records plus explicit communication policy and
-shared context surfaces.
-
-The provider/driver is per runtime unit. A `TradingSystemPod` can therefore contain mixed provider
-participants without becoming several product objects.
-
-`runtime_unit_role` answers why the unit exists.
-
-`provider_kind` answers how the unit runs.
-
-PR1 defaults to:
-
-```text
-runtime_unit_role = builder_agent
-provider_kind = codex_cli
-model = gpt-5.4
-```
-
-PR3 requires at least one `live_operator_agent`. It must not inherit builder-agent semantics from
-PR1.
-
-Provider labels alone are not implementation-grade. The runtime bridge must use a
-`RuntimeProviderAdapter` contract, defined in
-[../06-runtime-provider-adapter-feasibility.md](../06-runtime-provider-adapter-feasibility.md),
-before a real provider run can materialize a candidate or run a pod.
-
-## `AgentLoopPolicy`
-
-`AgentLoopPolicy` defines the autonomy envelope around an agent runtime unit.
-
-It does not direct each reasoning step. It defines:
-
-- trigger source
-- loop mode
-- cadence
-- max turns or live heartbeat expectations
-- timeout and cancellation policy
-- retry and resume posture
+- allowed lifecycle transitions
+- placement class
 - trace export requirement
+- timeout and cancellation posture
+- retry/resume posture
+- checkpoint and artifact export posture
 - tool access posture
-- stop conditions
+- outbound gateway policy
+- stop and kill conditions
+- recovery posture
+- operator audit requirement
 
-The current loop modes are:
+It does not direct every reasoning step and does not decide whether the trader system should use an
+agent call, script execution, local planner, or no-op internally.
 
-- `one_shot_builder`
-- `bounded_batch_evaluation`
-- `continuous_live`
+See [15-runtime-operating-policy-contract.md](15-runtime-operating-policy-contract.md).
 
-See [15-agent-loop-policy-contract.md](15-agent-loop-policy-contract.md).
+## `RuntimePlacement`
 
-## `RuntimeProviderAdapter`
+`RuntimePlacement` records the physical placement selected for one launch or resume.
 
-`RuntimeProviderAdapter` is the executable seam between autokairos and provider runtimes.
+Examples:
 
-It must answer:
+- local process
+- container-backed `HandsEnvironment`
+- provider-managed session
+- OpenClaw/ACP harness session
+- A2A-compatible remote endpoint
 
-- how availability and version are probed
-- how working directories, prompts, schemas, and policies are prepared
-- how the run starts
-- how events stream into trace
-- how cancellation works
-- how artifacts, final output, and provider metadata are collected
-- whether resume is supported
+`ExecutionPod` is allowed only when the physical placement is genuinely pod-like.
 
-The first concrete adapter target is `codex_cli` through local `codex exec`. Claude should be added
-through Claude Agent SDK, not by treating "Claude" as an abstract runtime label.
+## `AgentSpec`, `AgentSession`, `AgentRun`, `AgentEvent`
 
-## `BrainSession` And `HandsEnvironment`
+`AgentSpec` configures a participant.
 
-Claude Managed Agents provides the key reference: brain, hands, and session must stay decoupled.
+`AgentSession` is one provider-backed running participant used by the trader system when needed.
 
-- `BrainSession` is the provider/harness reasoning session.
-- `HandsEnvironment` is where tools, sandboxed code, data, and gateways live.
-- The durable event log and candidate truth stay outside both.
+`AgentRun` is one provider invocation, task, turn, or attempt.
 
-## Multi-Agent Communication Primitives
+`AgentEvent` is raw provider output normalized into trace.
 
-`PodCommunicationPolicy` is one unified policy object for the pod.
-
-It defines:
-
-- topology:
-  `isolated`, `coordinator_routed`, `direct_allowed`, or `external_endpoint_routed`
-- allowed channels:
-  provider-native thread, A2A-compatible task/message/artifact, control-plane mediated message,
-  or none
-- shared context surfaces
-- artifact export requirements
-- forbidden communication edges
-- live-stage restrictions
-
-It does not choose the provider. Provider selection lives on each `AgentRuntimeUnit`.
-
-MLP-01 starts single-agent.
-
-Multi-agent admission is allowed only when a current PRD acceptance criterion cannot be met by one
-runtime unit. It requires:
-
-- explicit `runtime_unit_role` for each unit
-- one `PodCommunicationPolicy`
-- `TeamTrace`
-- shared context declared as non-secret
-- no communication path to live authority except `ToolProxy` / gateway
-
-`A2AAgentEndpoint` is a discoverable independent agent endpoint, inspired by A2A agent cards.
-
-`A2ATaskRecord` records one task/message exchange with an independent agent endpoint.
-
-`A2AArtifact` records an output produced by that exchange.
-
-`SharedContextSurface` is the explicit context made available to multiple agent runtime units. It
-must not carry secrets.
-
-`TeamTrace` is the durable trace for multi-agent collaboration.
-
-These primitives are communication and trace surfaces. They are not evidence, promotion, or live
-authority by themselves.
-
-## `ToolProxy`
-
-The tool proxy is the boundary between agent intent and real capability.
-
-For live trading:
+The provider-backed chain is:
 
 ```text
-BrainSession -> OrderIntent -> ToolProxy / Gateway -> GatewayDecision -> ExecutionAttempt
+TraderSystemProgram
+-> AgentSession
+-> RuntimeProviderAdapter
+-> Codex / Claude / OpenClaw-ACP / A2A / local_process
+-> AgentRun
+-> AgentEvent
+-> Trace
 ```
 
-The agent may propose. autokairos decides what is executed.
+Provider output is not evidence, promotion, gateway decision, or durable product truth.
 
-`OrderIntent` and `GatewayDecision` are defined in
-[16-order-intent-and-gateway-decision-contract.md](16-order-intent-and-gateway-decision-contract.md).
+## `RuntimeMemorySurface`
 
-## Self-Evolution Primitive
+`RuntimeMemorySurface` is versioned, scoped, auditable runtime context.
 
-Self-evolution uses `CandidateVersion`.
+It is not evidence, live authority, provider-private memory, or promotion truth.
 
-Valid flow:
+Minimum shape:
+
+- `runtime_memory_surface_id`
+- `scope`
+- `trust_class`
+- `access_mode`
+- `version`
+- `source_refs`
+- `content_ref` or `summary_ref`
+- `visible_to_runtime`
+- `visible_to_evaluator`
+- `created_from_trace_ref`
+- `last_review_status`
+- `quarantine_status`
+- `rollback_from_ref`
+
+Runtime-originated memory change must start as a trace-backed proposal, not silent mutation.
+
+## `Trace`
+
+Trace is recoverable runtime history.
+
+It records provider events, program events, tool requests/results, lifecycle events, memory
+influence, order intents, gateway decisions, artifacts, checkpoints, errors, and audit linkage.
+
+Trace is not evidence. Evidence requires evaluation and sealing.
+
+## `EvaluationRunRecord`, `EvidenceSealingDecision`, `EvidenceRecord`
+
+The active evidence chain is:
 
 ```text
-live insight -> proposed CandidateVersion -> backtest binding -> evidence -> promotion
+Trace
+-> EvaluationRunRecord
+-> EvaluationComparisonSet
+-> EvidenceSealingDecision
+-> EvidenceRecord
+-> PromotionDecision
 ```
 
-Invalid flow:
+See [17-evaluation-comparability-and-sealing-contract.md](17-evaluation-comparability-and-sealing-contract.md).
+
+## `OrderIntent`, `GatewayDecision`, `ExecutionAttempt`
+
+The live authority chain is:
 
 ```text
-live pod mutates itself in place
+TraderSystemProgram or AgentSession
+-> OrderIntent
+-> TradingGateway
+-> GatewayDecision
+-> ExecutionAttempt
 ```
 
-## Acceptance Test
+The trader system proposes. The gateway decides. The venue result is linked through execution
+attempt records.
 
-A reader should be able to explain:
+## Anti-Collapse Rules
 
-- what candidate means
-- why image and package are separate
-- why binding changes do not create a new system
-- why binding profiles prevent backtest/paper/live ambiguity
-- why pod execution does not own truth
-- why `runtime_unit_role` and `provider_kind` are separate
-- why agent loops are autonomous but bounded by policy
-- why packages need manifests and permission boundaries
-- why provider labels must resolve to a callable adapter surface
-- why multi-agent communication does not automatically create evidence or authority
-- why live action is bounded through gateway
+- autokairos is not the trader-system author.
+- runtime control is not central workflow orchestration.
+- provider output is trace, not evidence.
+- runtime memory is context, not evidence.
+- package declaration is not permission grant.
+- program validation is not promotion.
+- `OrderIntent` is not live execution.
+- `RuntimePlacement` is not `TraderSystemRuntime`.
+- operator notification is deferred and not part of the current active runtime primitive set.

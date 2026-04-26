@@ -16,7 +16,7 @@ And it follows:
 - [01-naming-and-vocabulary.md](01-naming-and-vocabulary.md)
 - [02-documentation-doctrine.md](02-documentation-doctrine.md)
 - [../specs/04-boundaries.md](../specs/04-boundaries.md)
-- [../specs/30-event-log-first-durable-truth-posture.md](../specs/30-event-log-first-durable-truth-posture.md)
+- [../historical/specs/30-event-log-first-durable-truth-posture.md](../historical/specs/30-event-log-first-durable-truth-posture.md)
 
 ## Purpose
 
@@ -50,7 +50,6 @@ This page does not cover:
 
 This doctrine applies primarily to:
 
-- `proactive-operations/`
 - `control-plane/`
 - upper-layer supporting specs in `../specs/`
 
@@ -92,7 +91,7 @@ Recovery means:
 This page depends on:
 
 - foundation naming and documentation doctrine
-- proactive operations for wake authority and trigger evolution
+- historical proactive-operation notes for retired scheduling and trigger experiments
 - control plane for durable truth and operational views
 
 ## What Is Still Delegated To Specs / ADRs
@@ -142,14 +141,15 @@ connector path.
 
 These upper-layer mechanism zones should remain open to evolution.
 
-### Trigger kinds
+### Runtime control mechanisms
 
-The current set of periodic, event-driven, and authority-driven wakes should not be treated as a
-closed taxonomy forever.
+The current set of lifecycle commands, placement modes, and operator-control surfaces should not be
+treated as a closed taxonomy forever.
 
 ### Policy expression
 
-Wake policy and standing authority should remain declarative programs, not frozen row semantics.
+Runtime operating policy and stage authority should remain declarative governance surfaces, not
+frozen row semantics.
 
 ### Projection form
 
@@ -207,14 +207,15 @@ not as permanently closed enumerations hard-coded into architecture doctrine.
 
 ### 4. Prefer declarative policy programs over fixed row meaning
 
-`WakePolicy` and `StandingOrder` should be understood as declarative authority programs composed
-from:
+`RuntimeOperatingPolicy` and stage governance policy should be understood as declarative authority
+surfaces composed from:
 
 - selectors
-- cadence or event predicates
+- lifecycle constraints
+- placement constraints
 - constraints
 - expiry or review boundaries
-- suppression or coalescing hints
+- stop or kill boundaries
 
 not as one narrow object shape whose first implementation becomes permanent truth.
 
@@ -237,7 +238,7 @@ product must not become it either.
 
 These upper-layer anti-patterns are explicitly disallowed.
 
-- turning current trigger kinds into a permanently closed taxonomy too early
+- turning current lifecycle command kinds into a permanently closed taxonomy too early
 - treating current projection rows as the canonical definition of truth
 - baking one scheduler implementation into orchestration doctrine
 - using object catalogs as a substitute for capability design
@@ -246,5 +247,5 @@ These upper-layer anti-patterns are explicitly disallowed.
 ## One Sentence Summary
 
 autokairos should keep upper-layer provenance, authority, chronology, and governance boundaries
-rigid while keeping trigger families, policy programs, projection forms, and backend choices
-extensible.
+rigid while keeping runtime-control mechanisms, policy programs, projection forms, and backend
+choices extensible.

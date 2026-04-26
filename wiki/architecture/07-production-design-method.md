@@ -1,189 +1,112 @@
 # Production Design Method
 
-This page defines what "production-level design" means for the current MLP-01 architecture.
-
-It is a design-quality bar, not a request to build enterprise-scale infrastructure.
-
-Production-level here means:
-
-```text
-an implementer can build Bootstrap, PR1, PR2, PR3, and PR4 without inventing lifecycle,
-durability, validation, recovery, security, observability, or operator-inspection rules.
-```
-
 ## Purpose
 
-Use this page before deepening any Bootstrap or PR slice design.
+This page defines what "production-level design" means for autokairos before implementation.
 
-It exists to prevent two failures:
+Production-level here means implementation safety for the first solo-operator MLP, not enterprise
+platform hardening.
 
-- under-design: implementation starts with vague "agent autonomy", "provider adapter", or
-  "live gateway" labels
-- over-design: old speculative production-agent, workflow-engine, proactive-standing, or fleet
-  orchestration docs become active again without a current PRD need
+## Design Bar
 
-## Production Design Thesis
+Every Bootstrap or runtime slice design must answer:
 
-Production design for MLP-01 must be **boundary-complete**.
+- who owns lifecycle
+- who owns durable truth
+- where validation and rejection happen
+- how retry, idempotency, and recovery work
+- where credentials and permissions live
+- what trace, audit, and inspect surfaces exist
+- what is explicitly deferred
 
-It must explain:
+If a design cannot answer those questions, implementation should not start.
 
-- which object owns durable truth
-- which runtime may act but not own truth
-- what gets validated before a record is created
-- what happens when validation fails
-- how retries, cancellation, restart, and recovery preserve chronology
-- where credentials and side effects are blocked
-- what the operator can inspect without private implementation knowledge
+## Current Runtime Doctrine
 
-It must not require a central finite-state machine or workflow engine. `AgentLoopPolicy` bounds
-autonomous loops; the agent owns reasoning inside the loop.
-
-## Required Production Questions
-
-Every Bootstrap or PR slice design must answer these questions before implementation starts.
-
-| Concern | Required answer |
-| --- | --- |
-| Lifecycle and ownership | What starts, continues, stops, retries, resumes, or cancels the work, and who owns each step? |
-| Durable truth | Which records are authoritative after process restart? |
-| Schema boundary | What minimum shape must be accepted, rejected, or deferred? |
-| Validation and rejection | What fails closed, and what failure record or trace remains? |
-| Idempotency and retry | What can be safely retried without duplicate truth? |
-| Recovery and restart | What can be reconstructed after runtime or provider failure? |
-| Security and permissions | Where are credentials, tool access, package permissions, and side effects enforced? |
-| Observability and audit | Which trace, event, decision, or operator action explains what happened later? |
-| Operator inspectability | What can the operator understand from product surfaces? |
-| Explicit deferral | Which production concerns are intentionally not part of this slice? |
-
-## Slice Readiness Bar
-
-| Slice | Production bar |
-| --- | --- |
-| Bootstrap | file-backed durable substrate survives restart and preserves future boundaries without implying evidence, live, or wake meaning |
-| PR1 | provider output can become a candidate only through probe, schema validation, semantic validation, trace retention, and materialization acceptance |
-| PR2 | trace becomes counted or non-counted evidence only through external evaluator ownership and explicit legitimacy mode |
-| PR3 | live agent authority stops at `OrderIntent`; gateway creates durable accepted/rejected/clipped decisions linked to execution attempts |
-| PR4 | wake, inspect, pause, stop, override, audit, and candidate versioning preserve control without turning the operator back into hidden runtime |
-
-## Interface Rules
-
-### `AgentLoopPolicy`
-
-Production design must name:
-
-- trigger source
-- loop mode
-- cadence or heartbeat posture
-- timeout
-- cancellation
-- retry and resume posture
-- trace export requirement
-- tool access posture
-- stop conditions
-
-The policy bounds the loop. It does not direct each reasoning step.
-
-### `RuntimeProviderAdapter`
-
-A provider label is not executable until the design names:
-
-- probe behavior
-- binary/package/API availability
-- auth state
-- model access
-- invocation surface
-- schema output or event stream contract
-- trace/export path
-- failure modes
-
-Current PR1 default remains `codex_cli + gpt-5.4 + schema output` until feasibility evidence
-changes.
-
-### `TraderSystemCandidate`
-
-A candidate can be created only after:
-
-- provider run output exists
-- schema validation passes
-- semantic/materialization validation passes
-- provenance and trace refs are retained
-- duplicate or retry behavior is resolved
-
-Failed provider output may remain trace or artifact context. It must not create a false candidate.
-
-### `StageBindingProfile`
-
-Backtest, paper, and live bindings must stay typed.
-
-- backtest: historical or replay data, deterministic clock, simulator, evaluator, no live
-  credentials
-- paper: live-like data, simulated order gateway, paper risk envelope, no real exchange execution
-- live: live data, real gateway, risk envelope, credential binding, wake policy, and upstream
-  promotion plus governed execution request
-
-### `OrderIntent / GatewayDecision / ExecutionAttempt`
-
-Production live authority requires:
+The active runtime doctrine is:
 
 ```text
-live_operator_agent -> OrderIntent -> GatewayDecision -> ExecutionAttempt
+External agents build or update trader-system artifacts.
+autokairos registers, deploys, observes, gates, evaluates, promotes, and controls lifecycle.
+TraderSystemProgram owns internal trading behavior.
+RuntimeControl owns lifecycle/governance, not internal step orchestration.
 ```
 
-The agent proposes. The gateway decides. The execution attempt links decisions and venue outcomes.
+It must not require a central finite-state machine or workflow engine.
 
-Rejected and clipped gateway decisions are durable production outcomes, not discarded errors.
+## Required Production Sections
 
-### `CapabilityPackageManifest`
+Each slice design should include:
 
-Package manifests declare:
+| Section | Required answer |
+| --- | --- |
+| Lifecycle and ownership | which object starts, runs, stops, and recovers |
+| Durable truth and schema boundary | what record is authoritative |
+| Validation and rejection | when output is refused and how the reason is inspected |
+| Idempotency and retry | how duplicate runs/actions are prevented or linked |
+| Recovery and restart | what survives process/container/provider failure |
+| Security and credentials | where secrets live and what never enters runtime context |
+| Observability and audit | which trace/audit artifacts are required |
+| Operator inspectability | what the operator can see without becoming the runtime |
+| Explicitly deferred | what must not be implemented in this slice |
 
-- provenance
-- tools
-- data access
-- allowed stages
-- required permissions
-- forbidden contents
+## Specific Active Boundaries
 
-They do not grant access. Runtime access is granted only through `StageBinding` and `ToolProxy`.
+### `RuntimeControl`
 
-## When To Add A New Spec
+- register, deploy, start, pause, resume, stop, inspect, override, kill
+- validates against `RuntimeOperatingPolicy`
+- produces `RuntimeControlDecision` and `RuntimeLifecycleEvent`
+- does not choose internal market reactions, agent calls, scripts, or planner steps
 
-Do not create a new spec because a future concern might matter.
+### `RuntimeOperatingPolicy`
 
-Create or promote a spec only when:
+- bounds lifecycle, placement, trace, recovery, stop, gateway, and audit posture
+- does not write trading behavior
+- does not become a strategy workflow engine
 
-- a current PRD cannot be implemented safely from the slice design note
-- a cross-slice invariant would otherwise drift
-- a boundary has safety, credential, live-authority, evidence, or audit consequences
+### `TraderSystemProgram`
 
-Otherwise, add a compact `Production Readiness` section to the slice design note.
+- owns internal behavior inside `HandsEnvironment`
+- may call provider-backed agents if needed
+- may emit `ProgramEvent`, `ToolRequest`, `OrderIntent`, artifacts, reviews, metrics, or
+  candidate-version proposals
+- cannot write evidence, promote itself, bypass `ToolProxy`, bypass `TradingGateway`, or mutate live
+  in place
 
-## Historical Spec Rule
+### `Trace -> Evidence`
 
-Older production-agent state-machine, persistent-operations, proactive-standing, rebuild,
-read-admission, coalescing, and fleet-orchestration docs remain historical background.
+- trace is recoverable runtime history
+- evidence exists only after evaluation and sealing
+- promotion cites counted evidence, not provider self-report or operator satisfaction
 
-They are not active production design unless a current MLP-01 PRD explicitly promotes them.
+### `OrderIntent -> GatewayDecision`
 
-Current active posture:
+- trader system proposes
+- gateway accepts, rejects, or clips
+- execution attempt links venue submission and fill results
 
-- agent-driven runtime
-- `AgentLoopPolicy` boundary
-- no central step-by-step workflow engine
-- single-agent MLP start
-- multi-agent only by admission rule
+## Deferred Production Concerns
 
-## Acceptance Test
+These are not active Bootstrap requirements:
 
-A slice is production-designed only if a reader can explain:
+- real provider execution
+- program execution
+- package scanning or real grants
+- external evaluator
+- evidence sealing
+- live gateway
+- runtime control action APIs
+- operator notification policy
+- marketplace
+- A2A networking
 
-- what starts and stops the work
-- what durable records exist after restart
-- what validation gates record creation
-- what retry does and does not duplicate
-- what failure remains inspectable
-- where secrets and side effects are blocked
-- which trace, evidence, decision, or audit record explains the outcome
-- what the operator can see
-- what is intentionally deferred
+## Reading Test
+
+A design is ready when a reader can explain:
+
+- what autokairos owns versus what the trader system owns
+- what can be restarted or replaced
+- what record is authoritative
+- what cannot bypass trace, tool proxy, gateway, evaluator, or audit
+- why Bootstrap remains read-only substrate rather than product proof
