@@ -14,11 +14,12 @@ description: Use when a worker needs to reconstruct current project state from r
 1. Identify branch, upstream, dirty files, latest local commits, and the intended work item.
 2. Read repo-level `AGENTS.md`, then `.agents/AGENTS.md`, then `.agents/skills/AGENTS.md`.
 3. Read `knowledge-index.md` and the latest relevant entries in `knowledge-log.md`.
-4. Read only the active docs or wiki pages needed to recover the current frontier.
-5. Inspect open diffs, staged changes, recent commits, and CI/check outputs only when they affect the
+4. Read the project frontier ledger when the repo defines one.
+5. Read only the active docs or wiki pages needed to recover the current frontier.
+6. Inspect open diffs, staged changes, recent commits, and CI/check outputs only when they affect the
    frontier.
-6. Compare repo truth against chat/user claims; prefer repo truth and name any gaps.
-7. Emit a `Recovered State Packet` and route the next owner.
+7. Compare repo truth against chat/user claims; prefer repo truth and name any gaps.
+8. Emit a `Recovered State Packet` and route the next owner.
 
 ## Read Order
 
@@ -26,12 +27,15 @@ description: Use when a worker needs to reconstruct current project state from r
 - Check recent commits with a narrow log when branch history matters.
 - Inspect `git diff --stat`, `git diff --name-status`, and staged diff only when dirty state exists.
 - Read task/PR metadata only when branch state alone does not explain the frontier.
+- Read the project frontier ledger before inferring the next PR-sized task.
 - Read docs through the repo navigation path instead of scanning the whole repo.
 
 ## Recovery Rules
 
 - Repo files, commits, checks, and maintained wiki outrank chat memory.
 - If two repo truth sources conflict, name both and route to `auto-project` or `llm-wiki`.
+- If branch/PR/CI state conflicts with the frontier ledger, treat the ledger as stale and route
+  writeback before continuing.
 - If recovery requires unavailable external permissions, mark the state `blocked` rather than
   guessing.
 - Do not continue implementation until the current owner and owned boundary are explicit.

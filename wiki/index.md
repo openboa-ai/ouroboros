@@ -2,7 +2,7 @@
 
 This directory is the maintained internal wiki for autokairos.
 
-It has three primary layers:
+It has four primary layers:
 
 1. `sources`
    Research grounding and synthesis
@@ -10,6 +10,8 @@ It has three primary layers:
    strategy, market, MLP, journey, and PRD product truth
 3. `architecture`
    technical design downstream of locked PRDs
+4. `project`
+   resumable PR-sized execution state and frontier routing
 
 The repository keeps a separate role for:
 
@@ -22,7 +24,7 @@ The repository keeps a separate role for:
 
 The active product model is:
 
-`weak human -> agent-built TraderSystemCandidates -> TraderSystemRuntimes with explicit AgentSpecs, AgentSessions, AgentRuns, and AgentEvents -> externally evaluated candidates -> promoted bounded live runtime -> wake / inspect / pause / stop / override`
+`weak human -> agent-built TraderSystemCandidates -> TraderSystemRuntimes with explicit AgentSpecs, AgentSessions, AgentRuns, and AgentEvents -> externally evaluated candidates -> promoted bounded live runtime -> inspect / pause / stop / override / audit`
 
 Candidate identity, runtime identity, capability packaging, and stage binding are product truth, not
 implementation garnish.
@@ -32,7 +34,7 @@ team threads or A2A-compatible endpoints, but communication outputs remain trace
 autokairos evaluation and governance decide otherwise.
 
 Provider choice is per `AgentSession`; communication and sharing are governed by one
-provider-neutral `RuntimeCommunicationPolicy` for the pod.
+provider-neutral `RuntimeCommunicationPolicy` for the runtime.
 
 Provider choice is not implementation-ready until it names a callable adapter surface, such as
 `codex_cli` through `codex exec` or `claude_agent_sdk_python` through Claude Agent SDK.
@@ -60,14 +62,15 @@ Provider choice is not implementation-ready until it names a callable adapter su
 19. [product/mlp-01/08-greenfield-bootstrap-plan.md](product/mlp-01/08-greenfield-bootstrap-plan.md)
 20. [architecture/05-bootstrap-tech-spec.md](architecture/05-bootstrap-tech-spec.md)
 21. [architecture/06-runtime-provider-adapter-feasibility.md](architecture/06-runtime-provider-adapter-feasibility.md)
-22. the slice design note that matches the PRD you are implementing:
+22. [project/frontier-ledger.md](project/frontier-ledger.md) for current PR-sized execution state
+23. the slice design note that matches the PRD you are implementing:
     [architecture/01-pr1-trader-system-candidate-becomes-real-design.md](architecture/01-pr1-trader-system-candidate-becomes-real-design.md),
     [architecture/02-pr2-candidate-becomes-externally-evaluated-design.md](architecture/02-pr2-candidate-becomes-externally-evaluated-design.md),
     [architecture/03-pr3-bounded-live-trader-system-runtime-design.md](architecture/03-pr3-bounded-live-trader-system-runtime-design.md), or
     [architecture/04-pr4-live-runtime-remains-controllable-design.md](architecture/04-pr4-live-runtime-remains-controllable-design.md)
-23. the subsystem README that matches the PRD you are implementing
-24. [architecture/specs/README.md](architecture/specs/README.md) for the active spec gate
-25. [architecture/adrs/README.md](architecture/adrs/README.md) for decision history
+24. the subsystem README that matches the PRD you are implementing
+25. [architecture/specs/README.md](architecture/specs/README.md) for the active spec gate
+26. [architecture/adrs/README.md](architecture/adrs/README.md) for decision history
 
 ## Rule
 
@@ -76,6 +79,8 @@ Use `sources/` to ground what the references imply.
 Use `product/` to define what must matter to the user and what the product must do.
 
 Use `architecture/` only after `mlp-01` PRDs are clear enough to constrain technical design.
+
+Use `project/` to decide what the next PR-sized frontier is and which branch/owner should continue.
 
 Use `product/mlp-01/08-greenfield-bootstrap-plan.md` and
 `architecture/05-bootstrap-tech-spec.md` as the bridge from docs-only reset baseline into the

@@ -329,6 +329,39 @@ def check_skill_routing_rules() -> None:
     print("Skill routing rule check OK")
 
 
+def check_project_frontier_ledger() -> None:
+    required_paths = [
+        Path("wiki/project/README.md"),
+        Path("wiki/project/frontier-ledger.md"),
+    ]
+    missing_paths = [str(path) for path in required_paths if not path.exists()]
+    if missing_paths:
+        fail("Project frontier ledger files missing: " + ", ".join(missing_paths))
+
+    corpus_paths = [
+        Path("AGENTS.md"),
+        Path("knowledge-index.md"),
+        Path("wiki/project/README.md"),
+        Path("wiki/project/frontier-ledger.md"),
+        Path(".agents/skills/AGENTS.md"),
+        Path(".agents/skills/auto-project/SKILL.md"),
+        Path(".agents/skills/llm-wiki/SKILL.md"),
+    ]
+    corpus = "\n".join(read_text(path) for path in corpus_paths if path.exists())
+    required_terms = [
+        "frontier-ledger.md",
+        "Auto Project Run Packet",
+        "current_mlp",
+        "active_frontier",
+        "ready-to-land",
+        "mlp-01-bootstrap-substrate",
+    ]
+    missing_terms = [term for term in required_terms if term not in corpus]
+    if missing_terms:
+        fail("Project frontier ledger terms missing: " + ", ".join(missing_terms))
+    print("Project frontier ledger check OK")
+
+
 def check_generic_agents_harness() -> None:
     banned = [
         "autokairos",
@@ -362,6 +395,7 @@ check_required_terms()
 check_skill_frontmatter()
 check_skill_quality()
 check_skill_routing_rules()
+check_project_frontier_ledger()
 check_generic_agents_harness()
 print("Docs design baseline checks passed")
 PY

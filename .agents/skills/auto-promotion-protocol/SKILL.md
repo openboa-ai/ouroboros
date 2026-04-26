@@ -22,7 +22,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - `final-signoff`: acceptance appears met, verification is current, and a human or final reviewer
   should decide.
 - `ready-to-land`: acceptance is met, current checks are green, QA did not veto, and durable writeback
-  is complete or explicitly unnecessary.
+  is complete or explicitly unnecessary, including frontier ledger state when the repo uses one.
 - `reroute`: a different owner must resolve scope, QA, CI, docs, cleanup, or external action.
 - `discarded`: the approach is obsolete, unsafe, duplicate, or not worth continuing.
 
@@ -33,6 +33,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - QA status: pass, conditional pass, veto, or not needed
 - CI status: green, red, pending, unavailable, or not applicable
 - writeback status: complete, not needed, or missing
+- frontier ledger status: current, not needed, or stale
 - risk status: material risks and whether they block landing
 
 ## Required Output
@@ -48,6 +49,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - latest QA judgment when applicable
 - latest CI status
 - wiki/writeback status
+- frontier ledger status, if applicable
 - open risks
 - next owner
 - `writeback_needed`

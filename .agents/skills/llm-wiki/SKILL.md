@@ -41,6 +41,7 @@ workflow outcomes.
 - active product, design, or process truth: update the relevant active wiki page
 - branch, run, PR, release, or CI state: use the existing project memory location, or create a
   dedicated run/PR page only when repeated resumption needs it
+- PR-sized frontier state: update the project frontier ledger when the repo defines one
 - transient chat, discarded attempt, or redundant command output: no writeback unless it changes
   future decisions
 
@@ -50,6 +51,7 @@ workflow outcomes.
 - For `query`, answer from maintained truth first and name the pages used.
 - For `lint`, fix broken links, stale naming, duplicated truth, and active/historical confusion.
 - For `writeback`, record the decision, evidence, owner, and next read location.
+- For frontier writeback, update status, branch/PR refs, required evidence, next owner, and risks.
 
 ## Required Output
 

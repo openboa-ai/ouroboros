@@ -11,6 +11,25 @@ project workflow to repo-local agent docs.
 3. Use `llm-wiki` whenever a decision, source insight, PR result, CI result, or frontier state must
    survive outside chat history.
 
+## Auto Project Rule
+
+When `auto-project` is used in this repo, it must read
+[wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) before choosing the next task.
+
+The intended loop is PR-sized:
+
+```text
+read repo truth + project frontier ledger
+-> pick one MLP/frontier
+-> route PM/coding/QA/CI/wiki owner
+-> drive to ready-to-land or blocked
+-> write back state
+-> after merge is recorded, select the next frontier
+```
+
+For the current repo state, MLP-01 continues from the Bootstrap substrate frontier unless the ledger
+has been updated with a newer active frontier.
+
 ## Current Posture
 
 - This repo is still in pre-Bootstrap docs/design reset.

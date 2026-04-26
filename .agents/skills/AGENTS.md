@@ -56,6 +56,25 @@ already bounded and current evidence is known.
 
 One active owner is the default. Do not route every task through every skill.
 
+## PR-Unit Conductor Mode
+
+When a repo has a project frontier ledger, `auto-project` uses it as the first operational state
+source after branch status.
+
+The conductor loop is:
+
+```text
+read repo truth + project frontier ledger
+-> choose one active frontier
+-> route one owner
+-> drive to ready-to-land or blocked
+-> persist state through llm-wiki
+-> after merge is recorded, choose the next frontier
+```
+
+The ledger owns project execution state. Product docs own product truth. Architecture docs own design
+truth. Skills own workflow, not truth.
+
 ## Skill Quality Standard
 
 Every `SKILL.md` must stay small, generic, and triggerable.
@@ -111,6 +130,10 @@ Every worker should return:
 
 The handoff must be enough for the next owner to continue from repo evidence without relying on
 chat history. If it is not enough, route to `auto-run-memory` or `llm-wiki` before continuing.
+
+For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` with
+`current_mlp`, `active_frontier`, `branch`, `pr`, `status`, `context_read`, `route`,
+`evidence_required`, `next_owner`, and `writeback_needed`.
 
 ## Boundary Rules
 

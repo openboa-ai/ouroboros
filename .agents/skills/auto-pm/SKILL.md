@@ -17,6 +17,7 @@ description: Use when a rough request, blocked branch, ambiguous design/code tas
 4. Define acceptance and validation evidence.
 5. Assign next owner.
 6. Decide whether the resulting plan needs `llm-wiki` writeback.
+7. If this creates or changes a PR-sized frontier, include the project ledger update target.
 
 ## Frontier Spec
 
@@ -62,6 +63,7 @@ writeback_target:
 - decision: `ready`, `blocked`, or `reroute`
 - risks
 - next owner
+- ledger update target, if this changes frontier state
 - `writeback_needed`
 
 ## Handoff

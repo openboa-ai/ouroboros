@@ -1262,3 +1262,13 @@
   output templates, and handoff/writeback rules while keeping `.agents/**` generic and reusable.
   Strengthened [scripts/check-docs.sh](scripts/check-docs.sh) so CI now rejects skills that lack
   context/risk fields or a substantive procedure, criteria, or template section.
+- 2026-04-26: Added a project frontier ledger so `auto-project` can operate as a PR-unit conductor
+  instead of a one-step router.
+  Added [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) as the resumable state
+  source for the current MLP, active frontier, branch/PR status, required evidence, next owner, and
+  writeback target.
+  The current MLP-01 active frontier is `mlp-01-bootstrap-substrate` on
+  `feat/bootstrap-substrate`, with `auto-pm` then `auto-coding` as the next owner path.
+  Updated root [AGENTS.md](AGENTS.md), [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md), and
+  related skills so PR opened/checks green/ready-to-land/merged/blocked/discarded state is written
+  back through `llm-wiki` instead of inferred from chat history.

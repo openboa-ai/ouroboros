@@ -1,6 +1,6 @@
 ---
 name: auto-project
-description: Use when project work needs routing: a branch, PR, task, or implementation thread has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
+description: Use when project work needs routing: a branch, PR, task, implementation thread, or project frontier ledger has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
 ---
 
 # Auto Project
@@ -16,11 +16,29 @@ system the repository builds.
 
 1. Recover current repo truth from branch, task/PR metadata, `knowledge-index.md`, relevant wiki
    pages, and CI.
-2. Name exactly one active frontier.
-3. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
-4. Require evidence before keeping changes.
-5. Require every owner to return `writeback_needed: yes/no`.
-6. Route to `llm-wiki` when durable decisions need writeback.
+2. If a project frontier ledger exists, read it before selecting work.
+3. Name exactly one active frontier.
+4. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
+5. Require evidence before keeping changes.
+6. Require every owner to return `writeback_needed: yes/no`.
+7. Route to `llm-wiki` when durable decisions need writeback.
+
+## Ledger-First PR-Unit Mode
+
+Use this mode when the repo tracks PR-sized frontiers.
+
+1. Read branch state and the project frontier ledger.
+2. If an active frontier exists, continue it unless evidence says it is blocked or ready.
+3. If no active frontier exists, choose the first queued frontier whose prerequisite is met.
+4. Route by status:
+   - `queued`: park unless prerequisite is met
+   - `implementation-ready`: `auto-pm` or `auto-coding`
+   - `in-progress`: `auto-coding` or `auto-qa`
+   - `pr-open`: `auto-promotion-protocol` or `ci-recovery`
+   - `ready-to-land`: final owner or merge owner
+   - `merged`: `llm-wiki`, then select next frontier
+   - `blocked`: blocker owner or user action
+5. Persist frontier state changes through `llm-wiki`.
 
 ## Routing Decision Table
 
@@ -50,15 +68,38 @@ system the repository builds.
 - goal
 - owned boundary
 - context read
+- current_mlp, if the repo uses MLP-style planning
 - active frontier
+- branch and PR, if known
+- status
+- route
 - evidence
-- current owner
 - evidence required to keep the work
+- current owner
 - decision: `route`, `park`, `discard`, `ready`, or `blocked`
 - next owner or stop state
 - risks
 - `writeback_needed`
 - reason this is repo-work routing, not product behavior
+
+## Auto Project Run Packet
+
+Return this shape for PR-unit routing:
+
+```text
+current_mlp:
+active_frontier:
+branch:
+pr:
+status:
+context_read:
+route:
+evidence_required:
+risks:
+next_owner:
+writeback_needed:
+llm_wiki_target:
+```
 
 ## Handoff
 

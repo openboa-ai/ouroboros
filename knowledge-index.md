@@ -33,6 +33,7 @@ Use these add-ons only when the task needs them:
 
 | Task | Read next |
 | --- | --- |
+| Current project frontier | [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) |
 | Source-grounded architecture change | [wiki/sources/reference-ledger.md](wiki/sources/reference-ledger.md), [wiki/sources/synthesis/reference-impact-audit-2026-04.md](wiki/sources/synthesis/reference-impact-audit-2026-04.md) |
 | Bootstrap substrate planning | [wiki/product/mlp-01/08-greenfield-bootstrap-plan.md](wiki/product/mlp-01/08-greenfield-bootstrap-plan.md), [wiki/architecture/05-bootstrap-tech-spec.md](wiki/architecture/05-bootstrap-tech-spec.md) |
 | Provider execution | [wiki/architecture/06-runtime-provider-adapter-feasibility.md](wiki/architecture/06-runtime-provider-adapter-feasibility.md), [wiki/architecture/specs/07-runtime-connector-contract.md](wiki/architecture/specs/07-runtime-connector-contract.md) |
@@ -58,6 +59,8 @@ Use these pages as directory-level catalogs:
   MLP-01 planning pack.
 - [wiki/product/mlp-01/prds/README.md](wiki/product/mlp-01/prds/README.md)
   PRD-level product contracts.
+- [wiki/project/README.md](wiki/project/README.md)
+  Current project frontier ledger and PR-sized execution state.
 - [wiki/architecture/README.md](wiki/architecture/README.md)
   Technical design workspace.
 - [wiki/architecture/00-system-map.md](wiki/architecture/00-system-map.md)
