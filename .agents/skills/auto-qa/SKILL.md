@@ -1,6 +1,6 @@
 ---
 name: auto-qa
-description: Autokairos functional evaluation worker. Use when a PR or frontier needs scenario testing, regression pressure, edge-case review, and a pass, conditional-pass, or veto recommendation.
+description: Use when an autokairos PR or frontier needs scenario testing, regression pressure, edge-case review, reader acceptance testing, and a pass, conditional-pass, or veto recommendation.
 ---
 
 # Auto QA
@@ -9,14 +9,21 @@ description: Autokairos functional evaluation worker. Use when a PR or frontier 
 
 `auto-qa` evaluates whether the current frontier works and whether it should move forward.
 
-## When To Use
+## Use When
 
-Use when:
+- Implementation claims need independent pressure.
+- Docs/read paths need reader acceptance testing.
+- CI is green but product or architecture risk remains.
+- A PR needs pass, conditional pass, or veto before promotion.
 
-- implementation claims need independent pressure
-- docs/read paths need reader acceptance testing
-- CI is green but product or architecture risk remains
-- a PR needs pass, conditional pass, or veto before promotion
+## Workflow
+
+1. Define scenario set.
+2. Run or inspect the relevant evidence.
+3. Identify failures, risks, severity, and confidence.
+4. Return pass, conditional pass, or veto.
+5. Recommend next owner.
+6. Decide writeback status.
 
 ## Required Output
 
@@ -25,13 +32,12 @@ Use when:
 - severity and confidence
 - pass, conditional pass, or veto
 - recommended next owner
+- `writeback_needed`
 
-## Autokairos QA Axes
+## Handoff
 
-- Product truth stays distinct from delivery slicing.
-- Runtime, placement, provider, trace, evidence, gateway, memory, and package boundaries remain clear.
-- Bootstrap does not accidentally implement deferred provider/evaluator/live functionality.
-- PR changes are inspectable and recoverable.
+If QA changes PR/frontier status or creates reusable acceptance evidence, set `writeback_needed:
+yes` and route to `llm-wiki`.
 
 ## Hard Boundaries
 

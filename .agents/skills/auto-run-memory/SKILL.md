@@ -1,6 +1,6 @@
 ---
 name: auto-run-memory
-description: Shared recovery protocol for autokairos project work. Use when a worker needs to reconstruct current PR state, assumptions, failed attempts, winning evidence, and owner from repo state.
+description: Use when a worker needs to reconstruct current autokairos PR state, assumptions, failed attempts, winning evidence, owner, and writeback gaps from repo state instead of chat history.
 ---
 
 # Auto Run Memory
@@ -9,15 +9,21 @@ description: Shared recovery protocol for autokairos project work. Use when a wo
 
 `auto-run-memory` recovers project state without relying on chat history.
 
-## Read Order
+## Use When
 
-1. Current branch and PR metadata
-2. `.agents/AGENTS.md`
-3. `knowledge-index.md`
-4. `knowledge-log.md`
-5. Relevant active wiki pages
-6. CI/check outputs
-7. Raw diffs and source notes only when needed
+- A thread resumes after context loss.
+- The branch or PR has multiple commits and current owner is unclear.
+- A worker needs latest accepted assumptions and failed attempts.
+
+## Workflow
+
+1. Read current branch and PR metadata.
+2. Read repo-level `AGENTS.md`.
+3. Read `.agents/AGENTS.md`.
+4. Read `.agents/skills/AGENTS.md`.
+5. Read `knowledge-index.md` and `knowledge-log.md`.
+6. Read relevant active wiki pages.
+7. Inspect CI/check outputs and raw diffs only when needed.
 
 ## Required Output
 
@@ -27,6 +33,12 @@ description: Shared recovery protocol for autokairos project work. Use when a wo
 - latest winning evidence
 - current owner
 - open risks
+- `writeback_needed`
+
+## Handoff
+
+If recovery finds missing durable memory, route to `llm-wiki` to repair the gap before more work
+depends on chat history.
 
 ## Hard Boundaries
 

@@ -1,6 +1,6 @@
 ---
 name: harness-skill-audit
-description: Audit autokairos repo-local skills. Use when deciding which skills should exist, be removed, be merged, or be rewritten to fit the current project harness.
+description: Use when deciding whether autokairos repo-local skills should exist, be removed, be merged, rewritten, renamed, or re-routed to fit the current project harness.
 ---
 
 # Harness Skill Audit
@@ -9,21 +9,33 @@ description: Audit autokairos repo-local skills. Use when deciding which skills 
 
 `harness-skill-audit` keeps the local skill surface small and useful.
 
-## Audit Questions
+## Use When
 
-- Is this a recurring workflow or just a topic?
-- Does an existing skill already cover it?
-- Does the skill improve routing, evidence, or resumability?
-- Does it duplicate `.agents/AGENTS.md` or active wiki truth?
-- Is the description precise enough to trigger only when useful?
+- Skills overlap or trigger poorly.
+- A new workflow is being added to `.agents/skills/`.
+- A skill may duplicate `.agents/AGENTS.md`, active wiki truth, or another skill.
+- The user asks to improve project harness skills.
+
+## Workflow
+
+1. List existing skills and roles.
+2. Compare each skill to recurring project work.
+3. Find duplication, missing routing, and trigger gaps.
+4. Prefer update/merge/remove over adding a new skill.
+5. Route durable changes through `llm-wiki`.
 
 ## Required Output
 
-- existing skills
+- existing skill map
 - suggested updates
 - suggested removals
-- suggested new skills
+- suggested new skills, if any
 - priority order
+- `writeback_needed`
+
+## Handoff
+
+Skill-surface changes alter repo workflow. Default to `writeback_needed: yes`.
 
 ## Hard Boundaries
 

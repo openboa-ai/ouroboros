@@ -51,11 +51,13 @@ def check_whitespace() -> None:
 
 def active_markdown_files() -> list[Path]:
     roots = [
+        Path("AGENTS.md"),
         Path("README.md"),
         Path("ARCHITECTURE.md"),
         Path("knowledge-index.md"),
         Path("knowledge-log.md"),
         Path(".agents/AGENTS.md"),
+        Path(".agents/skills/AGENTS.md"),
         Path("wiki"),
     ]
     files: list[Path] = []
@@ -67,6 +69,7 @@ def active_markdown_files() -> list[Path]:
                 if "wiki/architecture/historical/" in path.as_posix():
                     continue
                 files.append(path)
+    files.extend(sorted(Path(".agents/skills").glob("*/SKILL.md")))
     return sorted(files)
 
 
@@ -111,10 +114,12 @@ def check_links() -> None:
 
 def stale_check_files() -> list[Path]:
     roots = [
+        Path("AGENTS.md"),
         Path("README.md"),
         Path("ARCHITECTURE.md"),
         Path("knowledge-index.md"),
         Path(".agents/AGENTS.md"),
+        Path(".agents/skills/AGENTS.md"),
         Path("wiki/architecture"),
         Path("wiki/product"),
         Path("wiki/sources/synthesis"),
@@ -208,11 +213,37 @@ def check_skill_frontmatter() -> None:
             continue
         if not re.search(r"^name:\s*\S+", frontmatter, re.MULTILINE):
             problems.append(f"{path}: missing name")
+        else:
+            name_match = re.search(r"^name:\s*(\S+)", frontmatter, re.MULTILINE)
+            if name_match and name_match.group(1) != path.parent.name:
+                problems.append(
+                    f"{path}: name {name_match.group(1)!r} does not match directory {path.parent.name!r}"
+                )
         if not re.search(r"^description:\s*\S+", frontmatter, re.MULTILINE):
             problems.append(f"{path}: missing description")
     if problems:
         fail("Skill frontmatter check failed:\n" + "\n".join(problems))
     print(f"Skill frontmatter OK: {len(skill_files)} skills")
+
+
+def check_skill_routing_rules() -> None:
+    paths = [
+        Path("AGENTS.md"),
+        Path(".agents/AGENTS.md"),
+        Path(".agents/skills/AGENTS.md"),
+    ]
+    corpus = "\n".join(read_text(path) for path in paths if path.exists())
+    if "auto-wiki" in corpus:
+        fail("Deprecated auto-wiki routing found; use llm-wiki")
+    required = [
+        "llm-wiki",
+        "writeback_needed",
+        ".agents/skills/AGENTS.md",
+    ]
+    missing = [term for term in required if term not in corpus]
+    if missing:
+        fail("Skill routing terms missing: " + ", ".join(missing))
+    print("Skill routing rule check OK")
 
 
 check_whitespace()
@@ -221,5 +252,6 @@ check_stale_terms()
 check_active_spec_count()
 check_required_terms()
 check_skill_frontmatter()
+check_skill_routing_rules()
 print("Docs design baseline checks passed")
 PY

@@ -1,6 +1,6 @@
 ---
 name: auto-coding
-description: Autokairos implementation worker. Use when a locked frontier needs one bounded code or docs change, verification, and a keep/discard decision without widening interfaces or scope.
+description: Use when a locked autokairos frontier needs one bounded code or docs change, verification, and a keep/discard decision without widening interfaces, architecture truth, or PR scope.
 ---
 
 # Auto Coding
@@ -9,30 +9,34 @@ description: Autokairos implementation worker. Use when a locked frontier needs 
 
 `auto-coding` changes the repo to close one bounded gap.
 
-## When To Use
+## Use When
 
-Use when:
-
-- `auto-pm` or the user has locked the frontier
-- implementation, docs edits, CI repairs, or reliability fixes are needed
-- the change can be verified in the current repo
+- The user or `auto-pm` has locked the frontier.
+- A code, docs, CI, or reliability change is needed.
+- The change can be verified in the current repo.
 
 ## Workflow
 
 1. Establish baseline evidence.
-2. Make one bounded hypothesis.
-3. Implement only inside the owned boundary.
+2. State one implementation hypothesis.
+3. Edit only inside the owned boundary.
 4. Run narrow verification.
-5. Keep or revert based on evidence.
+5. Keep, discard, or reroute based on evidence.
 6. Return a handoff packet.
 
 ## Required Output
 
 - what changed
-- what was measured
-- verification result
-- keep/discard decision
+- verification run
+- keep/discard/reroute decision
 - remaining gap
+- next owner
+- `writeback_needed`
+
+## Handoff
+
+If the change creates durable product, architecture, source, PR, CI, or workflow truth, set
+`writeback_needed: yes` and route to `llm-wiki`.
 
 ## Hard Boundaries
 

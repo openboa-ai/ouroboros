@@ -359,6 +359,8 @@ similar responsibilities are sometimes spread across `CLI`, `plugin`, `Gateway`,
   [anthropic-effective-harnesses-for-long-running-agents.md](../library/anthropic-effective-harnesses-for-long-running-agents.md),
   [openai-next-evolution-of-the-agents-sdk.md](../library/openai-next-evolution-of-the-agents-sdk.md),
   [openai-harness-engineering.md](../library/openai-harness-engineering.md)
+- Repo harness and skill design:
+  [agents-md-and-agent-skills.md](../library/agents-md-and-agent-skills.md)
 - Workflow-vs-agent constraint:
   [anthropic-building-effective-agents.md](../library/anthropic-building-effective-agents.md)
 - Concrete runtime products:
@@ -377,3 +379,16 @@ similar responsibilities are sometimes spread across `CLI`, `plugin`, `Gateway`,
   runtime face?
 - When should a multi-agent trader system use provider-native subagent threads versus
   A2A-compatible independent endpoints?
+
+## Repo Harness Implication
+
+[AGENTS.md](../library/agents-md-and-agent-skills.md) and Agent Skills reinforce the split between
+always-on repo instructions and on-demand task capabilities. For autokairos this means:
+
+- root `AGENTS.md` should be a small entrypoint, not a complete architecture manual;
+- `.agents/AGENTS.md` should hold stable project operating rules;
+- `.agents/skills/AGENTS.md` should route recurring work to bounded skills;
+- skill descriptions should use clear "Use when..." trigger language;
+- durable project outcomes must route through `llm-wiki` rather than living only in chat.
+
+This is a repo-work harness rule, not product runtime architecture.

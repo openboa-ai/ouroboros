@@ -1225,3 +1225,14 @@
   `inspect`, `override`, and `kill`; `RuntimeOperatingPolicy` bounds lifecycle, placement, trace,
   tool/gateway access, stop conditions, recovery, and audit.
   Bootstrap remains read-only inspect plus fixture seams, with no runtime action APIs.
+- 2026-04-26: Redesigned the repo-local agent harness around AGENTS.md and Agent Skills references.
+  Added root [AGENTS.md](AGENTS.md) as the repo-wide agent entrypoint, rewrote
+  [.agents/AGENTS.md](.agents/AGENTS.md) as the always-on autokairos project operating manual, and
+  rewrote [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) as a workflow-phase skill routing
+  registry.
+  Updated each repo-local `SKILL.md` to use clearer `Use when` trigger descriptions, explicit
+  handoff fields, and `writeback_needed` routing.
+  `llm-wiki` is now the mandatory durable writeback gate for source, design, PR, frontier, run, CI,
+  and workflow outcomes that must survive outside chat history.
+  Added [wiki/sources/library/agents-md-and-agent-skills.md](wiki/sources/library/agents-md-and-agent-skills.md)
+  and registered AGENTS.md / Agent Skills references in the source ledger.

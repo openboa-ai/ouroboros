@@ -1,0 +1,36 @@
+# Agent Entry Point
+
+This file is the repo-wide entry point for coding agents. It follows the
+[AGENTS.md](https://agents.md/) convention: keep the always-on instructions here, and route detailed
+project workflow to repo-local agent docs.
+
+## Start Here
+
+1. Read [.agents/AGENTS.md](.agents/AGENTS.md) for the autokairos project operating manual.
+2. Read [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) before using repo-local skills.
+3. Use `llm-wiki` whenever a decision, source insight, PR result, CI result, or frontier state must
+   survive outside chat history.
+
+## Current Posture
+
+- This repo is still in pre-Bootstrap docs/design reset.
+- Do not implement runtime, provider, evaluator, gateway, storage, schema, or UI behavior unless the
+  current frontier explicitly allows it.
+- autokairos is a trading-system control plane/devops layer for agent-built trader-system
+  artifacts. It is not the trader-system brain and not a generic agent platform.
+
+## Validation Commands
+
+Run the relevant checks before committing:
+
+```bash
+bash scripts/check-docs.sh
+bash scripts/check-secrets.sh
+git diff --check
+```
+
+## Required Writeback Rule
+
+No durable repo decision should live only in chat. If work changes product truth, architecture,
+source interpretation, PR state, CI recovery state, or project workflow, route the result through
+`llm-wiki` for the lightest durable writeback.

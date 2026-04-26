@@ -1,53 +1,79 @@
 # Repo Skill Registry
 
-`.agents/skills/` contains the repo-local project harness skills.
+`.agents/skills/` contains repo-local skills. Skills are bounded capabilities loaded on demand, not
+always-on policy. Always-on policy belongs in [../AGENTS.md](../AGENTS.md).
 
-The harness is for building this repository. It is not the autokairos product runtime, not a
+The harness builds this repository. It is not the autokairos product runtime, not a
 TraderSystem scheduler, and not an agent mesh.
 
-## Active Buckets
+## Workflow Map
 
-Core workers:
+Use the smallest skill set that fits the work.
 
-- `auto-project`: project harness scheduler and routing owner
-- `auto-pm`: bounded frontier and PR contract owner
-- `auto-coding`: implementation and verification worker
-- `auto-qa`: functional evaluation and veto worker
-- `llm-wiki`: source/wiki maintenance and repo-memory writeback worker
+| Phase | Default skill | Use when |
+| --- | --- | --- |
+| Recover | `auto-run-memory` | current PR/frontier/state must be reconstructed from repo evidence |
+| Frame | `brain-autokairos` | product thesis or architecture boundary needs a concise repo-grounded answer |
+| Shape | `auto-project` | ownership, route, stop state, or PR/frontier direction is unclear |
+| Shape | `auto-pm` | a rough request needs one bounded frontier with acceptance and validation |
+| Execute | `auto-coding` | one bounded code/docs change must be made and verified |
+| Evaluate | `auto-qa` | a frontier needs scenario/regression pressure or a veto/pass judgment |
+| Evaluate | `auto-eval-rubrics` | a worker needs shared pass/fail language |
+| Evaluate | `ci-recovery` | GitHub Actions or local checks fail and need root-cause routing |
+| Persist | `llm-wiki` | durable source/wiki/project-memory writeback is needed |
+| Clean | `auto-garbage-collection` | stale docs, duplicate memory, or old run notes block resumption |
+| Clean | `harness-skill-audit` | the skill surface itself may need merging, removal, or rewrite |
 
-Shared protocols:
+## Default Routing
 
-- `auto-loop-protocol`
-- `auto-handoff-protocol`
-- `auto-run-memory`
-- `auto-promotion-protocol`
-- `auto-eval-rubrics`
-- `auto-garbage-collection`
+1. If the next owner is unclear, start with `auto-project`.
+2. If the task is already bounded, use the matching worker directly.
+3. Use shared protocols only when the active worker needs that contract.
+4. End every worker path with a handoff packet.
+5. Before stopping, decide `writeback_needed: yes/no`.
+6. If `writeback_needed: yes`, route to `llm-wiki`.
 
-Optional utilities:
+One active owner is the default. Do not route every task through every skill.
 
-- `brain-autokairos`
-- `ci-recovery`
-- `harness-skill-audit`
+## Mandatory llm-wiki Gate
 
-## Routing Rules
+Use `llm-wiki` when any of these become durable:
 
-Use this order:
+- product thesis or architecture decision
+- source ingestion, source interpretation, or synthesis update
+- PR/frontier/run outcome
+- CI recovery result that affects future work
+- skill routing, harness policy, or repo workflow rule
+- active/historical documentation boundary
+- read-path or stale-term cleanup
 
-1. Use `auto-project` when a task needs PR ownership, routing, or next-owner selection.
-2. Use one core worker when the requested stage is explicit.
-3. Use a shared protocol when a worker needs a common keep/discard, handoff, memory, promotion, or
-   cleanup contract.
-4. Use an optional utility for focused support that should not own the project loop.
+`llm-wiki` is not required for:
 
-Do not route every task through every skill. One active owner is the default.
+- read-only inspection with no durable conclusion
+- discarded local experiments with no future relevance
+- transient command output already captured by CI or git history
+
+Chat history is not durable memory. If a future agent needs the result to resume safely, write it
+back through `llm-wiki`.
+
+## Handoff Packet
+
+Every worker should return:
+
+- `goal`
+- `owned_boundary`
+- `evidence`
+- `decision`: `keep`, `discard`, `reroute`, `blocked`, or `ready`
+- `next_owner`
+- `writeback_needed`
+- `llm_wiki_target` when writeback is needed
 
 ## Boundary Rules
 
-- `auto-project` may schedule repo work; it must not describe product runtime behavior.
-- `auto-pm` may lock PR scope; it must not implement.
-- `auto-coding` may implement; it must verify and keep/discard one bounded attempt.
-- `auto-qa` may veto; it must not fix by default.
-- `llm-wiki` owns source/wiki ingest, wiki health checks, and durable PR/frontier/run writeback.
-
-When a worker completes, it should return a handoff packet rather than self-scheduling indefinitely.
+- `auto-project` schedules repo work, not product runtime behavior.
+- `auto-pm` locks scope and acceptance; it does not implement.
+- `auto-coding` implements one bounded change and verifies before keeping it.
+- `auto-qa` can veto; it does not fix by default.
+- `ci-recovery` extracts actionable check evidence; it does not broaden the PR.
+- `llm-wiki` owns source/wiki ingest, wiki health checks, and durable writeback.
+- Do not create a second wiki-writeback skill. Use `llm-wiki`.

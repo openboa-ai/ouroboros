@@ -73,6 +73,8 @@ Status values:
 | 49 | https://developers.googleblog.com/jules-gemini-3/ | new | [049-google-jules-gemini-3.md](library/url-notes/049-google-jules-gemini-3.md) | [reference-systems-and-product-postures.md](synthesis/reference-systems-and-product-postures.md) |
 | 50 | https://cloud.google.com/blog/products/application-development/gemini-cloud-assist-at-next26?hl=en | new | [050-google-gemini-cloud-assist-next26.md](library/url-notes/050-google-gemini-cloud-assist-next26.md) | [reference-systems-and-product-postures.md](synthesis/reference-systems-and-product-postures.md) |
 | 51 | https://www.anthropic.com/features/project-deal | new | [051-anthropic-project-deal.md](library/url-notes/051-anthropic-project-deal.md) | [evaluation-governance-and-promotion.md](synthesis/evaluation-governance-and-promotion.md) |
+| 52 | https://agents.md/ | new | [agents-md-and-agent-skills.md](library/agents-md-and-agent-skills.md) | [agent-runtime-and-harness-principles.md](synthesis/agent-runtime-and-harness-principles.md) |
+| 53 | https://agentskills.io/home | new | [agents-md-and-agent-skills.md](library/agents-md-and-agent-skills.md) | [agent-runtime-and-harness-principles.md](synthesis/agent-runtime-and-harness-principles.md) |
 
 ## Blocked / Fallback Notes
 
