@@ -1,7 +1,0 @@
-{
-  "environment_id": "01963762-0ed3-70ba-bdae-5edf57c9d1de",
-  "name": "live-local",
-  "kind": "live",
-  "capabilities": ["workspace-read", "workspace-write", "service-commands"],
-  "notes": "Live trading workspace environment. Execution core remains outside this definition."
-}

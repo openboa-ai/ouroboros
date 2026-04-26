@@ -1,5 +1,0 @@
-Agg trade sample:
-- symbol: BTCUSDT
-- side pressure: buy
-- trade cluster: 94581.5 / 94584.0 / 94587.5
-- remark: taker-side demand stayed persistent through the sweep.

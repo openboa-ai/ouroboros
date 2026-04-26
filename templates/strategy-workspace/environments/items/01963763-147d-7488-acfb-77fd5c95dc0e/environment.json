@@ -1,7 +1,0 @@
-{
-  "environment_id": "01963763-147d-7488-acfb-77fd5c95dc0e",
-  "name": "evaluation-local",
-  "kind": "evaluation",
-  "capabilities": ["workspace-read", "workspace-write", "service-commands", "collection-ingest"],
-  "notes": "Evaluation environment for backtest, paper, and evidence generation."
-}
