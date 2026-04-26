@@ -13,7 +13,7 @@ Core workers:
 - `auto-pm`: bounded frontier and PR contract owner
 - `auto-coding`: implementation and verification worker
 - `auto-qa`: functional evaluation and veto worker
-- `auto-wiki`: repo-memory writeback worker
+- `llm-wiki`: source/wiki maintenance and repo-memory writeback worker
 
 Shared protocols:
 
@@ -29,7 +29,6 @@ Optional utilities:
 - `brain-autokairos`
 - `ci-recovery`
 - `harness-skill-audit`
-- `llm-wiki`
 
 ## Routing Rules
 
@@ -49,7 +48,6 @@ Do not route every task through every skill. One active owner is the default.
 - `auto-pm` may lock PR scope; it must not implement.
 - `auto-coding` may implement; it must verify and keep/discard one bounded attempt.
 - `auto-qa` may veto; it must not fix by default.
-- `auto-wiki` may write back durable repo state; it must not turn every chat detail into canon.
-- `llm-wiki` owns source/wiki ingest and health checks, not PR frontier memory.
+- `llm-wiki` owns source/wiki ingest, wiki health checks, and durable PR/frontier/run writeback.
 
 When a worker completes, it should return a handoff packet rather than self-scheduling indefinitely.

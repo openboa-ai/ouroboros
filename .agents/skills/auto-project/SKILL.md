@@ -25,9 +25,9 @@ Use when:
 
 1. Recover current repo truth from branch, PR, `knowledge-index.md`, relevant wiki pages, and CI.
 2. Name exactly one active frontier.
-3. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `auto-wiki`, or a utility.
+3. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
 4. Require evidence before keeping changes.
-5. Require `auto-wiki` writeback for durable decisions.
+5. Require `llm-wiki` writeback for durable decisions.
 
 ## Required Output
 

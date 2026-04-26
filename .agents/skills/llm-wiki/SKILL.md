@@ -1,12 +1,12 @@
 ---
 name: llm-wiki
-description: Maintain the source/wiki knowledge system. Use for source ingestion, source-to-synthesis promotion, wiki structure, wiki health checks, stale naming, orphan pages, and cross-reference repair; use auto-wiki instead for current PR/frontier/run writeback.
+description: Maintain the autokairos source/wiki and repo memory system. Use for source ingestion, source-to-synthesis promotion, wiki health checks, stale naming, cross-reference repair, and durable PR/frontier/run writeback.
 ---
 
 # LLM Wiki
 
-This skill owns the maintained knowledge system. It does not own project-harness scheduling,
-frontier state, or PR/run writeback. Use `auto-wiki` for current project loop memory.
+This skill owns the maintained knowledge system and durable project-loop memory. It does not own
+project-harness scheduling; use `auto-project` for routing and next-owner selection.
 
 Turn a markdown repo into a compounding knowledge system.
 
@@ -39,9 +39,9 @@ Use two operating files when the repo benefits from them.
 - `knowledge-log.md` or `log.md`
   - append-only chronology
 
-For autokairos project-loop memory, prefer `auto-wiki` first. Use this skill when the work is about
-source ingestion, source synthesis, wiki structure, wiki linting, or promotion of durable knowledge
-into maintained pages.
+For autokairos project-loop memory, use this skill when a PR/frontier/run result needs durable
+writeback into `knowledge-log.md`, active wiki pages, or future `wiki/prs/` and `wiki/runs/`
+records.
 
 Use the nearest `AGENTS.md` files as schema and workflow rules.
 
