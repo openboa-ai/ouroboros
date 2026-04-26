@@ -193,10 +193,33 @@ def check_required_terms() -> None:
     print("Required active design term check OK")
 
 
+def check_skill_frontmatter() -> None:
+    skill_files = sorted(Path(".agents/skills").glob("*/SKILL.md"))
+    problems: list[str] = []
+    for path in skill_files:
+        text = read_text(path)
+        if not text.startswith("---\n"):
+            problems.append(f"{path}: missing YAML frontmatter")
+            continue
+        try:
+            _, frontmatter, _ = text.split("---", 2)
+        except ValueError:
+            problems.append(f"{path}: malformed YAML frontmatter")
+            continue
+        if not re.search(r"^name:\s*\S+", frontmatter, re.MULTILINE):
+            problems.append(f"{path}: missing name")
+        if not re.search(r"^description:\s*\S+", frontmatter, re.MULTILINE):
+            problems.append(f"{path}: missing description")
+    if problems:
+        fail("Skill frontmatter check failed:\n" + "\n".join(problems))
+    print(f"Skill frontmatter OK: {len(skill_files)} skills")
+
+
 check_whitespace()
 check_links()
 check_stale_terms()
 check_active_spec_count()
 check_required_terms()
+check_skill_frontmatter()
 print("Docs design baseline checks passed")
 PY

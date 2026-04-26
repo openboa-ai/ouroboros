@@ -204,6 +204,8 @@ Use these source clusters when changing the corresponding design area:
 - Prefer updating the product docs first, then the architecture docs, over inventing chat-only answers when the result has durable value.
 - Keep major design decisions in ADRs instead of burying them in README or section prose.
 - Use repo-local skills under `.agents/skills/` when they match the task.
+- Use [.agents/skills/AGENTS.md](skills/AGENTS.md) as the repo-local skill registry. For project
+  execution, route through the harness skills there; for source/wiki maintenance, use `llm-wiki`.
 
 ## Current Focus
 
