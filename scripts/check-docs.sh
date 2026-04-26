@@ -235,15 +235,43 @@ def check_skill_routing_rules() -> None:
     corpus = "\n".join(read_text(path) for path in paths if path.exists())
     if "auto-wiki" in corpus:
         fail("Deprecated auto-wiki routing found; use llm-wiki")
+    if "brain-autokairos" in corpus:
+        fail("Deprecated project-specific brain-autokairos skill found; use project-context")
     required = [
         "llm-wiki",
         "writeback_needed",
+        "project-context",
         ".agents/skills/AGENTS.md",
     ]
     missing = [term for term in required if term not in corpus]
     if missing:
         fail("Skill routing terms missing: " + ", ".join(missing))
     print("Skill routing rule check OK")
+
+
+def check_generic_agents_harness() -> None:
+    banned = [
+        "autokairos",
+        "AutoKairos",
+        "TraderSystem",
+        "RuntimeControl",
+        "RuntimePlacement",
+        "gateway",
+        "Bootstrap",
+        "weak-to-strong",
+    ]
+    pattern = re.compile("|".join(re.escape(term) for term in banned))
+    hits: list[str] = []
+    for path in sorted(Path(".agents").rglob("*.md")):
+        for index, line in enumerate(read_text(path).splitlines(), start=1):
+            if pattern.search(line):
+                hits.append(f"{path}:{index}: {line.strip()}")
+    if hits:
+        fail(
+            ".agents harness must stay generic; project-specific terms found:\n"
+            + "\n".join(hits[:200])
+        )
+    print("Generic .agents harness check OK")
 
 
 check_whitespace()
@@ -253,5 +281,6 @@ check_active_spec_count()
 check_required_terms()
 check_skill_frontmatter()
 check_skill_routing_rules()
+check_generic_agents_harness()
 print("Docs design baseline checks passed")
 PY

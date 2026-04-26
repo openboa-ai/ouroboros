@@ -1,6 +1,6 @@
 ---
 name: auto-eval-rubrics
-description: Use when judging autokairos PM clarity, coding quality, QA outcomes, wiki writeback, CI recovery, promotion readiness, or keep/discard decisions with shared pass/fail language.
+description: Use when judging PM clarity, coding quality, QA outcomes, wiki writeback, CI recovery, promotion readiness, or keep/discard decisions with shared pass/fail language.
 ---
 
 # Auto Eval Rubrics

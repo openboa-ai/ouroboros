@@ -1,6 +1,6 @@
 ---
 name: llm-wiki
-description: Use when autokairos needs source ingestion, source-to-synthesis promotion, wiki health checks, stale naming repair, cross-reference repair, or durable PR/frontier/run/design/CI writeback.
+description: Use when a repository needs source ingestion, source-to-synthesis promotion, wiki health checks, stale naming repair, cross-reference repair, or durable branch/task/PR/run/design/CI writeback.
 ---
 
 # LLM Wiki
@@ -18,7 +18,7 @@ workflow outcomes.
 - New source material must be ingested.
 - Source notes must be promoted into synthesis or active docs.
 - Wiki links, stale terms, or active/historical boundaries need repair.
-- A PR/frontier/run/CI result must survive outside chat history.
+- A branch, task, PR, run, or CI result must survive outside chat history.
 - A skill or harness rule changes.
 - Another worker returns `writeback_needed: yes`.
 
@@ -38,7 +38,7 @@ workflow outcomes.
 - `query`: answer from maintained wiki first, then write back durable results if needed.
 - `lint`: repair stale naming, dead paths, duplicate pages, weak provenance, or active/historical
   confusion.
-- `writeback`: record durable PR/frontier/run/CI/workflow outcomes in `knowledge-log.md`, active
+- `writeback`: record durable branch/task/PR/run/CI/workflow outcomes in `knowledge-log.md`, active
   wiki pages, or future `wiki/prs/` and `wiki/runs/`.
 
 ## Required Output

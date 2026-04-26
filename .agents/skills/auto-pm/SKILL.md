@@ -1,6 +1,6 @@
 ---
 name: auto-pm
-description: Use when an autokairos request, blocked branch, or drifting PR needs one bounded frontier with goal, non-goals, acceptance criteria, validation, owner, and writeback expectations.
+description: Use when a rough request, blocked branch, or drifting work item needs one bounded frontier with goal, non-goals, acceptance criteria, validation, owner, and writeback expectations.
 ---
 
 # Auto PM
@@ -12,7 +12,7 @@ description: Use when an autokairos request, blocked branch, or drifting PR need
 ## Use When
 
 - The request mixes design, code, QA, docs, and operations.
-- Bootstrap/provider/evaluation/live-gateway scope could drift.
+- Implementation, design, infrastructure, or release scope could drift.
 - Acceptance criteria are implicit.
 - The next owner cannot continue without inventing requirements.
 
@@ -37,12 +37,12 @@ description: Use when an autokairos request, blocked branch, or drifting PR need
 
 ## Handoff
 
-If the frontier changes product truth, architecture, delivery sequence, or PR meaning, set
+If the frontier changes product truth, architecture, delivery sequence, or work item meaning, set
 `writeback_needed: yes` and route durable summary to `llm-wiki`.
 
 ## Hard Boundaries
 
 - Do not implement.
-- Do not widen a locked PR silently.
+- Do not widen locked scope silently.
 - Do not leave conflicting scope statements unresolved.
 - Do not promote a plan that lacks validation criteria.

@@ -1,6 +1,6 @@
 ---
 name: auto-project
-description: Use when an autokairos PR or implementation thread needs one active frontier, one next owner, keep/discard discipline, CI/QA/wiki routing, or a clear stop state.
+description: Use when a project branch, PR, task, or implementation thread needs one active frontier, one next owner, keep/discard discipline, CI/QA/wiki routing, or a clear stop state.
 ---
 
 # Auto Project
@@ -9,19 +9,20 @@ description: Use when an autokairos PR or implementation thread needs one active
 
 `auto-project` owns repo-work routing. It is the only project harness scheduler.
 
-It schedules work on autokairos, not inside autokairos. Do not confuse this with
-`TraderSystemRuntime`, `RuntimeControl`, or product runtime behavior.
+It schedules work in the repository. It must not be confused with the product runtime of whatever
+system the repository builds.
 
 ## Use When
 
-- A PR must be opened, resumed, repaired, or moved toward review.
+- A branch, PR, task, or work item must be opened, resumed, repaired, or moved toward review.
 - The next owner is unclear.
 - Scope is drifting across PM, coding, QA, wiki, or CI work.
 - A run needs keep, discard, reroute, final-signoff, or ready-to-land decision.
 
 ## Workflow
 
-1. Recover current repo truth from branch, PR, `knowledge-index.md`, relevant wiki pages, and CI.
+1. Recover current repo truth from branch, task/PR metadata, `knowledge-index.md`, relevant wiki
+   pages, and CI.
 2. Name exactly one active frontier.
 3. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
 4. Require evidence before keeping changes.
@@ -35,7 +36,7 @@ It schedules work on autokairos, not inside autokairos. Do not confuse this with
 - evidence required to keep the work
 - next owner or stop state
 - `writeback_needed`
-- reason this is repo scheduling, not product runtime scheduling
+- reason this is repo-work routing, not product behavior
 
 ## Handoff
 
@@ -46,5 +47,5 @@ It schedules work on autokairos, not inside autokairos. Do not confuse this with
 
 - Do not implement directly unless the user explicitly asks to bypass the harness.
 - Do not allow multiple active writers.
-- Do not move a PR forward without current evidence.
+- Do not move work forward without current evidence.
 - Do not let chat history be the only memory of a completed decision.

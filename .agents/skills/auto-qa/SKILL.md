@@ -1,6 +1,6 @@
 ---
 name: auto-qa
-description: Use when an autokairos PR or frontier needs scenario testing, regression pressure, edge-case review, reader acceptance testing, and a pass, conditional-pass, or veto recommendation.
+description: Use when a project frontier, branch, task, or PR needs scenario testing, regression pressure, edge-case review, reader acceptance testing, and a pass, conditional-pass, or veto recommendation.
 ---
 
 # Auto QA

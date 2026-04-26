@@ -1236,3 +1236,12 @@
   and workflow outcomes that must survive outside chat history.
   Added [wiki/sources/library/agents-md-and-agent-skills.md](wiki/sources/library/agents-md-and-agent-skills.md)
   and registered AGENTS.md / Agent Skills references in the source ledger.
+- 2026-04-26: Refactored `.agents/**` from project-specific instructions into a reusable generic
+  project harness.
+  Root [AGENTS.md](AGENTS.md) remains the project-specific entrypoint for autokairos posture, while
+  [.agents/AGENTS.md](.agents/AGENTS.md), [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md), and
+  repo-local skills now avoid autokairos product/runtime vocabulary.
+  Replaced the project-specific `brain-autokairos` skill with generic `project-context`, whose job
+  is to read the current repo's own README, knowledge index, and wiki before giving context.
+  Added a docs check that fails if project-specific terms reappear under `.agents/**`, preserving
+  `.agents` as a reusable harness while keeping project truth in root docs and `wiki/**`.

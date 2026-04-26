@@ -1,6 +1,6 @@
 ---
 name: auto-promotion-protocol
-description: Use when deciding whether an autokairos frontier or PR can move to final signoff, ready-to-land, reroute, looping, or discard based on current evidence.
+description: Use when deciding whether a project frontier, branch, task, or PR can move to final signoff, ready-to-land, reroute, looping, or discard based on current evidence.
 ---
 
 # Auto Promotion Protocol

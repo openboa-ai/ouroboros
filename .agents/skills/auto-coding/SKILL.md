@@ -1,6 +1,6 @@
 ---
 name: auto-coding
-description: Use when a locked autokairos frontier needs one bounded code or docs change, verification, and a keep/discard decision without widening interfaces, architecture truth, or PR scope.
+description: Use when a locked project frontier needs one bounded code, docs, config, or CI change, verification, and a keep/discard decision without widening interfaces or scope.
 ---
 
 # Auto Coding
@@ -35,12 +35,12 @@ description: Use when a locked autokairos frontier needs one bounded code or doc
 
 ## Handoff
 
-If the change creates durable product, architecture, source, PR, CI, or workflow truth, set
+If the change creates durable product, design, source, branch, CI, or workflow truth, set
 `writeback_needed: yes` and route to `llm-wiki`.
 
 ## Hard Boundaries
 
 - Do not run multiple speculative fixes at once.
 - Do not keep unverified changes.
-- Do not silently widen public interfaces, docs truth, or runtime authority.
+- Do not silently widen public interfaces, docs truth, or system authority.
 - Do not alter unrelated dirty worktree state.

@@ -1,6 +1,6 @@
 ---
 name: ci-recovery
-description: Use when GitHub Actions or local checks fail and autokairos needs failing check evidence, smallest root cause, bounded fix owner, and writeback status.
+description: Use when GitHub Actions or local checks fail and a repository needs failing check evidence, smallest root cause, bounded fix owner, and writeback status.
 ---
 
 # CI Recovery

@@ -1,6 +1,6 @@
 ---
 name: auto-garbage-collection
-description: Use when stale PR notes, duplicate syntheses, outdated docs, historical drift, dead branches, or obsolete skill instructions make autokairos hard to resume.
+description: Use when stale run notes, duplicate syntheses, outdated docs, historical drift, dead branches, or obsolete skill instructions make a repository hard to resume.
 ---
 
 # Auto Garbage Collection
@@ -14,7 +14,7 @@ description: Use when stale PR notes, duplicate syntheses, outdated docs, histor
 - Stale docs or skill rules contradict active truth.
 - Duplicate summaries compete as canon.
 - Historical material leaks into active read paths.
-- Dead PR/run notes obscure current work.
+- Dead branch, PR, or run notes obscure current work.
 
 ## Workflow
 
@@ -41,4 +41,4 @@ purely read-only and found nothing.
 
 - Prefer deleting dead scaffolding over preserving clutter.
 - Keep historical pages only when they explain migration or context.
-- Do not delete active product or architecture truth without a replacement path.
+- Do not delete active product, design, or architecture truth without a replacement path.

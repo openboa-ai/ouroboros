@@ -1,6 +1,6 @@
 ---
 name: harness-skill-audit
-description: Use when deciding whether autokairos repo-local skills should exist, be removed, be merged, rewritten, renamed, or re-routed to fit the current project harness.
+description: Use when deciding whether repo-local skills should exist, be removed, be merged, rewritten, renamed, or re-routed to fit the current project harness.
 ---
 
 # Harness Skill Audit

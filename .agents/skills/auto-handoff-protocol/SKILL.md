@@ -1,6 +1,6 @@
 ---
 name: auto-handoff-protocol
-description: Use when autokairos work moves between PM, coding, QA, wiki, CI recovery, skill audit, or final review and needs explicit ownership, evidence, next owner, and writeback status.
+description: Use when repository work moves between PM, coding, QA, wiki, CI recovery, skill audit, or final review and needs explicit ownership, evidence, next owner, and writeback status.
 ---
 
 # Auto Handoff Protocol

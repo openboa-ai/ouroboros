@@ -1,6 +1,6 @@
 ---
 name: auto-loop-protocol
-description: Use when an autokairos worker must baseline, try one bounded change, measure it, and decide whether to keep, discard, reroute, or stop.
+description: Use when a worker must baseline, try one bounded change, measure it, and decide whether to keep, discard, reroute, or stop.
 ---
 
 # Auto Loop Protocol

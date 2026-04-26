@@ -6,7 +6,7 @@ project workflow to repo-local agent docs.
 
 ## Start Here
 
-1. Read [.agents/AGENTS.md](.agents/AGENTS.md) for the autokairos project operating manual.
+1. Read [.agents/AGENTS.md](.agents/AGENTS.md) for the generic project operating manual.
 2. Read [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) before using repo-local skills.
 3. Use `llm-wiki` whenever a decision, source insight, PR result, CI result, or frontier state must
    survive outside chat history.
@@ -18,6 +18,8 @@ project workflow to repo-local agent docs.
   current frontier explicitly allows it.
 - autokairos is a trading-system control plane/devops layer for agent-built trader-system
   artifacts. It is not the trader-system brain and not a generic agent platform.
+- `.agents/**` is intentionally generic and reusable across projects. Project-specific autokairos
+  truth lives in this file, `README.md`, `knowledge-index.md`, and `wiki/**`.
 
 ## Validation Commands
 

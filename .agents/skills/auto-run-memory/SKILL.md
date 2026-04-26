@@ -1,6 +1,6 @@
 ---
 name: auto-run-memory
-description: Use when a worker needs to reconstruct current autokairos PR state, assumptions, failed attempts, winning evidence, owner, and writeback gaps from repo state instead of chat history.
+description: Use when a worker needs to reconstruct current project state, assumptions, failed attempts, winning evidence, owner, and writeback gaps from repo state instead of chat history.
 ---
 
 # Auto Run Memory
@@ -12,12 +12,12 @@ description: Use when a worker needs to reconstruct current autokairos PR state,
 ## Use When
 
 - A thread resumes after context loss.
-- The branch or PR has multiple commits and current owner is unclear.
+- The branch, PR, task, or run has multiple changes and current owner is unclear.
 - A worker needs latest accepted assumptions and failed attempts.
 
 ## Workflow
 
-1. Read current branch and PR metadata.
+1. Read current branch and available task/PR metadata.
 2. Read repo-level `AGENTS.md`.
 3. Read `.agents/AGENTS.md`.
 4. Read `.agents/skills/AGENTS.md`.
@@ -43,5 +43,5 @@ depends on chat history.
 ## Hard Boundaries
 
 - Do not treat chat history as primary memory.
-- Do not invent missing PR state; report the gap.
+- Do not invent missing project state; report the gap.
 - Do not read the whole repo when targeted recovery is enough.
