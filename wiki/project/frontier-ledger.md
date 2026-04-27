@@ -18,20 +18,20 @@ where should durable state be written back?
 | Field | Value |
 | --- | --- |
 | `current_mlp` | `MLP-01` |
-| `active_frontier` | `mlp-01-bootstrap-substrate` |
-| `branch` | `feat/bootstrap-substrate` |
+| `active_frontier` | `mlp-01-candidate-materialization` |
+| `branch` | TBD |
 | `pr` | not opened |
 | `status` | `implementation-ready` |
-| `next_owner` | `auto-pm`, then `auto-coding` |
+| `next_owner` | `auto-pm` |
 | `writeback_target` | `wiki/project/frontier-ledger.md`, `knowledge-log.md` when chronology matters |
 
 Current interpretation:
 
 - the docs/process baseline PR is a prerequisite foundation track, not an MLP-01 product slice
-- the next MLP-01 frontier is Bootstrap substrate
-- the next step is to turn the Bootstrap docs into one bounded implementation frontier, then build it
-- if the foundation PR is not merged yet, Bootstrap work may proceed as a stacked branch but must
-  rebase or fast-forward after the foundation PR lands
+- Bootstrap substrate landed through PR #4 and is now the completed substrate frontier
+- the next MLP-01 frontier is trader-system candidate materialization
+- the next step is for `auto-pm` to lock the candidate materialization frontier from the existing
+  product PRD and architecture design note, then hand off to `auto-coding`
 
 ## Foundation Track
 
@@ -46,8 +46,8 @@ must stay stacked.
 
 | Order | Frontier | Branch | PR | Status | Prerequisite | Next owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Bootstrap substrate | `feat/bootstrap-substrate` | not opened | `implementation-ready` | docs/process baseline available | `auto-pm` -> `auto-coding` |
-| 1 | Trader-system candidate materialization | TBD | not opened | `queued` | Bootstrap merged | `auto-pm` |
+| 0 | Bootstrap substrate | `feat/bootstrap-substrate` | PR #4 | `merged` | docs/process baseline available | `llm-wiki` if retrospective writeback is needed |
+| 1 | Trader-system candidate materialization | TBD | not opened | `implementation-ready` | Bootstrap merged | `auto-pm` |
 | 2 | External evaluation and evidence sealing | TBD | not opened | `queued` | candidate materialization merged | `auto-pm` |
 | 3 | Bounded live trader-system runtime | TBD | not opened | `queued` | externally evaluated candidate path merged | `auto-pm` |
 | 4 | Runtime control, intervention, and audit | TBD | not opened | `queued` | bounded live runtime merged | `auto-pm` |
@@ -99,8 +99,40 @@ Risks:
 Next owner:
 
 ```text
-auto-pm locks the concrete Bootstrap implementation frontier;
-auto-coding implements one bounded PR after that frontier is locked.
+merged; no further owner unless retrospective writeback is needed.
+```
+
+### `mlp-01-candidate-materialization`
+
+Goal:
+
+```text
+materialize one provider-generated trader-system candidate into durable candidate/spec/program/
+capability records without treating provider output as product truth
+```
+
+Owned boundary:
+
+- to be locked by `auto-pm` from
+  [../product/mlp-01/prds/01-trader-system-candidate-becomes-real.md](../product/mlp-01/prds/01-trader-system-candidate-becomes-real.md)
+- implementation must preserve the Bootstrap substrate boundary and provider-readiness contract
+
+Acceptance:
+
+- one provider run can produce schema-valid candidate materialization input
+- invalid, missing, unsafe, or failed provider output creates trace/debug artifacts but no candidate
+- candidate identity, spec/program/package refs, and provider/run attribution are inspectable
+- provider output remains `AgentEvent -> Trace`, not evidence, promotion, or live authority
+
+Validation:
+
+- to be defined by the candidate materialization implementation frontier before coding starts
+- must include existing repo checks plus candidate materialization behavior checks
+
+Next owner:
+
+```text
+auto-pm locks this frontier, then auto-coding implements one bounded PR.
 ```
 
 ## Status Vocabulary

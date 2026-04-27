@@ -50,3 +50,6 @@ vite.svg
 # Tooling
 .cursorignore
 .cursorindexingignore
+
+# autokairos local runtime output
+.autokairos/

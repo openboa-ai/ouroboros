@@ -360,7 +360,8 @@ similar responsibilities are sometimes spread across `CLI`, `plugin`, `Gateway`,
   [openai-next-evolution-of-the-agents-sdk.md](../library/openai-next-evolution-of-the-agents-sdk.md),
   [openai-harness-engineering.md](../library/openai-harness-engineering.md)
 - Repo harness and skill design:
-  [agents-md-and-agent-skills.md](../library/agents-md-and-agent-skills.md)
+  [agents-md-and-agent-skills.md](../library/agents-md-and-agent-skills.md),
+  [superpowers-agentic-skill-methodology.md](../library/superpowers-agentic-skill-methodology.md)
 - Workflow-vs-agent constraint:
   [anthropic-building-effective-agents.md](../library/anthropic-building-effective-agents.md)
 - Concrete runtime products:
@@ -390,5 +391,8 @@ always-on repo instructions and on-demand task capabilities. For autokairos this
 - `.agents/skills/AGENTS.md` should route recurring work to bounded skills;
 - skill descriptions should use clear "Use when..." trigger language;
 - durable project outcomes must route through `llm-wiki` rather than living only in chat.
+- external workflow-skill systems such as Superpowers can strengthen design, planning, execution,
+  review, verification, and branch-finishing discipline, but their outputs must be translated back
+  into maintained repo truth.
 
 This is a repo-work harness rule, not product runtime architecture.

@@ -1,0 +1,20 @@
+import type { CandidateInspectReadModel, CandidateSummaryReadModel } from "@autokairos/domain";
+
+const runtimeBaseUrl = import.meta.env.VITE_AUTOKAIROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+
+export async function fetchCandidateSummaries(): Promise<CandidateSummaryReadModel[]> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates`);
+  if (!response.ok) {
+    throw new Error(`Failed to load candidates: ${response.status}`);
+  }
+  const body = (await response.json()) as { candidates: CandidateSummaryReadModel[] };
+  return body.candidates;
+}
+
+export async function fetchCandidate(candidateId: string): Promise<CandidateInspectReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to load candidate ${candidateId}: ${response.status}`);
+  }
+  return (await response.json()) as CandidateInspectReadModel;
+}

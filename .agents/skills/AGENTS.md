@@ -56,6 +56,32 @@ already bounded and current evidence is known.
 
 One active owner is the default. Do not route every task through every skill.
 
+## External Workflow Skills
+
+If the environment provides external workflow skills, `auto-project` may use them as process
+accelerators while keeping repo truth in this repository.
+
+This is the registry-level Skill-First Gate: check whether a relevant repo-local or external
+workflow skill should govern the next step before routing, implementing, or claiming completion.
+
+Superpowers-compatible workflow skills map to this harness as follows:
+
+| External workflow skill | Repo-local owner |
+| --- | --- |
+| `superpowers:using-superpowers` | skill-selection gate before routing |
+| `superpowers:brainstorming` | `auto-pm` for intent/design shaping |
+| `superpowers:writing-plans` | `auto-pm` for implementation-plan quality |
+| `superpowers:using-git-worktrees` | `auto-run-memory` / branch setup evidence |
+| `superpowers:executing-plans` or `superpowers:subagent-driven-development` | `auto-coding` execution discipline |
+| `superpowers:systematic-debugging` | `ci-recovery` or bug triage |
+| `superpowers:requesting-code-review` | `auto-qa` independent review pressure |
+| `superpowers:verification-before-completion` | `auto-promotion-protocol` evidence gate |
+| `superpowers:finishing-a-development-branch` | PR/merge/keep/discard completion flow |
+
+Use external skills only when available in the current agent environment. Do not vendor or copy an
+external skill into this repo unless the user explicitly asks for installation. Record durable
+lessons through `llm-wiki`, not through external skill state.
+
 ## PR-Unit Conductor Mode
 
 When a repo has a project frontier ledger, `auto-project` uses it as the first operational state
@@ -133,7 +159,7 @@ chat history. If it is not enough, route to `auto-run-memory` or `llm-wiki` befo
 
 For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` with
 `current_mlp`, `active_frontier`, `branch`, `pr`, `status`, `context_read`, `route`,
-`evidence_required`, `next_owner`, and `writeback_needed`.
+`skills_considered`, `evidence_required`, `next_owner`, and `writeback_needed`.
 
 ## Boundary Rules
 

@@ -1,0 +1,32 @@
+{
+  "name": "autokairos",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:runtime": "npm run dev -w @autokairos/runtime",
+    "dev:operator-web": "npm run dev -w @autokairos/operator-web",
+    "test": "vitest run",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/node": "^24.10.1",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "vitest": "^4.0.14"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "fastify": "^5.6.2",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tsx": "^4.21.0"
+  }
+}

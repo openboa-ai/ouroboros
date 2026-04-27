@@ -1,0 +1,14 @@
+import { buildServer } from "./server";
+
+const port = Number(process.env.PORT ?? 4173);
+const host = process.env.HOST ?? "127.0.0.1";
+
+const server = await buildServer();
+
+try {
+  await server.listen({ host, port });
+  server.log.info(`autokairos runtime listening on http://${host}:${port}`);
+} catch (error) {
+  server.log.error(error);
+  process.exit(1);
+}

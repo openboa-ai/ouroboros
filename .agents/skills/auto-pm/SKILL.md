@@ -42,6 +42,8 @@ writeback_target:
 - Acceptance criteria are observable from tests, checks, docs, review, or CI.
 - Validation can run locally or be verified by a named external check.
 - The next owner can act without asking what the frontier means.
+- If an external planning or brainstorming skill was used, the resulting plan is translated into
+  repo-local files, validation commands, and writeback targets.
 
 ## Reroute Criteria
 

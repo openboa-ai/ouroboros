@@ -1,0 +1,340 @@
+export type FixtureMode = "fixture_convenience_mode";
+
+export type NonAuthorityStatus =
+  | "not_executed"
+  | "not_probed"
+  | "not_scanned"
+  | "not_mounted"
+  | "not_granted"
+  | "not_counted"
+  | "not_promoted"
+  | "not_live";
+
+export interface FixtureNotice {
+  mode: FixtureMode;
+  label: string;
+  statements: string[];
+}
+
+export interface BaseRecord {
+  record_kind: string;
+  version: 1;
+}
+
+export interface Ref {
+  record_kind: string;
+  id: string;
+}
+
+export interface TraderSystemCandidateRecord extends BaseRecord {
+  record_kind: "trader_system_candidate";
+  candidate_id: string;
+  display_name: string;
+  status: "fixture_only";
+  active_version_id: string;
+  provenance_refs: Ref[];
+}
+
+export interface CandidateVersionRecord extends BaseRecord {
+  record_kind: "candidate_version";
+  candidate_version_id: string;
+  candidate_id: string;
+  version_label: string;
+  spec_ref: Ref;
+  program_ref: Ref;
+  capability_package_refs: Ref[];
+  runtime_ref: Ref;
+  trace_placeholder_ref: Ref;
+  evaluation_run_ref: Ref;
+}
+
+export interface TraderSystemSpecRecord extends BaseRecord {
+  record_kind: "trader_system_spec";
+  trader_system_spec_id: string;
+  summary: string;
+  market: string;
+  instrument: string;
+  supported_stage_binding_profiles: Array<"backtest" | "paper" | "live">;
+}
+
+export interface TraderSystemProgramRecord extends BaseRecord {
+  record_kind: "trader_system_program";
+  trader_system_program_id: string;
+  summary: string;
+  manifest_ref: Ref;
+  validation_record_ref: Ref;
+}
+
+export interface ProgramManifestRecord extends BaseRecord {
+  record_kind: "program_manifest";
+  program_manifest_id: string;
+  declared_runtime: string;
+  declared_outputs: string[];
+}
+
+export interface ProgramValidationRecord extends BaseRecord {
+  record_kind: "program_validation_record";
+  program_validation_record_id: string;
+  status: "fixture_placeholder";
+  authority_status: "not_runnable";
+}
+
+export interface CapabilityPackageRecord extends BaseRecord {
+  record_kind: "capability_package";
+  capability_package_id: string;
+  summary: string;
+  manifest_ref: Ref;
+  admission_record_ref: Ref;
+  grant_ref: Ref;
+  mount_record_ref: Ref;
+}
+
+export interface CapabilityManifestRecord extends BaseRecord {
+  record_kind: "capability_manifest";
+  capability_manifest_id: string;
+  allowed_stages: Array<"backtest" | "paper">;
+  declared_permissions: string[];
+  forbidden_contents: string[];
+}
+
+export interface CapabilityPackageAdmissionRecord extends BaseRecord {
+  record_kind: "capability_package_admission_record";
+  capability_package_admission_record_id: string;
+  status: "fixture_placeholder";
+  authority_status: "not_scanned";
+}
+
+export interface CapabilityGrantRecord extends BaseRecord {
+  record_kind: "capability_grant";
+  capability_grant_id: string;
+  status: "fixture_placeholder";
+  authority_status: "not_granted";
+}
+
+export interface CapabilityMountRecord extends BaseRecord {
+  record_kind: "capability_mount_record";
+  capability_mount_record_id: string;
+  status: "fixture_placeholder";
+  authority_status: "not_mounted";
+}
+
+export interface AgentSpecRecord extends BaseRecord {
+  record_kind: "agent_spec";
+  agent_spec_id: string;
+  purpose: "candidate_generation_placeholder";
+  provider_kind: "fixture_only";
+}
+
+export interface AgentSessionRecord extends BaseRecord {
+  record_kind: "agent_session";
+  agent_session_id: string;
+  agent_spec_ref: Ref;
+  authority_status: "not_executed";
+}
+
+export interface AgentRunRecord extends BaseRecord {
+  record_kind: "agent_run";
+  agent_run_id: string;
+  agent_session_ref: Ref;
+  purpose: "candidate_generation_placeholder";
+  authority_status: "not_executed";
+}
+
+export interface AgentEventRecord extends BaseRecord {
+  record_kind: "agent_event";
+  agent_event_id: string;
+  agent_run_ref: Ref;
+  status: "fixture_placeholder";
+}
+
+export interface ProviderReadinessRecord extends BaseRecord {
+  record_kind: "provider_readiness_record";
+  provider_readiness_record_id: string;
+  provider_kind: "fixture_only";
+  authority_status: "not_ready";
+}
+
+export interface ProviderProbeAttemptRecord extends BaseRecord {
+  record_kind: "provider_probe_attempt";
+  provider_probe_attempt_id: string;
+  provider_readiness_record_ref: Ref;
+  authority_status: "not_probed";
+}
+
+export interface TraderSystemRuntimeRecord extends BaseRecord {
+  record_kind: "trader_system_runtime";
+  trader_system_runtime_id: string;
+  stage_binding_profile: "paper";
+  placement_ref: Ref;
+  hands_environment_ref: Ref;
+  memory_surface_ref: Ref;
+  authority_status: "not_live";
+}
+
+export interface RuntimePlacementRecord extends BaseRecord {
+  record_kind: "runtime_placement";
+  runtime_placement_id: string;
+  placement_kind: "fixture_local_placeholder";
+  authority_status: "not_launched";
+}
+
+export interface HandsEnvironmentRecord extends BaseRecord {
+  record_kind: "hands_environment";
+  hands_environment_id: string;
+  environment_kind: "fixture_no_tools";
+  authority_status: "not_mounted";
+}
+
+export interface RuntimeMemorySurfaceRecord extends BaseRecord {
+  record_kind: "runtime_memory_surface";
+  runtime_memory_surface_id: string;
+  trust_class: "fixture_context";
+  access_mode: "read_only";
+  surface_version: string;
+  visibility: "operator_visible";
+  quarantine_status: "not_quarantined";
+  authority_status: "not_evidence";
+}
+
+export interface TracePlaceholderRecord extends BaseRecord {
+  record_kind: "trace_placeholder";
+  trace_id: string;
+  authority_status: "not_counted";
+}
+
+export interface EvaluationRunRecord extends BaseRecord {
+  record_kind: "evaluation_run_record";
+  evaluation_run_record_id: string;
+  status: "fixture_placeholder";
+  authority_status: "not_executed";
+}
+
+export interface EvaluationComparisonSetRecord extends BaseRecord {
+  record_kind: "evaluation_comparison_set";
+  evaluation_comparison_set_id: string;
+  evaluation_run_record_ref: Ref;
+  authority_status: "not_counted";
+}
+
+export interface EvidenceSealingDecisionRecord extends BaseRecord {
+  record_kind: "evidence_sealing_decision";
+  evidence_sealing_decision_id: string;
+  evaluation_comparison_set_ref: Ref;
+  authority_status: "not_counted";
+}
+
+export type FixtureRecord =
+  | TraderSystemCandidateRecord
+  | CandidateVersionRecord
+  | TraderSystemSpecRecord
+  | TraderSystemProgramRecord
+  | ProgramManifestRecord
+  | ProgramValidationRecord
+  | CapabilityPackageRecord
+  | CapabilityManifestRecord
+  | CapabilityPackageAdmissionRecord
+  | CapabilityGrantRecord
+  | CapabilityMountRecord
+  | AgentSpecRecord
+  | AgentSessionRecord
+  | AgentRunRecord
+  | AgentEventRecord
+  | ProviderReadinessRecord
+  | ProviderProbeAttemptRecord
+  | TraderSystemRuntimeRecord
+  | RuntimePlacementRecord
+  | HandsEnvironmentRecord
+  | RuntimeMemorySurfaceRecord
+  | TracePlaceholderRecord
+  | EvaluationRunRecord
+  | EvaluationComparisonSetRecord
+  | EvidenceSealingDecisionRecord;
+
+export interface CandidateSummaryReadModel {
+  candidate_id: string;
+  display_name: string;
+  status: "fixture_only";
+  active_version_id: string;
+  fixture_notice: FixtureNotice;
+}
+
+export interface PlaceholderSummary {
+  ref: Ref;
+  label: string;
+  status: string;
+  authority_status: string;
+}
+
+export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
+  candidate_version: {
+    candidate_version_id: string;
+    version_label: string;
+    provenance_refs: Ref[];
+  };
+  spec: {
+    ref: Ref;
+    summary: string;
+    market: string;
+    instrument: string;
+    supported_stage_binding_profiles: string[];
+  };
+  program: {
+    ref: Ref;
+    summary: string;
+    manifest: {
+      ref: Ref;
+      declared_runtime: string;
+      declared_outputs: string[];
+    };
+    validation: PlaceholderSummary;
+  };
+  capability_package: {
+    ref: Ref;
+    summary: string;
+    manifest: {
+      ref: Ref;
+      allowed_stages: string[];
+      declared_permissions: string[];
+      forbidden_contents: string[];
+    };
+    admission: PlaceholderSummary;
+    grant: PlaceholderSummary;
+    mount: PlaceholderSummary;
+  };
+  agent_provider: {
+    agent_spec: PlaceholderSummary;
+    agent_session: PlaceholderSummary;
+    agent_run: PlaceholderSummary;
+    agent_event: PlaceholderSummary;
+    provider_readiness: PlaceholderSummary;
+    provider_probe_attempt: PlaceholderSummary;
+  };
+  runtime: {
+    ref: Ref;
+    stage_binding_profile: string;
+    authority_status: string;
+    placement: PlaceholderSummary;
+    hands_environment: PlaceholderSummary;
+    memory_surface: {
+      ref: Ref;
+      trust_class: string;
+      access_mode: string;
+      surface_version: string;
+      visibility: string;
+      quarantine_status: string;
+      authority_status: string;
+    };
+  };
+  trace: PlaceholderSummary;
+  evaluation: {
+    run: PlaceholderSummary;
+    comparison_set: PlaceholderSummary;
+    sealing_decision: PlaceholderSummary;
+  };
+}
+
+export interface CandidateIndexProjection {
+  record_kind: "candidate_index_projection";
+  version: 1;
+  candidates: CandidateSummaryReadModel[];
+}

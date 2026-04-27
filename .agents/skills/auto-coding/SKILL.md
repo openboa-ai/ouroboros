@@ -27,6 +27,10 @@ description: Use when a locked project frontier needs exactly one bounded code, 
 - Verify: run targeted commands and capture failures exactly.
 - Decide: keep only when evidence supports the goal; otherwise discard or reroute.
 
+If an external execution-plan skill is available and an approved plan exists, follow that plan's
+steps instead of inventing a new implementation path. Still report repo-local evidence, changed
+paths, and `writeback_needed`.
+
 ## Keep / Discard / Reroute
 
 - `keep`: acceptance is met, checks ran or a clear reason explains why not, and residual risk is

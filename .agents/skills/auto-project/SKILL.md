@@ -1,6 +1,6 @@
 ---
 name: auto-project
-description: Use when project work needs routing: a branch, PR, task, implementation thread, or project frontier ledger has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
+description: Use when project work needs routing: a branch, PR, task, implementation thread, external workflow skill handoff, or project frontier ledger has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
 ---
 
 # Auto Project
@@ -17,11 +17,25 @@ system the repository builds.
 1. Recover current repo truth from branch, task/PR metadata, `knowledge-index.md`, relevant wiki
    pages, and CI.
 2. If a project frontier ledger exists, read it before selecting work.
-3. Name exactly one active frontier.
-4. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
-5. Require evidence before keeping changes.
-6. Require every owner to return `writeback_needed: yes/no`.
-7. Route to `llm-wiki` when durable decisions need writeback.
+3. Check whether external workflow skills are available and relevant.
+4. Name exactly one active frontier.
+5. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
+6. Require evidence before keeping changes.
+7. Require every owner to return `writeback_needed: yes/no`.
+8. Route to `llm-wiki` when durable decisions need writeback.
+
+## Skill-First Gate
+
+Before routing or acting, check whether a repo-local or external skill should govern the next step.
+
+- If user intent, design, or acceptance is unclear, shape before implementation.
+- If a written plan exists, execute the plan instead of improvising.
+- If a check fails, debug root cause before patching.
+- If work is claimed complete, verify before claiming completion.
+- If work is ready to integrate, use a finish/PR/merge decision flow.
+
+This gate is process discipline, not product behavior. It does not override explicit user
+instructions or maintained repo truth.
 
 ## Ledger-First PR-Unit Mode
 
@@ -39,6 +53,26 @@ Use this mode when the repo tracks PR-sized frontiers.
    - `merged`: `llm-wiki`, then select next frontier
    - `blocked`: blocker owner or user action
 5. Persist frontier state changes through `llm-wiki`.
+
+## Superpowers-Compatible Mapping
+
+When Superpowers skills are installed in the current environment, use them as external process
+skills behind the same repo-local ownership model:
+
+| Need | Prefer when available | Repo-local fallback |
+| --- | --- | --- |
+| skill selection discipline | `superpowers:using-superpowers` | this skill's Skill-First Gate |
+| clarify intent or design | `superpowers:brainstorming` | `auto-pm` |
+| write an implementation plan | `superpowers:writing-plans` | `auto-pm` |
+| isolated branch/worktree setup | `superpowers:using-git-worktrees` | `auto-run-memory` plus git hygiene |
+| execute an approved plan | `superpowers:executing-plans` or `superpowers:subagent-driven-development` | `auto-coding` |
+| debug a failing check or bug | `superpowers:systematic-debugging` | `ci-recovery` |
+| request independent review | `superpowers:requesting-code-review` | `auto-qa` |
+| verify before completion | `superpowers:verification-before-completion` | `auto-promotion-protocol` |
+| finish a branch | `superpowers:finishing-a-development-branch` | `auto-promotion-protocol` |
+
+External workflow skills may strengthen the route, but they do not own project truth. The project
+frontier ledger, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
 
 ## Routing Decision Table
 
@@ -73,6 +107,7 @@ Use this mode when the repo tracks PR-sized frontiers.
 - branch and PR, if known
 - status
 - route
+- skills considered
 - evidence
 - evidence required to keep the work
 - current owner
@@ -94,6 +129,7 @@ pr:
 status:
 context_read:
 route:
+skills_considered:
 evidence_required:
 risks:
 next_owner:

@@ -1272,3 +1272,25 @@
   Updated root [AGENTS.md](AGENTS.md), [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md), and
   related skills so PR opened/checks green/ready-to-land/merged/blocked/discarded state is written
   back through `llm-wiki` instead of inferred from chat history.
+- 2026-04-26: Added [wiki/project/first-development-kickoff.md](wiki/project/first-development-kickoff.md)
+  as a practical first-implementation sequence for the active
+  `mlp-01-bootstrap-substrate` frontier.
+  It translates the bootstrap goal into a bounded order:
+  lock scope (`auto-pm`) -> build domain/local fixture truth -> expose read-only runtime inspect APIs
+  -> add operator inspect UI -> run validation and stop at the bootstrap boundary.
+- 2026-04-27: Opened Bootstrap substrate draft PR #4 on
+  `feat/bootstrap-substrate`.
+  The PR adds the first executable fixture-backed candidate inspect substrate with domain contracts,
+  local file-store projections, read-only runtime APIs, and an inspect-only operator UI.
+- 2026-04-27: Integrated Superpowers-style workflow discipline into the generic project harness.
+  Added [wiki/sources/library/superpowers-agentic-skill-methodology.md](wiki/sources/library/superpowers-agentic-skill-methodology.md)
+  and registered the upstream [obra/superpowers](https://github.com/obra/superpowers) reference in
+  [wiki/sources/reference-ledger.md](wiki/sources/reference-ledger.md).
+  Updated [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) and
+  [.agents/skills/auto-project/SKILL.md](.agents/skills/auto-project/SKILL.md) so `auto-project`
+  checks for external workflow skills, maps Superpowers skills onto repo-local owners, and keeps
+  project truth in the frontier ledger, maintained wiki, checks, and `llm-wiki` writeback.
+- 2026-04-27: Prepared the project frontier ledger for the PR #4 Bootstrap substrate merge.
+  Updated [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) so the merged baseline
+  marks Bootstrap as complete and selects `mlp-01-candidate-materialization` as the next
+  implementation-ready MLP-01 frontier for `auto-pm`.

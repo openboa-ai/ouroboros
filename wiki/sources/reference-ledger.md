@@ -75,6 +75,7 @@ Status values:
 | 51 | https://www.anthropic.com/features/project-deal | new | [051-anthropic-project-deal.md](library/url-notes/051-anthropic-project-deal.md) | [evaluation-governance-and-promotion.md](synthesis/evaluation-governance-and-promotion.md) |
 | 52 | https://agents.md/ | new | [agents-md-and-agent-skills.md](library/agents-md-and-agent-skills.md) | [agent-runtime-and-harness-principles.md](synthesis/agent-runtime-and-harness-principles.md) |
 | 53 | https://agentskills.io/home | new | [agents-md-and-agent-skills.md](library/agents-md-and-agent-skills.md) | [agent-runtime-and-harness-principles.md](synthesis/agent-runtime-and-harness-principles.md) |
+| 54 | https://github.com/obra/superpowers | new | [superpowers-agentic-skill-methodology.md](library/superpowers-agentic-skill-methodology.md) | [agent-runtime-and-harness-principles.md](synthesis/agent-runtime-and-harness-principles.md) |
 
 ## Blocked / Fallback Notes
 

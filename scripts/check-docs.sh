@@ -322,6 +322,8 @@ def check_skill_routing_rules() -> None:
         "writeback_needed",
         "project-context",
         ".agents/skills/AGENTS.md",
+        "superpowers:using-superpowers",
+        "Skill-First Gate",
     ]
     missing = [term for term in required if term not in corpus]
     if missing:

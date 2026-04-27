@@ -10,6 +10,9 @@ project workflow to repo-local agent docs.
 2. Read [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) before using repo-local skills.
 3. Use `llm-wiki` whenever a decision, source insight, PR result, CI result, or frontier state must
    survive outside chat history.
+4. If external workflow skills such as Superpowers are available, let `auto-project` use them for
+   design, planning, execution, review, verification, and branch-finishing discipline while keeping
+   repo truth in `wiki/**`.
 
 ## Auto Project Rule
 

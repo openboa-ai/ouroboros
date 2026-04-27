@@ -34,6 +34,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - CI status: green, red, pending, unavailable, or not applicable
 - writeback status: complete, not needed, or missing
 - frontier ledger status: current, not needed, or stale
+- external workflow status: relevant skill used, not available, or not needed
 - risk status: material risks and whether they block landing
 
 ## Required Output
@@ -50,6 +51,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - latest CI status
 - wiki/writeback status
 - frontier ledger status, if applicable
+- external workflow status, if applicable
 - open risks
 - next owner
 - `writeback_needed`
