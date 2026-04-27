@@ -1294,3 +1294,12 @@
   Updated [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) so the merged baseline
   marks Bootstrap as complete and selects `mlp-01-candidate-materialization` as the next
   implementation-ready MLP-01 frontier for `auto-pm`.
+- 2026-04-27: Started the MLP-01 candidate materialization frontier on
+  `feat/mlp-01-candidate-materialization`.
+  Added
+  [wiki/project/frontiers/mlp-01-candidate-materialization.md](wiki/project/frontiers/mlp-01-candidate-materialization.md)
+  as the PR-sized implementation plan for turning provider-shaped candidate generation output into
+  durable candidate/spec/program/capability records while preserving trace/failure context and
+  preventing provider output from becoming evidence, promotion, or live authority.
+  Updated [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) so the frontier is now
+  `in-progress` and routed to `auto-coding`.

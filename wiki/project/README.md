@@ -9,9 +9,11 @@ using chat history as memory.
 ## Read Order
 
 1. [frontier-ledger.md](frontier-ledger.md)
-2. [../product/mlp-01/07-implementation-plan.md](../product/mlp-01/07-implementation-plan.md)
-3. [../product/mlp-01/08-greenfield-bootstrap-plan.md](../product/mlp-01/08-greenfield-bootstrap-plan.md)
-4. [../architecture/05-bootstrap-tech-spec.md](../architecture/05-bootstrap-tech-spec.md)
+2. [frontiers/mlp-01-candidate-materialization.md](frontiers/mlp-01-candidate-materialization.md)
+   when the active frontier is candidate materialization
+3. [../product/mlp-01/07-implementation-plan.md](../product/mlp-01/07-implementation-plan.md)
+4. [../product/mlp-01/08-greenfield-bootstrap-plan.md](../product/mlp-01/08-greenfield-bootstrap-plan.md)
+5. [../architecture/05-bootstrap-tech-spec.md](../architecture/05-bootstrap-tech-spec.md)
 
 ## Rules
 
