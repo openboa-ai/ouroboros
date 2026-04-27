@@ -21,8 +21,8 @@ where should durable state be written back?
 | `active_frontier` | `mlp-01-candidate-materialization` |
 | `branch` | `feat/mlp-01-candidate-materialization` |
 | `pr` | PR #5 |
-| `status` | `pr-open` |
-| `next_owner` | `auto-promotion-protocol` if checks pass, `ci-recovery` if checks fail |
+| `status` | `ready-to-land` |
+| `next_owner` | user / merge owner |
 | `writeback_target` | `wiki/project/frontier-ledger.md`, `knowledge-log.md` when chronology matters |
 
 Current interpretation:
@@ -32,8 +32,8 @@ Current interpretation:
 - the next MLP-01 frontier is trader-system candidate materialization
 - `auto-pm` locked the candidate materialization implementation plan in
   [frontiers/mlp-01-candidate-materialization.md](frontiers/mlp-01-candidate-materialization.md)
-- PR #5 is open for the candidate materialization frontier
-- the next owner is `auto-promotion-protocol` if checks pass or `ci-recovery` if checks fail
+- PR #5 is ready for review and all current CI checks are green
+- the next owner is the user or merge owner
 
 ## Foundation Track
 
@@ -49,7 +49,7 @@ must stay stacked.
 | Order | Frontier | Branch | PR | Status | Prerequisite | Next owner |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Bootstrap substrate | `feat/bootstrap-substrate` | PR #4 | `merged` | docs/process baseline available | `llm-wiki` if retrospective writeback is needed |
-| 1 | Trader-system candidate materialization | `feat/mlp-01-candidate-materialization` | PR #5 | `pr-open` | Bootstrap merged | `auto-promotion-protocol` / `ci-recovery` |
+| 1 | Trader-system candidate materialization | `feat/mlp-01-candidate-materialization` | PR #5 | `ready-to-land` | Bootstrap merged | user / merge owner |
 | 2 | External evaluation and evidence sealing | TBD | not opened | `queued` | candidate materialization merged | `auto-pm` |
 | 3 | Bounded live trader-system runtime | TBD | not opened | `queued` | externally evaluated candidate path merged | `auto-pm` |
 | 4 | Runtime control, intervention, and audit | TBD | not opened | `queued` | bounded live runtime merged | `auto-pm` |
@@ -135,7 +135,7 @@ Validation:
 Next owner:
 
 ```text
-PR #5 is open. Route to auto-promotion-protocol if checks pass, or ci-recovery if checks fail.
+PR #5 is ready for review with current CI green. Merge owner decides landing.
 ```
 
 ## Status Vocabulary

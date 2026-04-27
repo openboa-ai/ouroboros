@@ -1310,3 +1310,7 @@
   materialization provenance labels.
   Local validation passed with `npm test`, `npm run typecheck`, `npm run build`,
   `bash scripts/check-docs.sh`, `bash scripts/check-secrets.sh`, and `git diff --check`.
+- 2026-04-27: Marked PR #5 ready for review after GitHub checks passed:
+  CodeQL, action analysis, docs-design, and gitleaks scan were green.
+  Updated [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) to `ready-to-land`
+  with the next owner set to the user or merge owner.
