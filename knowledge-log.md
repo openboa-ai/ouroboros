@@ -1303,3 +1303,10 @@
   preventing provider output from becoming evidence, promotion, or live authority.
   Updated [wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) so the frontier is now
   `in-progress` and routed to `auto-coding`.
+- 2026-04-27: Opened draft PR #5 for the MLP-01 candidate materialization frontier.
+  The PR adds candidate materialization attempt records, idempotent durable candidate creation,
+  provider failure retention without false candidates, a `RuntimeProviderAdapter` seam with a
+  Codex CLI probe/command shape, runtime candidate-generation APIs, and operator inspect UI
+  materialization provenance labels.
+  Local validation passed with `npm test`, `npm run typecheck`, `npm run build`,
+  `bash scripts/check-docs.sh`, `bash scripts/check-secrets.sh`, and `git diff --check`.
