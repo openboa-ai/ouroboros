@@ -10,6 +10,26 @@ export type NonAuthorityStatus =
   | "not_promoted"
   | "not_live";
 
+export type ProviderKind = "codex_cli" | "local_process" | "fixture_only";
+
+export type AgentRunPurpose = "candidate_generation" | "candidate_generation_placeholder";
+
+export type AgentRunStatus = "succeeded" | "failed" | "rejected" | "fixture_placeholder";
+
+export type CandidateStatus = "fixture_only" | "materialized";
+
+export type CandidateMaterializationStatus = "materialized" | "failed";
+
+export type CandidateMaterializationFailureReason =
+  | "provider_unavailable"
+  | "model_inaccessible"
+  | "provider_failed"
+  | "schema_missing"
+  | "schema_invalid"
+  | "materialization_rejected";
+
+export type MaterializationValidationStatus = "accepted" | "rejected";
+
 export interface FixtureNotice {
   mode: FixtureMode;
   label: string;
@@ -30,9 +50,15 @@ export interface TraderSystemCandidateRecord extends BaseRecord {
   record_kind: "trader_system_candidate";
   candidate_id: string;
   display_name: string;
-  status: "fixture_only";
+  status: CandidateStatus;
   active_version_id: string;
   provenance_refs: Ref[];
+  title?: string;
+  system_summary?: string;
+  first_market_scope?: "binance_btc_perpetual_futures";
+  candidate_status?: "materialized" | "handoff_ready" | "archived";
+  evaluation_handoff_ready?: boolean;
+  materialized_from_attempt_ref?: Ref;
 }
 
 export interface CandidateVersionRecord extends BaseRecord {
@@ -46,6 +72,13 @@ export interface CandidateVersionRecord extends BaseRecord {
   runtime_ref: Ref;
   trace_placeholder_ref: Ref;
   evaluation_run_ref: Ref;
+  materialization_attempt_ref?: Ref;
+  agent_spec_ref?: Ref;
+  agent_session_ref?: Ref;
+  agent_run_ref?: Ref;
+  agent_event_ref?: Ref;
+  provider_readiness_ref?: Ref;
+  provider_probe_attempt_ref?: Ref;
 }
 
 export interface TraderSystemSpecRecord extends BaseRecord {
@@ -121,44 +154,60 @@ export interface CapabilityMountRecord extends BaseRecord {
 export interface AgentSpecRecord extends BaseRecord {
   record_kind: "agent_spec";
   agent_spec_id: string;
-  purpose: "candidate_generation_placeholder";
-  provider_kind: "fixture_only";
+  purpose: AgentRunPurpose;
+  provider_kind: ProviderKind;
+  model?: string;
+  output_contract_ref?: Ref;
 }
 
 export interface AgentSessionRecord extends BaseRecord {
   record_kind: "agent_session";
   agent_session_id: string;
   agent_spec_ref: Ref;
-  authority_status: "not_executed";
+  provider_kind?: ProviderKind;
+  model?: string;
+  authority_status: "not_executed" | "trace_only";
 }
 
 export interface AgentRunRecord extends BaseRecord {
   record_kind: "agent_run";
   agent_run_id: string;
   agent_session_ref: Ref;
-  purpose: "candidate_generation_placeholder";
-  authority_status: "not_executed";
+  purpose: AgentRunPurpose;
+  status?: AgentRunStatus;
+  provider_kind?: ProviderKind;
+  model?: string;
+  trace_ref?: Ref;
+  failure_reason?: CandidateMaterializationFailureReason;
+  authority_status: "not_executed" | "trace_only";
 }
 
 export interface AgentEventRecord extends BaseRecord {
   record_kind: "agent_event";
   agent_event_id: string;
   agent_run_ref: Ref;
-  status: "fixture_placeholder";
+  status: "fixture_placeholder" | "provider_output_captured";
 }
 
 export interface ProviderReadinessRecord extends BaseRecord {
   record_kind: "provider_readiness_record";
   provider_readiness_record_id: string;
-  provider_kind: "fixture_only";
-  authority_status: "not_ready";
+  provider_kind: ProviderKind;
+  model?: string;
+  invocation_surface?: string;
+  readiness_status?: "active_verified" | "candidate_unverified" | "blocked_or_not_installed";
+  authority_status: "not_ready" | "readiness_only";
 }
 
 export interface ProviderProbeAttemptRecord extends BaseRecord {
   record_kind: "provider_probe_attempt";
   provider_probe_attempt_id: string;
   provider_readiness_record_ref: Ref;
-  authority_status: "not_probed";
+  provider_kind?: ProviderKind;
+  model?: string;
+  result?: "succeeded" | "failed" | "not_run";
+  failure_reason?: CandidateMaterializationFailureReason;
+  authority_status: "not_probed" | "probe_trace_only";
 }
 
 export interface TraderSystemRuntimeRecord extends BaseRecord {
@@ -223,6 +272,68 @@ export interface EvidenceSealingDecisionRecord extends BaseRecord {
   authority_status: "not_counted";
 }
 
+export interface CandidateMaterializationInput {
+  idempotency_key: string;
+  provider: {
+    provider_kind: ProviderKind;
+    model: string;
+    invocation_surface: string;
+    agent_run_id: string;
+    agent_event_id: string;
+    trace_id: string;
+    output_artifact_hash: string;
+  };
+  candidate: {
+    title: string;
+    system_summary: string;
+    first_market_scope: "binance_btc_perpetual_futures";
+  };
+  spec: {
+    summary: string;
+    market: "Binance";
+    instrument: "BTC perpetual futures";
+    supported_stage_binding_profiles: Array<"backtest" | "paper" | "live">;
+  };
+  program: {
+    summary: string;
+    declared_runtime: string;
+    declared_outputs: string[];
+  };
+  capability_package: {
+    summary: string;
+    allowed_stages: Array<"backtest" | "paper">;
+    declared_permissions: string[];
+    forbidden_contents: string[];
+  };
+  artifact_refs: Ref[];
+}
+
+export interface CandidateMaterializationFailureInput {
+  idempotency_key: string;
+  provider_kind: ProviderKind;
+  model: string;
+  agent_run_id: string;
+  trace_id: string;
+  failure_reason: CandidateMaterializationFailureReason;
+  artifact_refs: Ref[];
+}
+
+export interface CandidateMaterializationAttemptRecord extends BaseRecord {
+  record_kind: "candidate_materialization_attempt";
+  candidate_materialization_attempt_id: string;
+  idempotency_key: string;
+  provider_kind: ProviderKind;
+  model: string;
+  agent_run_ref: Ref;
+  trace_ref: Ref;
+  status: CandidateMaterializationStatus;
+  validation_status: MaterializationValidationStatus;
+  failure_reason?: CandidateMaterializationFailureReason;
+  resulting_candidate_ref?: Ref;
+  artifact_refs: Ref[];
+  created_at: string;
+}
+
 export type FixtureRecord =
   | TraderSystemCandidateRecord
   | CandidateVersionRecord
@@ -248,12 +359,13 @@ export type FixtureRecord =
   | TracePlaceholderRecord
   | EvaluationRunRecord
   | EvaluationComparisonSetRecord
-  | EvidenceSealingDecisionRecord;
+  | EvidenceSealingDecisionRecord
+  | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {
   candidate_id: string;
   display_name: string;
-  status: "fixture_only";
+  status: CandidateStatus;
   active_version_id: string;
   fixture_notice: FixtureNotice;
 }
@@ -270,6 +382,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     candidate_version_id: string;
     version_label: string;
     provenance_refs: Ref[];
+    materialization_attempt_ref?: Ref;
   };
   spec: {
     ref: Ref;
@@ -331,6 +444,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     comparison_set: PlaceholderSummary;
     sealing_decision: PlaceholderSummary;
   };
+  materialization_attempt?: CandidateMaterializationAttemptReadModel;
 }
 
 export interface CandidateIndexProjection {
@@ -338,3 +452,36 @@ export interface CandidateIndexProjection {
   version: 1;
   candidates: CandidateSummaryReadModel[];
 }
+
+export interface CandidateMaterializationAttemptReadModel {
+  attempt_id: string;
+  idempotency_key: string;
+  provider_kind: ProviderKind;
+  model: string;
+  agent_run_ref: Ref;
+  trace_ref: Ref;
+  status: CandidateMaterializationStatus;
+  validation_status: MaterializationValidationStatus;
+  failure_reason?: CandidateMaterializationFailureReason;
+  resulting_candidate_ref?: Ref;
+  artifact_refs: Ref[];
+  created_at: string;
+  authority_label: "provider_output_not_evidence";
+}
+
+export interface CandidateMaterializationAttemptIndexProjection {
+  record_kind: "candidate_materialization_attempt_index_projection";
+  version: 1;
+  attempts: CandidateMaterializationAttemptReadModel[];
+}
+
+export type CandidateMaterializationOutcome =
+  | {
+      status: "materialized";
+      attempt: CandidateMaterializationAttemptReadModel;
+      candidate: CandidateInspectReadModel;
+    }
+  | {
+      status: "failed";
+      attempt: CandidateMaterializationAttemptReadModel;
+    };
