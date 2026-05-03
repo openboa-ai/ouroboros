@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { CandidateInspectReadModel } from "@autokairos/domain";
+import type { CandidateInspectReadModel } from "@ouroboros/domain";
 import { CandidateDetail } from "./App";
 
 describe("CandidateDetail", () => {

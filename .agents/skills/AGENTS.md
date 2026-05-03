@@ -1,165 +1,57 @@
 # Generic Skill Registry
 
-`.agents/skills/` contains reusable project-harness skills. Skills are bounded capabilities loaded
-on demand, not always-on policy. Always-on policy belongs in [../AGENTS.md](../AGENTS.md).
-
-This harness works on a repository. It is not the product runtime for any specific project.
+`.agents/skills/` contains reusable project-harness skills. Skills are bounded capabilities loaded on demand, not always-on policy. Always-on policy belongs in [../AGENTS.md](../AGENTS.md).
 
 ## Project Operating Flow
 
-Use the smallest skill set that fits the work. A normal project loop is:
-
-```text
 Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clean
-```
-
-Do not force every task through every phase. Skip directly to the right owner when the frontier is
-already bounded and current evidence is known.
 
 | Phase | Default skill | Use when |
 | --- | --- | --- |
 | Recover | `auto-run-memory` | current branch, task, assumptions, failed attempts, or evidence must be reconstructed from repo state |
-| Context | `project-context` | current repo thesis, domain, constraints, active docs, or wiki-grounded context is needed |
+| Context | `project-context` | current repo thesis, domain, constraints, active docs, or project-document context is needed |
 | Shape | `auto-project` | ownership, route, stop state, or work direction is unclear |
 | Shape | `auto-pm` | a rough request needs one bounded frontier with acceptance and validation |
-| Execute | `auto-coding` | one bounded code/docs/config change must be made and verified |
+| Execute | `auto-coding` | one bounded code, documentation, or config change must be made and verified |
 | Evaluate | `auto-qa` | a frontier needs scenario, regression, edge-case, or reader acceptance pressure |
-| Evaluate | `auto-eval-rubrics` | a worker needs shared pass/fail language |
 | Evaluate | `ci-recovery` | local checks or remote CI fail and need root-cause routing |
 | Promote | `auto-promotion-protocol` | a frontier, branch, release, or PR needs a landing/readiness decision |
-| Persist | `llm-wiki` | durable source/wiki/project-memory writeback is needed |
+| Persist | `llm-wiki` | durable source/project-document/project-memory writeback is needed |
 | Clean | `auto-garbage-collection` | stale docs, duplicate memory, or old run notes block resumption |
-| Clean | `harness-skill-audit` | the skill surface itself may need merging, removal, or rewrite |
 
 ## Phase Evidence
 
-- Recover produces a `Recovered State Packet`: current branch, frontier, latest accepted assumptions,
-  failed attempts, winning evidence, open risks, owner, and writeback gaps.
-- Context produces a repo-grounded answer with exact pages read and the smallest relevant boundary.
-- Shape produces a bounded frontier or route, not implementation.
-- Execute produces a diff plus verification evidence and a keep/discard/reroute decision.
-- Evaluate produces pass/conditional-pass/veto evidence without fixing by default.
-- Promote produces a stop state: `looping`, `final-signoff`, `ready-to-land`, `reroute`, or
-  `discarded`.
-- Persist records only durable facts that future work needs.
-- Clean removes or historicalizes stale state only after identifying active truth.
+Recover produces state evidence. Context names pages read. Execute produces diff and verification. Promote returns `looping`, `final-signoff`, `ready-to-land`, `reroute`, or `discarded`. Persist records only durable facts.
 
 ## Default Routing
 
 1. If current state is unclear, use `auto-run-memory`.
 2. If the next owner is unclear, use `auto-project`.
 3. If the task is already bounded, use the matching worker directly.
-4. Use shared protocols only when the active worker needs that contract.
-5. End every worker path with a handoff packet.
-6. Before stopping, decide `writeback_needed: yes/no`.
-7. If `writeback_needed: yes`, route to `llm-wiki`.
-
-One active owner is the default. Do not route every task through every skill.
+4. Before stopping, decide `writeback_needed: yes/no`.
+5. If `writeback_needed: yes`, route to `llm-wiki`.
 
 ## External Workflow Skills
 
-If the environment provides external workflow skills, `auto-project` may use them as process
-accelerators while keeping repo truth in this repository.
-
-This is the registry-level Skill-First Gate: check whether a relevant repo-local or external
-workflow skill should govern the next step before routing, implementing, or claiming completion.
-
-Superpowers-compatible workflow skills map to this harness as follows:
-
-| External workflow skill | Repo-local owner |
-| --- | --- |
-| `superpowers:using-superpowers` | skill-selection gate before routing |
-| `superpowers:brainstorming` | `auto-pm` for intent/design shaping |
-| `superpowers:writing-plans` | `auto-pm` for implementation-plan quality |
-| `superpowers:using-git-worktrees` | `auto-run-memory` / branch setup evidence |
-| `superpowers:executing-plans` or `superpowers:subagent-driven-development` | `auto-coding` execution discipline |
-| `superpowers:systematic-debugging` | `ci-recovery` or bug triage |
-| `superpowers:requesting-code-review` | `auto-qa` independent review pressure |
-| `superpowers:verification-before-completion` | `auto-promotion-protocol` evidence gate |
-| `superpowers:finishing-a-development-branch` | PR/merge/keep/discard completion flow |
-
-Use external skills only when available in the current agent environment. Do not vendor or copy an
-external skill into this repo unless the user explicitly asks for installation. Record durable
-lessons through `llm-wiki`, not through external skill state.
+This is the registry-level Skill-First Gate. `superpowers:using-superpowers` maps to skill selection. `superpowers:brainstorming` maps to `auto-pm`. `superpowers:executing-plans` maps to `auto-coding`. `superpowers:systematic-debugging` maps to `ci-recovery`. `superpowers:verification-before-completion` and `superpowers:finishing-a-development-branch` map to `auto-promotion-protocol`.
 
 ## PR-Unit Conductor Mode
 
-When a repo has a project frontier ledger, `auto-project` uses it as the first operational state
-source after branch status.
-
-The conductor loop is:
-
-```text
-read repo truth + project frontier ledger
--> choose one active frontier
--> route one owner
--> drive to ready-to-land or blocked
--> persist state through llm-wiki
--> after merge is recorded, choose the next frontier
-```
-
-The ledger owns project execution state. Product docs own product truth. Architecture docs own design
-truth. Skills own workflow, not truth.
+When a repo has a project state document, `auto-project` uses it as the first operational state source after branch status. Product docs own product truth. Architecture docs own design truth. Skills own workflow, not truth.
 
 ## Skill Quality Standard
 
-Every `SKILL.md` must stay small, generic, and triggerable.
-
-- Frontmatter must contain only `name` and `description`.
-- `name` must match the skill directory name.
-- `description` must start with `Use when` and carry the trigger context; this is the primary
-  loading surface.
-- Body must contain `Role`, `Workflow`, `Required Output`, `Handoff`, and `Hard Boundaries`.
-- Body should avoid repeating the full trigger logic from the description. Use the body for
-  activation guardrails, procedure, and output contract.
-- Skills must not embed project-specific product truth. Read root `AGENTS.md`, `README.md`,
-  `knowledge-index.md`, and `wiki/**` for project context.
-- Add `references/`, `scripts/`, or `assets/` only when repeated work, fragile execution, or
-  deterministic output justifies the extra surface.
-- Prefer updating, merging, or deleting existing skills before adding new ones.
+Every `SKILL.md` must keep only `name` and `description` frontmatter, start description with `Use when`, and include `Role`, `Workflow`, `Required Output`, `Handoff`, and `Hard Boundaries`. Skills must not embed project-specific product truth. Read root `AGENTS.md`, `README.md`, `LINEAR.md`, and maintained project documents for project context.
 
 ## Mandatory llm-wiki Gate
 
-Use `llm-wiki` when any of these become durable:
-
-- product or design decision
-- source ingestion, source interpretation, or synthesis update
-- branch, task, PR, run, or release outcome
-- CI or QA result that affects future work
-- skill routing, harness policy, or repo workflow rule
-- active/historical documentation boundary
-- read-path or stale-term cleanup
-
-`llm-wiki` is not required for:
-
-- read-only inspection with no durable conclusion
-- discarded local experiments with no future relevance
-- transient command output already captured by CI or git history
-
-Chat history is not durable memory. If a future agent needs the result to resume safely, write it
-back through `llm-wiki`.
+Use `llm-wiki` when durable product/design decisions, source interpretation, branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy, active/historical documentation boundary, read-path, or stale-term cleanup must survive chat.
 
 ## Handoff Packet
 
-Every worker should return:
+Every worker should return `goal`, `context_read`, `owned_boundary`, `changes_or_findings`, `evidence`, `decision`, `risks`, `next_owner`, `writeback_needed`, and `llm_wiki_target` when writeback is needed.
 
-- `goal`
-- `context_read`
-- `owned_boundary`
-- `changes_or_findings`
-- `evidence`
-- `decision`: `keep`, `discard`, `reroute`, `blocked`, or `ready`
-- `risks`
-- `next_owner`
-- `writeback_needed`
-- `llm_wiki_target` when writeback is needed
-
-The handoff must be enough for the next owner to continue from repo evidence without relying on
-chat history. If it is not enough, route to `auto-run-memory` or `llm-wiki` before continuing.
-
-For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` with
-`current_mlp`, `active_frontier`, `branch`, `pr`, `status`, `context_read`, `route`,
-`skills_considered`, `evidence_required`, `next_owner`, and `writeback_needed`.
+For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` with `current_mlp`, `active_frontier`, `branch`, `pr`, `status`, `context_read`, `route`, `skills_considered`, `evidence_required`, `next_owner`, and `writeback_needed`.
 
 ## Boundary Rules
 
@@ -168,5 +60,4 @@ For PR-unit routing, `auto-project` should return an `Auto Project Run Packet` w
 - `auto-coding` implements one bounded change and verifies before keeping it.
 - `auto-qa` can veto; it does not fix by default.
 - `ci-recovery` extracts actionable check evidence; it does not broaden the work.
-- `llm-wiki` owns source/wiki ingest, wiki health checks, and durable writeback.
-- Do not create a second wiki-writeback skill. Use `llm-wiki`.
+- `llm-wiki` owns source ingest, project-document health checks, and durable writeback.

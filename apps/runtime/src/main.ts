@@ -7,7 +7,7 @@ const server = await buildServer();
 
 try {
   await server.listen({ host, port });
-  server.log.info(`autokairos runtime listening on http://${host}:${port}`);
+  server.log.info(`ouroboros runtime listening on http://${host}:${port}`);
 } catch (error) {
   server.log.error(error);
   process.exit(1);

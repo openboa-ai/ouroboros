@@ -1,6 +1,6 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
-import { LocalStore } from "@autokairos/local-store";
+import { LocalStore } from "@ouroboros/local-store";
 import { runCandidateGeneration } from "./candidate-materialization";
 import { CodexCliProviderAdapter } from "./providers/codex-cli-provider";
 import type { RuntimeProviderAdapter } from "./providers/runtime-provider-adapter";
@@ -26,7 +26,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   server.get("/health", async () => ({
     status: "ok",
-    service: "autokairos-runtime",
+    service: "ouroboros-runtime",
     mode: "fixture_convenience_mode",
     store_root: store.root(),
     projections: "rebuilt_from_authoritative_item_files"

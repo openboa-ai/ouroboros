@@ -3,7 +3,7 @@ import type {
   CandidateMaterializationInput,
   ProviderKind,
   Ref
-} from "@autokairos/domain";
+} from "@ouroboros/domain";
 
 export interface ProviderProbeResult {
   provider_kind: ProviderKind;

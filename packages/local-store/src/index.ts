@@ -41,9 +41,9 @@ import type {
   TraderSystemProgramRecord,
   TraderSystemRuntimeRecord,
   TraderSystemSpecRecord
-} from "@autokairos/domain";
+} from "@ouroboros/domain";
 
-export const DEFAULT_STORE_ROOT = ".autokairos/dev-store";
+export const DEFAULT_STORE_ROOT = ".ouroboros/dev-store";
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-btc-perp-001";
 
 type Collection =
@@ -355,7 +355,7 @@ export function createFixtureRecords(): FixtureItem[] {
 }
 
 export class LocalStore {
-  constructor(private readonly storeRoot = process.env.AUTOKAIROS_STORE_ROOT ?? DEFAULT_STORE_ROOT) {}
+  constructor(private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT) {}
 
   root(): string {
     return this.storeRoot;

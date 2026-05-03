@@ -4,7 +4,7 @@ import type {
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
   PlaceholderSummary
-} from "@autokairos/domain";
+} from "@ouroboros/domain";
 import { fetchCandidate, fetchCandidateSummaries } from "./api";
 import "./styles.css";
 
@@ -64,7 +64,7 @@ export function App() {
         <div className="brand">
           <span className="brand-mark">AK</span>
           <div>
-            <h1>autokairos</h1>
+            <h1>ouroboros</h1>
             <p>Operator inspect</p>
           </div>
         </div>

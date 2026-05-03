@@ -16,8 +16,8 @@ the skill itself.
 
 1. Read root `AGENTS.md`.
 2. Read `README.md`.
-3. Read `knowledge-index.md`, if present.
-4. Read the most relevant wiki/docs pages.
+3. Read `LINEAR.md`, if present.
+4. Read the most relevant project documents or minimal repo docs.
 5. Extract thesis, current posture, active constraints, implementation stage, non-goals, and relevant
    docs.
 6. Explain only the smallest relevant boundary needed for the current task.

@@ -1,47 +1,17 @@
 # Operating Model
 
-This skill assumes a lightweight LLM-maintained wiki.
+This skill assumes a lightweight, maintained project-document system.
 
-## Default shape
+## Default Shape
 
-Start with three layers.
+Start with raw sources, maintained project documents, and schema. Maintained project documents are Linear Project Documents, issue comments, project updates, or minimal repo documents that agents actively read and update.
 
-- raw sources
-  Immutable input material.
-- maintained wiki
-  Markdown pages the LLM actively writes and updates.
-- schema
-  `AGENTS.md`, `.agents/AGENTS.md`, `CLAUDE.md`, or similar process rules.
+## Operating Surfaces
 
-This is the default.
+- Project document index: navigation and entry point into the maintained document set.
+- Execution ledger or project state document: durable chronology of meaningful project, branch, run, PR, and CI changes.
+- Issue workpad comment: short-lived per-issue execution state and validation evidence.
 
-Do not jump straight to a complex multi-layer hierarchy unless the repo already has enough
-substance to justify it.
+## Core Principle
 
-## Optional expansion
-
-If the maintained wiki grows enough, it may be useful to separate:
-
-- `workdocs/`
-  Active synthesis and planning
-- `engdocs/`
-  Engineering contracts and implementation rules
-- `docs/`
-  Canonical and externally meaningful docs
-
-But this is an optimization, not the starting point.
-
-## Operating files
-
-- `knowledge-index.md` or `index.md`
-  Navigation and entry point into the wiki.
-- `knowledge-log.md` or `log.md`
-  Append-only chronology of meaningful wiki changes.
-
-## Core principle
-
-The wiki is the maintained artifact.
-
-Raw sources are not the answer surface.
-The schema is not the substance.
-The maintained wiki is where knowledge compounds.
+The maintained project document is the durable artifact. Raw sources are not the answer surface. The schema is not the substance.

@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
-import type { CandidateMaterializationInput } from "@autokairos/domain";
+import type { CandidateMaterializationInput } from "@ouroboros/domain";
 
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "autokairos-store-"));
+  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-store-"));
 });
 
 afterEach(async () => {

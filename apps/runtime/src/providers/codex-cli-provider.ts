@@ -26,7 +26,7 @@ export class CodexCliProviderAdapter implements RuntimeProviderAdapter {
     this.model = options.model ?? "gpt-5.4";
     this.workingDirectory = options.workingDirectory ?? process.cwd();
     this.schemaPath = options.schemaPath ?? "apps/runtime/schemas/candidate-materialization-output.schema.json";
-    this.outputPath = options.outputPath ?? ".autokairos/provider-runs/latest-candidate-output.json";
+    this.outputPath = options.outputPath ?? ".ouroboros/provider-runs/latest-candidate-output.json";
   }
 
   async probe(): Promise<ProviderProbeResult> {

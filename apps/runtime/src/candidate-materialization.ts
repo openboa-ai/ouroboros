@@ -1,5 +1,5 @@
-import type { CandidateMaterializationOutcome } from "@autokairos/domain";
-import type { LocalStore } from "@autokairos/local-store";
+import type { CandidateMaterializationOutcome } from "@ouroboros/domain";
+import type { LocalStore } from "@ouroboros/local-store";
 import type { CandidateGenerationRequest, RuntimeProviderAdapter } from "./providers/runtime-provider-adapter";
 
 export async function runCandidateGeneration(

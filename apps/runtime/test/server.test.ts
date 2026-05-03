@@ -2,15 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FIXTURE_CANDIDATE_ID, LocalStore } from "@autokairos/local-store";
+import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
-import type { CandidateMaterializationInput } from "@autokairos/domain";
+import type { CandidateMaterializationInput } from "@ouroboros/domain";
 import type { CandidateGenerationProviderResult, RuntimeProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "autokairos-runtime-"));
+  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-runtime-"));
 });
 
 afterEach(async () => {

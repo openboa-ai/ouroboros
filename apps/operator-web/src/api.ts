@@ -2,9 +2,9 @@ import type {
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel
-} from "@autokairos/domain";
+} from "@ouroboros/domain";
 
-const runtimeBaseUrl = import.meta.env.VITE_AUTOKAIROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+const runtimeBaseUrl = import.meta.env.VITE_OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
 
 export async function fetchCandidateSummaries(): Promise<CandidateSummaryReadModel[]> {
   const response = await fetch(`${runtimeBaseUrl}/api/candidates`);
