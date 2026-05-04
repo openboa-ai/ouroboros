@@ -67,7 +67,9 @@ if skill_errors: fail("Skill check failed:\n"+"\n".join(skill_errors[:200]))
 corpus="\n".join(text(p) for p in [Path("AGENTS.md"), Path(".agents/AGENTS.md"), Path(".agents/skills/AGENTS.md")] if p.exists())
 for term in ["llm-wiki", "writeback_needed", "project-context", ".agents/skills/AGENTS.md", "superpowers:using-superpowers", "Skill-First Gate"]:
   if term not in corpus: fail("Skill routing terms missing: "+term)
-banned=["autokairos", "AutoKairos", "ouroboros", "Ouroboros", "TraderSystem", "RuntimeControl", "RuntimePlacement", "gateway", "Bootstrap", "weak-to-strong"]
+legacy_project_suffix="kai"+"ros"
+legacy_project_terms=["auto"+legacy_project_suffix, "Auto"+legacy_project_suffix.capitalize()]
+banned=legacy_project_terms+["ouroboros", "Ouroboros", "TraderSystem", "RuntimeControl", "RuntimePlacement", "gateway", "Bootstrap", "weak-to-strong"]
 pattern=re.compile("|".join(re.escape(x) for x in banned)); bad=[]
 for path in sorted(Path(".agents").rglob("*.md")):
   for i,line in enumerate(text(path).splitlines(),1):
