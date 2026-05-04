@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import type { CandidateInspectReadModel, CandidateSummaryReadModel, PlaceholderSummary } from "@autokairos/domain";
+import type {
+  CandidateInspectReadModel,
+  CandidateMaterializationAttemptReadModel,
+  CandidateSummaryReadModel,
+  PlaceholderSummary
+} from "@ouroboros/domain";
 import { fetchCandidate, fetchCandidateSummaries } from "./api";
 import "./styles.css";
 
@@ -59,7 +64,7 @@ export function App() {
         <div className="brand">
           <span className="brand-mark">AK</span>
           <div>
-            <h1>autokairos</h1>
+            <h1>ouroboros</h1>
             <p>Operator inspect</p>
           </div>
         </div>
@@ -147,6 +152,8 @@ export function CandidateDetail({ candidate }: { candidate: CandidateInspectRead
           <Placeholder item={candidate.agent_provider.provider_probe_attempt} />
         </InfoSection>
 
+        <MaterializationAttemptSection attempt={candidate.materialization_attempt} />
+
         <InfoSection title="Runtime">
           <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
           <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
@@ -166,6 +173,34 @@ export function CandidateDetail({ candidate }: { candidate: CandidateInspectRead
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMaterializationAttemptReadModel }) {
+  return (
+    <InfoSection title="Materialization Attempt">
+      {attempt ? (
+        <>
+          <Field label="Attempt" value={attempt.attempt_id} />
+          <Field label="Provider / model" value={`${attempt.provider_kind} / ${attempt.model}`} />
+          <Field label="Status" value={attempt.status} />
+          <Field label="Validation" value={attempt.validation_status} />
+          {attempt.failure_reason && <Field label="Failure reason" value={attempt.failure_reason} />}
+          {attempt.resulting_candidate_ref && (
+            <Field label="Result candidate" value={formatRef(attempt.resulting_candidate_ref)} />
+          )}
+          <Field label="Agent run" value={formatRef(attempt.agent_run_ref)} />
+          <Field label="Trace" value={formatRef(attempt.trace_ref)} />
+          <Field label="Authority label" value={attempt.authority_label} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No materialization attempt</strong>
+          <span>provider output has not created a candidate</span>
+          <span>provider_output_not_evidence</span>
+        </div>
+      )}
+    </InfoSection>
   );
 }
 

@@ -1,51 +1,43 @@
-# Agent Entry Point
+# AGENTS.md
 
-This file is the repo-wide entry point for coding agents. It follows the
-[AGENTS.md](https://agents.md/) convention: keep the always-on instructions here, and route detailed
-project workflow to repo-local agent docs.
+## Canonical Sources
 
-## Start Here
+Linear is the source of truth for Ouroboros product, planning, project state, documentation, comments, project updates, and durable operating history.
 
-1. Read [.agents/AGENTS.md](.agents/AGENTS.md) for the generic project operating manual.
-2. Read [.agents/skills/AGENTS.md](.agents/skills/AGENTS.md) before using repo-local skills.
-3. Use `llm-wiki` whenever a decision, source insight, PR result, CI result, or frontier state must
-   survive outside chat history.
-4. If external workflow skills such as Superpowers are available, let `auto-project` use them for
-   design, planning, execution, review, verification, and branch-finishing discipline while keeping
-   repo truth in `wiki/**`.
+Start every non-trivial task from:
 
-## Auto Project Rule
+1. the active Linear issue, milestone, blockers, comments, and project updates
+2. the Ouroboros Linear project: https://linear.app/openboa/project/ouroboros-113fef53f6d1
+3. the Linear Documentation Index: https://linear.app/openboa/document/ouroboros-documentation-index-953f443725df
+4. [LINEAR.md](LINEAR.md), which maps the Project Documents
+5. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
 
-When `auto-project` is used in this repo, it must read
-[wiki/project/frontier-ledger.md](wiki/project/frontier-ledger.md) before choosing the next task.
+The repo is the implementation surface. Linear is the documentation and execution-state authority.
 
-The intended loop is PR-sized:
+## Repository Responsibility
 
-```text
-read repo truth + project frontier ledger
--> pick one MLP/frontier
--> route PM/coding/QA/CI/wiki owner
--> drive to ready-to-land or blocked
--> write back state
--> after merge is recorded, select the next frontier
-```
+The repo owns implementation truth: code, tests, fixtures, local validation scripts, compact developer-facing repo docs, executable agent instructions, and review evidence.
 
-For the current repo state, MLP-01 continues from the Bootstrap substrate frontier unless the ledger
-has been updated with a newer active frontier.
+Linear owns project truth: Initiative, Project, Milestone, Cycle, Issue, comments, project updates, Project Documents, product brief, PRD, roadmap, source synthesis, architecture archive, active frontier ledger, and durable project outcomes.
 
-## Current Posture
+When the two disagree, stop and reconcile through Linear before extending local repo docs.
 
-- This repo is still in pre-Bootstrap docs/design reset.
-- Do not implement runtime, provider, evaluator, gateway, storage, schema, or UI behavior unless the
-  current frontier explicitly allows it.
-- autokairos is a trading-system control plane/devops layer for agent-built trader-system
-  artifacts. It is not the trader-system brain and not a generic agent platform.
-- `.agents/**` is intentionally generic and reusable across projects. Project-specific autokairos
-  truth lives in this file, `README.md`, `knowledge-index.md`, and `wiki/**`.
+## Agent Workflow
 
-## Validation Commands
+1. Recover the current branch, issue, dirty state, and nearest validation evidence.
+2. Read the relevant Linear document set through [LINEAR.md](LINEAR.md).
+3. Route work through `.agents/skills/AGENTS.md` when the task is multi-step or ambiguous.
+4. Keep implementation changes bounded to the active issue.
+5. Run the narrowest meaningful validation, then the repo's required checks.
+6. Write durable project outcomes back to Linear. Only update repo docs when developer execution would be wrong without the local change.
 
-Run the relevant checks before committing:
+## Skill-First Gate
+
+Use `.agents/skills/AGENTS.md` before routing multi-step repo work. Keep `project-context`, `llm-wiki`, `writeback_needed`, `superpowers:using-superpowers`, and Skill-First Gate active.
+
+`llm-wiki` remains the durable-writeback skill name for compatibility, but its target is now Linear Project Documents, Linear comments, Linear project updates, or the minimal repo docs listed above.
+
+## Validation
 
 ```bash
 bash scripts/check-docs.sh
@@ -53,8 +45,4 @@ bash scripts/check-secrets.sh
 git diff --check
 ```
 
-## Required Writeback Rule
-
-No durable repo decision should live only in chat. If work changes product truth, architecture,
-source interpretation, PR state, CI recovery state, or project workflow, route the result through
-`llm-wiki` for the lightest durable writeback.
+For implementation changes, also run the relevant package tests and type checks.

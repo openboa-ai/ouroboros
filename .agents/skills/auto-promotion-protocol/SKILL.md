@@ -49,7 +49,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - latest verification
 - latest QA judgment when applicable
 - latest CI status
-- wiki/writeback status
+- document writeback status
 - frontier ledger status, if applicable
 - external workflow status, if applicable
 - open risks

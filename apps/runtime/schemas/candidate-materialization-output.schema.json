@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OuroborosCandidateMaterializationOutput",
+  "type": "object",
+  "required": [
+    "idempotency_key",
+    "provider",
+    "candidate",
+    "spec",
+    "program",
+    "capability_package",
+    "artifact_refs"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "object",
+      "required": [
+        "provider_kind",
+        "model",
+        "invocation_surface",
+        "agent_run_id",
+        "agent_event_id",
+        "trace_id",
+        "output_artifact_hash"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "provider_kind": {
+          "enum": [
+            "codex_cli",
+            "local_process",
+            "fixture_only"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invocation_surface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_artifact_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "title",
+        "system_summary",
+        "first_market_scope"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "system_summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "first_market_scope": {
+          "const": "binance_btc_perpetual_futures"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": [
+        "summary",
+        "market",
+        "instrument",
+        "supported_stage_binding_profiles"
+      ],
+      "additionalProperties": true
+    },
+    "program": {
+      "type": "object",
+      "required": [
+        "summary",
+        "declared_runtime",
+        "declared_outputs"
+      ],
+      "additionalProperties": true
+    },
+    "capability_package": {
+      "type": "object",
+      "required": [
+        "summary",
+        "allowed_stages",
+        "declared_permissions",
+        "forbidden_contents"
+      ],
+      "additionalProperties": true
+    },
+    "artifact_refs": {
+      "type": "array"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { CandidateInspectReadModel } from "@autokairos/domain";
+import type { CandidateInspectReadModel } from "@ouroboros/domain";
 import { CandidateDetail } from "./App";
 
 describe("CandidateDetail", () => {
@@ -14,6 +14,37 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Agent And Provider");
     expect(html).toContain("Trace And Evaluation");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+  });
+
+  it("renders materialization attempts as provider output, not evidence", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          status: "materialized",
+          display_name: "BTC Perp Breakout Candidate",
+          materialization_attempt: {
+            attempt_id: "candidate-materialization-attempt-001",
+            idempotency_key: "codex-run-success-output-hash-001",
+            provider_kind: "codex_cli",
+            model: "gpt-5.4",
+            agent_run_ref: { record_kind: "agent_run", id: "agent-run-codex-success-001" },
+            trace_ref: { record_kind: "trace_placeholder", id: "trace-codex-success-001" },
+            status: "materialized",
+            validation_status: "accepted",
+            resulting_candidate_ref: { record_kind: "trader_system_candidate", id: "candidate-001" },
+            artifact_refs: [{ record_kind: "provider_output_artifact", id: "codex-output-success-001" }],
+            created_at: "2026-04-27T00:00:00.000Z",
+            authority_label: "provider_output_not_evidence"
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Materialization Attempt");
+    expect(html).toContain("codex_cli / gpt-5.4");
+    expect(html).toContain("provider_output_not_evidence");
+    expect(html).not.toMatch(/Counted evidence|Promotion approved|Live authority/);
   });
 });
 

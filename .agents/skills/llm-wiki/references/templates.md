@@ -1,30 +1,33 @@
 # Templates
 
-Use these as lightweight defaults. Adapt them to the repo instead of copying blindly.
-
-## `knowledge-index.md`
+## Project Document Index
 
 ```md
-# Knowledge Index
+# <Project> Documentation Index
 
-## Areas
+## Read Order
 
-- [docs/](docs/)
-- [sources/](sources/)
+1. Active issue
+2. Product strategy
+3. Release plan
+4. Execution ledger
 
-## Core Pages
+## Document Taxonomy
 
-- [Overview](docs/overview.md)
-- [Concepts](docs/concepts.md)
-- [Decisions](docs/decisions.md)
+- Product:
+- Architecture:
+- Source:
+- Operations:
 ```
 
-## `knowledge-log.md`
+## Execution Ledger Entry
 
 ```md
-# Knowledge Log
-
-- YYYY-MM-DD: Short description of the material wiki change.
+- YYYY-MM-DD: Short description of the material project change.
+- issue:
+- branch or PR:
+- validation:
+- next owner:
 ```
 
 ## Source Note
@@ -44,25 +47,9 @@ Use these as lightweight defaults. Adapt them to the repo instead of copying bli
 
 - ...
 
-## Wiki Impact
+## Project Impact
 
-- pages updated:
+- documents updated:
 - contradictions found:
 - follow-up questions:
-```
-
-## Maintained Page
-
-```md
-# <Topic>
-
-## Summary
-
-## Key Points
-
-- ...
-
-## Open Questions
-
-## Related Pages
 ```

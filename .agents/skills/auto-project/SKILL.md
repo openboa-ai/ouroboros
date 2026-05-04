@@ -1,6 +1,6 @@
 ---
 name: auto-project
-description: Use when project work needs routing: a branch, PR, task, implementation thread, external workflow skill handoff, or project frontier ledger has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
+description: Use when project work needs routing: a branch, PR, task, implementation thread, external workflow skill handoff, or project state document has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
 ---
 
 # Auto Project
@@ -14,9 +14,9 @@ system the repository builds.
 
 ## Workflow
 
-1. Recover current repo truth from branch, task/PR metadata, `knowledge-index.md`, relevant wiki
-   pages, and CI.
-2. If a project frontier ledger exists, read it before selecting work.
+1. Recover current repo truth from branch, task/PR metadata, `LINEAR.md`, relevant project
+   documents, and CI.
+2. If a project state document exists, read it before selecting work.
 3. Check whether external workflow skills are available and relevant.
 4. Name exactly one active frontier.
 5. Route to exactly one owner: `auto-pm`, `auto-coding`, `auto-qa`, `llm-wiki`, or a utility.
@@ -41,7 +41,7 @@ instructions or maintained repo truth.
 
 Use this mode when the repo tracks PR-sized frontiers.
 
-1. Read branch state and the project frontier ledger.
+1. Read branch state and the project state document.
 2. If an active frontier exists, continue it unless evidence says it is blocked or ready.
 3. If no active frontier exists, choose the first queued frontier whose prerequisite is met.
 4. Route by status:
@@ -72,7 +72,7 @@ skills behind the same repo-local ownership model:
 | finish a branch | `superpowers:finishing-a-development-branch` | `auto-promotion-protocol` |
 
 External workflow skills may strengthen the route, but they do not own project truth. The project
-frontier ledger, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
+project state document, maintained docs, git state, checks, and `llm-wiki` writeback remain authoritative.
 
 ## Routing Decision Table
 
