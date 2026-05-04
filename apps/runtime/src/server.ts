@@ -21,7 +21,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   await server.register(cors, {
     origin: true,
-    methods: ["GET"]
+    methods: ["GET", "POST"]
   });
 
   server.get("/health", async () => ({

@@ -85,6 +85,25 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("allows browser clients to preflight candidate generation posts", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const response = await server.inject({
+      method: "OPTIONS",
+      url: "/api/candidate-generation-runs",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type"
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-methods"]).toContain("POST");
+
+    await server.close();
+  });
+
   it("materializes a candidate generation provider result", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),

@@ -74,12 +74,17 @@ describe("LocalStore", () => {
     expect(outcome.candidate.materialization_attempt?.provider_kind).toBe("codex_cli");
     expect(outcome.candidate.materialization_attempt?.authority_label).toBe("provider_output_not_evidence");
 
+    expect(outcome.candidate.evaluation.comparison_set.ref.id).not.toBe("fixture-evaluation-comparison-set-001");
+    expect(outcome.candidate.evaluation.sealing_decision.ref.id).not.toBe("fixture-evidence-sealing-decision-001");
+
     await rm(path.join(tmpDir, "read-models"), { recursive: true, force: true });
     await store.rebuildProjections();
 
     const reloaded = await store.getCandidate(outcome.candidate.candidate_id);
     expect(reloaded?.materialization_attempt?.attempt_id).toBe(outcome.attempt.attempt_id);
     expect(reloaded?.evaluation.sealing_decision.authority_status).toBe("not_counted");
+    expect(reloaded?.evaluation.comparison_set.ref.id).toBe(outcome.candidate.evaluation.comparison_set.ref.id);
+    expect(reloaded?.evaluation.sealing_decision.ref.id).toBe(outcome.candidate.evaluation.sealing_decision.ref.id);
   });
 
   it("keeps schema-invalid materialization attempts without creating a candidate", async () => {

@@ -1028,13 +1028,11 @@ export class LocalStore {
       "evaluation-runs",
       version.evaluation_run_ref.id
     );
-    const comparisonSet = await this.readRecord<EvaluationComparisonSetRecord>(
-      "evaluation-comparison-sets",
-      ids.evaluationComparisonSet
+    const comparisonSet = await this.evaluationComparisonSetForRun(
+      evaluationRun.evaluation_run_record_id
     );
-    const sealingDecision = await this.readRecord<EvidenceSealingDecisionRecord>(
-      "evidence-sealing-decisions",
-      ids.evidenceSealingDecision
+    const sealingDecision = await this.evidenceSealingDecisionForComparisonSet(
+      comparisonSet.evaluation_comparison_set_id
     );
     const materializationAttempt = version.materialization_attempt_ref
       ? await this.readRecord<CandidateMaterializationAttemptRecord>(
@@ -1115,6 +1113,32 @@ export class LocalStore {
         ? toCandidateMaterializationAttemptReadModel(materializationAttempt)
         : undefined
     };
+  }
+
+  private async evaluationComparisonSetForRun(
+    evaluationRunRecordId: string
+  ): Promise<EvaluationComparisonSetRecord> {
+    const comparisonSets = await this.readCollection<EvaluationComparisonSetRecord>("evaluation-comparison-sets");
+    const comparisonSet = comparisonSets.find(
+      (set) => set.evaluation_run_record_ref.id === evaluationRunRecordId
+    );
+    if (!comparisonSet) {
+      throw new Error(`evaluation comparison set missing for evaluation run ${evaluationRunRecordId}`);
+    }
+    return comparisonSet;
+  }
+
+  private async evidenceSealingDecisionForComparisonSet(
+    comparisonSetId: string
+  ): Promise<EvidenceSealingDecisionRecord> {
+    const sealingDecisions = await this.readCollection<EvidenceSealingDecisionRecord>("evidence-sealing-decisions");
+    const sealingDecision = sealingDecisions.find(
+      (decision) => decision.evaluation_comparison_set_ref.id === comparisonSetId
+    );
+    if (!sealingDecision) {
+      throw new Error(`evidence sealing decision missing for evaluation comparison set ${comparisonSetId}`);
+    }
+    return sealingDecision;
   }
 
   private toCandidateSummary(candidate: TraderSystemCandidateRecord): CandidateSummaryReadModel {
