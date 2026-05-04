@@ -1232,27 +1232,39 @@ function stableSuffix(input: string): string {
 function validateCandidateMaterializationInput(
   input: CandidateMaterializationInput
 ): CandidateMaterializationFailureReason | undefined {
+  if (!input || typeof input !== "object") {
+    return "schema_invalid";
+  }
+
+  const candidateInput = input as Partial<CandidateMaterializationInput>;
+  const provider = (candidateInput.provider ?? {}) as Partial<CandidateMaterializationInput["provider"]>;
+  const candidate = (candidateInput.candidate ?? {}) as Partial<CandidateMaterializationInput["candidate"]>;
+  const spec = (candidateInput.spec ?? {}) as Partial<CandidateMaterializationInput["spec"]>;
+  const program = (candidateInput.program ?? {}) as Partial<CandidateMaterializationInput["program"]>;
+  const capabilityPackage = (candidateInput.capability_package ?? {}) as Partial<CandidateMaterializationInput["capability_package"]>;
+
   if (
-    !nonEmpty(input.idempotency_key) ||
-    !nonEmpty(input.provider.agent_run_id) ||
-    !nonEmpty(input.provider.agent_event_id) ||
-    !nonEmpty(input.provider.trace_id) ||
-    !nonEmpty(input.provider.output_artifact_hash) ||
-    !nonEmpty(input.candidate.title) ||
-    !nonEmpty(input.candidate.system_summary) ||
-    !nonEmpty(input.spec.summary) ||
-    !nonEmpty(input.program.summary) ||
-    !nonEmpty(input.program.declared_runtime) ||
-    input.program.declared_outputs.length === 0 ||
-    !nonEmpty(input.capability_package.summary)
+    !nonEmpty(candidateInput.idempotency_key) ||
+    !nonEmpty(provider.agent_run_id) ||
+    !nonEmpty(provider.agent_event_id) ||
+    !nonEmpty(provider.trace_id) ||
+    !nonEmpty(provider.output_artifact_hash) ||
+    !nonEmpty(candidate.title) ||
+    !nonEmpty(candidate.system_summary) ||
+    !nonEmpty(spec.summary) ||
+    !nonEmpty(program.summary) ||
+    !nonEmpty(program.declared_runtime) ||
+    !Array.isArray(program.declared_outputs) ||
+    program.declared_outputs.length === 0 ||
+    !nonEmpty(capabilityPackage.summary)
   ) {
     return "schema_invalid";
   }
 
   if (
-    input.candidate.first_market_scope !== "binance_btc_perpetual_futures" ||
-    input.spec.market !== "Binance" ||
-    input.spec.instrument !== "BTC perpetual futures" ||
+    candidate.first_market_scope !== "binance_btc_perpetual_futures" ||
+    spec.market !== "Binance" ||
+    spec.instrument !== "BTC perpetual futures" ||
     containsForbiddenMaterializationKey(input)
   ) {
     return "materialization_rejected";
@@ -1261,8 +1273,8 @@ function validateCandidateMaterializationInput(
   return undefined;
 }
 
-function nonEmpty(value: string): boolean {
-  return value.trim().length > 0;
+function nonEmpty(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function containsForbiddenMaterializationKey(value: unknown): boolean {

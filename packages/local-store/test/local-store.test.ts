@@ -115,6 +115,22 @@ describe("LocalStore", () => {
     });
     expect(after).toEqual(before);
     expect(attempts.some((attempt) => attempt.idempotency_key === "codex-run-invalid-schema")).toBe(true);
+
+    const missingTitleInput = {
+      ...validMaterializationInput(),
+      idempotency_key: "codex-run-missing-title",
+      candidate: {
+        system_summary: "Missing title should be rejected instead of throwing.",
+        first_market_scope: "binance_btc_perpetual_futures"
+      }
+    } as unknown as CandidateMaterializationInput;
+    await expect(store.materializeCandidate(missingTitleInput)).resolves.toMatchObject({
+      status: "failed",
+      attempt: {
+        failure_reason: "schema_invalid",
+        validation_status: "rejected"
+      }
+    });
   });
 
   it("keeps provider failures without creating a candidate", async () => {
