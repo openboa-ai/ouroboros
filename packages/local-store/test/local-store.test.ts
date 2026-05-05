@@ -44,6 +44,8 @@ describe("LocalStore", () => {
 
     expect(after).toEqual(before);
     expect(after?.fixture_notice.mode).toEqual("fixture_convenience_mode");
+    expect(after?.evaluation.run.status).toEqual("created");
+    expect(after?.evaluation.run.authority_status).toEqual("not_counted");
     expect(after?.evaluation.sealing_decision.authority_status).toEqual("not_counted");
   });
 
@@ -82,6 +84,8 @@ describe("LocalStore", () => {
 
     const reloaded = await store.getCandidate(outcome.candidate.candidate_id);
     expect(reloaded?.materialization_attempt?.attempt_id).toBe(outcome.attempt.attempt_id);
+    expect(reloaded?.evaluation.run.status).toBe("created");
+    expect(reloaded?.evaluation.run.authority_status).toBe("not_counted");
     expect(reloaded?.evaluation.sealing_decision.authority_status).toBe("not_counted");
     expect(reloaded?.evaluation.comparison_set.ref.id).toBe(outcome.candidate.evaluation.comparison_set.ref.id);
     expect(reloaded?.evaluation.sealing_decision.ref.id).toBe(outcome.candidate.evaluation.sealing_decision.ref.id);

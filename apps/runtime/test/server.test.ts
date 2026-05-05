@@ -129,7 +129,16 @@ describe("runtime read-only API", () => {
       },
       candidate: {
         status: "materialized",
-        display_name: "BTC Perp Breakout Candidate"
+        display_name: "BTC Perp Breakout Candidate",
+        evaluation: {
+          run: {
+            status: "created",
+            authority_status: "not_counted"
+          },
+          sealing_decision: {
+            authority_status: "not_counted"
+          }
+        }
       }
     });
 

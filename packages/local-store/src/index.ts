@@ -118,10 +118,13 @@ const ids = {
   handsEnvironment: "fixture-hands-environment-001",
   memorySurface: "fixture-runtime-memory-surface-001",
   trace: "fixture-trace-placeholder-001",
+  stageBinding: "fixture-stage-binding-backtest-001",
   evaluationRun: "fixture-evaluation-run-001",
   evaluationComparisonSet: "fixture-evaluation-comparison-set-001",
   evidenceSealingDecision: "fixture-evidence-sealing-decision-001"
 };
+
+const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
 
 export function createFixtureRecords(): FixtureItem[] {
   const candidate: TraderSystemCandidateRecord = {
@@ -307,14 +310,25 @@ export function createFixtureRecords(): FixtureItem[] {
     record_kind: "evaluation_run_record",
     version: 1,
     evaluation_run_record_id: ids.evaluationRun,
-    status: "fixture_placeholder",
-    authority_status: "not_executed"
+    candidate_ref: ref("trader_system_candidate", ids.candidate),
+    candidate_version_ref: ref("candidate_version", ids.version),
+    stage_binding_ref: ref("stage_binding", ids.stageBinding),
+    trace_ref: ref("trace_placeholder", ids.trace),
+    status: "created",
+    created_at: fixtureEvaluationCreatedAt,
+    authority_status: "not_counted"
   };
   const comparisonSet: EvaluationComparisonSetRecord = {
     record_kind: "evaluation_comparison_set",
     version: 1,
     evaluation_comparison_set_id: ids.evaluationComparisonSet,
-    evaluation_run_record_ref: ref("evaluation_run_record", ids.evaluationRun),
+    candidate_ref: ref("trader_system_candidate", ids.candidate),
+    candidate_version_ref: ref("candidate_version", ids.version),
+    stage_binding_ref: ref("stage_binding", ids.stageBinding),
+    evaluation_run_refs: [ref("evaluation_run_record", ids.evaluationRun)],
+    comparability_status: "not_evaluated",
+    comparability_reason: "no_external_evaluator",
+    created_at: fixtureEvaluationCreatedAt,
     authority_status: "not_counted"
   };
   const sealingDecision: EvidenceSealingDecisionRecord = {
@@ -322,6 +336,10 @@ export function createFixtureRecords(): FixtureItem[] {
     version: 1,
     evidence_sealing_decision_id: ids.evidenceSealingDecision,
     evaluation_comparison_set_ref: ref("evaluation_comparison_set", ids.evaluationComparisonSet),
+    evaluation_run_refs: [ref("evaluation_run_record", ids.evaluationRun)],
+    evidence_disposition: "not_counted",
+    disposition_reason: "no_external_evaluator",
+    created_at: fixtureEvaluationCreatedAt,
     authority_status: "not_counted"
   };
 
@@ -511,6 +529,7 @@ export class LocalStore {
       placement: `runtime-placement-${suffix}`,
       handsEnvironment: `hands-environment-${suffix}`,
       memorySurface: `runtime-memory-surface-${suffix}`,
+      stageBinding: `stage-binding-backtest-${suffix}`,
       evaluationRun: `evaluation-run-${suffix}`,
       evaluationComparisonSet: `evaluation-comparison-set-${suffix}`,
       evidenceSealingDecision: `evidence-sealing-decision-${suffix}`
@@ -832,8 +851,13 @@ export class LocalStore {
           record_kind: "evaluation_run_record",
           version: 1,
           evaluation_run_record_id: idsForCandidate.evaluationRun,
-          status: "fixture_placeholder",
-          authority_status: "not_executed"
+          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_version_ref: ref("candidate_version", idsForCandidate.version),
+          stage_binding_ref: ref("stage_binding", idsForCandidate.stageBinding),
+          trace_ref: traceRef,
+          status: "created",
+          created_at: attempt.created_at,
+          authority_status: "not_counted"
         } satisfies EvaluationRunRecord
       },
       {
@@ -843,7 +867,13 @@ export class LocalStore {
           record_kind: "evaluation_comparison_set",
           version: 1,
           evaluation_comparison_set_id: idsForCandidate.evaluationComparisonSet,
-          evaluation_run_record_ref: ref("evaluation_run_record", idsForCandidate.evaluationRun),
+          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_version_ref: ref("candidate_version", idsForCandidate.version),
+          stage_binding_ref: ref("stage_binding", idsForCandidate.stageBinding),
+          evaluation_run_refs: [ref("evaluation_run_record", idsForCandidate.evaluationRun)],
+          comparability_status: "not_evaluated",
+          comparability_reason: "no_external_evaluator",
+          created_at: attempt.created_at,
           authority_status: "not_counted"
         } satisfies EvaluationComparisonSetRecord
       },
@@ -855,6 +885,10 @@ export class LocalStore {
           version: 1,
           evidence_sealing_decision_id: idsForCandidate.evidenceSealingDecision,
           evaluation_comparison_set_ref: ref("evaluation_comparison_set", idsForCandidate.evaluationComparisonSet),
+          evaluation_run_refs: [ref("evaluation_run_record", idsForCandidate.evaluationRun)],
+          evidence_disposition: "not_counted",
+          disposition_reason: "no_external_evaluator",
+          created_at: attempt.created_at,
           authority_status: "not_counted"
         } satisfies EvidenceSealingDecisionRecord
       }
@@ -1120,7 +1154,7 @@ export class LocalStore {
   ): Promise<EvaluationComparisonSetRecord> {
     const comparisonSets = await this.readCollection<EvaluationComparisonSetRecord>("evaluation-comparison-sets");
     const comparisonSet = comparisonSets.find(
-      (set) => set.evaluation_run_record_ref.id === evaluationRunRecordId
+      (set) => comparisonSetIncludesRun(set, evaluationRunRecordId)
     );
     if (!comparisonSet) {
       throw new Error(`evaluation comparison set missing for evaluation run ${evaluationRunRecordId}`);
@@ -1203,6 +1237,16 @@ function placeholder(
     status: String(fields.status ?? "fixture_placeholder"),
     authority_status: String(fields.authority_status ?? "not_executed")
   };
+}
+
+function comparisonSetIncludesRun(
+  comparisonSet: EvaluationComparisonSetRecord,
+  evaluationRunRecordId: string
+): boolean {
+  const legacyRef = (comparisonSet as { evaluation_run_record_ref?: Ref }).evaluation_run_record_ref;
+  const runRefs = comparisonSet.evaluation_run_refs ?? (legacyRef ? [legacyRef] : []);
+
+  return runRefs.some((runRef) => runRef.id === evaluationRunRecordId);
 }
 
 function toCandidateMaterializationAttemptReadModel(
