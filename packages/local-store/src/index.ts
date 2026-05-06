@@ -36,6 +36,7 @@ import type {
   Ref,
   RuntimeMemorySurfaceRecord,
   RuntimePlacementRecord,
+  StageBindingRecord,
   TracePlaceholderRecord,
   TraderSystemCandidateRecord,
   TraderSystemProgramRecord,
@@ -69,6 +70,7 @@ type Collection =
   | "runtime-placements"
   | "hands-environments"
   | "runtime-memory-surfaces"
+  | "stage-bindings"
   | "traces"
   | "evaluation-runs"
   | "evaluation-comparison-sets"
@@ -306,6 +308,20 @@ export function createFixtureRecords(): FixtureItem[] {
     trace_id: ids.trace,
     authority_status: "not_counted"
   };
+  const stageBinding: StageBindingRecord = {
+    record_kind: "stage_binding",
+    version: 1,
+    stage_binding_id: ids.stageBinding,
+    candidate_ref: ref("trader_system_candidate", ids.candidate),
+    candidate_version_ref: ref("candidate_version", ids.version),
+    stage: "backtest",
+    profile: "backtest",
+    execution_mode: "host_local",
+    runtime_placement_ref: ref("runtime_placement", ids.placement),
+    hands_environment_ref: ref("hands_environment", ids.handsEnvironment),
+    created_at: fixtureEvaluationCreatedAt,
+    authority_status: "not_live"
+  };
   const evaluationRun: EvaluationRunRecord = {
     record_kind: "evaluation_run_record",
     version: 1,
@@ -366,6 +382,7 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "hands-environments", id: ids.handsEnvironment, record: handsEnvironment },
     { collection: "runtime-memory-surfaces", id: ids.memorySurface, record: memorySurface },
     { collection: "traces", id: ids.trace, record: trace, itemDir: "placeholders" },
+    { collection: "stage-bindings", id: ids.stageBinding, record: stageBinding },
     { collection: "evaluation-runs", id: ids.evaluationRun, record: evaluationRun },
     { collection: "evaluation-comparison-sets", id: ids.evaluationComparisonSet, record: comparisonSet },
     { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision }
@@ -843,6 +860,24 @@ export class LocalStore {
           trace_id: input.provider.trace_id,
           authority_status: "not_counted"
         } satisfies TracePlaceholderRecord
+      },
+      {
+        collection: "stage-bindings",
+        id: idsForCandidate.stageBinding,
+        record: {
+          record_kind: "stage_binding",
+          version: 1,
+          stage_binding_id: idsForCandidate.stageBinding,
+          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_version_ref: ref("candidate_version", idsForCandidate.version),
+          stage: "backtest",
+          profile: "backtest",
+          execution_mode: "host_local",
+          runtime_placement_ref: ref("runtime_placement", idsForCandidate.placement),
+          hands_environment_ref: ref("hands_environment", idsForCandidate.handsEnvironment),
+          created_at: attempt.created_at,
+          authority_status: "not_live"
+        } satisfies StageBindingRecord
       },
       {
         collection: "evaluation-runs",
