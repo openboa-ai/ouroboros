@@ -16,6 +16,8 @@ import type {
   CandidateIndexProjection,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
+  CandidateEvaluationRunInput,
+  CandidateEvaluationRunOutcome,
   CandidateVersionRecord,
   CapabilityGrantRecord,
   CapabilityManifestRecord,
@@ -46,6 +48,28 @@ import type {
 
 export const DEFAULT_STORE_ROOT = ".ouroboros/dev-store";
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-btc-perp-001";
+
+export type LocalStoreErrorCode =
+  | "invalid_evaluation_input"
+  | "candidate_not_found"
+  | "candidate_version_not_found"
+  | "candidate_version_mismatch"
+  | "unsupported_evaluation_stage"
+  | "evaluation_run_incomplete"
+  | "evaluation_run_reload_failed";
+
+export class LocalStoreError extends Error {
+  readonly code: LocalStoreErrorCode;
+  readonly details?: Record<string, unknown>;
+
+  constructor(code: LocalStoreErrorCode, message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "LocalStoreError";
+    this.code = code;
+    this.details = details;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
 
 type Collection =
   | "candidates"
@@ -473,6 +497,185 @@ export class LocalStore {
       }
       throw error;
     }
+  }
+
+  async getCandidateEvaluationRun(
+    evaluationRunRecordId: string
+  ): Promise<CandidateEvaluationRunOutcome | undefined> {
+    const evaluationRun = await this.readOptionalRecord<EvaluationRunRecord>(
+      "evaluation-runs",
+      evaluationRunRecordId
+    );
+    if (!evaluationRun) {
+      return undefined;
+    }
+    return this.toCandidateEvaluationRunOutcome(evaluationRun);
+  }
+
+  async createEvaluationRunForCandidate(
+    input: CandidateEvaluationRunInput
+  ): Promise<CandidateEvaluationRunOutcome> {
+    const validationFailure = validateCandidateEvaluationRunInput(input);
+    if (validationFailure) {
+      throw new LocalStoreError(validationFailure, "invalid candidate evaluation run input");
+    }
+
+    const stage = input.stage ?? "backtest";
+    if (stage !== "backtest") {
+      throw new LocalStoreError(
+        "unsupported_evaluation_stage",
+        `unsupported evaluation stage ${String(stage)}`,
+        { stage }
+      );
+    }
+
+    const candidate = await this.readOptionalRecord<TraderSystemCandidateRecord>(
+      "candidates",
+      input.candidate_id
+    );
+    if (!candidate) {
+      throw new LocalStoreError(
+        "candidate_not_found",
+        `candidate ${input.candidate_id} not found`,
+        { candidate_id: input.candidate_id }
+      );
+    }
+
+    const candidateVersionId = input.candidate_version_id ?? candidate.active_version_id;
+    const candidateVersion = await this.readOptionalRecord<CandidateVersionRecord>(
+      "candidate-versions",
+      candidateVersionId
+    );
+    if (!candidateVersion) {
+      throw new LocalStoreError(
+        "candidate_version_not_found",
+        `candidate version ${candidateVersionId} not found`,
+        { candidate_id: candidate.candidate_id, candidate_version_id: candidateVersionId }
+      );
+    }
+    if (candidateVersion.candidate_id !== candidate.candidate_id) {
+      throw new LocalStoreError(
+        "candidate_version_mismatch",
+        `candidate version ${candidateVersionId} does not belong to candidate ${candidate.candidate_id}`,
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidateVersionId,
+          actual_candidate_id: candidateVersion.candidate_id
+        }
+      );
+    }
+
+    const suffix = stableSuffix(`${candidate.candidate_id}:${candidateVersionId}:${input.idempotency_key}`);
+    const evaluationRunId = `evaluation-run-${suffix}`;
+    const existing = await this.getCandidateEvaluationRun(evaluationRunId);
+    if (existing) {
+      return existing;
+    }
+
+    const traceRef = input.trace_ref ?? ref("trace_placeholder", `evaluation-trace-${suffix}`);
+    const createdAt = new Date().toISOString();
+    const stageBindingId = `stage-binding-backtest-${suffix}`;
+    const comparisonSetId = `evaluation-comparison-set-${suffix}`;
+    const sealingDecisionId = `evidence-sealing-decision-${suffix}`;
+    const hasProviderOutput = (input.provider_output_artifact_refs?.length ?? 0) > 0;
+    const unsealedReason = hasProviderOutput || input.evaluator_ref
+      ? "provider_output_trace_only"
+      : "no_external_evaluator";
+
+    const trace: TracePlaceholderRecord = stripUndefined({
+      record_kind: "trace_placeholder",
+      version: 1,
+      trace_id: traceRef.id,
+      input_artifact_refs: input.input_artifact_refs,
+      provider_output_artifact_refs: input.provider_output_artifact_refs,
+      debug_artifact_refs: input.debug_artifact_refs,
+      captured_at: createdAt,
+      authority_label: "provider_output_not_evidence",
+      authority_status: "not_counted"
+    } satisfies TracePlaceholderRecord);
+    const stageBinding: StageBindingRecord = {
+      record_kind: "stage_binding",
+      version: 1,
+      stage_binding_id: stageBindingId,
+      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_version_ref: ref("candidate_version", candidateVersion.candidate_version_id),
+      stage: "backtest",
+      profile: "backtest",
+      execution_mode: input.execution_mode ?? "host_local",
+      created_at: createdAt,
+      authority_status: "not_live"
+    };
+    const evaluationRun: EvaluationRunRecord = stripUndefined({
+      record_kind: "evaluation_run_record",
+      version: 1,
+      evaluation_run_record_id: evaluationRunId,
+      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_version_ref: ref("candidate_version", candidateVersion.candidate_version_id),
+      stage_binding_ref: ref("stage_binding", stageBinding.stage_binding_id),
+      trace_ref: traceRef,
+      evaluator_ref: input.evaluator_ref,
+      status: "created",
+      created_at: createdAt,
+      authority_status: "not_counted"
+    } satisfies EvaluationRunRecord);
+    const comparisonSet: EvaluationComparisonSetRecord = {
+      record_kind: "evaluation_comparison_set",
+      version: 1,
+      evaluation_comparison_set_id: comparisonSetId,
+      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_version_ref: ref("candidate_version", candidateVersion.candidate_version_id),
+      stage_binding_ref: ref("stage_binding", stageBinding.stage_binding_id),
+      evaluation_run_refs: [ref("evaluation_run_record", evaluationRun.evaluation_run_record_id)],
+      comparability_status: "not_evaluated",
+      comparability_reason: unsealedReason,
+      created_at: createdAt,
+      authority_status: "not_counted"
+    };
+    const sealingDecision: EvidenceSealingDecisionRecord = {
+      record_kind: "evidence_sealing_decision",
+      version: 1,
+      evidence_sealing_decision_id: sealingDecisionId,
+      evaluation_comparison_set_ref: ref(
+        "evaluation_comparison_set",
+        comparisonSet.evaluation_comparison_set_id
+      ),
+      evaluation_run_refs: [ref("evaluation_run_record", evaluationRun.evaluation_run_record_id)],
+      evidence_disposition: "not_counted",
+      disposition_reason: unsealedReason,
+      created_at: createdAt,
+      authority_status: "not_counted"
+    };
+
+    const records: FixtureItem[] = [
+      { collection: "traces", id: trace.trace_id, itemDir: "placeholders", record: trace },
+      { collection: "stage-bindings", id: stageBinding.stage_binding_id, record: stageBinding },
+      { collection: "evaluation-runs", id: evaluationRun.evaluation_run_record_id, record: evaluationRun },
+      {
+        collection: "evaluation-comparison-sets",
+        id: comparisonSet.evaluation_comparison_set_id,
+        record: comparisonSet
+      },
+      {
+        collection: "evidence-sealing-decisions",
+        id: sealingDecision.evidence_sealing_decision_id,
+        record: sealingDecision
+      }
+    ];
+
+    for (const item of records) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+    await this.rebuildProjections();
+
+    const outcome = await this.getCandidateEvaluationRun(evaluationRun.evaluation_run_record_id);
+    if (!outcome) {
+      throw new LocalStoreError(
+        "evaluation_run_reload_failed",
+        `evaluation run ${evaluationRun.evaluation_run_record_id} was not reloaded after write`,
+        { evaluation_run_record_id: evaluationRun.evaluation_run_record_id }
+      );
+    }
+    return outcome;
   }
 
   async listCandidateMaterializationAttempts(): Promise<CandidateMaterializationAttemptReadModel[]> {
@@ -1013,6 +1216,47 @@ export class LocalStore {
     };
   }
 
+  private async toCandidateEvaluationRunOutcome(
+    evaluationRun: EvaluationRunRecord
+  ): Promise<CandidateEvaluationRunOutcome> {
+    try {
+      const trace = await this.readRecord<TracePlaceholderRecord>(
+        "traces",
+        evaluationRun.trace_ref.id,
+        "placeholders"
+      );
+      const stageBinding = await this.readRecord<StageBindingRecord>(
+        "stage-bindings",
+        evaluationRun.stage_binding_ref.id
+      );
+      const comparisonSet = await this.evaluationComparisonSetForRun(
+        evaluationRun.evaluation_run_record_id
+      );
+      const sealingDecision = await this.evidenceSealingDecisionForComparisonSet(
+        comparisonSet.evaluation_comparison_set_id
+      );
+
+      return {
+        candidate_id: evaluationRun.candidate_ref.id,
+        candidate_version_id: evaluationRun.candidate_version_ref.id,
+        trace,
+        stage_binding: stageBinding,
+        evaluation_run: evaluationRun,
+        comparison_set: comparisonSet,
+        sealing_decision: sealingDecision
+      };
+    } catch (error) {
+      if (isMissingFileError(error) || isMissingEvaluationLinkError(error)) {
+        throw new LocalStoreError(
+          "evaluation_run_incomplete",
+          `evaluation run ${evaluationRun.evaluation_run_record_id} has incomplete linked records`,
+          { evaluation_run_record_id: evaluationRun.evaluation_run_record_id }
+        );
+      }
+      throw error;
+    }
+  }
+
   private async buildCandidateInspectReadModel(candidateId: string): Promise<CandidateInspectReadModel> {
     const candidate = await this.readRecord<TraderSystemCandidateRecord>("candidates", candidateId);
     const version = await this.readRecord<CandidateVersionRecord>(
@@ -1232,6 +1476,21 @@ export class LocalStore {
     return this.readJson<T>(this.itemPath(collection, id, itemDir));
   }
 
+  private async readOptionalRecord<T>(
+    collection: Collection,
+    id: string,
+    itemDir: "items" | "placeholders" = "items"
+  ): Promise<T | undefined> {
+    try {
+      return await this.readRecord<T>(collection, id, itemDir);
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   private async readCollection<T>(collection: Collection): Promise<T[]> {
     const dir = path.join(this.storeRoot, collection, "items");
     let entries: string[];
@@ -1302,6 +1561,73 @@ function toCandidateMaterializationAttemptReadModel(
     created_at: attempt.created_at,
     authority_label: "provider_output_not_evidence"
   };
+}
+
+function validateCandidateEvaluationRunInput(
+  input: CandidateEvaluationRunInput
+): LocalStoreErrorCode | undefined {
+  if (!input || typeof input !== "object") {
+    return "invalid_evaluation_input";
+  }
+
+  const raw = input as CandidateEvaluationRunInput & { stage?: unknown };
+  if (!nonEmpty(raw.idempotency_key) || !nonEmpty(raw.candidate_id)) {
+    return "invalid_evaluation_input";
+  }
+  if (raw.candidate_version_id !== undefined && !nonEmpty(raw.candidate_version_id)) {
+    return "invalid_evaluation_input";
+  }
+  if (raw.stage !== undefined && raw.stage !== "backtest") {
+    return "unsupported_evaluation_stage";
+  }
+  if (raw.trace_ref !== undefined && !isRef(raw.trace_ref, "trace_placeholder")) {
+    return "invalid_evaluation_input";
+  }
+  if (raw.evaluator_ref !== undefined && !isRef(raw.evaluator_ref)) {
+    return "invalid_evaluation_input";
+  }
+  if (
+    !isOptionalRefArray(raw.input_artifact_refs) ||
+    !isOptionalRefArray(raw.provider_output_artifact_refs) ||
+    !isOptionalRefArray(raw.debug_artifact_refs)
+  ) {
+    return "invalid_evaluation_input";
+  }
+
+  return undefined;
+}
+
+function isOptionalRefArray(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.every((item) => isRef(item)));
+}
+
+function isRef(value: unknown, recordKind?: string): value is Ref {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<Ref>;
+  return (
+    nonEmpty(candidate.record_kind) &&
+    nonEmpty(candidate.id) &&
+    (recordKind === undefined || candidate.record_kind === recordKind)
+  );
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+function isMissingEvaluationLinkError(error: unknown): boolean {
+  return error instanceof Error && (
+    error.message.startsWith("evaluation comparison set missing") ||
+    error.message.startsWith("evidence sealing decision missing")
+  );
+}
+
+function stripUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, child]) => child !== undefined)
+  ) as T;
 }
 
 function stableSuffix(input: string): string {
