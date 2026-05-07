@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
-import type { CandidateMaterializationInput } from "@ouroboros/domain";
+import type {
+  CandidateMaterializationInput,
+  EvaluationRunRecord,
+  StageBindingRecord
+} from "@ouroboros/domain";
 
 let tmpDir: string;
 
@@ -44,7 +48,31 @@ describe("LocalStore", () => {
 
     expect(after).toEqual(before);
     expect(after?.fixture_notice.mode).toEqual("fixture_convenience_mode");
+    expect(after?.evaluation.run.status).toEqual("created");
+    expect(after?.evaluation.run.authority_status).toEqual("not_counted");
     expect(after?.evaluation.sealing_decision.authority_status).toEqual("not_counted");
+  });
+
+  it("seeds a durable stage binding for fixture evaluation records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const evaluationRun = await readStoreJson<EvaluationRunRecord>(
+      "evaluation-runs",
+      "items",
+      "fixture-evaluation-run-001.json"
+    );
+    const stageBinding = await readStoreJson<StageBindingRecord>(
+      "stage-bindings",
+      "items",
+      `${evaluationRun.stage_binding_ref.id}.json`
+    );
+
+    expect(stageBinding.record_kind).toBe("stage_binding");
+    expect(stageBinding.candidate_ref.id).toBe(evaluationRun.candidate_ref.id);
+    expect(stageBinding.candidate_version_ref.id).toBe(evaluationRun.candidate_version_ref.id);
+    expect(stageBinding.stage).toBe("backtest");
+    expect(stageBinding.authority_status).toBe("not_live");
   });
 
   it("lists candidate summaries from projections", async () => {
@@ -82,9 +110,25 @@ describe("LocalStore", () => {
 
     const reloaded = await store.getCandidate(outcome.candidate.candidate_id);
     expect(reloaded?.materialization_attempt?.attempt_id).toBe(outcome.attempt.attempt_id);
+    expect(reloaded?.evaluation.run.status).toBe("created");
+    expect(reloaded?.evaluation.run.authority_status).toBe("not_counted");
     expect(reloaded?.evaluation.sealing_decision.authority_status).toBe("not_counted");
     expect(reloaded?.evaluation.comparison_set.ref.id).toBe(outcome.candidate.evaluation.comparison_set.ref.id);
     expect(reloaded?.evaluation.sealing_decision.ref.id).toBe(outcome.candidate.evaluation.sealing_decision.ref.id);
+
+    const evaluationRun = await readStoreJson<EvaluationRunRecord>(
+      "evaluation-runs",
+      "items",
+      `${outcome.candidate.evaluation.run.ref.id}.json`
+    );
+    const stageBinding = await readStoreJson<StageBindingRecord>(
+      "stage-bindings",
+      "items",
+      `${evaluationRun.stage_binding_ref.id}.json`
+    );
+    expect(stageBinding.candidate_ref.id).toBe(outcome.candidate.candidate_id);
+    expect(stageBinding.candidate_version_ref.id).toBe(outcome.candidate.candidate_version.candidate_version_id);
+    expect(stageBinding.execution_mode).toBe("host_local");
   });
 
   it("keeps schema-invalid materialization attempts without creating a candidate", async () => {
@@ -213,4 +257,9 @@ function validMaterializationInput(): CandidateMaterializationInput {
     },
     artifact_refs: [{ record_kind: "provider_output_artifact", id: "codex-output-success-001" }]
   };
+}
+
+async function readStoreJson<T>(...segments: string[]): Promise<T> {
+  const text = await readFile(path.join(tmpDir, ...segments), "utf8");
+  return JSON.parse(text) as T;
 }

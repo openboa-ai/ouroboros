@@ -20,6 +20,23 @@ export type CandidateStatus = "fixture_only" | "materialized";
 
 export type CandidateMaterializationStatus = "materialized" | "failed";
 
+export type StageBindingStage = "backtest" | "paper" | "live";
+
+export type StageBindingProfile = "backtest" | "paper" | "live";
+
+export type EvaluationExecutionMode =
+  | "host_local"
+  | "containerized_local"
+  | "containerized_remote";
+
+export type EvaluationRunStatus = "created" | "running" | "succeeded" | "failed" | "canceled";
+
+export type EvaluationAuthorityStatus = "not_live" | "not_counted";
+
+export type EvaluationComparabilityStatus = "comparable" | "not_comparable" | "not_evaluated";
+
+export type EvidenceDisposition = "not_counted" | "counted" | "quarantined_for_review";
+
 export type CandidateMaterializationFailureReason =
   | "provider_unavailable"
   | "model_inaccessible"
@@ -251,26 +268,69 @@ export interface TracePlaceholderRecord extends BaseRecord {
   authority_status: "not_counted";
 }
 
+export interface StageBindingRecord extends BaseRecord {
+  record_kind: "stage_binding";
+  stage_binding_id: string;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  stage: StageBindingStage;
+  profile: StageBindingProfile;
+  execution_mode?: EvaluationExecutionMode;
+  runtime_placement_ref?: Ref;
+  hands_environment_ref?: Ref;
+  data_window_ref?: Ref;
+  simulator_ref?: Ref;
+  created_at: string;
+  authority_status: "not_live";
+}
+
 export interface EvaluationRunRecord extends BaseRecord {
   record_kind: "evaluation_run_record";
   evaluation_run_record_id: string;
-  status: "fixture_placeholder";
-  authority_status: "not_executed";
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  stage_binding_ref: Ref;
+  trace_ref: Ref;
+  evaluator_ref?: Ref;
+  status: EvaluationRunStatus;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  authority_status: EvaluationAuthorityStatus;
 }
 
 export interface EvaluationComparisonSetRecord extends BaseRecord {
   record_kind: "evaluation_comparison_set";
   evaluation_comparison_set_id: string;
-  evaluation_run_record_ref: Ref;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  stage_binding_ref: Ref;
+  evaluation_run_refs: Ref[];
+  comparability_status: EvaluationComparabilityStatus;
+  comparability_reason: string;
+  created_at: string;
   authority_status: "not_counted";
 }
 
-export interface EvidenceSealingDecisionRecord extends BaseRecord {
+interface EvidenceSealingDecisionBase extends BaseRecord {
   record_kind: "evidence_sealing_decision";
   evidence_sealing_decision_id: string;
   evaluation_comparison_set_ref: Ref;
-  authority_status: "not_counted";
+  evaluation_run_refs: Ref[];
+  disposition_reason: string;
+  created_at: string;
+  sealed_at?: string;
 }
+
+export type EvidenceSealingDecisionRecord =
+  | (EvidenceSealingDecisionBase & {
+      evidence_disposition: "counted";
+      authority_status: "counted";
+    })
+  | (EvidenceSealingDecisionBase & {
+      evidence_disposition: "not_counted" | "quarantined_for_review";
+      authority_status: "not_counted";
+    });
 
 export interface CandidateMaterializationInput {
   idempotency_key: string;
@@ -357,6 +417,7 @@ export type FixtureRecord =
   | HandsEnvironmentRecord
   | RuntimeMemorySurfaceRecord
   | TracePlaceholderRecord
+  | StageBindingRecord
   | EvaluationRunRecord
   | EvaluationComparisonSetRecord
   | EvidenceSealingDecisionRecord
