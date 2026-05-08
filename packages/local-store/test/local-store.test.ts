@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
 import type {
   CandidateMaterializationInput,
+  EvaluationComparisonSetRecord,
   EvaluationRunRecord,
+  EvidenceSealingDecisionRecord,
+  TracePlaceholderRecord,
   StageBindingRecord
 } from "@ouroboros/domain";
 
@@ -129,6 +132,143 @@ describe("LocalStore", () => {
     expect(stageBinding.candidate_ref.id).toBe(outcome.candidate.candidate_id);
     expect(stageBinding.candidate_version_ref.id).toBe(outcome.candidate.candidate_version.candidate_version_id);
     expect(stageBinding.execution_mode).toBe("host_local");
+  });
+
+  it("creates and reloads evaluation run records for an existing active candidate version", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id);
+    const outcome = await store.createEvaluationRunForCandidate(input);
+    const repeated = await store.createEvaluationRunForCandidate(input);
+
+    expect(repeated).toEqual(outcome);
+    expect(outcome.candidate_id).toBe(FIXTURE_CANDIDATE_ID);
+    expect(outcome.candidate_version_id).toBe(candidate.candidate_version.candidate_version_id);
+    expect(outcome.stage_binding).toMatchObject({
+      record_kind: "stage_binding",
+      stage: "backtest",
+      profile: "backtest",
+      execution_mode: "host_local",
+      authority_status: "not_live"
+    });
+    expect(outcome.evaluation_run).toMatchObject({
+      record_kind: "evaluation_run_record",
+      status: "created",
+      authority_status: "not_counted",
+      trace_ref: input.trace_ref,
+      evaluator_ref: input.evaluator_ref
+    });
+    expect(outcome.comparison_set.evaluation_run_refs).toEqual([
+      { record_kind: "evaluation_run_record", id: outcome.evaluation_run.evaluation_run_record_id }
+    ]);
+    expect(outcome.sealing_decision).toMatchObject({
+      evidence_disposition: "not_counted",
+      authority_status: "not_counted",
+      disposition_reason: "provider_output_trace_only"
+    });
+
+    const stageBinding = await readStoreJson<StageBindingRecord>(
+      "stage-bindings",
+      "items",
+      `${outcome.stage_binding.stage_binding_id}.json`
+    );
+    const evaluationRun = await readStoreJson<EvaluationRunRecord>(
+      "evaluation-runs",
+      "items",
+      `${outcome.evaluation_run.evaluation_run_record_id}.json`
+    );
+    const comparisonSet = await readStoreJson<EvaluationComparisonSetRecord>(
+      "evaluation-comparison-sets",
+      "items",
+      `${outcome.comparison_set.evaluation_comparison_set_id}.json`
+    );
+    const sealingDecision = await readStoreJson<EvidenceSealingDecisionRecord>(
+      "evidence-sealing-decisions",
+      "items",
+      `${outcome.sealing_decision.evidence_sealing_decision_id}.json`
+    );
+
+    expect(stageBinding.stage_binding_id).not.toBe(evaluationRun.evaluation_run_record_id);
+    expect(comparisonSet.evaluation_comparison_set_id).not.toBe(sealingDecision.evidence_sealing_decision_id);
+    expect(evaluationRun.stage_binding_ref).toEqual({
+      record_kind: "stage_binding",
+      id: stageBinding.stage_binding_id
+    });
+    expect(sealingDecision.evaluation_comparison_set_ref).toEqual({
+      record_kind: "evaluation_comparison_set",
+      id: comparisonSet.evaluation_comparison_set_id
+    });
+
+    const reloadedStore = new LocalStore(tmpDir);
+    const reloaded = await reloadedStore.getCandidateEvaluationRun(
+      outcome.evaluation_run.evaluation_run_record_id
+    );
+    expect(reloaded).toEqual(outcome);
+  });
+
+  it("keeps evaluation provider output as trace material until explicitly sealed", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id);
+    const outcome = await store.createEvaluationRunForCandidate(input);
+    const trace = await readStoreJson<TracePlaceholderRecord>(
+      "traces",
+      "placeholders",
+      `${outcome.trace.trace_id}.json`
+    );
+    const sealingDecision = await readStoreJson<Record<string, unknown>>(
+      "evidence-sealing-decisions",
+      "items",
+      `${outcome.sealing_decision.evidence_sealing_decision_id}.json`
+    );
+
+    expect(trace.record_kind).toBe("trace_placeholder");
+    expect(trace.provider_output_artifact_refs).toEqual(input.provider_output_artifact_refs);
+    expect(trace.debug_artifact_refs).toEqual(input.debug_artifact_refs);
+    expect(trace.authority_status).toBe("not_counted");
+    expect(sealingDecision).not.toHaveProperty("provider_output_artifact_refs");
+    expect(sealingDecision).not.toHaveProperty("artifact_refs");
+    expect(sealingDecision).toMatchObject({
+      evidence_disposition: "not_counted",
+      authority_status: "not_counted"
+    });
+  });
+
+  it("returns deterministic store errors for invalid evaluation run commands", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    await expectStoreError(
+      store.createEvaluationRunForCandidate({
+        ...validEvaluationRunInput("missing-version"),
+        candidate_version_id: "missing-version"
+      }),
+      "candidate_version_not_found"
+    );
+    await expectStoreError(
+      store.createEvaluationRunForCandidate({
+        ...validEvaluationRunInput("fixture-candidate-version-001"),
+        candidate_id: "missing-candidate"
+      }),
+      "candidate_not_found"
+    );
+    await expectStoreError(
+      store.createEvaluationRunForCandidate({
+        ...validEvaluationRunInput("fixture-candidate-version-001"),
+        stage: "live" as "backtest"
+      }),
+      "unsupported_evaluation_stage"
+    );
   });
 
   it("keeps schema-invalid materialization attempts without creating a candidate", async () => {
@@ -257,6 +397,36 @@ function validMaterializationInput(): CandidateMaterializationInput {
     },
     artifact_refs: [{ record_kind: "provider_output_artifact", id: "codex-output-success-001" }]
   };
+}
+
+function validEvaluationRunInput(candidateVersionId: string) {
+  return {
+    idempotency_key: "evaluation-run-fixture-backtest-output-hash-001",
+    candidate_id: FIXTURE_CANDIDATE_ID,
+    candidate_version_id: candidateVersionId,
+    stage: "backtest" as const,
+    execution_mode: "host_local" as const,
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluation-fixture-backtest-001" },
+    evaluator_ref: { record_kind: "evaluation_provider", id: "deterministic-backtest-fixture" },
+    provider_output_artifact_refs: [
+      { record_kind: "provider_output_artifact", id: "evaluation-provider-output-001" }
+    ],
+    debug_artifact_refs: [
+      { record_kind: "debug_artifact", id: "evaluation-debug-output-001" }
+    ]
+  };
+}
+
+async function expectStoreError(promise: Promise<unknown>, expectedCode: string): Promise<void> {
+  try {
+    await promise;
+    throw new Error(`expected local-store error ${expectedCode}`);
+  } catch (error) {
+    expect(error).toMatchObject({
+      name: "LocalStoreError",
+      code: expectedCode
+    });
+  }
 }
 
 async function readStoreJson<T>(...segments: string[]): Promise<T> {

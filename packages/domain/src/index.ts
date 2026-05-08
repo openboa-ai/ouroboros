@@ -265,6 +265,11 @@ export interface RuntimeMemorySurfaceRecord extends BaseRecord {
 export interface TracePlaceholderRecord extends BaseRecord {
   record_kind: "trace_placeholder";
   trace_id: string;
+  input_artifact_refs?: Ref[];
+  provider_output_artifact_refs?: Ref[];
+  debug_artifact_refs?: Ref[];
+  captured_at?: string;
+  authority_label?: "provider_output_not_evidence";
   authority_status: "not_counted";
 }
 
@@ -546,3 +551,26 @@ export type CandidateMaterializationOutcome =
       status: "failed";
       attempt: CandidateMaterializationAttemptReadModel;
     };
+
+export interface CandidateEvaluationRunInput {
+  idempotency_key: string;
+  candidate_id: string;
+  candidate_version_id?: string;
+  stage?: "backtest";
+  execution_mode?: EvaluationExecutionMode;
+  trace_ref?: Ref;
+  evaluator_ref?: Ref;
+  input_artifact_refs?: Ref[];
+  provider_output_artifact_refs?: Ref[];
+  debug_artifact_refs?: Ref[];
+}
+
+export interface CandidateEvaluationRunOutcome {
+  candidate_id: string;
+  candidate_version_id: string;
+  trace: TracePlaceholderRecord;
+  stage_binding: StageBindingRecord;
+  evaluation_run: EvaluationRunRecord;
+  comparison_set: EvaluationComparisonSetRecord;
+  sealing_decision: EvidenceSealingDecisionRecord;
+}
