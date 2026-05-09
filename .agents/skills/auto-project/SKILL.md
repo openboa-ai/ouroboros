@@ -1,6 +1,6 @@
 ---
 name: auto-project
-description: Use when project work needs routing: a branch, PR, task, implementation thread, external workflow skill handoff, or project state document has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier.
+description: "Use when project work needs routing: a branch, PR, task, implementation thread, external workflow skill handoff, or project state document has unclear ownership, drifting scope, blocked progress, multiple possible next workers, or needs a clear stop state with one active frontier."
 ---
 
 # Auto Project
