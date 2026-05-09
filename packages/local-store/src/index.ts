@@ -14,6 +14,8 @@ import type {
   CandidateMaterializationInput,
   CandidateMaterializationOutcome,
   CandidateIndexProjection,
+  CandidateEvaluationErrorState,
+  CandidateEvaluationReadModel,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
   CandidateEvaluationRunInput,
@@ -449,6 +451,10 @@ export class LocalStore {
       await this.writeJson(
         path.join(this.storeRoot, "read-models/candidates/items", `${candidate.candidate_id}.json`),
         readModel
+      );
+      await this.writeJson(
+        path.join(this.storeRoot, "read-models/candidate-evaluations/items", `${candidate.candidate_id}.json`),
+        readModel.evaluation
       );
     }
 
@@ -1337,16 +1343,7 @@ export class LocalStore {
       version.trace_placeholder_ref.id,
       "placeholders"
     );
-    const evaluationRun = await this.readRecord<EvaluationRunRecord>(
-      "evaluation-runs",
-      version.evaluation_run_ref.id
-    );
-    const comparisonSet = await this.evaluationComparisonSetForRun(
-      evaluationRun.evaluation_run_record_id
-    );
-    const sealingDecision = await this.evidenceSealingDecisionForComparisonSet(
-      comparisonSet.evaluation_comparison_set_id
-    );
+    const evaluation = await this.buildCandidateEvaluationReadModel(candidate, version);
     const materializationAttempt = version.materialization_attempt_ref
       ? await this.readRecord<CandidateMaterializationAttemptRecord>(
           "candidate-materialization-attempts",
@@ -1417,41 +1414,195 @@ export class LocalStore {
         }
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
-      evaluation: {
-        run: placeholder(version.evaluation_run_ref, "Evaluation run", evaluationRun),
-        comparison_set: placeholder(ref(comparisonSet.record_kind, comparisonSet.evaluation_comparison_set_id), "Evaluation comparison set", comparisonSet),
-        sealing_decision: placeholder(ref(sealingDecision.record_kind, sealingDecision.evidence_sealing_decision_id), "Evidence sealing decision", sealingDecision)
-      },
+      evaluation,
       materialization_attempt: materializationAttempt
         ? toCandidateMaterializationAttemptReadModel(materializationAttempt)
         : undefined
     };
   }
 
+  private async buildCandidateEvaluationReadModel(
+    candidate: TraderSystemCandidateRecord,
+    version: CandidateVersionRecord
+  ): Promise<CandidateEvaluationReadModel> {
+    const evaluationRuns = await this.readCollection<EvaluationRunRecord>("evaluation-runs");
+    const candidateRuns = evaluationRuns
+      .filter((run) => (
+        run.candidate_ref.id === candidate.candidate_id &&
+        run.candidate_version_ref.id === version.candidate_version_id
+      ))
+      .sort(compareEvaluationRuns);
+
+    const latestRun = candidateRuns.at(-1);
+    if (!latestRun) {
+      return emptyCandidateEvaluationReadModel(version.evaluation_run_ref);
+    }
+
+    const stageBinding = await this.readOptionalRecord<StageBindingRecord>(
+      "stage-bindings",
+      latestRun.stage_binding_ref.id
+    );
+    const trace = await this.readOptionalRecord<TracePlaceholderRecord>(
+      "traces",
+      latestRun.trace_ref.id,
+      "placeholders"
+    );
+    const comparisonSet = await this.findEvaluationComparisonSetForRun(
+      latestRun.evaluation_run_record_id
+    );
+    const sealingDecision = comparisonSet
+      ? await this.findEvidenceSealingDecisionForComparisonSet(
+          comparisonSet.evaluation_comparison_set_id
+        )
+      : undefined;
+    const errorState = candidateEvaluationErrorState(
+      latestRun,
+      Boolean(stageBinding && trace && comparisonSet && sealingDecision)
+    );
+
+    return {
+      has_runs: true,
+      latest_run: {
+        run_id: latestRun.evaluation_run_record_id,
+        status: latestRun.status,
+        stage: stageBinding?.stage ?? null,
+        profile: stageBinding?.profile ?? null,
+        execution_mode: stageBinding?.execution_mode ?? null,
+        trace_ref: latestRun.trace_ref,
+        authority_status: latestRun.authority_status,
+        created_at: latestRun.created_at,
+        started_at: latestRun.started_at,
+        completed_at: latestRun.completed_at,
+        error_state: errorState
+      },
+      latest_comparison_set: comparisonSet
+        ? {
+            comparison_set_id: comparisonSet.evaluation_comparison_set_id,
+            stage_binding_ref: comparisonSet.stage_binding_ref,
+            evaluation_run_refs: evaluationRunRefsForComparisonSet(comparisonSet),
+            comparability_status: comparisonSet.comparability_status,
+            comparability_reason: comparisonSet.comparability_reason,
+            authority_status: comparisonSet.authority_status,
+            created_at: comparisonSet.created_at
+          }
+        : null,
+      latest_sealing_decision: sealingDecision
+        ? {
+            sealing_decision_id: sealingDecision.evidence_sealing_decision_id,
+            evaluation_comparison_set_ref: sealingDecision.evaluation_comparison_set_ref,
+            evaluation_run_refs: sealingDecision.evaluation_run_refs,
+            evidence_disposition: sealingDecision.evidence_disposition,
+            disposition_reason: sealingDecision.disposition_reason,
+            authority_status: sealingDecision.authority_status,
+            created_at: sealingDecision.created_at,
+            sealed_at: sealingDecision.sealed_at
+          }
+        : null,
+      trace: trace
+        ? {
+            state: "linked",
+            trace_ref: latestRun.trace_ref,
+            authority_label: trace.authority_label,
+            authority_status: trace.authority_status,
+            provider_output_artifact_refs: trace.provider_output_artifact_refs ?? [],
+            debug_artifact_refs: trace.debug_artifact_refs ?? []
+          }
+        : {
+            state: "missing",
+            trace_ref: latestRun.trace_ref,
+            authority_status: "not_counted",
+            provider_output_artifact_refs: [],
+            debug_artifact_refs: []
+          },
+      counted_evidence: sealingDecision
+        ? {
+            counted: (
+              sealingDecision.evidence_disposition === "counted" &&
+              sealingDecision.authority_status === "counted"
+            ),
+            evidence_disposition: sealingDecision.evidence_disposition,
+            disposition_reason: sealingDecision.disposition_reason,
+            authority_status: sealingDecision.authority_status,
+            sealed_at: sealingDecision.sealed_at
+          }
+        : {
+            counted: false,
+            evidence_disposition: "not_counted",
+            disposition_reason: "evaluation_links_incomplete",
+            authority_status: "not_counted"
+          },
+      error_state: errorState,
+      run: statusPlaceholder(
+        ref(latestRun.record_kind, latestRun.evaluation_run_record_id),
+        "Evaluation run",
+        latestRun.status,
+        latestRun.authority_status
+      ),
+      comparison_set: comparisonSet
+        ? statusPlaceholder(
+            ref(comparisonSet.record_kind, comparisonSet.evaluation_comparison_set_id),
+            "Evaluation comparison set",
+            comparisonSet.comparability_status,
+            comparisonSet.authority_status
+          )
+        : statusPlaceholder(
+            ref("evaluation_comparison_set", "missing"),
+            "Evaluation comparison set",
+            "missing",
+            "not_counted"
+          ),
+      sealing_decision: sealingDecision
+        ? statusPlaceholder(
+            ref(sealingDecision.record_kind, sealingDecision.evidence_sealing_decision_id),
+            "Evidence sealing decision",
+            sealingDecision.evidence_disposition,
+            sealingDecision.authority_status
+          )
+        : statusPlaceholder(
+            ref("evidence_sealing_decision", "missing"),
+            "Evidence sealing decision",
+            "missing",
+            "not_counted"
+          )
+    };
+  }
+
   private async evaluationComparisonSetForRun(
     evaluationRunRecordId: string
   ): Promise<EvaluationComparisonSetRecord> {
-    const comparisonSets = await this.readCollection<EvaluationComparisonSetRecord>("evaluation-comparison-sets");
-    const comparisonSet = comparisonSets.find(
-      (set) => comparisonSetIncludesRun(set, evaluationRunRecordId)
-    );
+    const comparisonSet = await this.findEvaluationComparisonSetForRun(evaluationRunRecordId);
     if (!comparisonSet) {
       throw new Error(`evaluation comparison set missing for evaluation run ${evaluationRunRecordId}`);
     }
     return comparisonSet;
   }
 
+  private async findEvaluationComparisonSetForRun(
+    evaluationRunRecordId: string
+  ): Promise<EvaluationComparisonSetRecord | undefined> {
+    const comparisonSets = await this.readCollection<EvaluationComparisonSetRecord>("evaluation-comparison-sets");
+    return comparisonSets.find(
+      (set) => comparisonSetIncludesRun(set, evaluationRunRecordId)
+    );
+  }
+
   private async evidenceSealingDecisionForComparisonSet(
     comparisonSetId: string
   ): Promise<EvidenceSealingDecisionRecord> {
-    const sealingDecisions = await this.readCollection<EvidenceSealingDecisionRecord>("evidence-sealing-decisions");
-    const sealingDecision = sealingDecisions.find(
-      (decision) => decision.evaluation_comparison_set_ref.id === comparisonSetId
-    );
+    const sealingDecision = await this.findEvidenceSealingDecisionForComparisonSet(comparisonSetId);
     if (!sealingDecision) {
       throw new Error(`evidence sealing decision missing for evaluation comparison set ${comparisonSetId}`);
     }
     return sealingDecision;
+  }
+
+  private async findEvidenceSealingDecisionForComparisonSet(
+    comparisonSetId: string
+  ): Promise<EvidenceSealingDecisionRecord | undefined> {
+    const sealingDecisions = await this.readCollection<EvidenceSealingDecisionRecord>("evidence-sealing-decisions");
+    return sealingDecisions.find(
+      (decision) => decision.evaluation_comparison_set_ref.id === comparisonSetId
+    );
   }
 
   private toCandidateSummary(candidate: TraderSystemCandidateRecord): CandidateSummaryReadModel {
@@ -1533,14 +1684,108 @@ function placeholder(
   };
 }
 
+function statusPlaceholder(
+  refValue: Ref,
+  label: string,
+  status: string,
+  authorityStatus: string
+): PlaceholderSummary {
+  return {
+    ref: refValue,
+    label,
+    status,
+    authority_status: authorityStatus
+  };
+}
+
+function emptyCandidateEvaluationReadModel(
+  legacyRunRef?: Ref
+): CandidateEvaluationReadModel {
+  return {
+    has_runs: false,
+    latest_run: null,
+    latest_comparison_set: null,
+    latest_sealing_decision: null,
+    trace: {
+      state: "none",
+      trace_ref: null,
+      authority_status: "not_counted",
+      provider_output_artifact_refs: [],
+      debug_artifact_refs: []
+    },
+    counted_evidence: {
+      counted: false,
+      evidence_disposition: "not_counted",
+      disposition_reason: "no_evaluation_runs",
+      authority_status: "not_counted"
+    },
+    error_state: null,
+    run: statusPlaceholder(
+      legacyRunRef ?? ref("evaluation_run_record", "none"),
+      "Evaluation run",
+      "not_evaluated",
+      "not_counted"
+    ),
+    comparison_set: statusPlaceholder(
+      ref("evaluation_comparison_set", "none"),
+      "Evaluation comparison set",
+      "not_evaluated",
+      "not_counted"
+    ),
+    sealing_decision: statusPlaceholder(
+      ref("evidence_sealing_decision", "none"),
+      "Evidence sealing decision",
+      "not_counted",
+      "not_counted"
+    )
+  };
+}
+
+function candidateEvaluationErrorState(
+  evaluationRun: EvaluationRunRecord,
+  linkedRecordsComplete: boolean
+): CandidateEvaluationErrorState | null {
+  if (evaluationRun.status === "failed") {
+    return {
+      code: "evaluation_failed",
+      message: "evaluation run failed"
+    };
+  }
+  if (!linkedRecordsComplete) {
+    return {
+      code: "evaluation_links_incomplete",
+      message: "evaluation run has incomplete linked records"
+    };
+  }
+  return null;
+}
+
+function compareEvaluationRuns(a: EvaluationRunRecord, b: EvaluationRunRecord): number {
+  const timeCompare = evaluationRunSortTime(a).localeCompare(evaluationRunSortTime(b));
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.evaluation_run_record_id.localeCompare(b.evaluation_run_record_id);
+}
+
+function evaluationRunSortTime(evaluationRun: EvaluationRunRecord): string {
+  return evaluationRun.completed_at ?? evaluationRun.started_at ?? evaluationRun.created_at;
+}
+
 function comparisonSetIncludesRun(
   comparisonSet: EvaluationComparisonSetRecord,
   evaluationRunRecordId: string
 ): boolean {
-  const legacyRef = (comparisonSet as { evaluation_run_record_ref?: Ref }).evaluation_run_record_ref;
-  const runRefs = comparisonSet.evaluation_run_refs ?? (legacyRef ? [legacyRef] : []);
+  return evaluationRunRefsForComparisonSet(comparisonSet).some(
+    (runRef) => runRef.id === evaluationRunRecordId
+  );
+}
 
-  return runRefs.some((runRef) => runRef.id === evaluationRunRecordId);
+function evaluationRunRefsForComparisonSet(
+  comparisonSet: EvaluationComparisonSetRecord
+): Ref[] {
+  const legacyRef = (comparisonSet as { evaluation_run_record_ref?: Ref }).evaluation_run_record_ref;
+  return comparisonSet.evaluation_run_refs ?? (legacyRef ? [legacyRef] : []);
 }
 
 function toCandidateMaterializationAttemptReadModel(
