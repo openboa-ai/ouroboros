@@ -1,6 +1,6 @@
 ---
 name: auto-loop-protocol
-description: Use when a worker needs a bounded attempt loop: establish baseline, try one hypothesis, measure evidence, and decide whether to keep, discard, reroute, or stop without accumulating speculative edits.
+description: "Use when a worker needs a bounded attempt loop: establish baseline, try one hypothesis, measure evidence, and decide whether to keep, discard, reroute, or stop without accumulating speculative edits."
 ---
 
 # Auto Loop Protocol

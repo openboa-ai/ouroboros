@@ -41,6 +41,8 @@ llm_wiki_target:
 - The next owner can continue from repo evidence without chat memory.
 - The owned boundary names what may change and what must not.
 - Evidence includes commands, files, docs, CI runs, review notes, or source refs.
+- For PR-backed work, review evidence names the current head SHA and whether feedback is handled,
+  no-suggestion, pending, unavailable, or intentionally handed to a human.
 - Risks distinguish blockers from acceptable residual risk.
 - `writeback_needed` is explicit even when the answer is `no`.
 

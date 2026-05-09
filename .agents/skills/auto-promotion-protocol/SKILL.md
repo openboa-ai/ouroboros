@@ -32,10 +32,25 @@ description: Use when deciding whether a project frontier, branch, task, release
 - verification status: command/check name, timestamp or commit, result
 - QA status: pass, conditional pass, veto, or not needed
 - CI status: green, red, pending, unavailable, or not applicable
+- PR review status: current-head feedback handled, current-head no-suggestion signal, pending, unavailable, or not applicable
 - writeback status: complete, not needed, or missing
 - frontier ledger status: current, not needed, or stale
 - external workflow status: relevant skill used, not available, or not needed
 - risk status: material risks and whether they block landing
+
+## PR Review Freshness Gate
+
+For PR-backed work, promotion evidence must be tied to the current PR head, not merely to PR
+existence. Treat review status as `pending` until the current head has one of these signals:
+
+- a completed reviewer comment pass whose actionable threads have been handled or intentionally
+  routed with evidence
+- a no-suggestion signal from the configured reviewer
+- an explicit human handoff because review infrastructure is unavailable
+
+Do not use a newly opened PR by itself as promotion evidence. If review status is pending, choose
+`looping` or `reroute` and keep the work owner in the active execution loop rather than moving the
+frontier to final signoff.
 
 ## Required Output
 
@@ -49,6 +64,7 @@ description: Use when deciding whether a project frontier, branch, task, release
 - latest verification
 - latest QA judgment when applicable
 - latest CI status
+- latest PR review status when applicable
 - document writeback status
 - frontier ledger status, if applicable
 - external workflow status, if applicable

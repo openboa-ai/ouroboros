@@ -1,6 +1,6 @@
 ---
 name: auto-qa
-description: Use when a project frontier, branch, task, release, or PR needs independent QA: scenario testing, regression pressure, edge-case review, reader acceptance testing, risk severity, confidence, and a pass, conditional-pass, or veto recommendation.
+description: "Use when a project frontier, branch, task, release, or PR needs independent QA: scenario testing, regression pressure, edge-case review, reader acceptance testing, risk severity, confidence, and a pass, conditional-pass, or veto recommendation."
 ---
 
 # Auto QA
@@ -32,12 +32,20 @@ description: Use when a project frontier, branch, task, release, or PR needs ind
 - `conditional_pass`: the work is usable, but named residual risk or missing evidence must be tracked.
 - `veto`: critical defect, unsafe ambiguity, broken validation, or missing acceptance evidence.
 
+## PR Review Evidence
+
+When QA covers a PR, include review feedback as part of the scenario set. Check whether the current
+PR head has reviewer feedback, unresolved actionable threads, or an explicit no-suggestion signal.
+If review feedback has not arrived yet, report `conditional_pass` at most and route back to the
+active execution loop instead of recommending final handoff.
+
 ## Required Output
 
 - goal
 - owned boundary
 - context read
 - scenario set
+- PR review evidence when applicable
 - observed failures or risks
 - evidence
 - severity and confidence

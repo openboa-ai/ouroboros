@@ -53,14 +53,88 @@ for path in active:
       if not candidate.exists(): broken.append(f"{path}: {target}")
 if broken: fail(f"Broken local markdown links ({len(broken)}):\n"+"\n".join(broken[:200]))
 skill_files=sorted(Path(".agents/skills").glob("*/SKILL.md")); skill_errors=[]
+def has_unescaped_double_quote(value):
+  escaped=False
+  for char in value:
+      if escaped:
+          escaped=False; continue
+      if char == "\\":
+          escaped=True; continue
+      if char == '"':
+          return True
+  return False
+def has_unescaped_single_quote(value):
+  i=0
+  while i < len(value):
+      if value[i] != "'":
+          i += 1; continue
+      if i + 1 < len(value) and value[i + 1] == "'":
+          i += 2; continue
+      return True
+  return False
+def closing_quote_index(value):
+  quote=value[0]
+  escaped=False; i=1
+  while i < len(value):
+      char=value[i]
+      if quote == '"' and escaped:
+          escaped=False; i += 1; continue
+      if quote == '"' and char == "\\":
+          escaped=True; i += 1; continue
+      if quote == "'" and char == "'" and i + 1 < len(value) and value[i + 1] == "'":
+          i += 2; continue
+      if char == quote:
+          return i
+      i += 1
+  return None
+def strip_inline_comment(value):
+  if value and value[0] in {"'", '"'}:
+      end=closing_quote_index(value)
+      if end is not None:
+          suffix=value[end+1:].strip()
+          if not suffix or suffix.startswith("#"):
+              return value[:end+1]
+      return value
+  return re.sub(r"\s+#.*$", "", value).rstrip()
+def frontmatter_scalars(fm, path):
+  data={}; errors=[]
+  for offset,line in enumerate(fm.splitlines(),2):
+      if not line.strip(): continue
+      if line.lstrip().startswith("#"): continue
+      if line.startswith((" ", "\t")):
+          errors.append(f"{path}:{offset}: frontmatter must use top-level scalar keys only"); continue
+      if ":" not in line:
+          errors.append(f"{path}:{offset}: invalid frontmatter line"); continue
+      key, raw = line.split(":",1); value=raw.strip()
+      if not re.match(r"^[A-Za-z0-9_-]+$", key):
+          errors.append(f"{path}:{offset}: invalid frontmatter key {key!r}"); continue
+      if not value:
+          errors.append(f"{path}:{offset}: missing frontmatter value for {key}"); continue
+      value=strip_inline_comment(value)
+      if not value:
+          errors.append(f"{path}:{offset}: missing frontmatter value for {key}"); continue
+      quoted=len(value)>=2 and value[0] == value[-1] and value[0] in {"'", '"'}
+      if not quoted and ": " in value:
+          errors.append(f"{path}:{offset}: quote frontmatter values containing ': '"); continue
+      if quoted and value[0] == '"':
+          value=value[1:-1]
+          if has_unescaped_double_quote(value):
+              errors.append(f"{path}:{offset}: invalid unescaped double quote in frontmatter value"); continue
+      elif quoted:
+          value=value[1:-1]
+          if has_unescaped_single_quote(value):
+              errors.append(f"{path}:{offset}: invalid unescaped single quote in frontmatter value"); continue
+          value=value.replace("''", "'")
+      data[key]=value
+  return data, errors
 for path in skill_files:
   body=text(path)
   if not body.startswith("---\n"): skill_errors.append(f"{path}: missing YAML frontmatter"); continue
   _, fm, _ = body.split("---", 2)
-  name=re.search(r"^name:\s*(\S+)", fm, re.M)
-  desc=re.search(r"^description:\s*(.+)", fm, re.M)
-  if not name or name.group(1) != path.parent.name: skill_errors.append(f"{path}: bad name")
-  if not desc or not desc.group(1).startswith("Use when"): skill_errors.append(f"{path}: bad description")
+  meta, fm_errors = frontmatter_scalars(fm, path)
+  skill_errors.extend(fm_errors)
+  if meta.get("name") != path.parent.name: skill_errors.append(f"{path}: bad name")
+  if not str(meta.get("description", "")).startswith("Use when"): skill_errors.append(f"{path}: bad description")
   for heading in ["## Role", "## Workflow", "## Required Output", "## Handoff", "## Hard Boundaries"]:
       if heading not in body: skill_errors.append(f"{path}: missing heading {heading}")
 if skill_errors: fail("Skill check failed:\n"+"\n".join(skill_errors[:200]))

@@ -1,6 +1,6 @@
 ---
 name: auto-run-memory
-description: Use when a worker needs to reconstruct current project state from repo evidence instead of chat history: branch/task/PR status, assumptions, failed attempts, winning evidence, owner, open risks, and writeback gaps.
+description: "Use when a worker needs to reconstruct current project state from repo evidence instead of chat history: branch/task/PR status, assumptions, failed attempts, winning evidence, owner, open risks, and writeback gaps."
 ---
 
 # Auto Run Memory
