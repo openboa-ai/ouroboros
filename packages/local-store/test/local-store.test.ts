@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -211,6 +211,218 @@ describe("LocalStore", () => {
     expect(reloaded).toEqual(outcome);
   });
 
+  it("projects the latest stage-bound evaluation summary into candidate inspect", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+      idempotency_key: "evaluation-run-latest-summary",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluation-latest-summary" }
+    });
+    const outcome = await store.createEvaluationRunForCandidate(input);
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.has_runs).toBe(true);
+    expect(projected?.evaluation.latest_run).toMatchObject({
+      run_id: outcome.evaluation_run.evaluation_run_record_id,
+      status: "created",
+      stage: "backtest",
+      profile: "backtest",
+      execution_mode: "host_local",
+      trace_ref: input.trace_ref,
+      authority_status: "not_counted"
+    });
+    expect(projected?.evaluation.latest_comparison_set).toMatchObject({
+      comparison_set_id: outcome.comparison_set.evaluation_comparison_set_id,
+      comparability_status: "not_evaluated",
+      comparability_reason: "provider_output_trace_only",
+      authority_status: "not_counted"
+    });
+    expect(projected?.evaluation.latest_sealing_decision).toMatchObject({
+      sealing_decision_id: outcome.sealing_decision.evidence_sealing_decision_id,
+      evidence_disposition: "not_counted",
+      disposition_reason: "provider_output_trace_only",
+      authority_status: "not_counted"
+    });
+    expect(projected?.evaluation.run.ref.id).toBe(outcome.evaluation_run.evaluation_run_record_id);
+
+    const evaluationReadModel = await readStoreJson(
+      "read-models",
+      "candidate-evaluations",
+      "items",
+      `${FIXTURE_CANDIDATE_ID}.json`
+    );
+    expect(evaluationReadModel).toMatchObject({
+      has_runs: true,
+      latest_run: {
+        run_id: outcome.evaluation_run.evaluation_run_record_id,
+        stage: "backtest"
+      }
+    });
+  });
+
+  it("selects latest evaluation run by creation recency, not completion time", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const olderOutcome = await store.createEvaluationRunForCandidate(
+      validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+        idempotency_key: "evaluation-run-older-completes-late"
+      })
+    );
+    const newerOutcome = await store.createEvaluationRunForCandidate(
+      validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+        idempotency_key: "evaluation-run-newer-created-latest"
+      })
+    );
+
+    await writeStoreJson(
+      {
+        ...olderOutcome.evaluation_run,
+        created_at: "2026-05-07T00:00:00.000Z",
+        completed_at: "2026-05-09T00:00:00.000Z"
+      } satisfies EvaluationRunRecord,
+      "evaluation-runs",
+      "items",
+      `${olderOutcome.evaluation_run.evaluation_run_record_id}.json`
+    );
+    await writeStoreJson(
+      {
+        ...newerOutcome.evaluation_run,
+        created_at: "2026-05-08T00:00:00.000Z"
+      } satisfies EvaluationRunRecord,
+      "evaluation-runs",
+      "items",
+      `${newerOutcome.evaluation_run.evaluation_run_record_id}.json`
+    );
+
+    await store.rebuildProjections();
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.latest_run).toMatchObject({
+      run_id: newerOutcome.evaluation_run.evaluation_run_record_id,
+      created_at: "2026-05-08T00:00:00.000Z"
+    });
+  });
+
+  it("keeps trace/debug material distinct from counted evidence in candidate inspect", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+      idempotency_key: "evaluation-run-trace-evidence-split",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluation-trace-evidence-split" }
+    });
+    await store.createEvaluationRunForCandidate(input);
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.trace).toMatchObject({
+      state: "linked",
+      trace_ref: input.trace_ref,
+      authority_label: "provider_output_not_evidence",
+      authority_status: "not_counted",
+      provider_output_artifact_refs: input.provider_output_artifact_refs,
+      debug_artifact_refs: input.debug_artifact_refs
+    });
+    expect(projected?.evaluation.counted_evidence).toMatchObject({
+      counted: false,
+      evidence_disposition: "not_counted",
+      disposition_reason: "provider_output_trace_only",
+      authority_status: "not_counted"
+    });
+    expect(projected?.evaluation.counted_evidence).not.toHaveProperty("provider_output_artifact_refs");
+    expect(projected?.evaluation.counted_evidence).not.toHaveProperty("debug_artifact_refs");
+  });
+
+  it("projects a deterministic no-evaluation state when durable evaluation records are absent", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await rm(path.join(tmpDir, "evaluation-runs", "items"), { recursive: true, force: true });
+    await rm(path.join(tmpDir, "evaluation-comparison-sets", "items"), { recursive: true, force: true });
+    await rm(path.join(tmpDir, "evidence-sealing-decisions", "items"), { recursive: true, force: true });
+
+    await store.rebuildProjections();
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation).toMatchObject({
+      has_runs: false,
+      latest_run: null,
+      latest_comparison_set: null,
+      latest_sealing_decision: null,
+      trace: {
+        state: "none",
+        provider_output_artifact_refs: [],
+        debug_artifact_refs: [],
+        authority_status: "not_counted"
+      },
+      counted_evidence: {
+        counted: false,
+        evidence_disposition: "not_counted",
+        disposition_reason: "no_evaluation_runs",
+        authority_status: "not_counted"
+      },
+      run: {
+        status: "not_evaluated",
+        authority_status: "not_counted"
+      }
+    });
+  });
+
+  it("projects failed evaluation runs with a deterministic error state", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+      idempotency_key: "evaluation-run-failed-projection",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluation-failed-projection" }
+    });
+    const outcome = await store.createEvaluationRunForCandidate(input);
+    await writeStoreJson(
+      {
+        ...outcome.evaluation_run,
+        status: "failed",
+        completed_at: "2026-05-07T00:00:00.000Z"
+      } satisfies EvaluationRunRecord,
+      "evaluation-runs",
+      "items",
+      `${outcome.evaluation_run.evaluation_run_record_id}.json`
+    );
+
+    await store.rebuildProjections();
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.latest_run).toMatchObject({
+      run_id: outcome.evaluation_run.evaluation_run_record_id,
+      status: "failed",
+      stage: "backtest",
+      error_state: {
+        code: "evaluation_failed",
+        message: "evaluation run failed"
+      }
+    });
+    expect(projected?.evaluation.counted_evidence).toMatchObject({
+      counted: false,
+      evidence_disposition: "not_counted",
+      authority_status: "not_counted"
+    });
+  });
+
   it("keeps evaluation provider output as trace material until explicitly sealed", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -399,7 +611,17 @@ function validMaterializationInput(): CandidateMaterializationInput {
   };
 }
 
-function validEvaluationRunInput(candidateVersionId: string) {
+function validEvaluationRunInput(
+  candidateVersionId: string,
+  overrides: Partial<ReturnType<typeof baseEvaluationRunInput>> = {}
+) {
+  return {
+    ...baseEvaluationRunInput(candidateVersionId),
+    ...overrides
+  };
+}
+
+function baseEvaluationRunInput(candidateVersionId: string) {
   return {
     idempotency_key: "evaluation-run-fixture-backtest-output-hash-001",
     candidate_id: FIXTURE_CANDIDATE_ID,
@@ -432,4 +654,8 @@ async function expectStoreError(promise: Promise<unknown>, expectedCode: string)
 async function readStoreJson<T>(...segments: string[]): Promise<T> {
   const text = await readFile(path.join(tmpDir, ...segments), "utf8");
   return JSON.parse(text) as T;
+}
+
+async function writeStoreJson(value: unknown, ...segments: string[]): Promise<void> {
+  await writeFile(path.join(tmpDir, ...segments), `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }

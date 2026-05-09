@@ -88,7 +88,7 @@ export interface CandidateVersionRecord extends BaseRecord {
   capability_package_refs: Ref[];
   runtime_ref: Ref;
   trace_placeholder_ref: Ref;
-  evaluation_run_ref: Ref;
+  evaluation_run_ref?: Ref;
   materialization_attempt_ref?: Ref;
   agent_spec_ref?: Ref;
   agent_session_ref?: Ref;
@@ -443,6 +443,82 @@ export interface PlaceholderSummary {
   authority_status: string;
 }
 
+export type CandidateEvaluationTraceState = "none" | "linked" | "missing";
+
+export type CandidateEvaluationErrorCode =
+  | "evaluation_failed"
+  | "evaluation_links_incomplete";
+
+export interface CandidateEvaluationErrorState {
+  code: CandidateEvaluationErrorCode;
+  message: string;
+}
+
+export interface CandidateEvaluationLatestRunReadModel {
+  run_id: string;
+  status: EvaluationRunStatus;
+  stage: StageBindingStage | null;
+  profile: StageBindingProfile | null;
+  execution_mode: EvaluationExecutionMode | null;
+  trace_ref: Ref;
+  authority_status: EvaluationAuthorityStatus;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  error_state: CandidateEvaluationErrorState | null;
+}
+
+export interface CandidateEvaluationComparisonSetReadModel {
+  comparison_set_id: string;
+  stage_binding_ref: Ref;
+  evaluation_run_refs: Ref[];
+  comparability_status: EvaluationComparabilityStatus;
+  comparability_reason: string;
+  authority_status: "not_counted";
+  created_at: string;
+}
+
+export interface CandidateEvaluationSealingDecisionReadModel {
+  sealing_decision_id: string;
+  evaluation_comparison_set_ref: Ref;
+  evaluation_run_refs: Ref[];
+  evidence_disposition: EvidenceDisposition;
+  disposition_reason: string;
+  authority_status: "not_counted" | "counted";
+  created_at: string;
+  sealed_at?: string;
+}
+
+export interface CandidateEvaluationTraceReadModel {
+  state: CandidateEvaluationTraceState;
+  trace_ref: Ref | null;
+  authority_label?: "provider_output_not_evidence";
+  authority_status: "not_counted";
+  provider_output_artifact_refs: Ref[];
+  debug_artifact_refs: Ref[];
+}
+
+export interface CandidateCountedEvidenceReadModel {
+  counted: boolean;
+  evidence_disposition: EvidenceDisposition;
+  disposition_reason: string;
+  authority_status: "not_counted" | "counted";
+  sealed_at?: string;
+}
+
+export interface CandidateEvaluationReadModel {
+  has_runs: boolean;
+  latest_run: CandidateEvaluationLatestRunReadModel | null;
+  latest_comparison_set: CandidateEvaluationComparisonSetReadModel | null;
+  latest_sealing_decision: CandidateEvaluationSealingDecisionReadModel | null;
+  trace: CandidateEvaluationTraceReadModel;
+  counted_evidence: CandidateCountedEvidenceReadModel;
+  error_state: CandidateEvaluationErrorState | null;
+  run: PlaceholderSummary;
+  comparison_set: PlaceholderSummary;
+  sealing_decision: PlaceholderSummary;
+}
+
 export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   candidate_version: {
     candidate_version_id: string;
@@ -505,11 +581,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     };
   };
   trace: PlaceholderSummary;
-  evaluation: {
-    run: PlaceholderSummary;
-    comparison_set: PlaceholderSummary;
-    sealing_decision: PlaceholderSummary;
-  };
+  evaluation: CandidateEvaluationReadModel;
   materialization_attempt?: CandidateMaterializationAttemptReadModel;
 }
 

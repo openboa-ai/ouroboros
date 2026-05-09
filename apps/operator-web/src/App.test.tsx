@@ -143,6 +143,50 @@ const fixtureCandidate: CandidateInspectReadModel = {
   },
   trace: placeholder("trace_placeholder", "fixture-trace", "Trace placeholder"),
   evaluation: {
+    has_runs: true,
+    latest_run: {
+      run_id: "fixture-eval",
+      status: "created",
+      stage: "backtest",
+      profile: "backtest",
+      execution_mode: "host_local",
+      trace_ref: { record_kind: "trace_placeholder", id: "fixture-trace" },
+      authority_status: "not_counted",
+      created_at: "2026-05-05T00:00:00.000Z",
+      error_state: null
+    },
+    latest_comparison_set: {
+      comparison_set_id: "fixture-comparison",
+      stage_binding_ref: { record_kind: "stage_binding", id: "fixture-stage-binding" },
+      evaluation_run_refs: [{ record_kind: "evaluation_run_record", id: "fixture-eval" }],
+      comparability_status: "not_evaluated",
+      comparability_reason: "no_external_evaluator",
+      authority_status: "not_counted",
+      created_at: "2026-05-05T00:00:00.000Z"
+    },
+    latest_sealing_decision: {
+      sealing_decision_id: "fixture-sealing",
+      evaluation_comparison_set_ref: { record_kind: "evaluation_comparison_set", id: "fixture-comparison" },
+      evaluation_run_refs: [{ record_kind: "evaluation_run_record", id: "fixture-eval" }],
+      evidence_disposition: "not_counted",
+      disposition_reason: "no_external_evaluator",
+      authority_status: "not_counted",
+      created_at: "2026-05-05T00:00:00.000Z"
+    },
+    trace: {
+      state: "linked",
+      trace_ref: { record_kind: "trace_placeholder", id: "fixture-trace" },
+      authority_status: "not_counted",
+      provider_output_artifact_refs: [],
+      debug_artifact_refs: []
+    },
+    counted_evidence: {
+      counted: false,
+      evidence_disposition: "not_counted",
+      disposition_reason: "no_external_evaluator",
+      authority_status: "not_counted"
+    },
+    error_state: null,
     run: placeholder("evaluation_run_record", "fixture-eval", "Evaluation run"),
     comparison_set: placeholder("evaluation_comparison_set", "fixture-comparison", "Evaluation comparison set"),
     sealing_decision: placeholder("evidence_sealing_decision", "fixture-sealing", "Evidence sealing decision")
