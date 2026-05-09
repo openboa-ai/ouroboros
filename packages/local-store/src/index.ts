@@ -1761,15 +1761,11 @@ function candidateEvaluationErrorState(
 }
 
 function compareEvaluationRuns(a: EvaluationRunRecord, b: EvaluationRunRecord): number {
-  const timeCompare = evaluationRunSortTime(a).localeCompare(evaluationRunSortTime(b));
+  const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
   return a.evaluation_run_record_id.localeCompare(b.evaluation_run_record_id);
-}
-
-function evaluationRunSortTime(evaluationRun: EvaluationRunRecord): string {
-  return evaluationRun.completed_at ?? evaluationRun.started_at ?? evaluationRun.created_at;
 }
 
 function comparisonSetIncludesRun(

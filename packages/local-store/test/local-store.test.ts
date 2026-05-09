@@ -265,6 +265,54 @@ describe("LocalStore", () => {
     });
   });
 
+  it("selects latest evaluation run by creation recency, not completion time", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const olderOutcome = await store.createEvaluationRunForCandidate(
+      validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+        idempotency_key: "evaluation-run-older-completes-late"
+      })
+    );
+    const newerOutcome = await store.createEvaluationRunForCandidate(
+      validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+        idempotency_key: "evaluation-run-newer-created-latest"
+      })
+    );
+
+    await writeStoreJson(
+      {
+        ...olderOutcome.evaluation_run,
+        created_at: "2026-05-07T00:00:00.000Z",
+        completed_at: "2026-05-09T00:00:00.000Z"
+      } satisfies EvaluationRunRecord,
+      "evaluation-runs",
+      "items",
+      `${olderOutcome.evaluation_run.evaluation_run_record_id}.json`
+    );
+    await writeStoreJson(
+      {
+        ...newerOutcome.evaluation_run,
+        created_at: "2026-05-08T00:00:00.000Z"
+      } satisfies EvaluationRunRecord,
+      "evaluation-runs",
+      "items",
+      `${newerOutcome.evaluation_run.evaluation_run_record_id}.json`
+    );
+
+    await store.rebuildProjections();
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.latest_run).toMatchObject({
+      run_id: newerOutcome.evaluation_run.evaluation_run_record_id,
+      created_at: "2026-05-08T00:00:00.000Z"
+    });
+  });
+
   it("keeps trace/debug material distinct from counted evidence in candidate inspect", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
