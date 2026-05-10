@@ -27,6 +27,12 @@ import type {
   CapabilityPackageAdmissionRecord,
   CapabilityPackageRecord,
   EvaluationComparisonSetRecord,
+  EvidenceClassificationKind,
+  EvidenceClassificationRecord,
+  EvidenceClassificationStatus,
+  EvidenceDisposition,
+  EvidenceDispositionReason,
+  EvidenceSealingDecisionInput,
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
   FixtureNotice,
@@ -58,7 +64,9 @@ export type LocalStoreErrorCode =
   | "candidate_version_mismatch"
   | "unsupported_evaluation_stage"
   | "evaluation_run_incomplete"
-  | "evaluation_run_reload_failed";
+  | "evaluation_run_not_found"
+  | "evaluation_run_reload_failed"
+  | "invalid_evidence_sealing_input";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -110,7 +118,8 @@ type Collection =
   | "traces"
   | "evaluation-runs"
   | "evaluation-comparison-sets"
-  | "evidence-sealing-decisions";
+  | "evidence-sealing-decisions"
+  | "evidence-classifications";
 
 interface FixtureItem {
   collection: Collection;
@@ -159,7 +168,11 @@ const ids = {
   stageBinding: "fixture-stage-binding-backtest-001",
   evaluationRun: "fixture-evaluation-run-001",
   evaluationComparisonSet: "fixture-evaluation-comparison-set-001",
-  evidenceSealingDecision: "fixture-evidence-sealing-decision-001"
+  evidenceSealingDecision: "fixture-evidence-sealing-decision-001",
+  evidenceClassificationTrace: "fixture-evidence-classification-trace-001",
+  evidenceClassificationCandidate: "fixture-evidence-classification-candidate-001",
+  evidenceClassificationNonCounted: "fixture-evidence-classification-non-counted-001",
+  evidenceClassificationSealedDecision: "fixture-evidence-classification-sealed-decision-001"
 };
 
 const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
@@ -394,6 +407,66 @@ export function createFixtureRecords(): FixtureItem[] {
     created_at: fixtureEvaluationCreatedAt,
     authority_status: "not_counted"
   };
+  const evidenceClassifications: EvidenceClassificationRecord[] = [
+    {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: ids.evidenceClassificationTrace,
+      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_version_ref: ref("candidate_version", ids.version),
+      evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
+      classified_ref: ref("trace_placeholder", ids.trace),
+      classification_kind: "trace_debug_material",
+      classification_status: "trace_only",
+      classification_reason: "no_external_evaluator",
+      created_at: fixtureEvaluationCreatedAt,
+      authority_status: "not_counted"
+    },
+    {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: ids.evidenceClassificationCandidate,
+      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_version_ref: ref("candidate_version", ids.version),
+      evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
+      classified_ref: ref("evaluation_run_record", ids.evaluationRun),
+      classification_kind: "candidate_evidence",
+      classification_status: "candidate",
+      classification_reason: "no_external_evaluator",
+      created_at: fixtureEvaluationCreatedAt,
+      authority_status: "not_counted"
+    },
+    {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: ids.evidenceClassificationNonCounted,
+      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_version_ref: ref("candidate_version", ids.version),
+      evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
+      classified_ref: ref("evaluation_run_record", ids.evaluationRun),
+      classification_kind: "non_counted_evidence",
+      classification_status: "not_counted",
+      classification_reason: "no_external_evaluator",
+      created_at: fixtureEvaluationCreatedAt,
+      sealed_by_decision_ref: ref("evidence_sealing_decision", ids.evidenceSealingDecision),
+      authority_status: "not_counted"
+    },
+    {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: ids.evidenceClassificationSealedDecision,
+      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_version_ref: ref("candidate_version", ids.version),
+      evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
+      classified_ref: ref("evidence_sealing_decision", ids.evidenceSealingDecision),
+      classification_kind: "sealed_decision",
+      classification_status: "sealed",
+      classification_reason: "no_external_evaluator",
+      created_at: fixtureEvaluationCreatedAt,
+      sealed_by_decision_ref: ref("evidence_sealing_decision", ids.evidenceSealingDecision),
+      authority_status: "not_counted"
+    }
+  ];
 
   return [
     { collection: "candidates", id: ids.candidate, record: candidate },
@@ -421,7 +494,12 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "stage-bindings", id: ids.stageBinding, record: stageBinding },
     { collection: "evaluation-runs", id: ids.evaluationRun, record: evaluationRun },
     { collection: "evaluation-comparison-sets", id: ids.evaluationComparisonSet, record: comparisonSet },
-    { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision }
+    { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision },
+    ...evidenceClassifications.map((classification) => ({
+      collection: "evidence-classifications" as const,
+      id: classification.evidence_classification_id,
+      record: classification
+    }))
   ];
 }
 
@@ -676,6 +754,15 @@ export class LocalStore {
       created_at: createdAt,
       authority_status: "not_counted"
     };
+    const evidenceClassifications = defaultEvidenceClassificationRecords({
+      candidateRef: evaluationRun.candidate_ref,
+      candidateVersionRef: evaluationRun.candidate_version_ref,
+      evaluationRunRef: ref("evaluation_run_record", evaluationRun.evaluation_run_record_id),
+      traceRef: evaluationRun.trace_ref,
+      sealingDecisionRef: ref("evidence_sealing_decision", sealingDecision.evidence_sealing_decision_id),
+      reason: unsealedReason,
+      createdAt
+    });
 
     const records: FixtureItem[] = [
       { collection: "traces", id: trace.trace_id, itemDir: "placeholders", record: trace },
@@ -690,7 +777,12 @@ export class LocalStore {
         collection: "evidence-sealing-decisions",
         id: sealingDecision.evidence_sealing_decision_id,
         record: sealingDecision
-      }
+      },
+      ...evidenceClassifications.map((classification) => ({
+        collection: "evidence-classifications" as const,
+        id: classification.evidence_classification_id,
+        record: classification
+      }))
     ];
 
     for (const item of records) {
@@ -703,6 +795,115 @@ export class LocalStore {
       throw new LocalStoreError(
         "evaluation_run_reload_failed",
         `evaluation run ${evaluationRun.evaluation_run_record_id} was not reloaded after write`,
+        { evaluation_run_record_id: evaluationRun.evaluation_run_record_id }
+      );
+    }
+    return outcome;
+  }
+
+  async sealEvaluationRunEvidence(
+    input: EvidenceSealingDecisionInput
+  ): Promise<CandidateEvaluationRunOutcome> {
+    const validationFailure = validateEvidenceSealingDecisionInput(input);
+    if (validationFailure) {
+      throw new LocalStoreError(validationFailure, "invalid evidence sealing input");
+    }
+
+    const evaluationRun = await this.readOptionalRecord<EvaluationRunRecord>(
+      "evaluation-runs",
+      input.evaluation_run_record_id
+    );
+    if (!evaluationRun) {
+      throw new LocalStoreError(
+        "evaluation_run_not_found",
+        `evaluation run ${input.evaluation_run_record_id} not found`,
+        { evaluation_run_record_id: input.evaluation_run_record_id }
+      );
+    }
+
+    const comparisonSet = await this.findEvaluationComparisonSetForRun(
+      evaluationRun.evaluation_run_record_id
+    );
+    if (!comparisonSet) {
+      throw new LocalStoreError(
+        "evaluation_run_incomplete",
+        `evaluation run ${evaluationRun.evaluation_run_record_id} has no comparison set`,
+        { evaluation_run_record_id: evaluationRun.evaluation_run_record_id }
+      );
+    }
+
+    const sealingDecisionId = evidenceSealingDecisionRecordId({
+      evaluation_run_record_id: evaluationRun.evaluation_run_record_id,
+      idempotency_key: input.idempotency_key
+    });
+    const existing = await this.readOptionalRecord<EvidenceSealingDecisionRecord>(
+      "evidence-sealing-decisions",
+      sealingDecisionId
+    );
+    if (existing) {
+      const existingOutcome = await this.getCandidateEvaluationRun(
+        evaluationRun.evaluation_run_record_id
+      );
+      if (!existingOutcome) {
+        throw new LocalStoreError(
+          "evaluation_run_reload_failed",
+          `evaluation run ${evaluationRun.evaluation_run_record_id} was not reloaded after sealing`,
+          { evaluation_run_record_id: evaluationRun.evaluation_run_record_id }
+        );
+      }
+      return existingOutcome;
+    }
+
+    const createdAt = new Date().toISOString();
+    const sealedAt = input.sealed_at ?? createdAt;
+    const sealingDecision = evidenceSealingDecisionRecord({
+      evidenceSealingDecisionId: sealingDecisionId,
+      comparisonSetRef: ref(
+        "evaluation_comparison_set",
+        comparisonSet.evaluation_comparison_set_id
+      ),
+      evaluationRunRef: ref("evaluation_run_record", evaluationRun.evaluation_run_record_id),
+      evidenceDisposition: input.evidence_disposition,
+      dispositionReason: input.disposition_reason,
+      createdAt,
+      sealedAt
+    });
+    const classifiedRefs = input.classified_refs?.length
+      ? input.classified_refs
+      : [evaluationRun.trace_ref];
+    const evidenceClassifications = sealedEvidenceClassificationRecords({
+      candidateRef: evaluationRun.candidate_ref,
+      candidateVersionRef: evaluationRun.candidate_version_ref,
+      evaluationRunRef: ref("evaluation_run_record", evaluationRun.evaluation_run_record_id),
+      sealingDecisionRef: ref("evidence_sealing_decision", sealingDecision.evidence_sealing_decision_id),
+      evidenceDisposition: sealingDecision.evidence_disposition,
+      reason: sealingDecision.disposition_reason,
+      classifiedRefs,
+      createdAt
+    });
+
+    const records: FixtureItem[] = [
+      {
+        collection: "evidence-sealing-decisions",
+        id: sealingDecision.evidence_sealing_decision_id,
+        record: sealingDecision
+      },
+      ...evidenceClassifications.map((classification) => ({
+        collection: "evidence-classifications" as const,
+        id: classification.evidence_classification_id,
+        record: classification
+      }))
+    ];
+    for (const item of records) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+    await this.rebuildProjections();
+
+    const outcome = await this.getCandidateEvaluationRun(evaluationRun.evaluation_run_record_id);
+    if (!outcome) {
+      throw new LocalStoreError(
+        "evaluation_run_reload_failed",
+        `evaluation run ${evaluationRun.evaluation_run_record_id} was not reloaded after sealing`,
         { evaluation_run_record_id: evaluationRun.evaluation_run_record_id }
       );
     }
@@ -842,6 +1043,20 @@ export class LocalStore {
       provider_readiness_ref: providerReadinessRef,
       provider_probe_attempt_ref: ref("provider_probe_attempt", idsForCandidate.providerProbe)
     };
+    const materializedEvaluationRunRef = ref("evaluation_run_record", idsForCandidate.evaluationRun);
+    const materializedSealingDecisionRef = ref(
+      "evidence_sealing_decision",
+      idsForCandidate.evidenceSealingDecision
+    );
+    const materializedEvidenceClassifications = defaultEvidenceClassificationRecords({
+      candidateRef: ref("trader_system_candidate", candidateId),
+      candidateVersionRef: ref("candidate_version", idsForCandidate.version),
+      evaluationRunRef: materializedEvaluationRunRef,
+      traceRef,
+      sealingDecisionRef: materializedSealingDecisionRef,
+      reason: "no_external_evaluator",
+      createdAt: attempt.created_at
+    });
 
     const records: FixtureItem[] = [
       { collection: "candidate-materialization-attempts", id: idsForCandidate.attempt, record: attempt },
@@ -1160,7 +1375,12 @@ export class LocalStore {
           created_at: attempt.created_at,
           authority_status: "not_counted"
         } satisfies EvidenceSealingDecisionRecord
-      }
+      },
+      ...materializedEvidenceClassifications.map((classification) => ({
+        collection: "evidence-classifications" as const,
+        id: classification.evidence_classification_id,
+        record: classification
+      }))
     ];
 
     for (const item of records) {
@@ -1266,6 +1486,9 @@ export class LocalStore {
       const sealingDecision = await this.evidenceSealingDecisionForComparisonSet(
         comparisonSet.evaluation_comparison_set_id
       );
+      const evidenceClassifications = await this.listEvidenceClassificationsForEvaluationRun(
+        evaluationRun.evaluation_run_record_id
+      );
 
       return {
         candidate_id: evaluationRun.candidate_ref.id,
@@ -1274,7 +1497,8 @@ export class LocalStore {
         stage_binding: stageBinding,
         evaluation_run: evaluationRun,
         comparison_set: comparisonSet,
-        sealing_decision: sealingDecision
+        sealing_decision: sealingDecision,
+        evidence_classifications: evidenceClassifications
       };
     } catch (error) {
       if (isMissingFileError(error) || isMissingEvaluationLinkError(error)) {
@@ -1480,6 +1704,9 @@ export class LocalStore {
           comparisonSet.evaluation_comparison_set_id
         )
       : undefined;
+    const evidenceClassifications = await this.listEvidenceClassificationsForEvaluationRun(
+      latestRun.evaluation_run_record_id
+    );
     const errorState = candidateEvaluationErrorState(
       latestRun,
       Boolean(stageBinding && trace && comparisonSet && sealingDecision)
@@ -1539,6 +1766,7 @@ export class LocalStore {
             provider_output_artifact_refs: [],
             debug_artifact_refs: []
           },
+      evidence_classifications: evidenceClassifications.map(toEvidenceClassificationReadModel),
       counted_evidence: sealingDecision
         ? {
             counted: (
@@ -1625,9 +1853,19 @@ export class LocalStore {
     comparisonSetId: string
   ): Promise<EvidenceSealingDecisionRecord | undefined> {
     const sealingDecisions = await this.readCollection<EvidenceSealingDecisionRecord>("evidence-sealing-decisions");
-    return sealingDecisions.find(
-      (decision) => decision.evaluation_comparison_set_ref.id === comparisonSetId
-    );
+    return sealingDecisions
+      .filter((decision) => decision.evaluation_comparison_set_ref.id === comparisonSetId)
+      .sort(compareEvidenceSealingDecisions)
+      .at(-1);
+  }
+
+  private async listEvidenceClassificationsForEvaluationRun(
+    evaluationRunRecordId: string
+  ): Promise<EvidenceClassificationRecord[]> {
+    const classifications = await this.readCollection<EvidenceClassificationRecord>("evidence-classifications");
+    return classifications
+      .filter((classification) => classification.evaluation_run_ref.id === evaluationRunRecordId)
+      .sort(compareEvidenceClassifications);
   }
 
   private toCandidateSummary(candidate: TraderSystemCandidateRecord): CandidateSummaryReadModel {
@@ -1738,6 +1976,7 @@ function emptyCandidateEvaluationReadModel(
       provider_output_artifact_refs: [],
       debug_artifact_refs: []
     },
+    evidence_classifications: [],
     counted_evidence: {
       counted: false,
       evidence_disposition: "not_counted",
@@ -1793,6 +2032,28 @@ function compareEvaluationRuns(a: EvaluationRunRecord, b: EvaluationRunRecord): 
   return a.evaluation_run_record_id.localeCompare(b.evaluation_run_record_id);
 }
 
+function compareEvidenceSealingDecisions(
+  a: EvidenceSealingDecisionRecord,
+  b: EvidenceSealingDecisionRecord
+): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.evidence_sealing_decision_id.localeCompare(b.evidence_sealing_decision_id);
+}
+
+function compareEvidenceClassifications(
+  a: EvidenceClassificationRecord,
+  b: EvidenceClassificationRecord
+): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.evidence_classification_id.localeCompare(b.evidence_classification_id);
+}
+
 function comparisonSetIncludesRun(
   comparisonSet: EvaluationComparisonSetRecord,
   evaluationRunRecordId: string
@@ -1807,6 +2068,205 @@ function evaluationRunRefsForComparisonSet(
 ): Ref[] {
   const legacyRef = (comparisonSet as { evaluation_run_record_ref?: Ref }).evaluation_run_record_ref;
   return comparisonSet.evaluation_run_refs ?? (legacyRef ? [legacyRef] : []);
+}
+
+function defaultEvidenceClassificationRecords(input: {
+  candidateRef: Ref;
+  candidateVersionRef: Ref;
+  evaluationRunRef: Ref;
+  traceRef: Ref;
+  sealingDecisionRef: Ref;
+  reason: EvidenceDispositionReason;
+  createdAt: string;
+}): EvidenceClassificationRecord[] {
+  return [
+    evidenceClassificationRecord({
+      ...input,
+      classifiedRef: input.traceRef,
+      classificationKind: "trace_debug_material",
+      classificationStatus: "trace_only",
+      authorityStatus: "not_counted"
+    }),
+    evidenceClassificationRecord({
+      ...input,
+      classifiedRef: input.evaluationRunRef,
+      classificationKind: "candidate_evidence",
+      classificationStatus: "candidate",
+      authorityStatus: "not_counted"
+    }),
+    evidenceClassificationRecord({
+      ...input,
+      classifiedRef: input.evaluationRunRef,
+      classificationKind: "non_counted_evidence",
+      classificationStatus: "not_counted",
+      sealedByDecisionRef: input.sealingDecisionRef,
+      authorityStatus: "not_counted"
+    }),
+    evidenceClassificationRecord({
+      ...input,
+      classifiedRef: input.sealingDecisionRef,
+      classificationKind: "sealed_decision",
+      classificationStatus: "sealed",
+      sealedByDecisionRef: input.sealingDecisionRef,
+      authorityStatus: "not_counted"
+    })
+  ];
+}
+
+function sealedEvidenceClassificationRecords(input: {
+  candidateRef: Ref;
+  candidateVersionRef: Ref;
+  evaluationRunRef: Ref;
+  sealingDecisionRef: Ref;
+  evidenceDisposition: EvidenceDisposition;
+  reason: EvidenceDispositionReason;
+  classifiedRefs: Ref[];
+  createdAt: string;
+}): EvidenceClassificationRecord[] {
+  const classificationKind = evidenceClassificationKindForDisposition(input.evidenceDisposition);
+  const classificationStatus = evidenceClassificationStatusForDisposition(input.evidenceDisposition);
+  const authorityStatus = input.evidenceDisposition === "counted" ? "counted" : "not_counted";
+  const evidenceClassifications = input.classifiedRefs.map((classifiedRef) => (
+    evidenceClassificationRecord({
+      candidateRef: input.candidateRef,
+      candidateVersionRef: input.candidateVersionRef,
+      evaluationRunRef: input.evaluationRunRef,
+      sealingDecisionRef: input.sealingDecisionRef,
+      classifiedRef,
+      classificationKind,
+      classificationStatus,
+      reason: input.reason,
+      createdAt: input.createdAt,
+      sealedByDecisionRef: input.sealingDecisionRef,
+      authorityStatus
+    })
+  ));
+
+  return [
+    ...evidenceClassifications,
+    evidenceClassificationRecord({
+      candidateRef: input.candidateRef,
+      candidateVersionRef: input.candidateVersionRef,
+      evaluationRunRef: input.evaluationRunRef,
+      sealingDecisionRef: input.sealingDecisionRef,
+      classifiedRef: input.sealingDecisionRef,
+      classificationKind: "sealed_decision",
+      classificationStatus: "sealed",
+      reason: input.reason,
+      createdAt: input.createdAt,
+      sealedByDecisionRef: input.sealingDecisionRef,
+      authorityStatus
+    })
+  ];
+}
+
+function evidenceClassificationRecord(input: {
+  candidateRef: Ref;
+  candidateVersionRef: Ref;
+  evaluationRunRef: Ref;
+  sealingDecisionRef: Ref;
+  classifiedRef: Ref;
+  classificationKind: EvidenceClassificationKind;
+  classificationStatus: EvidenceClassificationStatus;
+  reason: EvidenceDispositionReason;
+  createdAt: string;
+  sealedByDecisionRef?: Ref;
+  authorityStatus: "not_counted" | "counted";
+}): EvidenceClassificationRecord {
+  return stripUndefined({
+    record_kind: "evidence_classification",
+    version: 1,
+    evidence_classification_id: evidenceClassificationRecordId({
+      evaluation_run_record_id: input.evaluationRunRef.id,
+      classification_kind: input.classificationKind,
+      classified_ref: input.classifiedRef,
+      reason: input.reason,
+      sealing_decision_id: input.sealingDecisionRef.id
+    }),
+    candidate_ref: input.candidateRef,
+    candidate_version_ref: input.candidateVersionRef,
+    evaluation_run_ref: input.evaluationRunRef,
+    classified_ref: input.classifiedRef,
+    classification_kind: input.classificationKind,
+    classification_status: input.classificationStatus,
+    classification_reason: input.reason,
+    created_at: input.createdAt,
+    sealed_by_decision_ref: input.sealedByDecisionRef,
+    authority_status: input.authorityStatus
+  } satisfies EvidenceClassificationRecord);
+}
+
+function evidenceClassificationKindForDisposition(
+  disposition: EvidenceDisposition
+): EvidenceClassificationKind {
+  if (disposition === "counted") {
+    return "counted_evidence";
+  }
+  if (disposition === "quarantined_for_review") {
+    return "rejected_evidence";
+  }
+  return "non_counted_evidence";
+}
+
+function evidenceClassificationStatusForDisposition(
+  disposition: EvidenceDisposition
+): EvidenceClassificationStatus {
+  if (disposition === "counted") {
+    return "counted";
+  }
+  if (disposition === "quarantined_for_review") {
+    return "rejected";
+  }
+  return "not_counted";
+}
+
+function evidenceSealingDecisionRecord(input: {
+  evidenceSealingDecisionId: string;
+  comparisonSetRef: Ref;
+  evaluationRunRef: Ref;
+  evidenceDisposition: EvidenceDisposition;
+  dispositionReason: EvidenceDispositionReason;
+  createdAt: string;
+  sealedAt: string;
+}): EvidenceSealingDecisionRecord {
+  const base = {
+    record_kind: "evidence_sealing_decision" as const,
+    version: 1 as const,
+    evidence_sealing_decision_id: input.evidenceSealingDecisionId,
+    evaluation_comparison_set_ref: input.comparisonSetRef,
+    evaluation_run_refs: [input.evaluationRunRef],
+    evidence_disposition: input.evidenceDisposition,
+    disposition_reason: input.dispositionReason,
+    created_at: input.createdAt,
+    sealed_at: input.sealedAt
+  };
+  if (input.evidenceDisposition === "counted") {
+    return {
+      ...base,
+      evidence_disposition: "counted",
+      authority_status: "counted"
+    };
+  }
+  return {
+    ...base,
+    evidence_disposition: input.evidenceDisposition,
+    authority_status: "not_counted"
+  };
+}
+
+function toEvidenceClassificationReadModel(
+  classification: EvidenceClassificationRecord
+) {
+  return {
+    classification_id: classification.evidence_classification_id,
+    classified_ref: classification.classified_ref,
+    classification_kind: classification.classification_kind,
+    classification_status: classification.classification_status,
+    classification_reason: classification.classification_reason,
+    authority_status: classification.authority_status,
+    sealed_by_decision_ref: classification.sealed_by_decision_ref,
+    created_at: classification.created_at
+  };
 }
 
 function toCandidateMaterializationAttemptReadModel(
@@ -1863,6 +2323,58 @@ function validateCandidateEvaluationRunInput(
   return undefined;
 }
 
+const evidenceDispositionReasons = new Set<EvidenceDispositionReason>([
+  "fixture_only",
+  "no_external_evaluator",
+  "provider_output_trace_only",
+  "non_comparable",
+  "partial_trace",
+  "method_not_authoritative",
+  "container_or_sandbox_legitimacy_insufficient",
+  "sealed_counted_fixture_only_allowed_by_test",
+  "no_evaluation_runs",
+  "evaluation_links_incomplete"
+]);
+
+function validateEvidenceSealingDecisionInput(
+  input: EvidenceSealingDecisionInput
+): LocalStoreErrorCode | undefined {
+  if (!input || typeof input !== "object") {
+    return "invalid_evidence_sealing_input";
+  }
+
+  const raw = input as EvidenceSealingDecisionInput & {
+    evidence_disposition?: unknown;
+    disposition_reason?: unknown;
+  };
+  if (
+    !nonEmpty(raw.idempotency_key) ||
+    !nonEmpty(raw.evaluation_run_record_id) ||
+    !isEvidenceDisposition(raw.evidence_disposition) ||
+    !isEvidenceDispositionReason(raw.disposition_reason)
+  ) {
+    return "invalid_evidence_sealing_input";
+  }
+  if (raw.evidence_disposition === "counted" && raw.disposition_reason !== "sealed_counted_fixture_only_allowed_by_test") {
+    return "invalid_evidence_sealing_input";
+  }
+  if (!isOptionalRefArray(raw.classified_refs)) {
+    return "invalid_evidence_sealing_input";
+  }
+  if (raw.sealed_at !== undefined && !nonEmpty(raw.sealed_at)) {
+    return "invalid_evidence_sealing_input";
+  }
+  return undefined;
+}
+
+function isEvidenceDisposition(value: unknown): value is EvidenceDisposition {
+  return value === "not_counted" || value === "counted" || value === "quarantined_for_review";
+}
+
+function isEvidenceDispositionReason(value: unknown): value is EvidenceDispositionReason {
+  return typeof value === "string" && evidenceDispositionReasons.has(value as EvidenceDispositionReason);
+}
+
 function isOptionalRefArray(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.every((item) => isRef(item)));
 }
@@ -1898,6 +2410,30 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function stableSuffix(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+function evidenceSealingDecisionRecordId(input: {
+  evaluation_run_record_id: string;
+  idempotency_key: string;
+}): string {
+  return `evidence-sealing-decision-${stableSuffix(`${input.evaluation_run_record_id}:${input.idempotency_key}`)}`;
+}
+
+function evidenceClassificationRecordId(input: {
+  evaluation_run_record_id: string;
+  classification_kind: EvidenceClassificationKind;
+  classified_ref: Ref;
+  reason: EvidenceDispositionReason;
+  sealing_decision_id: string;
+}): string {
+  return `evidence-classification-${stableSuffix([
+    input.evaluation_run_record_id,
+    input.classification_kind,
+    input.classified_ref.record_kind,
+    input.classified_ref.id,
+    input.reason,
+    input.sealing_decision_id
+  ].join(":"))}`;
 }
 
 function validateCandidateMaterializationInput(

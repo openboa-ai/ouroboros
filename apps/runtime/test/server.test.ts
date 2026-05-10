@@ -117,7 +117,14 @@ describe("runtime read-only API", () => {
         sealing_decision: {
           evidence_disposition: "not_counted",
           authority_status: "not_counted"
-        }
+        },
+        evidence_classifications: expect.arrayContaining([
+          expect.objectContaining({
+            classification_kind: "trace_debug_material",
+            classification_status: "trace_only",
+            authority_status: "not_counted"
+          })
+        ])
       }
     });
     expect(created.evaluation.trace.provider_output_artifact_refs).toHaveLength(1);

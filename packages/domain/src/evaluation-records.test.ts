@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   EvaluationComparisonSetRecord,
+  EvidenceClassificationRecord,
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
   Ref,
@@ -88,5 +89,63 @@ describe("stage-bound evaluation domain records", () => {
     expect(comparisonSet.evaluation_run_refs).toHaveLength(1);
     expect(sealingDecision.evidence_disposition).toBe("not_counted");
     expect(sealingDecision.authority_status).not.toBe("counted");
+  });
+
+  it("models explicit evidence classification records around a sealing decision", () => {
+    const candidateRef = ref("trader_system_candidate", "candidate-btc-breakout");
+    const candidateVersionRef = ref("candidate_version", "candidate-version-btc-breakout-v1");
+    const evaluationRunRef = ref("evaluation_run_record", "evaluation-run-backtest-v1");
+    const sealingDecisionRef = ref("evidence_sealing_decision", "evidence-sealing-decision-backtest-v1");
+
+    const traceDebugClassification = {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: "evidence-classification-trace-debug-v1",
+      candidate_ref: candidateRef,
+      candidate_version_ref: candidateVersionRef,
+      evaluation_run_ref: evaluationRunRef,
+      classified_ref: ref("trace_placeholder", "trace-backtest-evaluation-v1"),
+      classification_kind: "trace_debug_material",
+      classification_status: "trace_only",
+      classification_reason: "provider_output_trace_only",
+      created_at: "2026-05-05T00:04:00.000Z",
+      authority_status: "not_counted"
+    } satisfies EvidenceClassificationRecord;
+
+    const countedClassification = {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: "evidence-classification-counted-v1",
+      candidate_ref: candidateRef,
+      candidate_version_ref: candidateVersionRef,
+      evaluation_run_ref: evaluationRunRef,
+      classified_ref: ref("fixture_evidence", "sealed-backtest-summary-v1"),
+      classification_kind: "counted_evidence",
+      classification_status: "counted",
+      classification_reason: "sealed_counted_fixture_only_allowed_by_test",
+      created_at: "2026-05-05T00:05:00.000Z",
+      sealed_by_decision_ref: sealingDecisionRef,
+      authority_status: "counted"
+    } satisfies EvidenceClassificationRecord;
+
+    const rejectedClassification = {
+      record_kind: "evidence_classification",
+      version: 1,
+      evidence_classification_id: "evidence-classification-rejected-v1",
+      candidate_ref: candidateRef,
+      candidate_version_ref: candidateVersionRef,
+      evaluation_run_ref: evaluationRunRef,
+      classified_ref: ref("evaluation_provider_output_artifact", "provider-output-v1"),
+      classification_kind: "rejected_evidence",
+      classification_status: "rejected",
+      classification_reason: "method_not_authoritative",
+      created_at: "2026-05-05T00:06:00.000Z",
+      sealed_by_decision_ref: sealingDecisionRef,
+      authority_status: "not_counted"
+    } satisfies EvidenceClassificationRecord;
+
+    expect(traceDebugClassification.authority_status).toBe("not_counted");
+    expect(countedClassification.authority_status).toBe("counted");
+    expect(rejectedClassification.classification_status).toBe("rejected");
   });
 });

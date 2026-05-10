@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
 import type {
   CandidateMaterializationInput,
+  EvidenceClassificationRecord,
   EvaluationComparisonSetRecord,
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
@@ -171,6 +172,30 @@ describe("LocalStore", () => {
       authority_status: "not_counted",
       disposition_reason: "provider_output_trace_only"
     });
+    expect(outcome.evidence_classifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification_kind: "trace_debug_material",
+          classification_status: "trace_only",
+          authority_status: "not_counted"
+        }),
+        expect.objectContaining({
+          classification_kind: "candidate_evidence",
+          classification_status: "candidate",
+          authority_status: "not_counted"
+        }),
+        expect.objectContaining({
+          classification_kind: "non_counted_evidence",
+          classification_status: "not_counted",
+          authority_status: "not_counted"
+        }),
+        expect.objectContaining({
+          classification_kind: "sealed_decision",
+          classification_status: "sealed",
+          authority_status: "not_counted"
+        })
+      ])
+    );
 
     const stageBinding = await readStoreJson<StageBindingRecord>(
       "stage-bindings",
@@ -192,9 +217,15 @@ describe("LocalStore", () => {
       "items",
       `${outcome.sealing_decision.evidence_sealing_decision_id}.json`
     );
+    const classification = await readStoreJson<EvidenceClassificationRecord>(
+      "evidence-classifications",
+      "items",
+      `${outcome.evidence_classifications[0]?.evidence_classification_id}.json`
+    );
 
     expect(stageBinding.stage_binding_id).not.toBe(evaluationRun.evaluation_run_record_id);
     expect(comparisonSet.evaluation_comparison_set_id).not.toBe(sealingDecision.evidence_sealing_decision_id);
+    expect(classification.record_kind).toBe("evidence_classification");
     expect(evaluationRun.stage_binding_ref).toEqual({
       record_kind: "stage_binding",
       id: stageBinding.stage_binding_id
@@ -254,6 +285,18 @@ describe("LocalStore", () => {
       disposition_reason: "provider_output_trace_only",
       authority_status: "not_counted"
     });
+    expect(projected?.evaluation.evidence_classifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification_kind: "trace_debug_material",
+          classification_reason: "provider_output_trace_only"
+        }),
+        expect.objectContaining({
+          classification_kind: "non_counted_evidence",
+          classification_status: "not_counted"
+        })
+      ])
+    );
     expect(projected?.evaluation.run.ref.id).toBe(outcome.evaluation_run.evaluation_run_record_id);
 
     const evaluationReadModel = await readStoreJson(
@@ -350,6 +393,145 @@ describe("LocalStore", () => {
     });
     expect(projected?.evaluation.counted_evidence).not.toHaveProperty("provider_output_artifact_refs");
     expect(projected?.evaluation.counted_evidence).not.toHaveProperty("debug_artifact_refs");
+    expect(projected?.evaluation.evidence_classifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classified_ref: input.trace_ref,
+          classification_kind: "trace_debug_material",
+          classification_status: "trace_only",
+          authority_status: "not_counted"
+        }),
+        expect.objectContaining({
+          classification_kind: "non_counted_evidence",
+          classification_status: "not_counted",
+          authority_status: "not_counted"
+        })
+      ])
+    );
+  });
+
+  it("seals counted fixture evidence only through an explicit deterministic decision", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+      idempotency_key: "evaluation-run-explicit-counted-fixture",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluation-explicit-counted-fixture" }
+    });
+    const outcome = await store.createEvaluationRunForCandidate(input);
+    const countedEvidenceRef = { record_kind: "fixture_evidence", id: "sealed-backtest-summary-001" };
+
+    const sealed = await store.sealEvaluationRunEvidence({
+      idempotency_key: "seal-counted-fixture",
+      evaluation_run_record_id: outcome.evaluation_run.evaluation_run_record_id,
+      evidence_disposition: "counted",
+      disposition_reason: "sealed_counted_fixture_only_allowed_by_test",
+      classified_refs: [countedEvidenceRef],
+      sealed_at: "2026-05-08T00:00:00.000Z"
+    });
+    const repeated = await store.sealEvaluationRunEvidence({
+      idempotency_key: "seal-counted-fixture",
+      evaluation_run_record_id: outcome.evaluation_run.evaluation_run_record_id,
+      evidence_disposition: "counted",
+      disposition_reason: "sealed_counted_fixture_only_allowed_by_test",
+      classified_refs: [countedEvidenceRef],
+      sealed_at: "2026-05-08T00:00:00.000Z"
+    });
+
+    expect(repeated).toEqual(sealed);
+    expect(sealed.sealing_decision).toMatchObject({
+      evidence_disposition: "counted",
+      disposition_reason: "sealed_counted_fixture_only_allowed_by_test",
+      sealed_at: "2026-05-08T00:00:00.000Z",
+      authority_status: "counted"
+    });
+    expect(sealed.evidence_classifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classified_ref: countedEvidenceRef,
+          classification_kind: "counted_evidence",
+          classification_status: "counted",
+          classification_reason: "sealed_counted_fixture_only_allowed_by_test",
+          sealed_by_decision_ref: {
+            record_kind: "evidence_sealing_decision",
+            id: sealed.sealing_decision.evidence_sealing_decision_id
+          },
+          authority_status: "counted"
+        }),
+        expect.objectContaining({
+          classification_kind: "sealed_decision",
+          classification_status: "sealed",
+          authority_status: "counted"
+        })
+      ])
+    );
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.latest_sealing_decision).toMatchObject({
+      sealing_decision_id: sealed.sealing_decision.evidence_sealing_decision_id,
+      evidence_disposition: "counted",
+      authority_status: "counted"
+    });
+    expect(projected?.evaluation.counted_evidence).toMatchObject({
+      counted: true,
+      evidence_disposition: "counted",
+      disposition_reason: "sealed_counted_fixture_only_allowed_by_test",
+      authority_status: "counted",
+      sealed_at: "2026-05-08T00:00:00.000Z"
+    });
+  });
+
+  it("records rejected evidence without counting provider output", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validEvaluationRunInput(candidate.candidate_version.candidate_version_id, {
+      idempotency_key: "evaluation-run-explicit-rejected-provider-output",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluation-explicit-rejected-provider-output" }
+    });
+    const outcome = await store.createEvaluationRunForCandidate(input);
+
+    const sealed = await store.sealEvaluationRunEvidence({
+      idempotency_key: "seal-rejected-provider-output",
+      evaluation_run_record_id: outcome.evaluation_run.evaluation_run_record_id,
+      evidence_disposition: "quarantined_for_review",
+      disposition_reason: "method_not_authoritative",
+      classified_refs: input.provider_output_artifact_refs,
+      sealed_at: "2026-05-08T01:00:00.000Z"
+    });
+
+    expect(sealed.sealing_decision).toMatchObject({
+      evidence_disposition: "quarantined_for_review",
+      disposition_reason: "method_not_authoritative",
+      authority_status: "not_counted"
+    });
+    expect(sealed.evidence_classifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classified_ref: input.provider_output_artifact_refs[0],
+          classification_kind: "rejected_evidence",
+          classification_status: "rejected",
+          classification_reason: "method_not_authoritative",
+          authority_status: "not_counted"
+        })
+      ])
+    );
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.evaluation.counted_evidence).toMatchObject({
+      counted: false,
+      evidence_disposition: "quarantined_for_review",
+      disposition_reason: "method_not_authoritative",
+      authority_status: "not_counted"
+    });
   });
 
   it("projects a deterministic no-evaluation state when durable evaluation records are absent", async () => {
@@ -373,6 +555,7 @@ describe("LocalStore", () => {
         debug_artifact_refs: [],
         authority_status: "not_counted"
       },
+      evidence_classifications: [],
       counted_evidence: {
         counted: false,
         evidence_disposition: "not_counted",
@@ -486,6 +669,25 @@ describe("LocalStore", () => {
         stage: "live" as "backtest"
       }),
       "unsupported_evaluation_stage"
+    );
+    await expectStoreError(
+      store.sealEvaluationRunEvidence({
+        idempotency_key: "missing-evaluation-run-seal",
+        evaluation_run_record_id: "missing-evaluation-run",
+        evidence_disposition: "not_counted",
+        disposition_reason: "non_comparable"
+      }),
+      "evaluation_run_not_found"
+    );
+    await expectStoreError(
+      store.sealEvaluationRunEvidence({
+        idempotency_key: "invalid-counted-reason",
+        evaluation_run_record_id: "fixture-evaluation-run-001",
+        evidence_disposition: "counted",
+        disposition_reason: "method_not_authoritative",
+        classified_refs: [{ record_kind: "fixture_evidence", id: "bad-counted-reason" }]
+      }),
+      "invalid_evidence_sealing_input"
     );
   });
 

@@ -37,6 +37,36 @@ export type EvaluationComparabilityStatus = "comparable" | "not_comparable" | "n
 
 export type EvidenceDisposition = "not_counted" | "counted" | "quarantined_for_review";
 
+export type EvidenceDispositionReason =
+  | "fixture_only"
+  | "no_external_evaluator"
+  | "provider_output_trace_only"
+  | "non_comparable"
+  | "partial_trace"
+  | "method_not_authoritative"
+  | "container_or_sandbox_legitimacy_insufficient"
+  | "sealed_counted_fixture_only_allowed_by_test"
+  | "no_evaluation_runs"
+  | "evaluation_links_incomplete";
+
+export type EvidenceClassificationKind =
+  | "trace_debug_material"
+  | "candidate_evidence"
+  | "non_counted_evidence"
+  | "counted_evidence"
+  | "rejected_evidence"
+  | "sealed_decision";
+
+export type EvidenceClassificationStatus =
+  | "trace_only"
+  | "candidate"
+  | "not_counted"
+  | "counted"
+  | "rejected"
+  | "sealed";
+
+export type EvidenceClassificationAuthorityStatus = "not_counted" | "counted";
+
 export type CandidateMaterializationFailureReason =
   | "provider_unavailable"
   | "model_inaccessible"
@@ -322,7 +352,7 @@ interface EvidenceSealingDecisionBase extends BaseRecord {
   evidence_sealing_decision_id: string;
   evaluation_comparison_set_ref: Ref;
   evaluation_run_refs: Ref[];
-  disposition_reason: string;
+  disposition_reason: EvidenceDispositionReason;
   created_at: string;
   sealed_at?: string;
 }
@@ -336,6 +366,21 @@ export type EvidenceSealingDecisionRecord =
       evidence_disposition: "not_counted" | "quarantined_for_review";
       authority_status: "not_counted";
     });
+
+export interface EvidenceClassificationRecord extends BaseRecord {
+  record_kind: "evidence_classification";
+  evidence_classification_id: string;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  evaluation_run_ref: Ref;
+  classified_ref: Ref;
+  classification_kind: EvidenceClassificationKind;
+  classification_status: EvidenceClassificationStatus;
+  classification_reason: EvidenceDispositionReason;
+  created_at: string;
+  sealed_by_decision_ref?: Ref;
+  authority_status: EvidenceClassificationAuthorityStatus;
+}
 
 export interface CandidateMaterializationInput {
   idempotency_key: string;
@@ -426,6 +471,7 @@ export type FixtureRecord =
   | EvaluationRunRecord
   | EvaluationComparisonSetRecord
   | EvidenceSealingDecisionRecord
+  | EvidenceClassificationRecord
   | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {
@@ -483,10 +529,21 @@ export interface CandidateEvaluationSealingDecisionReadModel {
   evaluation_comparison_set_ref: Ref;
   evaluation_run_refs: Ref[];
   evidence_disposition: EvidenceDisposition;
-  disposition_reason: string;
+  disposition_reason: EvidenceDispositionReason;
   authority_status: "not_counted" | "counted";
   created_at: string;
   sealed_at?: string;
+}
+
+export interface CandidateEvidenceClassificationReadModel {
+  classification_id: string;
+  classified_ref: Ref;
+  classification_kind: EvidenceClassificationKind;
+  classification_status: EvidenceClassificationStatus;
+  classification_reason: EvidenceDispositionReason;
+  authority_status: EvidenceClassificationAuthorityStatus;
+  sealed_by_decision_ref?: Ref;
+  created_at: string;
 }
 
 export interface CandidateEvaluationTraceReadModel {
@@ -501,7 +558,7 @@ export interface CandidateEvaluationTraceReadModel {
 export interface CandidateCountedEvidenceReadModel {
   counted: boolean;
   evidence_disposition: EvidenceDisposition;
-  disposition_reason: string;
+  disposition_reason: EvidenceDispositionReason;
   authority_status: "not_counted" | "counted";
   sealed_at?: string;
 }
@@ -512,6 +569,7 @@ export interface CandidateEvaluationReadModel {
   latest_comparison_set: CandidateEvaluationComparisonSetReadModel | null;
   latest_sealing_decision: CandidateEvaluationSealingDecisionReadModel | null;
   trace: CandidateEvaluationTraceReadModel;
+  evidence_classifications: CandidateEvidenceClassificationReadModel[];
   counted_evidence: CandidateCountedEvidenceReadModel;
   error_state: CandidateEvaluationErrorState | null;
   run: PlaceholderSummary;
@@ -637,6 +695,15 @@ export interface CandidateEvaluationRunInput {
   debug_artifact_refs?: Ref[];
 }
 
+export interface EvidenceSealingDecisionInput {
+  idempotency_key: string;
+  evaluation_run_record_id: string;
+  evidence_disposition: EvidenceDisposition;
+  disposition_reason: EvidenceDispositionReason;
+  classified_refs?: Ref[];
+  sealed_at?: string;
+}
+
 export interface CandidateEvaluationRunOutcome {
   candidate_id: string;
   candidate_version_id: string;
@@ -645,4 +712,5 @@ export interface CandidateEvaluationRunOutcome {
   evaluation_run: EvaluationRunRecord;
   comparison_set: EvaluationComparisonSetRecord;
   sealing_decision: EvidenceSealingDecisionRecord;
+  evidence_classifications: EvidenceClassificationRecord[];
 }
