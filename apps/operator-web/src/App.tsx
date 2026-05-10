@@ -5,10 +5,16 @@ import type {
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateRuntimeAuthorityReadModel,
+  CandidateRuntimeControlReadModel,
   CandidateSummaryReadModel,
   PlaceholderSummary
 } from "@ouroboros/domain";
-import { fetchCandidate, fetchCandidateSummaries, recordCandidateRuntimeAuthority } from "./api";
+import {
+  fetchCandidate,
+  fetchCandidateSummaries,
+  recordCandidateRuntimeAuthority,
+  recordCandidateRuntimeControl
+} from "./api";
 import "./styles.css";
 
 interface AppState {
@@ -17,12 +23,20 @@ interface AppState {
   error?: string;
   loading: boolean;
   recordingRuntimeAuthority: boolean;
+  recordingRuntimeControl: boolean;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
+  runtimeControlError?: string;
+  runtimeControlMessage?: string;
 }
 
 export function App() {
-  const [state, setState] = useState<AppState>({ candidates: [], loading: true, recordingRuntimeAuthority: false });
+  const [state, setState] = useState<AppState>({
+    candidates: [],
+    loading: true,
+    recordingRuntimeAuthority: false,
+    recordingRuntimeControl: false
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -32,7 +46,13 @@ export function App() {
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
         if (!cancelled) {
-          setState({ candidates, selected, loading: false, recordingRuntimeAuthority: false });
+          setState({
+            candidates,
+            selected,
+            loading: false,
+            recordingRuntimeAuthority: false,
+            recordingRuntimeControl: false
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -40,6 +60,7 @@ export function App() {
             candidates: [],
             loading: false,
             recordingRuntimeAuthority: false,
+            recordingRuntimeControl: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
         }
@@ -56,7 +77,9 @@ export function App() {
       ...current,
       loading: true,
       runtimeAuthorityError: undefined,
-      runtimeAuthorityMessage: undefined
+      runtimeAuthorityMessage: undefined,
+      runtimeControlError: undefined,
+      runtimeControlMessage: undefined
     }));
     try {
       const selected = await fetchCandidate(candidateId);
@@ -100,6 +123,36 @@ export function App() {
     }
   }
 
+  async function recordRuntimeControl() {
+    const candidate = state.selected;
+    if (!candidate || state.recordingRuntimeControl) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      recordingRuntimeControl: true,
+      runtimeControlError: undefined,
+      runtimeControlMessage: undefined
+    }));
+    try {
+      const outcome = await recordCandidateRuntimeControl(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      setState((current) => ({
+        ...current,
+        selected,
+        recordingRuntimeControl: false,
+        runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        recordingRuntimeControl: false,
+        runtimeControlError: error instanceof Error ? error.message : "Unknown runtime control error"
+      }));
+    }
+  }
+
   return (
     <main className="shell">
       <aside className="sidebar" aria-label="Candidate list">
@@ -130,9 +183,13 @@ export function App() {
           <CandidateDetail
             candidate={state.selected}
             onRecordRuntimeAuthority={() => void recordRuntimeAuthority()}
+            onRecordRuntimeControl={() => void recordRuntimeControl()}
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
+            recordingRuntimeControl={state.recordingRuntimeControl}
             runtimeAuthorityError={state.runtimeAuthorityError}
             runtimeAuthorityMessage={state.runtimeAuthorityMessage}
+            runtimeControlError={state.runtimeControlError}
+            runtimeControlMessage={state.runtimeControlMessage}
           />
         )}
       </section>
@@ -143,15 +200,23 @@ export function App() {
 export function CandidateDetail({
   candidate,
   onRecordRuntimeAuthority,
+  onRecordRuntimeControl,
   recordingRuntimeAuthority = false,
+  recordingRuntimeControl = false,
   runtimeAuthorityError,
-  runtimeAuthorityMessage
+  runtimeAuthorityMessage,
+  runtimeControlError,
+  runtimeControlMessage
 }: {
   candidate: CandidateInspectReadModel;
   onRecordRuntimeAuthority?: () => void;
+  onRecordRuntimeControl?: () => void;
   recordingRuntimeAuthority?: boolean;
+  recordingRuntimeControl?: boolean;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
+  runtimeControlError?: string;
+  runtimeControlMessage?: string;
 }) {
   return (
     <article className="detail">
@@ -230,6 +295,14 @@ export function CandidateDetail({
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
         </InfoSection>
 
+        <RuntimeControlSection
+          control={candidate.runtime.runtime_control}
+          onRecordRuntimeControl={onRecordRuntimeControl}
+          recordingRuntimeControl={recordingRuntimeControl}
+          runtimeControlError={runtimeControlError}
+          runtimeControlMessage={runtimeControlMessage}
+        />
+
         <RuntimeAuthoritySection
           authority={candidate.runtime.bounded_authority}
           onRecordRuntimeAuthority={onRecordRuntimeAuthority}
@@ -243,6 +316,109 @@ export function CandidateDetail({
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function RuntimeControlSection({
+  control,
+  onRecordRuntimeControl,
+  recordingRuntimeControl,
+  runtimeControlError,
+  runtimeControlMessage
+}: {
+  control?: CandidateRuntimeControlReadModel;
+  onRecordRuntimeControl?: () => void;
+  recordingRuntimeControl: boolean;
+  runtimeControlError?: string;
+  runtimeControlMessage?: string;
+}) {
+  const statusLabel = control?.chain_complete
+    ? "chain complete"
+    : control?.has_activity
+      ? "incomplete"
+      : "none";
+
+  return (
+    <InfoSection title="Runtime Control">
+      <div className={`evaluation-status ${control?.chain_complete ? "counted" : "neutral"}`}>
+        <span>Logical TraderSystemRuntime state</span>
+        <strong>{statusLabel}</strong>
+        <span>{control?.audit_event.authority_status ?? "not_live"}</span>
+      </div>
+
+      <Field label="Activity" value={control?.has_activity ? "recorded" : "none"} />
+      <Field label="Complete chain" value={control?.chain_complete ? "yes" : "no"} />
+      <Field label="Command" value={control?.command.status ?? "pending_decision"} />
+      <Field label="Decision" value={control?.decision.status ?? "not_evaluated"} />
+      <Field label="Audit event" value={control?.audit_event.status ?? "not_recorded"} />
+
+      {control?.latest_command ? (
+        <div className="evaluation-block">
+          <h4>Latest control command</h4>
+          <Field label="Action" value={control.latest_command.action} />
+          <Field label="Status" value={control.latest_command.status} />
+          <Field label="Actor" value={control.latest_command.actor_kind} />
+          <Field label="Reason" value={control.latest_command.reason} />
+          <Field label="Authority" value={control.latest_command.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Latest control command</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_live" />
+        </div>
+      )}
+
+      {control?.latest_decision ? (
+        <div className="evaluation-block">
+          <h4>Latest control decision</h4>
+          <Field label="Outcome" value={control.latest_decision.decision_outcome} />
+          <Field label="Reason" value={control.latest_decision.decision_reason} />
+          <Field label="Command" value={formatRef(control.latest_decision.command_ref)} />
+          <Field label="Lifecycle" value={control.latest_decision.resulting_lifecycle_status ?? "unchanged"} />
+          <Field label="Authority" value={control.latest_decision.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Latest control decision</h4>
+          <Field label="Outcome" value="not_evaluated" />
+          <Field label="Authority" value="not_live" />
+        </div>
+      )}
+
+      {control?.latest_audit_event ? (
+        <div className="evaluation-block">
+          <h4>Latest audit event</h4>
+          <Field label="Event" value={control.latest_audit_event.event_kind} />
+          <Field label="Command" value={control.latest_audit_event.command_ref ? formatRef(control.latest_audit_event.command_ref) : "none"} />
+          <Field label="Decision" value={control.latest_audit_event.decision_ref ? formatRef(control.latest_audit_event.decision_ref) : "none"} />
+          <Field label="Lifecycle" value={control.latest_audit_event.runtime_lifecycle_status ?? "unchanged"} />
+          <Field label="Authority" value={control.latest_audit_event.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Latest audit event</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_live" />
+        </div>
+      )}
+
+      {onRecordRuntimeControl && (
+        <div className="runtime-command">
+          <button
+            className="runtime-command-button"
+            type="button"
+            onClick={onRecordRuntimeControl}
+            disabled={recordingRuntimeControl}
+          >
+            {recordingRuntimeControl ? "Recording pause" : "Record pause control"}
+          </button>
+          <span>control_only / audit_only / not_live</span>
+        </div>
+      )}
+      {runtimeControlMessage && <div className="inline-status">{runtimeControlMessage}</div>}
+      {runtimeControlError && <div className="inline-status error">{runtimeControlError}</div>}
+    </InfoSection>
   );
 }
 

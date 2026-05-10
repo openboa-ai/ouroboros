@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
-  CandidateRuntimeAuthorityReadModel
+  CandidateRuntimeAuthorityReadModel,
+  CandidateRuntimeControlReadModel
 } from "@ouroboros/domain";
 import { CandidateDetail } from "./App";
-import { runtimeAuthorityCommandPayload } from "./api";
+import { runtimeAuthorityCommandPayload, runtimeControlPausePayload } from "./api";
 
 describe("CandidateDetail", () => {
   it("renders fixture labels and inspect sections without action controls", () => {
@@ -18,6 +19,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Capability Package");
     expect(html).toContain("Agent And Provider");
     expect(html).toContain("Runtime Authority");
+    expect(html).toContain("Runtime Control");
+    expect(html).toContain("Logical TraderSystemRuntime state");
     expect(html).toContain("Bounded paper state");
     expect(html).toContain("Trace And Evaluation");
     expect(html).toContain("Evaluation state");
@@ -55,6 +58,31 @@ describe("CandidateDetail", () => {
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker/i);
   });
 
+  it("renders runtime control state and bounded pause command without implying live authority", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={candidateWithRuntimeControl(runtimeControl())}
+        onRecordRuntimeControl={() => undefined}
+        runtimeControlMessage="control_only recorded: runtime-control-command-001"
+      />
+    );
+
+    expect(html).toContain("Runtime Control");
+    expect(html).toContain("chain complete");
+    expect(html).toContain("Latest control command");
+    expect(html).toContain("pause");
+    expect(html).toContain("human_operator");
+    expect(html).toContain("Latest control decision");
+    expect(html).toContain("policy_allows_control");
+    expect(html).toContain("runtime_control_command:runtime-control-command-001");
+    expect(html).toContain("Latest audit event");
+    expect(html).toContain("runtime_lifecycle_transitioned");
+    expect(html).toContain("Record pause control");
+    expect(html).toContain("control_only");
+    expect(html).toContain("audit_only");
+    expect(html).not.toMatch(/Start|Resume|Stop|Kill|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+  });
+
   it("builds fixture-safe runtime authority command payloads", () => {
     const payload = runtimeAuthorityCommandPayload(fixtureCandidate);
     expect(payload).toMatchObject({
@@ -74,6 +102,29 @@ describe("CandidateDetail", () => {
     });
     expect(payload.idempotency_key).toContain("operator-web-runtime-authority");
     expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker/i);
+  });
+
+  it("builds fixture-safe runtime control pause payloads", () => {
+    const payload = runtimeControlPausePayload(fixtureCandidate);
+    expect(payload).toMatchObject({
+      candidate_version_id: fixtureCandidate.candidate_version.candidate_version_id,
+      command: {
+        action: "pause",
+        requested_lifecycle_status: "paused",
+        actor_kind: "human_operator",
+        reason: "operator_request"
+      },
+      decision: {
+        decision_outcome: "allowed",
+        decision_reason: "policy_allows_control",
+        resulting_lifecycle_status: "paused"
+      },
+      audit_event: {
+        event_kind: "runtime_lifecycle_transitioned"
+      }
+    });
+    expect(payload.idempotency_key).toContain("operator-web-runtime-control-pause");
+    expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker|provider_api_key/i);
   });
 
   it("renders materialization attempts as provider output, not evidence", () => {
@@ -164,6 +215,18 @@ function candidateWithRuntimeAuthority(
   };
 }
 
+function candidateWithRuntimeControl(
+  runtimeControl: CandidateRuntimeControlReadModel
+): CandidateInspectReadModel {
+  return {
+    ...fixtureCandidate,
+    runtime: {
+      ...fixtureCandidate.runtime,
+      runtime_control: runtimeControl
+    }
+  };
+}
+
 function runtimeAuthority(): CandidateRuntimeAuthorityReadModel {
   return {
     has_activity: true,
@@ -217,6 +280,65 @@ function runtimeAuthority(): CandidateRuntimeAuthorityReadModel {
       label: "Execution attempt",
       status: "dry_run_recorded",
       authority_status: "dry_run_only"
+    }
+  };
+}
+
+function runtimeControl(): CandidateRuntimeControlReadModel {
+  return {
+    has_activity: true,
+    chain_complete: true,
+    latest_command: {
+      command_id: "runtime-control-command-001",
+      action: "pause",
+      requested_lifecycle_status: "paused",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-web" },
+      reason: "operator_request",
+      requested_at: "2026-05-10T00:10:00.000Z",
+      status: "decided",
+      authority_status: "control_only"
+    },
+    latest_decision: {
+      decision_id: "runtime-control-decision-001",
+      command_ref: { record_kind: "runtime_control_command", id: "runtime-control-command-001" },
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: { record_kind: "runtime_policy_engine", id: "runtime-policy-engine-fixture" },
+      resulting_lifecycle_status: "paused",
+      decided_at: "2026-05-10T00:10:00.000Z",
+      authority_status: "control_only"
+    },
+    latest_audit_event: {
+      audit_event_id: "runtime-audit-event-001",
+      event_kind: "runtime_lifecycle_transitioned",
+      command_ref: { record_kind: "runtime_control_command", id: "runtime-control-command-001" },
+      decision_ref: { record_kind: "runtime_control_decision", id: "runtime-control-decision-001" },
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-web" },
+      runtime_lifecycle_status: "paused",
+      message: "Paper runtime paused through operator-web.",
+      created_at: "2026-05-10T00:10:00.000Z",
+      authority_status: "audit_only"
+    },
+    command: {
+      ref: { record_kind: "runtime_control_command", id: "runtime-control-command-001" },
+      label: "Runtime control command",
+      status: "decided",
+      authority_status: "control_only"
+    },
+    decision: {
+      ref: { record_kind: "runtime_control_decision", id: "runtime-control-decision-001" },
+      label: "Runtime control decision",
+      status: "allowed",
+      authority_status: "control_only"
+    },
+    audit_event: {
+      ref: { record_kind: "runtime_audit_event", id: "runtime-audit-event-001" },
+      label: "Runtime audit event",
+      status: "runtime_lifecycle_transitioned",
+      authority_status: "audit_only"
     }
   };
 }
