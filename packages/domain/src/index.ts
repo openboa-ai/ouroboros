@@ -468,6 +468,33 @@ export interface EvidenceClassificationRecord extends BaseRecord {
   authority_status: EvidenceClassificationAuthorityStatus;
 }
 
+export interface BoundedRuntimeAuthorityInput {
+  idempotency_key: string;
+  candidate_id: string;
+  candidate_version_id?: string;
+  runtime_id?: string;
+  intent: {
+    intent_kind: OrderIntentKind;
+    side?: "buy" | "sell";
+    order_type?: "market" | "limit";
+    quantity?: string;
+    limit_price?: string;
+  };
+  gateway_decision: {
+    decision_outcome: GatewayDecisionOutcome;
+    decision_reason: GatewayDecisionReason;
+    policy_ref?: Ref;
+  };
+  execution_attempt?: {
+    execution_mode?: EvaluationExecutionMode;
+    status?: ExecutionAttemptStatus;
+    result_reason?: GatewayDecisionReason;
+    trace_ref?: Ref;
+    completed_at?: string;
+  };
+  created_at?: string;
+}
+
 export interface OrderIntentRecord extends BaseRecord {
   record_kind: "order_intent";
   order_intent_id: string;
@@ -515,6 +542,15 @@ export interface ExecutionAttemptRecord extends BaseRecord {
   created_at: string;
   completed_at?: string;
   authority_status: ExecutionAttemptAuthorityStatus;
+}
+
+export interface BoundedRuntimeAuthorityOutcome {
+  candidate_id: string;
+  candidate_version_id: string;
+  runtime_id: string;
+  order_intent: OrderIntentRecord;
+  gateway_decision: GatewayDecisionRecord;
+  execution_attempt: ExecutionAttemptRecord;
 }
 
 export interface CandidateMaterializationInput {
@@ -715,6 +751,53 @@ export interface CandidateEvaluationReadModel {
   sealing_decision: PlaceholderSummary;
 }
 
+export interface CandidateRuntimeOrderIntentReadModel {
+  order_intent_id: string;
+  intent_kind: OrderIntentKind;
+  market_scope: "binance_btc_perpetual_futures";
+  side?: "buy" | "sell";
+  order_type?: "market" | "limit";
+  quantity?: string;
+  limit_price?: string;
+  status: OrderIntentStatus;
+  created_at: string;
+  authority_status: OrderIntentAuthorityStatus;
+}
+
+export interface CandidateRuntimeGatewayDecisionReadModel {
+  gateway_decision_id: string;
+  order_intent_ref: Ref;
+  decision_outcome: GatewayDecisionOutcome;
+  decision_reason: GatewayDecisionReason;
+  decided_at: string;
+  authority_status: GatewayDecisionAuthorityStatus;
+}
+
+export interface CandidateRuntimeExecutionAttemptReadModel {
+  execution_attempt_id: string;
+  order_intent_ref: Ref;
+  gateway_decision_ref: Ref;
+  stage: RuntimeExecutionStage;
+  execution_mode: EvaluationExecutionMode;
+  venue_scope: "binance_btc_perpetual_futures";
+  status: ExecutionAttemptStatus;
+  result_reason: GatewayDecisionReason;
+  created_at: string;
+  completed_at?: string;
+  authority_status: ExecutionAttemptAuthorityStatus;
+}
+
+export interface CandidateRuntimeAuthorityReadModel {
+  has_activity: boolean;
+  chain_complete: boolean;
+  latest_order_intent: CandidateRuntimeOrderIntentReadModel | null;
+  latest_gateway_decision: CandidateRuntimeGatewayDecisionReadModel | null;
+  latest_execution_attempt: CandidateRuntimeExecutionAttemptReadModel | null;
+  order_intent: PlaceholderSummary;
+  gateway_decision: PlaceholderSummary;
+  execution_attempt: PlaceholderSummary;
+}
+
 export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   candidate_version: {
     candidate_version_id: string;
@@ -763,6 +846,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   runtime: {
     ref: Ref;
     stage_binding_profile: string;
+    runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
     authority_status: string;
     placement: PlaceholderSummary;
     hands_environment: PlaceholderSummary;
@@ -775,6 +859,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
       quarantine_status: string;
       authority_status: string;
     };
+    bounded_authority?: CandidateRuntimeAuthorityReadModel;
   };
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;

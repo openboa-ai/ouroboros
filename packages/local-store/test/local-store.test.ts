@@ -1,16 +1,21 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
 import type {
+  BoundedRuntimeAuthorityInput,
   CandidateMaterializationInput,
   EvidenceClassificationRecord,
   EvaluationComparisonSetRecord,
+  ExecutionAttemptRecord,
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
+  GatewayDecisionRecord,
+  OrderIntentRecord,
+  StageBindingRecord,
   TracePlaceholderRecord,
-  StageBindingRecord
+  TraderSystemRuntimeRecord
 } from "@ouroboros/domain";
 
 let tmpDir: string;
@@ -612,6 +617,160 @@ describe("LocalStore", () => {
     });
   });
 
+  it("records, deduplicates, and projects bounded runtime authority records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validBoundedRuntimeAuthorityInput(candidate.candidate_version.candidate_version_id);
+    const first = await store.recordBoundedRuntimeAuthority(input);
+    const second = await store.recordBoundedRuntimeAuthority(input);
+
+    expect(second).toEqual(first);
+    expect(first).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      runtime_id: candidate.runtime.ref.id,
+      order_intent: {
+        record_kind: "order_intent",
+        status: "proposed",
+        authority_status: "not_submitted"
+      },
+      gateway_decision: {
+        record_kind: "gateway_decision",
+        decision_outcome: "dry_run_only",
+        decision_reason: "paper_stage_only",
+        authority_status: "dry_run_only"
+      },
+      execution_attempt: {
+        record_kind: "execution_attempt",
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      }
+    });
+    expect(first.gateway_decision.order_intent_ref).toEqual({
+      record_kind: "order_intent",
+      id: first.order_intent.order_intent_id
+    });
+    expect(first.execution_attempt.gateway_decision_ref).toEqual({
+      record_kind: "gateway_decision",
+      id: first.gateway_decision.gateway_decision_id
+    });
+
+    const orderIntent = await readStoreJson<OrderIntentRecord>(
+      "order-intents",
+      "items",
+      `${first.order_intent.order_intent_id}.json`
+    );
+    const gatewayDecision = await readStoreJson<GatewayDecisionRecord>(
+      "gateway-decisions",
+      "items",
+      `${first.gateway_decision.gateway_decision_id}.json`
+    );
+    const executionAttempt = await readStoreJson<ExecutionAttemptRecord>(
+      "execution-attempts",
+      "items",
+      `${first.execution_attempt.execution_attempt_id}.json`
+    );
+    const stageBinding = await readStoreJson<StageBindingRecord>(
+      "stage-bindings",
+      "items",
+      `${first.order_intent.stage_binding_ref.id}.json`
+    );
+    expect(orderIntent.runtime_ref.id).toBe(candidate.runtime.ref.id);
+    expect(stageBinding).toMatchObject({
+      stage: "paper",
+      profile: "paper",
+      execution_mode: "host_local",
+      candidate_ref: { id: FIXTURE_CANDIDATE_ID },
+      candidate_version_ref: { id: candidate.candidate_version.candidate_version_id }
+    });
+    expect(gatewayDecision.order_intent_ref.id).toBe(orderIntent.order_intent_id);
+    expect(executionAttempt.gateway_decision_ref.id).toBe(gatewayDecision.gateway_decision_id);
+    await expect(countJsonFiles("stage-bindings", "items")).resolves.toBe(2);
+    await expect(countJsonFiles("order-intents", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("gateway-decisions", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("execution-attempts", "items")).resolves.toBe(1);
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.runtime.bounded_authority).toMatchObject({
+      has_activity: true,
+      chain_complete: true,
+      latest_order_intent: {
+        order_intent_id: first.order_intent.order_intent_id,
+        status: "proposed",
+        authority_status: "not_submitted"
+      },
+      latest_gateway_decision: {
+        gateway_decision_id: first.gateway_decision.gateway_decision_id,
+        decision_outcome: "dry_run_only",
+        authority_status: "dry_run_only"
+      },
+      latest_execution_attempt: {
+        execution_attempt_id: first.execution_attempt.execution_attempt_id,
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      }
+    });
+
+    await rm(path.join(tmpDir, "read-models"), { recursive: true, force: true });
+    await store.rebuildProjections();
+
+    const reloaded = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(reloaded?.runtime.bounded_authority?.latest_execution_attempt?.execution_attempt_id).toBe(
+      first.execution_attempt.execution_attempt_id
+    );
+    expect(reloaded?.runtime.bounded_authority?.chain_complete).toBe(true);
+  });
+
+  it("rejects invalid bounded runtime authority commands without creating records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    await expectStoreError(
+      store.recordBoundedRuntimeAuthority({
+        ...validBoundedRuntimeAuthorityInput("fixture-candidate-version-001"),
+        candidate_id: ""
+      }),
+      "invalid_runtime_authority_input"
+    );
+    await expectStoreError(
+      store.recordBoundedRuntimeAuthority({
+        ...validBoundedRuntimeAuthorityInput("missing-version"),
+        candidate_version_id: "missing-version"
+      }),
+      "candidate_version_not_found"
+    );
+    await writeStoreJson(
+      {
+        record_kind: "trader_system_runtime",
+        version: 1,
+        trader_system_runtime_id: "foreign-runtime-001",
+        stage_binding_profile: "paper",
+        placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
+        hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
+        memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
+        authority_status: "not_live"
+      } satisfies TraderSystemRuntimeRecord,
+      "trader-system-runtimes",
+      "items",
+      "foreign-runtime-001.json"
+    );
+    await expectStoreError(
+      store.recordBoundedRuntimeAuthority({
+        ...validBoundedRuntimeAuthorityInput("fixture-candidate-version-001"),
+        runtime_id: "foreign-runtime-001"
+      }),
+      "runtime_mismatch"
+    );
+    await expect(countJsonFiles("order-intents", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("gateway-decisions", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("execution-attempts", "items")).resolves.toBe(0);
+  });
+
   it("keeps evaluation provider output as trace material until explicitly sealed", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -847,6 +1006,32 @@ function baseEvaluationRunInput(candidateVersionId: string) {
   };
 }
 
+function validBoundedRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeAuthorityInput {
+  return {
+    idempotency_key: "runtime-authority-dry-run-001",
+    candidate_id: FIXTURE_CANDIDATE_ID,
+    candidate_version_id: candidateVersionId,
+    intent: {
+      intent_kind: "place_order",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000"
+    },
+    gateway_decision: {
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only",
+      policy_ref: { record_kind: "runtime_operating_policy", id: "runtime-operating-policy-paper-v1" }
+    },
+    execution_attempt: {
+      execution_mode: "host_local",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-authority-dry-run-001" },
+      completed_at: "2026-05-10T00:01:00.000Z"
+    },
+    created_at: "2026-05-10T00:00:00.000Z"
+  };
+}
+
 async function expectStoreError(promise: Promise<unknown>, expectedCode: string): Promise<void> {
   try {
     await promise;
@@ -862,6 +1047,18 @@ async function expectStoreError(promise: Promise<unknown>, expectedCode: string)
 async function readStoreJson<T>(...segments: string[]): Promise<T> {
   const text = await readFile(path.join(tmpDir, ...segments), "utf8");
   return JSON.parse(text) as T;
+}
+
+async function countJsonFiles(...segments: string[]): Promise<number> {
+  try {
+    const entries = await readdir(path.join(tmpDir, ...segments));
+    return entries.filter((entry) => entry.endsWith(".json")).length;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return 0;
+    }
+    throw error;
+  }
 }
 
 async function writeStoreJson(value: unknown, ...segments: string[]): Promise<void> {

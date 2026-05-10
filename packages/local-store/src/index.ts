@@ -5,6 +5,8 @@ import type {
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
+  BoundedRuntimeAuthorityInput,
+  BoundedRuntimeAuthorityOutcome,
   AgentSpecRecord,
   CandidateMaterializationAttemptIndexProjection,
   CandidateMaterializationAttemptReadModel,
@@ -16,6 +18,7 @@ import type {
   CandidateIndexProjection,
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
+  CandidateRuntimeAuthorityReadModel,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
   CandidateEvaluationRunInput,
@@ -27,6 +30,9 @@ import type {
   CapabilityPackageAdmissionRecord,
   CapabilityPackageRecord,
   EvaluationComparisonSetRecord,
+  ExecutionAttemptAuthorityStatus,
+  ExecutionAttemptRecord,
+  ExecutionAttemptStatus,
   EvidenceClassificationKind,
   EvidenceClassificationRecord,
   EvidenceClassificationStatus,
@@ -37,7 +43,12 @@ import type {
   EvidenceSealingDecisionRecord,
   FixtureNotice,
   FixtureRecord,
+  GatewayDecisionRecord,
+  GatewayDecisionAuthorityStatus,
+  GatewayDecisionOutcome,
+  GatewayDecisionReason,
   HandsEnvironmentRecord,
+  OrderIntentRecord,
   PlaceholderSummary,
   ProgramManifestRecord,
   ProgramValidationRecord,
@@ -66,7 +77,11 @@ export type LocalStoreErrorCode =
   | "evaluation_run_incomplete"
   | "evaluation_run_not_found"
   | "evaluation_run_reload_failed"
-  | "invalid_evidence_sealing_input";
+  | "invalid_evidence_sealing_input"
+  | "invalid_runtime_authority_input"
+  | "runtime_not_found"
+  | "runtime_mismatch"
+  | "runtime_authority_reload_failed";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -119,7 +134,10 @@ type Collection =
   | "evaluation-runs"
   | "evaluation-comparison-sets"
   | "evidence-sealing-decisions"
-  | "evidence-classifications";
+  | "evidence-classifications"
+  | "order-intents"
+  | "gateway-decisions"
+  | "execution-attempts";
 
 interface FixtureItem {
   collection: Collection;
@@ -912,6 +930,228 @@ export class LocalStore {
     return outcome;
   }
 
+  async recordBoundedRuntimeAuthority(
+    input: BoundedRuntimeAuthorityInput
+  ): Promise<BoundedRuntimeAuthorityOutcome> {
+    const validationFailure = validateBoundedRuntimeAuthorityInput(input);
+    if (validationFailure) {
+      throw new LocalStoreError(validationFailure, "invalid bounded runtime authority input");
+    }
+
+    const candidate = await this.readOptionalRecord<TraderSystemCandidateRecord>(
+      "candidates",
+      input.candidate_id
+    );
+    if (!candidate) {
+      throw new LocalStoreError(
+        "candidate_not_found",
+        `candidate ${input.candidate_id} not found`,
+        { candidate_id: input.candidate_id }
+      );
+    }
+
+    const candidateVersionId = input.candidate_version_id ?? candidate.active_version_id;
+    const candidateVersion = await this.readOptionalRecord<CandidateVersionRecord>(
+      "candidate-versions",
+      candidateVersionId
+    );
+    if (!candidateVersion) {
+      throw new LocalStoreError(
+        "candidate_version_not_found",
+        `candidate version ${candidateVersionId} not found`,
+        { candidate_id: candidate.candidate_id, candidate_version_id: candidateVersionId }
+      );
+    }
+    if (candidateVersion.candidate_id !== candidate.candidate_id) {
+      throw new LocalStoreError(
+        "candidate_version_mismatch",
+        `candidate version ${candidateVersionId} does not belong to candidate ${candidate.candidate_id}`,
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidateVersionId,
+          actual_candidate_id: candidateVersion.candidate_id
+        }
+      );
+    }
+
+    const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
+    const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
+      "trader-system-runtimes",
+      runtimeId
+    );
+    if (!runtime) {
+      throw new LocalStoreError(
+        "runtime_not_found",
+        `runtime ${runtimeId} not found`,
+        { runtime_id: runtimeId }
+      );
+    }
+    if (
+      runtime.trader_system_runtime_id !== candidateVersion.runtime_ref.id ||
+      (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
+      (
+        runtime.candidate_version_ref !== undefined &&
+        runtime.candidate_version_ref.id !== candidateVersion.candidate_version_id
+      )
+    ) {
+      throw new LocalStoreError(
+        "runtime_mismatch",
+        `runtime ${runtime.trader_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidateVersion.candidate_version_id,
+          candidate_version_runtime_id: candidateVersion.runtime_ref.id,
+          runtime_id: runtime.trader_system_runtime_id
+        }
+      );
+    }
+
+    const recordIds = boundedRuntimeAuthorityRecordIds({
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidateVersion.candidate_version_id,
+      runtime_id: runtime.trader_system_runtime_id,
+      idempotency_key: input.idempotency_key
+    });
+    const existing = await this.readBoundedRuntimeAuthorityOutcome(
+      candidate.candidate_id,
+      candidateVersion.candidate_version_id,
+      runtime.trader_system_runtime_id,
+      recordIds
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const createdAt = input.created_at ?? new Date().toISOString();
+    const orderIntentRef = ref("order_intent", recordIds.orderIntent);
+    const gatewayDecisionRef = ref("gateway_decision", recordIds.gatewayDecision);
+    const executionAttemptRef = ref("execution_attempt", recordIds.executionAttempt);
+    const runtimeRef = ref("trader_system_runtime", runtime.trader_system_runtime_id);
+    const candidateRef = ref("trader_system_candidate", candidate.candidate_id);
+    const candidateVersionRef = ref("candidate_version", candidateVersion.candidate_version_id);
+    const stageBindingId = runtime.stage_binding_ref?.id
+      ?? `stage-binding-paper-${stableSuffix(runtime.trader_system_runtime_id)}`;
+    const stageBindingRef = ref("stage_binding", stageBindingId);
+    const existingStageBinding = await this.readOptionalRecord<StageBindingRecord>(
+      "stage-bindings",
+      stageBindingId
+    );
+
+    const orderIntent: OrderIntentRecord = stripUndefined({
+      record_kind: "order_intent",
+      version: 1,
+      order_intent_id: recordIds.orderIntent,
+      runtime_ref: runtimeRef,
+      candidate_ref: candidateRef,
+      candidate_version_ref: candidateVersionRef,
+      stage_binding_ref: stageBindingRef,
+      trace_ref: input.execution_attempt?.trace_ref ?? runtime.trace_ref,
+      intent_kind: input.intent.intent_kind,
+      market_scope: "binance_btc_perpetual_futures",
+      side: input.intent.side,
+      order_type: input.intent.order_type,
+      quantity: input.intent.quantity,
+      limit_price: input.intent.limit_price,
+      status: "proposed",
+      created_at: createdAt,
+      authority_status: "not_submitted"
+    } satisfies OrderIntentRecord);
+    const gatewayDecisionAuthorityStatus = gatewayDecisionAuthorityStatusForOutcome(
+      input.gateway_decision.decision_outcome
+    );
+    const gatewayDecision: GatewayDecisionRecord = stripUndefined({
+      record_kind: "gateway_decision",
+      version: 1,
+      gateway_decision_id: recordIds.gatewayDecision,
+      runtime_ref: runtimeRef,
+      order_intent_ref: orderIntentRef,
+      decision_outcome: input.gateway_decision.decision_outcome,
+      decision_reason: input.gateway_decision.decision_reason,
+      decided_at: createdAt,
+      policy_ref: input.gateway_decision.policy_ref,
+      authority_status: gatewayDecisionAuthorityStatus
+    } satisfies GatewayDecisionRecord);
+    const executionAttemptStatus = input.execution_attempt?.status
+      ?? executionAttemptStatusForDecision(input.gateway_decision.decision_outcome);
+    const executionAttemptAuthorityStatus = executionAttemptAuthorityStatusForStatus(
+      executionAttemptStatus,
+      input.gateway_decision.decision_outcome
+    );
+    const executionAttempt: ExecutionAttemptRecord = stripUndefined({
+      record_kind: "execution_attempt",
+      version: 1,
+      execution_attempt_id: recordIds.executionAttempt,
+      runtime_ref: runtimeRef,
+      order_intent_ref: orderIntentRef,
+      gateway_decision_ref: gatewayDecisionRef,
+      stage: "paper",
+      execution_mode: input.execution_attempt?.execution_mode ?? "host_local",
+      venue_scope: "binance_btc_perpetual_futures",
+      trace_ref: input.execution_attempt?.trace_ref ?? runtime.trace_ref,
+      status: executionAttemptStatus,
+      result_reason: input.execution_attempt?.result_reason ?? input.gateway_decision.decision_reason,
+      created_at: createdAt,
+      completed_at: input.execution_attempt?.completed_at,
+      authority_status: executionAttemptAuthorityStatus
+    } satisfies ExecutionAttemptRecord);
+    const stageBinding: StageBindingRecord | undefined = existingStageBinding
+      ? undefined
+      : stripUndefined({
+          record_kind: "stage_binding",
+          version: 1,
+          stage_binding_id: stageBindingId,
+          candidate_ref: candidateRef,
+          candidate_version_ref: candidateVersionRef,
+          stage: "paper",
+          profile: "paper",
+          execution_mode: executionAttempt.execution_mode,
+          runtime_placement_ref: runtime.placement_ref,
+          hands_environment_ref: runtime.hands_environment_ref,
+          created_at: createdAt,
+          authority_status: "not_live"
+        } satisfies StageBindingRecord);
+    const updatedRuntime: TraderSystemRuntimeRecord = stripUndefined({
+      ...runtime,
+      runtime_lifecycle_status: runtime.runtime_lifecycle_status ?? "registered",
+      candidate_ref: runtime.candidate_ref ?? candidateRef,
+      candidate_version_ref: runtime.candidate_version_ref ?? candidateVersionRef,
+      stage_binding_ref: stageBindingRef,
+      order_intent_refs: appendUniqueRefs(runtime.order_intent_refs, orderIntentRef),
+      gateway_decision_refs: appendUniqueRefs(runtime.gateway_decision_refs, gatewayDecisionRef),
+      execution_attempt_refs: appendUniqueRefs(runtime.execution_attempt_refs, executionAttemptRef),
+      created_at: runtime.created_at ?? createdAt
+    } satisfies TraderSystemRuntimeRecord);
+
+    const records: FixtureItem[] = [
+      ...(stageBinding
+        ? [{ collection: "stage-bindings" as const, id: stageBinding.stage_binding_id, record: stageBinding }]
+        : []),
+      { collection: "order-intents", id: orderIntent.order_intent_id, record: orderIntent },
+      { collection: "gateway-decisions", id: gatewayDecision.gateway_decision_id, record: gatewayDecision },
+      { collection: "execution-attempts", id: executionAttempt.execution_attempt_id, record: executionAttempt },
+      { collection: "trader-system-runtimes", id: updatedRuntime.trader_system_runtime_id, record: updatedRuntime }
+    ];
+    for (const item of records) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+    await this.rebuildProjections();
+
+    const outcome = await this.readBoundedRuntimeAuthorityOutcome(
+      candidate.candidate_id,
+      candidateVersion.candidate_version_id,
+      runtime.trader_system_runtime_id,
+      recordIds
+    );
+    if (!outcome) {
+      throw new LocalStoreError(
+        "runtime_authority_reload_failed",
+        `bounded runtime authority records were not reloaded after write`,
+        { runtime_id: runtime.trader_system_runtime_id }
+      );
+    }
+    return outcome;
+  }
+
   async listCandidateMaterializationAttempts(): Promise<CandidateMaterializationAttemptReadModel[]> {
     try {
       const index = await this.readJson<CandidateMaterializationAttemptIndexProjection>(
@@ -1655,6 +1895,7 @@ export class LocalStore {
       runtime: {
         ref: version.runtime_ref,
         stage_binding_profile: runtime.stage_binding_profile,
+        runtime_lifecycle_status: runtime.runtime_lifecycle_status,
         authority_status: runtime.authority_status,
         placement: placeholder(runtime.placement_ref, "Runtime placement", placement),
         hands_environment: placeholder(runtime.hands_environment_ref, "Hands environment", handsEnvironment),
@@ -1666,13 +1907,115 @@ export class LocalStore {
           visibility: memorySurface.visibility,
           quarantine_status: memorySurface.quarantine_status,
           authority_status: memorySurface.authority_status
-        }
+        },
+        bounded_authority: await this.buildCandidateRuntimeAuthorityReadModel(runtime)
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
       materialization_attempt: materializationAttempt
         ? toCandidateMaterializationAttemptReadModel(materializationAttempt)
         : undefined
+    };
+  }
+
+  private async buildCandidateRuntimeAuthorityReadModel(
+    runtime: TraderSystemRuntimeRecord
+  ): Promise<CandidateRuntimeAuthorityReadModel> {
+    const runtimeId = runtime.trader_system_runtime_id;
+    const orderIntents = (await this.readCollection<OrderIntentRecord>("order-intents"))
+      .filter((orderIntent) => orderIntent.runtime_ref.id === runtimeId)
+      .sort(compareOrderIntents);
+    const latestOrderIntent = orderIntents.at(-1);
+    if (!latestOrderIntent) {
+      return emptyCandidateRuntimeAuthorityReadModel();
+    }
+
+    const gatewayDecisions = (await this.readCollection<GatewayDecisionRecord>("gateway-decisions"))
+      .filter((gatewayDecision) => gatewayDecision.order_intent_ref.id === latestOrderIntent.order_intent_id)
+      .sort(compareGatewayDecisions);
+    const latestGatewayDecision = gatewayDecisions.at(-1);
+    const executionAttempts = latestGatewayDecision
+      ? (await this.readCollection<ExecutionAttemptRecord>("execution-attempts"))
+          .filter((executionAttempt) => (
+            executionAttempt.gateway_decision_ref.id === latestGatewayDecision.gateway_decision_id
+          ))
+          .sort(compareExecutionAttempts)
+      : [];
+    const latestExecutionAttempt = executionAttempts.at(-1);
+
+    return {
+      has_activity: true,
+      chain_complete: Boolean(latestGatewayDecision && latestExecutionAttempt),
+      latest_order_intent: toCandidateRuntimeOrderIntentReadModel(latestOrderIntent),
+      latest_gateway_decision: latestGatewayDecision
+        ? toCandidateRuntimeGatewayDecisionReadModel(latestGatewayDecision)
+        : null,
+      latest_execution_attempt: latestExecutionAttempt
+        ? toCandidateRuntimeExecutionAttemptReadModel(latestExecutionAttempt)
+        : null,
+      order_intent: statusPlaceholder(
+        ref(latestOrderIntent.record_kind, latestOrderIntent.order_intent_id),
+        "Order intent",
+        latestOrderIntent.status,
+        latestOrderIntent.authority_status
+      ),
+      gateway_decision: latestGatewayDecision
+        ? statusPlaceholder(
+            ref(latestGatewayDecision.record_kind, latestGatewayDecision.gateway_decision_id),
+            "Gateway decision",
+            latestGatewayDecision.decision_outcome,
+            latestGatewayDecision.authority_status
+          )
+        : statusPlaceholder(
+            ref("gateway_decision", "missing"),
+            "Gateway decision",
+            "missing",
+            "not_live"
+          ),
+      execution_attempt: latestExecutionAttempt
+        ? statusPlaceholder(
+            ref(latestExecutionAttempt.record_kind, latestExecutionAttempt.execution_attempt_id),
+            "Execution attempt",
+            latestExecutionAttempt.status,
+            latestExecutionAttempt.authority_status
+          )
+        : statusPlaceholder(
+            ref("execution_attempt", "missing"),
+            "Execution attempt",
+            "missing",
+            "not_submitted"
+          )
+    };
+  }
+
+  private async readBoundedRuntimeAuthorityOutcome(
+    candidateId: string,
+    candidateVersionId: string,
+    runtimeId: string,
+    recordIds: BoundedRuntimeAuthorityRecordIds
+  ): Promise<BoundedRuntimeAuthorityOutcome | undefined> {
+    const orderIntent = await this.readOptionalRecord<OrderIntentRecord>(
+      "order-intents",
+      recordIds.orderIntent
+    );
+    const gatewayDecision = await this.readOptionalRecord<GatewayDecisionRecord>(
+      "gateway-decisions",
+      recordIds.gatewayDecision
+    );
+    const executionAttempt = await this.readOptionalRecord<ExecutionAttemptRecord>(
+      "execution-attempts",
+      recordIds.executionAttempt
+    );
+    if (!orderIntent || !gatewayDecision || !executionAttempt) {
+      return undefined;
+    }
+    return {
+      candidate_id: candidateId,
+      candidate_version_id: candidateVersionId,
+      runtime_id: runtimeId,
+      order_intent: orderIntent,
+      gateway_decision: gatewayDecision,
+      execution_attempt: executionAttempt
     };
   }
 
@@ -2011,6 +2354,76 @@ function emptyCandidateEvaluationReadModel(
   };
 }
 
+function emptyCandidateRuntimeAuthorityReadModel(): CandidateRuntimeAuthorityReadModel {
+  return {
+    has_activity: false,
+    chain_complete: false,
+    latest_order_intent: null,
+    latest_gateway_decision: null,
+    latest_execution_attempt: null,
+    order_intent: statusPlaceholder(
+      ref("order_intent", "none"),
+      "Order intent",
+      "not_submitted",
+      "not_submitted"
+    ),
+    gateway_decision: statusPlaceholder(
+      ref("gateway_decision", "none"),
+      "Gateway decision",
+      "not_evaluated",
+      "not_live"
+    ),
+    execution_attempt: statusPlaceholder(
+      ref("execution_attempt", "none"),
+      "Execution attempt",
+      "not_submitted",
+      "not_submitted"
+    )
+  };
+}
+
+function toCandidateRuntimeOrderIntentReadModel(orderIntent: OrderIntentRecord) {
+  return {
+    order_intent_id: orderIntent.order_intent_id,
+    intent_kind: orderIntent.intent_kind,
+    market_scope: orderIntent.market_scope,
+    side: orderIntent.side,
+    order_type: orderIntent.order_type,
+    quantity: orderIntent.quantity,
+    limit_price: orderIntent.limit_price,
+    status: orderIntent.status,
+    created_at: orderIntent.created_at,
+    authority_status: orderIntent.authority_status
+  };
+}
+
+function toCandidateRuntimeGatewayDecisionReadModel(gatewayDecision: GatewayDecisionRecord) {
+  return {
+    gateway_decision_id: gatewayDecision.gateway_decision_id,
+    order_intent_ref: gatewayDecision.order_intent_ref,
+    decision_outcome: gatewayDecision.decision_outcome,
+    decision_reason: gatewayDecision.decision_reason,
+    decided_at: gatewayDecision.decided_at,
+    authority_status: gatewayDecision.authority_status
+  };
+}
+
+function toCandidateRuntimeExecutionAttemptReadModel(executionAttempt: ExecutionAttemptRecord) {
+  return {
+    execution_attempt_id: executionAttempt.execution_attempt_id,
+    order_intent_ref: executionAttempt.order_intent_ref,
+    gateway_decision_ref: executionAttempt.gateway_decision_ref,
+    stage: executionAttempt.stage,
+    execution_mode: executionAttempt.execution_mode,
+    venue_scope: executionAttempt.venue_scope,
+    status: executionAttempt.status,
+    result_reason: executionAttempt.result_reason,
+    created_at: executionAttempt.created_at,
+    completed_at: executionAttempt.completed_at,
+    authority_status: executionAttempt.authority_status
+  };
+}
+
 function candidateEvaluationErrorState(
   evaluationRun: EvaluationRunRecord,
   linkedRecordsComplete: boolean
@@ -2058,6 +2471,30 @@ function compareEvidenceClassifications(
     return timeCompare;
   }
   return a.evidence_classification_id.localeCompare(b.evidence_classification_id);
+}
+
+function compareOrderIntents(a: OrderIntentRecord, b: OrderIntentRecord): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.order_intent_id.localeCompare(b.order_intent_id);
+}
+
+function compareGatewayDecisions(a: GatewayDecisionRecord, b: GatewayDecisionRecord): number {
+  const timeCompare = a.decided_at.localeCompare(b.decided_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.gateway_decision_id.localeCompare(b.gateway_decision_id);
+}
+
+function compareExecutionAttempts(a: ExecutionAttemptRecord, b: ExecutionAttemptRecord): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.execution_attempt_id.localeCompare(b.execution_attempt_id);
 }
 
 function comparisonSetIncludesRun(
@@ -2373,12 +2810,120 @@ function validateEvidenceSealingDecisionInput(
   return undefined;
 }
 
+function validateBoundedRuntimeAuthorityInput(
+  input: BoundedRuntimeAuthorityInput
+): LocalStoreErrorCode | undefined {
+  if (!input || typeof input !== "object") {
+    return "invalid_runtime_authority_input";
+  }
+
+  const raw = input;
+  if (
+    !nonEmpty(raw.idempotency_key) ||
+    !nonEmpty(raw.candidate_id) ||
+    (raw.candidate_version_id !== undefined && !nonEmpty(raw.candidate_version_id)) ||
+    (raw.runtime_id !== undefined && !nonEmpty(raw.runtime_id))
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    !raw.intent ||
+    !isOrderIntentKind(raw.intent.intent_kind) ||
+    (raw.intent.side !== undefined && raw.intent.side !== "buy" && raw.intent.side !== "sell") ||
+    (
+      raw.intent.order_type !== undefined &&
+      raw.intent.order_type !== "market" &&
+      raw.intent.order_type !== "limit"
+    ) ||
+    (raw.intent.quantity !== undefined && !nonEmpty(raw.intent.quantity)) ||
+    (raw.intent.limit_price !== undefined && !nonEmpty(raw.intent.limit_price))
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    !raw.gateway_decision ||
+    !isGatewayDecisionOutcome(raw.gateway_decision.decision_outcome) ||
+    !isGatewayDecisionReason(raw.gateway_decision.decision_reason) ||
+    (
+      raw.gateway_decision.policy_ref !== undefined &&
+      !isRef(raw.gateway_decision.policy_ref)
+    )
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    raw.execution_attempt?.execution_mode !== undefined &&
+    !isEvaluationExecutionMode(raw.execution_attempt.execution_mode)
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    raw.execution_attempt?.status !== undefined &&
+    !isExecutionAttemptStatus(raw.execution_attempt.status)
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    raw.execution_attempt?.result_reason !== undefined &&
+    !isGatewayDecisionReason(raw.execution_attempt.result_reason)
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    raw.execution_attempt?.trace_ref !== undefined &&
+    !isRef(raw.execution_attempt.trace_ref, "trace_placeholder")
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+  if (
+    (raw.execution_attempt?.completed_at !== undefined && !nonEmpty(raw.execution_attempt.completed_at)) ||
+    (raw.created_at !== undefined && !nonEmpty(raw.created_at))
+  ) {
+    return "invalid_runtime_authority_input";
+  }
+
+  return undefined;
+}
+
 function isEvidenceDisposition(value: unknown): value is EvidenceDisposition {
   return value === "not_counted" || value === "counted" || value === "quarantined_for_review";
 }
 
 function isEvidenceDispositionReason(value: unknown): value is EvidenceDispositionReason {
   return typeof value === "string" && evidenceDispositionReasons.has(value as EvidenceDispositionReason);
+}
+
+function isOrderIntentKind(value: unknown): boolean {
+  return value === "place_order" || value === "cancel_order" || value === "adjust_position";
+}
+
+function isGatewayDecisionOutcome(value: unknown): value is GatewayDecisionOutcome {
+  return value === "allowed" || value === "rejected" || value === "clipped" || value === "dry_run_only";
+}
+
+function isGatewayDecisionReason(value: unknown): value is GatewayDecisionReason {
+  return (
+    value === "paper_stage_only" ||
+    value === "dry_run_allowed" ||
+    value === "no_live_authority" ||
+    value === "risk_limit_exceeded" ||
+    value === "operator_hold" ||
+    value === "fixture_only"
+  );
+}
+
+function isEvaluationExecutionMode(value: unknown): boolean {
+  return value === "host_local" || value === "containerized_local" || value === "containerized_remote";
+}
+
+function isExecutionAttemptStatus(value: unknown): value is ExecutionAttemptStatus {
+  return (
+    value === "not_submitted" ||
+    value === "dry_run_recorded" ||
+    value === "blocked" ||
+    value === "canceled" ||
+    value === "failed"
+  );
 }
 
 function isOptionalRefArray(value: unknown): boolean {
@@ -2416,6 +2961,71 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function stableSuffix(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+interface BoundedRuntimeAuthorityRecordIds {
+  orderIntent: string;
+  gatewayDecision: string;
+  executionAttempt: string;
+}
+
+function boundedRuntimeAuthorityRecordIds(input: {
+  candidate_id: string;
+  candidate_version_id: string;
+  runtime_id: string;
+  idempotency_key: string;
+}): BoundedRuntimeAuthorityRecordIds {
+  const suffix = stableSuffix([
+    input.candidate_id,
+    input.candidate_version_id,
+    input.runtime_id,
+    input.idempotency_key
+  ].join(":"));
+  return {
+    orderIntent: `order-intent-${suffix}`,
+    gatewayDecision: `gateway-decision-${suffix}`,
+    executionAttempt: `execution-attempt-${suffix}`
+  };
+}
+
+function gatewayDecisionAuthorityStatusForOutcome(
+  outcome: GatewayDecisionOutcome
+): GatewayDecisionAuthorityStatus {
+  if (outcome === "dry_run_only") {
+    return "dry_run_only";
+  }
+  return "not_live";
+}
+
+function executionAttemptStatusForDecision(outcome: GatewayDecisionOutcome): ExecutionAttemptStatus {
+  if (outcome === "dry_run_only") {
+    return "dry_run_recorded";
+  }
+  if (outcome === "rejected") {
+    return "blocked";
+  }
+  return "not_submitted";
+}
+
+function executionAttemptAuthorityStatusForStatus(
+  status: ExecutionAttemptStatus,
+  outcome: GatewayDecisionOutcome
+): ExecutionAttemptAuthorityStatus {
+  if (status === "dry_run_recorded" || outcome === "dry_run_only") {
+    return "dry_run_only";
+  }
+  if (status === "not_submitted" || status === "blocked") {
+    return "not_submitted";
+  }
+  return "not_live";
+}
+
+function appendUniqueRefs(existing: Ref[] | undefined, next: Ref): Ref[] {
+  const refs = existing ?? [];
+  if (refs.some((candidate) => candidate.record_kind === next.record_kind && candidate.id === next.id)) {
+    return refs;
+  }
+  return [...refs, next];
 }
 
 function evidenceSealingDecisionRecordId(input: {
