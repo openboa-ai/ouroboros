@@ -528,6 +528,17 @@ export class LocalStore {
     return this.toCandidateEvaluationRunOutcome(evaluationRun);
   }
 
+  async listCandidateEvaluationRuns(candidateId: string): Promise<CandidateEvaluationRunOutcome[]> {
+    const evaluationRuns = await this.readCollection<EvaluationRunRecord>("evaluation-runs");
+    const candidateRuns = evaluationRuns
+      .filter((run) => run.candidate_ref.id === candidateId)
+      .sort(compareEvaluationRuns);
+
+    return Promise.all(
+      candidateRuns.map((evaluationRun) => this.toCandidateEvaluationRunOutcome(evaluationRun))
+    );
+  }
+
   async createEvaluationRunForCandidate(
     input: CandidateEvaluationRunInput
   ): Promise<CandidateEvaluationRunOutcome> {

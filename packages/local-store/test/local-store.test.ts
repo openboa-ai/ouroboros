@@ -209,6 +209,12 @@ describe("LocalStore", () => {
       outcome.evaluation_run.evaluation_run_record_id
     );
     expect(reloaded).toEqual(outcome);
+
+    const candidateRuns = await reloadedStore.listCandidateEvaluationRuns(FIXTURE_CANDIDATE_ID);
+    expect(candidateRuns.map((run) => run.evaluation_run.evaluation_run_record_id)).toContain(
+      outcome.evaluation_run.evaluation_run_record_id
+    );
+    expect(candidateRuns.every((run) => run.candidate_id === FIXTURE_CANDIDATE_ID)).toBe(true);
   });
 
   it("projects the latest stage-bound evaluation summary into candidate inspect", async () => {

@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
 import type { CandidateMaterializationInput } from "@ouroboros/domain";
-import type { CandidateGenerationProviderResult, RuntimeProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
+import type {
+  CandidateEvaluationRequest,
+  CandidateGenerationProviderResult,
+  RuntimeProviderAdapter
+} from "../src/providers/runtime-provider-adapter";
 
 let tmpDir: string;
 
@@ -62,6 +67,240 @@ describe("runtime read-only API", () => {
       error: "candidate_not_found",
       candidate_id: "missing"
     });
+
+    await server.close();
+  });
+
+  it("creates and reads deterministic candidate evaluation runs", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    const candidateVersionId = candidate.json().candidate_version.candidate_version_id;
+
+    const create = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidateVersionId,
+        idempotency_key: "runtime-api-evaluation-test-001",
+        execution_mode: "host_local"
+      }
+    });
+
+    expect(create.statusCode).toBe(201);
+    const created = create.json();
+    expect(created).toMatchObject({
+      status: "created",
+      evaluation: {
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        candidate_version_id: candidateVersionId,
+        stage_binding: {
+          stage: "backtest",
+          profile: "backtest",
+          execution_mode: "host_local",
+          authority_status: "not_live"
+        },
+        evaluation_run: {
+          status: "created",
+          authority_status: "not_counted",
+          evaluator_ref: {
+            record_kind: "evaluation_provider",
+            id: "deterministic-backtest-fixture"
+          }
+        },
+        trace: {
+          authority_label: "provider_output_not_evidence",
+          authority_status: "not_counted"
+        },
+        sealing_decision: {
+          evidence_disposition: "not_counted",
+          authority_status: "not_counted"
+        }
+      }
+    });
+    expect(created.evaluation.trace.provider_output_artifact_refs).toHaveLength(1);
+    expect(created.evaluation.trace.debug_artifact_refs).toHaveLength(1);
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/evaluation-runs/${created.evaluation.evaluation_run.evaluation_run_record_id}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toEqual(created.evaluation);
+
+    const list = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().evaluation_runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evaluation_run: expect.objectContaining({
+            evaluation_run_record_id: created.evaluation.evaluation_run.evaluation_run_record_id,
+            authority_status: "not_counted"
+          }),
+          sealing_decision: expect.objectContaining({
+            evidence_disposition: "not_counted"
+          })
+        })
+      ])
+    );
+
+    const defaultHostMode = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: { candidate_version_id: candidateVersionId }
+    });
+    const defaultContainerMode = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidateVersionId,
+        execution_mode: "containerized_local"
+      }
+    });
+    const invalidModeAfterDefaultRun = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidateVersionId,
+        execution_mode: "unsupported_mode"
+      }
+    });
+
+    expect(defaultHostMode.statusCode).toBe(201);
+    expect(defaultContainerMode.statusCode).toBe(201);
+    expect(defaultHostMode.json().evaluation.stage_binding.execution_mode).toBe("host_local");
+    expect(defaultContainerMode.json().evaluation.stage_binding.execution_mode).toBe("containerized_local");
+    expect(defaultHostMode.json().evaluation.evaluation_run.evaluation_run_record_id).not.toBe(
+      defaultContainerMode.json().evaluation.evaluation_run.evaluation_run_record_id
+    );
+    expect(invalidModeAfterDefaultRun.statusCode).toBe(422);
+    expect(invalidModeAfterDefaultRun.json()).toMatchObject({
+      error: "evaluation_run_failed",
+      reason: "unsupported_execution_mode"
+    });
+
+    await server.close();
+  });
+
+  it("returns deterministic evaluation API errors", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const missingCandidate = await server.inject({
+      method: "POST",
+      url: "/api/candidates/missing/evaluation-runs",
+      payload: { idempotency_key: "missing-candidate" }
+    });
+    expect(missingCandidate.statusCode).toBe(404);
+    expect(missingCandidate.json()).toEqual({
+      error: "candidate_not_found",
+      candidate_id: "missing"
+    });
+
+    const missingCandidateRuns = await server.inject({
+      method: "GET",
+      url: "/api/candidates/missing/evaluation-runs"
+    });
+    expect(missingCandidateRuns.statusCode).toBe(404);
+    expect(missingCandidateRuns.json()).toEqual({
+      error: "candidate_not_found",
+      candidate_id: "missing"
+    });
+
+    const invalidStage = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        idempotency_key: "invalid-stage",
+        stage: "paper"
+      }
+    });
+    expect(invalidStage.statusCode).toBe(422);
+    expect(invalidStage.json()).toMatchObject({
+      error: "evaluation_run_failed",
+      reason: "unsupported_evaluation_stage",
+      candidate_id: FIXTURE_CANDIDATE_ID
+    });
+
+    const missingVersion = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: "missing-candidate-version",
+        idempotency_key: "missing-version"
+      }
+    });
+    expect(missingVersion.statusCode).toBe(422);
+    expect(missingVersion.json()).toMatchObject({
+      error: "evaluation_run_failed",
+      reason: "candidate_version_not_found",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: "missing-candidate-version"
+    });
+
+    const missingRun = await server.inject({
+      method: "GET",
+      url: "/api/evaluation-runs/missing-evaluation-run"
+    });
+    expect(missingRun.statusCode).toBe(404);
+    expect(missingRun.json()).toEqual({
+      error: "evaluation_run_not_found",
+      evaluation_run_id: "missing-evaluation-run"
+    });
+
+    await server.close();
+  });
+
+  it("maps evaluation adapter failures to deterministic API responses", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      evaluationProviderAdapter: new FixtureEvaluationProviderAdapter({
+        failureReason: "evaluation_provider_failed"
+      })
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: { idempotency_key: "adapter-failure" }
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "evaluation_run_failed",
+      reason: "evaluation_provider_failed",
+      candidate_id: FIXTURE_CANDIDATE_ID
+    });
+
+    await server.close();
+  });
+
+  it("passes the default execution mode through the evaluation provider request", async () => {
+    const evaluationProviderAdapter = new CapturingEvaluationProviderAdapter();
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      evaluationProviderAdapter
+    });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidate.json().candidate_version.candidate_version_id,
+        idempotency_key: "provider-default-execution-mode"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(evaluationProviderAdapter.requests[0]?.execution_mode).toBe("host_local");
 
     await server.close();
   });
@@ -208,6 +447,15 @@ function fakeProvider(result: CandidateGenerationProviderResult): RuntimeProvide
       return result;
     }
   };
+}
+
+class CapturingEvaluationProviderAdapter extends FixtureEvaluationProviderAdapter {
+  readonly requests: CandidateEvaluationRequest[] = [];
+
+  override async runCandidateEvaluation(request: CandidateEvaluationRequest) {
+    this.requests.push(request);
+    return super.runCandidateEvaluation(request);
+  }
 }
 
 function validMaterializationInput(): CandidateMaterializationInput {
