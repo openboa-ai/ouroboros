@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
-import type { BoundedRuntimeAuthorityInput, EvaluationExecutionMode, Ref } from "@ouroboros/domain";
+import type {
+  BoundedRuntimeAuthorityInput,
+  EvaluationExecutionMode,
+  Ref,
+  RuntimeControlAuditInput
+} from "@ouroboros/domain";
 import { LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "./candidate-evaluation";
 import { runCandidateGeneration } from "./candidate-materialization";
@@ -47,6 +52,50 @@ interface RecordRuntimeAuthorityBody {
     result_reason?: string;
     trace_ref?: Ref;
     completed_at?: string;
+  };
+  created_at?: string;
+}
+
+interface RecordRuntimeControlBody {
+  candidate_version_id?: string;
+  runtime_id?: string;
+  idempotency_key?: string;
+  command?: {
+    action?: string;
+    requested_lifecycle_status?: string;
+    actor_kind?: string;
+    actor_ref?: Ref;
+    runtime_operating_policy_ref?: Ref;
+    reason?: string;
+    reason_summary?: string;
+    trace_ref?: Ref;
+    related_order_intent_refs?: Ref[];
+    related_gateway_decision_refs?: Ref[];
+    related_execution_attempt_refs?: Ref[];
+  };
+  decision?: {
+    decision_outcome?: string;
+    decision_reason?: string;
+    decided_by_actor_kind?: string;
+    decided_by_actor_ref?: Ref;
+    runtime_operating_policy_ref?: Ref;
+    resulting_lifecycle_status?: string;
+    trace_ref?: Ref;
+    related_order_intent_refs?: Ref[];
+    related_gateway_decision_refs?: Ref[];
+    related_execution_attempt_refs?: Ref[];
+  };
+  audit_event?: {
+    event_kind?: string;
+    actor_kind?: string;
+    actor_ref?: Ref;
+    runtime_lifecycle_status?: string;
+    message?: string;
+    trace_ref?: Ref;
+    supporting_record_refs?: Ref[];
+    related_order_intent_refs?: Ref[];
+    related_gateway_decision_refs?: Ref[];
+    related_execution_attempt_refs?: Ref[];
   };
   created_at?: string;
 }
@@ -170,6 +219,76 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     } catch (error) {
       if (error instanceof LocalStoreError) {
         return reply.code(runtimeAuthorityStatusCode(error.code)).send(runtimeAuthorityError({
+          reason: error.code,
+          candidateId: request.params.candidate_id,
+          candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
+          idempotencyKey: body.idempotency_key
+        }));
+      }
+      throw error;
+    }
+  });
+
+  server.get<{ Params: { candidate_id: string } }>(
+    "/api/candidates/:candidate_id/runtime-control",
+    async (request, reply) => {
+      const candidate = await store.getCandidate(request.params.candidate_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      return {
+        candidate_id: request.params.candidate_id,
+        runtime_id: candidate.runtime.ref.id,
+        runtime_control: candidate.runtime.runtime_control
+      };
+    }
+  );
+
+  server.post<{
+    Params: { candidate_id: string };
+    Body: RecordRuntimeControlBody;
+  }>("/api/candidates/:candidate_id/runtime-control", async (request, reply) => {
+    const candidate = await store.getCandidate(request.params.candidate_id);
+    if (!candidate) {
+      return reply.code(404).send({
+        error: "candidate_not_found",
+        candidate_id: request.params.candidate_id
+      });
+    }
+
+    const body = request.body ?? {};
+    if (!isRuntimeControlRequestComplete(body)) {
+      return reply.code(422).send(runtimeControlError({
+        reason: "invalid_runtime_control_request",
+        candidateId: request.params.candidate_id,
+        candidateVersionId: body.candidate_version_id,
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+
+    try {
+      const outcome = await store.recordRuntimeControlAudit({
+        idempotency_key: body.idempotency_key,
+        candidate_id: request.params.candidate_id,
+        candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
+        runtime_id: body.runtime_id,
+        command: body.command,
+        decision: body.decision,
+        audit_event: body.audit_event,
+        created_at: body.created_at
+      } as RuntimeControlAuditInput);
+
+      return reply.code(201).send({
+        status: "recorded",
+        ...outcome
+      });
+    } catch (error) {
+      if (error instanceof LocalStoreError) {
+        return reply.code(runtimeControlStatusCode(error.code)).send(runtimeControlError({
           reason: error.code,
           candidateId: request.params.candidate_id,
           candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
@@ -307,6 +426,36 @@ function runtimeAuthorityError(input: {
 }) {
   return {
     error: "runtime_authority_record_failed",
+    reason: input.reason,
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    idempotency_key: input.idempotencyKey
+  };
+}
+
+function isRuntimeControlRequestComplete(
+  body: RecordRuntimeControlBody
+): body is RecordRuntimeControlBody & {
+  idempotency_key: string;
+  command: RuntimeControlAuditInput["command"];
+  decision: RuntimeControlAuditInput["decision"];
+  audit_event: RuntimeControlAuditInput["audit_event"];
+} {
+  return Boolean(body.idempotency_key && body.command && body.decision && body.audit_event);
+}
+
+function runtimeControlStatusCode(reason: string): 404 | 422 {
+  return reason === "candidate_not_found" ? 404 : 422;
+}
+
+function runtimeControlError(input: {
+  reason: string;
+  candidateId: string;
+  candidateVersionId?: string;
+  idempotencyKey?: string;
+}) {
+  return {
+    error: "runtime_control_record_failed",
     reason: input.reason,
     candidate_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,

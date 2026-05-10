@@ -1,10 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
-import type { BoundedRuntimeAuthorityInput, CandidateMaterializationInput } from "@ouroboros/domain";
+import type {
+  BoundedRuntimeAuthorityInput,
+  CandidateMaterializationInput,
+  RuntimeControlAuditInput,
+  TraderSystemRuntimeRecord
+} from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
 import type {
   CandidateEvaluationRequest,
@@ -304,6 +309,16 @@ describe("runtime read-only API", () => {
       error: "candidate_not_found",
       candidate_id: "missing"
     });
+    const missingCandidatePost = await server.inject({
+      method: "POST",
+      url: "/api/candidates/missing/runtime-control",
+      payload: validRuntimeControlInput(candidateVersionId)
+    });
+    expect(missingCandidatePost.statusCode).toBe(404);
+    expect(missingCandidatePost.json()).toEqual({
+      error: "candidate_not_found",
+      candidate_id: "missing"
+    });
 
     const missingFields = await server.inject({
       method: "POST",
@@ -351,6 +366,233 @@ describe("runtime read-only API", () => {
       reason: "candidate_version_not_found",
       candidate_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: "missing-candidate-version"
+    });
+
+    await server.close();
+  });
+
+  it("records and reads runtime control through the runtime API", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    const candidateVersionId = candidate.json().candidate_version.candidate_version_id;
+
+    const initialControl = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`
+    });
+    expect(initialControl.statusCode).toBe(200);
+    expect(initialControl.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runtime_id: candidate.json().runtime.ref.id,
+      runtime_control: {
+        has_activity: false,
+        chain_complete: false
+      }
+    });
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: validRuntimeControlInput(candidateVersionId)
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: validRuntimeControlInput(candidateVersionId)
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(201);
+    expect(duplicate.json()).toEqual(first.json());
+    expect(first.json()).toMatchObject({
+      status: "recorded",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidateVersionId,
+      runtime_id: candidate.json().runtime.ref.id,
+      command: {
+        record_kind: "runtime_control_command",
+        action: "pause",
+        status: "decided",
+        authority_status: "control_only"
+      },
+      decision: {
+        record_kind: "runtime_control_decision",
+        decision_outcome: "allowed",
+        decision_reason: "policy_allows_control",
+        resulting_lifecycle_status: "paused",
+        authority_status: "control_only"
+      },
+      audit_event: {
+        record_kind: "runtime_audit_event",
+        event_kind: "runtime_lifecycle_transitioned",
+        runtime_lifecycle_status: "paused",
+        authority_status: "audit_only"
+      }
+    });
+
+    const updatedCandidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(updatedCandidate.json().runtime.runtime_control).toMatchObject({
+      has_activity: true,
+      chain_complete: true,
+      latest_command: {
+        command_id: first.json().command.runtime_control_command_id,
+        action: "pause",
+        authority_status: "control_only"
+      },
+      latest_decision: {
+        decision_id: first.json().decision.runtime_control_decision_id,
+        decision_outcome: "allowed",
+        resulting_lifecycle_status: "paused"
+      },
+      latest_audit_event: {
+        audit_event_id: first.json().audit_event.runtime_audit_event_id,
+        event_kind: "runtime_lifecycle_transitioned",
+        authority_status: "audit_only"
+      }
+    });
+    expect(updatedCandidate.json().runtime.placement.authority_status).toBe("not_launched");
+    expect(JSON.stringify(updatedCandidate.json().runtime.runtime_control)).not.toMatch(
+      /exchange_credentials|provider_api_key|direct_exchange_order|gateway_signing_material/
+    );
+
+    const projectedControl = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`
+    });
+    expect(projectedControl.json().runtime_control.latest_command.command_id).toBe(
+      first.json().command.runtime_control_command_id
+    );
+
+    await server.close();
+  });
+
+  it("returns deterministic runtime control API errors", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({ store });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    const candidateVersionId = candidate.json().candidate_version.candidate_version_id;
+
+    const missingCandidate = await server.inject({
+      method: "GET",
+      url: "/api/candidates/missing/runtime-control"
+    });
+    expect(missingCandidate.statusCode).toBe(404);
+    expect(missingCandidate.json()).toEqual({
+      error: "candidate_not_found",
+      candidate_id: "missing"
+    });
+
+    const missingFields = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: { candidate_version_id: candidateVersionId }
+    });
+    expect(missingFields.statusCode).toBe(422);
+    expect(missingFields.json()).toMatchObject({
+      error: "runtime_control_record_failed",
+      reason: "invalid_runtime_control_request",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidateVersionId
+    });
+
+    const invalidAction = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: {
+        ...validRuntimeControlInput(candidateVersionId),
+        command: {
+          ...validRuntimeControlInput(candidateVersionId).command,
+          action: "launch_live"
+        }
+      }
+    });
+    expect(invalidAction.statusCode).toBe(422);
+    expect(invalidAction.json()).toMatchObject({
+      error: "runtime_control_record_failed",
+      reason: "invalid_runtime_control_input",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidateVersionId
+    });
+
+    const invalidOutcome = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: {
+        ...validRuntimeControlInput(candidateVersionId),
+        decision: {
+          ...validRuntimeControlInput(candidateVersionId).decision,
+          decision_outcome: "live_allowed"
+        }
+      }
+    });
+    expect(invalidOutcome.statusCode).toBe(422);
+    expect(invalidOutcome.json()).toMatchObject({
+      reason: "invalid_runtime_control_input"
+    });
+
+    const missingVersion = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: {
+        ...validRuntimeControlInput("missing-candidate-version"),
+        candidate_version_id: "missing-candidate-version"
+      }
+    });
+    expect(missingVersion.statusCode).toBe(422);
+    expect(missingVersion.json()).toMatchObject({
+      reason: "candidate_version_not_found",
+      candidate_version_id: "missing-candidate-version"
+    });
+
+    const missingRuntime = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: {
+        ...validRuntimeControlInput(candidateVersionId),
+        runtime_id: "missing-runtime"
+      }
+    });
+    expect(missingRuntime.statusCode).toBe(422);
+    expect(missingRuntime.json()).toMatchObject({
+      reason: "runtime_not_found",
+      candidate_version_id: candidateVersionId
+    });
+
+    await writeStoreJson(
+      {
+        record_kind: "trader_system_runtime",
+        version: 1,
+        trader_system_runtime_id: "foreign-runtime-001",
+        stage_binding_profile: "paper",
+        placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
+        hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
+        memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
+        authority_status: "not_live"
+      } satisfies TraderSystemRuntimeRecord,
+      "trader-system-runtimes",
+      "items",
+      "foreign-runtime-001.json"
+    );
+    const runtimeMismatch = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      payload: {
+        ...validRuntimeControlInput(candidateVersionId),
+        runtime_id: "foreign-runtime-001"
+      }
+    });
+    expect(runtimeMismatch.statusCode).toBe(422);
+    expect(runtimeMismatch.json()).toMatchObject({
+      reason: "runtime_mismatch"
     });
 
     await server.close();
@@ -479,6 +721,8 @@ describe("runtime read-only API", () => {
     const forbiddenPaths = [
       "/api/candidates/fixture-candidate-btc-perp-001/start",
       "/api/candidates/fixture-candidate-btc-perp-001/pause",
+      "/api/candidates/fixture-candidate-btc-perp-001/runtime-control/pause",
+      "/api/candidates/fixture-candidate-btc-perp-001/runtime-control/kill",
       "/api/provider-runs",
       "/api/evaluations",
       "/api/promotions",
@@ -689,4 +933,53 @@ function validRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeA
     },
     created_at: "2026-05-10T00:00:00.000Z"
   };
+}
+
+function validRuntimeControlInput(candidateVersionId: string): RuntimeControlAuditInput {
+  return {
+    idempotency_key: "runtime-api-control-pause-001",
+    candidate_id: FIXTURE_CANDIDATE_ID,
+    candidate_version_id: candidateVersionId,
+    command: {
+      action: "pause",
+      requested_lifecycle_status: "paused",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-sjson" },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      reason: "operator_request",
+      reason_summary: "Pause paper runtime for operator review.",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-api-control-pause-001" }
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: {
+        record_kind: "runtime_policy_engine",
+        id: "runtime-policy-engine-fixture"
+      },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      resulting_lifecycle_status: "paused"
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-sjson" },
+      runtime_lifecycle_status: "paused",
+      message: "Paper runtime paused through runtime API control chain."
+    },
+    created_at: "2026-05-10T00:10:00.000Z"
+  };
+}
+
+async function writeStoreJson(value: unknown, ...segments: string[]): Promise<void> {
+  const filePath = path.join(tmpDir, ...segments);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
