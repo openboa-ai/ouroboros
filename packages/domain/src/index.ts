@@ -59,6 +59,69 @@ export type TraderSystemRuntimeLifecycleStatus =
 
 export type RuntimeExecutionStage = "paper" | "live";
 
+export type RuntimeControlAction =
+  | "inspect"
+  | "pause"
+  | "resume"
+  | "stop"
+  | "override"
+  | "kill"
+  | "handoff"
+  | "audit";
+
+export type RuntimeControlCommandStatus =
+  | "pending_decision"
+  | "decided"
+  | "canceled"
+  | "superseded";
+
+export type RuntimeControlCommandReason =
+  | "operator_request"
+  | "inspection_request"
+  | "manual_override"
+  | "safety_intervention"
+  | "handoff_requested"
+  | "audit_request"
+  | "fixture_only";
+
+export type RuntimeControlDecisionOutcome =
+  | "allowed"
+  | "rejected"
+  | "dry_run_only"
+  | "no_live_authority";
+
+export type RuntimeControlDecisionReason =
+  | "policy_allows_control"
+  | "policy_rejected_control"
+  | "no_live_authority"
+  | "runtime_lifecycle_incompatible"
+  | "operator_hold"
+  | "manual_override_allowed"
+  | "safety_kill_allowed"
+  | "fixture_only";
+
+export type RuntimeControlActorKind =
+  | "human_operator"
+  | "policy_engine"
+  | "external_handoff"
+  | "fixture_operator";
+
+export type RuntimeControlAuthorityStatus =
+  | "not_live"
+  | "control_only"
+  | "dry_run_only"
+  | "audit_only";
+
+export type RuntimeAuditEventKind =
+  | "control_command_recorded"
+  | "control_decision_recorded"
+  | "runtime_lifecycle_transitioned"
+  | "runtime_inspection_recorded"
+  | "control_override_recorded"
+  | "control_kill_recorded"
+  | "operator_handoff_recorded"
+  | "audit_snapshot_recorded";
+
 export type OrderIntentKind =
   | "place_order"
   | "cancel_order"
@@ -340,6 +403,9 @@ export interface TraderSystemRuntimeRecord extends BaseRecord {
   order_intent_refs?: Ref[];
   gateway_decision_refs?: Ref[];
   execution_attempt_refs?: Ref[];
+  runtime_control_command_refs?: Ref[];
+  runtime_control_decision_refs?: Ref[];
+  runtime_audit_event_refs?: Ref[];
   created_at?: string;
   authority_status: "not_live";
 }
@@ -466,6 +532,66 @@ export interface EvidenceClassificationRecord extends BaseRecord {
   created_at: string;
   sealed_by_decision_ref?: Ref;
   authority_status: EvidenceClassificationAuthorityStatus;
+}
+
+export interface RuntimeControlCommandRecord extends BaseRecord {
+  record_kind: "runtime_control_command";
+  runtime_control_command_id: string;
+  runtime_ref: Ref;
+  action: RuntimeControlAction;
+  requested_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  actor_kind: RuntimeControlActorKind;
+  actor_ref?: Ref;
+  runtime_operating_policy_ref?: Ref;
+  idempotency_key: string;
+  reason: RuntimeControlCommandReason;
+  reason_summary?: string;
+  trace_ref?: Ref;
+  related_order_intent_refs?: Ref[];
+  related_gateway_decision_refs?: Ref[];
+  related_execution_attempt_refs?: Ref[];
+  requested_at: string;
+  status: RuntimeControlCommandStatus;
+  authority_status: RuntimeControlAuthorityStatus;
+}
+
+export interface RuntimeControlDecisionRecord extends BaseRecord {
+  record_kind: "runtime_control_decision";
+  runtime_control_decision_id: string;
+  runtime_ref: Ref;
+  command_ref: Ref;
+  decision_outcome: RuntimeControlDecisionOutcome;
+  decision_reason: RuntimeControlDecisionReason;
+  decided_by_actor_kind: RuntimeControlActorKind;
+  decided_by_actor_ref?: Ref;
+  runtime_operating_policy_ref?: Ref;
+  resulting_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  trace_ref?: Ref;
+  related_order_intent_refs?: Ref[];
+  related_gateway_decision_refs?: Ref[];
+  related_execution_attempt_refs?: Ref[];
+  decided_at: string;
+  authority_status: RuntimeControlAuthorityStatus;
+}
+
+export interface RuntimeAuditEventRecord extends BaseRecord {
+  record_kind: "runtime_audit_event";
+  runtime_audit_event_id: string;
+  runtime_ref: Ref;
+  event_kind: RuntimeAuditEventKind;
+  command_ref?: Ref;
+  decision_ref?: Ref;
+  actor_kind?: RuntimeControlActorKind;
+  actor_ref?: Ref;
+  runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  message?: string;
+  trace_ref?: Ref;
+  supporting_record_refs?: Ref[];
+  related_order_intent_refs?: Ref[];
+  related_gateway_decision_refs?: Ref[];
+  related_execution_attempt_refs?: Ref[];
+  created_at: string;
+  authority_status: "not_live" | "audit_only";
 }
 
 export interface BoundedRuntimeAuthorityInput {
@@ -643,6 +769,9 @@ export type FixtureRecord =
   | EvaluationComparisonSetRecord
   | EvidenceSealingDecisionRecord
   | EvidenceClassificationRecord
+  | RuntimeControlCommandRecord
+  | RuntimeControlDecisionRecord
+  | RuntimeAuditEventRecord
   | OrderIntentRecord
   | GatewayDecisionRecord
   | ExecutionAttemptRecord
