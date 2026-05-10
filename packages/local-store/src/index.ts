@@ -19,6 +19,7 @@ import type {
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
   CandidateRuntimeAuthorityReadModel,
+  CandidateRuntimeControlReadModel,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
   CandidateEvaluationRunInput,
@@ -55,12 +56,25 @@ import type {
   ProviderProbeAttemptRecord,
   ProviderReadinessRecord,
   Ref,
+  RuntimeAuditEventKind,
+  RuntimeAuditEventRecord,
+  RuntimeControlAction,
+  RuntimeControlActorKind,
+  RuntimeControlAuditInput,
+  RuntimeControlAuditOutcome,
+  RuntimeControlAuthorityStatus,
+  RuntimeControlCommandReason,
+  RuntimeControlCommandRecord,
+  RuntimeControlDecisionOutcome,
+  RuntimeControlDecisionReason,
+  RuntimeControlDecisionRecord,
   RuntimeMemorySurfaceRecord,
   RuntimePlacementRecord,
   StageBindingRecord,
   TracePlaceholderRecord,
   TraderSystemCandidateRecord,
   TraderSystemProgramRecord,
+  TraderSystemRuntimeLifecycleStatus,
   TraderSystemRuntimeRecord,
   TraderSystemSpecRecord
 } from "@ouroboros/domain";
@@ -79,9 +93,11 @@ export type LocalStoreErrorCode =
   | "evaluation_run_reload_failed"
   | "invalid_evidence_sealing_input"
   | "invalid_runtime_authority_input"
+  | "invalid_runtime_control_input"
   | "runtime_not_found"
   | "runtime_mismatch"
-  | "runtime_authority_reload_failed";
+  | "runtime_authority_reload_failed"
+  | "runtime_control_reload_failed";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -137,7 +153,10 @@ type Collection =
   | "evidence-classifications"
   | "order-intents"
   | "gateway-decisions"
-  | "execution-attempts";
+  | "execution-attempts"
+  | "runtime-control-commands"
+  | "runtime-control-decisions"
+  | "runtime-audit-events";
 
 interface FixtureItem {
   collection: Collection;
@@ -1152,6 +1171,220 @@ export class LocalStore {
     return outcome;
   }
 
+  async recordRuntimeControlAudit(
+    input: RuntimeControlAuditInput
+  ): Promise<RuntimeControlAuditOutcome> {
+    const validationFailure = validateRuntimeControlAuditInput(input);
+    if (validationFailure) {
+      throw new LocalStoreError(validationFailure, "invalid runtime control input");
+    }
+
+    const candidate = await this.readOptionalRecord<TraderSystemCandidateRecord>(
+      "candidates",
+      input.candidate_id
+    );
+    if (!candidate) {
+      throw new LocalStoreError(
+        "candidate_not_found",
+        `candidate ${input.candidate_id} not found`,
+        { candidate_id: input.candidate_id }
+      );
+    }
+
+    const candidateVersionId = input.candidate_version_id ?? candidate.active_version_id;
+    const candidateVersion = await this.readOptionalRecord<CandidateVersionRecord>(
+      "candidate-versions",
+      candidateVersionId
+    );
+    if (!candidateVersion) {
+      throw new LocalStoreError(
+        "candidate_version_not_found",
+        `candidate version ${candidateVersionId} not found`,
+        { candidate_id: candidate.candidate_id, candidate_version_id: candidateVersionId }
+      );
+    }
+    if (candidateVersion.candidate_id !== candidate.candidate_id) {
+      throw new LocalStoreError(
+        "candidate_version_mismatch",
+        `candidate version ${candidateVersionId} does not belong to candidate ${candidate.candidate_id}`,
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidateVersionId,
+          actual_candidate_id: candidateVersion.candidate_id
+        }
+      );
+    }
+
+    const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
+    const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
+      "trader-system-runtimes",
+      runtimeId
+    );
+    if (!runtime) {
+      throw new LocalStoreError(
+        "runtime_not_found",
+        `runtime ${runtimeId} not found`,
+        { runtime_id: runtimeId }
+      );
+    }
+    if (
+      runtime.trader_system_runtime_id !== candidateVersion.runtime_ref.id ||
+      (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
+      (
+        runtime.candidate_version_ref !== undefined &&
+        runtime.candidate_version_ref.id !== candidateVersion.candidate_version_id
+      )
+    ) {
+      throw new LocalStoreError(
+        "runtime_mismatch",
+        `runtime ${runtime.trader_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidateVersion.candidate_version_id,
+          candidate_version_runtime_id: candidateVersion.runtime_ref.id,
+          runtime_id: runtime.trader_system_runtime_id
+        }
+      );
+    }
+
+    const recordIds = runtimeControlAuditRecordIds({
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidateVersion.candidate_version_id,
+      runtime_id: runtime.trader_system_runtime_id,
+      idempotency_key: input.idempotency_key
+    });
+    const existing = await this.readRuntimeControlAuditOutcome(
+      candidate.candidate_id,
+      candidateVersion.candidate_version_id,
+      runtime.trader_system_runtime_id,
+      recordIds
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const createdAt = input.created_at ?? new Date().toISOString();
+    const runtimeRef = ref("trader_system_runtime", runtime.trader_system_runtime_id);
+    const candidateRef = ref("trader_system_candidate", candidate.candidate_id);
+    const candidateVersionRef = ref("candidate_version", candidateVersion.candidate_version_id);
+    const commandRef = ref("runtime_control_command", recordIds.command);
+    const decisionRef = ref("runtime_control_decision", recordIds.decision);
+    const auditEventRef = ref("runtime_audit_event", recordIds.auditEvent);
+    const authorityStatus = runtimeControlAuthorityStatusForOutcome(
+      input.decision.decision_outcome
+    );
+    const command: RuntimeControlCommandRecord = stripUndefined({
+      record_kind: "runtime_control_command",
+      version: 1,
+      runtime_control_command_id: recordIds.command,
+      runtime_ref: runtimeRef,
+      action: input.command.action,
+      requested_lifecycle_status: input.command.requested_lifecycle_status,
+      actor_kind: input.command.actor_kind,
+      actor_ref: input.command.actor_ref,
+      runtime_operating_policy_ref: input.command.runtime_operating_policy_ref,
+      idempotency_key: input.idempotency_key,
+      reason: input.command.reason,
+      reason_summary: input.command.reason_summary,
+      trace_ref: input.command.trace_ref ?? runtime.trace_ref,
+      related_order_intent_refs: input.command.related_order_intent_refs,
+      related_gateway_decision_refs: input.command.related_gateway_decision_refs,
+      related_execution_attempt_refs: input.command.related_execution_attempt_refs,
+      requested_at: createdAt,
+      status: "decided",
+      authority_status: authorityStatus
+    } satisfies RuntimeControlCommandRecord);
+    const decision: RuntimeControlDecisionRecord = stripUndefined({
+      record_kind: "runtime_control_decision",
+      version: 1,
+      runtime_control_decision_id: recordIds.decision,
+      runtime_ref: runtimeRef,
+      command_ref: commandRef,
+      decision_outcome: input.decision.decision_outcome,
+      decision_reason: input.decision.decision_reason,
+      decided_by_actor_kind: input.decision.decided_by_actor_kind,
+      decided_by_actor_ref: input.decision.decided_by_actor_ref,
+      runtime_operating_policy_ref: input.decision.runtime_operating_policy_ref
+        ?? input.command.runtime_operating_policy_ref,
+      resulting_lifecycle_status: input.decision.resulting_lifecycle_status,
+      trace_ref: input.decision.trace_ref ?? input.command.trace_ref ?? runtime.trace_ref,
+      related_order_intent_refs: input.decision.related_order_intent_refs
+        ?? input.command.related_order_intent_refs,
+      related_gateway_decision_refs: input.decision.related_gateway_decision_refs
+        ?? input.command.related_gateway_decision_refs,
+      related_execution_attempt_refs: input.decision.related_execution_attempt_refs
+        ?? input.command.related_execution_attempt_refs,
+      decided_at: createdAt,
+      authority_status: authorityStatus
+    } satisfies RuntimeControlDecisionRecord);
+    const auditEvent: RuntimeAuditEventRecord = stripUndefined({
+      record_kind: "runtime_audit_event",
+      version: 1,
+      runtime_audit_event_id: recordIds.auditEvent,
+      runtime_ref: runtimeRef,
+      event_kind: input.audit_event.event_kind,
+      command_ref: commandRef,
+      decision_ref: decisionRef,
+      actor_kind: input.audit_event.actor_kind ?? input.command.actor_kind,
+      actor_ref: input.audit_event.actor_ref ?? input.command.actor_ref,
+      runtime_lifecycle_status: input.audit_event.runtime_lifecycle_status
+        ?? input.decision.resulting_lifecycle_status,
+      message: input.audit_event.message,
+      trace_ref: input.audit_event.trace_ref
+        ?? input.decision.trace_ref
+        ?? input.command.trace_ref
+        ?? runtime.trace_ref,
+      supporting_record_refs: input.audit_event.supporting_record_refs
+        ?? [commandRef, decisionRef],
+      related_order_intent_refs: input.audit_event.related_order_intent_refs
+        ?? decision.related_order_intent_refs,
+      related_gateway_decision_refs: input.audit_event.related_gateway_decision_refs
+        ?? decision.related_gateway_decision_refs,
+      related_execution_attempt_refs: input.audit_event.related_execution_attempt_refs
+        ?? decision.related_execution_attempt_refs,
+      created_at: createdAt,
+      authority_status: "audit_only"
+    } satisfies RuntimeAuditEventRecord);
+    const updatedRuntime: TraderSystemRuntimeRecord = stripUndefined({
+      ...runtime,
+      runtime_lifecycle_status: decision.resulting_lifecycle_status
+        ?? runtime.runtime_lifecycle_status
+        ?? "registered",
+      candidate_ref: runtime.candidate_ref ?? candidateRef,
+      candidate_version_ref: runtime.candidate_version_ref ?? candidateVersionRef,
+      runtime_control_command_refs: appendUniqueRefs(runtime.runtime_control_command_refs, commandRef),
+      runtime_control_decision_refs: appendUniqueRefs(runtime.runtime_control_decision_refs, decisionRef),
+      runtime_audit_event_refs: appendUniqueRefs(runtime.runtime_audit_event_refs, auditEventRef),
+      created_at: runtime.created_at ?? createdAt
+    } satisfies TraderSystemRuntimeRecord);
+
+    const records: FixtureItem[] = [
+      { collection: "runtime-control-commands", id: command.runtime_control_command_id, record: command },
+      { collection: "runtime-control-decisions", id: decision.runtime_control_decision_id, record: decision },
+      { collection: "runtime-audit-events", id: auditEvent.runtime_audit_event_id, record: auditEvent },
+      { collection: "trader-system-runtimes", id: updatedRuntime.trader_system_runtime_id, record: updatedRuntime }
+    ];
+    for (const item of records) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+    await this.rebuildProjections();
+
+    const outcome = await this.readRuntimeControlAuditOutcome(
+      candidate.candidate_id,
+      candidateVersion.candidate_version_id,
+      runtime.trader_system_runtime_id,
+      recordIds
+    );
+    if (!outcome) {
+      throw new LocalStoreError(
+        "runtime_control_reload_failed",
+        `runtime control records were not reloaded after write`,
+        { runtime_id: runtime.trader_system_runtime_id }
+      );
+    }
+    return outcome;
+  }
+
   async listCandidateMaterializationAttempts(): Promise<CandidateMaterializationAttemptReadModel[]> {
     try {
       const index = await this.readJson<CandidateMaterializationAttemptIndexProjection>(
@@ -1908,7 +2141,8 @@ export class LocalStore {
           quarantine_status: memorySurface.quarantine_status,
           authority_status: memorySurface.authority_status
         },
-        bounded_authority: await this.buildCandidateRuntimeAuthorityReadModel(runtime)
+        bounded_authority: await this.buildCandidateRuntimeAuthorityReadModel(runtime),
+        runtime_control: await this.buildCandidateRuntimeControlReadModel(runtime)
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
@@ -1988,6 +2222,78 @@ export class LocalStore {
     };
   }
 
+  private async buildCandidateRuntimeControlReadModel(
+    runtime: TraderSystemRuntimeRecord
+  ): Promise<CandidateRuntimeControlReadModel> {
+    const runtimeId = runtime.trader_system_runtime_id;
+    const commands = (await this.readCollection<RuntimeControlCommandRecord>("runtime-control-commands"))
+      .filter((command) => command.runtime_ref.id === runtimeId)
+      .sort(compareRuntimeControlCommands);
+    const latestCommand = commands.at(-1);
+    if (!latestCommand) {
+      return emptyCandidateRuntimeControlReadModel();
+    }
+
+    const decisions = (await this.readCollection<RuntimeControlDecisionRecord>("runtime-control-decisions"))
+      .filter((decision) => decision.command_ref.id === latestCommand.runtime_control_command_id)
+      .sort(compareRuntimeControlDecisions);
+    const latestDecision = decisions.at(-1);
+    const auditEvents = (await this.readCollection<RuntimeAuditEventRecord>("runtime-audit-events"))
+      .filter((event) => (
+        event.command_ref?.id === latestCommand.runtime_control_command_id ||
+        (
+          latestDecision !== undefined &&
+          event.decision_ref?.id === latestDecision.runtime_control_decision_id
+        )
+      ))
+      .sort(compareRuntimeAuditEvents);
+    const latestAuditEvent = auditEvents.at(-1);
+
+    return {
+      has_activity: true,
+      chain_complete: Boolean(latestDecision && latestAuditEvent),
+      latest_command: toCandidateRuntimeControlCommandReadModel(latestCommand),
+      latest_decision: latestDecision
+        ? toCandidateRuntimeControlDecisionReadModel(latestDecision)
+        : null,
+      latest_audit_event: latestAuditEvent
+        ? toCandidateRuntimeAuditEventReadModel(latestAuditEvent)
+        : null,
+      command: statusPlaceholder(
+        ref(latestCommand.record_kind, latestCommand.runtime_control_command_id),
+        "Runtime control command",
+        latestCommand.status,
+        latestCommand.authority_status
+      ),
+      decision: latestDecision
+        ? statusPlaceholder(
+            ref(latestDecision.record_kind, latestDecision.runtime_control_decision_id),
+            "Runtime control decision",
+            latestDecision.decision_outcome,
+            latestDecision.authority_status
+          )
+        : statusPlaceholder(
+            ref("runtime_control_decision", "missing"),
+            "Runtime control decision",
+            "missing",
+            "not_live"
+          ),
+      audit_event: latestAuditEvent
+        ? statusPlaceholder(
+            ref(latestAuditEvent.record_kind, latestAuditEvent.runtime_audit_event_id),
+            "Runtime audit event",
+            latestAuditEvent.event_kind,
+            latestAuditEvent.authority_status
+          )
+        : statusPlaceholder(
+            ref("runtime_audit_event", "missing"),
+            "Runtime audit event",
+            "missing",
+            "not_live"
+          )
+    };
+  }
+
   private async readBoundedRuntimeAuthorityOutcome(
     candidateId: string,
     candidateVersionId: string,
@@ -2016,6 +2322,37 @@ export class LocalStore {
       order_intent: orderIntent,
       gateway_decision: gatewayDecision,
       execution_attempt: executionAttempt
+    };
+  }
+
+  private async readRuntimeControlAuditOutcome(
+    candidateId: string,
+    candidateVersionId: string,
+    runtimeId: string,
+    recordIds: RuntimeControlAuditRecordIds
+  ): Promise<RuntimeControlAuditOutcome | undefined> {
+    const command = await this.readOptionalRecord<RuntimeControlCommandRecord>(
+      "runtime-control-commands",
+      recordIds.command
+    );
+    const decision = await this.readOptionalRecord<RuntimeControlDecisionRecord>(
+      "runtime-control-decisions",
+      recordIds.decision
+    );
+    const auditEvent = await this.readOptionalRecord<RuntimeAuditEventRecord>(
+      "runtime-audit-events",
+      recordIds.auditEvent
+    );
+    if (!command || !decision || !auditEvent) {
+      return undefined;
+    }
+    return {
+      candidate_id: candidateId,
+      candidate_version_id: candidateVersionId,
+      runtime_id: runtimeId,
+      command,
+      decision,
+      audit_event: auditEvent
     };
   }
 
@@ -2382,6 +2719,34 @@ function emptyCandidateRuntimeAuthorityReadModel(): CandidateRuntimeAuthorityRea
   };
 }
 
+function emptyCandidateRuntimeControlReadModel(): CandidateRuntimeControlReadModel {
+  return {
+    has_activity: false,
+    chain_complete: false,
+    latest_command: null,
+    latest_decision: null,
+    latest_audit_event: null,
+    command: statusPlaceholder(
+      ref("runtime_control_command", "none"),
+      "Runtime control command",
+      "pending_decision",
+      "not_live"
+    ),
+    decision: statusPlaceholder(
+      ref("runtime_control_decision", "none"),
+      "Runtime control decision",
+      "not_evaluated",
+      "not_live"
+    ),
+    audit_event: statusPlaceholder(
+      ref("runtime_audit_event", "none"),
+      "Runtime audit event",
+      "not_recorded",
+      "not_live"
+    )
+  };
+}
+
 function toCandidateRuntimeOrderIntentReadModel(orderIntent: OrderIntentRecord) {
   return {
     order_intent_id: orderIntent.order_intent_id,
@@ -2421,6 +2786,49 @@ function toCandidateRuntimeExecutionAttemptReadModel(executionAttempt: Execution
     created_at: executionAttempt.created_at,
     completed_at: executionAttempt.completed_at,
     authority_status: executionAttempt.authority_status
+  };
+}
+
+function toCandidateRuntimeControlCommandReadModel(command: RuntimeControlCommandRecord) {
+  return {
+    command_id: command.runtime_control_command_id,
+    action: command.action,
+    requested_lifecycle_status: command.requested_lifecycle_status,
+    actor_kind: command.actor_kind,
+    actor_ref: command.actor_ref,
+    reason: command.reason,
+    requested_at: command.requested_at,
+    status: command.status,
+    authority_status: command.authority_status
+  };
+}
+
+function toCandidateRuntimeControlDecisionReadModel(decision: RuntimeControlDecisionRecord) {
+  return {
+    decision_id: decision.runtime_control_decision_id,
+    command_ref: decision.command_ref,
+    decision_outcome: decision.decision_outcome,
+    decision_reason: decision.decision_reason,
+    decided_by_actor_kind: decision.decided_by_actor_kind,
+    decided_by_actor_ref: decision.decided_by_actor_ref,
+    resulting_lifecycle_status: decision.resulting_lifecycle_status,
+    decided_at: decision.decided_at,
+    authority_status: decision.authority_status
+  };
+}
+
+function toCandidateRuntimeAuditEventReadModel(auditEvent: RuntimeAuditEventRecord) {
+  return {
+    audit_event_id: auditEvent.runtime_audit_event_id,
+    event_kind: auditEvent.event_kind,
+    command_ref: auditEvent.command_ref,
+    decision_ref: auditEvent.decision_ref,
+    actor_kind: auditEvent.actor_kind,
+    actor_ref: auditEvent.actor_ref,
+    runtime_lifecycle_status: auditEvent.runtime_lifecycle_status,
+    message: auditEvent.message,
+    created_at: auditEvent.created_at,
+    authority_status: auditEvent.authority_status
   };
 }
 
@@ -2495,6 +2903,39 @@ function compareExecutionAttempts(a: ExecutionAttemptRecord, b: ExecutionAttempt
     return timeCompare;
   }
   return a.execution_attempt_id.localeCompare(b.execution_attempt_id);
+}
+
+function compareRuntimeControlCommands(
+  a: RuntimeControlCommandRecord,
+  b: RuntimeControlCommandRecord
+): number {
+  const timeCompare = a.requested_at.localeCompare(b.requested_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.runtime_control_command_id.localeCompare(b.runtime_control_command_id);
+}
+
+function compareRuntimeControlDecisions(
+  a: RuntimeControlDecisionRecord,
+  b: RuntimeControlDecisionRecord
+): number {
+  const timeCompare = a.decided_at.localeCompare(b.decided_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.runtime_control_decision_id.localeCompare(b.runtime_control_decision_id);
+}
+
+function compareRuntimeAuditEvents(
+  a: RuntimeAuditEventRecord,
+  b: RuntimeAuditEventRecord
+): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.runtime_audit_event_id.localeCompare(b.runtime_audit_event_id);
 }
 
 function comparisonSetIncludesRun(
@@ -2885,6 +3326,94 @@ function validateBoundedRuntimeAuthorityInput(
   return undefined;
 }
 
+function validateRuntimeControlAuditInput(
+  input: RuntimeControlAuditInput
+): LocalStoreErrorCode | undefined {
+  if (!input || typeof input !== "object") {
+    return "invalid_runtime_control_input";
+  }
+
+  const raw = input;
+  if (
+    !nonEmpty(raw.idempotency_key) ||
+    !nonEmpty(raw.candidate_id) ||
+    (raw.candidate_version_id !== undefined && !nonEmpty(raw.candidate_version_id)) ||
+    (raw.runtime_id !== undefined && !nonEmpty(raw.runtime_id)) ||
+    (raw.created_at !== undefined && !nonEmpty(raw.created_at))
+  ) {
+    return "invalid_runtime_control_input";
+  }
+
+  if (
+    !raw.command ||
+    !isRuntimeControlAction(raw.command.action) ||
+    !isRuntimeControlActorKind(raw.command.actor_kind) ||
+    !isRuntimeControlCommandReason(raw.command.reason) ||
+    (
+      raw.command.requested_lifecycle_status !== undefined &&
+      !isTraderSystemRuntimeLifecycleStatus(raw.command.requested_lifecycle_status)
+    ) ||
+    (raw.command.actor_ref !== undefined && !isRef(raw.command.actor_ref)) ||
+    (
+      raw.command.runtime_operating_policy_ref !== undefined &&
+      !isRef(raw.command.runtime_operating_policy_ref, "runtime_operating_policy")
+    ) ||
+    (raw.command.reason_summary !== undefined && !nonEmpty(raw.command.reason_summary)) ||
+    (raw.command.trace_ref !== undefined && !isRef(raw.command.trace_ref, "trace_placeholder")) ||
+    !isOptionalRefArray(raw.command.related_order_intent_refs) ||
+    !isOptionalRefArray(raw.command.related_gateway_decision_refs) ||
+    !isOptionalRefArray(raw.command.related_execution_attempt_refs)
+  ) {
+    return "invalid_runtime_control_input";
+  }
+
+  if (
+    !raw.decision ||
+    !isRuntimeControlDecisionOutcome(raw.decision.decision_outcome) ||
+    !isRuntimeControlDecisionReason(raw.decision.decision_reason) ||
+    !isRuntimeControlActorKind(raw.decision.decided_by_actor_kind) ||
+    (raw.decision.decided_by_actor_ref !== undefined && !isRef(raw.decision.decided_by_actor_ref)) ||
+    (
+      raw.decision.runtime_operating_policy_ref !== undefined &&
+      !isRef(raw.decision.runtime_operating_policy_ref, "runtime_operating_policy")
+    ) ||
+    (
+      raw.decision.resulting_lifecycle_status !== undefined &&
+      !isTraderSystemRuntimeLifecycleStatus(raw.decision.resulting_lifecycle_status)
+    ) ||
+    (raw.decision.trace_ref !== undefined && !isRef(raw.decision.trace_ref, "trace_placeholder")) ||
+    !isOptionalRefArray(raw.decision.related_order_intent_refs) ||
+    !isOptionalRefArray(raw.decision.related_gateway_decision_refs) ||
+    !isOptionalRefArray(raw.decision.related_execution_attempt_refs)
+  ) {
+    return "invalid_runtime_control_input";
+  }
+
+  if (
+    !raw.audit_event ||
+    !isRuntimeAuditEventKind(raw.audit_event.event_kind) ||
+    (
+      raw.audit_event.actor_kind !== undefined &&
+      !isRuntimeControlActorKind(raw.audit_event.actor_kind)
+    ) ||
+    (raw.audit_event.actor_ref !== undefined && !isRef(raw.audit_event.actor_ref)) ||
+    (
+      raw.audit_event.runtime_lifecycle_status !== undefined &&
+      !isTraderSystemRuntimeLifecycleStatus(raw.audit_event.runtime_lifecycle_status)
+    ) ||
+    (raw.audit_event.message !== undefined && !nonEmpty(raw.audit_event.message)) ||
+    (raw.audit_event.trace_ref !== undefined && !isRef(raw.audit_event.trace_ref, "trace_placeholder")) ||
+    !isOptionalRefArray(raw.audit_event.supporting_record_refs) ||
+    !isOptionalRefArray(raw.audit_event.related_order_intent_refs) ||
+    !isOptionalRefArray(raw.audit_event.related_gateway_decision_refs) ||
+    !isOptionalRefArray(raw.audit_event.related_execution_attempt_refs)
+  ) {
+    return "invalid_runtime_control_input";
+  }
+
+  return undefined;
+}
+
 function isEvidenceDisposition(value: unknown): value is EvidenceDisposition {
   return value === "not_counted" || value === "counted" || value === "quarantined_for_review";
 }
@@ -2923,6 +3452,93 @@ function isExecutionAttemptStatus(value: unknown): value is ExecutionAttemptStat
     value === "blocked" ||
     value === "canceled" ||
     value === "failed"
+  );
+}
+
+function isRuntimeControlAction(value: unknown): value is RuntimeControlAction {
+  return (
+    value === "inspect" ||
+    value === "pause" ||
+    value === "resume" ||
+    value === "stop" ||
+    value === "override" ||
+    value === "kill" ||
+    value === "handoff" ||
+    value === "audit"
+  );
+}
+
+function isRuntimeControlActorKind(value: unknown): value is RuntimeControlActorKind {
+  return (
+    value === "human_operator" ||
+    value === "policy_engine" ||
+    value === "external_handoff" ||
+    value === "fixture_operator"
+  );
+}
+
+function isRuntimeControlCommandReason(value: unknown): value is RuntimeControlCommandReason {
+  return (
+    value === "operator_request" ||
+    value === "inspection_request" ||
+    value === "manual_override" ||
+    value === "safety_intervention" ||
+    value === "handoff_requested" ||
+    value === "audit_request" ||
+    value === "fixture_only"
+  );
+}
+
+function isRuntimeControlDecisionOutcome(value: unknown): value is RuntimeControlDecisionOutcome {
+  return (
+    value === "allowed" ||
+    value === "rejected" ||
+    value === "dry_run_only" ||
+    value === "no_live_authority"
+  );
+}
+
+function isRuntimeControlDecisionReason(value: unknown): value is RuntimeControlDecisionReason {
+  return (
+    value === "policy_allows_control" ||
+    value === "policy_rejected_control" ||
+    value === "no_live_authority" ||
+    value === "runtime_lifecycle_incompatible" ||
+    value === "operator_hold" ||
+    value === "manual_override_allowed" ||
+    value === "safety_kill_allowed" ||
+    value === "fixture_only"
+  );
+}
+
+function isRuntimeAuditEventKind(value: unknown): value is RuntimeAuditEventKind {
+  return (
+    value === "control_command_recorded" ||
+    value === "control_decision_recorded" ||
+    value === "runtime_lifecycle_transitioned" ||
+    value === "runtime_inspection_recorded" ||
+    value === "control_override_recorded" ||
+    value === "control_kill_recorded" ||
+    value === "operator_handoff_recorded" ||
+    value === "audit_snapshot_recorded"
+  );
+}
+
+function isTraderSystemRuntimeLifecycleStatus(
+  value: unknown
+): value is TraderSystemRuntimeLifecycleStatus {
+  return (
+    value === "registered" ||
+    value === "deployed" ||
+    value === "starting" ||
+    value === "running" ||
+    value === "paused" ||
+    value === "stopping" ||
+    value === "stopped" ||
+    value === "failed" ||
+    value === "killed" ||
+    value === "review_required" ||
+    value === "fixture_placeholder"
   );
 }
 
@@ -2986,6 +3602,43 @@ function boundedRuntimeAuthorityRecordIds(input: {
     gatewayDecision: `gateway-decision-${suffix}`,
     executionAttempt: `execution-attempt-${suffix}`
   };
+}
+
+interface RuntimeControlAuditRecordIds {
+  command: string;
+  decision: string;
+  auditEvent: string;
+}
+
+function runtimeControlAuditRecordIds(input: {
+  candidate_id: string;
+  candidate_version_id: string;
+  runtime_id: string;
+  idempotency_key: string;
+}): RuntimeControlAuditRecordIds {
+  const suffix = stableSuffix([
+    input.candidate_id,
+    input.candidate_version_id,
+    input.runtime_id,
+    input.idempotency_key
+  ].join(":"));
+  return {
+    command: `runtime-control-command-${suffix}`,
+    decision: `runtime-control-decision-${suffix}`,
+    auditEvent: `runtime-audit-event-${suffix}`
+  };
+}
+
+function runtimeControlAuthorityStatusForOutcome(
+  outcome: RuntimeControlDecisionOutcome
+): RuntimeControlAuthorityStatus {
+  if (outcome === "dry_run_only") {
+    return "dry_run_only";
+  }
+  if (outcome === "no_live_authority") {
+    return "not_live";
+  }
+  return "control_only";
 }
 
 function gatewayDecisionAuthorityStatusForOutcome(

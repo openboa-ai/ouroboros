@@ -13,6 +13,10 @@ import type {
   EvidenceSealingDecisionRecord,
   GatewayDecisionRecord,
   OrderIntentRecord,
+  RuntimeAuditEventRecord,
+  RuntimeControlAuditInput,
+  RuntimeControlCommandRecord,
+  RuntimeControlDecisionRecord,
   StageBindingRecord,
   TracePlaceholderRecord,
   TraderSystemRuntimeRecord
@@ -771,6 +775,196 @@ describe("LocalStore", () => {
     await expect(countJsonFiles("execution-attempts", "items")).resolves.toBe(0);
   });
 
+  it("records, deduplicates, and projects runtime control audit records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const input = validRuntimeControlAuditInput(candidate.candidate_version.candidate_version_id);
+    const first = await store.recordRuntimeControlAudit(input);
+    const second = await store.recordRuntimeControlAudit(input);
+
+    expect(second).toEqual(first);
+    expect(first).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      runtime_id: candidate.runtime.ref.id,
+      command: {
+        record_kind: "runtime_control_command",
+        action: "pause",
+        status: "decided",
+        authority_status: "control_only"
+      },
+      decision: {
+        record_kind: "runtime_control_decision",
+        decision_outcome: "allowed",
+        decision_reason: "policy_allows_control",
+        resulting_lifecycle_status: "paused",
+        authority_status: "control_only"
+      },
+      audit_event: {
+        record_kind: "runtime_audit_event",
+        event_kind: "runtime_lifecycle_transitioned",
+        runtime_lifecycle_status: "paused",
+        authority_status: "audit_only"
+      }
+    });
+
+    const command = await readStoreJson<RuntimeControlCommandRecord>(
+      "runtime-control-commands",
+      "items",
+      `${first.command.runtime_control_command_id}.json`
+    );
+    const decision = await readStoreJson<RuntimeControlDecisionRecord>(
+      "runtime-control-decisions",
+      "items",
+      `${first.decision.runtime_control_decision_id}.json`
+    );
+    const auditEvent = await readStoreJson<RuntimeAuditEventRecord>(
+      "runtime-audit-events",
+      "items",
+      `${first.audit_event.runtime_audit_event_id}.json`
+    );
+    const runtime = await readStoreJson<TraderSystemRuntimeRecord>(
+      "trader-system-runtimes",
+      "items",
+      `${candidate.runtime.ref.id}.json`
+    );
+
+    expect(command.runtime_ref).toEqual(candidate.runtime.ref);
+    expect(command.runtime_ref.id).not.toBe(candidate.runtime.placement.ref.id);
+    expect(decision.command_ref).toEqual({
+      record_kind: "runtime_control_command",
+      id: command.runtime_control_command_id
+    });
+    expect(auditEvent.supporting_record_refs).toEqual([
+      { record_kind: "runtime_control_command", id: command.runtime_control_command_id },
+      { record_kind: "runtime_control_decision", id: decision.runtime_control_decision_id }
+    ]);
+    expect(runtime.runtime_lifecycle_status).toBe("paused");
+    expect(runtime.runtime_control_command_refs).toEqual([
+      { record_kind: "runtime_control_command", id: command.runtime_control_command_id }
+    ]);
+    expect(runtime.runtime_control_decision_refs).toEqual([
+      { record_kind: "runtime_control_decision", id: decision.runtime_control_decision_id }
+    ]);
+    expect(runtime.runtime_audit_event_refs).toEqual([
+      { record_kind: "runtime_audit_event", id: auditEvent.runtime_audit_event_id }
+    ]);
+    await expect(countJsonFiles("runtime-control-commands", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("runtime-control-decisions", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(1);
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.runtime.runtime_control).toMatchObject({
+      has_activity: true,
+      chain_complete: true,
+      latest_command: {
+        command_id: command.runtime_control_command_id,
+        action: "pause",
+        status: "decided",
+        authority_status: "control_only"
+      },
+      latest_decision: {
+        decision_id: decision.runtime_control_decision_id,
+        decision_outcome: "allowed",
+        resulting_lifecycle_status: "paused",
+        authority_status: "control_only"
+      },
+      latest_audit_event: {
+        audit_event_id: auditEvent.runtime_audit_event_id,
+        event_kind: "runtime_lifecycle_transitioned",
+        runtime_lifecycle_status: "paused",
+        authority_status: "audit_only"
+      }
+    });
+    expect(projected?.runtime.placement.authority_status).toBe("not_launched");
+    expect(JSON.stringify(projected?.runtime.runtime_control)).not.toMatch(
+      /exchange_credentials|provider_api_key|direct_exchange_order|gateway_signing_material/
+    );
+
+    await rm(path.join(tmpDir, "read-models"), { recursive: true, force: true });
+    await store.rebuildProjections();
+
+    const reloaded = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(reloaded?.runtime.runtime_control?.latest_command?.command_id).toBe(
+      command.runtime_control_command_id
+    );
+    expect(reloaded?.runtime.runtime_control?.chain_complete).toBe(true);
+  });
+
+  it("rejects invalid runtime control audit commands without creating records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    await expectStoreError(
+      store.recordRuntimeControlAudit({
+        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+        idempotency_key: ""
+      }),
+      "invalid_runtime_control_input"
+    );
+    await expectStoreError(
+      store.recordRuntimeControlAudit({
+        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+        candidate_id: "missing-candidate"
+      }),
+      "candidate_not_found"
+    );
+    await expectStoreError(
+      store.recordRuntimeControlAudit({
+        ...validRuntimeControlAuditInput("missing-version"),
+        candidate_version_id: "missing-version"
+      }),
+      "candidate_version_not_found"
+    );
+    await expectStoreError(
+      store.recordRuntimeControlAudit({
+        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+        runtime_id: "missing-runtime"
+      }),
+      "runtime_not_found"
+    );
+    await writeStoreJson(
+      {
+        record_kind: "trader_system_runtime",
+        version: 1,
+        trader_system_runtime_id: "foreign-runtime-001",
+        stage_binding_profile: "paper",
+        placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
+        hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
+        memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
+        authority_status: "not_live"
+      } satisfies TraderSystemRuntimeRecord,
+      "trader-system-runtimes",
+      "items",
+      "foreign-runtime-001.json"
+    );
+    await expectStoreError(
+      store.recordRuntimeControlAudit({
+        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+        runtime_id: "foreign-runtime-001"
+      }),
+      "runtime_mismatch"
+    );
+    await expectStoreError(
+      store.recordRuntimeControlAudit({
+        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+        command: {
+          ...validRuntimeControlAuditInput("fixture-candidate-version-001").command,
+          action: "launch_live" as "pause"
+        }
+      }),
+      "invalid_runtime_control_input"
+    );
+    await expect(countJsonFiles("runtime-control-commands", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("runtime-control-decisions", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(0);
+  });
+
   it("keeps evaluation provider output as trace material until explicitly sealed", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1029,6 +1223,49 @@ function validBoundedRuntimeAuthorityInput(candidateVersionId: string): BoundedR
       completed_at: "2026-05-10T00:01:00.000Z"
     },
     created_at: "2026-05-10T00:00:00.000Z"
+  };
+}
+
+function validRuntimeControlAuditInput(candidateVersionId: string): RuntimeControlAuditInput {
+  return {
+    idempotency_key: "runtime-control-pause-001",
+    candidate_id: FIXTURE_CANDIDATE_ID,
+    candidate_version_id: candidateVersionId,
+    command: {
+      action: "pause",
+      requested_lifecycle_status: "paused",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-sjson" },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      reason: "operator_request",
+      reason_summary: "Pause paper runtime for operator review.",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-control-pause-001" }
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: {
+        record_kind: "runtime_policy_engine",
+        id: "runtime-policy-engine-fixture"
+      },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      resulting_lifecycle_status: "paused"
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-sjson" },
+      runtime_lifecycle_status: "paused",
+      message: "Paper runtime paused through runtime-control audit chain."
+    },
+    created_at: "2026-05-10T00:10:00.000Z"
   };
 }
 
