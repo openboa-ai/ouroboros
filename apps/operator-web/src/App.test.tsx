@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { CandidateEvaluationReadModel, CandidateInspectReadModel } from "@ouroboros/domain";
+import type {
+  CandidateEvaluationReadModel,
+  CandidateInspectReadModel,
+  CandidateRuntimeAuthorityReadModel
+} from "@ouroboros/domain";
 import { CandidateDetail } from "./App";
+import { runtimeAuthorityCommandPayload } from "./api";
 
 describe("CandidateDetail", () => {
   it("renders fixture labels and inspect sections without action controls", () => {
@@ -12,6 +17,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No provider has run.");
     expect(html).toContain("Capability Package");
     expect(html).toContain("Agent And Provider");
+    expect(html).toContain("Runtime Authority");
+    expect(html).toContain("Bounded paper state");
     expect(html).toContain("Trace And Evaluation");
     expect(html).toContain("Evaluation state");
     expect(html).toContain("pending");
@@ -21,6 +28,52 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+  });
+
+  it("renders bounded runtime authority state without implying live authority", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={candidateWithRuntimeAuthority(runtimeAuthority())}
+        onRecordRuntimeAuthority={() => undefined}
+        runtimeAuthorityMessage="dry_run_only recorded: execution-attempt-001"
+      />
+    );
+
+    expect(html).toContain("Runtime Authority");
+    expect(html).toContain("chain complete");
+    expect(html).toContain("Latest order intent");
+    expect(html).toContain("place_order");
+    expect(html).toContain("buy / limit");
+    expect(html).toContain("Latest gateway decision");
+    expect(html).toContain("dry_run_only");
+    expect(html).toContain("paper_stage_only");
+    expect(html).toContain("order_intent:order-intent-001");
+    expect(html).toContain("Latest execution attempt");
+    expect(html).toContain("gateway_decision:gateway-decision-001");
+    expect(html).toContain("Record dry-run intent");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker/i);
+  });
+
+  it("builds fixture-safe runtime authority command payloads", () => {
+    const payload = runtimeAuthorityCommandPayload(fixtureCandidate);
+    expect(payload).toMatchObject({
+      candidate_version_id: fixtureCandidate.candidate_version.candidate_version_id,
+      intent: {
+        intent_kind: "place_order",
+        side: "buy",
+        order_type: "limit"
+      },
+      gateway_decision: {
+        decision_outcome: "dry_run_only",
+        decision_reason: "paper_stage_only"
+      },
+      execution_attempt: {
+        execution_mode: "host_local"
+      }
+    });
+    expect(payload.idempotency_key).toContain("operator-web-runtime-authority");
+    expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker/i);
   });
 
   it("renders materialization attempts as provider output, not evidence", () => {
@@ -96,6 +149,75 @@ function candidateWithEvaluation(evaluation: CandidateEvaluationReadModel): Cand
   return {
     ...fixtureCandidate,
     evaluation
+  };
+}
+
+function candidateWithRuntimeAuthority(
+  boundedAuthority: CandidateRuntimeAuthorityReadModel
+): CandidateInspectReadModel {
+  return {
+    ...fixtureCandidate,
+    runtime: {
+      ...fixtureCandidate.runtime,
+      bounded_authority: boundedAuthority
+    }
+  };
+}
+
+function runtimeAuthority(): CandidateRuntimeAuthorityReadModel {
+  return {
+    has_activity: true,
+    chain_complete: true,
+    latest_order_intent: {
+      order_intent_id: "order-intent-001",
+      intent_kind: "place_order",
+      market_scope: "binance_btc_perpetual_futures",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000",
+      status: "proposed",
+      created_at: "2026-05-10T00:00:00.000Z",
+      authority_status: "not_submitted"
+    },
+    latest_gateway_decision: {
+      gateway_decision_id: "gateway-decision-001",
+      order_intent_ref: { record_kind: "order_intent", id: "order-intent-001" },
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only",
+      decided_at: "2026-05-10T00:00:00.000Z",
+      authority_status: "dry_run_only"
+    },
+    latest_execution_attempt: {
+      execution_attempt_id: "execution-attempt-001",
+      order_intent_ref: { record_kind: "order_intent", id: "order-intent-001" },
+      gateway_decision_ref: { record_kind: "gateway_decision", id: "gateway-decision-001" },
+      stage: "paper",
+      execution_mode: "host_local",
+      venue_scope: "binance_btc_perpetual_futures",
+      status: "dry_run_recorded",
+      result_reason: "paper_stage_only",
+      created_at: "2026-05-10T00:00:00.000Z",
+      authority_status: "dry_run_only"
+    },
+    order_intent: {
+      ref: { record_kind: "order_intent", id: "order-intent-001" },
+      label: "Order intent",
+      status: "proposed",
+      authority_status: "not_submitted"
+    },
+    gateway_decision: {
+      ref: { record_kind: "gateway_decision", id: "gateway-decision-001" },
+      label: "Gateway decision",
+      status: "dry_run_only",
+      authority_status: "dry_run_only"
+    },
+    execution_attempt: {
+      ref: { record_kind: "execution_attempt", id: "execution-attempt-001" },
+      label: "Execution attempt",
+      status: "dry_run_recorded",
+      authority_status: "dry_run_only"
+    }
   };
 }
 

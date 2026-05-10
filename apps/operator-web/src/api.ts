@@ -1,4 +1,6 @@
 import type {
+  BoundedRuntimeAuthorityInput,
+  BoundedRuntimeAuthorityOutcome,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel
@@ -30,4 +32,63 @@ export async function fetchCandidateMaterializationAttempts(): Promise<Candidate
   }
   const body = (await response.json()) as { attempts: CandidateMaterializationAttemptReadModel[] };
   return body.attempts;
+}
+
+export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;
+
+export type RuntimeAuthorityCommandOutcome = BoundedRuntimeAuthorityOutcome & {
+  status: "recorded";
+};
+
+export function runtimeAuthorityCommandPayload(
+  candidate: CandidateInspectReadModel
+): RuntimeAuthorityCommandPayload {
+  return {
+    idempotency_key: [
+      "operator-web-runtime-authority",
+      candidate.candidate_id,
+      candidate.candidate_version.candidate_version_id
+    ].join("-"),
+    candidate_version_id: candidate.candidate_version.candidate_version_id,
+    intent: {
+      intent_kind: "place_order",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000"
+    },
+    gateway_decision: {
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only",
+      policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      }
+    },
+    execution_attempt: {
+      execution_mode: "host_local",
+      trace_ref: {
+        record_kind: "trace_placeholder",
+        id: [
+          "trace-operator-web-runtime-authority",
+          candidate.candidate_id,
+          candidate.candidate_version.candidate_version_id
+        ].join("-")
+      }
+    }
+  };
+}
+
+export async function recordCandidateRuntimeAuthority(
+  candidate: CandidateInspectReadModel
+): Promise<RuntimeAuthorityCommandOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/runtime-authority`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(runtimeAuthorityCommandPayload(candidate))
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to record runtime authority for ${candidate.candidate_id}: ${response.status}`);
+  }
+  return (await response.json()) as RuntimeAuthorityCommandOutcome;
 }
