@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { CandidateInspectReadModel } from "@ouroboros/domain";
+import type { CandidateEvaluationReadModel, CandidateInspectReadModel } from "@ouroboros/domain";
 import { CandidateDetail } from "./App";
 
 describe("CandidateDetail", () => {
@@ -13,6 +13,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Capability Package");
     expect(html).toContain("Agent And Provider");
     expect(html).toContain("Trace And Evaluation");
+    expect(html).toContain("Evaluation state");
+    expect(html).toContain("pending");
+    expect(html).toContain("Latest evaluation run");
+    expect(html).toContain("Stage binding");
+    expect(html).toContain("Trace material");
+    expect(html).toContain("Evidence classifications");
+    expect(html).toContain("trace_debug_material");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
   });
 
@@ -46,7 +53,161 @@ describe("CandidateDetail", () => {
     expect(html).toContain("provider_output_not_evidence");
     expect(html).not.toMatch(/Counted evidence|Promotion approved|Live authority/);
   });
+
+  it("renders an empty evaluation state separately from failure", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail candidate={candidateWithEvaluation(emptyEvaluation())} />
+    );
+
+    expect(html).toContain("Evaluation state");
+    expect(html).toContain("empty");
+    expect(html).toContain("No evaluation runs");
+    expect(html).toContain("no_evaluation_runs");
+    expect(html).not.toContain("evaluation_failed");
+  });
+
+  it("renders failed evaluation run state with the run error", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail candidate={candidateWithEvaluation(failedEvaluation())} />
+    );
+
+    expect(html).toContain("Evaluation state");
+    expect(html).toContain("failed");
+    expect(html).toContain("evaluation engine rejected metrics");
+    expect(html).not.toContain("No evaluation runs");
+  });
+
+  it("renders sealed counted and rejected evidence classifications distinctly", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail candidate={candidateWithEvaluation(sealedEvaluation())} />
+    );
+
+    expect(html).toContain("sealed");
+    expect(html).toContain("counted_evidence");
+    expect(html).toContain("rejected_evidence");
+    expect(html).toContain("sealed_counted_fixture_only_allowed_by_test");
+    expect(html).toContain("partial_trace");
+    expect(html).toContain("evidence_sealing_decision:fixture-sealing");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+  });
 });
+
+function candidateWithEvaluation(evaluation: CandidateEvaluationReadModel): CandidateInspectReadModel {
+  return {
+    ...fixtureCandidate,
+    evaluation
+  };
+}
+
+function emptyEvaluation(): CandidateEvaluationReadModel {
+  return {
+    ...fixtureCandidate.evaluation,
+    has_runs: false,
+    latest_run: null,
+    latest_comparison_set: null,
+    latest_sealing_decision: null,
+    trace: {
+      state: "none",
+      trace_ref: null,
+      authority_status: "not_counted",
+      provider_output_artifact_refs: [],
+      debug_artifact_refs: []
+    },
+    evidence_classifications: [],
+    counted_evidence: {
+      counted: false,
+      evidence_disposition: "not_counted",
+      disposition_reason: "no_evaluation_runs",
+      authority_status: "not_counted"
+    },
+    error_state: null,
+    run: placeholder("evaluation_run_record", "missing-eval", "Evaluation run"),
+    comparison_set: placeholder("evaluation_comparison_set", "missing-comparison", "Evaluation comparison set"),
+    sealing_decision: placeholder("evidence_sealing_decision", "missing-sealing", "Evidence sealing decision")
+  };
+}
+
+function failedEvaluation(): CandidateEvaluationReadModel {
+  return {
+    ...fixtureCandidate.evaluation,
+    latest_run: {
+      ...fixtureCandidate.evaluation.latest_run!,
+      status: "failed",
+      error_state: {
+        code: "evaluation_failed",
+        message: "evaluation engine rejected metrics"
+      }
+    },
+    latest_sealing_decision: {
+      ...fixtureCandidate.evaluation.latest_sealing_decision!,
+      evidence_disposition: "not_counted",
+      disposition_reason: "method_not_authoritative",
+      authority_status: "not_counted"
+    },
+    counted_evidence: {
+      counted: false,
+      evidence_disposition: "not_counted",
+      disposition_reason: "method_not_authoritative",
+      authority_status: "not_counted"
+    },
+    error_state: {
+      code: "evaluation_failed",
+      message: "evaluation engine rejected metrics"
+    }
+  };
+}
+
+function sealedEvaluation(): CandidateEvaluationReadModel {
+  return {
+    ...fixtureCandidate.evaluation,
+    latest_run: {
+      ...fixtureCandidate.evaluation.latest_run!,
+      status: "succeeded",
+      completed_at: "2026-05-05T00:02:00.000Z"
+    },
+    latest_comparison_set: {
+      ...fixtureCandidate.evaluation.latest_comparison_set!,
+      comparability_status: "comparable",
+      comparability_reason: "fixture_only"
+    },
+    latest_sealing_decision: {
+      ...fixtureCandidate.evaluation.latest_sealing_decision!,
+      evidence_disposition: "counted",
+      disposition_reason: "sealed_counted_fixture_only_allowed_by_test",
+      authority_status: "counted",
+      sealed_at: "2026-05-05T00:03:00.000Z"
+    },
+    evidence_classifications: [
+      {
+        classification_id: "fixture-classification-counted",
+        classified_ref: { record_kind: "evaluation_run_record", id: "fixture-eval" },
+        classification_kind: "counted_evidence",
+        classification_status: "counted",
+        classification_reason: "sealed_counted_fixture_only_allowed_by_test",
+        authority_status: "counted",
+        sealed_by_decision_ref: { record_kind: "evidence_sealing_decision", id: "fixture-sealing" },
+        created_at: "2026-05-05T00:03:00.000Z"
+      },
+      {
+        classification_id: "fixture-classification-rejected",
+        classified_ref: { record_kind: "provider_output_artifact", id: "fixture-provider-output" },
+        classification_kind: "rejected_evidence",
+        classification_status: "rejected",
+        classification_reason: "partial_trace",
+        authority_status: "not_counted",
+        sealed_by_decision_ref: { record_kind: "evidence_sealing_decision", id: "fixture-sealing" },
+        created_at: "2026-05-05T00:03:00.000Z"
+      }
+    ],
+    counted_evidence: {
+      counted: true,
+      evidence_disposition: "counted",
+      disposition_reason: "sealed_counted_fixture_only_allowed_by_test",
+      authority_status: "counted",
+      sealed_at: "2026-05-05T00:03:00.000Z"
+    }
+  };
+}
 
 const fixtureCandidate: CandidateInspectReadModel = {
   candidate_id: "fixture-candidate-btc-perp-001",
