@@ -106,8 +106,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
 
     const candidateVersionId = body.candidate_version_id ?? candidate.candidate_version.candidate_version_id;
+    const requestedExecutionMode = body.execution_mode ?? "host_local";
     const idempotencyKey = body.idempotency_key
-      ?? `runtime-api-evaluation-${request.params.candidate_id}-${candidateVersionId}-backtest`;
+      ?? `runtime-api-evaluation-${request.params.candidate_id}-${candidateVersionId}-backtest-${requestedExecutionMode}`;
     const stableRequestId = safeRouteId(`${request.params.candidate_id}-${candidateVersionId}-${idempotencyKey}`);
     const outcome = await runCandidateEvaluation(store, evaluationProviderAdapter, {
       candidate_id: request.params.candidate_id,

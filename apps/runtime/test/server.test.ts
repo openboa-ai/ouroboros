@@ -145,6 +145,41 @@ describe("runtime read-only API", () => {
       ])
     );
 
+    const defaultHostMode = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: { candidate_version_id: candidateVersionId }
+    });
+    const defaultContainerMode = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidateVersionId,
+        execution_mode: "containerized_local"
+      }
+    });
+    const invalidModeAfterDefaultRun = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidateVersionId,
+        execution_mode: "unsupported_mode"
+      }
+    });
+
+    expect(defaultHostMode.statusCode).toBe(201);
+    expect(defaultContainerMode.statusCode).toBe(201);
+    expect(defaultHostMode.json().evaluation.stage_binding.execution_mode).toBe("host_local");
+    expect(defaultContainerMode.json().evaluation.stage_binding.execution_mode).toBe("containerized_local");
+    expect(defaultHostMode.json().evaluation.evaluation_run.evaluation_run_record_id).not.toBe(
+      defaultContainerMode.json().evaluation.evaluation_run.evaluation_run_record_id
+    );
+    expect(invalidModeAfterDefaultRun.statusCode).toBe(422);
+    expect(invalidModeAfterDefaultRun.json()).toMatchObject({
+      error: "evaluation_run_failed",
+      reason: "unsupported_execution_mode"
+    });
+
     await server.close();
   });
 
