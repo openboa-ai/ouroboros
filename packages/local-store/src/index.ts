@@ -331,6 +331,7 @@ export function createFixtureRecords(): FixtureItem[] {
     version: 1,
     runtime_placement_id: ids.placement,
     placement_kind: "fixture_local_placeholder",
+    tooling_kind: "fixture_only",
     authority_status: "not_launched"
   };
   const handsEnvironment: HandsEnvironmentRecord = {
@@ -1270,6 +1271,7 @@ export class LocalStore {
           version: 1,
           runtime_placement_id: idsForCandidate.placement,
           placement_kind: "fixture_local_placeholder",
+          tooling_kind: "fixture_only",
           authority_status: "not_launched"
         } satisfies RuntimePlacementRecord
       },

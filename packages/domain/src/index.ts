@@ -29,6 +29,21 @@ export type EvaluationExecutionMode =
   | "containerized_local"
   | "containerized_remote";
 
+export type RuntimePlacementKind =
+  | EvaluationExecutionMode
+  | "provider_managed"
+  | "endpoint_backed"
+  | "fixture_local_placeholder";
+
+export type RuntimePlacementToolingKind =
+  | "host_process"
+  | "docker_compose"
+  | "docker_sandbox"
+  | "remote_container"
+  | "provider_session"
+  | "http_endpoint"
+  | "fixture_only";
+
 export type EvaluationRunStatus = "created" | "running" | "succeeded" | "failed" | "canceled";
 
 export type EvaluationAuthorityStatus = "not_live" | "not_counted";
@@ -270,7 +285,16 @@ export interface TraderSystemRuntimeRecord extends BaseRecord {
 export interface RuntimePlacementRecord extends BaseRecord {
   record_kind: "runtime_placement";
   runtime_placement_id: string;
-  placement_kind: "fixture_local_placeholder";
+  placement_kind: RuntimePlacementKind;
+  tooling_kind?: RuntimePlacementToolingKind;
+  service_name?: string;
+  image_ref?: Ref;
+  compose_project?: string;
+  sandbox_template_ref?: Ref;
+  endpoint_ref?: Ref;
+  local_store_root?: string;
+  network_ref?: Ref;
+  volume_ref?: Ref;
   authority_status: "not_launched";
 }
 
