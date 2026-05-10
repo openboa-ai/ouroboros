@@ -198,6 +198,81 @@ button {
   overflow-wrap: anywhere;
 }
 
+.evaluation-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.evaluation-status {
+  border: 1px solid #d0d5dd;
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 3px;
+  background: #f8fafc;
+}
+
+.evaluation-status span {
+  color: #667085;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-status strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.evaluation-status.neutral {
+  border-left-color: #1570ef;
+}
+
+.evaluation-status.failed {
+  border-left-color: #d92d20;
+  background: #fff5f5;
+}
+
+.evaluation-status.sealed {
+  border-left-color: #b54708;
+  background: #fffbeb;
+}
+
+.evaluation-status.counted {
+  border-left-color: #039855;
+  background: #f6fef9;
+}
+
+.evaluation-block {
+  border-top: 1px solid #eaecf0;
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.evaluation-block h4 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.classification-list {
+  display: grid;
+  gap: 8px;
+}
+
+.classification-row {
+  border: 1px solid #eaecf0;
+  border-radius: 6px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.classification-row span {
+  color: #667085;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 780px) {
   .shell {
     grid-template-columns: 1fr;

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type {
+  CandidateEvaluationReadModel,
+  CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
@@ -166,13 +168,126 @@ export function CandidateDetail({ candidate }: { candidate: CandidateInspectRead
         </InfoSection>
 
         <InfoSection title="Trace And Evaluation">
-          <Placeholder item={candidate.trace} />
-          <Placeholder item={candidate.evaluation.run} />
-          <Placeholder item={candidate.evaluation.comparison_set} />
-          <Placeholder item={candidate.evaluation.sealing_decision} />
+          <EvaluationSection evaluation={candidate.evaluation} />
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationReadModel }) {
+  const latestRun = evaluation.latest_run;
+  const latestComparisonSet = evaluation.latest_comparison_set;
+  const latestSealingDecision = evaluation.latest_sealing_decision;
+
+  return (
+    <div className="evaluation-stack">
+      <div className={`evaluation-status ${evaluationStatusTone(evaluation)}`}>
+        <span>Evaluation state</span>
+        <strong>{evaluationStatusLabel(evaluation)}</strong>
+        <span>{evaluation.counted_evidence.disposition_reason}</span>
+      </div>
+
+      {latestRun ? (
+        <div className="evaluation-block">
+          <h4>Latest evaluation run</h4>
+          <Field label="Run" value={latestRun.run_id} />
+          <Field label="Status" value={latestRun.status} />
+          <Field label="Stage binding" value={`${latestRun.stage ?? "missing"} / ${latestRun.profile ?? "missing"}`} />
+          <Field label="Execution mode context" value={latestRun.execution_mode ?? "missing"} />
+          <Field label="Trace" value={formatRef(latestRun.trace_ref)} />
+          <Field label="Authority" value={latestRun.authority_status} />
+          {latestRun.error_state && <Field label="Error" value={latestRun.error_state.message} />}
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>No evaluation runs</h4>
+          <Field label="Status" value={evaluation.run.status} />
+          <Field label="Authority" value={evaluation.run.authority_status} />
+          <Field label="Reason" value={evaluation.counted_evidence.disposition_reason} />
+        </div>
+      )}
+
+      <div className="evaluation-block">
+        <h4>Comparison set</h4>
+        {latestComparisonSet ? (
+          <>
+            <Field label="Comparability" value={latestComparisonSet.comparability_status} />
+            <Field label="Reason" value={latestComparisonSet.comparability_reason} />
+            <Field label="Authority" value={latestComparisonSet.authority_status} />
+          </>
+        ) : (
+          <>
+            <Field label="Status" value={evaluation.comparison_set.status} />
+            <Field label="Authority" value={evaluation.comparison_set.authority_status} />
+          </>
+        )}
+      </div>
+
+      <div className="evaluation-block">
+        <h4>Trace material</h4>
+        <Field label="State" value={evaluation.trace.state} />
+        <Field label="Trace" value={evaluation.trace.trace_ref ? formatRef(evaluation.trace.trace_ref) : "none"} />
+        <Field label="Authority" value={evaluation.trace.authority_status} />
+        {evaluation.trace.authority_label && <Field label="Label" value={evaluation.trace.authority_label} />}
+        <Field label="Provider artifacts" value={formatRefs(evaluation.trace.provider_output_artifact_refs)} />
+        <Field label="Debug artifacts" value={formatRefs(evaluation.trace.debug_artifact_refs)} />
+      </div>
+
+      <div className="evaluation-block">
+        <h4>Evidence state</h4>
+        <Field label="Counted" value={evaluation.counted_evidence.counted ? "yes" : "no"} />
+        <Field label="Disposition" value={evaluation.counted_evidence.evidence_disposition} />
+        <Field label="Reason" value={evaluation.counted_evidence.disposition_reason} />
+        <Field label="Authority" value={evaluation.counted_evidence.authority_status} />
+        {evaluation.counted_evidence.sealed_at && <Field label="Sealed at" value={evaluation.counted_evidence.sealed_at} />}
+        {latestSealingDecision ? (
+          <>
+            <Field label="Sealing decision" value={latestSealingDecision.sealing_decision_id} />
+            <Field label="Decision disposition" value={latestSealingDecision.evidence_disposition} />
+            <Field label="Decision refs" value={formatRefs(latestSealingDecision.evaluation_run_refs)} />
+          </>
+        ) : (
+          <>
+            <Field label="Sealing decision" value={evaluation.sealing_decision.status} />
+            <Field label="Decision authority" value={evaluation.sealing_decision.authority_status} />
+          </>
+        )}
+      </div>
+
+      <div className="evaluation-block">
+        <h4>Evidence classifications</h4>
+        {evaluation.evidence_classifications.length > 0 ? (
+          <div className="classification-list">
+            {evaluation.evidence_classifications.map((classification) => (
+              <EvidenceClassificationItem
+                classification={classification}
+                key={classification.classification_id}
+              />
+            ))}
+          </div>
+        ) : (
+          <Field label="Classifications" value="none" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceClassificationItem({
+  classification
+}: {
+  classification: CandidateEvidenceClassificationReadModel;
+}) {
+  return (
+    <div className="classification-row">
+      <strong>{classification.classification_kind}</strong>
+      <span>{classification.classification_status}</span>
+      <span>{formatRef(classification.classified_ref)}</span>
+      <span>{classification.classification_reason}</span>
+      <span>{classification.authority_status}</span>
+      {classification.sealed_by_decision_ref && <span>{formatRef(classification.sealed_by_decision_ref)}</span>}
+    </div>
   );
 }
 
@@ -234,4 +349,39 @@ function Placeholder({ item }: { item: PlaceholderSummary }) {
 
 function formatRef(ref: { record_kind: string; id: string }) {
   return `${ref.record_kind}:${ref.id}`;
+}
+
+function formatRefs(refs: Array<{ record_kind: string; id: string }>) {
+  return refs.length > 0 ? refs.map(formatRef).join(", ") : "none";
+}
+
+function evaluationStatusLabel(evaluation: CandidateEvaluationReadModel) {
+  if (!evaluation.has_runs) {
+    return "empty";
+  }
+  if (evaluation.latest_run?.status === "failed") {
+    return "failed";
+  }
+  if (
+    evaluation.latest_sealing_decision?.sealed_at ||
+    evaluation.latest_sealing_decision?.evidence_disposition === "counted" ||
+    evaluation.latest_sealing_decision?.evidence_disposition === "quarantined_for_review"
+  ) {
+    return "sealed";
+  }
+  if (evaluation.latest_run?.status === "created" || evaluation.latest_run?.status === "running") {
+    return "pending";
+  }
+  return evaluation.latest_run?.status ?? "unknown";
+}
+
+function evaluationStatusTone(evaluation: CandidateEvaluationReadModel) {
+  const label = evaluationStatusLabel(evaluation);
+  if (label === "failed") {
+    return "failed";
+  }
+  if (label === "sealed") {
+    return evaluation.counted_evidence.counted ? "counted" : "sealed";
+  }
+  return "neutral";
 }
