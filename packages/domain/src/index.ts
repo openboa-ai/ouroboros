@@ -44,6 +44,58 @@ export type RuntimePlacementToolingKind =
   | "http_endpoint"
   | "fixture_only";
 
+export type TraderSystemRuntimeLifecycleStatus =
+  | "registered"
+  | "deployed"
+  | "starting"
+  | "running"
+  | "paused"
+  | "stopping"
+  | "stopped"
+  | "failed"
+  | "killed"
+  | "review_required"
+  | "fixture_placeholder";
+
+export type RuntimeExecutionStage = "paper" | "live";
+
+export type OrderIntentKind =
+  | "place_order"
+  | "cancel_order"
+  | "adjust_position";
+
+export type OrderIntentStatus = "proposed" | "withdrawn" | "expired" | "rejected";
+
+export type OrderIntentAuthorityStatus = "not_submitted" | "trace_only";
+
+export type GatewayDecisionOutcome =
+  | "allowed"
+  | "rejected"
+  | "clipped"
+  | "dry_run_only";
+
+export type GatewayDecisionReason =
+  | "paper_stage_only"
+  | "dry_run_allowed"
+  | "no_live_authority"
+  | "risk_limit_exceeded"
+  | "operator_hold"
+  | "fixture_only";
+
+export type GatewayDecisionAuthorityStatus = "not_live" | "dry_run_only";
+
+export type ExecutionAttemptStatus =
+  | "not_submitted"
+  | "dry_run_recorded"
+  | "blocked"
+  | "canceled"
+  | "failed";
+
+export type ExecutionAttemptAuthorityStatus =
+  | "not_live"
+  | "not_submitted"
+  | "dry_run_only";
+
 export type EvaluationRunStatus = "created" | "running" | "succeeded" | "failed" | "canceled";
 
 export type EvaluationAuthorityStatus = "not_live" | "not_counted";
@@ -276,9 +328,19 @@ export interface TraderSystemRuntimeRecord extends BaseRecord {
   record_kind: "trader_system_runtime";
   trader_system_runtime_id: string;
   stage_binding_profile: "paper";
+  runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  candidate_ref?: Ref;
+  candidate_version_ref?: Ref;
+  stage_binding_ref?: Ref;
   placement_ref: Ref;
   hands_environment_ref: Ref;
   memory_surface_ref: Ref;
+  runtime_operating_policy_ref?: Ref;
+  trace_ref?: Ref;
+  order_intent_refs?: Ref[];
+  gateway_decision_refs?: Ref[];
+  execution_attempt_refs?: Ref[];
+  created_at?: string;
   authority_status: "not_live";
 }
 
@@ -406,6 +468,55 @@ export interface EvidenceClassificationRecord extends BaseRecord {
   authority_status: EvidenceClassificationAuthorityStatus;
 }
 
+export interface OrderIntentRecord extends BaseRecord {
+  record_kind: "order_intent";
+  order_intent_id: string;
+  runtime_ref: Ref;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  stage_binding_ref: Ref;
+  trace_ref?: Ref;
+  intent_kind: OrderIntentKind;
+  market_scope: "binance_btc_perpetual_futures";
+  side?: "buy" | "sell";
+  order_type?: "market" | "limit";
+  quantity?: string;
+  limit_price?: string;
+  status: OrderIntentStatus;
+  created_at: string;
+  authority_status: OrderIntentAuthorityStatus;
+}
+
+export interface GatewayDecisionRecord extends BaseRecord {
+  record_kind: "gateway_decision";
+  gateway_decision_id: string;
+  runtime_ref: Ref;
+  order_intent_ref: Ref;
+  decision_outcome: GatewayDecisionOutcome;
+  decision_reason: GatewayDecisionReason;
+  decided_at: string;
+  policy_ref?: Ref;
+  clipped_order_intent_ref?: Ref;
+  authority_status: GatewayDecisionAuthorityStatus;
+}
+
+export interface ExecutionAttemptRecord extends BaseRecord {
+  record_kind: "execution_attempt";
+  execution_attempt_id: string;
+  runtime_ref: Ref;
+  order_intent_ref: Ref;
+  gateway_decision_ref: Ref;
+  stage: RuntimeExecutionStage;
+  execution_mode: EvaluationExecutionMode;
+  venue_scope: "binance_btc_perpetual_futures";
+  trace_ref?: Ref;
+  status: ExecutionAttemptStatus;
+  result_reason: GatewayDecisionReason;
+  created_at: string;
+  completed_at?: string;
+  authority_status: ExecutionAttemptAuthorityStatus;
+}
+
 export interface CandidateMaterializationInput {
   idempotency_key: string;
   provider: {
@@ -496,6 +607,9 @@ export type FixtureRecord =
   | EvaluationComparisonSetRecord
   | EvidenceSealingDecisionRecord
   | EvidenceClassificationRecord
+  | OrderIntentRecord
+  | GatewayDecisionRecord
+  | ExecutionAttemptRecord
   | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {
