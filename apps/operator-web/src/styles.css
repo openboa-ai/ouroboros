@@ -273,6 +273,43 @@ button {
   overflow-wrap: anywhere;
 }
 
+.runtime-command {
+  border-top: 1px solid #eaecf0;
+  padding-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-command-button {
+  min-height: 38px;
+  border: 1px solid #1570ef;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #1570ef;
+  cursor: pointer;
+}
+
+.runtime-command-button:disabled {
+  border-color: #98a2b3;
+  background: #98a2b3;
+  cursor: not-allowed;
+}
+
+.runtime-command span,
+.inline-status {
+  color: #667085;
+  overflow-wrap: anywhere;
+}
+
+.inline-status {
+  border-top: 1px solid #eaecf0;
+  padding-top: 10px;
+}
+
+.inline-status.error {
+  color: #b42318;
+}
+
 @media (max-width: 780px) {
   .shell {
     grid-template-columns: 1fr;

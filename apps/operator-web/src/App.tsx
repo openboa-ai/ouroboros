@@ -4,10 +4,11 @@ import type {
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
+  CandidateRuntimeAuthorityReadModel,
   CandidateSummaryReadModel,
   PlaceholderSummary
 } from "@ouroboros/domain";
-import { fetchCandidate, fetchCandidateSummaries } from "./api";
+import { fetchCandidate, fetchCandidateSummaries, recordCandidateRuntimeAuthority } from "./api";
 import "./styles.css";
 
 interface AppState {
@@ -15,10 +16,13 @@ interface AppState {
   selected?: CandidateInspectReadModel;
   error?: string;
   loading: boolean;
+  recordingRuntimeAuthority: boolean;
+  runtimeAuthorityError?: string;
+  runtimeAuthorityMessage?: string;
 }
 
 export function App() {
-  const [state, setState] = useState<AppState>({ candidates: [], loading: true });
+  const [state, setState] = useState<AppState>({ candidates: [], loading: true, recordingRuntimeAuthority: false });
 
   useEffect(() => {
     let cancelled = false;
@@ -28,13 +32,14 @@ export function App() {
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
         if (!cancelled) {
-          setState({ candidates, selected, loading: false });
+          setState({ candidates, selected, loading: false, recordingRuntimeAuthority: false });
         }
       } catch (error) {
         if (!cancelled) {
           setState({
             candidates: [],
             loading: false,
+            recordingRuntimeAuthority: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
         }
@@ -47,7 +52,12 @@ export function App() {
   }, []);
 
   async function selectCandidate(candidateId: string) {
-    setState((current) => ({ ...current, loading: true }));
+    setState((current) => ({
+      ...current,
+      loading: true,
+      runtimeAuthorityError: undefined,
+      runtimeAuthorityMessage: undefined
+    }));
     try {
       const selected = await fetchCandidate(candidateId);
       setState((current) => ({ ...current, selected, loading: false }));
@@ -56,6 +66,36 @@ export function App() {
         ...current,
         loading: false,
         error: error instanceof Error ? error.message : "Unknown runtime error"
+      }));
+    }
+  }
+
+  async function recordRuntimeAuthority() {
+    const candidate = state.selected;
+    if (!candidate || state.recordingRuntimeAuthority) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      recordingRuntimeAuthority: true,
+      runtimeAuthorityError: undefined,
+      runtimeAuthorityMessage: undefined
+    }));
+    try {
+      const outcome = await recordCandidateRuntimeAuthority(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      setState((current) => ({
+        ...current,
+        selected,
+        recordingRuntimeAuthority: false,
+        runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        recordingRuntimeAuthority: false,
+        runtimeAuthorityError: error instanceof Error ? error.message : "Unknown runtime authority error"
       }));
     }
   }
@@ -86,13 +126,33 @@ export function App() {
       <section className="content">
         {state.loading && <div className="status-panel">Loading fixture read model...</div>}
         {state.error && <div className="status-panel error">{state.error}</div>}
-        {!state.loading && !state.error && state.selected && <CandidateDetail candidate={state.selected} />}
+        {!state.loading && !state.error && state.selected && (
+          <CandidateDetail
+            candidate={state.selected}
+            onRecordRuntimeAuthority={() => void recordRuntimeAuthority()}
+            recordingRuntimeAuthority={state.recordingRuntimeAuthority}
+            runtimeAuthorityError={state.runtimeAuthorityError}
+            runtimeAuthorityMessage={state.runtimeAuthorityMessage}
+          />
+        )}
       </section>
     </main>
   );
 }
 
-export function CandidateDetail({ candidate }: { candidate: CandidateInspectReadModel }) {
+export function CandidateDetail({
+  candidate,
+  onRecordRuntimeAuthority,
+  recordingRuntimeAuthority = false,
+  runtimeAuthorityError,
+  runtimeAuthorityMessage
+}: {
+  candidate: CandidateInspectReadModel;
+  onRecordRuntimeAuthority?: () => void;
+  recordingRuntimeAuthority?: boolean;
+  runtimeAuthorityError?: string;
+  runtimeAuthorityMessage?: string;
+}) {
   return (
     <article className="detail">
       <header className="detail-header">
@@ -159,6 +219,9 @@ export function CandidateDetail({ candidate }: { candidate: CandidateInspectRead
         <InfoSection title="Runtime">
           <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
           <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
+          {candidate.runtime.runtime_lifecycle_status && (
+            <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
+          )}
           <Field label="Authority" value={candidate.runtime.authority_status} />
           <Placeholder item={candidate.runtime.placement} />
           <Placeholder item={candidate.runtime.hands_environment} />
@@ -167,11 +230,123 @@ export function CandidateDetail({ candidate }: { candidate: CandidateInspectRead
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
         </InfoSection>
 
+        <RuntimeAuthoritySection
+          authority={candidate.runtime.bounded_authority}
+          onRecordRuntimeAuthority={onRecordRuntimeAuthority}
+          recordingRuntimeAuthority={recordingRuntimeAuthority}
+          runtimeAuthorityError={runtimeAuthorityError}
+          runtimeAuthorityMessage={runtimeAuthorityMessage}
+        />
+
         <InfoSection title="Trace And Evaluation">
           <EvaluationSection evaluation={candidate.evaluation} />
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function RuntimeAuthoritySection({
+  authority,
+  onRecordRuntimeAuthority,
+  recordingRuntimeAuthority,
+  runtimeAuthorityError,
+  runtimeAuthorityMessage
+}: {
+  authority?: CandidateRuntimeAuthorityReadModel;
+  onRecordRuntimeAuthority?: () => void;
+  recordingRuntimeAuthority: boolean;
+  runtimeAuthorityError?: string;
+  runtimeAuthorityMessage?: string;
+}) {
+  const statusLabel = authority?.chain_complete
+    ? "chain complete"
+    : authority?.has_activity
+      ? "incomplete"
+      : "none";
+
+  return (
+    <InfoSection title="Runtime Authority">
+      <div className={`evaluation-status ${authority?.chain_complete ? "counted" : "neutral"}`}>
+        <span>Bounded paper state</span>
+        <strong>{statusLabel}</strong>
+        <span>{authority?.execution_attempt.authority_status ?? "not_submitted"}</span>
+      </div>
+
+      <Field label="Activity" value={authority?.has_activity ? "recorded" : "none"} />
+      <Field label="Complete chain" value={authority?.chain_complete ? "yes" : "no"} />
+      <Field label="Order intent" value={authority?.order_intent.status ?? "not_submitted"} />
+      <Field label="Gateway decision" value={authority?.gateway_decision.status ?? "not_evaluated"} />
+      <Field label="Execution attempt" value={authority?.execution_attempt.status ?? "not_submitted"} />
+
+      {authority?.latest_order_intent ? (
+        <div className="evaluation-block">
+          <h4>Latest order intent</h4>
+          <Field label="Intent" value={authority.latest_order_intent.intent_kind} />
+          <Field label="Status" value={authority.latest_order_intent.status} />
+          <Field label="Side / type" value={`${authority.latest_order_intent.side ?? "none"} / ${authority.latest_order_intent.order_type ?? "none"}`} />
+          <Field label="Quantity" value={authority.latest_order_intent.quantity ?? "none"} />
+          <Field label="Limit" value={authority.latest_order_intent.limit_price ?? "none"} />
+          <Field label="Authority" value={authority.latest_order_intent.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Latest order intent</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_submitted" />
+        </div>
+      )}
+
+      {authority?.latest_gateway_decision ? (
+        <div className="evaluation-block">
+          <h4>Latest gateway decision</h4>
+          <Field label="Outcome" value={authority.latest_gateway_decision.decision_outcome} />
+          <Field label="Reason" value={authority.latest_gateway_decision.decision_reason} />
+          <Field label="Order intent" value={formatRef(authority.latest_gateway_decision.order_intent_ref)} />
+          <Field label="Authority" value={authority.latest_gateway_decision.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Latest gateway decision</h4>
+          <Field label="Outcome" value="not_evaluated" />
+          <Field label="Authority" value="not_live" />
+        </div>
+      )}
+
+      {authority?.latest_execution_attempt ? (
+        <div className="evaluation-block">
+          <h4>Latest execution attempt</h4>
+          <Field label="Stage" value={authority.latest_execution_attempt.stage} />
+          <Field label="Mode" value={authority.latest_execution_attempt.execution_mode} />
+          <Field label="Status" value={authority.latest_execution_attempt.status} />
+          <Field label="Reason" value={authority.latest_execution_attempt.result_reason} />
+          <Field label="Gateway decision" value={formatRef(authority.latest_execution_attempt.gateway_decision_ref)} />
+          <Field label="Authority" value={authority.latest_execution_attempt.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Latest execution attempt</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_submitted" />
+        </div>
+      )}
+
+      {onRecordRuntimeAuthority && (
+        <div className="runtime-command">
+          <button
+            className="runtime-command-button"
+            type="button"
+            onClick={onRecordRuntimeAuthority}
+            disabled={recordingRuntimeAuthority}
+          >
+            {recordingRuntimeAuthority ? "Recording dry-run" : "Record dry-run intent"}
+          </button>
+          <span>dry_run_only / paper_stage_only / not_live</span>
+        </div>
+      )}
+      {runtimeAuthorityMessage && <div className="inline-status">{runtimeAuthorityMessage}</div>}
+      {runtimeAuthorityError && <div className="inline-status error">{runtimeAuthorityError}</div>}
+    </InfoSection>
   );
 }
 
