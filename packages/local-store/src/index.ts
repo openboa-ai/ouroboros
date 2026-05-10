@@ -71,6 +71,16 @@ export class LocalStoreError extends Error {
   }
 }
 
+export interface CandidateEvaluationRunIdentityInput {
+  candidate_id: string;
+  candidate_version_id: string;
+  idempotency_key: string;
+}
+
+export function candidateEvaluationRunRecordId(input: CandidateEvaluationRunIdentityInput): string {
+  return `evaluation-run-${stableSuffix(`${input.candidate_id}:${input.candidate_version_id}:${input.idempotency_key}`)}`;
+}
+
 type Collection =
   | "candidates"
   | "candidate-materialization-attempts"
@@ -565,8 +575,12 @@ export class LocalStore {
       );
     }
 
-    const suffix = stableSuffix(`${candidate.candidate_id}:${candidateVersionId}:${input.idempotency_key}`);
-    const evaluationRunId = `evaluation-run-${suffix}`;
+    const evaluationRunId = candidateEvaluationRunRecordId({
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidateVersionId,
+      idempotency_key: input.idempotency_key
+    });
+    const suffix = evaluationRunId.replace(/^evaluation-run-/, "");
     const existing = await this.getCandidateEvaluationRun(evaluationRunId);
     if (existing) {
       return existing;
