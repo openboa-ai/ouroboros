@@ -50,6 +50,51 @@ npm test
 npm run typecheck
 ```
 
+## Local Runtime Stack
+
+The repo-owned stack files are development and validation tooling. Product state still lives in
+the persisted records and Linear, not in Docker, Compose, or sandbox names.
+
+Run the host services:
+
+```bash
+npm run dev:runtime
+npm run dev:operator-web
+```
+
+Run the Compose stack:
+
+```bash
+docker compose build
+docker compose up runtime operator-web
+```
+
+Prerequisites are a running Docker daemon and the Docker Compose v2 plugin.
+
+Defaults:
+
+- Runtime API: `http://127.0.0.1:${OUROBOROS_RUNTIME_PORT:-4173}`
+- Operator web: `http://127.0.0.1:${OUROBOROS_OPERATOR_WEB_PORT:-5173}`
+- Runtime container store root: `/data/ouroboros-store`
+- Runtime persisted volume: `ouroboros-local_ouroboros-store`
+- Compose network: `ouroboros-local_ouroboros-local`
+
+Compose validation covers package-level checks in a clean container image:
+
+```bash
+docker compose --profile validation run --rm validation npm test
+docker compose --profile validation run --rm validation npm run typecheck
+docker compose --profile validation run --rm validation npm run build
+```
+
+Run `bash scripts/check-docs.sh`, `bash scripts/check-secrets.sh`, and `git diff --check` on the
+host or inside a Docker Sandbox workspace with repository metadata available.
+
+Docker Sandboxes validation runs from the repository root with the host checks above, then the
+same Compose commands when the sandbox has Compose available. The only durable result to record is
+the command evidence and resulting records; sandbox IDs, host paths, and local agent configuration
+are not project state.
+
 ## Documentation Policy
 
 Repo-originated durable product, architecture, source, service, or project-memory updates go to Linear. Linear content is not synced back into repo documentation. Update repo docs only when developer or agent execution would be wrong without the local hint.

@@ -1,0 +1,63 @@
+name: ouroboros-local
+
+services:
+  runtime:
+    build:
+      context: .
+      target: runtime
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4173"
+      OUROBOROS_STORE_ROOT: /data/ouroboros-store
+    ports:
+      - "${OUROBOROS_RUNTIME_PORT:-4173}:4173"
+    volumes:
+      - ouroboros-store:/data/ouroboros-store
+    networks:
+      - ouroboros-local
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4173/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+  operator-web:
+    build:
+      context: .
+      target: operator-web
+    environment:
+      HOST: 0.0.0.0
+      PORT: "5173"
+      VITE_OUROBOROS_RUNTIME_URL: "http://127.0.0.1:${OUROBOROS_RUNTIME_PORT:-4173}"
+    ports:
+      - "${OUROBOROS_OPERATOR_WEB_PORT:-5173}:5173"
+    depends_on:
+      runtime:
+        condition: service_healthy
+    networks:
+      - ouroboros-local
+
+  validation:
+    profiles:
+      - validation
+    build:
+      context: .
+      target: validation
+    environment:
+      OUROBOROS_STORE_ROOT: /tmp/ouroboros-store
+    networks:
+      - ouroboros-local
+    command:
+      - npm
+      - test
+
+volumes:
+  ouroboros-store:
+
+networks:
+  ouroboros-local:

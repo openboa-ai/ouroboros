@@ -5,6 +5,7 @@ import type {
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
   Ref,
+  RuntimePlacementRecord,
   StageBindingRecord
 } from "./index";
 
@@ -89,6 +90,70 @@ describe("stage-bound evaluation domain records", () => {
     expect(comparisonSet.evaluation_run_refs).toHaveLength(1);
     expect(sealingDecision.evidence_disposition).toBe("not_counted");
     expect(sealingDecision.authority_status).not.toBe("counted");
+  });
+
+  it("models physical runtime placement separately from runtime authority", () => {
+    const hostLocalPlacement = {
+      record_kind: "runtime_placement",
+      version: 1,
+      runtime_placement_id: "runtime-placement-host-local",
+      placement_kind: "host_local",
+      tooling_kind: "host_process",
+      service_name: "runtime",
+      local_store_root: ".ouroboros/dev-store",
+      authority_status: "not_launched"
+    } satisfies RuntimePlacementRecord;
+
+    const containerizedLocalPlacement = {
+      record_kind: "runtime_placement",
+      version: 1,
+      runtime_placement_id: "runtime-placement-compose-local",
+      placement_kind: "containerized_local",
+      tooling_kind: "docker_compose",
+      service_name: "runtime",
+      compose_project: "ouroboros-local",
+      local_store_root: "/data/ouroboros-store",
+      network_ref: ref("network", "ouroboros-local"),
+      volume_ref: ref("volume", "ouroboros-store"),
+      authority_status: "not_launched"
+    } satisfies RuntimePlacementRecord;
+
+    const containerizedRemotePlacement = {
+      record_kind: "runtime_placement",
+      version: 1,
+      runtime_placement_id: "runtime-placement-sandbox-remote",
+      placement_kind: "containerized_remote",
+      tooling_kind: "docker_sandbox",
+      service_name: "runtime",
+      sandbox_template_ref: ref("sandbox_template", "docker-sandbox-compose"),
+      authority_status: "not_launched"
+    } satisfies RuntimePlacementRecord;
+
+    const providerManagedPlacement = {
+      record_kind: "runtime_placement",
+      version: 1,
+      runtime_placement_id: "runtime-placement-provider-managed",
+      placement_kind: "provider_managed",
+      tooling_kind: "provider_session",
+      endpoint_ref: ref("provider_session", "provider-session-not-launched"),
+      authority_status: "not_launched"
+    } satisfies RuntimePlacementRecord;
+
+    const endpointBackedPlacement = {
+      record_kind: "runtime_placement",
+      version: 1,
+      runtime_placement_id: "runtime-placement-endpoint-backed",
+      placement_kind: "endpoint_backed",
+      tooling_kind: "http_endpoint",
+      endpoint_ref: ref("runtime_endpoint", "runtime-endpoint-not-launched"),
+      authority_status: "not_launched"
+    } satisfies RuntimePlacementRecord;
+
+    expect(hostLocalPlacement.placement_kind).toBe("host_local");
+    expect(containerizedLocalPlacement.volume_ref).toEqual(ref("volume", "ouroboros-store"));
+    expect(containerizedRemotePlacement.tooling_kind).toBe("docker_sandbox");
+    expect(providerManagedPlacement.authority_status).toBe("not_launched");
+    expect(endpointBackedPlacement.authority_status).toBe("not_launched");
   });
 
   it("models explicit evidence classification records around a sealing decision", () => {
