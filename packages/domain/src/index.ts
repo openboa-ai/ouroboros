@@ -594,6 +594,60 @@ export interface RuntimeAuditEventRecord extends BaseRecord {
   authority_status: "not_live" | "audit_only";
 }
 
+export interface RuntimeControlAuditInput {
+  idempotency_key: string;
+  candidate_id: string;
+  candidate_version_id?: string;
+  runtime_id?: string;
+  command: {
+    action: RuntimeControlAction;
+    requested_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    actor_kind: RuntimeControlActorKind;
+    actor_ref?: Ref;
+    runtime_operating_policy_ref?: Ref;
+    reason: RuntimeControlCommandReason;
+    reason_summary?: string;
+    trace_ref?: Ref;
+    related_order_intent_refs?: Ref[];
+    related_gateway_decision_refs?: Ref[];
+    related_execution_attempt_refs?: Ref[];
+  };
+  decision: {
+    decision_outcome: RuntimeControlDecisionOutcome;
+    decision_reason: RuntimeControlDecisionReason;
+    decided_by_actor_kind: RuntimeControlActorKind;
+    decided_by_actor_ref?: Ref;
+    runtime_operating_policy_ref?: Ref;
+    resulting_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    trace_ref?: Ref;
+    related_order_intent_refs?: Ref[];
+    related_gateway_decision_refs?: Ref[];
+    related_execution_attempt_refs?: Ref[];
+  };
+  audit_event: {
+    event_kind: RuntimeAuditEventKind;
+    actor_kind?: RuntimeControlActorKind;
+    actor_ref?: Ref;
+    runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    message?: string;
+    trace_ref?: Ref;
+    supporting_record_refs?: Ref[];
+    related_order_intent_refs?: Ref[];
+    related_gateway_decision_refs?: Ref[];
+    related_execution_attempt_refs?: Ref[];
+  };
+  created_at?: string;
+}
+
+export interface RuntimeControlAuditOutcome {
+  candidate_id: string;
+  candidate_version_id: string;
+  runtime_id: string;
+  command: RuntimeControlCommandRecord;
+  decision: RuntimeControlDecisionRecord;
+  audit_event: RuntimeAuditEventRecord;
+}
+
 export interface BoundedRuntimeAuthorityInput {
   idempotency_key: string;
   candidate_id: string;
@@ -927,6 +981,54 @@ export interface CandidateRuntimeAuthorityReadModel {
   execution_attempt: PlaceholderSummary;
 }
 
+export interface CandidateRuntimeControlCommandReadModel {
+  command_id: string;
+  action: RuntimeControlAction;
+  requested_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  actor_kind: RuntimeControlActorKind;
+  actor_ref?: Ref;
+  reason: RuntimeControlCommandReason;
+  requested_at: string;
+  status: RuntimeControlCommandStatus;
+  authority_status: RuntimeControlAuthorityStatus;
+}
+
+export interface CandidateRuntimeControlDecisionReadModel {
+  decision_id: string;
+  command_ref: Ref;
+  decision_outcome: RuntimeControlDecisionOutcome;
+  decision_reason: RuntimeControlDecisionReason;
+  decided_by_actor_kind: RuntimeControlActorKind;
+  decided_by_actor_ref?: Ref;
+  resulting_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  decided_at: string;
+  authority_status: RuntimeControlAuthorityStatus;
+}
+
+export interface CandidateRuntimeAuditEventReadModel {
+  audit_event_id: string;
+  event_kind: RuntimeAuditEventKind;
+  command_ref?: Ref;
+  decision_ref?: Ref;
+  actor_kind?: RuntimeControlActorKind;
+  actor_ref?: Ref;
+  runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  message?: string;
+  created_at: string;
+  authority_status: "not_live" | "audit_only";
+}
+
+export interface CandidateRuntimeControlReadModel {
+  has_activity: boolean;
+  chain_complete: boolean;
+  latest_command: CandidateRuntimeControlCommandReadModel | null;
+  latest_decision: CandidateRuntimeControlDecisionReadModel | null;
+  latest_audit_event: CandidateRuntimeAuditEventReadModel | null;
+  command: PlaceholderSummary;
+  decision: PlaceholderSummary;
+  audit_event: PlaceholderSummary;
+}
+
 export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   candidate_version: {
     candidate_version_id: string;
@@ -989,6 +1091,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
       authority_status: string;
     };
     bounded_authority?: CandidateRuntimeAuthorityReadModel;
+    runtime_control?: CandidateRuntimeControlReadModel;
   };
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;
