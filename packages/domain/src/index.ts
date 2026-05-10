@@ -44,6 +44,32 @@ export type RuntimePlacementToolingKind =
   | "http_endpoint"
   | "fixture_only";
 
+export type RunnableArtifactKind = "python_file" | "container_image";
+
+export type RunnableArtifactRuntimeKind = "python" | "container_image";
+
+export type RunnableArtifactOutputKind =
+  | "program_event"
+  | "runtime_log"
+  | "runtime_heartbeat"
+  | "metric_snapshot"
+  | "diagnostic_artifact"
+  | "order_intent";
+
+export type RunnableArtifactStatus = "registered" | "deprecated";
+
+export type SandboxRuntimeInstanceLifecycleStatus =
+  | "requested"
+  | "created"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed"
+  | "removed";
+
+export type SandboxRuntimeAdapterKind = "deterministic_test" | "docker_sandboxes_sbx";
+
 export type TraderSystemRuntimeLifecycleStatus =
   | "registered"
   | "deployed"
@@ -236,6 +262,7 @@ export interface TraderSystemCandidateRecord extends BaseRecord {
   candidate_status?: "materialized" | "handoff_ready" | "archived";
   evaluation_handoff_ready?: boolean;
   materialized_from_attempt_ref?: Ref;
+  active_runnable_artifact_ref?: Ref;
 }
 
 export interface CandidateVersionRecord extends BaseRecord {
@@ -256,6 +283,7 @@ export interface CandidateVersionRecord extends BaseRecord {
   agent_event_ref?: Ref;
   provider_readiness_ref?: Ref;
   provider_probe_attempt_ref?: Ref;
+  runnable_artifact_ref?: Ref;
 }
 
 export interface TraderSystemSpecRecord extends BaseRecord {
@@ -288,6 +316,56 @@ export interface ProgramValidationRecord extends BaseRecord {
   status: "fixture_placeholder";
   authority_status: "not_runnable";
 }
+
+export interface RunnableArtifactOutputContract {
+  contract_kind: "opaque_runtime_boundary";
+  declared_output_kinds: RunnableArtifactOutputKind[];
+  event_envelope_ref?: Ref;
+  log_contract_ref?: Ref;
+  heartbeat_contract_ref?: Ref;
+}
+
+export interface RunnableArtifactRuntimeContract {
+  runtime_kind: RunnableArtifactRuntimeKind;
+  entrypoint: string[];
+  declared_output_contract: RunnableArtifactOutputContract;
+  secret_policy_ref: Ref;
+  capability_policy_ref: Ref;
+}
+
+export interface ArtifactRuntimeContractRecord
+  extends BaseRecord,
+    RunnableArtifactRuntimeContract {
+  record_kind: "artifact_runtime_contract";
+  artifact_runtime_contract_id: string;
+  created_at: string;
+  authority_status: "contract_only";
+}
+
+interface RunnableArtifactBaseRecord
+  extends BaseRecord,
+    RunnableArtifactRuntimeContract {
+  record_kind: "runnable_artifact";
+  runnable_artifact_id: string;
+  artifact_kind: RunnableArtifactKind;
+  artifact_digest: string;
+  artifact_ref?: Ref;
+  artifact_runtime_contract_ref?: Ref;
+  provenance_refs: Ref[];
+  status: RunnableArtifactStatus;
+  created_at: string;
+  authority_status: "not_live";
+}
+
+export type RunnableArtifactRecord =
+  | (RunnableArtifactBaseRecord & {
+      artifact_kind: "python_file";
+      artifact_path: string;
+    })
+  | (RunnableArtifactBaseRecord & {
+      artifact_kind: "container_image";
+      image_ref: string;
+    });
 
 export interface CapabilityPackageRecord extends BaseRecord {
   record_kind: "capability_package";
@@ -406,6 +484,8 @@ export interface TraderSystemRuntimeRecord extends BaseRecord {
   runtime_control_command_refs?: Ref[];
   runtime_control_decision_refs?: Ref[];
   runtime_audit_event_refs?: Ref[];
+  runnable_artifact_ref?: Ref;
+  sandbox_runtime_instance_ref?: Ref;
   created_at?: string;
   authority_status: "not_live";
 }
@@ -424,6 +504,59 @@ export interface RuntimePlacementRecord extends BaseRecord {
   network_ref?: Ref;
   volume_ref?: Ref;
   authority_status: "not_launched";
+}
+
+export interface SandboxRuntimeInstanceRecord extends BaseRecord {
+  record_kind: "sandbox_runtime_instance";
+  sandbox_runtime_instance_id: string;
+  adapter_kind: SandboxRuntimeAdapterKind;
+  runnable_artifact_ref: Ref;
+  runtime_ref?: Ref;
+  runtime_placement_ref: Ref;
+  lifecycle_status: SandboxRuntimeInstanceLifecycleStatus;
+  sandbox_name: string;
+  sandbox_ref?: Ref;
+  created_at: string;
+  started_at?: string;
+  last_heartbeat_at?: string;
+  stopped_at?: string;
+  removed_at?: string;
+  log_refs: Ref[];
+  heartbeat_refs: Ref[];
+  command_evidence_refs?: Ref[];
+  trace_ref?: Ref;
+  authority_status: "not_live";
+}
+
+export interface RuntimeInstanceLogRecord extends BaseRecord {
+  record_kind: "runtime_instance_log";
+  runtime_instance_log_id: string;
+  sandbox_runtime_instance_ref: Ref;
+  lines: string[];
+  captured_at: string;
+  authority_status: "trace_only";
+}
+
+export interface RuntimeHeartbeatRecord extends BaseRecord {
+  record_kind: "runtime_heartbeat";
+  runtime_heartbeat_id: string;
+  sandbox_runtime_instance_ref: Ref;
+  heartbeat_line: string;
+  observed_at: string;
+  authority_status: "trace_only";
+}
+
+export interface SandboxCommandEvidenceRecord extends BaseRecord {
+  record_kind: "sandbox_command_evidence";
+  sandbox_command_evidence_id: string;
+  sandbox_runtime_instance_ref?: Ref;
+  command: string[];
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  started_at: string;
+  completed_at: string;
+  authority_status: "trace_only";
 }
 
 export interface HandsEnvironmentRecord extends BaseRecord {
@@ -807,6 +940,8 @@ export type FixtureRecord =
   | CapabilityPackageAdmissionRecord
   | CapabilityGrantRecord
   | CapabilityMountRecord
+  | ArtifactRuntimeContractRecord
+  | RunnableArtifactRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
@@ -815,6 +950,10 @@ export type FixtureRecord =
   | ProviderProbeAttemptRecord
   | TraderSystemRuntimeRecord
   | RuntimePlacementRecord
+  | SandboxRuntimeInstanceRecord
+  | RuntimeInstanceLogRecord
+  | RuntimeHeartbeatRecord
+  | SandboxCommandEvidenceRecord
   | HandsEnvironmentRecord
   | RuntimeMemorySurfaceRecord
   | TracePlaceholderRecord
@@ -1168,4 +1307,91 @@ export interface CandidateEvaluationRunOutcome {
   comparison_set: EvaluationComparisonSetRecord;
   sealing_decision: EvidenceSealingDecisionRecord;
   evidence_classifications: EvidenceClassificationRecord[];
+}
+
+export interface RuntimeInstanceLogReadModel {
+  log_ref: Ref;
+  lines: string[];
+  captured_at: string;
+  authority_status: "trace_only";
+}
+
+export interface RuntimeInstanceHeartbeatReadModel {
+  heartbeat_ref: Ref;
+  heartbeat_line: string;
+  observed_at: string;
+  authority_status: "trace_only";
+}
+
+export interface SandboxCommandEvidenceReadModel {
+  command_evidence_ref: Ref;
+  command: string[];
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  started_at: string;
+  completed_at: string;
+  authority_status: "trace_only";
+}
+
+export interface SandboxRuntimeInstanceReadModel {
+  instance_id: string;
+  adapter_kind: SandboxRuntimeAdapterKind;
+  runnable_artifact_ref: Ref;
+  runtime_ref?: Ref;
+  runtime_placement_ref: Ref;
+  lifecycle_status: SandboxRuntimeInstanceLifecycleStatus;
+  sandbox_name: string;
+  sandbox_ref?: Ref;
+  created_at: string;
+  started_at?: string;
+  last_heartbeat_at?: string;
+  stopped_at?: string;
+  removed_at?: string;
+  log_refs: Ref[];
+  heartbeat_refs: Ref[];
+  command_evidence_refs: Ref[];
+  trace_ref?: Ref;
+  authority_status: "not_live";
+}
+
+export interface SandboxRuntimeInstanceDetailReadModel extends SandboxRuntimeInstanceReadModel {
+  logs: RuntimeInstanceLogReadModel[];
+  heartbeats: RuntimeInstanceHeartbeatReadModel[];
+  command_evidence: SandboxCommandEvidenceReadModel[];
+}
+
+export interface RuntimeInstanceIndexProjection {
+  record_kind: "runtime_instance_index_projection";
+  version: 1;
+  runtime_instances: SandboxRuntimeInstanceReadModel[];
+}
+
+export interface StartRuntimeInstanceInput {
+  idempotency_key: string;
+  adapter_kind: SandboxRuntimeAdapterKind;
+  runnable_artifact_id: string;
+  runtime_id?: string;
+  instance_id?: string;
+  sandbox_name?: string;
+  test_ticks?: number;
+  interval_ms?: number;
+  created_at?: string;
+}
+
+export interface StartRuntimeInstanceOutcome {
+  runtime_instance: SandboxRuntimeInstanceDetailReadModel;
+}
+
+export interface StopRuntimeInstanceInput {
+  instance_id: string;
+  stopped_at?: string;
+  removed_at?: string;
+}
+
+export interface RuntimeInstanceLogsOutcome {
+  runtime_instance: SandboxRuntimeInstanceReadModel;
+  logs: RuntimeInstanceLogReadModel[];
+  heartbeats: RuntimeInstanceHeartbeatReadModel[];
+  command_evidence: SandboxCommandEvidenceReadModel[];
 }

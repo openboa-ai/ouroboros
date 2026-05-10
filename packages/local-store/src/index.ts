@@ -5,6 +5,7 @@ import type {
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
+  ArtifactRuntimeContractRecord,
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
   AgentSpecRecord,
@@ -56,8 +57,10 @@ import type {
   ProviderProbeAttemptRecord,
   ProviderReadinessRecord,
   Ref,
+  RunnableArtifactRecord,
   RuntimeAuditEventKind,
   RuntimeAuditEventRecord,
+  RuntimeHeartbeatRecord,
   RuntimeControlAction,
   RuntimeControlActorKind,
   RuntimeControlAuditInput,
@@ -68,8 +71,20 @@ import type {
   RuntimeControlDecisionOutcome,
   RuntimeControlDecisionReason,
   RuntimeControlDecisionRecord,
+  RuntimeInstanceHeartbeatReadModel,
+  RuntimeInstanceIndexProjection,
+  RuntimeInstanceLogReadModel,
+  RuntimeInstanceLogRecord,
+  RuntimeInstanceLogsOutcome,
   RuntimeMemorySurfaceRecord,
   RuntimePlacementRecord,
+  SandboxCommandEvidenceReadModel,
+  SandboxCommandEvidenceRecord,
+  SandboxRuntimeInstanceDetailReadModel,
+  SandboxRuntimeInstanceReadModel,
+  SandboxRuntimeInstanceRecord,
+  StartRuntimeInstanceOutcome,
+  StopRuntimeInstanceInput,
   StageBindingRecord,
   TracePlaceholderRecord,
   TraderSystemCandidateRecord,
@@ -81,6 +96,7 @@ import type {
 
 export const DEFAULT_STORE_ROOT = ".ouroboros/dev-store";
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-btc-perp-001";
+export const FIXTURE_RUNNABLE_ARTIFACT_ID = "fixture-runnable-artifact-clock-python-001";
 
 export type LocalStoreErrorCode =
   | "invalid_evaluation_input"
@@ -94,10 +110,14 @@ export type LocalStoreErrorCode =
   | "invalid_evidence_sealing_input"
   | "invalid_runtime_authority_input"
   | "invalid_runtime_control_input"
+  | "invalid_runtime_instance_input"
   | "runtime_not_found"
   | "runtime_mismatch"
+  | "runnable_artifact_not_found"
+  | "runtime_instance_not_found"
   | "runtime_authority_reload_failed"
-  | "runtime_control_reload_failed";
+  | "runtime_control_reload_failed"
+  | "runtime_instance_reload_failed";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -123,6 +143,8 @@ export function candidateEvaluationRunRecordId(input: CandidateEvaluationRunIden
 }
 
 type Collection =
+  | "artifact-runtime-contracts"
+  | "runnable-artifacts"
   | "candidates"
   | "candidate-materialization-attempts"
   | "candidate-versions"
@@ -156,13 +178,28 @@ type Collection =
   | "execution-attempts"
   | "runtime-control-commands"
   | "runtime-control-decisions"
-  | "runtime-audit-events";
+  | "runtime-audit-events"
+  | "sandbox-runtime-instances"
+  | "runtime-instance-logs"
+  | "runtime-heartbeats"
+  | "sandbox-command-evidence";
 
 interface FixtureItem {
   collection: Collection;
   id: string;
   record: FixtureRecord;
   itemDir?: "items" | "placeholders";
+}
+
+export interface RuntimeInstanceObservationInput {
+  instance: SandboxRuntimeInstanceRecord;
+  placement?: RuntimePlacementRecord;
+  lifecycle_status?: SandboxRuntimeInstanceRecord["lifecycle_status"];
+  stopped_at?: string;
+  removed_at?: string;
+  logs?: RuntimeInstanceLogRecord[];
+  heartbeats?: RuntimeHeartbeatRecord[];
+  command_evidence?: SandboxCommandEvidenceRecord[];
 }
 
 const fixtureNotice: FixtureNotice = {
@@ -182,6 +219,8 @@ const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 const ids = {
   candidate: FIXTURE_CANDIDATE_ID,
   version: "fixture-candidate-version-001",
+  artifactRuntimeContract: "fixture-artifact-runtime-contract-clock-python-001",
+  runnableArtifact: FIXTURE_RUNNABLE_ARTIFACT_ID,
   spec: "fixture-trader-system-spec-btc-perp-001",
   program: "fixture-trader-system-program-001",
   programManifest: "fixture-program-manifest-001",
@@ -215,6 +254,45 @@ const ids = {
 const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
 
 export function createFixtureRecords(): FixtureItem[] {
+  const artifactRuntimeContract: ArtifactRuntimeContractRecord = {
+    record_kind: "artifact_runtime_contract",
+    version: 1,
+    artifact_runtime_contract_id: ids.artifactRuntimeContract,
+    runtime_kind: "python",
+    entrypoint: ["python3", "fixtures/trader-systems/clock.py"],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat"],
+      event_envelope_ref: ref("program_event_contract", "opaque-clock-program-event-v1"),
+      log_contract_ref: ref("runtime_log_contract", "opaque-clock-log-v1"),
+      heartbeat_contract_ref: ref("runtime_heartbeat_contract", "opaque-clock-heartbeat-v1")
+    },
+    secret_policy_ref: ref("secret_policy", "secret-policy-no-raw-values-v1"),
+    capability_policy_ref: ref("capability_policy", "capability-policy-clock-fixture-v1"),
+    created_at: fixtureEvaluationCreatedAt,
+    authority_status: "contract_only"
+  };
+  const runnableArtifact: RunnableArtifactRecord = {
+    record_kind: "runnable_artifact",
+    version: 1,
+    runnable_artifact_id: ids.runnableArtifact,
+    artifact_kind: "python_file",
+    artifact_path: "fixtures/trader-systems/clock.py",
+    artifact_digest: "sha256:fixture-clock-python-artifact-v1",
+    artifact_runtime_contract_ref: ref(
+      "artifact_runtime_contract",
+      artifactRuntimeContract.artifact_runtime_contract_id
+    ),
+    runtime_kind: artifactRuntimeContract.runtime_kind,
+    entrypoint: artifactRuntimeContract.entrypoint,
+    declared_output_contract: artifactRuntimeContract.declared_output_contract,
+    secret_policy_ref: artifactRuntimeContract.secret_policy_ref,
+    capability_policy_ref: artifactRuntimeContract.capability_policy_ref,
+    provenance_refs: [ref("agent_run", ids.agentRun)],
+    status: "registered",
+    created_at: fixtureEvaluationCreatedAt,
+    authority_status: "not_live"
+  };
   const candidate: TraderSystemCandidateRecord = {
     record_kind: "trader_system_candidate",
     version: 1,
@@ -225,7 +303,8 @@ export function createFixtureRecords(): FixtureItem[] {
     provenance_refs: [
       ref("agent_run", ids.agentRun),
       ref("provider_readiness_record", ids.providerReadiness)
-    ]
+    ],
+    active_runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact)
   };
   const candidateVersion: CandidateVersionRecord = {
     record_kind: "candidate_version",
@@ -238,7 +317,8 @@ export function createFixtureRecords(): FixtureItem[] {
     capability_package_refs: [ref("capability_package", ids.capabilityPackage)],
     runtime_ref: ref("trader_system_runtime", ids.runtime),
     trace_placeholder_ref: ref("trace_placeholder", ids.trace),
-    evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun)
+    evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
+    runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact)
   };
   const spec: TraderSystemSpecRecord = {
     record_kind: "trader_system_spec",
@@ -362,6 +442,7 @@ export function createFixtureRecords(): FixtureItem[] {
     placement_ref: ref("runtime_placement", ids.placement),
     hands_environment_ref: ref("hands_environment", ids.handsEnvironment),
     memory_surface_ref: ref("runtime_memory_surface", ids.memorySurface),
+    runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact),
     authority_status: "not_live"
   };
   const placement: RuntimePlacementRecord = {
@@ -508,6 +589,8 @@ export function createFixtureRecords(): FixtureItem[] {
   ];
 
   return [
+    { collection: "artifact-runtime-contracts", id: ids.artifactRuntimeContract, record: artifactRuntimeContract },
+    { collection: "runnable-artifacts", id: ids.runnableArtifact, record: runnableArtifact },
     { collection: "candidates", id: ids.candidate, record: candidate },
     { collection: "candidate-versions", id: ids.version, record: candidateVersion },
     { collection: "trader-system-specs", id: ids.spec, record: spec },
@@ -606,6 +689,28 @@ export class LocalStore {
         attempt
       );
     }
+
+    const runtimeInstances = await this.readCollection<SandboxRuntimeInstanceRecord>(
+      "sandbox-runtime-instances"
+    );
+    const runtimeInstanceReadModels = runtimeInstances
+      .map(toSandboxRuntimeInstanceReadModel)
+      .sort(compareRuntimeInstanceReadModels);
+    const runtimeInstanceIndex: RuntimeInstanceIndexProjection = {
+      record_kind: "runtime_instance_index_projection",
+      version: 1,
+      runtime_instances: runtimeInstanceReadModels
+    };
+    await this.writeJson(
+      path.join(this.storeRoot, "read-models/runtime-instances/index.json"),
+      runtimeInstanceIndex
+    );
+    for (const runtimeInstance of runtimeInstanceReadModels) {
+      await this.writeJson(
+        path.join(this.storeRoot, "read-models/runtime-instances/items", `${runtimeInstance.instance_id}.json`),
+        await this.buildSandboxRuntimeInstanceDetailReadModel(runtimeInstance.instance_id)
+      );
+    }
   }
 
   async initialize(): Promise<void> {
@@ -643,6 +748,167 @@ export class LocalStore {
       return undefined;
     }
     return this.toCandidateEvaluationRunOutcome(evaluationRun);
+  }
+
+  async getRunnableArtifact(runnableArtifactId: string): Promise<RunnableArtifactRecord | undefined> {
+    return this.readOptionalRecord<RunnableArtifactRecord>("runnable-artifacts", runnableArtifactId);
+  }
+
+  async listRuntimeInstances(): Promise<SandboxRuntimeInstanceReadModel[]> {
+    try {
+      const index = await this.readJson<RuntimeInstanceIndexProjection>(
+        path.join(this.storeRoot, "read-models/runtime-instances/index.json")
+      );
+      return index.runtime_instances;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getRuntimeInstance(
+    instanceId: string
+  ): Promise<SandboxRuntimeInstanceDetailReadModel | undefined> {
+    try {
+      return await this.readJson<SandboxRuntimeInstanceDetailReadModel>(
+        path.join(this.storeRoot, "read-models/runtime-instances/items", `${instanceId}.json`)
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async recordRuntimeInstanceStart(
+    input: RuntimeInstanceObservationInput
+  ): Promise<StartRuntimeInstanceOutcome> {
+    await this.assertRuntimeInstanceLinks(input.instance);
+    await this.writeRuntimeInstanceObservations(input);
+    await this.rebuildProjections();
+
+    const runtimeInstance = await this.getRuntimeInstance(input.instance.sandbox_runtime_instance_id);
+    if (!runtimeInstance) {
+      throw new LocalStoreError(
+        "runtime_instance_reload_failed",
+        `runtime instance ${input.instance.sandbox_runtime_instance_id} was not reloaded after start`,
+        { instance_id: input.instance.sandbox_runtime_instance_id }
+      );
+    }
+    return { runtime_instance: runtimeInstance };
+  }
+
+  async recordRuntimeInstanceObservations(
+    instanceId: string,
+    observations: Omit<RuntimeInstanceObservationInput, "instance"> & {
+      lifecycle_status?: SandboxRuntimeInstanceRecord["lifecycle_status"];
+      last_heartbeat_at?: string;
+    }
+  ): Promise<RuntimeInstanceLogsOutcome> {
+    const instance = await this.readOptionalRecord<SandboxRuntimeInstanceRecord>(
+      "sandbox-runtime-instances",
+      instanceId
+    );
+    if (!instance) {
+      throw new LocalStoreError(
+        "runtime_instance_not_found",
+        `runtime instance ${instanceId} not found`,
+        { instance_id: instanceId }
+      );
+    }
+
+    const latestHeartbeatAt = observations.last_heartbeat_at
+      ?? latestObservedAt(observations.heartbeats)
+      ?? instance.last_heartbeat_at;
+    const updatedInstance: SandboxRuntimeInstanceRecord = stripUndefined({
+      ...instance,
+      lifecycle_status: observations.lifecycle_status ?? instance.lifecycle_status,
+      log_refs: appendUniqueRefs(instance.log_refs, refsForLogs(observations.logs)),
+      heartbeat_refs: appendUniqueRefs(instance.heartbeat_refs, refsForHeartbeats(observations.heartbeats)),
+      command_evidence_refs: appendUniqueRefs(
+        instance.command_evidence_refs,
+        refsForCommandEvidence(observations.command_evidence)
+      ),
+      last_heartbeat_at: latestHeartbeatAt
+    } satisfies SandboxRuntimeInstanceRecord);
+
+    await this.writeRuntimeInstanceObservations({
+      ...observations,
+      instance: updatedInstance
+    });
+    await this.rebuildProjections();
+
+    const runtimeInstance = await this.getRuntimeInstance(instanceId);
+    if (!runtimeInstance) {
+      throw new LocalStoreError(
+        "runtime_instance_reload_failed",
+        `runtime instance ${instanceId} was not reloaded after observations`,
+        { instance_id: instanceId }
+      );
+    }
+    return {
+      runtime_instance: runtimeInstance,
+      logs: runtimeInstance.logs,
+      heartbeats: runtimeInstance.heartbeats,
+      command_evidence: runtimeInstance.command_evidence
+    };
+  }
+
+  async stopRuntimeInstance(
+    input: StopRuntimeInstanceInput,
+    observations: Omit<RuntimeInstanceObservationInput, "instance"> = {}
+  ): Promise<StartRuntimeInstanceOutcome> {
+    const instance = await this.readOptionalRecord<SandboxRuntimeInstanceRecord>(
+      "sandbox-runtime-instances",
+      input.instance_id
+    );
+    if (!instance) {
+      throw new LocalStoreError(
+        "runtime_instance_not_found",
+        `runtime instance ${input.instance_id} not found`,
+        { instance_id: input.instance_id }
+      );
+    }
+
+    const observedLifecycleStatus = observations.lifecycle_status;
+    const lifecycleStatus = instance.lifecycle_status === "removed" || input.removed_at
+      ? "removed"
+      : observedLifecycleStatus ?? "stopped";
+    const stoppedAt = lifecycleStatus === "stopped" || lifecycleStatus === "removed"
+      ? instance.stopped_at ?? observations.stopped_at ?? input.stopped_at ?? new Date().toISOString()
+      : instance.stopped_at ?? observations.stopped_at ?? input.stopped_at;
+    const updatedInstance: SandboxRuntimeInstanceRecord = stripUndefined({
+      ...instance,
+      lifecycle_status: lifecycleStatus,
+      stopped_at: stoppedAt,
+      removed_at: input.removed_at ?? instance.removed_at,
+      log_refs: appendUniqueRefs(instance.log_refs, refsForLogs(observations.logs)),
+      heartbeat_refs: appendUniqueRefs(instance.heartbeat_refs, refsForHeartbeats(observations.heartbeats)),
+      command_evidence_refs: appendUniqueRefs(
+        instance.command_evidence_refs,
+        refsForCommandEvidence(observations.command_evidence)
+      ),
+      last_heartbeat_at: latestObservedAt(observations.heartbeats) ?? instance.last_heartbeat_at
+    } satisfies SandboxRuntimeInstanceRecord);
+
+    await this.writeRuntimeInstanceObservations({
+      ...observations,
+      instance: updatedInstance
+    });
+    await this.rebuildProjections();
+
+    const runtimeInstance = await this.getRuntimeInstance(input.instance_id);
+    if (!runtimeInstance) {
+      throw new LocalStoreError(
+        "runtime_instance_reload_failed",
+        `runtime instance ${input.instance_id} was not reloaded after stop`,
+        { instance_id: input.instance_id }
+      );
+    }
+    return { runtime_instance: runtimeInstance };
   }
 
   async listCandidateEvaluationRuns(candidateId: string): Promise<CandidateEvaluationRunOutcome[]> {
@@ -2554,6 +2820,120 @@ export class LocalStore {
       .sort(compareEvidenceClassifications);
   }
 
+  private async assertRuntimeInstanceLinks(instance: SandboxRuntimeInstanceRecord): Promise<void> {
+    const artifact = await this.readOptionalRecord<RunnableArtifactRecord>(
+      "runnable-artifacts",
+      instance.runnable_artifact_ref.id
+    );
+    if (!artifact) {
+      throw new LocalStoreError(
+        "runnable_artifact_not_found",
+        `runnable artifact ${instance.runnable_artifact_ref.id} not found`,
+        { runnable_artifact_id: instance.runnable_artifact_ref.id }
+      );
+    }
+
+    if (instance.runtime_ref) {
+      const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
+        "trader-system-runtimes",
+        instance.runtime_ref.id
+      );
+      if (!runtime) {
+        throw new LocalStoreError(
+          "runtime_not_found",
+          `runtime ${instance.runtime_ref.id} not found`,
+          { runtime_id: instance.runtime_ref.id }
+        );
+      }
+    }
+  }
+
+  private async writeRuntimeInstanceObservations(
+    input: RuntimeInstanceObservationInput
+  ): Promise<void> {
+    const records: FixtureItem[] = [
+      ...(input.placement
+        ? [{
+            collection: "runtime-placements" as const,
+            id: input.placement.runtime_placement_id,
+            record: input.placement
+          }]
+        : []),
+      { collection: "sandbox-runtime-instances", id: input.instance.sandbox_runtime_instance_id, record: input.instance },
+      ...(input.logs ?? []).map((log) => ({
+        collection: "runtime-instance-logs" as const,
+        id: log.runtime_instance_log_id,
+        record: log
+      })),
+      ...(input.heartbeats ?? []).map((heartbeat) => ({
+        collection: "runtime-heartbeats" as const,
+        id: heartbeat.runtime_heartbeat_id,
+        record: heartbeat
+      })),
+      ...(input.command_evidence ?? []).map((evidence) => ({
+        collection: "sandbox-command-evidence" as const,
+        id: evidence.sandbox_command_evidence_id,
+        record: evidence
+      }))
+    ];
+
+    if (input.instance.runtime_ref) {
+      const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
+        "trader-system-runtimes",
+        input.instance.runtime_ref.id
+      );
+      if (runtime) {
+        records.push({
+          collection: "trader-system-runtimes",
+          id: runtime.trader_system_runtime_id,
+          record: stripUndefined({
+            ...runtime,
+            runtime_lifecycle_status: runtimeLifecycleForSandboxInstance(input.instance.lifecycle_status),
+            placement_ref: input.instance.runtime_placement_ref,
+            runnable_artifact_ref: input.instance.runnable_artifact_ref,
+            sandbox_runtime_instance_ref: ref(
+              input.instance.record_kind,
+              input.instance.sandbox_runtime_instance_id
+            ),
+            created_at: runtime.created_at ?? input.instance.created_at
+          } satisfies TraderSystemRuntimeRecord)
+        });
+      }
+    }
+
+    for (const item of records) {
+      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+    }
+  }
+
+  private async buildSandboxRuntimeInstanceDetailReadModel(
+    instanceId: string
+  ): Promise<SandboxRuntimeInstanceDetailReadModel> {
+    const instance = await this.readRecord<SandboxRuntimeInstanceRecord>(
+      "sandbox-runtime-instances",
+      instanceId
+    );
+    const logs = (await this.readCollection<RuntimeInstanceLogRecord>("runtime-instance-logs"))
+      .filter((log) => log.sandbox_runtime_instance_ref.id === instanceId)
+      .sort(compareRuntimeInstanceLogs)
+      .map(toRuntimeInstanceLogReadModel);
+    const heartbeats = (await this.readCollection<RuntimeHeartbeatRecord>("runtime-heartbeats"))
+      .filter((heartbeat) => heartbeat.sandbox_runtime_instance_ref.id === instanceId)
+      .sort(compareRuntimeHeartbeats)
+      .map(toRuntimeInstanceHeartbeatReadModel);
+    const commandEvidence = (await this.readCollection<SandboxCommandEvidenceRecord>("sandbox-command-evidence"))
+      .filter((evidence) => evidence.sandbox_runtime_instance_ref?.id === instanceId)
+      .sort(compareSandboxCommandEvidence)
+      .map(toSandboxCommandEvidenceReadModel);
+
+    return {
+      ...toSandboxRuntimeInstanceReadModel(instance),
+      logs,
+      heartbeats,
+      command_evidence: commandEvidence
+    };
+  }
+
   private toCandidateSummary(candidate: TraderSystemCandidateRecord): CandidateSummaryReadModel {
     return {
       candidate_id: candidate.candidate_id,
@@ -2849,6 +3229,138 @@ function candidateEvaluationErrorState(
     };
   }
   return null;
+}
+
+function toSandboxRuntimeInstanceReadModel(
+  instance: SandboxRuntimeInstanceRecord
+): SandboxRuntimeInstanceReadModel {
+  return {
+    instance_id: instance.sandbox_runtime_instance_id,
+    adapter_kind: instance.adapter_kind,
+    runnable_artifact_ref: instance.runnable_artifact_ref,
+    runtime_ref: instance.runtime_ref,
+    runtime_placement_ref: instance.runtime_placement_ref,
+    lifecycle_status: instance.lifecycle_status,
+    sandbox_name: instance.sandbox_name,
+    sandbox_ref: instance.sandbox_ref,
+    created_at: instance.created_at,
+    started_at: instance.started_at,
+    last_heartbeat_at: instance.last_heartbeat_at,
+    stopped_at: instance.stopped_at,
+    removed_at: instance.removed_at,
+    log_refs: instance.log_refs,
+    heartbeat_refs: instance.heartbeat_refs,
+    command_evidence_refs: instance.command_evidence_refs ?? [],
+    trace_ref: instance.trace_ref,
+    authority_status: instance.authority_status
+  };
+}
+
+function toRuntimeInstanceLogReadModel(log: RuntimeInstanceLogRecord): RuntimeInstanceLogReadModel {
+  return {
+    log_ref: ref(log.record_kind, log.runtime_instance_log_id),
+    lines: log.lines,
+    captured_at: log.captured_at,
+    authority_status: log.authority_status
+  };
+}
+
+function toRuntimeInstanceHeartbeatReadModel(
+  heartbeat: RuntimeHeartbeatRecord
+): RuntimeInstanceHeartbeatReadModel {
+  return {
+    heartbeat_ref: ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id),
+    heartbeat_line: heartbeat.heartbeat_line,
+    observed_at: heartbeat.observed_at,
+    authority_status: heartbeat.authority_status
+  };
+}
+
+function toSandboxCommandEvidenceReadModel(
+  evidence: SandboxCommandEvidenceRecord
+): SandboxCommandEvidenceReadModel {
+  return {
+    command_evidence_ref: ref(evidence.record_kind, evidence.sandbox_command_evidence_id),
+    command: evidence.command,
+    exit_code: evidence.exit_code,
+    stdout: evidence.stdout,
+    stderr: evidence.stderr,
+    started_at: evidence.started_at,
+    completed_at: evidence.completed_at,
+    authority_status: evidence.authority_status
+  };
+}
+
+function refsForLogs(logs: RuntimeInstanceLogRecord[] | undefined): Ref[] {
+  return (logs ?? []).map((log) => ref(log.record_kind, log.runtime_instance_log_id));
+}
+
+function refsForHeartbeats(heartbeats: RuntimeHeartbeatRecord[] | undefined): Ref[] {
+  return (heartbeats ?? []).map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id));
+}
+
+function refsForCommandEvidence(evidence: SandboxCommandEvidenceRecord[] | undefined): Ref[] {
+  return (evidence ?? []).map((item) => ref(item.record_kind, item.sandbox_command_evidence_id));
+}
+
+function latestObservedAt(heartbeats: RuntimeHeartbeatRecord[] | undefined): string | undefined {
+  return (heartbeats ?? [])
+    .map((heartbeat) => heartbeat.observed_at)
+    .sort()
+    .at(-1);
+}
+
+function runtimeLifecycleForSandboxInstance(
+  lifecycleStatus: SandboxRuntimeInstanceRecord["lifecycle_status"]
+): TraderSystemRuntimeLifecycleStatus {
+  switch (lifecycleStatus) {
+    case "starting":
+      return "starting";
+    case "running":
+      return "running";
+    case "stopping":
+      return "stopping";
+    case "stopped":
+    case "removed":
+      return "stopped";
+    case "failed":
+      return "failed";
+    case "requested":
+    case "created":
+      return "registered";
+  }
+}
+
+function compareRuntimeInstanceReadModels(
+  a: SandboxRuntimeInstanceReadModel,
+  b: SandboxRuntimeInstanceReadModel
+): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  return timeCompare === 0 ? a.instance_id.localeCompare(b.instance_id) : timeCompare;
+}
+
+function compareRuntimeInstanceLogs(a: RuntimeInstanceLogRecord, b: RuntimeInstanceLogRecord): number {
+  const timeCompare = a.captured_at.localeCompare(b.captured_at);
+  return timeCompare === 0
+    ? a.runtime_instance_log_id.localeCompare(b.runtime_instance_log_id)
+    : timeCompare;
+}
+
+function compareRuntimeHeartbeats(a: RuntimeHeartbeatRecord, b: RuntimeHeartbeatRecord): number {
+  const timeCompare = a.observed_at.localeCompare(b.observed_at);
+  return timeCompare === 0
+    ? a.runtime_heartbeat_id.localeCompare(b.runtime_heartbeat_id)
+    : timeCompare;
+}
+
+function compareSandboxCommandEvidence(
+  a: SandboxCommandEvidenceRecord,
+  b: SandboxCommandEvidenceRecord
+): number {
+  const timeCompare = a.started_at.localeCompare(b.started_at);
+  return timeCompare === 0
+    ? a.sandbox_command_evidence_id.localeCompare(b.sandbox_command_evidence_id)
+    : timeCompare;
 }
 
 function compareEvaluationRuns(a: EvaluationRunRecord, b: EvaluationRunRecord): number {
@@ -3673,12 +4185,15 @@ function executionAttemptAuthorityStatusForStatus(
   return "not_live";
 }
 
-function appendUniqueRefs(existing: Ref[] | undefined, next: Ref): Ref[] {
-  const refs = existing ?? [];
-  if (refs.some((candidate) => candidate.record_kind === next.record_kind && candidate.id === next.id)) {
-    return refs;
+function appendUniqueRefs(existing: Ref[] | undefined, next: Ref | Ref[] | undefined): Ref[] {
+  let refs = existing ?? [];
+  const nextRefs = Array.isArray(next) ? next : next ? [next] : [];
+  for (const nextRef of nextRefs) {
+    if (!refs.some((candidate) => candidate.record_kind === nextRef.record_kind && candidate.id === nextRef.id)) {
+      refs = [...refs, nextRef];
+    }
   }
-  return [...refs, next];
+  return refs;
 }
 
 function evidenceSealingDecisionRecordId(input: {

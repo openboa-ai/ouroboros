@@ -5,9 +5,10 @@ import type {
   BoundedRuntimeAuthorityInput,
   EvaluationExecutionMode,
   Ref,
-  RuntimeControlAuditInput
+  RuntimeControlAuditInput,
+  SandboxRuntimeAdapterKind
 } from "@ouroboros/domain";
-import { LocalStore, LocalStoreError } from "@ouroboros/local-store";
+import { FIXTURE_RUNNABLE_ARTIFACT_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "./candidate-evaluation";
 import { runCandidateGeneration } from "./candidate-materialization";
 import { CodexCliProviderAdapter } from "./providers/codex-cli-provider";
@@ -16,11 +17,17 @@ import type {
   EvaluationProviderAdapter,
   RuntimeProviderAdapter
 } from "./providers/runtime-provider-adapter";
+import {
+  DeterministicSandboxRuntimeAdapter,
+  DockerSandboxesSbxRuntimeAdapter,
+  type SandboxRuntimeAdapter
+} from "./runtime-instances/sandbox-runtime-adapter";
 
 export interface BuildServerOptions {
   store?: LocalStore;
   providerAdapter?: RuntimeProviderAdapter;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
+  runtimeInstanceAdapters?: Partial<Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter>>;
 }
 
 interface CreateEvaluationRunBody {
@@ -100,10 +107,28 @@ interface RecordRuntimeControlBody {
   created_at?: string;
 }
 
+interface StartRuntimeInstanceBody {
+  idempotency_key?: string;
+  adapter_kind?: string;
+  runnable_artifact_id?: string;
+  runtime_id?: string;
+  instance_id?: string;
+  sandbox_name?: string;
+  test_ticks?: number;
+  interval_ms?: number;
+  created_at?: string;
+}
+
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const store = options.store ?? new LocalStore();
   const providerAdapter = options.providerAdapter ?? new CodexCliProviderAdapter();
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
+  const runtimeInstanceAdapters: Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter> = {
+    deterministic_test: options.runtimeInstanceAdapters?.deterministic_test
+      ?? new DeterministicSandboxRuntimeAdapter(),
+    docker_sandboxes_sbx: options.runtimeInstanceAdapters?.docker_sandboxes_sbx
+      ?? new DockerSandboxesSbxRuntimeAdapter()
+  };
   await store.initialize();
 
   const server = Fastify({
@@ -394,6 +419,181 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return reply.code(201).send(outcome);
   });
 
+  server.post<{ Body: StartRuntimeInstanceBody }>("/api/runtime-instances", async (request, reply) => {
+    const body = request.body ?? {};
+    const rawSecretPath = rawSecretMaterialPath(body);
+    if (rawSecretPath) {
+      return reply.code(422).send(runtimeInstanceError({
+        reason: "raw_secret_material_rejected",
+        idempotencyKey: body.idempotency_key,
+        detail: rawSecretPath
+      }));
+    }
+
+    const adapterKind = parseRuntimeInstanceAdapterKind(body.adapter_kind);
+    if (!adapterKind) {
+      return reply.code(422).send(runtimeInstanceError({
+        reason: "invalid_runtime_instance_adapter",
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+    if (adapterKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
+      return reply.code(422).send(runtimeInstanceError({
+        reason: "docker_sandboxes_sbx_runtime_disabled",
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+    if (
+      (body.test_ticks !== undefined && !isNonNegativeInteger(body.test_ticks)) ||
+      (body.interval_ms !== undefined && !isPositiveInteger(body.interval_ms))
+    ) {
+      return reply.code(422).send(runtimeInstanceError({
+        reason: "invalid_runtime_instance_input",
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+
+    const runnableArtifactId = body.runnable_artifact_id ?? FIXTURE_RUNNABLE_ARTIFACT_ID;
+    const artifact = await store.getRunnableArtifact(runnableArtifactId);
+    if (!artifact) {
+      return reply.code(404).send(runtimeInstanceError({
+        reason: "runnable_artifact_not_found",
+        idempotencyKey: body.idempotency_key,
+        runnableArtifactId
+      }));
+    }
+
+    const createdAt = body.created_at ?? new Date().toISOString();
+    const idempotencyKey = body.idempotency_key
+      ?? `${adapterKind}:${runnableArtifactId}:${body.runtime_id ?? "standalone"}`;
+    const instanceId = body.instance_id ?? `sandbox-runtime-instance-${safeRouteId(idempotencyKey)}`;
+    const sandboxName = body.sandbox_name ?? `ouro-s5-${safeRouteId(instanceId).slice(0, 48)}`;
+
+    try {
+      const adapterResult = await runtimeInstanceAdapters[adapterKind].startArtifactInstance({
+        artifact,
+        instance_id: instanceId,
+        sandbox_name: sandboxName,
+        runtime_ref: body.runtime_id
+          ? { record_kind: "trader_system_runtime", id: body.runtime_id }
+          : undefined,
+        runtime_placement_id: `runtime-placement-${safeRouteId(instanceId)}`,
+        created_at: createdAt,
+        test_ticks: body.test_ticks,
+        interval_ms: body.interval_ms
+      });
+      const outcome = await store.recordRuntimeInstanceStart(adapterResult);
+      const lifecycleStatus = outcome.runtime_instance.lifecycle_status;
+      return reply.code(201).send({
+        status: lifecycleStatus === "running" ? "started" : lifecycleStatus,
+        ...outcome
+      });
+    } catch (error) {
+      if (error instanceof LocalStoreError) {
+        return reply.code(runtimeInstanceStatusCode(error.code)).send(runtimeInstanceError({
+          reason: error.code,
+          idempotencyKey,
+          runnableArtifactId
+        }));
+      }
+      throw error;
+    }
+  });
+
+  server.get("/api/runtime-instances", async () => ({
+    runtime_instances: await store.listRuntimeInstances()
+  }));
+
+  server.get<{ Params: { instance_id: string } }>(
+    "/api/runtime-instances/:instance_id",
+    async (request, reply) => {
+      const runtimeInstance = await store.getRuntimeInstance(request.params.instance_id);
+      if (!runtimeInstance) {
+        return reply.code(404).send(runtimeInstanceError({
+          reason: "runtime_instance_not_found",
+          instanceId: request.params.instance_id
+        }));
+      }
+      if (shouldRefreshRuntimeInstanceStatus(runtimeInstance.lifecycle_status)) {
+        const observations = await runtimeInstanceAdapters[runtimeInstance.adapter_kind]
+          .getArtifactInstanceStatus(runtimeInstance);
+        if (
+          observations.lifecycle_status ||
+          observations.logs?.length ||
+          observations.heartbeats?.length ||
+          observations.command_evidence?.length
+        ) {
+          await store.recordRuntimeInstanceObservations(runtimeInstance.instance_id, observations);
+          return await store.getRuntimeInstance(runtimeInstance.instance_id);
+        }
+      }
+      return runtimeInstance;
+    }
+  );
+
+  server.get<{ Params: { instance_id: string } }>(
+    "/api/runtime-instances/:instance_id/logs",
+    async (request, reply) => {
+      const runtimeInstance = await store.getRuntimeInstance(request.params.instance_id);
+      if (!runtimeInstance) {
+        return reply.code(404).send(runtimeInstanceError({
+          reason: "runtime_instance_not_found",
+          instanceId: request.params.instance_id
+        }));
+      }
+      if (!shouldRefreshRuntimeInstanceStatus(runtimeInstance.lifecycle_status)) {
+        return {
+          runtime_instance: runtimeInstance,
+          logs: runtimeInstance.logs,
+          heartbeats: runtimeInstance.heartbeats,
+          command_evidence: runtimeInstance.command_evidence
+        };
+      }
+
+      const observations = await runtimeInstanceAdapters[runtimeInstance.adapter_kind]
+        .getArtifactInstanceLogs(runtimeInstance);
+      const outcome = await store.recordRuntimeInstanceObservations(
+        runtimeInstance.instance_id,
+        observations
+      );
+      return outcome;
+    }
+  );
+
+  server.post<{ Params: { instance_id: string } }>(
+    "/api/runtime-instances/:instance_id/stop",
+    async (request, reply) => {
+      const runtimeInstance = await store.getRuntimeInstance(request.params.instance_id);
+      if (!runtimeInstance) {
+        return reply.code(404).send(runtimeInstanceError({
+          reason: "runtime_instance_not_found",
+          instanceId: request.params.instance_id
+        }));
+      }
+      if (!shouldRefreshRuntimeInstanceStatus(runtimeInstance.lifecycle_status)) {
+        return {
+          status: runtimeInstance.lifecycle_status,
+          runtime_instance: runtimeInstance
+        };
+      }
+
+      const observations = await runtimeInstanceAdapters[runtimeInstance.adapter_kind]
+        .stopArtifactInstance(runtimeInstance);
+      const outcome = await store.stopRuntimeInstance(
+        {
+          instance_id: runtimeInstance.instance_id,
+          stopped_at: observations.stopped_at,
+          removed_at: observations.removed_at
+        },
+        observations
+      );
+      return {
+        status: outcome.runtime_instance.lifecycle_status,
+        ...outcome
+      };
+    }
+  );
+
   return server;
 }
 
@@ -461,4 +661,77 @@ function runtimeControlError(input: {
     candidate_version_id: input.candidateVersionId,
     idempotency_key: input.idempotencyKey
   };
+}
+
+function parseRuntimeInstanceAdapterKind(value: string | undefined): SandboxRuntimeAdapterKind | undefined {
+  if (value === undefined) {
+    return process.env.OUROBOROS_RUNTIME_INSTANCE_ADAPTER === "docker_sandboxes_sbx"
+      ? "docker_sandboxes_sbx"
+      : "deterministic_test";
+  }
+  return value === "deterministic_test" || value === "docker_sandboxes_sbx" ? value : undefined;
+}
+
+function isSbxRuntimeEnabled(): boolean {
+  return process.env.OUROBOROS_ENABLE_SBX_RUNTIME === "1" ||
+    process.env.OUROBOROS_RUNTIME_INSTANCE_ADAPTER === "docker_sandboxes_sbx";
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) > 0;
+}
+
+function runtimeInstanceStatusCode(reason: string): 404 | 422 {
+  return (
+    reason === "runnable_artifact_not_found" ||
+    reason === "runtime_instance_not_found" ||
+    reason === "runtime_not_found"
+  ) ? 404 : 422;
+}
+
+function runtimeInstanceError(input: {
+  reason: string;
+  idempotencyKey?: string;
+  runnableArtifactId?: string;
+  instanceId?: string;
+  detail?: string;
+}) {
+  return {
+    error: "runtime_instance_request_failed",
+    reason: input.reason,
+    idempotency_key: input.idempotencyKey,
+    runnable_artifact_id: input.runnableArtifactId,
+    instance_id: input.instanceId,
+    detail: input.detail
+  };
+}
+
+function shouldRefreshRuntimeInstanceStatus(lifecycleStatus: string): boolean {
+  return lifecycleStatus !== "stopped" && lifecycleStatus !== "removed" && lifecycleStatus !== "failed";
+}
+
+function rawSecretMaterialPath(value: unknown, currentPath = "$"): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const nestedPath = `${currentPath}.${key}`;
+    if (isRawSecretMaterialKey(key)) {
+      return nestedPath;
+    }
+    const descendantPath = rawSecretMaterialPath(nestedValue, nestedPath);
+    if (descendantPath) {
+      return descendantPath;
+    }
+  }
+  return undefined;
+}
+
+function isRawSecretMaterialKey(key: string): boolean {
+  return /^(raw_)?secret(_values?)?$/i.test(key) ||
+    /^(api[_-]?key|token|password|credentials?|private[_-]?key)$/i.test(key);
 }
