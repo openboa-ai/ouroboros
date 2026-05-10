@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
-import type { CandidateMaterializationInput } from "@ouroboros/domain";
+import type { BoundedRuntimeAuthorityInput, CandidateMaterializationInput } from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
 import type {
   CandidateEvaluationRequest,
@@ -189,6 +189,168 @@ describe("runtime read-only API", () => {
     expect(invalidModeAfterDefaultRun.json()).toMatchObject({
       error: "evaluation_run_failed",
       reason: "unsupported_execution_mode"
+    });
+
+    await server.close();
+  });
+
+  it("records and reads bounded runtime authority through the runtime API", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    const candidateVersionId = candidate.json().candidate_version.candidate_version_id;
+
+    const initialAuthority = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`
+    });
+    expect(initialAuthority.statusCode).toBe(200);
+    expect(initialAuthority.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runtime_id: candidate.json().runtime.ref.id,
+      bounded_authority: {
+        has_activity: false,
+        chain_complete: false
+      }
+    });
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      payload: validRuntimeAuthorityInput(candidateVersionId)
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      payload: validRuntimeAuthorityInput(candidateVersionId)
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(201);
+    expect(duplicate.json()).toEqual(first.json());
+    expect(first.json()).toMatchObject({
+      status: "recorded",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidateVersionId,
+      runtime_id: candidate.json().runtime.ref.id,
+      order_intent: {
+        record_kind: "order_intent",
+        status: "proposed",
+        authority_status: "not_submitted"
+      },
+      gateway_decision: {
+        record_kind: "gateway_decision",
+        decision_outcome: "dry_run_only",
+        decision_reason: "paper_stage_only",
+        authority_status: "dry_run_only"
+      },
+      execution_attempt: {
+        record_kind: "execution_attempt",
+        stage: "paper",
+        execution_mode: "host_local",
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      }
+    });
+
+    const updatedCandidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(updatedCandidate.json().runtime.bounded_authority).toMatchObject({
+      has_activity: true,
+      chain_complete: true,
+      latest_order_intent: {
+        order_intent_id: first.json().order_intent.order_intent_id,
+        authority_status: "not_submitted"
+      },
+      latest_gateway_decision: {
+        gateway_decision_id: first.json().gateway_decision.gateway_decision_id,
+        authority_status: "dry_run_only"
+      },
+      latest_execution_attempt: {
+        execution_attempt_id: first.json().execution_attempt.execution_attempt_id,
+        authority_status: "dry_run_only"
+      }
+    });
+
+    const projectedAuthority = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`
+    });
+    expect(projectedAuthority.json().bounded_authority.latest_execution_attempt.execution_attempt_id).toBe(
+      first.json().execution_attempt.execution_attempt_id
+    );
+
+    await server.close();
+  });
+
+  it("returns deterministic runtime authority API errors", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    const candidateVersionId = candidate.json().candidate_version.candidate_version_id;
+
+    const missingCandidate = await server.inject({
+      method: "GET",
+      url: "/api/candidates/missing/runtime-authority"
+    });
+    expect(missingCandidate.statusCode).toBe(404);
+    expect(missingCandidate.json()).toEqual({
+      error: "candidate_not_found",
+      candidate_id: "missing"
+    });
+
+    const missingFields = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      payload: { candidate_version_id: candidateVersionId }
+    });
+    expect(missingFields.statusCode).toBe(422);
+    expect(missingFields.json()).toMatchObject({
+      error: "runtime_authority_record_failed",
+      reason: "invalid_runtime_authority_request",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidateVersionId
+    });
+
+    const invalidOutcome = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      payload: {
+        ...validRuntimeAuthorityInput(candidateVersionId),
+        gateway_decision: {
+          decision_outcome: "live_allowed",
+          decision_reason: "paper_stage_only"
+        }
+      }
+    });
+    expect(invalidOutcome.statusCode).toBe(422);
+    expect(invalidOutcome.json()).toMatchObject({
+      error: "runtime_authority_record_failed",
+      reason: "invalid_runtime_authority_input",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: candidateVersionId
+    });
+
+    const missingVersion = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      payload: {
+        ...validRuntimeAuthorityInput("missing-candidate-version"),
+        candidate_version_id: "missing-candidate-version"
+      }
+    });
+    expect(missingVersion.statusCode).toBe(422);
+    expect(missingVersion.json()).toMatchObject({
+      error: "runtime_authority_record_failed",
+      reason: "candidate_version_not_found",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      candidate_version_id: "missing-candidate-version"
     });
 
     await server.close();
@@ -500,5 +662,31 @@ function validMaterializationInput(): CandidateMaterializationInput {
       forbidden_contents: ["exchange_credentials", "evaluator_hidden_labels", "live_order_authority"]
     },
     artifact_refs: [{ record_kind: "provider_output_artifact", id: "runtime-codex-output-success-001" }]
+  };
+}
+
+function validRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeAuthorityInput {
+  return {
+    idempotency_key: "runtime-api-authority-dry-run-001",
+    candidate_id: FIXTURE_CANDIDATE_ID,
+    candidate_version_id: candidateVersionId,
+    intent: {
+      intent_kind: "place_order",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000"
+    },
+    gateway_decision: {
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only",
+      policy_ref: { record_kind: "runtime_operating_policy", id: "runtime-operating-policy-paper-v1" }
+    },
+    execution_attempt: {
+      execution_mode: "host_local",
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-api-authority-dry-run-001" },
+      completed_at: "2026-05-10T00:01:00.000Z"
+    },
+    created_at: "2026-05-10T00:00:00.000Z"
   };
 }
