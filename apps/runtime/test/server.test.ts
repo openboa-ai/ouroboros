@@ -6,7 +6,11 @@ import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
 import type { CandidateMaterializationInput } from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
-import type { CandidateGenerationProviderResult, RuntimeProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import type {
+  CandidateEvaluationRequest,
+  CandidateGenerationProviderResult,
+  RuntimeProviderAdapter
+} from "../src/providers/runtime-provider-adapter";
 
 let tmpDir: string;
 
@@ -275,6 +279,32 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("passes the default execution mode through the evaluation provider request", async () => {
+    const evaluationProviderAdapter = new CapturingEvaluationProviderAdapter();
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      evaluationProviderAdapter
+    });
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/evaluation-runs`,
+      payload: {
+        candidate_version_id: candidate.json().candidate_version.candidate_version_id,
+        idempotency_key: "provider-default-execution-mode"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(evaluationProviderAdapter.requests[0]?.execution_mode).toBe("host_local");
+
+    await server.close();
+  });
+
   it("does not expose runtime action routes", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const forbiddenPaths = [
@@ -417,6 +447,15 @@ function fakeProvider(result: CandidateGenerationProviderResult): RuntimeProvide
       return result;
     }
   };
+}
+
+class CapturingEvaluationProviderAdapter extends FixtureEvaluationProviderAdapter {
+  readonly requests: CandidateEvaluationRequest[] = [];
+
+  override async runCandidateEvaluation(request: CandidateEvaluationRequest) {
+    this.requests.push(request);
+    return super.runCandidateEvaluation(request);
+  }
 }
 
 function validMaterializationInput(): CandidateMaterializationInput {

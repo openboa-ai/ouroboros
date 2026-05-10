@@ -119,7 +119,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         id: `stage-binding-api-evaluation-${stableRequestId}`
       },
       trace_id: `trace-api-evaluation-${stableRequestId}`,
-      execution_mode: body.execution_mode
+      execution_mode: requestedExecutionMode
     });
 
     if (outcome.status === "failed") {
