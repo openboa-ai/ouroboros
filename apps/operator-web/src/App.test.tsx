@@ -180,6 +180,17 @@ const fixtureCandidate: CandidateInspectReadModel = {
       provider_output_artifact_refs: [],
       debug_artifact_refs: []
     },
+    evidence_classifications: [
+      {
+        classification_id: "fixture-classification-trace",
+        classified_ref: { record_kind: "trace_placeholder", id: "fixture-trace" },
+        classification_kind: "trace_debug_material",
+        classification_status: "trace_only",
+        classification_reason: "no_external_evaluator",
+        authority_status: "not_counted",
+        created_at: "2026-05-05T00:00:00.000Z"
+      }
+    ],
     counted_evidence: {
       counted: false,
       evidence_disposition: "not_counted",

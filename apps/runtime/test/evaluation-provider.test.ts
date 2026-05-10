@@ -129,6 +129,20 @@ describe("runCandidateEvaluation", () => {
       authority_status: "not_counted",
       disposition_reason: "provider_output_trace_only"
     });
+    expect(outcome.evaluation.evidence_classifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification_kind: "trace_debug_material",
+          classification_status: "trace_only",
+          authority_status: "not_counted"
+        }),
+        expect.objectContaining({
+          classification_kind: "non_counted_evidence",
+          classification_status: "not_counted",
+          authority_status: "not_counted"
+        })
+      ])
+    );
   });
 
   it("returns an existing idempotent evaluation run without calling the provider again", async () => {
