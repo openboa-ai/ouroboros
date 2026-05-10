@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
-import type { EvaluationExecutionMode } from "@ouroboros/domain";
-import { LocalStore } from "@ouroboros/local-store";
+import type { BoundedRuntimeAuthorityInput, EvaluationExecutionMode, Ref } from "@ouroboros/domain";
+import { LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "./candidate-evaluation";
 import { runCandidateGeneration } from "./candidate-materialization";
 import { CodexCliProviderAdapter } from "./providers/codex-cli-provider";
@@ -23,6 +23,32 @@ interface CreateEvaluationRunBody {
   idempotency_key?: string;
   stage?: string;
   execution_mode?: EvaluationExecutionMode;
+}
+
+interface RecordRuntimeAuthorityBody {
+  candidate_version_id?: string;
+  runtime_id?: string;
+  idempotency_key?: string;
+  intent?: {
+    intent_kind?: string;
+    side?: string;
+    order_type?: string;
+    quantity?: string;
+    limit_price?: string;
+  };
+  gateway_decision?: {
+    decision_outcome?: string;
+    decision_reason?: string;
+    policy_ref?: Ref;
+  };
+  execution_attempt?: {
+    execution_mode?: string;
+    status?: string;
+    result_reason?: string;
+    trace_ref?: Ref;
+    completed_at?: string;
+  };
+  created_at?: string;
 }
 
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
@@ -83,6 +109,76 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       };
     }
   );
+
+  server.get<{ Params: { candidate_id: string } }>(
+    "/api/candidates/:candidate_id/runtime-authority",
+    async (request, reply) => {
+      const candidate = await store.getCandidate(request.params.candidate_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      return {
+        candidate_id: request.params.candidate_id,
+        runtime_id: candidate.runtime.ref.id,
+        bounded_authority: candidate.runtime.bounded_authority
+      };
+    }
+  );
+
+  server.post<{
+    Params: { candidate_id: string };
+    Body: RecordRuntimeAuthorityBody;
+  }>("/api/candidates/:candidate_id/runtime-authority", async (request, reply) => {
+    const candidate = await store.getCandidate(request.params.candidate_id);
+    if (!candidate) {
+      return reply.code(404).send({
+        error: "candidate_not_found",
+        candidate_id: request.params.candidate_id
+      });
+    }
+
+    const body = request.body ?? {};
+    if (!isRuntimeAuthorityRequestComplete(body)) {
+      return reply.code(422).send(runtimeAuthorityError({
+        reason: "invalid_runtime_authority_request",
+        candidateId: request.params.candidate_id,
+        candidateVersionId: body.candidate_version_id,
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+
+    try {
+      const outcome = await store.recordBoundedRuntimeAuthority({
+        idempotency_key: body.idempotency_key,
+        candidate_id: request.params.candidate_id,
+        candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
+        runtime_id: body.runtime_id,
+        intent: body.intent,
+        gateway_decision: body.gateway_decision,
+        execution_attempt: body.execution_attempt,
+        created_at: body.created_at
+      } as BoundedRuntimeAuthorityInput);
+
+      return reply.code(201).send({
+        status: "recorded",
+        ...outcome
+      });
+    } catch (error) {
+      if (error instanceof LocalStoreError) {
+        return reply.code(runtimeAuthorityStatusCode(error.code)).send(runtimeAuthorityError({
+          reason: error.code,
+          candidateId: request.params.candidate_id,
+          candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
+          idempotencyKey: body.idempotency_key
+        }));
+      }
+      throw error;
+    }
+  });
 
   server.post<{
     Params: { candidate_id: string };
@@ -187,4 +283,33 @@ function safeRouteId(value: string): string {
   const prefix = normalized.slice(0, 72) || "empty";
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
+}
+
+function isRuntimeAuthorityRequestComplete(
+  body: RecordRuntimeAuthorityBody
+): body is RecordRuntimeAuthorityBody & {
+  idempotency_key: string;
+  intent: BoundedRuntimeAuthorityInput["intent"];
+  gateway_decision: BoundedRuntimeAuthorityInput["gateway_decision"];
+} {
+  return Boolean(body.idempotency_key && body.intent && body.gateway_decision);
+}
+
+function runtimeAuthorityStatusCode(reason: string): 404 | 422 {
+  return reason === "candidate_not_found" ? 404 : 422;
+}
+
+function runtimeAuthorityError(input: {
+  reason: string;
+  candidateId: string;
+  candidateVersionId?: string;
+  idempotencyKey?: string;
+}) {
+  return {
+    error: "runtime_authority_record_failed",
+    reason: input.reason,
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    idempotency_key: input.idempotencyKey
+  };
 }
