@@ -1,4 +1,7 @@
 import type {
+  AarProposalProviderProbeResult,
+  AarProposalProviderRequest,
+  AarProposalProviderResult,
   CandidateMaterializationFailureReason,
   CandidateMaterializationInput,
   EvaluationExecutionMode,
@@ -83,4 +86,9 @@ export type EvaluationProviderResult =
 export interface EvaluationProviderAdapter {
   probeEvaluation?(): Promise<EvaluationProviderProbeResult>;
   runCandidateEvaluation(request: CandidateEvaluationRequest): Promise<EvaluationProviderResult>;
+}
+
+export interface AarProposalProviderAdapter {
+  probeAarProposal?(): Promise<AarProposalProviderProbeResult>;
+  runAarProposalGeneration(request: AarProposalProviderRequest): Promise<AarProposalProviderResult>;
 }

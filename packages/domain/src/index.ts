@@ -10,9 +10,12 @@ export type NonAuthorityStatus =
   | "not_promoted"
   | "not_live";
 
-export type ProviderKind = "codex_cli" | "local_process" | "fixture_only";
+export type ProviderKind = "codex_cli" | "claude_code" | "local_process" | "fixture_only";
 
-export type AgentRunPurpose = "candidate_generation" | "candidate_generation_placeholder";
+export type AgentRunPurpose =
+  | "candidate_generation"
+  | "candidate_generation_placeholder"
+  | "aar_artifact_proposal_generation";
 
 export type AgentRunStatus = "succeeded" | "failed" | "rejected" | "fixture_placeholder";
 
@@ -43,6 +46,95 @@ export type RuntimePlacementToolingKind =
   | "provider_session"
   | "http_endpoint"
   | "fixture_only";
+
+export type RunnableArtifactKind = "python_file" | "container_image";
+
+export type RunnableArtifactRuntimeKind = "python" | "container_image";
+
+export type RunnableArtifactOutputKind =
+  | "program_event"
+  | "runtime_log"
+  | "runtime_heartbeat"
+  | "metric_snapshot"
+  | "diagnostic_artifact"
+  | "order_intent";
+
+export type RunnableArtifactStatus = "registered" | "deprecated";
+
+export type SandboxRuntimeInstanceLifecycleStatus =
+  | "requested"
+  | "created"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed"
+  | "removed";
+
+export type SandboxRuntimeAdapterKind = "deterministic_test" | "docker_sandboxes_sbx";
+
+export type AarResearchDirectionKind =
+  | "trend_following"
+  | "mean_reversion"
+  | "volatility_regime"
+  | "funding_aware_risk"
+  | "liquidation_aware_risk"
+  | "execution_cost_robustness"
+  | "other";
+
+export type AarResearcherStatus = "active" | "retired";
+
+export type AarExperimentStatus =
+  | "submitted"
+  | "evaluated"
+  | "failed"
+  | "discarded";
+
+export type TradingEvaluationMarketScope = "binance_btc_perpetual_futures";
+
+export type TradingEvaluationStage = "backtest";
+
+export type TradingEvaluationResultStatus =
+  | "accepted"
+  | "quarantined_for_review"
+  | "disqualified";
+
+export type TradingEvaluationDisqualificationReason =
+  | "lookahead_leakage"
+  | "data_leakage"
+  | "survivorship_bias"
+  | "cost_model_bypass"
+  | "funding_ignored"
+  | "liquidation_ignored"
+  | "seed_cherry_pick"
+  | "oos_overfit"
+  | "unreproducible"
+  | "runtime_self_report_only";
+
+export type TradingEvaluationQuarantineReason =
+  | "metric_instability"
+  | "insufficient_oos_coverage"
+  | "excessive_complexity"
+  | "manual_review_required"
+  | "partial_trace";
+
+export type AarFindingKind =
+  | "positive_result"
+  | "negative_result"
+  | "failure_analysis"
+  | "anti_hacking_case"
+  | "next_artifact_hint";
+
+export type AarArtifactProposalStatus =
+  | "proposed"
+  | "materialized"
+  | "discarded";
+
+export type AarOrchestrationRunStatus =
+  | "started"
+  | "proposed"
+  | "failed"
+  | "discarded";
 
 export type TraderSystemRuntimeLifecycleStatus =
   | "registered"
@@ -207,6 +299,29 @@ export type CandidateMaterializationFailureReason =
 
 export type MaterializationValidationStatus = "accepted" | "rejected";
 
+export type AarProposalProviderFailureReason =
+  | "aar_proposal_provider_unavailable"
+  | "aar_proposal_provider_failed"
+  | "invalid_aar_proposal_request"
+  | "no_eligible_aar_finding"
+  | "unsupported_aar_proposal_task"
+  | "unsupported_aar_proposal_provider";
+
+export type AarProposalProviderOutputAuthorityStatus = "proposal_input_only";
+
+export type AarProposalProviderReadinessStatus =
+  | "active_verified"
+  | "blocked_or_not_installed"
+  | "candidate_unverified";
+
+export type AarProposalMaterializationStatus = "materialized" | "failed";
+
+export type AarProposalMaterializationFailureReason =
+  | "provider_output_schema_invalid"
+  | "provider_output_rejected"
+  | "aar_proposal_source_finding_not_found"
+  | AarProposalProviderFailureReason;
+
 export interface FixtureNotice {
   mode: FixtureMode;
   label: string;
@@ -236,6 +351,7 @@ export interface TraderSystemCandidateRecord extends BaseRecord {
   candidate_status?: "materialized" | "handoff_ready" | "archived";
   evaluation_handoff_ready?: boolean;
   materialized_from_attempt_ref?: Ref;
+  active_runnable_artifact_ref?: Ref;
 }
 
 export interface CandidateVersionRecord extends BaseRecord {
@@ -256,6 +372,7 @@ export interface CandidateVersionRecord extends BaseRecord {
   agent_event_ref?: Ref;
   provider_readiness_ref?: Ref;
   provider_probe_attempt_ref?: Ref;
+  runnable_artifact_ref?: Ref;
 }
 
 export interface TraderSystemSpecRecord extends BaseRecord {
@@ -288,6 +405,318 @@ export interface ProgramValidationRecord extends BaseRecord {
   status: "fixture_placeholder";
   authority_status: "not_runnable";
 }
+
+export interface RunnableArtifactOutputContract {
+  contract_kind: "opaque_runtime_boundary";
+  declared_output_kinds: RunnableArtifactOutputKind[];
+  event_envelope_ref?: Ref;
+  log_contract_ref?: Ref;
+  heartbeat_contract_ref?: Ref;
+}
+
+export interface RunnableArtifactRuntimeContract {
+  runtime_kind: RunnableArtifactRuntimeKind;
+  entrypoint: string[];
+  declared_output_contract: RunnableArtifactOutputContract;
+  secret_policy_ref: Ref;
+  capability_policy_ref: Ref;
+}
+
+export interface ArtifactRuntimeContractRecord
+  extends BaseRecord,
+    RunnableArtifactRuntimeContract {
+  record_kind: "artifact_runtime_contract";
+  artifact_runtime_contract_id: string;
+  created_at: string;
+  authority_status: "contract_only";
+}
+
+interface RunnableArtifactBaseRecord
+  extends BaseRecord,
+    RunnableArtifactRuntimeContract {
+  record_kind: "runnable_artifact";
+  runnable_artifact_id: string;
+  artifact_kind: RunnableArtifactKind;
+  artifact_digest: string;
+  artifact_ref?: Ref;
+  artifact_runtime_contract_ref?: Ref;
+  provenance_refs: Ref[];
+  status: RunnableArtifactStatus;
+  created_at: string;
+  authority_status: "not_live";
+}
+
+export type RunnableArtifactRecord =
+  | (RunnableArtifactBaseRecord & {
+      artifact_kind: "python_file";
+      artifact_path: string;
+    })
+  | (RunnableArtifactBaseRecord & {
+      artifact_kind: "container_image";
+      image_ref: string;
+    });
+
+export interface AarResearchDirectionRecord extends BaseRecord {
+  record_kind: "aar_research_direction";
+  aar_research_direction_id: string;
+  direction_kind: AarResearchDirectionKind;
+  market_scope: TradingEvaluationMarketScope;
+  prompt_seed: string;
+  diversity_axis?: string;
+  created_at: string;
+  authority_status: "research_seed_only";
+}
+
+export interface AarResearcherRecord extends BaseRecord {
+  record_kind: "aar_researcher";
+  aar_researcher_id: string;
+  display_name: string;
+  model?: string;
+  provider_kind?: ProviderKind;
+  research_direction_ref: Ref;
+  sandbox_policy_ref?: Ref;
+  budget_policy_ref?: Ref;
+  created_at: string;
+  status: AarResearcherStatus;
+  authority_status: "research_only";
+}
+
+export interface TradingEvaluationTaskRecord extends BaseRecord {
+  record_kind: "trading_evaluation_task";
+  trading_evaluation_task_id: string;
+  market_scope: TradingEvaluationMarketScope;
+  stage: TradingEvaluationStage;
+  data_window_ref: Ref;
+  fee_model_ref: Ref;
+  funding_model_ref: Ref;
+  slippage_model_ref: Ref;
+  leverage_limit_ref: Ref;
+  liquidation_model_ref: Ref;
+  heldout_policy_ref: Ref;
+  evaluation_policy_ref: Ref;
+  evaluator_ref?: Ref;
+  created_at: string;
+  authority_status: "not_live";
+}
+
+export interface AarExperimentRecord extends BaseRecord {
+  record_kind: "aar_experiment";
+  aar_experiment_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  runnable_artifact_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  sandbox_runtime_instance_ref?: Ref;
+  runtime_trace_refs?: Ref[];
+  trace_ref?: Ref;
+  submitted_at: string;
+  status: AarExperimentStatus;
+  authority_status: "not_live";
+}
+
+export interface TradingEvaluationScoreSummary {
+  total_score: number;
+  oos_score: number;
+  drawdown_score: number;
+  turnover_score: number;
+  cost_survival_score: number;
+  reproducibility_score: number;
+  complexity_penalty: number;
+}
+
+export interface TradingEvaluationResultRecord extends BaseRecord {
+  record_kind: "trading_evaluation_result";
+  trading_evaluation_result_id: string;
+  aar_experiment_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  evaluator_ref: Ref;
+  result_status: TradingEvaluationResultStatus;
+  evidence_disposition: EvidenceDisposition;
+  score_summary: TradingEvaluationScoreSummary;
+  metric_refs: Ref[];
+  evaluator_trace_ref: Ref;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
+  quarantine_reason?: TradingEvaluationQuarantineReason;
+  completed_at: string;
+  authority_status: "not_counted" | "counted";
+}
+
+export interface AarFindingRecord extends BaseRecord {
+  record_kind: "aar_finding";
+  aar_finding_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  aar_experiment_ref: Ref;
+  trading_evaluation_result_ref: Ref;
+  finding_kind: AarFindingKind;
+  summary: string;
+  supporting_record_refs: Ref[];
+  created_at: string;
+  authority_status: "research_trace_only";
+}
+
+export interface AarArtifactLineageRecord extends BaseRecord {
+  record_kind: "aar_artifact_lineage";
+  aar_artifact_lineage_id: string;
+  child_runnable_artifact_ref: Ref;
+  parent_runnable_artifact_ref?: Ref;
+  source_finding_refs: Ref[];
+  created_by_researcher_ref?: Ref;
+  created_at: string;
+  authority_status: "lineage_only";
+}
+
+export interface AarArtifactProposalRecord extends BaseRecord {
+  record_kind: "aar_artifact_proposal";
+  aar_artifact_proposal_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  proposed_runnable_artifact_ref: Ref;
+  parent_runnable_artifact_ref?: Ref;
+  source_finding_refs: Ref[];
+  anti_hacking_finding_refs?: Ref[];
+  proposal_summary: string;
+  requested_change_summary: string;
+  expected_improvement_summary?: string;
+  created_at: string;
+  status: AarArtifactProposalStatus;
+  authority_status: "proposal_only";
+}
+
+export interface AarOrchestrationRunRecord extends BaseRecord {
+  record_kind: "aar_orchestration_run";
+  aar_orchestration_run_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  input_finding_refs: Ref[];
+  input_lineage_refs?: Ref[];
+  output_artifact_proposal_ref?: Ref;
+  output_runnable_artifact_ref?: Ref;
+  output_lineage_ref?: Ref;
+  trace_ref?: Ref;
+  started_at: string;
+  completed_at?: string;
+  status: AarOrchestrationRunStatus;
+  authority_status: "research_only";
+}
+
+export interface AarProposalProviderAttribution {
+  provider_kind: ProviderKind;
+  model: string;
+  invocation_surface: string;
+}
+
+export interface AarProposalProviderProbeResult extends AarProposalProviderAttribution {
+  readiness_status: AarProposalProviderReadinessStatus;
+  supported_purposes: Array<Extract<AgentRunPurpose, "aar_artifact_proposal_generation">>;
+  provider_readiness_ref?: Ref;
+  provider_probe_attempt_ref?: Ref;
+  failure_reason?: AarProposalProviderFailureReason;
+}
+
+export interface AarProposalProviderRequest {
+  idempotency_key: string;
+  task: TradingEvaluationTaskRecord;
+  findings: AarFindingRecord[];
+  existing_lineages?: AarArtifactLineageRecord[];
+  existing_lineage_refs?: Ref[];
+  parent_runnable_artifact_ref?: Ref;
+  input_artifact_refs?: Ref[];
+  requested_output_contract_ref?: Ref;
+  agent_run_ref: Ref;
+  trace_ref: Ref;
+  created_at?: string;
+}
+
+export interface AarProposalProviderOutput {
+  output_kind: "aar_artifact_proposal_input";
+  trading_evaluation_task_ref: Ref;
+  source_finding_refs: Ref[];
+  anti_hacking_finding_refs?: Ref[];
+  parent_runnable_artifact_ref?: Ref;
+  proposal_summary: string;
+  requested_change_summary: string;
+  expected_improvement_summary?: string;
+  proposed_artifact_refs: Ref[];
+  output_authority_status: AarProposalProviderOutputAuthorityStatus;
+}
+
+export type AarProposalProviderResult =
+  | {
+      status: "succeeded";
+      provider: AarProposalProviderAttribution;
+      output: AarProposalProviderOutput;
+      agent_run_ref: Ref;
+      agent_event_refs: Ref[];
+      trace_ref: Ref;
+      provider_output_artifact_refs: Ref[];
+      debug_artifact_refs: Ref[];
+      idempotency_key: string;
+      authority_status: AarProposalProviderOutputAuthorityStatus;
+    }
+  | {
+      status: "failed";
+      provider: AarProposalProviderAttribution;
+      failure_reason: AarProposalProviderFailureReason;
+      agent_run_ref: Ref;
+      agent_event_refs: Ref[];
+      trace_ref: Ref;
+      provider_output_artifact_refs: Ref[];
+      debug_artifact_refs: Ref[];
+      idempotency_key: string;
+      authority_status: AarProposalProviderOutputAuthorityStatus;
+    };
+
+export interface AarProposalMaterializationInput {
+  idempotency_key: string;
+  provider_result: Extract<AarProposalProviderResult, { status: "succeeded" }>;
+  artifact_path?: string;
+  artifact_runtime_contract_ref?: Ref;
+  secret_policy_ref?: Ref;
+  capability_policy_ref?: Ref;
+  created_at?: string;
+}
+
+export interface AarProposalProviderFailureInput {
+  idempotency_key: string;
+  provider_result: Extract<AarProposalProviderResult, { status: "failed" }>;
+  created_at?: string;
+}
+
+export interface AarProposalMaterializationAttemptRecord extends BaseRecord {
+  record_kind: "aar_proposal_materialization_attempt";
+  aar_proposal_materialization_attempt_id: string;
+  idempotency_key: string;
+  provider: AarProposalProviderAttribution;
+  agent_run_ref: Ref;
+  agent_event_refs: Ref[];
+  trace_ref: Ref;
+  provider_output_artifact_refs: Ref[];
+  debug_artifact_refs: Ref[];
+  status: AarProposalMaterializationStatus;
+  validation_status: MaterializationValidationStatus;
+  failure_reason?: AarProposalMaterializationFailureReason;
+  output_artifact_proposal_ref?: Ref;
+  output_runnable_artifact_ref?: Ref;
+  output_lineage_ref?: Ref;
+  created_at: string;
+  authority_status: AarProposalProviderOutputAuthorityStatus;
+}
+
+export type AarProposalMaterializationOutcome =
+  | {
+      status: "materialized";
+      attempt: AarProposalMaterializationAttemptRecord;
+      proposal: AarArtifactProposalRecord;
+      runnable_artifact: RunnableArtifactRecord;
+      lineage: AarArtifactLineageRecord;
+    }
+  | {
+      status: "failed";
+      attempt: AarProposalMaterializationAttemptRecord;
+    };
 
 export interface CapabilityPackageRecord extends BaseRecord {
   record_kind: "capability_package";
@@ -406,6 +835,8 @@ export interface TraderSystemRuntimeRecord extends BaseRecord {
   runtime_control_command_refs?: Ref[];
   runtime_control_decision_refs?: Ref[];
   runtime_audit_event_refs?: Ref[];
+  runnable_artifact_ref?: Ref;
+  sandbox_runtime_instance_ref?: Ref;
   created_at?: string;
   authority_status: "not_live";
 }
@@ -424,6 +855,59 @@ export interface RuntimePlacementRecord extends BaseRecord {
   network_ref?: Ref;
   volume_ref?: Ref;
   authority_status: "not_launched";
+}
+
+export interface SandboxRuntimeInstanceRecord extends BaseRecord {
+  record_kind: "sandbox_runtime_instance";
+  sandbox_runtime_instance_id: string;
+  adapter_kind: SandboxRuntimeAdapterKind;
+  runnable_artifact_ref: Ref;
+  runtime_ref?: Ref;
+  runtime_placement_ref: Ref;
+  lifecycle_status: SandboxRuntimeInstanceLifecycleStatus;
+  sandbox_name: string;
+  sandbox_ref?: Ref;
+  created_at: string;
+  started_at?: string;
+  last_heartbeat_at?: string;
+  stopped_at?: string;
+  removed_at?: string;
+  log_refs: Ref[];
+  heartbeat_refs: Ref[];
+  command_evidence_refs?: Ref[];
+  trace_ref?: Ref;
+  authority_status: "not_live";
+}
+
+export interface RuntimeInstanceLogRecord extends BaseRecord {
+  record_kind: "runtime_instance_log";
+  runtime_instance_log_id: string;
+  sandbox_runtime_instance_ref: Ref;
+  lines: string[];
+  captured_at: string;
+  authority_status: "trace_only";
+}
+
+export interface RuntimeHeartbeatRecord extends BaseRecord {
+  record_kind: "runtime_heartbeat";
+  runtime_heartbeat_id: string;
+  sandbox_runtime_instance_ref: Ref;
+  heartbeat_line: string;
+  observed_at: string;
+  authority_status: "trace_only";
+}
+
+export interface SandboxCommandEvidenceRecord extends BaseRecord {
+  record_kind: "sandbox_command_evidence";
+  sandbox_command_evidence_id: string;
+  sandbox_runtime_instance_ref?: Ref;
+  command: string[];
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  started_at: string;
+  completed_at: string;
+  authority_status: "trace_only";
 }
 
 export interface HandsEnvironmentRecord extends BaseRecord {
@@ -807,6 +1291,18 @@ export type FixtureRecord =
   | CapabilityPackageAdmissionRecord
   | CapabilityGrantRecord
   | CapabilityMountRecord
+  | ArtifactRuntimeContractRecord
+  | RunnableArtifactRecord
+  | AarResearchDirectionRecord
+  | AarResearcherRecord
+  | AarExperimentRecord
+  | TradingEvaluationTaskRecord
+  | TradingEvaluationResultRecord
+  | AarFindingRecord
+  | AarArtifactLineageRecord
+  | AarArtifactProposalRecord
+  | AarOrchestrationRunRecord
+  | AarProposalMaterializationAttemptRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
@@ -815,6 +1311,10 @@ export type FixtureRecord =
   | ProviderProbeAttemptRecord
   | TraderSystemRuntimeRecord
   | RuntimePlacementRecord
+  | SandboxRuntimeInstanceRecord
+  | RuntimeInstanceLogRecord
+  | RuntimeHeartbeatRecord
+  | SandboxCommandEvidenceRecord
   | HandsEnvironmentRecord
   | RuntimeMemorySurfaceRecord
   | TracePlaceholderRecord
@@ -1168,4 +1668,91 @@ export interface CandidateEvaluationRunOutcome {
   comparison_set: EvaluationComparisonSetRecord;
   sealing_decision: EvidenceSealingDecisionRecord;
   evidence_classifications: EvidenceClassificationRecord[];
+}
+
+export interface RuntimeInstanceLogReadModel {
+  log_ref: Ref;
+  lines: string[];
+  captured_at: string;
+  authority_status: "trace_only";
+}
+
+export interface RuntimeInstanceHeartbeatReadModel {
+  heartbeat_ref: Ref;
+  heartbeat_line: string;
+  observed_at: string;
+  authority_status: "trace_only";
+}
+
+export interface SandboxCommandEvidenceReadModel {
+  command_evidence_ref: Ref;
+  command: string[];
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  started_at: string;
+  completed_at: string;
+  authority_status: "trace_only";
+}
+
+export interface SandboxRuntimeInstanceReadModel {
+  instance_id: string;
+  adapter_kind: SandboxRuntimeAdapterKind;
+  runnable_artifact_ref: Ref;
+  runtime_ref?: Ref;
+  runtime_placement_ref: Ref;
+  lifecycle_status: SandboxRuntimeInstanceLifecycleStatus;
+  sandbox_name: string;
+  sandbox_ref?: Ref;
+  created_at: string;
+  started_at?: string;
+  last_heartbeat_at?: string;
+  stopped_at?: string;
+  removed_at?: string;
+  log_refs: Ref[];
+  heartbeat_refs: Ref[];
+  command_evidence_refs: Ref[];
+  trace_ref?: Ref;
+  authority_status: "not_live";
+}
+
+export interface SandboxRuntimeInstanceDetailReadModel extends SandboxRuntimeInstanceReadModel {
+  logs: RuntimeInstanceLogReadModel[];
+  heartbeats: RuntimeInstanceHeartbeatReadModel[];
+  command_evidence: SandboxCommandEvidenceReadModel[];
+}
+
+export interface RuntimeInstanceIndexProjection {
+  record_kind: "runtime_instance_index_projection";
+  version: 1;
+  runtime_instances: SandboxRuntimeInstanceReadModel[];
+}
+
+export interface StartRuntimeInstanceInput {
+  idempotency_key: string;
+  adapter_kind: SandboxRuntimeAdapterKind;
+  runnable_artifact_id: string;
+  runtime_id?: string;
+  instance_id?: string;
+  sandbox_name?: string;
+  test_ticks?: number;
+  interval_ms?: number;
+  created_at?: string;
+}
+
+export interface StartRuntimeInstanceOutcome {
+  runtime_instance: SandboxRuntimeInstanceDetailReadModel;
+}
+
+export interface StopRuntimeInstanceInput {
+  instance_id: string;
+  stopped_at?: string;
+  removed_at?: string;
+}
+
+export interface RuntimeInstanceLogsOutcome {
+  runtime_instance: SandboxRuntimeInstanceReadModel;
+  logs: RuntimeInstanceLogReadModel[];
+  heartbeats: RuntimeInstanceHeartbeatReadModel[];
+  command_evidence: SandboxCommandEvidenceReadModel[];
 }
