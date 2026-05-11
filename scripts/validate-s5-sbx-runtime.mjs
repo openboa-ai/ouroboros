@@ -13,6 +13,9 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
 
 Runs the Slice 5 real Docker Sandboxes validation transcript.
 Requires Docker Sandboxes sbx. The macOS /usr/bin/sdx Starkit utility is unrelated and rejected.
+Codex note: full validation needs Hypervisor/libkrun access outside the Codex command sandbox;
+run the sbx daemon and validation with approved/escalated execution if capability probes fail with
+Operation not permitted.
 
 Environment:
   OUROBOROS_SBX_BIN                    sbx binary path (default: sbx)

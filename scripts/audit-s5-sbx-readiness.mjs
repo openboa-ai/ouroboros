@@ -118,6 +118,8 @@ await check("validation help advertises sbx/sdx/evidence guardrails", async () =
   assertIncludes(result.stdout, "OUROBOROS_SBX_EVIDENCE_PATH");
   assertIncludes(result.stdout, "OUROBOROS_SBX_HOME");
   assertIncludes(result.stdout, "OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
+  assertIncludes(result.stdout, "Hypervisor/libkrun access outside the Codex command sandbox");
+  assertIncludes(result.stdout, "Operation not permitted");
 });
 
 await check("recovery help advertises approval and reset boundaries", async () => {
@@ -198,6 +200,8 @@ await check("README documents blocked-host support handoff", async () => {
   assertIncludes(readme, "sbx ls --json");
   assertIncludes(readme, "OUROBOROS_SDX_BIN");
   assertIncludes(readme, "OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
+  assertIncludes(readme, "Hypervisor/libkrun access outside the Codex command sandbox");
+  assertIncludes(readme, "Operation not permitted");
   assertIncludes(readme, "Starkit or non-Docker-Sandboxes `sdx`");
   assertIncludes(readme, "npm run report:s5-sbx-blocker");
   assertIncludes(readme, "--include-create-probe");

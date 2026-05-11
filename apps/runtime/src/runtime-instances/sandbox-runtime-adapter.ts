@@ -210,6 +210,8 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
       this.sbxPath,
       "exec",
       "-d",
+      "-w",
+      this.workspacePath,
       input.sandbox_name,
       "python3",
       artifactPath,

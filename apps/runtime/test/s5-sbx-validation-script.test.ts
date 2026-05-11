@@ -213,6 +213,8 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("OUROBOROS_SDX_BIN");
     expect(result.stdout).toContain("OUROBOROS_SBX_HOME");
     expect(result.stdout).toContain("OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
+    expect(result.stdout).toContain("Hypervisor/libkrun access outside the Codex command sandbox");
+    expect(result.stdout).toContain("Operation not permitted");
     expect(result.stdout).toContain("Exit codes:");
     expect(result.stdout).toContain("host sbx preflight/runtime-control is blocked");
   });
@@ -518,7 +520,7 @@ describe("S5 sbx validation harness", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("can write a timestamped default blocker report when requested", async () => {
     const tempDir = await makeTempDir();
@@ -1071,7 +1073,7 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain(
-        "missing exit_code=0 after exec -d ouro-s5-clock-b in transcript section: runtime API start B command evidence"
+        "missing exit_code=0 after exec -d -w in transcript section: runtime API start B command evidence"
       );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
@@ -1929,10 +1931,10 @@ describe("S5 sbx validation harness", () => {
       )).toContain("version");
       expect(calls).toContain("ls");
       expect(calls.some((call) => call.startsWith(
-        "exec -d ouro-s5-clock-a python3 fixtures/trader-systems/clock.py"
+        `exec -d -w ${repoRoot} ouro-s5-clock-a python3 fixtures/trader-systems/clock.py`
       ))).toBe(true);
       expect(calls.some((call) => call.startsWith(
-        "exec -d ouro-s5-clock-b python3 fixtures/trader-systems/clock.py"
+        `exec -d -w ${repoRoot} ouro-s5-clock-b python3 fixtures/trader-systems/clock.py`
       ))).toBe(true);
       expect(calls).toContain(
         "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl"
@@ -3102,7 +3104,7 @@ function fakeCompletionEvidence(
     "## runtime API start A command evidence",
     "$ sbx create --name ouro-s5-clock-a shell /repo",
     "exit_code=0",
-    "$ sbx exec -d ouro-s5-clock-a python3 fixtures/trader-systems/clock.py --instance-id sandbox-runtime-instance-clock-a",
+    "$ sbx exec -d -w /repo ouro-s5-clock-a python3 fixtures/trader-systems/clock.py --instance-id sandbox-runtime-instance-clock-a",
     "exit_code=0",
     "## direct sbx log A",
     "$ sbx exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl",
@@ -3128,7 +3130,7 @@ function fakeCompletionEvidence(
     "## runtime API start B command evidence",
     "$ sbx create --name ouro-s5-clock-b shell /repo",
     "exit_code=0",
-    "$ sbx exec -d ouro-s5-clock-b python3 fixtures/trader-systems/clock.py --instance-id sandbox-runtime-instance-clock-b",
+    "$ sbx exec -d -w /repo ouro-s5-clock-b python3 fixtures/trader-systems/clock.py --instance-id sandbox-runtime-instance-clock-b",
     ...(options.omitStartBExitCode ? [] : ["exit_code=0"]),
     "## sbx ls",
     "NAME AGENT STATUS WORKSPACE",

@@ -164,6 +164,9 @@ mark OURO-32 Done unless `npm run audit:s5-sbx:promotion -- --evidence <path>` e
 
 This validation uses Docker Sandboxes `sbx`. The macOS `/usr/bin/sdx` Starkit utility is unrelated
 and is intentionally rejected by the S5 validation harness.
+Full validation needs Hypervisor/libkrun access outside the Codex command sandbox; in Codex, start
+the selected `sbx` daemon and run validation with approved/escalated execution if capability probes
+fail with `Operation not permitted`.
 
 Useful overrides:
 

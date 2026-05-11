@@ -162,9 +162,11 @@ await check("real two-sandbox validation transcript is present and complete", as
   );
   assertSectionContains(transcript, "runtime API raw secret rejection probe", ["raw_secret_material_rejected"]);
   assertCommandSucceededInSection(transcript, "runtime API start A command evidence", `create --name ${sandboxNames.a}`);
-  assertCommandSucceededInSection(transcript, "runtime API start A command evidence", `exec -d ${sandboxNames.a}`);
+  assertCommandSucceededInSection(transcript, "runtime API start A command evidence", "exec -d -w");
+  assertSectionContains(transcript, "runtime API start A command evidence", [sandboxNames.a]);
   assertCommandSucceededInSection(transcript, "runtime API start B command evidence", `create --name ${sandboxNames.b}`);
-  assertCommandSucceededInSection(transcript, "runtime API start B command evidence", `exec -d ${sandboxNames.b}`);
+  assertCommandSucceededInSection(transcript, "runtime API start B command evidence", "exec -d -w");
+  assertSectionContains(transcript, "runtime API start B command evidence", [sandboxNames.b]);
   assertSectionContains(transcript, "direct sbx log A", [`exec ${sandboxNames.a} cat`]);
   assertSectionContains(transcript, "direct sbx log B", [`exec ${sandboxNames.b} cat`]);
   assertSectionContains(transcript, "sbx ls", [sandboxNames.a, sandboxNames.b]);
