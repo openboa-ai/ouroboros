@@ -70,6 +70,58 @@ export type SandboxRuntimeInstanceLifecycleStatus =
 
 export type SandboxRuntimeAdapterKind = "deterministic_test" | "docker_sandboxes_sbx";
 
+export type AarResearchDirectionKind =
+  | "trend_following"
+  | "mean_reversion"
+  | "volatility_regime"
+  | "funding_aware_risk"
+  | "liquidation_aware_risk"
+  | "execution_cost_robustness"
+  | "other";
+
+export type AarResearcherStatus = "active" | "retired";
+
+export type AarExperimentStatus =
+  | "submitted"
+  | "evaluated"
+  | "failed"
+  | "discarded";
+
+export type TradingEvaluationMarketScope = "binance_btc_perpetual_futures";
+
+export type TradingEvaluationStage = "backtest";
+
+export type TradingEvaluationResultStatus =
+  | "accepted"
+  | "quarantined_for_review"
+  | "disqualified";
+
+export type TradingEvaluationDisqualificationReason =
+  | "lookahead_leakage"
+  | "data_leakage"
+  | "survivorship_bias"
+  | "cost_model_bypass"
+  | "funding_ignored"
+  | "liquidation_ignored"
+  | "seed_cherry_pick"
+  | "oos_overfit"
+  | "unreproducible"
+  | "runtime_self_report_only";
+
+export type TradingEvaluationQuarantineReason =
+  | "metric_instability"
+  | "insufficient_oos_coverage"
+  | "excessive_complexity"
+  | "manual_review_required"
+  | "partial_trace";
+
+export type AarFindingKind =
+  | "positive_result"
+  | "negative_result"
+  | "failure_analysis"
+  | "anti_hacking_case"
+  | "next_artifact_hint";
+
 export type TraderSystemRuntimeLifecycleStatus =
   | "registered"
   | "deployed"
@@ -366,6 +418,115 @@ export type RunnableArtifactRecord =
       artifact_kind: "container_image";
       image_ref: string;
     });
+
+export interface AarResearchDirectionRecord extends BaseRecord {
+  record_kind: "aar_research_direction";
+  aar_research_direction_id: string;
+  direction_kind: AarResearchDirectionKind;
+  market_scope: TradingEvaluationMarketScope;
+  prompt_seed: string;
+  diversity_axis?: string;
+  created_at: string;
+  authority_status: "research_seed_only";
+}
+
+export interface AarResearcherRecord extends BaseRecord {
+  record_kind: "aar_researcher";
+  aar_researcher_id: string;
+  display_name: string;
+  model?: string;
+  provider_kind?: ProviderKind;
+  research_direction_ref: Ref;
+  sandbox_policy_ref?: Ref;
+  budget_policy_ref?: Ref;
+  created_at: string;
+  status: AarResearcherStatus;
+  authority_status: "research_only";
+}
+
+export interface TradingEvaluationTaskRecord extends BaseRecord {
+  record_kind: "trading_evaluation_task";
+  trading_evaluation_task_id: string;
+  market_scope: TradingEvaluationMarketScope;
+  stage: TradingEvaluationStage;
+  data_window_ref: Ref;
+  fee_model_ref: Ref;
+  funding_model_ref: Ref;
+  slippage_model_ref: Ref;
+  leverage_limit_ref: Ref;
+  liquidation_model_ref: Ref;
+  heldout_policy_ref: Ref;
+  evaluation_policy_ref: Ref;
+  evaluator_ref?: Ref;
+  created_at: string;
+  authority_status: "not_live";
+}
+
+export interface AarExperimentRecord extends BaseRecord {
+  record_kind: "aar_experiment";
+  aar_experiment_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  runnable_artifact_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  sandbox_runtime_instance_ref?: Ref;
+  trace_ref?: Ref;
+  submitted_at: string;
+  status: AarExperimentStatus;
+  authority_status: "not_live";
+}
+
+export interface TradingEvaluationScoreSummary {
+  total_score: number;
+  oos_score: number;
+  drawdown_score: number;
+  turnover_score: number;
+  cost_survival_score: number;
+  reproducibility_score: number;
+  complexity_penalty: number;
+}
+
+export interface TradingEvaluationResultRecord extends BaseRecord {
+  record_kind: "trading_evaluation_result";
+  trading_evaluation_result_id: string;
+  aar_experiment_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  evaluator_ref: Ref;
+  result_status: TradingEvaluationResultStatus;
+  evidence_disposition: EvidenceDisposition;
+  score_summary: TradingEvaluationScoreSummary;
+  metric_refs: Ref[];
+  evaluator_trace_ref: Ref;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
+  quarantine_reason?: TradingEvaluationQuarantineReason;
+  completed_at: string;
+  authority_status: "not_counted" | "counted";
+}
+
+export interface AarFindingRecord extends BaseRecord {
+  record_kind: "aar_finding";
+  aar_finding_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  aar_experiment_ref: Ref;
+  trading_evaluation_result_ref: Ref;
+  finding_kind: AarFindingKind;
+  summary: string;
+  supporting_record_refs: Ref[];
+  created_at: string;
+  authority_status: "research_trace_only";
+}
+
+export interface AarArtifactLineageRecord extends BaseRecord {
+  record_kind: "aar_artifact_lineage";
+  aar_artifact_lineage_id: string;
+  child_runnable_artifact_ref: Ref;
+  parent_runnable_artifact_ref?: Ref;
+  source_finding_refs: Ref[];
+  created_by_researcher_ref?: Ref;
+  created_at: string;
+  authority_status: "lineage_only";
+}
 
 export interface CapabilityPackageRecord extends BaseRecord {
   record_kind: "capability_package";
@@ -942,6 +1103,13 @@ export type FixtureRecord =
   | CapabilityMountRecord
   | ArtifactRuntimeContractRecord
   | RunnableArtifactRecord
+  | AarResearchDirectionRecord
+  | AarResearcherRecord
+  | AarExperimentRecord
+  | TradingEvaluationTaskRecord
+  | TradingEvaluationResultRecord
+  | AarFindingRecord
+  | AarArtifactLineageRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
