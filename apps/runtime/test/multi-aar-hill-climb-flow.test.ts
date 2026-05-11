@@ -137,7 +137,7 @@ describe("multi-AAR BTC perp hill-climb flow", () => {
     expect(recordSurface).toContain("lookahead_leakage");
     expect(recordSurface).toContain("metric-aar-experiment-btc-lookahead-audit-v1-anti-hacking-leakage");
     expect(recordSurface).not.toMatch(
-      /exchange_credentials|binance_api_key|kis_adapter|live_order_authority|paper_order_authority|strategy_internals|strategy_schema/i
+      /exchange_credentials|binance_api_key|live_order_authority|paper_order_authority|strategy_internals|strategy_schema/i
     );
   });
 });

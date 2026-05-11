@@ -13,6 +13,13 @@ import type {
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
   AgentSpecRecord,
+  AarProposalMaterializationAttemptRecord,
+  AarProposalMaterializationFailureReason,
+  AarProposalMaterializationInput,
+  AarProposalMaterializationOutcome,
+  AarProposalProviderAttribution,
+  AarProposalProviderFailureInput,
+  AarProposalProviderOutput,
   CandidateMaterializationAttemptIndexProjection,
   CandidateMaterializationAttemptReadModel,
   CandidateMaterializationAttemptRecord,
@@ -58,6 +65,7 @@ import type {
   PlaceholderSummary,
   ProgramManifestRecord,
   ProgramValidationRecord,
+  ProviderKind,
   ProviderProbeAttemptRecord,
   ProviderReadinessRecord,
   Ref,
@@ -127,6 +135,7 @@ export type LocalStoreErrorCode =
   | "invalid_aar_artifact_lineage_input"
   | "invalid_aar_artifact_proposal_input"
   | "invalid_aar_orchestration_run_input"
+  | "aar_proposal_materialization_reload_failed"
   | "aar_finding_not_found"
   | "aar_artifact_proposal_not_found"
   | "aar_artifact_lineage_not_found";
@@ -198,6 +207,7 @@ type Collection =
   | "aar-findings"
   | "aar-artifact-lineages"
   | "aar-artifact-proposals"
+  | "aar-proposal-materialization-attempts"
   | "aar-orchestration-runs";
 
 interface FixtureItem {
@@ -926,6 +936,186 @@ export class LocalStore {
   async listAarOrchestrationRuns(): Promise<AarOrchestrationRunRecord[]> {
     return (await this.readCollection<AarOrchestrationRunRecord>("aar-orchestration-runs"))
       .sort(compareAarOrchestrationRuns);
+  }
+
+  async listAarProposalMaterializationAttempts(): Promise<AarProposalMaterializationAttemptRecord[]> {
+    return (await this.readCollection<AarProposalMaterializationAttemptRecord>(
+      "aar-proposal-materialization-attempts"
+    )).sort(compareAarProposalMaterializationAttempts);
+  }
+
+  async materializeAarProposal(
+    input: AarProposalMaterializationInput
+  ): Promise<AarProposalMaterializationOutcome> {
+    const existing = await this.findAarProposalMaterializationAttemptByIdempotencyKey(
+      input.idempotency_key
+    );
+    if (existing) {
+      return this.toAarProposalMaterializationOutcome(existing);
+    }
+
+    const validationFailure = validateAarProposalMaterializationInput(input);
+    if (validationFailure) {
+      return this.recordAarProposalMaterializationFailure(input, validationFailure);
+    }
+
+    const providerResult = input.provider_result;
+    const output = providerResult.output;
+    const sourceFindings: AarFindingRecord[] = [];
+    for (const findingRef of output.source_finding_refs) {
+      const finding = await this.readOptionalRecord<AarFindingRecord>("aar-findings", findingRef.id);
+      if (!finding) {
+        return this.recordAarProposalMaterializationFailure(
+          input,
+          "aar_proposal_source_finding_not_found"
+        );
+      }
+      sourceFindings.push(finding);
+    }
+
+    for (const findingRef of output.anti_hacking_finding_refs ?? []) {
+      const finding = await this.readOptionalRecord<AarFindingRecord>("aar-findings", findingRef.id);
+      if (!finding) {
+        return this.recordAarProposalMaterializationFailure(
+          input,
+          "aar_proposal_source_finding_not_found"
+        );
+      }
+    }
+
+    const createdAt = input.created_at ?? new Date().toISOString();
+    const suffix = stableSuffix(input.idempotency_key);
+    const attemptId = `aar-proposal-materialization-attempt-${suffix}`;
+    const proposalRef = ref("aar_artifact_proposal", `aar-artifact-proposal-${suffix}`);
+    const runnableArtifactRef = ref("runnable_artifact", `aar-runnable-artifact-proposal-${suffix}`);
+    const lineageRef = ref("aar_artifact_lineage", `aar-artifact-lineage-${suffix}`);
+    const sourceFinding = sourceFindings[0];
+    const artifactPath = input.artifact_path ?? "fixtures/trader-systems/clock.py";
+
+    const attempt: AarProposalMaterializationAttemptRecord = {
+      record_kind: "aar_proposal_materialization_attempt",
+      version: 1,
+      aar_proposal_materialization_attempt_id: attemptId,
+      idempotency_key: input.idempotency_key,
+      provider: providerResult.provider,
+      agent_run_ref: providerResult.agent_run_ref,
+      agent_event_refs: providerResult.agent_event_refs,
+      trace_ref: providerResult.trace_ref,
+      provider_output_artifact_refs: providerResult.provider_output_artifact_refs,
+      debug_artifact_refs: providerResult.debug_artifact_refs,
+      status: "materialized",
+      validation_status: "accepted",
+      output_artifact_proposal_ref: proposalRef,
+      output_runnable_artifact_ref: runnableArtifactRef,
+      output_lineage_ref: lineageRef,
+      created_at: createdAt,
+      authority_status: "proposal_input_only"
+    };
+    const proposal: AarArtifactProposalRecord = stripUndefined({
+      record_kind: "aar_artifact_proposal",
+      version: 1,
+      aar_artifact_proposal_id: proposalRef.id,
+      researcher_ref: sourceFinding.researcher_ref,
+      research_direction_ref: sourceFinding.research_direction_ref,
+      trading_evaluation_task_ref: output.trading_evaluation_task_ref,
+      proposed_runnable_artifact_ref: runnableArtifactRef,
+      parent_runnable_artifact_ref: output.parent_runnable_artifact_ref,
+      source_finding_refs: output.source_finding_refs,
+      anti_hacking_finding_refs: output.anti_hacking_finding_refs,
+      proposal_summary: output.proposal_summary,
+      requested_change_summary: output.requested_change_summary,
+      expected_improvement_summary: output.expected_improvement_summary,
+      created_at: createdAt,
+      status: "proposed",
+      authority_status: "proposal_only"
+    } satisfies AarArtifactProposalRecord);
+    const runnableArtifact: RunnableArtifactRecord = {
+      record_kind: "runnable_artifact",
+      version: 1,
+      runnable_artifact_id: runnableArtifactRef.id,
+      artifact_kind: "python_file",
+      artifact_path: artifactPath,
+      artifact_digest: `sha256:${createHash("sha256").update(input.idempotency_key).digest("hex")}`,
+      runtime_kind: "python",
+      entrypoint: ["python", artifactPath],
+      declared_output_contract: {
+        contract_kind: "opaque_runtime_boundary",
+        declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat", "metric_snapshot"]
+      },
+      artifact_runtime_contract_ref: input.artifact_runtime_contract_ref,
+      secret_policy_ref: input.secret_policy_ref ?? ref("secret_policy", "no-raw-secrets"),
+      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "provider-aar-proposal"),
+      provenance_refs: [
+        proposalRef,
+        providerResult.agent_run_ref,
+        providerResult.trace_ref,
+        ...output.source_finding_refs
+      ],
+      status: "registered",
+      created_at: createdAt,
+      authority_status: "not_live"
+    };
+    const lineage: AarArtifactLineageRecord = stripUndefined({
+      record_kind: "aar_artifact_lineage",
+      version: 1,
+      aar_artifact_lineage_id: lineageRef.id,
+      child_runnable_artifact_ref: runnableArtifactRef,
+      parent_runnable_artifact_ref: output.parent_runnable_artifact_ref,
+      source_finding_refs: output.source_finding_refs,
+      created_by_researcher_ref: sourceFinding.researcher_ref,
+      created_at: createdAt,
+      authority_status: "lineage_only"
+    } satisfies AarArtifactLineageRecord);
+
+    await this.writeJson(this.itemPath("aar-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("aar-artifact-proposals", proposal.aar_artifact_proposal_id), proposal);
+    await this.writeJson(this.itemPath("runnable-artifacts", runnableArtifact.runnable_artifact_id), runnableArtifact);
+    await this.writeJson(this.itemPath("aar-artifact-lineages", lineage.aar_artifact_lineage_id), lineage);
+
+    return {
+      status: "materialized",
+      attempt,
+      proposal,
+      runnable_artifact: runnableArtifact,
+      lineage
+    };
+  }
+
+  async recordAarProposalProviderFailure(
+    input: AarProposalProviderFailureInput
+  ): Promise<AarProposalMaterializationOutcome> {
+    const existing = await this.findAarProposalMaterializationAttemptByIdempotencyKey(
+      input.idempotency_key
+    );
+    if (existing) {
+      return this.toAarProposalMaterializationOutcome(existing);
+    }
+
+    const providerResult = input.provider_result;
+    const attemptId = `aar-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
+    const attempt: AarProposalMaterializationAttemptRecord = {
+      record_kind: "aar_proposal_materialization_attempt",
+      version: 1,
+      aar_proposal_materialization_attempt_id: attemptId,
+      idempotency_key: input.idempotency_key,
+      provider: providerResult.provider,
+      agent_run_ref: providerResult.agent_run_ref,
+      agent_event_refs: providerResult.agent_event_refs,
+      trace_ref: providerResult.trace_ref,
+      provider_output_artifact_refs: providerResult.provider_output_artifact_refs,
+      debug_artifact_refs: providerResult.debug_artifact_refs,
+      status: "failed",
+      validation_status: "rejected",
+      failure_reason: providerResult.failure_reason,
+      created_at: input.created_at ?? new Date().toISOString(),
+      authority_status: "proposal_input_only"
+    };
+
+    await this.writeJson(this.itemPath("aar-proposal-materialization-attempts", attemptId), attempt);
+    return {
+      status: "failed",
+      attempt
+    };
   }
 
   async listRuntimeInstances(): Promise<SandboxRuntimeInstanceReadModel[]> {
@@ -2356,6 +2546,97 @@ export class LocalStore {
     };
   }
 
+  private async recordAarProposalMaterializationFailure(
+    input: AarProposalMaterializationInput,
+    failureReason: AarProposalMaterializationFailureReason
+  ): Promise<AarProposalMaterializationOutcome> {
+    const attemptId = `aar-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
+    const providerResult = input.provider_result;
+    const attempt: AarProposalMaterializationAttemptRecord = {
+      record_kind: "aar_proposal_materialization_attempt",
+      version: 1,
+      aar_proposal_materialization_attempt_id: attemptId,
+      idempotency_key: input.idempotency_key,
+      provider: providerResult.provider,
+      agent_run_ref: providerResult.agent_run_ref,
+      agent_event_refs: providerResult.agent_event_refs,
+      trace_ref: providerResult.trace_ref,
+      provider_output_artifact_refs: providerResult.provider_output_artifact_refs,
+      debug_artifact_refs: providerResult.debug_artifact_refs,
+      status: "failed",
+      validation_status: "rejected",
+      failure_reason: failureReason,
+      created_at: input.created_at ?? new Date().toISOString(),
+      authority_status: "proposal_input_only"
+    };
+
+    await this.writeJson(this.itemPath("aar-proposal-materialization-attempts", attemptId), attempt);
+    return {
+      status: "failed",
+      attempt
+    };
+  }
+
+  private async findAarProposalMaterializationAttemptByIdempotencyKey(
+    idempotencyKey: string
+  ): Promise<AarProposalMaterializationAttemptRecord | undefined> {
+    const attempts = await this.readCollection<AarProposalMaterializationAttemptRecord>(
+      "aar-proposal-materialization-attempts"
+    );
+    return attempts.find((attempt) => attempt.idempotency_key === idempotencyKey);
+  }
+
+  private async toAarProposalMaterializationOutcome(
+    attempt: AarProposalMaterializationAttemptRecord
+  ): Promise<AarProposalMaterializationOutcome> {
+    if (attempt.status === "failed") {
+      return {
+        status: "failed",
+        attempt
+      };
+    }
+
+    if (
+      !attempt.output_artifact_proposal_ref ||
+      !attempt.output_runnable_artifact_ref ||
+      !attempt.output_lineage_ref
+    ) {
+      throw new LocalStoreError(
+        "aar_proposal_materialization_reload_failed",
+        `AAR proposal materialization attempt ${attempt.aar_proposal_materialization_attempt_id} has no output refs`,
+        { attempt_id: attempt.aar_proposal_materialization_attempt_id }
+      );
+    }
+
+    const proposal = await this.readOptionalRecord<AarArtifactProposalRecord>(
+      "aar-artifact-proposals",
+      attempt.output_artifact_proposal_ref.id
+    );
+    const runnableArtifact = await this.readOptionalRecord<RunnableArtifactRecord>(
+      "runnable-artifacts",
+      attempt.output_runnable_artifact_ref.id
+    );
+    const lineage = await this.readOptionalRecord<AarArtifactLineageRecord>(
+      "aar-artifact-lineages",
+      attempt.output_lineage_ref.id
+    );
+    if (!proposal || !runnableArtifact || !lineage) {
+      throw new LocalStoreError(
+        "aar_proposal_materialization_reload_failed",
+        `AAR proposal materialization attempt ${attempt.aar_proposal_materialization_attempt_id} was not reloaded`,
+        { attempt_id: attempt.aar_proposal_materialization_attempt_id }
+      );
+    }
+
+    return {
+      status: "materialized",
+      attempt,
+      proposal,
+      runnable_artifact: runnableArtifact,
+      lineage
+    };
+  }
+
   private async findMaterializationAttemptByIdempotencyKey(
     idempotencyKey: string
   ): Promise<CandidateMaterializationAttemptRecord | undefined> {
@@ -3682,6 +3963,19 @@ function compareAarOrchestrationRuns(
   return a.aar_orchestration_run_id.localeCompare(b.aar_orchestration_run_id);
 }
 
+function compareAarProposalMaterializationAttempts(
+  a: AarProposalMaterializationAttemptRecord,
+  b: AarProposalMaterializationAttemptRecord
+): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.aar_proposal_materialization_attempt_id.localeCompare(
+    b.aar_proposal_materialization_attempt_id
+  );
+}
+
 function comparisonSetIncludesRun(
   comparisonSet: EvaluationComparisonSetRecord,
   evaluationRunRecordId: string
@@ -4491,6 +4785,10 @@ function isOptionalRefArray(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.every((item) => isRef(item)));
 }
 
+function isRequiredRefArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every((item) => isRef(item));
+}
+
 function isRef(value: unknown, recordKind?: string): value is Ref {
   if (!value || typeof value !== "object") {
     return false;
@@ -4653,6 +4951,83 @@ function evidenceClassificationRecordId(input: {
   ].join(":"))}`;
 }
 
+function validateAarProposalMaterializationInput(
+  input: AarProposalMaterializationInput
+): AarProposalMaterializationFailureReason | undefined {
+  if (!input || typeof input !== "object") {
+    return "provider_output_schema_invalid";
+  }
+
+  const raw = input as Partial<AarProposalMaterializationInput>;
+  const result = raw.provider_result as
+    | Partial<AarProposalMaterializationInput["provider_result"]>
+    | undefined;
+  const provider = (result?.provider ?? {}) as Partial<AarProposalProviderAttribution>;
+  const output = (result?.output ?? {}) as Partial<AarProposalProviderOutput>;
+
+  if (
+    !nonEmpty(raw.idempotency_key) ||
+    result?.status !== "succeeded" ||
+    !isProviderKind(provider.provider_kind) ||
+    !nonEmpty(provider.model) ||
+    !nonEmpty(provider.invocation_surface) ||
+    !isRef(result.agent_run_ref, "agent_run") ||
+    !Array.isArray(result.agent_event_refs) ||
+    result.agent_event_refs.length === 0 ||
+    !result.agent_event_refs.every((item) => isRef(item, "agent_event")) ||
+    !isRef(result.trace_ref, "trace_placeholder") ||
+    !isRequiredRefArray(result.provider_output_artifact_refs) ||
+    !isRequiredRefArray(result.debug_artifact_refs) ||
+    !nonEmpty(result.idempotency_key) ||
+    result.authority_status !== "proposal_input_only" ||
+    output.output_kind !== "aar_artifact_proposal_input" ||
+    !isRef(output.trading_evaluation_task_ref, "trading_evaluation_task") ||
+    !Array.isArray(output.source_finding_refs) ||
+    output.source_finding_refs.length === 0 ||
+    !output.source_finding_refs.every((item) => isRef(item, "aar_finding")) ||
+    (
+      output.anti_hacking_finding_refs !== undefined &&
+      (
+        !Array.isArray(output.anti_hacking_finding_refs) ||
+        !output.anti_hacking_finding_refs.every((item) => isRef(item, "aar_finding"))
+      )
+    ) ||
+    (
+      output.parent_runnable_artifact_ref !== undefined &&
+      !isRef(output.parent_runnable_artifact_ref, "runnable_artifact")
+    ) ||
+    !nonEmpty(output.proposal_summary) ||
+    !nonEmpty(output.requested_change_summary) ||
+    (
+      output.expected_improvement_summary !== undefined &&
+      !nonEmpty(output.expected_improvement_summary)
+    ) ||
+    !Array.isArray(output.proposed_artifact_refs) ||
+    output.proposed_artifact_refs.length === 0 ||
+    !output.proposed_artifact_refs.every((item) => isRef(item)) ||
+    output.output_authority_status !== "proposal_input_only" ||
+    (raw.artifact_path !== undefined && !nonEmpty(raw.artifact_path)) ||
+    (
+      raw.artifact_runtime_contract_ref !== undefined &&
+      !isRef(raw.artifact_runtime_contract_ref, "artifact_runtime_contract")
+    ) ||
+    (raw.secret_policy_ref !== undefined && !isRef(raw.secret_policy_ref, "secret_policy")) ||
+    (
+      raw.capability_policy_ref !== undefined &&
+      !isRef(raw.capability_policy_ref, "capability_policy")
+    ) ||
+    (raw.created_at !== undefined && !nonEmpty(raw.created_at))
+  ) {
+    return "provider_output_schema_invalid";
+  }
+
+  if (containsForbiddenAarProposalProviderOutputKey(result)) {
+    return "provider_output_rejected";
+  }
+
+  return undefined;
+}
+
 function validateCandidateMaterializationInput(
   input: CandidateMaterializationInput
 ): CandidateMaterializationFailureReason | undefined {
@@ -4699,6 +5074,47 @@ function validateCandidateMaterializationInput(
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isProviderKind(value: unknown): value is ProviderKind {
+  return (
+    value === "codex_cli" ||
+    value === "claude_code" ||
+    value === "local_process" ||
+    value === "fixture_only"
+  );
+}
+
+function containsForbiddenAarProposalProviderOutputKey(value: unknown): boolean {
+  const forbiddenKeys = new Set([
+    "evidence",
+    "evidence_record",
+    "counted_evidence",
+    "promotion",
+    "promotion_decision",
+    "live_approval",
+    "exchange_credentials",
+    "provider_api_key",
+    "gateway_signing_material",
+    "direct_exchange_order",
+    "paper_order_authority",
+    "live_order_authority",
+    "strategy_internals",
+    "strategy_schema",
+    "venue_adapter",
+    "venue_adapter_assumptions"
+  ]);
+
+  if (Array.isArray(value)) {
+    return value.some(containsForbiddenAarProposalProviderOutputKey);
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(([key, child]) => {
+      const normalized = key.toLowerCase();
+      return forbiddenKeys.has(normalized) || containsForbiddenAarProposalProviderOutputKey(child);
+    });
+  }
+  return false;
 }
 
 function containsForbiddenMaterializationKey(value: unknown): boolean {

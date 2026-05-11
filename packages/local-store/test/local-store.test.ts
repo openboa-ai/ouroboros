@@ -8,6 +8,9 @@ import type {
   AarArtifactProposalRecord,
   AarFindingRecord,
   AarOrchestrationRunRecord,
+  AarProposalMaterializationInput,
+  AarProposalProviderFailureInput,
+  AarProposalProviderResult,
   BoundedRuntimeAuthorityInput,
   CandidateMaterializationInput,
   EvidenceClassificationRecord,
@@ -1118,6 +1121,173 @@ describe("LocalStore", () => {
     );
   });
 
+  it("materializes accepted provider proposal output into owned AAR records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const finding = validAarFindingRecord();
+    const antiHackingFinding = validAntiHackingAarFindingRecord();
+    await store.recordAarFinding(finding);
+    await store.recordAarFinding(antiHackingFinding);
+
+    const input = validAarProposalMaterializationInput();
+    const outcome = await store.materializeAarProposal(input);
+    const repeated = await store.materializeAarProposal(input);
+
+    expect(outcome.status).toBe("materialized");
+    expect(repeated).toEqual(outcome);
+    if (outcome.status !== "materialized") {
+      throw new Error("expected materialized AAR proposal outcome");
+    }
+    expect(outcome.attempt).toMatchObject({
+      provider: input.provider_result.provider,
+      agent_run_ref: input.provider_result.agent_run_ref,
+      trace_ref: input.provider_result.trace_ref,
+      status: "materialized",
+      validation_status: "accepted",
+      authority_status: "proposal_input_only"
+    });
+    expect(outcome.proposal).toMatchObject({
+      researcher_ref: finding.researcher_ref,
+      research_direction_ref: finding.research_direction_ref,
+      source_finding_refs: [{ record_kind: "aar_finding", id: finding.aar_finding_id }],
+      anti_hacking_finding_refs: [
+        { record_kind: "aar_finding", id: antiHackingFinding.aar_finding_id }
+      ],
+      authority_status: "proposal_only"
+    });
+    expect(outcome.runnable_artifact).toMatchObject({
+      artifact_kind: "python_file",
+      artifact_path: "fixtures/trader-systems/clock.py",
+      status: "registered",
+      authority_status: "not_live"
+    });
+    expect(outcome.runnable_artifact.provenance_refs).toEqual([
+      { record_kind: "aar_artifact_proposal", id: outcome.proposal.aar_artifact_proposal_id },
+      input.provider_result.agent_run_ref,
+      input.provider_result.trace_ref,
+      { record_kind: "aar_finding", id: finding.aar_finding_id }
+    ]);
+    await expect(store.listAarProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
+    await expect(store.listAarArtifactProposals()).resolves.toEqual([outcome.proposal]);
+    await expect(store.getRunnableArtifact(outcome.runnable_artifact.runnable_artifact_id))
+      .resolves.toEqual(outcome.runnable_artifact);
+    await expect(store.listAarArtifactLineagesForArtifact(outcome.runnable_artifact.runnable_artifact_id))
+      .resolves.toEqual([outcome.lineage]);
+    expect(JSON.stringify(outcome)).not.toMatch(
+      /strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
+    );
+  });
+
+  it("records rejected provider proposal output without durable AAR proposal records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await store.recordAarFinding(validAarFindingRecord());
+    await store.recordAarFinding(validAntiHackingAarFindingRecord());
+
+    const acceptedInput = validAarProposalMaterializationInput();
+    const rejectedInput = {
+      ...acceptedInput,
+      provider_result: {
+        ...acceptedInput.provider_result,
+        output: {
+          ...acceptedInput.provider_result.output,
+          strategy_internals: { lookback: 14 }
+        }
+      }
+    } as unknown as AarProposalMaterializationInput;
+
+    const outcome = await store.materializeAarProposal(rejectedInput);
+
+    expect(outcome).toMatchObject({
+      status: "failed",
+      attempt: {
+        provider: acceptedInput.provider_result.provider,
+        agent_run_ref: acceptedInput.provider_result.agent_run_ref,
+        trace_ref: acceptedInput.provider_result.trace_ref,
+        status: "failed",
+        validation_status: "rejected",
+        failure_reason: "provider_output_rejected",
+        authority_status: "proposal_input_only"
+      }
+    });
+    await expect(store.listAarProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
+    await expect(store.listAarArtifactProposals()).resolves.toEqual([]);
+    await expect(store.listAarArtifactLineages()).resolves.toEqual([]);
+  });
+
+  it("rejects provider proposal output missing durable trace refs", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await store.recordAarFinding(validAarFindingRecord());
+    await store.recordAarFinding(validAntiHackingAarFindingRecord());
+
+    const acceptedInput = validAarProposalMaterializationInput();
+    const malformedInput = {
+      ...acceptedInput,
+      provider_result: {
+        ...acceptedInput.provider_result,
+        provider_output_artifact_refs: undefined
+      }
+    } as unknown as AarProposalMaterializationInput;
+
+    const outcome = await store.materializeAarProposal(malformedInput);
+
+    expect(outcome).toMatchObject({
+      status: "failed",
+      attempt: {
+        failure_reason: "provider_output_schema_invalid",
+        validation_status: "rejected",
+        authority_status: "proposal_input_only"
+      }
+    });
+    await expect(store.listAarArtifactProposals()).resolves.toEqual([]);
+    await expect(store.listAarArtifactLineages()).resolves.toEqual([]);
+  });
+
+  it("records failed AAR proposal provider output without partial durable writes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const input = validAarProposalProviderFailureInput();
+
+    const outcome = await store.recordAarProposalProviderFailure(input);
+    const repeated = await store.recordAarProposalProviderFailure(input);
+
+    expect(outcome).toEqual(repeated);
+    expect(outcome).toMatchObject({
+      status: "failed",
+      attempt: {
+        provider: input.provider_result.provider,
+        agent_run_ref: input.provider_result.agent_run_ref,
+        trace_ref: input.provider_result.trace_ref,
+        status: "failed",
+        validation_status: "rejected",
+        failure_reason: "aar_proposal_provider_failed",
+        authority_status: "proposal_input_only"
+      }
+    });
+    await expect(store.listAarProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
+    await expect(store.listAarArtifactProposals()).resolves.toEqual([]);
+    await expect(store.listAarArtifactLineages()).resolves.toEqual([]);
+  });
+
+  it("rejects provider proposal output with missing source findings before durable writes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await store.materializeAarProposal(validAarProposalMaterializationInput());
+
+    expect(outcome).toMatchObject({
+      status: "failed",
+      attempt: {
+        failure_reason: "aar_proposal_source_finding_not_found",
+        validation_status: "rejected",
+        authority_status: "proposal_input_only"
+      }
+    });
+    await expect(store.listAarArtifactProposals()).resolves.toEqual([]);
+    await expect(store.listAarArtifactLineages()).resolves.toEqual([]);
+  });
+
   it("rejects invalid AAR proposal and orchestration inputs without creating records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1487,6 +1657,19 @@ function validAarFindingRecord(): AarFindingRecord {
   };
 }
 
+function validAntiHackingAarFindingRecord(): AarFindingRecord {
+  return {
+    ...validAarFindingRecord(),
+    aar_finding_id: "aar-finding-btc-breakout-lookahead-001",
+    finding_kind: "anti_hacking_case",
+    summary: "Reject lookahead leakage while proposing the next opaque artifact.",
+    supporting_record_refs: [
+      { record_kind: "metric_snapshot", id: "metric-btc-breakout-lookahead-001" }
+    ],
+    created_at: "2026-05-11T00:01:00.000Z"
+  };
+}
+
 function validAarArtifactLineageRecord(): AarArtifactLineageRecord {
   return {
     record_kind: "aar_artifact_lineage",
@@ -1506,6 +1689,106 @@ function validAarArtifactLineageRecord(): AarArtifactLineageRecord {
     created_by_researcher_ref: { record_kind: "aar_researcher", id: "aar-researcher-breakout-001" },
     created_at: "2026-05-11T00:05:00.000Z",
     authority_status: "lineage_only"
+  };
+}
+
+function validAarProposalMaterializationInput(): AarProposalMaterializationInput {
+  const providerResult = validAarProposalProviderResult();
+  if (providerResult.status !== "succeeded") {
+    throw new Error("expected provider success");
+  }
+  return {
+    idempotency_key: "aar-proposal-materialization-provider-output-001",
+    provider_result: providerResult,
+    artifact_path: "fixtures/trader-systems/clock.py",
+    artifact_runtime_contract_ref: {
+      record_kind: "artifact_runtime_contract",
+      id: "artifact-runtime-contract-python-clock-v1"
+    },
+    secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+    capability_policy_ref: { record_kind: "capability_policy", id: "provider-aar-proposal" },
+    created_at: "2026-05-11T00:07:00.000Z"
+  };
+}
+
+function validAarProposalProviderFailureInput(): AarProposalProviderFailureInput {
+  const providerResult = {
+    status: "failed",
+    provider: {
+      provider_kind: "codex_cli",
+      model: "gpt-5.4",
+      invocation_surface: "codex exec --json --output-schema"
+    },
+    failure_reason: "aar_proposal_provider_failed",
+    agent_run_ref: { record_kind: "agent_run", id: "agent-run-aar-proposal-provider-failed-001" },
+    agent_event_refs: [
+      { record_kind: "agent_event", id: "agent-event-aar-proposal-provider-failed-001" }
+    ],
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-aar-proposal-provider-failed-001" },
+    provider_output_artifact_refs: [
+      { record_kind: "aar_proposal_provider_output_artifact", id: "provider-output-json-failed-001" }
+    ],
+    debug_artifact_refs: [
+      { record_kind: "debug_artifact", id: "provider-debug-aar-proposal-failed-001" }
+    ],
+    idempotency_key: "aar-proposal-provider-output-failed-001",
+    authority_status: "proposal_input_only"
+  } satisfies AarProposalProviderResult;
+  if (providerResult.status !== "failed") {
+    throw new Error("expected provider failure");
+  }
+  return {
+    idempotency_key: "aar-proposal-materialization-provider-output-failed-001",
+    provider_result: providerResult,
+    created_at: "2026-05-11T00:08:00.000Z"
+  };
+}
+
+function validAarProposalProviderResult(): AarProposalProviderResult {
+  return {
+    status: "succeeded",
+    provider: {
+      provider_kind: "codex_cli",
+      model: "gpt-5.4",
+      invocation_surface: "codex exec --json --output-schema"
+    },
+    output: {
+      output_kind: "aar_artifact_proposal_input",
+      trading_evaluation_task_ref: {
+        record_kind: "trading_evaluation_task",
+        id: "trading-evaluation-task-btc-breakout-001"
+      },
+      source_finding_refs: [
+        { record_kind: "aar_finding", id: "aar-finding-btc-breakout-oos-001" }
+      ],
+      anti_hacking_finding_refs: [
+        { record_kind: "aar_finding", id: "aar-finding-btc-breakout-lookahead-001" }
+      ],
+      parent_runnable_artifact_ref: {
+        record_kind: "runnable_artifact",
+        id: "runnable-artifact-btc-breakout-v1"
+      },
+      proposal_summary: "Provider output proposes the next opaque BTC breakout artifact input.",
+      requested_change_summary: "Reduce drawdown while preserving sealed evaluator constraints.",
+      expected_improvement_summary: "Improve held-out robustness under the same sealed evaluator.",
+      proposed_artifact_refs: [
+        { record_kind: "provider_artifact_hint", id: "provider-output-btc-breakout-v2" }
+      ],
+      output_authority_status: "proposal_input_only"
+    },
+    agent_run_ref: { record_kind: "agent_run", id: "agent-run-aar-proposal-provider-001" },
+    agent_event_refs: [
+      { record_kind: "agent_event", id: "agent-event-aar-proposal-provider-001" }
+    ],
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-aar-proposal-provider-001" },
+    provider_output_artifact_refs: [
+      { record_kind: "aar_proposal_provider_output_artifact", id: "provider-output-json-001" }
+    ],
+    debug_artifact_refs: [
+      { record_kind: "debug_artifact", id: "provider-debug-aar-proposal-001" }
+    ],
+    idempotency_key: "aar-proposal-provider-output-001",
+    authority_status: "proposal_input_only"
   };
 }
 

@@ -1,21 +1,50 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   AarArtifactLineageRecord,
   AarFindingRecord,
+  AarProposalProviderOutput,
+  ProviderKind,
   Ref,
   SandboxRuntimeInstanceRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
+import { FixtureAarProposalProviderAdapter } from "../src/aar-orchestration/fixture-aar-proposal-provider";
 import { planAarProposalFromLocalStore } from "../src/aar-orchestration/local-store-proposal-loop";
 import { evaluateRuntimeArtifactForAar } from "../src/aar-evaluation/runtime-artifact-submission";
+import { CodexCliAarProposalProviderAdapter } from "../src/providers/codex-cli-aar-proposal-provider";
+import type { AarProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
 let tmpDir: string;
+
+type ProviderBackedEvaluationProviderKind = Extract<
+  ProviderKind,
+  "codex_cli" | "fixture_only"
+>;
+
+interface ProviderBackedEvaluationCase {
+  label: string;
+  expectedProviderKind: ProviderBackedEvaluationProviderKind;
+  adapter: (input: ProviderBackedEvaluationFixtureInput) => AarProposalProviderAdapter;
+}
+
+const providerBackedEvaluationCases = [
+  {
+    label: "fixture-adapter",
+    expectedProviderKind: "fixture_only",
+    adapter: () => new FixtureAarProposalProviderAdapter()
+  },
+  {
+    label: "codex-cli-shaped-adapter",
+    expectedProviderKind: "codex_cli",
+    adapter: codexCliShapedAdapter
+  }
+] satisfies ProviderBackedEvaluationCase[];
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-proposal-evaluation-loop-"));
@@ -26,100 +55,232 @@ afterEach(async () => {
 });
 
 describe("AAR proposal to sealed evaluation loop", () => {
-  it("proves finding to proposal to opaque artifact to sealed evaluator result without venue authority", async () => {
-    const store = new LocalStore(tmpDir);
-    await store.initialize();
-    const task = btcPerpEvaluationTask();
-    const sourceFinding = aarFinding({
-      id: "aar-finding-btc-trend-next-001",
-      findingKind: "next_artifact_hint",
-      createdAt: "2026-05-11T17:00:00.000Z"
-    });
-    const antiHackingFinding = aarFinding({
-      id: "aar-finding-btc-lookahead-quarantine-001",
-      findingKind: "anti_hacking_case",
-      createdAt: "2026-05-11T17:00:01.000Z"
-    });
-    const priorLineage = artifactLineage(sourceFinding);
-    await store.recordAarFinding(sourceFinding);
-    await store.recordAarFinding(antiHackingFinding);
-    await store.recordAarArtifactLineage(priorLineage);
+  it.each(providerBackedEvaluationCases)(
+    "proves finding to provider-backed proposal to opaque artifact to sealed evaluator result through $label",
+    async (caseInput) => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const task = btcPerpEvaluationTask(caseInput.label);
+      const sourceFinding = aarFinding({
+        id: `aar-finding-btc-trend-next-${caseInput.label}`,
+        findingKind: "next_artifact_hint",
+        createdAt: "2026-05-11T17:00:00.000Z"
+      });
+      const antiHackingFinding = aarFinding({
+        id: `aar-finding-btc-lookahead-quarantine-${caseInput.label}`,
+        findingKind: "anti_hacking_case",
+        createdAt: "2026-05-11T17:00:01.000Z"
+      });
+      const priorLineage = artifactLineage(sourceFinding);
+      await store.recordAarFinding(sourceFinding);
+      await store.recordAarFinding(antiHackingFinding);
+      await store.recordAarArtifactLineage(priorLineage);
 
-    const proposalOutcome = await planAarProposalFromLocalStore({
-      store,
-      task,
-      idempotency_key: "proposal-to-evaluation-loop",
-      created_at: "2026-05-11T17:01:00.000Z"
-    });
-    const runtimeInstance = sandboxRuntimeInstance({
-      runnableArtifactRef: proposalOutcome.runnable_artifact,
-      instanceId: "sandbox-runtime-instance-proposed-artifact-001"
-    });
-    const evaluationOutcome = evaluateRuntimeArtifactForAar({
-      runtime_instance: runtimeInstance,
-      researcher_ref: proposalOutcome.proposal.researcher_ref,
-      research_direction_ref: proposalOutcome.proposal.research_direction_ref,
-      task,
-      experiment_id: "aar-experiment-proposed-artifact-001",
-      submitted_at: "2026-05-11T17:02:00.000Z"
-    });
+      const proposalOutcome = await planAarProposalFromLocalStore({
+        store,
+        task,
+        provider_adapter: caseInput.adapter({
+          task,
+          sourceFinding,
+          antiHackingFinding,
+          priorLineage,
+          outputPath: path.join(tmpDir, `${caseInput.label}-provider-output.json`)
+        }),
+        idempotency_key: "proposal-to-evaluation-loop",
+        created_at: "2026-05-11T17:01:00.000Z"
+      });
+      const runtimeInstance = sandboxRuntimeInstance({
+        runnableArtifactRef: proposalOutcome.runnable_artifact,
+        instanceId: "sandbox-runtime-instance-proposed-artifact-001"
+      });
+      const evaluationOutcome = evaluateRuntimeArtifactForAar({
+        runtime_instance: runtimeInstance,
+        researcher_ref: proposalOutcome.proposal.researcher_ref,
+        research_direction_ref: proposalOutcome.proposal.research_direction_ref,
+        task,
+        experiment_id: "aar-experiment-proposed-artifact-001",
+        submitted_at: "2026-05-11T17:02:00.000Z"
+      });
 
-    expect(proposalOutcome.run).toMatchObject({
-      status: "proposed",
-      authority_status: "research_only",
-      output_artifact_proposal_ref: {
-        record_kind: "aar_artifact_proposal",
-        id: proposalOutcome.proposal.aar_artifact_proposal_id
-      },
-      output_runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: proposalOutcome.runnable_artifact.runnable_artifact_id
-      }
-    });
-    await expect(store.listAarArtifactProposals()).resolves.toEqual([proposalOutcome.proposal]);
-    await expect(store.getRunnableArtifact(proposalOutcome.runnable_artifact.runnable_artifact_id))
-      .resolves.toEqual(proposalOutcome.runnable_artifact);
-    await expect(store.listAarOrchestrationRuns()).resolves.toEqual([proposalOutcome.run]);
-    expect(proposalOutcome.proposal.anti_hacking_finding_refs).toEqual([
-      { record_kind: "aar_finding", id: antiHackingFinding.aar_finding_id }
-    ]);
+      expect(proposalOutcome.run).toMatchObject({
+        status: "proposed",
+        authority_status: "research_only",
+        output_artifact_proposal_ref: {
+          record_kind: "aar_artifact_proposal",
+          id: proposalOutcome.proposal.aar_artifact_proposal_id
+        },
+        output_runnable_artifact_ref: {
+          record_kind: "runnable_artifact",
+          id: proposalOutcome.runnable_artifact.runnable_artifact_id
+        }
+      });
+      const materializationAttempts = await store.listAarProposalMaterializationAttempts();
+      expect(materializationAttempts).toHaveLength(1);
+      const materializationAttempt = materializationAttempts[0];
+      expect(materializationAttempt).toMatchObject({
+        provider: {
+          provider_kind: caseInput.expectedProviderKind
+        },
+        agent_run_ref: {
+          record_kind: "agent_run"
+        },
+        agent_event_refs: [
+          {
+            record_kind: "agent_event"
+          }
+        ],
+        trace_ref: {
+          record_kind: "trace_placeholder"
+        },
+        provider_output_artifact_refs: [
+          {
+            record_kind: "aar_proposal_provider_output_artifact"
+          }
+        ],
+        status: "materialized",
+        validation_status: "accepted",
+        output_artifact_proposal_ref: {
+          record_kind: "aar_artifact_proposal",
+          id: proposalOutcome.proposal.aar_artifact_proposal_id
+        },
+        output_runnable_artifact_ref: {
+          record_kind: "runnable_artifact",
+          id: proposalOutcome.runnable_artifact.runnable_artifact_id
+        },
+        output_lineage_ref: {
+          record_kind: "aar_artifact_lineage",
+          id: proposalOutcome.lineage.aar_artifact_lineage_id
+        },
+        authority_status: "proposal_input_only"
+      });
+      expect(proposalOutcome.run.trace_ref).toEqual(materializationAttempt.trace_ref);
+      expect(proposalOutcome.runnable_artifact.provenance_refs).toEqual(
+        expect.arrayContaining([
+          {
+            record_kind: "aar_artifact_proposal",
+            id: proposalOutcome.proposal.aar_artifact_proposal_id
+          },
+          materializationAttempt.agent_run_ref,
+          materializationAttempt.trace_ref,
+          { record_kind: "aar_finding", id: sourceFinding.aar_finding_id }
+        ])
+      );
+      expect(proposalOutcome.lineage.parent_runnable_artifact_ref).toEqual(
+        priorLineage.child_runnable_artifact_ref
+      );
+      await expect(store.listAarArtifactProposals()).resolves.toEqual([proposalOutcome.proposal]);
+      await expect(store.getRunnableArtifact(proposalOutcome.runnable_artifact.runnable_artifact_id))
+        .resolves.toEqual(proposalOutcome.runnable_artifact);
+      await expect(store.listAarOrchestrationRuns()).resolves.toEqual([proposalOutcome.run]);
+      expect(proposalOutcome.proposal.anti_hacking_finding_refs).toEqual([
+        { record_kind: "aar_finding", id: antiHackingFinding.aar_finding_id }
+      ]);
 
-    expect(evaluationOutcome.experiment).toMatchObject({
-      runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: proposalOutcome.runnable_artifact.runnable_artifact_id
-      },
-      sandbox_runtime_instance_ref: {
-        record_kind: "sandbox_runtime_instance",
-        id: runtimeInstance.sandbox_runtime_instance_id
-      },
-      status: "evaluated",
-      authority_status: "not_live"
-    });
-    expect(evaluationOutcome.evaluation_result).toMatchObject({
-      result_status: "accepted",
-      evidence_disposition: "not_counted",
-      authority_status: "not_counted",
-      evaluator_ref: {
-        record_kind: "external_evaluator",
-        id: "sealed-btc-perp-fixture-evaluator-v1"
-      }
-    });
-    expect(evaluationOutcome.evaluation_result.evaluator_trace_ref).not.toEqual(
-      evaluationOutcome.experiment.trace_ref
-    );
+      expect(evaluationOutcome.experiment).toMatchObject({
+        runnable_artifact_ref: {
+          record_kind: "runnable_artifact",
+          id: proposalOutcome.runnable_artifact.runnable_artifact_id
+        },
+        sandbox_runtime_instance_ref: {
+          record_kind: "sandbox_runtime_instance",
+          id: runtimeInstance.sandbox_runtime_instance_id
+        },
+        status: "evaluated",
+        authority_status: "not_live"
+      });
+      expect(evaluationOutcome.evaluation_result).toMatchObject({
+        result_status: "accepted",
+        evidence_disposition: "not_counted",
+        authority_status: "not_counted",
+        evaluator_ref: {
+          record_kind: "external_evaluator",
+          id: "sealed-btc-perp-fixture-evaluator-v1"
+        }
+      });
+      expect(evaluationOutcome.evaluation_result.evaluator_trace_ref).not.toEqual(
+        evaluationOutcome.experiment.trace_ref
+      );
+      expect(evaluationOutcome.experiment.trace_ref).not.toEqual(materializationAttempt.trace_ref);
+      expect(evaluationOutcome.evaluation_result.evaluator_trace_ref).not.toEqual(
+        materializationAttempt.trace_ref
+      );
 
-    const recordSurface = JSON.stringify({
-      proposalOutcome,
-      evaluationOutcome
-    });
-    expect(recordSurface).toContain("anti_hacking_finding_refs");
-    expect(recordSurface).toContain("trace-sealed-btc-perp-aar-experiment-proposed-artifact-001");
-    expect(recordSurface).not.toMatch(
-      /strategy_internals|strategy_schema|binance_credentials|binance_api_key|kis_adapter|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
-    );
-  });
+      const recordSurface = JSON.stringify({
+        materializationAttempt,
+        proposalOutcome,
+        evaluationOutcome
+      });
+      expect(recordSurface).toContain("anti_hacking_finding_refs");
+      expect(recordSurface).toContain("trace-sealed-btc-perp-aar-experiment-proposed-artifact-001");
+      expect(recordSurface).not.toContain("claude_code");
+      expect(recordSurface).not.toMatch(
+        /strategy_internals|strategy_schema|binance_credentials|binance_api_key|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence|venue_adapter/i
+      );
+    }
+  );
 });
+
+interface ProviderBackedEvaluationFixtureInput {
+  task: TradingEvaluationTaskRecord;
+  sourceFinding: AarFindingRecord;
+  antiHackingFinding: AarFindingRecord;
+  priorLineage: AarArtifactLineageRecord;
+  outputPath: string;
+}
+
+function codexCliShapedAdapter(
+  input: ProviderBackedEvaluationFixtureInput
+): AarProposalProviderAdapter {
+  return new CodexCliAarProposalProviderAdapter({
+    workingDirectory: tmpDir,
+    outputPath: input.outputPath,
+    model: "gpt-5.4-codex-shaped-test",
+    execFile: async (file, args) => {
+      if (args.length === 1 && args[0] === "--version") {
+        return {
+          stdout: "codex 5.4.0-test\n",
+          stderr: ""
+        };
+      }
+
+      expect(file).toBe("codex");
+      expect(args).toContain("exec");
+      expect(args).toContain("--json");
+      expect(args).toContain("--output-schema");
+      const outputPathIndex = args.indexOf("--output-last-message");
+      expect(outputPathIndex).toBeGreaterThan(-1);
+      const outputPath = args[outputPathIndex + 1];
+      expect(outputPath).toBe(input.outputPath);
+      await writeFile(outputPath, JSON.stringify(codexAarProposalProviderOutput(input)), "utf8");
+      return {
+        stdout: "{\"type\":\"final\"}\n",
+        stderr: ""
+      };
+    }
+  });
+}
+
+function codexAarProposalProviderOutput(
+  input: ProviderBackedEvaluationFixtureInput
+): AarProposalProviderOutput {
+  return {
+    output_kind: "aar_artifact_proposal_input",
+    trading_evaluation_task_ref: ref(
+      "trading_evaluation_task",
+      input.task.trading_evaluation_task_id
+    ),
+    source_finding_refs: [ref("aar_finding", input.sourceFinding.aar_finding_id)],
+    anti_hacking_finding_refs: [ref("aar_finding", input.antiHackingFinding.aar_finding_id)],
+    parent_runnable_artifact_ref: input.priorLineage.child_runnable_artifact_ref,
+    proposal_summary: "Codex-shaped AAR proposal input for the opaque runtime artifact loop.",
+    requested_change_summary: "Materialize the proposal through the provider-neutral adapter boundary.",
+    expected_improvement_summary: "Keep provider output trace-only while proving sealed BTC perp evaluation.",
+    proposed_artifact_refs: [
+      ref("codex_cli_aar_proposal_output", `output-${input.sourceFinding.aar_finding_id}`)
+    ],
+    output_authority_status: "proposal_input_only"
+  };
+}
 
 function aarFinding(input: {
   id: string;
@@ -182,11 +343,11 @@ function sandboxRuntimeInstance(input: {
   };
 }
 
-function btcPerpEvaluationTask(): TradingEvaluationTaskRecord {
+function btcPerpEvaluationTask(label = "001"): TradingEvaluationTaskRecord {
   return {
     record_kind: "trading_evaluation_task",
     version: 1,
-    trading_evaluation_task_id: "trading-evaluation-task-btc-perp-proposal-evaluation-001",
+    trading_evaluation_task_id: `trading-evaluation-task-btc-perp-proposal-evaluation-${label}`,
     market_scope: "binance_btc_perpetual_futures",
     stage: "backtest",
     data_window_ref: ref("data_window", "btc-perp-fixture-window"),

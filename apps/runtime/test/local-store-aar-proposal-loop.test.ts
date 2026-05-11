@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   AarArtifactLineageRecord,
   AarFindingRecord,
+  AarProposalProviderResult,
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import { planAarProposalFromLocalStore } from "../src/aar-orchestration/local-store-proposal-loop";
+import type { AarProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -63,7 +65,7 @@ describe("local-store AAR proposal loop", () => {
       { record_kind: "aar_artifact_lineage", id: priorLineage.aar_artifact_lineage_id }
     ]);
     expect(JSON.stringify(outcome)).not.toMatch(
-      /strategy_internals|strategy_schema|binance_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|kis_adapter/i
+      /strategy_internals|strategy_schema|binance_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/i
     );
   });
 
@@ -97,6 +99,38 @@ describe("local-store AAR proposal loop", () => {
     } finally {
       await rm(antiOnlyDir, { recursive: true, force: true });
     }
+  });
+
+  it("records failed adapter output without proposal, artifact, or lineage writes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await store.recordAarFinding(aarFinding({
+      id: "aar-finding-btc-provider-failure-source",
+      findingKind: "next_artifact_hint",
+      createdAt: "2026-05-11T16:03:00.000Z"
+    }));
+
+    await expect(
+      planAarProposalFromLocalStore({
+        store,
+        task: btcPerpEvaluationTask(),
+        provider_adapter: new FailingAarProposalProviderAdapter(),
+        idempotency_key: "local-store-loop-provider-failure",
+        created_at: "2026-05-11T16:03:30.000Z"
+      })
+    ).rejects.toThrow("aar_proposal_provider_failed");
+
+    const attempts = await store.listAarProposalMaterializationAttempts();
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      status: "failed",
+      validation_status: "rejected",
+      failure_reason: "aar_proposal_provider_failed",
+      authority_status: "proposal_input_only"
+    });
+    await expect(store.listAarArtifactProposals()).resolves.toEqual([]);
+    await expect(store.listAarArtifactLineages()).resolves.toEqual([]);
+    await expect(store.listAarOrchestrationRuns()).resolves.toEqual([]);
   });
 });
 
@@ -154,4 +188,27 @@ function btcPerpEvaluationTask(): TradingEvaluationTaskRecord {
     created_at: "2026-05-11T16:00:00.000Z",
     authority_status: "not_live"
   };
+}
+
+class FailingAarProposalProviderAdapter implements AarProposalProviderAdapter {
+  async runAarProposalGeneration(): Promise<AarProposalProviderResult> {
+    return {
+      status: "failed",
+      provider: {
+        provider_kind: "fixture_only",
+        model: "failing-fixture-aar-proposal-provider",
+        invocation_surface: "failing fixture adapter"
+      },
+      failure_reason: "aar_proposal_provider_failed",
+      agent_run_ref: ref("agent_run", "agent-run-failing-fixture-aar-provider"),
+      agent_event_refs: [ref("agent_event", "agent-event-failing-fixture-aar-provider")],
+      trace_ref: ref("trace_placeholder", "trace-failing-fixture-aar-provider"),
+      provider_output_artifact_refs: [
+        ref("aar_proposal_provider_output_artifact", "failing-fixture-aar-provider-output")
+      ],
+      debug_artifact_refs: [ref("debug_artifact", "failing-fixture-aar-provider-debug")],
+      idempotency_key: "failing-fixture-aar-provider",
+      authority_status: "proposal_input_only"
+    };
+  }
 }

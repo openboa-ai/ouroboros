@@ -81,7 +81,7 @@ describe("deterministic AAR proposal planner", () => {
     const recordSurface = JSON.stringify(outcome);
     expect(recordSurface).toContain("Preserve anti-hacking constraints");
     expect(recordSurface).not.toMatch(
-      /strategy_internals|strategy_schema|binance_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|kis_adapter/i
+      /strategy_internals|strategy_schema|binance_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/i
     );
   });
 

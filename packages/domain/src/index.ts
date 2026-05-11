@@ -10,9 +10,12 @@ export type NonAuthorityStatus =
   | "not_promoted"
   | "not_live";
 
-export type ProviderKind = "codex_cli" | "local_process" | "fixture_only";
+export type ProviderKind = "codex_cli" | "claude_code" | "local_process" | "fixture_only";
 
-export type AgentRunPurpose = "candidate_generation" | "candidate_generation_placeholder";
+export type AgentRunPurpose =
+  | "candidate_generation"
+  | "candidate_generation_placeholder"
+  | "aar_artifact_proposal_generation";
 
 export type AgentRunStatus = "succeeded" | "failed" | "rejected" | "fixture_placeholder";
 
@@ -296,6 +299,29 @@ export type CandidateMaterializationFailureReason =
 
 export type MaterializationValidationStatus = "accepted" | "rejected";
 
+export type AarProposalProviderFailureReason =
+  | "aar_proposal_provider_unavailable"
+  | "aar_proposal_provider_failed"
+  | "invalid_aar_proposal_request"
+  | "no_eligible_aar_finding"
+  | "unsupported_aar_proposal_task"
+  | "unsupported_aar_proposal_provider";
+
+export type AarProposalProviderOutputAuthorityStatus = "proposal_input_only";
+
+export type AarProposalProviderReadinessStatus =
+  | "active_verified"
+  | "blocked_or_not_installed"
+  | "candidate_unverified";
+
+export type AarProposalMaterializationStatus = "materialized" | "failed";
+
+export type AarProposalMaterializationFailureReason =
+  | "provider_output_schema_invalid"
+  | "provider_output_rejected"
+  | "aar_proposal_source_finding_not_found"
+  | AarProposalProviderFailureReason;
+
 export interface FixtureNotice {
   mode: FixtureMode;
   label: string;
@@ -575,6 +601,122 @@ export interface AarOrchestrationRunRecord extends BaseRecord {
   status: AarOrchestrationRunStatus;
   authority_status: "research_only";
 }
+
+export interface AarProposalProviderAttribution {
+  provider_kind: ProviderKind;
+  model: string;
+  invocation_surface: string;
+}
+
+export interface AarProposalProviderProbeResult extends AarProposalProviderAttribution {
+  readiness_status: AarProposalProviderReadinessStatus;
+  supported_purposes: Array<Extract<AgentRunPurpose, "aar_artifact_proposal_generation">>;
+  provider_readiness_ref?: Ref;
+  provider_probe_attempt_ref?: Ref;
+  failure_reason?: AarProposalProviderFailureReason;
+}
+
+export interface AarProposalProviderRequest {
+  idempotency_key: string;
+  task: TradingEvaluationTaskRecord;
+  findings: AarFindingRecord[];
+  existing_lineages?: AarArtifactLineageRecord[];
+  existing_lineage_refs?: Ref[];
+  parent_runnable_artifact_ref?: Ref;
+  input_artifact_refs?: Ref[];
+  requested_output_contract_ref?: Ref;
+  agent_run_ref: Ref;
+  trace_ref: Ref;
+  created_at?: string;
+}
+
+export interface AarProposalProviderOutput {
+  output_kind: "aar_artifact_proposal_input";
+  trading_evaluation_task_ref: Ref;
+  source_finding_refs: Ref[];
+  anti_hacking_finding_refs?: Ref[];
+  parent_runnable_artifact_ref?: Ref;
+  proposal_summary: string;
+  requested_change_summary: string;
+  expected_improvement_summary?: string;
+  proposed_artifact_refs: Ref[];
+  output_authority_status: AarProposalProviderOutputAuthorityStatus;
+}
+
+export type AarProposalProviderResult =
+  | {
+      status: "succeeded";
+      provider: AarProposalProviderAttribution;
+      output: AarProposalProviderOutput;
+      agent_run_ref: Ref;
+      agent_event_refs: Ref[];
+      trace_ref: Ref;
+      provider_output_artifact_refs: Ref[];
+      debug_artifact_refs: Ref[];
+      idempotency_key: string;
+      authority_status: AarProposalProviderOutputAuthorityStatus;
+    }
+  | {
+      status: "failed";
+      provider: AarProposalProviderAttribution;
+      failure_reason: AarProposalProviderFailureReason;
+      agent_run_ref: Ref;
+      agent_event_refs: Ref[];
+      trace_ref: Ref;
+      provider_output_artifact_refs: Ref[];
+      debug_artifact_refs: Ref[];
+      idempotency_key: string;
+      authority_status: AarProposalProviderOutputAuthorityStatus;
+    };
+
+export interface AarProposalMaterializationInput {
+  idempotency_key: string;
+  provider_result: Extract<AarProposalProviderResult, { status: "succeeded" }>;
+  artifact_path?: string;
+  artifact_runtime_contract_ref?: Ref;
+  secret_policy_ref?: Ref;
+  capability_policy_ref?: Ref;
+  created_at?: string;
+}
+
+export interface AarProposalProviderFailureInput {
+  idempotency_key: string;
+  provider_result: Extract<AarProposalProviderResult, { status: "failed" }>;
+  created_at?: string;
+}
+
+export interface AarProposalMaterializationAttemptRecord extends BaseRecord {
+  record_kind: "aar_proposal_materialization_attempt";
+  aar_proposal_materialization_attempt_id: string;
+  idempotency_key: string;
+  provider: AarProposalProviderAttribution;
+  agent_run_ref: Ref;
+  agent_event_refs: Ref[];
+  trace_ref: Ref;
+  provider_output_artifact_refs: Ref[];
+  debug_artifact_refs: Ref[];
+  status: AarProposalMaterializationStatus;
+  validation_status: MaterializationValidationStatus;
+  failure_reason?: AarProposalMaterializationFailureReason;
+  output_artifact_proposal_ref?: Ref;
+  output_runnable_artifact_ref?: Ref;
+  output_lineage_ref?: Ref;
+  created_at: string;
+  authority_status: AarProposalProviderOutputAuthorityStatus;
+}
+
+export type AarProposalMaterializationOutcome =
+  | {
+      status: "materialized";
+      attempt: AarProposalMaterializationAttemptRecord;
+      proposal: AarArtifactProposalRecord;
+      runnable_artifact: RunnableArtifactRecord;
+      lineage: AarArtifactLineageRecord;
+    }
+  | {
+      status: "failed";
+      attempt: AarProposalMaterializationAttemptRecord;
+    };
 
 export interface CapabilityPackageRecord extends BaseRecord {
   record_kind: "capability_package";
@@ -1160,6 +1302,7 @@ export type FixtureRecord =
   | AarArtifactLineageRecord
   | AarArtifactProposalRecord
   | AarOrchestrationRunRecord
+  | AarProposalMaterializationAttemptRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
