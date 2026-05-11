@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
 import type {
+  AarArtifactLineageRecord,
+  AarFindingRecord,
   BoundedRuntimeAuthorityInput,
   CandidateMaterializationInput,
   EvidenceClassificationRecord,
@@ -965,6 +967,109 @@ describe("LocalStore", () => {
     await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(0);
   });
 
+  it("records and reloads AAR findings as research trace only", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const finding = validAarFindingRecord();
+
+    const recorded = await store.recordAarFinding(finding);
+    const repeated = await store.recordAarFinding(finding);
+
+    expect(repeated).toEqual(recorded);
+    expect(recorded).toMatchObject({
+      record_kind: "aar_finding",
+      finding_kind: "positive_result",
+      authority_status: "research_trace_only"
+    });
+    await expect(store.listAarFindingsForExperiment("aar-experiment-btc-breakout-001")).resolves.toEqual([
+      finding
+    ]);
+    await expect(store.listAarFindingsForExperiment("aar-experiment-other")).resolves.toEqual([]);
+
+    const persisted = await readStoreJson<AarFindingRecord>(
+      "aar-findings",
+      "items",
+      `${finding.aar_finding_id}.json`
+    );
+    expect(persisted).toEqual(finding);
+    expect(JSON.stringify(persisted)).not.toMatch(/promotion_decision_ref|live_order_authority|exchange_credentials/);
+
+    const reloadedStore = new LocalStore(tmpDir);
+    await expect(reloadedStore.listAarFindings()).resolves.toEqual([finding]);
+  });
+
+  it("records AAR artifact lineage linked to stored findings", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const finding = validAarFindingRecord();
+    const lineage = validAarArtifactLineageRecord();
+
+    await store.recordAarFinding(finding);
+    const recorded = await store.recordAarArtifactLineage(lineage);
+    const repeated = await store.recordAarArtifactLineage(lineage);
+
+    expect(repeated).toEqual(recorded);
+    expect(recorded).toMatchObject({
+      record_kind: "aar_artifact_lineage",
+      child_runnable_artifact_ref: {
+        record_kind: "runnable_artifact",
+        id: "runnable-artifact-btc-breakout-v2"
+      },
+      parent_runnable_artifact_ref: {
+        record_kind: "runnable_artifact",
+        id: "runnable-artifact-btc-breakout-v1"
+      },
+      source_finding_refs: [
+        { record_kind: "aar_finding", id: finding.aar_finding_id }
+      ],
+      authority_status: "lineage_only"
+    });
+    await expect(store.listAarArtifactLineagesForArtifact("runnable-artifact-btc-breakout-v2"))
+      .resolves.toEqual([lineage]);
+    await expect(store.listAarArtifactLineagesForArtifact("runnable-artifact-btc-breakout-v1"))
+      .resolves.toEqual([lineage]);
+
+    const persisted = await readStoreJson<AarArtifactLineageRecord>(
+      "aar-artifact-lineages",
+      "items",
+      `${lineage.aar_artifact_lineage_id}.json`
+    );
+    expect(persisted).toEqual(lineage);
+    expect(JSON.stringify(persisted)).not.toMatch(/strategy_internals|live_order_authority|exchange_credentials/);
+  });
+
+  it("rejects invalid AAR finding and lineage records without creating records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    await expectStoreError(
+      store.recordAarFinding({
+        ...validAarFindingRecord(),
+        authority_status: "counted" as "research_trace_only"
+      }),
+      "invalid_aar_finding_input"
+    );
+    await expectStoreError(
+      store.recordAarArtifactLineage({
+        ...validAarArtifactLineageRecord(),
+        source_finding_refs: [{ record_kind: "aar_finding", id: "missing-aar-finding" }]
+      }),
+      "aar_finding_not_found"
+    );
+    await expectStoreError(
+      store.recordAarArtifactLineage({
+        ...validAarArtifactLineageRecord(),
+        child_runnable_artifact_ref: {
+          record_kind: "provider_output_artifact",
+          id: "not-runnable"
+        }
+      } as unknown as AarArtifactLineageRecord),
+      "invalid_aar_artifact_lineage_input"
+    );
+    await expect(countJsonFiles("aar-findings", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("aar-artifact-lineages", "items")).resolves.toBe(0);
+  });
+
   it("keeps evaluation provider output as trace material until explicitly sealed", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1266,6 +1371,54 @@ function validRuntimeControlAuditInput(candidateVersionId: string): RuntimeContr
       message: "Paper runtime paused through runtime-control audit chain."
     },
     created_at: "2026-05-10T00:10:00.000Z"
+  };
+}
+
+function validAarFindingRecord(): AarFindingRecord {
+  return {
+    record_kind: "aar_finding",
+    version: 1,
+    aar_finding_id: "aar-finding-btc-breakout-oos-001",
+    researcher_ref: { record_kind: "aar_researcher", id: "aar-researcher-breakout-001" },
+    research_direction_ref: {
+      record_kind: "aar_research_direction",
+      id: "aar-research-direction-breakout-001"
+    },
+    aar_experiment_ref: { record_kind: "aar_experiment", id: "aar-experiment-btc-breakout-001" },
+    trading_evaluation_result_ref: {
+      record_kind: "trading_evaluation_result",
+      id: "trading-evaluation-result-btc-breakout-001"
+    },
+    finding_kind: "positive_result",
+    summary: "Breakout artifact improved held-out BTC perp score after fees without gaining authority.",
+    supporting_record_refs: [
+      { record_kind: "trading_evaluation_result", id: "trading-evaluation-result-btc-breakout-001" },
+      { record_kind: "metric_snapshot", id: "metric-btc-breakout-oos-001" }
+    ],
+    created_at: "2026-05-11T00:00:00.000Z",
+    authority_status: "research_trace_only"
+  };
+}
+
+function validAarArtifactLineageRecord(): AarArtifactLineageRecord {
+  return {
+    record_kind: "aar_artifact_lineage",
+    version: 1,
+    aar_artifact_lineage_id: "aar-artifact-lineage-btc-breakout-v2",
+    child_runnable_artifact_ref: {
+      record_kind: "runnable_artifact",
+      id: "runnable-artifact-btc-breakout-v2"
+    },
+    parent_runnable_artifact_ref: {
+      record_kind: "runnable_artifact",
+      id: "runnable-artifact-btc-breakout-v1"
+    },
+    source_finding_refs: [
+      { record_kind: "aar_finding", id: "aar-finding-btc-breakout-oos-001" }
+    ],
+    created_by_researcher_ref: { record_kind: "aar_researcher", id: "aar-researcher-breakout-001" },
+    created_at: "2026-05-11T00:05:00.000Z",
+    authority_status: "lineage_only"
   };
 }
 

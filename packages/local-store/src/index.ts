@@ -5,6 +5,8 @@ import type {
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
+  AarArtifactLineageRecord,
+  AarFindingRecord,
   ArtifactRuntimeContractRecord,
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
@@ -117,7 +119,10 @@ export type LocalStoreErrorCode =
   | "runtime_instance_not_found"
   | "runtime_authority_reload_failed"
   | "runtime_control_reload_failed"
-  | "runtime_instance_reload_failed";
+  | "runtime_instance_reload_failed"
+  | "invalid_aar_finding_input"
+  | "invalid_aar_artifact_lineage_input"
+  | "aar_finding_not_found";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -182,7 +187,9 @@ type Collection =
   | "sandbox-runtime-instances"
   | "runtime-instance-logs"
   | "runtime-heartbeats"
-  | "sandbox-command-evidence";
+  | "sandbox-command-evidence"
+  | "aar-findings"
+  | "aar-artifact-lineages";
 
 interface FixtureItem {
   collection: Collection;
@@ -752,6 +759,61 @@ export class LocalStore {
 
   async getRunnableArtifact(runnableArtifactId: string): Promise<RunnableArtifactRecord | undefined> {
     return this.readOptionalRecord<RunnableArtifactRecord>("runnable-artifacts", runnableArtifactId);
+  }
+
+  async recordAarFinding(finding: AarFindingRecord): Promise<AarFindingRecord> {
+    if (!isAarFindingRecord(finding)) {
+      throw new LocalStoreError(
+        "invalid_aar_finding_input",
+        "invalid AAR finding input",
+        { aar_finding_id: (finding as Partial<AarFindingRecord> | undefined)?.aar_finding_id }
+      );
+    }
+    await this.writeJson(this.itemPath("aar-findings", finding.aar_finding_id), finding);
+    return finding;
+  }
+
+  async listAarFindings(): Promise<AarFindingRecord[]> {
+    return (await this.readCollection<AarFindingRecord>("aar-findings")).sort(compareAarFindings);
+  }
+
+  async listAarFindingsForExperiment(aarExperimentId: string): Promise<AarFindingRecord[]> {
+    return (await this.listAarFindings()).filter(
+      (finding) => finding.aar_experiment_ref.id === aarExperimentId
+    );
+  }
+
+  async recordAarArtifactLineage(
+    lineage: AarArtifactLineageRecord
+  ): Promise<AarArtifactLineageRecord> {
+    if (!isAarArtifactLineageRecord(lineage)) {
+      throw new LocalStoreError(
+        "invalid_aar_artifact_lineage_input",
+        "invalid AAR artifact lineage input",
+        {
+          aar_artifact_lineage_id: (lineage as Partial<AarArtifactLineageRecord> | undefined)
+            ?.aar_artifact_lineage_id
+        }
+      );
+    }
+    await this.assertAarArtifactLineageLinks(lineage);
+    await this.writeJson(this.itemPath("aar-artifact-lineages", lineage.aar_artifact_lineage_id), lineage);
+    return lineage;
+  }
+
+  async listAarArtifactLineages(): Promise<AarArtifactLineageRecord[]> {
+    return (await this.readCollection<AarArtifactLineageRecord>("aar-artifact-lineages"))
+      .sort(compareAarArtifactLineages);
+  }
+
+  async listAarArtifactLineagesForArtifact(
+    runnableArtifactId: string
+  ): Promise<AarArtifactLineageRecord[]> {
+    return (await this.listAarArtifactLineages()).filter(
+      (lineage) =>
+        lineage.child_runnable_artifact_ref.id === runnableArtifactId ||
+        lineage.parent_runnable_artifact_ref?.id === runnableArtifactId
+    );
   }
 
   async listRuntimeInstances(): Promise<SandboxRuntimeInstanceReadModel[]> {
@@ -2848,6 +2910,19 @@ export class LocalStore {
     }
   }
 
+  private async assertAarArtifactLineageLinks(lineage: AarArtifactLineageRecord): Promise<void> {
+    for (const findingRef of lineage.source_finding_refs) {
+      const finding = await this.readOptionalRecord<AarFindingRecord>("aar-findings", findingRef.id);
+      if (!finding) {
+        throw new LocalStoreError(
+          "aar_finding_not_found",
+          `AAR finding ${findingRef.id} not found`,
+          { aar_finding_id: findingRef.id, aar_artifact_lineage_id: lineage.aar_artifact_lineage_id }
+        );
+      }
+    }
+  }
+
   private async writeRuntimeInstanceObservations(
     input: RuntimeInstanceObservationInput
   ): Promise<void> {
@@ -3448,6 +3523,25 @@ function compareRuntimeAuditEvents(
     return timeCompare;
   }
   return a.runtime_audit_event_id.localeCompare(b.runtime_audit_event_id);
+}
+
+function compareAarFindings(a: AarFindingRecord, b: AarFindingRecord): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.aar_finding_id.localeCompare(b.aar_finding_id);
+}
+
+function compareAarArtifactLineages(
+  a: AarArtifactLineageRecord,
+  b: AarArtifactLineageRecord
+): number {
+  const timeCompare = a.created_at.localeCompare(b.created_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.aar_artifact_lineage_id.localeCompare(b.aar_artifact_lineage_id);
 }
 
 function comparisonSetIncludesRun(
@@ -4051,6 +4145,60 @@ function isTraderSystemRuntimeLifecycleStatus(
     value === "killed" ||
     value === "review_required" ||
     value === "fixture_placeholder"
+  );
+}
+
+function isAarFindingRecord(value: unknown): value is AarFindingRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<AarFindingRecord>;
+  return (
+    raw.record_kind === "aar_finding" &&
+    raw.version === 1 &&
+    nonEmpty(raw.aar_finding_id) &&
+    isRef(raw.researcher_ref, "aar_researcher") &&
+    isRef(raw.research_direction_ref, "aar_research_direction") &&
+    isRef(raw.aar_experiment_ref, "aar_experiment") &&
+    isRef(raw.trading_evaluation_result_ref, "trading_evaluation_result") &&
+    isAarFindingKind(raw.finding_kind) &&
+    nonEmpty(raw.summary) &&
+    Array.isArray(raw.supporting_record_refs) &&
+    raw.supporting_record_refs.every((item) => isRef(item)) &&
+    nonEmpty(raw.created_at) &&
+    raw.authority_status === "research_trace_only"
+  );
+}
+
+function isAarArtifactLineageRecord(value: unknown): value is AarArtifactLineageRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<AarArtifactLineageRecord>;
+  return (
+    raw.record_kind === "aar_artifact_lineage" &&
+    raw.version === 1 &&
+    nonEmpty(raw.aar_artifact_lineage_id) &&
+    isRef(raw.child_runnable_artifact_ref, "runnable_artifact") &&
+    (raw.parent_runnable_artifact_ref === undefined ||
+      isRef(raw.parent_runnable_artifact_ref, "runnable_artifact")) &&
+    Array.isArray(raw.source_finding_refs) &&
+    raw.source_finding_refs.length > 0 &&
+    raw.source_finding_refs.every((item) => isRef(item, "aar_finding")) &&
+    (raw.created_by_researcher_ref === undefined ||
+      isRef(raw.created_by_researcher_ref, "aar_researcher")) &&
+    nonEmpty(raw.created_at) &&
+    raw.authority_status === "lineage_only"
+  );
+}
+
+function isAarFindingKind(value: unknown): boolean {
+  return (
+    value === "positive_result" ||
+    value === "negative_result" ||
+    value === "failure_analysis" ||
+    value === "anti_hacking_case" ||
+    value === "next_artifact_hint"
   );
 }
 
