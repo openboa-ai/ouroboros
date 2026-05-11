@@ -23,6 +23,7 @@ apply, direct create probes, or any cleanup against existing sandboxes. It recor
 - host macOS, architecture, and hypervisor support probes
 - Homebrew sbx stable/nightly metadata when brew is available
 - sbx code-signing, Gatekeeper assessment, and quarantine metadata when available
+- macOS syspolicyd and DetachedSignatures hints when available
 - sbx create --help and sbx template ls runtime-create context
 - sbx ls --json runtime-control probe
 - redacted daemon log lines that mention runtime-create VM start failures
@@ -204,6 +205,12 @@ const sbxLibkrunGatekeeper = sbxLibkrunPath
 const sbxQuarantineMetadata = sbxCaskRoot
   ? await captureSbxPackageQuarantineMetadata(sbxCaskRoot)
   : skippedCapture("sbx package quarantine metadata", "sbx_cask_root=unknown");
+const detachedSignaturesPathCheck = await capture(
+  "host DetachedSignatures path check",
+  ["ls", "-ld", "/private/var/db/DetachedSignatures", "/var/db/DetachedSignatures"],
+  { allowFailure: true }
+);
+const syspolicyLogHints = await captureSyspolicyLogHints();
 const createHelp = await capture("sbx create help runtime-create context", [sbxPath, "create", "--help"], {
   allowFailure: true,
   env: sbxCommandEnv()
@@ -275,6 +282,8 @@ const result = classify({
   sbxShimGatekeeper,
   sbxLibkrunGatekeeper,
   sbxQuarantineMetadata,
+  detachedSignaturesPathCheck,
+  syspolicyLogHints,
   createHelp,
   templateList,
   listJson,
@@ -345,6 +354,48 @@ async function captureSbxPackageQuarantineMetadata(sbxCaskRoot) {
   line("");
   line("stdout:");
   fence(summary);
+  if (result.stderr) {
+    line("");
+    line("stderr:");
+    fence(redactLocalPath(result.stderr));
+  }
+  line(`exit_code=${result.code}`);
+  if (result.timedOut) {
+    line(`timed_out=true timeout_ms=${commandTimeoutMs}`);
+  }
+  line("");
+  return { ...result, stdout: summary, stderr: redactLocalPath(result.stderr) };
+}
+
+async function captureSyspolicyLogHints() {
+  const label = "host syspolicyd signing assessment hints";
+  const predicate = [
+    'process == "syspolicyd"',
+    "AND",
+    "(",
+    'eventMessage CONTAINS[c] "qtn_proc"',
+    "OR",
+    'eventMessage CONTAINS[c] "dispatch_mig_server"',
+    "OR",
+    'eventMessage CONTAINS[c] "DetachedSignatures"',
+    "OR",
+    'eventMessage CONTAINS[c] "certificates array"',
+    ")"
+  ].join(" ");
+  line(`## ${label}`);
+  line("");
+  line(`$ log show --style compact --last 40m --predicate ${JSON.stringify(predicate)} --info`);
+  const result = await run(
+    ["log", "show", "--style", "compact", "--last", "40m", "--predicate", predicate, "--info"],
+    commandTimeoutMs,
+    process.env
+  );
+  const summary = summarizeSyspolicyLogHints(result.stdout);
+  if (summary) {
+    line("");
+    line("stdout:");
+    fence(summary);
+  }
   if (result.stderr) {
     line("");
     line("stderr:");
@@ -431,6 +482,22 @@ function summarizePackageXattrs(output) {
     : "sbx_package_quarantine_or_provenance=none";
 }
 
+function summarizeSyspolicyLogHints(output) {
+  const hints = output
+    .split(/\r?\n/)
+    .filter((entry) => (
+      entry.includes("Unable to initialize qtn_proc") ||
+      entry.includes("dispatch_mig_server returned") ||
+      entry.includes("DetachedSignatures") ||
+      entry.includes("Unable to get certificates array")
+    ))
+    .map(redactLocalPath);
+  if (hints.length === 0) {
+    return "syspolicyd_signing_assessment_hints=none";
+  }
+  return hints.slice(-40).join("\n");
+}
+
 function classify({
   version,
   diagnose,
@@ -450,6 +517,8 @@ function classify({
   sbxShimGatekeeper,
   sbxLibkrunGatekeeper,
   sbxQuarantineMetadata,
+  detachedSignaturesPathCheck,
+  syspolicyLogHints,
   createHelp,
   templateList,
   listJson,
@@ -483,6 +552,8 @@ function classify({
     sbxShimGatekeeper,
     sbxLibkrunGatekeeper,
     sbxQuarantineMetadata,
+    detachedSignaturesPathCheck,
+    syspolicyLogHints,
     createHelp,
     templateList,
     listJson,

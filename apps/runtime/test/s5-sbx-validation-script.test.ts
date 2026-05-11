@@ -342,6 +342,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("host macOS, architecture, and hypervisor support probes");
     expect(result.stdout).toContain("Homebrew sbx stable/nightly metadata");
     expect(result.stdout).toContain("sbx code-signing, Gatekeeper assessment, and quarantine metadata");
+    expect(result.stdout).toContain("macOS syspolicyd and DetachedSignatures hints");
     expect(result.stdout).toContain("sbx create --help and sbx template ls runtime-create context");
     expect(result.stdout).toContain("sbx ls --json runtime-control probe");
     expect(result.stdout).toContain("redacted daemon log lines that mention runtime-create VM start failures");
@@ -479,6 +480,12 @@ describe("S5 sbx validation harness", () => {
       expect(report).toContain("com.apple.quarantine: present");
       expect(report).not.toContain("0381;test");
       expect(report).not.toContain("SHOULD_NOT_APPEAR");
+      expect(report).toContain("host DetachedSignatures path check");
+      expect(report).toContain("/private/var/db/DetachedSignatures: No such file or directory");
+      expect(report).toContain("host syspolicyd signing assessment hints");
+      expect(report).toContain("Unable to initialize qtn_proc: 3");
+      expect(report).toContain("dispatch_mig_server returned 268435459");
+      expect(report).toContain("Unable to get certificates array: (null)");
       expect(report).toContain("sbx create help runtime-create context");
       expect(report).toContain("--cpus int");
       expect(report).toContain("sbx template list runtime-create context");
@@ -2302,6 +2309,8 @@ async function writeFakeReportHostDiagnosticScripts(tempDir: string): Promise<vo
   await writeExecutable(path.join(tempDir, "codesign"), fakeReportCodesignScript());
   await writeExecutable(path.join(tempDir, "spctl"), fakeReportSpctlScript());
   await writeExecutable(path.join(tempDir, "xattr"), fakeReportXattrScript());
+  await writeExecutable(path.join(tempDir, "ls"), fakeReportLsScript());
+  await writeExecutable(path.join(tempDir, "log"), fakeReportLogScript());
 }
 
 function makeTempDir(): Promise<string> {
@@ -2727,6 +2736,36 @@ case "$*" in
     ;;
 esac
 echo "unexpected xattr command: $*" >&2
+exit 7
+`;
+}
+
+function fakeReportLsScript(): string {
+  return `#!/bin/sh
+case "$*" in
+  "-ld /private/var/db/DetachedSignatures /var/db/DetachedSignatures")
+    echo "ls: /private/var/db/DetachedSignatures: No such file or directory" >&2
+    echo "ls: /var/db/DetachedSignatures: No such file or directory" >&2
+    exit 1
+    ;;
+esac
+echo "unexpected ls command: $*" >&2
+exit 7
+`;
+}
+
+function fakeReportLogScript(): string {
+  return `#!/bin/sh
+case "$*" in
+  *'process == "syspolicyd" AND ('*)
+    echo '2026-05-11 08:30:41.335 E  syspolicyd[672:ac0ef2] [com.apple.syspolicy.exec:default] Unable to initialize qtn_proc: 3'
+    echo '2026-05-11 08:30:41.335 E  syspolicyd[672:ac0ef2] [com.apple.syspolicy.exec:default] dispatch_mig_server returned 268435459'
+    echo '2026-05-11 08:31:26.245 E  syspolicyd[672:ac13db] [com.apple.libsqlite3:logging-persist] os_unix.c:51044: (2) open(/private/var/db/DetachedSignatures) - No such file or directory'
+    echo '2026-05-11 08:31:26.245 E  syspolicyd[672:ac13db] [com.apple.syspolicy:default] Unable to get certificates array: (null)'
+    exit 0
+    ;;
+esac
+echo "unexpected log command: $*" >&2
 exit 7
 `;
 }
