@@ -470,6 +470,7 @@ export interface AarExperimentRecord extends BaseRecord {
   runnable_artifact_ref: Ref;
   trading_evaluation_task_ref: Ref;
   sandbox_runtime_instance_ref?: Ref;
+  runtime_trace_refs?: Ref[];
   trace_ref?: Ref;
   submitted_at: string;
   status: AarExperimentStatus;
