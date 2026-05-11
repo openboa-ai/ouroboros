@@ -22,6 +22,7 @@ apply, direct create probes, or any cleanup against existing sandboxes. It recor
 - sbx diagnose --output github-issue
 - host macOS, architecture, and hypervisor support probes
 - Homebrew sbx stable/nightly metadata when brew is available
+- sbx code-signing, Gatekeeper assessment, and quarantine metadata when available
 - sbx create --help and sbx template ls runtime-create context
 - sbx ls --json runtime-control probe
 - redacted daemon log lines that mention runtime-create VM start failures
@@ -135,6 +136,74 @@ const brewNightly = await capture("brew sbx nightly metadata", ["brew", "info", 
   allowFailure: true,
   env: brewCommandEnv()
 });
+const sbxCaskRoot = inferSbxCaskRoot(version.stdout, brewInfo.stdout);
+const sbxCliPath = sbxCaskRoot ? path.join(sbxCaskRoot, "bin/sbx") : sbxPath;
+const sbxShimPath = sbxCaskRoot ? path.join(sbxCaskRoot, "libexec/containerd-shim-nerdbox-v1") : undefined;
+const sbxLibkrunPath = sbxCaskRoot ? path.join(sbxCaskRoot, "libexec/lib/libkrun.dylib") : undefined;
+const sbxKernelPath = sbxCaskRoot ? path.join(sbxCaskRoot, "libexec/nerdbox-kernel-arm64") : undefined;
+const sbxInitrdPath = sbxCaskRoot ? path.join(sbxCaskRoot, "libexec/nerdbox-initrd-arm64") : undefined;
+const sbxCliSignature = await capture(
+  "sbx CLI code signature verification",
+  ["codesign", "--verify", "--strict", "--verbose=4", sbxCliPath],
+  { allowFailure: true }
+);
+const sbxShimSignature = sbxShimPath
+  ? await capture(
+      "sbx nerdbox shim code signature verification",
+      ["codesign", "--verify", "--strict", "--verbose=4", sbxShimPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx nerdbox shim code signature verification", "sbx_cask_root=unknown");
+const sbxLibkrunSignature = sbxLibkrunPath
+  ? await capture(
+      "sbx libkrun code signature verification",
+      ["codesign", "--verify", "--strict", "--verbose=4", sbxLibkrunPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx libkrun code signature verification", "sbx_cask_root=unknown");
+const sbxKernelSignature = sbxKernelPath
+  ? await capture(
+      "sbx nerdbox kernel code signature verification",
+      ["codesign", "--verify", "--strict", "--verbose=4", sbxKernelPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx nerdbox kernel code signature verification", "sbx_cask_root=unknown");
+const sbxInitrdSignature = sbxInitrdPath
+  ? await capture(
+      "sbx nerdbox initrd code signature verification",
+      ["codesign", "--verify", "--strict", "--verbose=4", sbxInitrdPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx nerdbox initrd code signature verification", "sbx_cask_root=unknown");
+const sbxShimEntitlements = sbxShimPath
+  ? await capture(
+      "sbx nerdbox shim entitlements",
+      ["codesign", "-d", "--entitlements", ":-", sbxShimPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx nerdbox shim entitlements", "sbx_cask_root=unknown");
+const sbxCliGatekeeper = await capture(
+  "sbx CLI Gatekeeper assessment",
+  ["spctl", "--assess", "--type", "execute", "-vvv", sbxCliPath],
+  { allowFailure: true }
+);
+const sbxShimGatekeeper = sbxShimPath
+  ? await capture(
+      "sbx nerdbox shim Gatekeeper assessment",
+      ["spctl", "--assess", "--type", "execute", "-vvv", sbxShimPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx nerdbox shim Gatekeeper assessment", "sbx_cask_root=unknown");
+const sbxLibkrunGatekeeper = sbxLibkrunPath
+  ? await capture(
+      "sbx libkrun Gatekeeper assessment",
+      ["spctl", "--assess", "--type", "execute", "-vvv", sbxLibkrunPath],
+      { allowFailure: true }
+    )
+  : skippedCapture("sbx libkrun Gatekeeper assessment", "sbx_cask_root=unknown");
+const sbxQuarantineMetadata = sbxCaskRoot
+  ? await captureSbxPackageQuarantineMetadata(sbxCaskRoot)
+  : skippedCapture("sbx package quarantine metadata", "sbx_cask_root=unknown");
 const createHelp = await capture("sbx create help runtime-create context", [sbxPath, "create", "--help"], {
   allowFailure: true,
   env: sbxCommandEnv()
@@ -196,6 +265,16 @@ const result = classify({
   brewInfo,
   brewOutdated,
   brewNightly,
+  sbxCliSignature,
+  sbxShimSignature,
+  sbxLibkrunSignature,
+  sbxKernelSignature,
+  sbxInitrdSignature,
+  sbxShimEntitlements,
+  sbxCliGatekeeper,
+  sbxShimGatekeeper,
+  sbxLibkrunGatekeeper,
+  sbxQuarantineMetadata,
   createHelp,
   templateList,
   listJson,
@@ -245,6 +324,38 @@ async function capture(label, argv, options = {}) {
     throw new Error(`${label} exited ${result.code}`);
   }
   return result;
+}
+
+function skippedCapture(label, reason) {
+  line(`## ${label}`);
+  line("");
+  line(reason);
+  line("exit_code=0");
+  line("");
+  return { code: 0, stdout: reason, stderr: "", timedOut: false };
+}
+
+async function captureSbxPackageQuarantineMetadata(sbxCaskRoot) {
+  const label = "sbx package quarantine metadata";
+  line(`## ${label}`);
+  line("");
+  line(`$ xattr -lr ${sbxCaskRoot}`);
+  const result = await run(["xattr", "-lr", sbxCaskRoot], commandTimeoutMs, process.env);
+  const summary = summarizePackageXattrs(result.stdout);
+  line("");
+  line("stdout:");
+  fence(summary);
+  if (result.stderr) {
+    line("");
+    line("stderr:");
+    fence(redactLocalPath(result.stderr));
+  }
+  line(`exit_code=${result.code}`);
+  if (result.timedOut) {
+    line(`timed_out=true timeout_ms=${commandTimeoutMs}`);
+  }
+  line("");
+  return { ...result, stdout: summary, stderr: redactLocalPath(result.stderr) };
 }
 
 async function captureDaemonLogRuntimeCreateHints() {
@@ -309,6 +420,17 @@ function redactLocalPath(value) {
   return redacted;
 }
 
+function summarizePackageXattrs(output) {
+  const summaryLines = output
+    .split(/\r?\n/)
+    .map((entry) => entry.match(/^(.+): (com\.apple\.(?:quarantine|provenance)):/))
+    .filter(Boolean)
+    .map((match) => `${redactLocalPath(match[1])}: ${match[2]}: present`);
+  return summaryLines.length > 0
+    ? [...new Set(summaryLines)].join("\n")
+    : "sbx_package_quarantine_or_provenance=none";
+}
+
 function classify({
   version,
   diagnose,
@@ -318,6 +440,16 @@ function classify({
   brewInfo,
   brewOutdated,
   brewNightly,
+  sbxCliSignature,
+  sbxShimSignature,
+  sbxLibkrunSignature,
+  sbxKernelSignature,
+  sbxInitrdSignature,
+  sbxShimEntitlements,
+  sbxCliGatekeeper,
+  sbxShimGatekeeper,
+  sbxLibkrunGatekeeper,
+  sbxQuarantineMetadata,
   createHelp,
   templateList,
   listJson,
@@ -341,6 +473,16 @@ function classify({
     brewInfo,
     brewOutdated,
     brewNightly,
+    sbxCliSignature,
+    sbxShimSignature,
+    sbxLibkrunSignature,
+    sbxKernelSignature,
+    sbxInitrdSignature,
+    sbxShimEntitlements,
+    sbxCliGatekeeper,
+    sbxShimGatekeeper,
+    sbxLibkrunGatekeeper,
+    sbxQuarantineMetadata,
     createHelp,
     templateList,
     listJson,
@@ -370,6 +512,15 @@ function classify({
   }
 
   return "failed";
+}
+
+function inferSbxCaskRoot(versionStdout, brewInfoStdout) {
+  const brewPath = brewInfoStdout.match(/(\/[^\s]+\/Caskroom\/sbx\/[^\s]+)/)?.[1];
+  if (brewPath) {
+    return brewPath;
+  }
+  const version = versionStdout.match(/Client Version:\s+v?([0-9]+\.[0-9]+\.[0-9]+)/)?.[1];
+  return version ? `/opt/homebrew/Caskroom/sbx/${version}` : undefined;
 }
 
 function s5ScriptName(kind) {

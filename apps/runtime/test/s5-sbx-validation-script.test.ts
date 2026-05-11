@@ -341,6 +341,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("sbx diagnose --output github-issue");
     expect(result.stdout).toContain("host macOS, architecture, and hypervisor support probes");
     expect(result.stdout).toContain("Homebrew sbx stable/nightly metadata");
+    expect(result.stdout).toContain("sbx code-signing, Gatekeeper assessment, and quarantine metadata");
     expect(result.stdout).toContain("sbx create --help and sbx template ls runtime-create context");
     expect(result.stdout).toContain("sbx ls --json runtime-control probe");
     expect(result.stdout).toContain("redacted daemon log lines that mention runtime-create VM start failures");
@@ -366,6 +367,7 @@ describe("S5 sbx validation harness", () => {
       await writeExecutable(path.join(tempDir, "sw_vers"), fakeSwVersScript());
       await writeExecutable(path.join(tempDir, "uname"), fakeUnameScript());
       await writeExecutable(path.join(tempDir, "sysctl"), fakeSysctlScript());
+      await writeFakeReportHostDiagnosticScripts(tempDir);
 
       const result = await runScript([
         "scripts/report-s5-sbx-blocker.mjs",
@@ -430,6 +432,7 @@ describe("S5 sbx validation harness", () => {
       await writeExecutable(path.join(tempDir, "sw_vers"), fakeSwVersScript());
       await writeExecutable(path.join(tempDir, "uname"), fakeUnameScript());
       await writeExecutable(path.join(tempDir, "sysctl"), fakeSysctlScript());
+      await writeFakeReportHostDiagnosticScripts(tempDir);
       await writeFile(daemonLogPath, fakeReportDaemonLog(tempDir), "utf8");
 
       const result = await runScript([
@@ -465,6 +468,17 @@ describe("S5 sbx validation harness", () => {
       expect(report).toContain("brew sbx stable metadata");
       expect(report).toContain("sbx (Docker Sandboxes): 0.28.3");
       expect(report).toContain("sbx@nightly (Docker Sandboxes): nightly-");
+      expect(report).toContain("sbx CLI code signature verification");
+      expect(report).toContain("valid on disk");
+      expect(report).toContain("sbx nerdbox shim entitlements");
+      expect(report).toContain("com.apple.security.hypervisor");
+      expect(report).toContain("sbx CLI Gatekeeper assessment");
+      expect(report).toContain("internal error in Code Signing subsystem");
+      expect(report).toContain("sbx package quarantine metadata");
+      expect(report).toContain("com.apple.quarantine");
+      expect(report).toContain("com.apple.quarantine: present");
+      expect(report).not.toContain("0381;test");
+      expect(report).not.toContain("SHOULD_NOT_APPEAR");
       expect(report).toContain("sbx create help runtime-create context");
       expect(report).toContain("--cpus int");
       expect(report).toContain("sbx template list runtime-create context");
@@ -508,6 +522,7 @@ describe("S5 sbx validation harness", () => {
       await writeExecutable(path.join(tempDir, "sw_vers"), fakeSwVersScript());
       await writeExecutable(path.join(tempDir, "uname"), fakeUnameScript());
       await writeExecutable(path.join(tempDir, "sysctl"), fakeSysctlScript());
+      await writeFakeReportHostDiagnosticScripts(tempDir);
       await writeFile(daemonLogPath, fakeReportDaemonLog(tempDir), "utf8");
 
       const result = await runScript([
@@ -550,6 +565,7 @@ describe("S5 sbx validation harness", () => {
       await writeExecutable(path.join(tempDir, "sw_vers"), fakeSwVersScript());
       await writeExecutable(path.join(tempDir, "uname"), fakeUnameScript());
       await writeExecutable(path.join(tempDir, "sysctl"), fakeSysctlScript());
+      await writeFakeReportHostDiagnosticScripts(tempDir);
       await writeFile(daemonLogPath, fakeReportDaemonLog(tempDir), "utf8");
 
       const result = await runScript([
@@ -603,6 +619,7 @@ describe("S5 sbx validation harness", () => {
       await writeExecutable(path.join(tempDir, "sw_vers"), fakeSwVersScript());
       await writeExecutable(path.join(tempDir, "uname"), fakeUnameScript());
       await writeExecutable(path.join(tempDir, "sysctl"), fakeSysctlScript());
+      await writeFakeReportHostDiagnosticScripts(tempDir);
       await writeFile(daemonLogPath, fakeReportDaemonLog(tempDir), "utf8");
 
       const result = await runScript([
@@ -2281,6 +2298,12 @@ async function writeExecutable(filePath: string, content: string): Promise<void>
   await chmod(filePath, 0o755);
 }
 
+async function writeFakeReportHostDiagnosticScripts(tempDir: string): Promise<void> {
+  await writeExecutable(path.join(tempDir, "codesign"), fakeReportCodesignScript());
+  await writeExecutable(path.join(tempDir, "spctl"), fakeReportSpctlScript());
+  await writeExecutable(path.join(tempDir, "xattr"), fakeReportXattrScript());
+}
+
 function makeTempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "ouroboros-s5-validation-test-"));
 }
@@ -2647,6 +2670,7 @@ case "$*" in
   "info docker/tap/sbx")
     echo "==> sbx (Docker Sandboxes): 0.28.3"
     echo "Installed"
+    echo "/opt/homebrew/Caskroom/sbx/0.28.3 (106.0MB)"
     exit 0
     ;;
   "outdated --greedy --cask sbx")
@@ -2659,6 +2683,50 @@ case "$*" in
     ;;
 esac
 echo "unexpected brew command: $*" >&2
+exit 7
+`;
+}
+
+function fakeReportCodesignScript(): string {
+  return `#!/bin/sh
+for target do :; done
+case "$*" in
+  *"--verify --strict --verbose=4"*)
+    echo "$target: valid on disk"
+    echo "$target: satisfies its Designated Requirement"
+    exit 0
+    ;;
+  *"-d --entitlements :-"*)
+    echo "Executable=$target"
+    echo '<plist><dict><key>com.apple.security.hypervisor</key><true/></dict></plist>'
+    exit 0
+    ;;
+esac
+echo "unexpected codesign command: $*" >&2
+exit 7
+`;
+}
+
+function fakeReportSpctlScript(): string {
+  return `#!/bin/sh
+for target do :; done
+echo "$target: internal error in Code Signing subsystem" >&2
+exit 1
+`;
+}
+
+function fakeReportXattrScript(): string {
+  return `#!/bin/sh
+case "$*" in
+  "-lr "*)
+    echo "$2/bin/sbx: com.apple.quarantine: 0381;test;;TEST"
+    echo "$2/libexec/containerd-shim-nerdbox-v1: com.apple.quarantine: 0381;test;;TEST"
+    echo "$2/libexec/lib/libkrun.dylib: com.apple.quarantine: 0381;test;;TEST"
+    echo "$2/libexec/nerdbox-kernel-arm64: com.apple.cs.CodeSignature: SHOULD_NOT_APPEAR"
+    exit 0
+    ;;
+esac
+echo "unexpected xattr command: $*" >&2
 exit 7
 `;
 }

@@ -199,6 +199,9 @@ HOMEBREW_NO_AUTO_UPDATE=1 brew info docker/tap/sbx@nightly
 sbx create --help
 sbx template ls
 sbx ls --json
+codesign --verify --strict --verbose=4 "$(command -v sbx)"
+spctl --assess --type execute -vvv "$(command -v sbx)"
+xattr -lr /opt/homebrew/Caskroom/sbx/<version>
 OUROBOROS_SBX_EVIDENCE_PATH=.ouroboros/s5-sbx-evidence/validate-<timestamp>-blocked.log npm run validate:s5-sbx
 npm run audit:s5-sbx:completion -- --evidence .ouroboros/s5-sbx-evidence/validate-<timestamp>-blocked.log
 npm run recover:s5-sbx-daemon
