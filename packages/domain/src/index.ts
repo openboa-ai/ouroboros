@@ -122,6 +122,17 @@ export type AarFindingKind =
   | "anti_hacking_case"
   | "next_artifact_hint";
 
+export type AarArtifactProposalStatus =
+  | "proposed"
+  | "materialized"
+  | "discarded";
+
+export type AarOrchestrationRunStatus =
+  | "started"
+  | "proposed"
+  | "failed"
+  | "discarded";
+
 export type TraderSystemRuntimeLifecycleStatus =
   | "registered"
   | "deployed"
@@ -527,6 +538,42 @@ export interface AarArtifactLineageRecord extends BaseRecord {
   created_by_researcher_ref?: Ref;
   created_at: string;
   authority_status: "lineage_only";
+}
+
+export interface AarArtifactProposalRecord extends BaseRecord {
+  record_kind: "aar_artifact_proposal";
+  aar_artifact_proposal_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  proposed_runnable_artifact_ref: Ref;
+  parent_runnable_artifact_ref?: Ref;
+  source_finding_refs: Ref[];
+  anti_hacking_finding_refs?: Ref[];
+  proposal_summary: string;
+  requested_change_summary: string;
+  expected_improvement_summary?: string;
+  created_at: string;
+  status: AarArtifactProposalStatus;
+  authority_status: "proposal_only";
+}
+
+export interface AarOrchestrationRunRecord extends BaseRecord {
+  record_kind: "aar_orchestration_run";
+  aar_orchestration_run_id: string;
+  researcher_ref: Ref;
+  research_direction_ref: Ref;
+  trading_evaluation_task_ref: Ref;
+  input_finding_refs: Ref[];
+  input_lineage_refs?: Ref[];
+  output_artifact_proposal_ref?: Ref;
+  output_runnable_artifact_ref?: Ref;
+  output_lineage_ref?: Ref;
+  trace_ref?: Ref;
+  started_at: string;
+  completed_at?: string;
+  status: AarOrchestrationRunStatus;
+  authority_status: "research_only";
 }
 
 export interface CapabilityPackageRecord extends BaseRecord {
@@ -1111,6 +1158,8 @@ export type FixtureRecord =
   | TradingEvaluationResultRecord
   | AarFindingRecord
   | AarArtifactLineageRecord
+  | AarArtifactProposalRecord
+  | AarOrchestrationRunRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
