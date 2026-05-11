@@ -23,7 +23,7 @@ apply, direct create probes, or any cleanup against existing sandboxes. It recor
 - host macOS, architecture, and hypervisor support probes
 - Homebrew sbx stable/nightly metadata when brew is available
 - sbx code-signing, Gatekeeper assessment, and quarantine metadata when available
-- macOS syspolicyd and DetachedSignatures hints when available
+- macOS syspolicyd, kernel sandbox denial, and DetachedSignatures hints when available
 - sbx create --help and sbx template ls runtime-create context
 - sbx ls --json runtime-control probe
 - redacted daemon log lines that mention runtime-create VM start failures
@@ -211,6 +211,7 @@ const detachedSignaturesPathCheck = await capture(
   { allowFailure: true }
 );
 const syspolicyLogHints = await captureSyspolicyLogHints();
+const kernelSandboxDenialHints = await captureKernelSandboxDenialHints();
 const createHelp = await capture("sbx create help runtime-create context", [sbxPath, "create", "--help"], {
   allowFailure: true,
   env: sbxCommandEnv()
@@ -284,6 +285,7 @@ const result = classify({
   sbxQuarantineMetadata,
   detachedSignaturesPathCheck,
   syspolicyLogHints,
+  kernelSandboxDenialHints,
   createHelp,
   templateList,
   listJson,
@@ -409,6 +411,48 @@ async function captureSyspolicyLogHints() {
   return { ...result, stdout: summary, stderr: redactLocalPath(result.stderr) };
 }
 
+async function captureKernelSandboxDenialHints() {
+  const label = "host kernel sandbox denial hints";
+  const predicate = [
+    'process == "kernel"',
+    "AND",
+    'eventMessage CONTAINS[c] "containerd-shim-nerdbox-v1"',
+    "AND",
+    "(",
+    'eventMessage CONTAINS[c] "deny"',
+    "OR",
+    'eventMessage CONTAINS[c] "kern.hv_support"',
+    "OR",
+    'eventMessage CONTAINS[c] "/dev/dtracehelper"',
+    ")"
+  ].join(" ");
+  line(`## ${label}`);
+  line("");
+  line(`$ log show --style compact --last 40m --predicate ${JSON.stringify(predicate)} --info`);
+  const result = await run(
+    ["log", "show", "--style", "compact", "--last", "40m", "--predicate", predicate, "--info"],
+    commandTimeoutMs,
+    process.env
+  );
+  const summary = summarizeKernelSandboxDenialHints(result.stdout);
+  if (summary) {
+    line("");
+    line("stdout:");
+    fence(summary);
+  }
+  if (result.stderr) {
+    line("");
+    line("stderr:");
+    fence(redactLocalPath(result.stderr));
+  }
+  line(`exit_code=${result.code}`);
+  if (result.timedOut) {
+    line(`timed_out=true timeout_ms=${commandTimeoutMs}`);
+  }
+  line("");
+  return { ...result, stdout: summary, stderr: redactLocalPath(result.stderr) };
+}
+
 async function captureDaemonLogRuntimeCreateHints() {
   const label = "daemon log runtime-create failure hints";
   line(`## ${label}`);
@@ -498,6 +542,24 @@ function summarizeSyspolicyLogHints(output) {
   return hints.slice(-40).join("\n");
 }
 
+function summarizeKernelSandboxDenialHints(output) {
+  const hints = output
+    .split(/\r?\n/)
+    .filter((entry) => (
+      entry.includes("containerd-shim-nerdbox-v1") &&
+      (
+        entry.includes("deny(") ||
+        entry.includes("kern.hv_support") ||
+        entry.includes("/dev/dtracehelper")
+      )
+    ))
+    .map(redactLocalPath);
+  if (hints.length === 0) {
+    return "kernel_sandbox_denial_hints=none";
+  }
+  return hints.slice(-40).join("\n");
+}
+
 function classify({
   version,
   diagnose,
@@ -519,6 +581,7 @@ function classify({
   sbxQuarantineMetadata,
   detachedSignaturesPathCheck,
   syspolicyLogHints,
+  kernelSandboxDenialHints,
   createHelp,
   templateList,
   listJson,
@@ -554,6 +617,7 @@ function classify({
     sbxQuarantineMetadata,
     detachedSignaturesPathCheck,
     syspolicyLogHints,
+    kernelSandboxDenialHints,
     createHelp,
     templateList,
     listJson,

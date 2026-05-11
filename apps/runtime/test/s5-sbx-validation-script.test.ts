@@ -342,7 +342,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("host macOS, architecture, and hypervisor support probes");
     expect(result.stdout).toContain("Homebrew sbx stable/nightly metadata");
     expect(result.stdout).toContain("sbx code-signing, Gatekeeper assessment, and quarantine metadata");
-    expect(result.stdout).toContain("macOS syspolicyd and DetachedSignatures hints");
+    expect(result.stdout).toContain("macOS syspolicyd, kernel sandbox denial, and DetachedSignatures hints");
     expect(result.stdout).toContain("sbx create --help and sbx template ls runtime-create context");
     expect(result.stdout).toContain("sbx ls --json runtime-control probe");
     expect(result.stdout).toContain("redacted daemon log lines that mention runtime-create VM start failures");
@@ -486,6 +486,9 @@ describe("S5 sbx validation harness", () => {
       expect(report).toContain("Unable to initialize qtn_proc: 3");
       expect(report).toContain("dispatch_mig_server returned 268435459");
       expect(report).toContain("Unable to get certificates array: (null)");
+      expect(report).toContain("host kernel sandbox denial hints");
+      expect(report).toContain("deny(1) sysctl-read kern.hv_support");
+      expect(report).toContain("deny(1) file-write-data /dev/dtracehelper");
       expect(report).toContain("sbx create help runtime-create context");
       expect(report).toContain("--cpus int");
       expect(report).toContain("sbx template list runtime-create context");
@@ -2762,6 +2765,11 @@ case "$*" in
     echo '2026-05-11 08:30:41.335 E  syspolicyd[672:ac0ef2] [com.apple.syspolicy.exec:default] dispatch_mig_server returned 268435459'
     echo '2026-05-11 08:31:26.245 E  syspolicyd[672:ac13db] [com.apple.libsqlite3:logging-persist] os_unix.c:51044: (2) open(/private/var/db/DetachedSignatures) - No such file or directory'
     echo '2026-05-11 08:31:26.245 E  syspolicyd[672:ac13db] [com.apple.syspolicy:default] Unable to get certificates array: (null)'
+    exit 0
+    ;;
+  *'process == "kernel" AND'*)
+    echo '2026-05-11 09:26:54.362 E  kernel[0:ad6ac3] (Sandbox) Sandbox: containerd-shim-nerdbox-v1(28948) deny(1) file-write-data /dev/dtracehelper'
+    echo '2026-05-11 09:26:54.383 E  kernel[0:ad6acf] (Sandbox) Sandbox: containerd-shim-nerdbox-v1(28949) deny(1) sysctl-read kern.hv_support'
     exit 0
     ;;
 esac
