@@ -27,33 +27,33 @@ const completionChecklist = [
   {
     label: "instance A created, produced heartbeat, and stopped",
     evidence: [
-      "create --name ouro-s5-clock-a",
+      "create --name",
       "runtime API start A command evidence",
       "sandbox-runtime-instance-clock-a",
       "direct sbx log A",
-      "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl",
+      "cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl",
       "runtime API status A",
       "runtime API logs A",
       "runtime API stop A response",
       "runtime API stop A command evidence",
-      "stop ouro-s5-clock-a",
-      "rm --force ouro-s5-clock-a"
+      "stop",
+      "rm --force"
     ]
   },
   {
     label: "instance B created, produced heartbeat, and stopped",
     evidence: [
-      "create --name ouro-s5-clock-b",
+      "create --name",
       "runtime API start B command evidence",
       "sandbox-runtime-instance-clock-b",
       "direct sbx log B",
-      "exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.jsonl",
+      "cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.jsonl",
       "runtime API status B",
       "runtime API logs B",
       "runtime API stop B response",
       "runtime API stop B command evidence",
-      "stop ouro-s5-clock-b",
-      "rm --force ouro-s5-clock-b"
+      "stop",
+      "rm --force"
     ]
   },
   {
@@ -69,39 +69,6 @@ const completionChecklist = [
       "fixture-runnable-artifact-clock-python-001",
       "runtime API raw secret rejection probe",
       "raw_secret_material_rejected"
-    ]
-  }
-];
-
-const orderedLifecycleEvidence = [
-  {
-    label: "instance A lifecycle order",
-    evidence: [
-      "runtime API start A command evidence",
-      "create --name ouro-s5-clock-a",
-      "sandbox-runtime-instance-clock-a",
-      "direct sbx log A",
-      "runtime API status A",
-      "runtime API logs A",
-      "runtime API stop A response",
-      "runtime API stop A command evidence",
-      "stop ouro-s5-clock-a",
-      "rm --force ouro-s5-clock-a"
-    ]
-  },
-  {
-    label: "instance B lifecycle order",
-    evidence: [
-      "runtime API start B command evidence",
-      "create --name ouro-s5-clock-b",
-      "sandbox-runtime-instance-clock-b",
-      "direct sbx log B",
-      "runtime API status B",
-      "runtime API logs B",
-      "runtime API stop B response",
-      "runtime API stop B command evidence",
-      "stop ouro-s5-clock-b",
-      "rm --force ouro-s5-clock-b"
     ]
   }
 ];
@@ -173,7 +140,9 @@ await check("real two-sandbox validation transcript is present and complete", as
     }
   }
 
-  for (const item of orderedLifecycleEvidence) {
+  const sandboxNames = extractSandboxNames(transcript);
+
+  for (const item of orderedLifecycleEvidenceFor(sandboxNames)) {
     assertAppearsInOrder(transcript, item.label, item.evidence);
   }
 
@@ -192,15 +161,17 @@ await check("real two-sandbox validation transcript is present and complete", as
     "sandbox-runtime-instance-clock-b"
   );
   assertSectionContains(transcript, "runtime API raw secret rejection probe", ["raw_secret_material_rejected"]);
-  assertCommandSucceededInSection(transcript, "runtime API start A command evidence", "create --name ouro-s5-clock-a");
-  assertCommandSucceededInSection(transcript, "runtime API start A command evidence", "exec -d ouro-s5-clock-a");
-  assertCommandSucceededInSection(transcript, "runtime API start B command evidence", "create --name ouro-s5-clock-b");
-  assertCommandSucceededInSection(transcript, "runtime API start B command evidence", "exec -d ouro-s5-clock-b");
-  assertSectionContains(transcript, "sbx ls", ["ouro-s5-clock-a", "ouro-s5-clock-b"]);
-  assertCommandSucceededInSection(transcript, "runtime API stop A command evidence", "stop ouro-s5-clock-a");
-  assertCommandSucceededInSection(transcript, "runtime API stop B command evidence", "stop ouro-s5-clock-b");
-  assertSectionContains(transcript, "sbx rm ouro-s5-clock-a", ["exit_code=0"]);
-  assertSectionContains(transcript, "sbx rm ouro-s5-clock-b", ["exit_code=0"]);
+  assertCommandSucceededInSection(transcript, "runtime API start A command evidence", `create --name ${sandboxNames.a}`);
+  assertCommandSucceededInSection(transcript, "runtime API start A command evidence", `exec -d ${sandboxNames.a}`);
+  assertCommandSucceededInSection(transcript, "runtime API start B command evidence", `create --name ${sandboxNames.b}`);
+  assertCommandSucceededInSection(transcript, "runtime API start B command evidence", `exec -d ${sandboxNames.b}`);
+  assertSectionContains(transcript, "direct sbx log A", [`exec ${sandboxNames.a} cat`]);
+  assertSectionContains(transcript, "direct sbx log B", [`exec ${sandboxNames.b} cat`]);
+  assertSectionContains(transcript, "sbx ls", [sandboxNames.a, sandboxNames.b]);
+  assertCommandSucceededInSection(transcript, "runtime API stop A command evidence", `stop ${sandboxNames.a}`);
+  assertCommandSucceededInSection(transcript, "runtime API stop B command evidence", `stop ${sandboxNames.b}`);
+  assertSectionContains(transcript, `sbx rm ${sandboxNames.a}`, ["exit_code=0"]);
+  assertSectionContains(transcript, `sbx rm ${sandboxNames.b}`, ["exit_code=0"]);
   assertSectionContainsRuntimeHeartbeat(transcript, "runtime API status A", "sandbox-runtime-instance-clock-a");
   assertSectionContainsRuntimeHeartbeat(transcript, "runtime API logs A", "sandbox-runtime-instance-clock-a");
   assertSectionContainsRuntimeHeartbeat(transcript, "runtime API status B", "sandbox-runtime-instance-clock-b");
@@ -263,6 +234,59 @@ function assertNotStarkitSdxTranscript(value) {
   if (/starkit/i.test(versionSection) || (/(^|\W)sdx(\W|$)/i.test(versionSection) && !hasDockerSandboxesVersion)) {
     throw new IncompleteCheck("transcript uses sdx/Starkit, not Docker Sandboxes sbx");
   }
+}
+
+function extractSandboxNames(value) {
+  const a = extractCreatedSandboxName(value, "runtime API start A command evidence");
+  const b = extractCreatedSandboxName(value, "runtime API start B command evidence");
+  if (a === b) {
+    throw new IncompleteCheck(`validation reused one sandbox name for both instances: ${a}`);
+  }
+  return { a, b };
+}
+
+function extractCreatedSandboxName(value, sectionLabel) {
+  const section = sectionText(value, sectionLabel);
+  const match = section.match(/\bcreate\s+--name\s+([^\s]+)/);
+  if (!match?.[1]) {
+    throw new IncompleteCheck(`missing created sandbox name in transcript section: ${sectionLabel}`);
+  }
+  return match[1];
+}
+
+function orderedLifecycleEvidenceFor(sandboxNames) {
+  return [
+    {
+      label: "instance A lifecycle order",
+      evidence: [
+        "runtime API start A command evidence",
+        `create --name ${sandboxNames.a}`,
+        "sandbox-runtime-instance-clock-a",
+        "direct sbx log A",
+        "runtime API status A",
+        "runtime API logs A",
+        "runtime API stop A response",
+        "runtime API stop A command evidence",
+        `stop ${sandboxNames.a}`,
+        `rm --force ${sandboxNames.a}`
+      ]
+    },
+    {
+      label: "instance B lifecycle order",
+      evidence: [
+        "runtime API start B command evidence",
+        `create --name ${sandboxNames.b}`,
+        "sandbox-runtime-instance-clock-b",
+        "direct sbx log B",
+        "runtime API status B",
+        "runtime API logs B",
+        "runtime API stop B response",
+        "runtime API stop B command evidence",
+        `stop ${sandboxNames.b}`,
+        `rm --force ${sandboxNames.b}`
+      ]
+    }
+  ];
 }
 
 function assertAppearsInOrder(value, label, expectedSequence) {

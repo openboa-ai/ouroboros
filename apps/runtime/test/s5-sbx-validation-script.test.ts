@@ -212,6 +212,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("OUROBOROS_SBX_BIN");
     expect(result.stdout).toContain("OUROBOROS_SDX_BIN");
     expect(result.stdout).toContain("OUROBOROS_SBX_HOME");
+    expect(result.stdout).toContain("OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
     expect(result.stdout).toContain("Exit codes:");
     expect(result.stdout).toContain("host sbx preflight/runtime-control is blocked");
   });
@@ -814,6 +815,27 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
+  it("passes S5 sbx completion audit when validation uses unique sandbox names", async () => {
+    const tempDir = await makeTempDir();
+    try {
+      const evidencePath = path.join(tempDir, "validate-unique-sandbox-names.log");
+      await writeFile(
+        evidencePath,
+        fakeCompletionEvidence()
+          .replaceAll("ouro-s5-clock-a", "ouro-s5-clock-a-unique-001")
+          .replaceAll("ouro-s5-clock-b", "ouro-s5-clock-b-unique-001"),
+        "utf8"
+      );
+
+      const result = await runScript(["scripts/audit-s5-sbx-completion.mjs", "--evidence", evidencePath], {});
+
+      expect(result.code, scriptOutput(result)).toBe(0);
+      expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT complete");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps S5 sbx completion audit incomplete when transcript contains failure evidence", async () => {
     const tempDir = await makeTempDir();
     try {
@@ -876,7 +898,9 @@ describe("S5 sbx validation harness", () => {
       const result = await runScript(["scripts/audit-s5-sbx-completion.mjs", "--evidence", evidencePath], {});
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("missing transcript evidence: stop ouro-s5-clock-b");
+      expect(result.stdout).toContain(
+        "missing ordered transcript evidence for instance B lifecycle order: stop ouro-s5-clock-b"
+      );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -1933,6 +1957,46 @@ describe("S5 sbx validation harness", () => {
     }
   }, 30_000);
 
+  it("can suffix validation sandbox names to avoid stale runtime-name collisions", async () => {
+    const tempDir = await makeTempDir();
+    const sbxCallLog = path.join(tempDir, "sbx-suffixed-calls.log");
+    const evidencePath = path.join(tempDir, "s5-sbx-suffixed-evidence.txt");
+    const fakeSbx = path.join(tempDir, "sbx");
+    try {
+      await writeExecutable(fakeSbx, fakeFullLifecycleSbxScript());
+
+      const result = await runValidation({
+        OUROBOROS_SBX_BIN: fakeSbx,
+        OUROBOROS_SBX_HOME: path.join(tempDir, "isolated-sbx-home"),
+        OUROBOROS_SBX_VALIDATE_NAME_SUFFIX: "nightly.001",
+        OUROBOROS_SBX_VALIDATE_PORT: String(await findFreePort()),
+        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "2000",
+        OUROBOROS_SBX_EVIDENCE_PATH: evidencePath,
+        SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
+        SBX_CALL_LOG: sbxCallLog
+      }, 20_000);
+      const calls = (await readFile(sbxCallLog, "utf8")).trim().split("\n");
+      const evidence = await readFile(evidencePath, "utf8");
+      const completionAudit = await runScript([
+        "scripts/audit-s5-sbx-completion.mjs",
+        "--evidence",
+        evidencePath
+      ], {}, 10_000);
+
+      expect(result.code, scriptOutput(result)).toBe(0);
+      expect(completionAudit.code, scriptOutput(completionAudit)).toBe(0);
+      expect(evidence).toContain("sandbox name suffix: nightly.001");
+      expect(evidence).toContain("sandbox A name: ouro-s5-clock-a-nightly.001");
+      expect(evidence).toContain("sandbox B name: ouro-s5-clock-b-nightly.001");
+      expect(calls).toContain("create --name ouro-s5-clock-a-nightly.001 shell " + repoRoot);
+      expect(calls).toContain("create --name ouro-s5-clock-b-nightly.001 shell " + repoRoot);
+      expect(calls).toContain("rm --force ouro-s5-clock-a-nightly.001");
+      expect(calls).toContain("rm --force ouro-s5-clock-b-nightly.001");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("classifies real sbx create VM failures as host blockers", async () => {
     const tempDir = await makeTempDir();
     const sbxCallLog = path.join(tempDir, "sbx-create-failure-calls.log");
@@ -2496,11 +2560,15 @@ case "$1" in
     ;;
   ls)
     echo "NAME AGENT STATUS WORKSPACE"
-    echo "ouro-s5-clock-a shell running $PWD"
-    echo "ouro-s5-clock-b shell running $PWD"
+    if [ -f "$SBX_CALL_LOG.sandboxes" ]; then
+      while IFS= read -r sandbox_name; do
+        echo "$sandbox_name shell running $PWD"
+      done < "$SBX_CALL_LOG.sandboxes"
+    fi
     exit 0
     ;;
   create)
+    printf '%s\\n' "$3" >> "$SBX_CALL_LOG.sandboxes"
     echo "created $3"
     exit 0
     ;;

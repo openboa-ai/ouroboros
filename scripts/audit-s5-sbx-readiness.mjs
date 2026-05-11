@@ -117,6 +117,7 @@ await check("validation help advertises sbx/sdx/evidence guardrails", async () =
   assertIncludes(result.stdout, "OUROBOROS_SDX_BIN");
   assertIncludes(result.stdout, "OUROBOROS_SBX_EVIDENCE_PATH");
   assertIncludes(result.stdout, "OUROBOROS_SBX_HOME");
+  assertIncludes(result.stdout, "OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
 });
 
 await check("recovery help advertises approval and reset boundaries", async () => {
@@ -196,6 +197,7 @@ await check("README documents blocked-host support handoff", async () => {
   assertIncludes(readme, "brew info docker/tap/sbx@nightly");
   assertIncludes(readme, "sbx ls --json");
   assertIncludes(readme, "OUROBOROS_SDX_BIN");
+  assertIncludes(readme, "OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
   assertIncludes(readme, "Starkit or non-Docker-Sandboxes `sdx`");
   assertIncludes(readme, "npm run report:s5-sbx-blocker");
   assertIncludes(readme, "--include-create-probe");

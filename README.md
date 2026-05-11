@@ -171,6 +171,8 @@ Useful overrides:
 - `OUROBOROS_SDX_BIN`: compatibility alias used only when `OUROBOROS_SBX_BIN` is unset; the
   target must still emit Docker Sandboxes `sbx version` output.
 - `OUROBOROS_SBX_HOME`: optional HOME directory for isolated `sbx` daemon/auth state.
+- `OUROBOROS_SBX_VALIDATE_NAME_SUFFIX`: optional suffix for the two validation sandbox names when
+  rerunning against a host that may have stale runtime-volume names from prior probes.
 - `OUROBOROS_SBX_VALIDATE_PORT`: temporary runtime API port for `validate:s5-sbx`.
 - `OUROBOROS_SBX_VALIDATE_TIMEOUT_MS`: per-command validation timeout, defaulting to 60000ms so
   first-run sandbox image pulls are not cut off.

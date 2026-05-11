@@ -18,6 +18,7 @@ Environment:
   OUROBOROS_SBX_BIN                    sbx binary path (default: sbx)
   OUROBOROS_SDX_BIN                    compatibility alias used only when OUROBOROS_SBX_BIN is unset
   OUROBOROS_SBX_HOME                   optional HOME directory for isolated sbx daemon/auth state
+  OUROBOROS_SBX_VALIDATE_NAME_SUFFIX   optional suffix for validation sandbox names
   OUROBOROS_SBX_VALIDATE_PORT          runtime API port (default: 4174)
   OUROBOROS_SBX_VALIDATE_TIMEOUT_MS    per-command timeout in ms (default: 60000)
   OUROBOROS_SBX_EVIDENCE_PATH          optional file path to tee validation transcript
@@ -37,8 +38,9 @@ const sbxHome = process.env.OUROBOROS_SBX_HOME;
 const port = Number(process.env.OUROBOROS_SBX_VALIDATE_PORT ?? 4174);
 const runtimeUrl = `http://127.0.0.1:${port}`;
 const commandTimeoutMs = Number(process.env.OUROBOROS_SBX_VALIDATE_TIMEOUT_MS ?? 60_000);
-const sandboxA = "ouro-s5-clock-a";
-const sandboxB = "ouro-s5-clock-b";
+const sandboxNameSuffix = sandboxNameSuffixFor(process.env.OUROBOROS_SBX_VALIDATE_NAME_SUFFIX);
+const sandboxA = validationSandboxName("ouro-s5-clock-a", sandboxNameSuffix);
+const sandboxB = validationSandboxName("ouro-s5-clock-b", sandboxNameSuffix);
 const instanceA = "sandbox-runtime-instance-clock-a";
 const instanceB = "sandbox-runtime-instance-clock-b";
 const artifactId = "fixture-runnable-artifact-clock-python-001";
@@ -66,6 +68,11 @@ try {
   if (sbxHome) {
     console.log(`sbx home: ${sbxHome}`);
   }
+  if (sandboxNameSuffix) {
+    console.log(`sandbox name suffix: ${sandboxNameSuffix}`);
+    console.log(`sandbox A name: ${sandboxA}`);
+    console.log(`sandbox B name: ${sandboxB}`);
+  }
   await runPreflight();
   if (preflightOnly) {
     console.log("\nRESULT: preflight passed");
@@ -78,7 +85,7 @@ try {
 
     cleanupSandboxNames.add(sandboxA);
     const startA = await api("POST", "/api/runtime-instances", {
-      idempotency_key: "ouro-s5-clock-a",
+      idempotency_key: sandboxA,
       adapter_kind: "docker_sandboxes_sbx",
       runnable_artifact_id: artifactId,
       instance_id: instanceA,
@@ -93,7 +100,7 @@ try {
 
     cleanupSandboxNames.add(sandboxB);
     const startB = await api("POST", "/api/runtime-instances", {
-      idempotency_key: "ouro-s5-clock-b",
+      idempotency_key: sandboxB,
       adapter_kind: "docker_sandboxes_sbx",
       runnable_artifact_id: artifactId,
       instance_id: instanceB,
@@ -615,6 +622,24 @@ function section(label) {
 
 function sandboxLogFile(instanceId) {
   return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.jsonl`;
+}
+
+function validationSandboxName(baseName, suffix) {
+  return suffix ? `${baseName}-${suffix}` : baseName;
+}
+
+function sandboxNameSuffixFor(value) {
+  if (!value) {
+    return "";
+  }
+  const suffix = value
+    .trim()
+    .replace(/[^a-zA-Z0-9.+-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!suffix) {
+    throw new Error("OUROBOROS_SBX_VALIDATE_NAME_SUFFIX did not contain any valid sandbox name characters");
+  }
+  return suffix.slice(0, 48);
 }
 
 function safeRuntimeId(value) {
