@@ -9,7 +9,10 @@ import {
 } from "../src/trading-research/agent-adapters";
 import { readTradingSystemManifest, runTradingArtifact } from "../src/trading-research/artifact-runner";
 import { evaluateTradingRun } from "../src/trading-research/evaluator";
-import { startReplayTradingApiProvider } from "../src/trading-research/replay-trading-api-provider";
+import {
+  defaultReplayTradingScenarioSet,
+  startReplayTradingApiProvider
+} from "../src/trading-research/replay-trading-api-provider";
 import {
   readNotebook,
   runTradingResearchLoop
@@ -48,9 +51,15 @@ describe("Trading AAR research loop MVP", () => {
       agent_status: "edited",
       agent_changed_paths: ["run.py"],
       evaluation: {
+        status: "accepted",
         risk_decision: "valid_order_intent"
       }
     });
+    expect(notebook.entries[0].events_path).toContain("replay-set.json");
+    expect(notebook.entries[0].evaluation.scenario_results?.map((result) => result.scenario_id)).toEqual([
+      "trend_long",
+      "range_flat"
+    ]);
     expect(notebook.entries[1]).toMatchObject({
       iteration: 2,
       decision: "discard",
@@ -60,8 +69,19 @@ describe("Trading AAR research loop MVP", () => {
         risk_decision: "invalid_order_intent"
       }
     });
+    expect(notebook.entries[1].evaluation.scenario_results).toEqual([
+      expect.objectContaining({
+        scenario_id: "trend_long",
+        status: "disqualified"
+      }),
+      expect.objectContaining({
+        scenario_id: "range_flat",
+        status: "accepted"
+      })
+    ]);
     const notebookSurface = JSON.stringify(notebook);
     expect(notebookSurface).toContain("provider_boundary");
+    expect(notebookSurface).toContain("replay_set_average");
     expect(notebookSurface).not.toMatch(
       /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|btc-perp|binance/i
     );
@@ -96,6 +116,38 @@ describe("Trading AAR research loop MVP", () => {
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
       score: 0.85,
+      risk_decision: "valid_order_intent"
+    });
+  });
+
+  it("scores flat replay scenarios as hold decisions instead of long-only behavior", async () => {
+    const artifactDir = path.join(tmpDir, "artifact-flat");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    const manifest = await readTradingSystemManifest(artifactDir);
+    const flatScenario = defaultReplayTradingScenarioSet.find((scenario) => scenario.id === "range_flat");
+    expect(flatScenario).toBeDefined();
+    const provider = await startReplayTradingApiProvider(flatScenario);
+    const run = await runTradingArtifact({
+      artifact_dir: artifactDir,
+      manifest,
+      provider,
+      output_dir: path.join(tmpDir, "run-flat")
+    });
+    await provider.close();
+
+    expect(run.status).toBe("completed");
+    expect(run.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "order_intent",
+          side: "hold",
+          quantity: 0
+        })
+      ])
+    );
+    expect(evaluateTradingRun(run)).toMatchObject({
+      status: "accepted",
+      score: 1,
       risk_decision: "valid_order_intent"
     });
   });

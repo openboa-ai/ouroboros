@@ -10,6 +10,8 @@ import type {
 } from "./types";
 
 export const defaultReplayTradingScenario: ReplayTradingScenario = {
+  id: "trend_long",
+  description: "Trend-following replay regime where fast average is above slow average.",
   market: {
     symbol: "SYNTH-USD",
     price: 100,
@@ -26,6 +28,29 @@ export const defaultReplayTradingScenario: ReplayTradingScenario = {
     target_risk_fraction: 0.02
   }
 };
+
+export const defaultReplayTradingScenarioSet: ReplayTradingScenario[] = [
+  defaultReplayTradingScenario,
+  {
+    id: "range_flat",
+    description: "Range-bound replay regime where no directional position should be opened.",
+    market: {
+      symbol: "SYNTH-USD",
+      price: 101,
+      moving_average_fast: 100,
+      moving_average_slow: 100,
+      volatility: 0.009,
+      expected_direction: "flat",
+      observed_at: "2026-05-12T00:05:00.000Z"
+    },
+    account: {
+      equity: 10_000,
+      max_position_notional: 350,
+      max_risk_fraction: 0.03,
+      target_risk_fraction: 0
+    }
+  }
+];
 
 export async function startReplayTradingApiProvider(
   scenario: ReplayTradingScenario = defaultReplayTradingScenario

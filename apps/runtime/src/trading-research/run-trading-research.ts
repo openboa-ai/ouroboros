@@ -5,9 +5,8 @@ import {
   CodexTradingResearchAgentAdapter,
   FixtureTradingResearchAgentAdapter
 } from "./agent-adapters";
-import { readTradingSystemManifest, runTradingArtifact } from "./artifact-runner";
-import { evaluateTradingRun } from "./evaluator";
-import { startReplayTradingApiProvider } from "./replay-trading-api-provider";
+import { readTradingSystemManifest } from "./artifact-runner";
+import { runTradingReplaySet } from "./replay-set-runner";
 import type {
   TradingResearchAgentAdapter,
   TradingResearchLoopResult,
@@ -113,18 +112,16 @@ export async function runTradingResearchLoop(
       continue;
     }
 
-    const provider = await startReplayTradingApiProvider();
     const manifest = await readTradingSystemManifest(candidateDir);
-    const run = await runTradingArtifact({
+    const replaySet = await runTradingReplaySet({
       artifact_dir: candidateDir,
       manifest,
-      provider,
       output_dir: outputDir
     });
-    await provider.close();
 
-    const evaluation = evaluateTradingRun(run);
-    const decision = run.status === "crashed"
+    const evaluation = replaySet.evaluation;
+    const crashed = replaySet.scenario_results.some((result) => result.run_status === "crashed");
+    const decision = crashed
       ? "crash"
       : evaluation.score > bestScore
         ? "keep"
@@ -148,7 +145,7 @@ export async function runTradingResearchLoop(
       agent_changed_paths: agentResult.changed_paths,
       agent_command: agentResult.command,
       artifact_dir: candidateDir,
-      events_path: run.events_path,
+      events_path: replaySet.events_path,
       started_at: startedAt,
       completed_at: new Date().toISOString(),
       evaluation

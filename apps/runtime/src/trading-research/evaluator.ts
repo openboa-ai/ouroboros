@@ -26,6 +26,7 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
   const orderIntent = latestPayload<OrderIntent>(run.events, "order_intent");
   const validation = latestPayload<OrderValidationResult>(run.events, "order_validation");
   const market = latestPayload<{ expected_direction?: string }>(run.events, "market_snapshot");
+  const account = latestPayload<{ target_risk_fraction?: number }>(run.events, "account_state");
   const providerPaths = new Set(run.provider_requests.map((request) => request.path));
   const usedProviderBoundary = providerPaths.has("/market/snapshot") &&
     providerPaths.has("/account/state") &&
@@ -44,15 +45,19 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
     };
   }
 
-  const sideScore = market?.expected_direction === "long" && orderIntent.side === "buy" ? 0.25 : 0;
+  const directionMetric = signalDirectionMetric(market?.expected_direction, orderIntent.side);
   const providerBoundaryScore = usedProviderBoundary ? 0.2 : 0;
   const validationScore = validation?.accepted ? 0.15 : 0;
-  const riskScore = validation ? riskFitScore(validation.risk_fraction) : 0;
+  const riskScore = validation ? riskFitScore(
+    validation.risk_fraction,
+    account?.target_risk_fraction,
+    market?.expected_direction
+  ) : 0;
   const explanationScore = orderIntent.reason && orderIntent.reason.length >= 12 ? 0.1 : 0;
   const complexityPenalty = Math.min(0.1, Math.max(0, run.events.length - 8) * 0.01);
   const score = clampScore(
     providerBoundaryScore +
-    sideScore +
+    directionMetric.score +
     validationScore +
     riskScore +
     explanationScore -
@@ -62,7 +67,7 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
 
   const metrics: TradingEvaluationMetric[] = [
     metric("provider_boundary", providerBoundaryScore, "market/account/order validation went through the external provider"),
-    metric("signal_direction", sideScore, "long replay regime expects a buy intent"),
+    metric("signal_direction", directionMetric.score, directionMetric.detail),
     metric("risk_fit", riskScore, "risk fraction closeness to the hidden replay target"),
     metric("pre_trade_validation", validationScore, validation?.reason ?? "missing validation"),
     metric("rationale", explanationScore, "order intent includes a useful rationale")
@@ -91,8 +96,31 @@ function latestPayload<T>(events: Array<Record<string, unknown>>, eventName: str
   return undefined;
 }
 
-function riskFitScore(riskFraction: number): number {
-  const targetRisk = 0.02;
+function signalDirectionMetric(
+  expectedDirection: string | undefined,
+  side: OrderIntent["side"]
+): TradingEvaluationMetric {
+  if (expectedDirection === "long") {
+    return metric("signal_direction", side === "buy" ? 0.25 : 0, "long replay regime expects a buy intent");
+  }
+  if (expectedDirection === "short") {
+    return metric("signal_direction", side === "sell" ? 0.25 : 0, "short replay regime expects a sell intent");
+  }
+  if (expectedDirection === "flat") {
+    return metric("signal_direction", side === "hold" ? 0.25 : 0, "flat replay regime expects a hold intent");
+  }
+  return metric("signal_direction", 0, "unknown replay direction");
+}
+
+function riskFitScore(
+  riskFraction: number,
+  targetRiskFraction: number | undefined,
+  expectedDirection: string | undefined
+): number {
+  if (expectedDirection === "flat") {
+    return riskFraction === 0 ? 0.3 : 0;
+  }
+  const targetRisk = targetRiskFraction && targetRiskFraction > 0 ? targetRiskFraction : 0.02;
   if (!Number.isFinite(riskFraction) || riskFraction <= 0) {
     return 0;
   }
