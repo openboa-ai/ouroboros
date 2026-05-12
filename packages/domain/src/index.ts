@@ -302,6 +302,7 @@ export type MaterializationValidationStatus = "accepted" | "rejected";
 export type AarProposalProviderFailureReason =
   | "aar_proposal_provider_unavailable"
   | "aar_proposal_provider_failed"
+  | "aar_proposal_provider_timeout"
   | "invalid_aar_proposal_request"
   | "no_eligible_aar_finding"
   | "unsupported_aar_proposal_task"
@@ -611,6 +612,7 @@ export interface AarProposalProviderAttribution {
 export interface AarProposalProviderProbeResult extends AarProposalProviderAttribution {
   readiness_status: AarProposalProviderReadinessStatus;
   supported_purposes: Array<Extract<AgentRunPurpose, "aar_artifact_proposal_generation">>;
+  version?: string;
   provider_readiness_ref?: Ref;
   provider_probe_attempt_ref?: Ref;
   failure_reason?: AarProposalProviderFailureReason;

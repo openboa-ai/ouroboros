@@ -18,7 +18,7 @@ const maxProviderOutputBytes = 10 * 1024 * 1024;
 type ExecFileRunner = (
   file: string,
   args: string[],
-  options?: { cwd?: string; maxBuffer?: number }
+  options?: { cwd?: string; maxBuffer?: number; timeout?: number }
 ) => Promise<{ stdout: string; stderr: string }>;
 
 const defaultExecFileRunner: ExecFileRunner = async (file, args, options) => {
@@ -35,6 +35,7 @@ export interface CodexCliAarProposalProviderOptions {
   schemaPath?: string;
   outputPath?: string;
   command?: string;
+  timeoutMs?: number;
   execFile?: ExecFileRunner;
 }
 
@@ -44,6 +45,7 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
   private readonly schemaPath: string;
   private readonly outputPath?: string;
   private readonly command: string;
+  private readonly timeoutMs: number;
   private readonly execFile: ExecFileRunner;
 
   constructor(options: CodexCliAarProposalProviderOptions = {}) {
@@ -56,18 +58,21 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
     this.schemaPath = options.schemaPath ?? "apps/runtime/schemas/aar-proposal-provider-output.schema.json";
     this.outputPath = options.outputPath;
     this.command = options.command ?? "codex";
+    this.timeoutMs = options.timeoutMs ?? 120_000;
     this.execFile = options.execFile ?? defaultExecFileRunner;
   }
 
   async probeAarProposal(): Promise<AarProposalProviderProbeResult> {
     try {
-      await this.execFile(this.command, ["--version"], {
+      const { stdout } = await this.execFile(this.command, ["--version"], {
         cwd: this.workingDirectory,
-        maxBuffer: maxProviderOutputBytes
+        maxBuffer: maxProviderOutputBytes,
+        timeout: this.timeoutMs
       });
       return {
         ...this.provider,
         readiness_status: "active_verified",
+        version: stdout.trim(),
         supported_purposes: ["aar_artifact_proposal_generation"]
       };
     } catch {
@@ -111,7 +116,8 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
     try {
       await this.execFile(this.command, artifacts.commandArgs, {
         cwd: this.workingDirectory,
-        maxBuffer: maxProviderOutputBytes
+        maxBuffer: maxProviderOutputBytes,
+        timeout: this.timeoutMs
       });
 
       const rawOutput = await readFile(artifacts.outputFile, "utf8");
@@ -135,7 +141,7 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
     } catch (error) {
       return this.failureResult(
         request,
-        error instanceof SyntaxError ? "invalid_aar_proposal_request" : "aar_proposal_provider_failed",
+        this.failureReason(error),
         artifacts
       );
     }
@@ -163,7 +169,8 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
         args: commandArgs,
         cwd: this.workingDirectory,
         schema_path: this.schemaPath,
-        output_path: outputFile
+        output_path: outputFile,
+        timeout_ms: this.timeoutMs
       }, null, 2)}\n`,
       "utf8"
     );
@@ -241,6 +248,22 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
       idempotency_key: request.idempotency_key,
       authority_status: "proposal_input_only"
     };
+  }
+
+  private failureReason(
+    error: unknown
+  ): Extract<AarProposalProviderResult, { status: "failed" }>["failure_reason"] {
+    if (error instanceof SyntaxError) {
+      return "invalid_aar_proposal_request";
+    }
+    const processError = error as NodeJS.ErrnoException & {
+      killed?: boolean;
+      signal?: NodeJS.Signals;
+    };
+    if (processError.code === "ETIMEDOUT" || processError.killed || processError.signal === "SIGTERM") {
+      return "aar_proposal_provider_timeout";
+    }
+    return "aar_proposal_provider_failed";
   }
 }
 

@@ -33,6 +33,7 @@ export interface CodexAarProposalDryRunInput {
   schema_path?: string;
   codex_command?: string;
   codex_model?: string;
+  codex_timeout_ms?: number;
 }
 
 export type CodexAarProposalDryRunOutcome =
@@ -66,7 +67,8 @@ export async function runCodexAarProposalDryRun(
     outputPath: input.output_path,
     schemaPath: input.schema_path,
     command: input.codex_command,
-    model: input.codex_model
+    model: input.codex_model,
+    timeoutMs: input.codex_timeout_ms
   });
 
   try {

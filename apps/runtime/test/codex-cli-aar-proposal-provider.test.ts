@@ -27,12 +27,15 @@ describe("CodexCliAarProposalProviderAdapter", () => {
   it("builds a schema-constrained Codex CLI command and parses proposal output", async () => {
     const outputPath = path.join(tmpDir, "aar-proposal-output.json");
     const calls: string[][] = [];
+    const timeouts: Array<number | undefined> = [];
     const adapter = new CodexCliAarProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
       schemaPath: "schema/aar-proposal-output.schema.json",
-      execFile: async (_file, args) => {
+      timeoutMs: 12_345,
+      execFile: async (_file, args, options) => {
         calls.push(args);
+        timeouts.push(options?.timeout);
         if (args[0] === "--version") {
           return { stdout: "codex-cli 0.125.0\n", stderr: "" };
         }
@@ -45,6 +48,7 @@ describe("CodexCliAarProposalProviderAdapter", () => {
     const result = await adapter.runAarProposalGeneration(request);
 
     expect(calls.map((args) => args[0])).toEqual(["--version", "exec"]);
+    expect(timeouts).toEqual([12_345, 12_345]);
     expect(calls[1]).toEqual(
       expect.arrayContaining([
         "--model",
@@ -89,6 +93,22 @@ describe("CodexCliAarProposalProviderAdapter", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /aar_artifact_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
     );
+  });
+
+  it("exposes the real Codex version probe output when available", async () => {
+    const adapter = new CodexCliAarProposalProviderAdapter({
+      workingDirectory: tmpDir,
+      execFile: async (_file, args) => {
+        expect(args).toEqual(["--version"]);
+        return { stdout: "codex-cli 0.130.0\n", stderr: "" };
+      }
+    });
+
+    await expect(adapter.probeAarProposal()).resolves.toMatchObject({
+      provider_kind: "codex_cli",
+      readiness_status: "active_verified",
+      version: "codex-cli 0.130.0"
+    });
   });
 
   it("probes real Codex availability without requiring it in unit tests", async () => {
@@ -145,6 +165,28 @@ describe("CodexCliAarProposalProviderAdapter", () => {
     });
     expect(result).not.toHaveProperty("output");
     await expect(readFile(outputPath, "utf8")).resolves.toContain("wrong");
+  });
+
+  it("maps timed-out Codex execution to a timeout failure trace", async () => {
+    const adapter = new CodexCliAarProposalProviderAdapter({
+      workingDirectory: tmpDir,
+      execFile: async (_file, args) => {
+        if (args[0] === "--version") {
+          return { stdout: "codex-cli 0.130.0\n", stderr: "" };
+        }
+        throw Object.assign(new Error("codex exec timed out"), {
+          code: "ETIMEDOUT",
+          killed: true,
+          signal: "SIGTERM"
+        });
+      }
+    });
+
+    await expect(adapter.runAarProposalGeneration(validRequest())).resolves.toMatchObject({
+      status: "failed",
+      failure_reason: "aar_proposal_provider_timeout",
+      authority_status: "proposal_input_only"
+    });
   });
 });
 
