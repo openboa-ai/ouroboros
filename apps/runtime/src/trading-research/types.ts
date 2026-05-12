@@ -31,8 +31,18 @@ export interface AgentEditInput {
 export interface AgentEditResult {
   status: "edited" | "no_change" | "failed";
   summary: string;
+  failure_reason?: AgentEditFailureReason;
+  command?: string[];
+  stdout?: string;
+  stderr?: string;
   error?: string;
 }
+
+export type AgentEditFailureReason =
+  | "codex_cli_unavailable"
+  | "codex_environment_blocked"
+  | "codex_timed_out"
+  | "codex_cli_failed";
 
 export interface TradingResearchAgentAdapter {
   readonly agent: ManagedResearchAgent;
@@ -130,6 +140,8 @@ export interface TradingResearchNotebookEntry {
   score: number;
   summary: string;
   agent_summary: string;
+  agent_failure_reason?: AgentEditFailureReason;
+  agent_command?: string[];
   artifact_dir: string;
   events_path: string;
   started_at: string;
