@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -18,7 +18,7 @@ const maxProviderOutputBytes = 10 * 1024 * 1024;
 type ExecFileRunner = (
   file: string,
   args: string[],
-  options?: { cwd?: string; maxBuffer?: number }
+  options?: { cwd?: string; maxBuffer?: number; timeout?: number }
 ) => Promise<{ stdout: string; stderr: string }>;
 
 const defaultExecFileRunner: ExecFileRunner = async (file, args, options) => {
@@ -35,6 +35,7 @@ export interface CodexCliAarProposalProviderOptions {
   schemaPath?: string;
   outputPath?: string;
   command?: string;
+  timeoutMs?: number;
   execFile?: ExecFileRunner;
 }
 
@@ -42,8 +43,9 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
   private readonly provider: AarProposalProviderAttribution;
   private readonly workingDirectory: string;
   private readonly schemaPath: string;
-  private readonly outputPath: string;
+  private readonly outputPath?: string;
   private readonly command: string;
+  private readonly timeoutMs: number;
   private readonly execFile: ExecFileRunner;
 
   constructor(options: CodexCliAarProposalProviderOptions = {}) {
@@ -54,20 +56,23 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
     };
     this.workingDirectory = options.workingDirectory ?? process.cwd();
     this.schemaPath = options.schemaPath ?? "apps/runtime/schemas/aar-proposal-provider-output.schema.json";
-    this.outputPath = options.outputPath ?? ".ouroboros/provider-runs/latest-aar-proposal-output.json";
+    this.outputPath = options.outputPath;
     this.command = options.command ?? "codex";
+    this.timeoutMs = options.timeoutMs ?? 120_000;
     this.execFile = options.execFile ?? defaultExecFileRunner;
   }
 
   async probeAarProposal(): Promise<AarProposalProviderProbeResult> {
     try {
-      await this.execFile(this.command, ["--version"], {
+      const { stdout } = await this.execFile(this.command, ["--version"], {
         cwd: this.workingDirectory,
-        maxBuffer: maxProviderOutputBytes
+        maxBuffer: maxProviderOutputBytes,
+        timeout: this.timeoutMs
       });
       return {
         ...this.provider,
         readiness_status: "active_verified",
+        version: stdout.trim(),
         supported_purposes: ["aar_artifact_proposal_generation"]
       };
     } catch {
@@ -81,6 +86,7 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
   }
 
   buildCommand(request: AarProposalProviderRequest): string[] {
+    const outputFile = this.outputPathForRequest(request);
     return [
       "exec",
       "--cd",
@@ -93,7 +99,7 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
       "--output-schema",
       this.schemaPath,
       "--output-last-message",
-      this.outputPath,
+      outputFile,
       this.buildPrompt(request)
     ];
   }
@@ -101,24 +107,23 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
   async runAarProposalGeneration(
     request: AarProposalProviderRequest
   ): Promise<AarProposalProviderResult> {
+    const artifacts = await this.prepareRunArtifacts(request);
     const probe = await this.probeAarProposal();
     if (probe.readiness_status !== "active_verified") {
-      return this.failureResult(request, "aar_proposal_provider_unavailable");
+      return this.failureResult(request, "aar_proposal_provider_unavailable", artifacts);
     }
 
-    const outputFile = this.resolvedOutputPath();
     try {
-      await mkdir(path.dirname(outputFile), { recursive: true });
-      await rm(outputFile, { force: true });
-      await this.execFile(this.command, this.buildCommand(request), {
+      await this.execFile(this.command, artifacts.commandArgs, {
         cwd: this.workingDirectory,
-        maxBuffer: maxProviderOutputBytes
+        maxBuffer: maxProviderOutputBytes,
+        timeout: this.timeoutMs
       });
 
-      const rawOutput = await readFile(outputFile, "utf8");
+      const rawOutput = await readFile(artifacts.outputFile, "utf8");
       const output = JSON.parse(rawOutput) as AarProposalProviderOutput;
       if (!isValidProviderOutput(output)) {
-        return this.failureResult(request, "invalid_aar_proposal_request");
+        return this.failureResult(request, "invalid_aar_proposal_request", artifacts);
       }
 
       return {
@@ -128,23 +133,69 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
         agent_run_ref: request.agent_run_ref,
         agent_event_refs: [agentEventRef(request)],
         trace_ref: request.trace_ref,
-        provider_output_artifact_refs: [providerOutputArtifactRef(outputFile)],
-        debug_artifact_refs: [codexCommandRef(this.command, this.buildCommand(request))],
+        provider_output_artifact_refs: [providerOutputArtifactRef(artifacts.outputFile)],
+        debug_artifact_refs: debugArtifactRefs(artifacts),
         idempotency_key: request.idempotency_key,
         authority_status: "proposal_input_only"
       };
     } catch (error) {
       return this.failureResult(
         request,
-        error instanceof SyntaxError ? "invalid_aar_proposal_request" : "aar_proposal_provider_failed"
+        this.failureReason(error),
+        artifacts
       );
     }
   }
 
-  private resolvedOutputPath(): string {
-    return path.isAbsolute(this.outputPath)
-      ? this.outputPath
-      : path.join(this.workingDirectory, this.outputPath);
+  private async prepareRunArtifacts(
+    request: AarProposalProviderRequest
+  ): Promise<CodexAarProposalRunArtifacts> {
+    const outputFile = this.outputPathForRequest(request);
+    const prompt = this.buildPrompt(request);
+    const commandArgs = this.buildCommandForOutput(request, outputFile, prompt);
+    const runDir = path.dirname(outputFile);
+    const requestFile = path.join(runDir, "provider-request.json");
+    const promptFile = path.join(runDir, "provider-prompt.txt");
+    const commandFile = path.join(runDir, "provider-command.json");
+
+    await mkdir(runDir, { recursive: true });
+    await rm(outputFile, { force: true });
+    await writeFile(requestFile, `${JSON.stringify(request, null, 2)}\n`, "utf8");
+    await writeFile(promptFile, `${prompt}\n`, "utf8");
+    await writeFile(
+      commandFile,
+      `${JSON.stringify({
+        command: this.command,
+        args: commandArgs,
+        cwd: this.workingDirectory,
+        schema_path: this.schemaPath,
+        output_path: outputFile,
+        timeout_ms: this.timeoutMs
+      }, null, 2)}\n`,
+      "utf8"
+    );
+
+    return {
+      outputFile,
+      requestFile,
+      promptFile,
+      commandFile,
+      commandArgs
+    };
+  }
+
+  private outputPathForRequest(request: AarProposalProviderRequest): string {
+    if (this.outputPath) {
+      return path.isAbsolute(this.outputPath)
+        ? this.outputPath
+        : path.join(this.workingDirectory, this.outputPath);
+    }
+    return path.join(
+      this.workingDirectory,
+      ".ouroboros/provider-runs",
+      safeId(request.idempotency_key),
+      "aar-proposal-output.json"
+    );
   }
 
   private buildPrompt(request: AarProposalProviderRequest): string {
@@ -158,9 +209,32 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
     ].join("\n");
   }
 
+  private buildCommandForOutput(
+    request: AarProposalProviderRequest,
+    outputFile: string,
+    prompt: string
+  ): string[] {
+    return [
+      "exec",
+      "--cd",
+      this.workingDirectory,
+      "--model",
+      this.provider.model,
+      "--sandbox",
+      "read-only",
+      "--json",
+      "--output-schema",
+      this.schemaPath,
+      "--output-last-message",
+      outputFile,
+      prompt
+    ];
+  }
+
   private failureResult(
     request: AarProposalProviderRequest,
-    failureReason: Extract<AarProposalProviderResult, { status: "failed" }>["failure_reason"]
+    failureReason: Extract<AarProposalProviderResult, { status: "failed" }>["failure_reason"],
+    artifacts: CodexAarProposalRunArtifacts
   ): AarProposalProviderResult {
     return {
       status: "failed",
@@ -169,12 +243,36 @@ export class CodexCliAarProposalProviderAdapter implements AarProposalProviderAd
       agent_run_ref: request.agent_run_ref,
       agent_event_refs: [agentEventRef(request)],
       trace_ref: request.trace_ref,
-      provider_output_artifact_refs: [providerOutputArtifactRef(this.resolvedOutputPath())],
-      debug_artifact_refs: [codexCommandRef(this.command, this.buildCommand(request))],
+      provider_output_artifact_refs: [providerOutputArtifactRef(artifacts.outputFile)],
+      debug_artifact_refs: debugArtifactRefs(artifacts),
       idempotency_key: request.idempotency_key,
       authority_status: "proposal_input_only"
     };
   }
+
+  private failureReason(
+    error: unknown
+  ): Extract<AarProposalProviderResult, { status: "failed" }>["failure_reason"] {
+    if (error instanceof SyntaxError) {
+      return "invalid_aar_proposal_request";
+    }
+    const processError = error as NodeJS.ErrnoException & {
+      killed?: boolean;
+      signal?: NodeJS.Signals;
+    };
+    if (processError.code === "ETIMEDOUT" || processError.killed || processError.signal === "SIGTERM") {
+      return "aar_proposal_provider_timeout";
+    }
+    return "aar_proposal_provider_failed";
+  }
+}
+
+interface CodexAarProposalRunArtifacts {
+  outputFile: string;
+  requestFile: string;
+  promptFile: string;
+  commandFile: string;
+  commandArgs: string[];
 }
 
 function isValidProviderOutput(output: AarProposalProviderOutput): boolean {
@@ -217,8 +315,12 @@ function providerOutputArtifactRef(outputFile: string): Ref {
   return ref("aar_proposal_provider_output_artifact", outputFile);
 }
 
-function codexCommandRef(command: string, args: string[]): Ref {
-  return ref("codex_cli_command", [command, ...args].join(" "));
+function debugArtifactRefs(artifacts: CodexAarProposalRunArtifacts): Ref[] {
+  return [
+    ref("codex_cli_request_artifact", artifacts.requestFile),
+    ref("codex_cli_prompt_artifact", artifacts.promptFile),
+    ref("codex_cli_command_artifact", artifacts.commandFile)
+  ];
 }
 
 function ref(record_kind: string, id: string): Ref {

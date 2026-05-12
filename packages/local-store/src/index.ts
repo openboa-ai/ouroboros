@@ -5,6 +5,7 @@ import type {
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
+  AarExperimentRecord,
   AarArtifactLineageRecord,
   AarArtifactProposalRecord,
   AarFindingRecord,
@@ -100,6 +101,7 @@ import type {
   StageBindingRecord,
   TracePlaceholderRecord,
   TraderSystemCandidateRecord,
+  TradingEvaluationResultRecord,
   TraderSystemProgramRecord,
   TraderSystemRuntimeLifecycleStatus,
   TraderSystemRuntimeRecord,
@@ -135,6 +137,8 @@ export type LocalStoreErrorCode =
   | "invalid_aar_artifact_lineage_input"
   | "invalid_aar_artifact_proposal_input"
   | "invalid_aar_orchestration_run_input"
+  | "invalid_aar_experiment_input"
+  | "invalid_trading_evaluation_result_input"
   | "aar_proposal_materialization_reload_failed"
   | "aar_finding_not_found"
   | "aar_artifact_proposal_not_found"
@@ -208,7 +212,9 @@ type Collection =
   | "aar-artifact-lineages"
   | "aar-artifact-proposals"
   | "aar-proposal-materialization-attempts"
-  | "aar-orchestration-runs";
+  | "aar-orchestration-runs"
+  | "aar-experiments"
+  | "trading-evaluation-results";
 
 interface FixtureItem {
   collection: Collection;
@@ -936,6 +942,48 @@ export class LocalStore {
   async listAarOrchestrationRuns(): Promise<AarOrchestrationRunRecord[]> {
     return (await this.readCollection<AarOrchestrationRunRecord>("aar-orchestration-runs"))
       .sort(compareAarOrchestrationRuns);
+  }
+
+  async recordAarExperiment(experiment: AarExperimentRecord): Promise<AarExperimentRecord> {
+    if (!isAarExperimentRecord(experiment)) {
+      throw new LocalStoreError(
+        "invalid_aar_experiment_input",
+        "invalid AAR experiment record",
+        { aar_experiment_id: (experiment as Partial<AarExperimentRecord> | undefined)?.aar_experiment_id }
+      );
+    }
+    await this.writeJson(this.itemPath("aar-experiments", experiment.aar_experiment_id), experiment);
+    return experiment;
+  }
+
+  async listAarExperiments(): Promise<AarExperimentRecord[]> {
+    return (await this.readCollection<AarExperimentRecord>("aar-experiments"))
+      .sort(compareAarExperiments);
+  }
+
+  async recordTradingEvaluationResult(
+    result: TradingEvaluationResultRecord
+  ): Promise<TradingEvaluationResultRecord> {
+    if (!isTradingEvaluationResultRecord(result)) {
+      throw new LocalStoreError(
+        "invalid_trading_evaluation_result_input",
+        "invalid trading evaluation result record",
+        {
+          trading_evaluation_result_id:
+            (result as Partial<TradingEvaluationResultRecord> | undefined)?.trading_evaluation_result_id
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath("trading-evaluation-results", result.trading_evaluation_result_id),
+      result
+    );
+    return result;
+  }
+
+  async listTradingEvaluationResults(): Promise<TradingEvaluationResultRecord[]> {
+    return (await this.readCollection<TradingEvaluationResultRecord>("trading-evaluation-results"))
+      .sort(compareTradingEvaluationResults);
   }
 
   async listAarProposalMaterializationAttempts(): Promise<AarProposalMaterializationAttemptRecord[]> {
@@ -3963,6 +4011,25 @@ function compareAarOrchestrationRuns(
   return a.aar_orchestration_run_id.localeCompare(b.aar_orchestration_run_id);
 }
 
+function compareAarExperiments(a: AarExperimentRecord, b: AarExperimentRecord): number {
+  const timeCompare = a.submitted_at.localeCompare(b.submitted_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.aar_experiment_id.localeCompare(b.aar_experiment_id);
+}
+
+function compareTradingEvaluationResults(
+  a: TradingEvaluationResultRecord,
+  b: TradingEvaluationResultRecord
+): number {
+  const timeCompare = a.completed_at.localeCompare(b.completed_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.trading_evaluation_result_id.localeCompare(b.trading_evaluation_result_id);
+}
+
 function compareAarProposalMaterializationAttempts(
   a: AarProposalMaterializationAttemptRecord,
   b: AarProposalMaterializationAttemptRecord
@@ -4726,6 +4793,68 @@ function isAarOrchestrationRunRecord(value: unknown): value is AarOrchestrationR
   );
 }
 
+function isAarExperimentRecord(value: unknown): value is AarExperimentRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<AarExperimentRecord>;
+  return (
+    raw.record_kind === "aar_experiment" &&
+    raw.version === 1 &&
+    nonEmpty(raw.aar_experiment_id) &&
+    isRef(raw.researcher_ref, "aar_researcher") &&
+    isRef(raw.research_direction_ref, "aar_research_direction") &&
+    isRef(raw.runnable_artifact_ref, "runnable_artifact") &&
+    isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
+    (
+      raw.sandbox_runtime_instance_ref === undefined ||
+      isRef(raw.sandbox_runtime_instance_ref, "sandbox_runtime_instance")
+    ) &&
+    (
+      raw.runtime_trace_refs === undefined ||
+      (
+        Array.isArray(raw.runtime_trace_refs) &&
+        raw.runtime_trace_refs.every((item) => isRef(item))
+      )
+    ) &&
+    (raw.trace_ref === undefined || isRef(raw.trace_ref, "trace_placeholder")) &&
+    nonEmpty(raw.submitted_at) &&
+    isAarExperimentStatus(raw.status) &&
+    raw.authority_status === "not_live"
+  );
+}
+
+function isTradingEvaluationResultRecord(value: unknown): value is TradingEvaluationResultRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<TradingEvaluationResultRecord>;
+  return (
+    raw.record_kind === "trading_evaluation_result" &&
+    raw.version === 1 &&
+    nonEmpty(raw.trading_evaluation_result_id) &&
+    isRef(raw.aar_experiment_ref, "aar_experiment") &&
+    isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
+    isRef(raw.evaluator_ref, "external_evaluator") &&
+    isTradingEvaluationResultStatus(raw.result_status) &&
+    isEvidenceDisposition(raw.evidence_disposition) &&
+    isTradingEvaluationScoreSummary(raw.score_summary) &&
+    Array.isArray(raw.metric_refs) &&
+    raw.metric_refs.every((item) => isRef(item, "metric_snapshot")) &&
+    isRef(raw.evaluator_trace_ref, "trace_placeholder") &&
+    (
+      raw.disqualification_reason === undefined ||
+      isTradingEvaluationDisqualificationReason(raw.disqualification_reason)
+    ) &&
+    (
+      raw.quarantine_reason === undefined ||
+      isTradingEvaluationQuarantineReason(raw.quarantine_reason)
+    ) &&
+    nonEmpty(raw.completed_at) &&
+    (raw.authority_status === "not_counted" || raw.authority_status === "counted")
+  );
+}
+
 function isAarFindingKind(value: unknown): boolean {
   return (
     value === "positive_result" ||
@@ -4742,6 +4871,55 @@ function isAarArtifactProposalStatus(value: unknown): boolean {
 
 function isAarOrchestrationRunStatus(value: unknown): boolean {
   return value === "started" || value === "proposed" || value === "failed" || value === "discarded";
+}
+
+function isAarExperimentStatus(value: unknown): boolean {
+  return value === "submitted" || value === "evaluated" || value === "failed" || value === "discarded";
+}
+
+function isTradingEvaluationResultStatus(value: unknown): boolean {
+  return value === "accepted" || value === "quarantined_for_review" || value === "disqualified";
+}
+
+function isTradingEvaluationScoreSummary(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Record<string, unknown>;
+  return [
+    "total_score",
+    "oos_score",
+    "drawdown_score",
+    "turnover_score",
+    "cost_survival_score",
+    "reproducibility_score",
+    "complexity_penalty"
+  ].every((key) => typeof raw[key] === "number" && Number.isFinite(raw[key]));
+}
+
+function isTradingEvaluationDisqualificationReason(value: unknown): boolean {
+  return (
+    value === "lookahead_leakage" ||
+    value === "data_leakage" ||
+    value === "survivorship_bias" ||
+    value === "cost_model_bypass" ||
+    value === "funding_ignored" ||
+    value === "liquidation_ignored" ||
+    value === "seed_cherry_pick" ||
+    value === "oos_overfit" ||
+    value === "unreproducible" ||
+    value === "runtime_self_report_only"
+  );
+}
+
+function isTradingEvaluationQuarantineReason(value: unknown): boolean {
+  return (
+    value === "metric_instability" ||
+    value === "insufficient_oos_coverage" ||
+    value === "excessive_complexity" ||
+    value === "manual_review_required" ||
+    value === "partial_trace"
+  );
 }
 
 function isRunnableArtifactRuntimeKind(value: unknown): boolean {
