@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,7 +7,11 @@ import {
   FixtureTradingResearchAgentAdapter,
   NoopTradingResearchAgentAdapter
 } from "../src/trading-research/agent-adapters";
-import { readTradingSystemManifest, runTradingArtifact } from "../src/trading-research/artifact-runner";
+import {
+  DockerSandboxesSbxTradingArtifactRunner,
+  readTradingSystemManifest,
+  runTradingArtifact
+} from "../src/trading-research/artifact-runner";
 import { evaluateTradingRun } from "../src/trading-research/evaluator";
 import {
   defaultReplayTradingScenarioSet,
@@ -25,6 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  delete process.env.SBX_FAKE_COMMAND_LOG;
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -59,6 +64,10 @@ describe("Trading AAR research loop MVP", () => {
     expect(notebook.entries[0].evaluation.scenario_results?.map((result) => result.scenario_id)).toEqual([
       "trend_long",
       "range_flat"
+    ]);
+    expect(notebook.entries[0].evaluation.scenario_results?.map((result) => result.runner_kind)).toEqual([
+      "host_process",
+      "host_process"
     ]);
     expect(notebook.entries[1]).toMatchObject({
       iteration: 2,
@@ -150,6 +159,60 @@ describe("Trading AAR research loop MVP", () => {
       score: 1,
       risk_decision: "valid_order_intent"
     });
+  });
+
+  it("runs replay scenarios through an explicit sbx artifact runner adapter", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx");
+    const commandLog = path.join(tmpDir, "sbx-commands.log");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "sbx-session"),
+      session_id: "sbx-session",
+      iterations: 1,
+      agent_adapter: new FixtureTradingResearchAgentAdapter(),
+      artifact_runner: new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-s10-test"
+      })
+    });
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).toMatchObject({
+      decision: "keep",
+      score: 1,
+      evaluation: {
+        status: "accepted"
+      }
+    });
+    const scenarioResults = result.entries[0].evaluation.scenario_results ?? [];
+    expect(scenarioResults).toEqual([
+      expect.objectContaining({
+        scenario_id: "trend_long",
+        runner_kind: "docker_sandboxes_sbx",
+        provider_request_count: 3,
+        runner_command_count: 5
+      }),
+      expect.objectContaining({
+        scenario_id: "range_flat",
+        runner_kind: "docker_sandboxes_sbx",
+        provider_request_count: 3,
+        runner_command_count: 5
+      })
+    ]);
+    expect(scenarioResults.every((result) => result.sandbox_name?.startsWith("ouro-s10-test-"))).toBe(true);
+
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands.filter((command) => command === "version")).toHaveLength(2);
+    expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(2);
+    expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(2);
+    expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(2);
+    expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(2);
+    expect(commands.join("\n")).toContain("TRADING_API_BASE_URL=http://127.0.0.1:");
+    delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 
   it("builds a Codex-first artifact edit command without exposing legacy proposal internals", async () => {
@@ -292,3 +355,54 @@ describe("Trading AAR research loop MVP", () => {
     ]);
   });
 });
+
+function fakeSbxTradingScript(): string {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
+
+case "$1" in
+  version)
+    printf 'Client Version: fake-sbx\\nServer Version: fake-sbx\\n'
+    ;;
+  create)
+    exit 0
+    ;;
+  exec)
+    shift
+    workdir=""
+    if [ "\${1:-}" = "-w" ]; then
+      workdir="$2"
+      shift 2
+    fi
+    shift
+    if [ "\${1:-}" = "env" ]; then
+      shift
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          *=*)
+            export "$1"
+            shift
+            ;;
+          *)
+            break
+            ;;
+        esac
+      done
+    fi
+    cd "$workdir"
+    "$@"
+    ;;
+  stop)
+    exit 0
+    ;;
+  rm)
+    exit 0
+    ;;
+  *)
+    echo "unexpected sbx command: $*" >&2
+    exit 64
+    ;;
+esac
+`;
+}
