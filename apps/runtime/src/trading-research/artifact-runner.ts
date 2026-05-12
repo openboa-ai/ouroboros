@@ -310,9 +310,13 @@ function runCommand(
         env: envOverrides ? { ...process.env, ...envOverrides } : process.env
       },
       (error, stdout, stderr) => {
+        const processError = error as (Error & { code?: unknown; signal?: unknown; killed?: unknown }) | null;
         resolve({
           command,
           exit_code: error ? exitCodeFor(error) : 0,
+          signal: typeof processError?.signal === "string" ? processError.signal : undefined,
+          timed_out: Boolean(processError?.killed) && processError?.code === null,
+          error_message: processError?.message,
           stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
           stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
           started_at: startedAt,

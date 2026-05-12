@@ -132,8 +132,23 @@ export interface ArtifactRunResult {
 export interface TradingArtifactCommandEvidence {
   command: string[];
   exit_code: number | null;
+  signal?: string;
+  timed_out?: boolean;
+  error_message?: string;
   stdout: string;
   stderr: string;
+  started_at: string;
+  completed_at: string;
+}
+
+export interface TradingArtifactCommandEvidenceSummary {
+  command: string[];
+  exit_code: number | null;
+  signal?: string;
+  timed_out?: boolean;
+  error_message?: string;
+  stdout_preview: string;
+  stderr_preview: string;
   started_at: string;
   completed_at: string;
 }
@@ -166,6 +181,7 @@ export interface TradingScenarioEvaluationResult {
   events_path: string;
   provider_request_count: number;
   runner_command_count: number;
+  runner_command_evidence?: TradingArtifactCommandEvidenceSummary[];
 }
 
 export interface TradingResearchNotebookEntry {
