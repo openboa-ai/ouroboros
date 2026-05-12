@@ -151,6 +151,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       if (!command) {
         throw new Error("Trading artifact manifest entrypoint is empty");
       }
+      const providerBaseUrl = input.provider.sandbox_base_url ?? input.provider.base_url;
       const execResult = await this.runSbxCommand([
         this.sbxPath,
         "exec",
@@ -158,7 +159,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
         input.artifact_dir,
         sandboxName,
         "env",
-        `TRADING_API_BASE_URL=${input.provider.base_url}`,
+        `TRADING_API_BASE_URL=${providerBaseUrl}`,
         command,
         ...args,
         "--output-events",

@@ -101,6 +101,7 @@ export interface TradingSystemEvent {
 
 export interface ReplayTradingApiProviderSession {
   base_url: string;
+  sandbox_base_url?: string;
   close(): Promise<void>;
   requests(): TradingProviderRequestLog[];
   scenario: ReplayTradingScenario;
