@@ -4,6 +4,7 @@ import { HostTradingArtifactRunner, type TradingArtifactRunner } from "./artifac
 import { evaluateTradingRun } from "./evaluator";
 import {
   defaultReplayTradingScenarioSet,
+  type ReplayTradingApiProviderOptions,
   startReplayTradingApiProvider
 } from "./replay-trading-api-provider";
 import type {
@@ -42,7 +43,10 @@ export async function runTradingReplaySet(
   const scenarioResults: TradingScenarioEvaluationResult[] = [];
 
   for (const scenario of scenarios) {
-    const provider = await startReplayTradingApiProvider(scenario);
+    const provider = await startReplayTradingApiProvider(
+      scenario,
+      replayProviderOptionsFor(artifactRunner.kind)
+    );
     try {
       const run = await artifactRunner.run({
         artifact_dir: input.artifact_dir,
@@ -169,4 +173,16 @@ function preview(value: string): string {
 
 function roundScore(score: number): number {
   return Math.round(Math.max(0, Math.min(1, score)) * 1_000) / 1_000;
+}
+
+function replayProviderOptionsFor(
+  artifactRunnerKind: TradingArtifactRunner["kind"]
+): ReplayTradingApiProviderOptions {
+  if (artifactRunnerKind !== "docker_sandboxes_sbx") {
+    return {};
+  }
+  return {
+    listen_host: process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_LISTEN_HOST ?? "0.0.0.0",
+    sandbox_host: process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST ?? "host.docker.internal"
+  };
 }

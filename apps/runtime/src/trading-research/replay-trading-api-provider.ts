@@ -52,8 +52,15 @@ export const defaultReplayTradingScenarioSet: ReplayTradingScenario[] = [
   }
 ];
 
+export interface ReplayTradingApiProviderOptions {
+  listen_host?: string;
+  base_host?: string;
+  sandbox_host?: string;
+}
+
 export async function startReplayTradingApiProvider(
-  scenario: ReplayTradingScenario = defaultReplayTradingScenario
+  scenario: ReplayTradingScenario = defaultReplayTradingScenario,
+  options: ReplayTradingApiProviderOptions = {}
 ): Promise<ReplayTradingApiProviderSession> {
   const requestLog: TradingProviderRequestLog[] = [];
   const server = http.createServer(async (request, response) => {
@@ -84,14 +91,18 @@ export async function startReplayTradingApiProvider(
     requestLog.push(logRequest(method, path, body, 404));
   });
 
-  await listen(server);
+  await listen(server, options.listen_host ?? "127.0.0.1");
   const address = server.address();
   if (!address || typeof address === "string") {
     throw new Error("Replay trading API provider did not bind to a TCP port");
   }
 
+  const baseHost = options.base_host ?? "127.0.0.1";
   return {
-    base_url: `http://127.0.0.1:${address.port}`,
+    base_url: providerBaseUrl(baseHost, address.port),
+    sandbox_base_url: options.sandbox_host
+      ? providerBaseUrl(options.sandbox_host, address.port)
+      : undefined,
     close: () => close(server),
     requests: () => [...requestLog],
     scenario
@@ -187,10 +198,10 @@ function logRequest(
   };
 }
 
-function listen(server: http.Server): Promise<void> {
+function listen(server: http.Server, host: string): Promise<void> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, host, () => {
       server.off("error", reject);
       resolve();
     });
@@ -211,4 +222,12 @@ function close(server: http.Server): Promise<void> {
 
 function round(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function providerBaseUrl(host: string, port: number): string {
+  return `http://${formatHostForUrl(host)}:${port}`;
+}
+
+function formatHostForUrl(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }

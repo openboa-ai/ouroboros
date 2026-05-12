@@ -30,6 +30,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
+  delete process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_LISTEN_HOST;
+  delete process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST;
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -161,12 +163,33 @@ describe("Trading AAR research loop MVP", () => {
     });
   });
 
+  it("exposes a sandbox provider URL without changing the host provider URL", async () => {
+    const provider = await startReplayTradingApiProvider(defaultReplayTradingScenarioSet[0], {
+      listen_host: "0.0.0.0",
+      sandbox_host: "host.docker.internal"
+    });
+    try {
+      expect(provider.base_url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(provider.sandbox_base_url).toMatch(/^http:\/\/host\.docker\.internal:\d+$/);
+
+      const response = await fetch(`${provider.base_url}/market/snapshot`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        symbol: "SYNTH-USD",
+        expected_direction: "long"
+      });
+    } finally {
+      await provider.close();
+    }
+  });
+
   it("runs replay scenarios through an explicit sbx artifact runner adapter", async () => {
     const fakeSbx = path.join(tmpDir, "sbx");
     const commandLog = path.join(tmpDir, "sbx-commands.log");
     await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
     await chmod(fakeSbx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST = "127.0.0.1";
 
     const result = await runTradingResearchLoop({
       run_root: path.join(tmpDir, "sbx-session"),
