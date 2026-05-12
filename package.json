@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "aar:proposal:codex": "npm run aar:proposal:codex -w @ouroboros/runtime --",
     "dev:runtime": "npm run dev -w @ouroboros/runtime",
     "dev:operator-web": "npm run dev -w @ouroboros/operator-web",
     "test": "vitest run",

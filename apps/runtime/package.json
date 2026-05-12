@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "aar:proposal:codex": "tsx src/aar-orchestration/run-codex-aar-proposal.ts",
     "build": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
