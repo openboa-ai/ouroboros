@@ -8,6 +8,8 @@ import {
 } from "./replay-trading-api-provider";
 import type {
   ReplayTradingScenario,
+  TradingArtifactCommandEvidence,
+  TradingArtifactCommandEvidenceSummary,
   TradingEvaluationResult,
   TradingScenarioEvaluationResult,
   TradingSystemManifest
@@ -61,7 +63,8 @@ export async function runTradingReplaySet(
         risk_decision: evaluation.risk_decision,
         events_path: run.events_path,
         provider_request_count: run.provider_requests.length,
-        runner_command_count: run.command_evidence?.length ?? 0
+        runner_command_count: run.command_evidence?.length ?? 0,
+        runner_command_evidence: commandEvidenceSummaries(run.command_evidence)
       });
     } finally {
       await provider.close();
@@ -139,6 +142,29 @@ function aggregateRiskDecision(
 
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function commandEvidenceSummaries(
+  evidence: TradingArtifactCommandEvidence[] | undefined
+): TradingArtifactCommandEvidenceSummary[] | undefined {
+  if (!evidence?.length) {
+    return undefined;
+  }
+  return evidence.map((item) => ({
+    command: item.command,
+    exit_code: item.exit_code,
+    signal: item.signal,
+    timed_out: item.timed_out,
+    error_message: item.error_message,
+    stdout_preview: preview(item.stdout),
+    stderr_preview: preview(item.stderr),
+    started_at: item.started_at,
+    completed_at: item.completed_at
+  }));
+}
+
+function preview(value: string): string {
+  return value.length <= 2_000 ? value : `${value.slice(0, 2_000)}...[truncated]`;
 }
 
 function roundScore(score: number): number {
