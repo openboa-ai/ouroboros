@@ -19,6 +19,7 @@ import type {
 export interface RunTradingResearchLoopInput {
   iterations?: number;
   mode?: TradingResearchMode;
+  agent_timeout_ms?: number;
   repo_root?: string;
   artifact_source_dir?: string;
   program_path?: string;
@@ -37,7 +38,9 @@ export async function runTradingResearchLoop(
   const programPath = input.program_path ?? path.join(repoRoot, "research/program.md");
   const iterations = input.iterations ?? 3;
   const mode = input.mode ?? "replay";
-  const adapter = input.agent_adapter ?? new CodexTradingResearchAgentAdapter();
+  const adapter = input.agent_adapter ?? new CodexTradingResearchAgentAdapter({
+    timeout_ms: input.agent_timeout_ms
+  });
   const notebookPath = path.join(runRoot, "notebook.json");
   const bestDir = path.join(runRoot, "best");
   const seedDir = path.join(runRoot, "seed");
@@ -83,6 +86,8 @@ export async function runTradingResearchLoop(
         score: 0,
         summary: agentResult.error ?? agentResult.summary,
         agent_summary: agentResult.summary,
+        agent_failure_reason: agentResult.failure_reason,
+        agent_command: agentResult.command,
         artifact_dir: candidateDir,
         events_path: path.join(outputDir, "events.jsonl"),
         started_at: startedAt,
@@ -137,6 +142,7 @@ export async function runTradingResearchLoop(
       score: evaluation.score,
       summary: evaluation.summary,
       agent_summary: agentResult.summary,
+      agent_command: agentResult.command,
       artifact_dir: candidateDir,
       events_path: run.events_path,
       started_at: startedAt,
@@ -185,6 +191,9 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: s
     } else if (arg === "--model" && next) {
       parsed.model = next;
       index += 1;
+    } else if (arg === "--agent-timeout-ms" && next) {
+      parsed.agent_timeout_ms = Number(next);
+      index += 1;
     } else if (arg === "--run-root" && next) {
       parsed.run_root = path.resolve(next);
       index += 1;
@@ -205,7 +214,10 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: s
   if (parsed.agent === "fixture") {
     parsed.agent_adapter = new FixtureTradingResearchAgentAdapter();
   } else if (!parsed.agent || parsed.agent === "codex") {
-    parsed.agent_adapter = new CodexTradingResearchAgentAdapter({ model: parsed.model });
+    parsed.agent_adapter = new CodexTradingResearchAgentAdapter({
+      model: parsed.model,
+      timeout_ms: parsed.agent_timeout_ms
+    });
   } else {
     throw new Error("Only --agent codex and --agent fixture are supported in the S10 MVP.");
   }

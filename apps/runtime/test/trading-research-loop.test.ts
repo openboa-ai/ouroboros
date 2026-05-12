@@ -132,6 +132,8 @@ describe("Trading AAR research loop MVP", () => {
     expect(calls[0]).toEqual(
       expect.arrayContaining([
         "exec",
+        "-c",
+        "model_reasoning_effort=\"low\"",
         "--cd",
         artifactDir,
         "--model",
@@ -149,6 +151,35 @@ describe("Trading AAR research loop MVP", () => {
     await expect(readFile(path.join(artifactDir, "run.py"), "utf8")).resolves.toContain(
       "RISK_FRACTION = 0.02"
     );
+  });
+
+  it("classifies Codex environment blockers with command evidence", async () => {
+    const artifactDir = path.join(tmpDir, "artifact");
+    const notebookPath = path.join(tmpDir, "notebook.json");
+    const programPath = path.join(tmpDir, "program.md");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(programPath, "Improve the trading system artifact.\n", "utf8");
+    await writeFile(notebookPath, "{\"entries\":[]}\n", "utf8");
+
+    const adapter = new CodexTradingResearchAgentAdapter({
+      execFile: async () => {
+        throw new Error("failed to initialize in-process app-server client: Operation not permitted");
+      }
+    });
+
+    const result = await adapter.improveArtifact({
+      agent: adapter.agent,
+      artifact_dir: artifactDir,
+      program_path: programPath,
+      notebook_path: notebookPath,
+      iteration: 1
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      failure_reason: "codex_environment_blocked",
+      command: expect.arrayContaining(["exec", "--skip-git-repo-check", "-"])
+    });
   });
 
   it("records a crash entry when the agent cannot edit before execution", async () => {
