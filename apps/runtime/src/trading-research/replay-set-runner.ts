@@ -181,6 +181,9 @@ function replayProviderOptionsFor(
   if (artifactRunnerKind !== "docker_sandboxes_sbx") {
     return {};
   }
+  if (process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_TRANSPORT !== "host_url") {
+    return {};
+  }
   return {
     listen_host: process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_LISTEN_HOST ?? "0.0.0.0",
     sandbox_host: process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST ?? "host.docker.internal"
