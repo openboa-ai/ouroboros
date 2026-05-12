@@ -75,6 +75,17 @@ describe("CodexCliAarProposalProviderAdapter", () => {
     expect(result.provider_output_artifact_refs).toEqual([
       { record_kind: "aar_proposal_provider_output_artifact", id: outputPath }
     ]);
+    expect(result.debug_artifact_refs).toEqual([
+      { record_kind: "codex_cli_request_artifact", id: path.join(tmpDir, "provider-request.json") },
+      { record_kind: "codex_cli_prompt_artifact", id: path.join(tmpDir, "provider-prompt.txt") },
+      { record_kind: "codex_cli_command_artifact", id: path.join(tmpDir, "provider-command.json") }
+    ]);
+    await expect(readFile(path.join(tmpDir, "provider-request.json"), "utf8"))
+      .resolves.toContain(request.idempotency_key);
+    await expect(readFile(path.join(tmpDir, "provider-prompt.txt"), "utf8"))
+      .resolves.toContain("Return only JSON matching the provided schema.");
+    await expect(readFile(path.join(tmpDir, "provider-command.json"), "utf8"))
+      .resolves.toContain(outputPath);
     expect(JSON.stringify(result)).not.toMatch(
       /aar_artifact_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
     );
@@ -93,11 +104,22 @@ describe("CodexCliAarProposalProviderAdapter", () => {
       readiness_status: "blocked_or_not_installed",
       failure_reason: "aar_proposal_provider_unavailable"
     });
-    await expect(adapter.runAarProposalGeneration(validRequest())).resolves.toMatchObject({
+    const result = await adapter.runAarProposalGeneration(validRequest());
+
+    expect(result).toMatchObject({
       status: "failed",
       failure_reason: "aar_proposal_provider_unavailable",
       authority_status: "proposal_input_only"
     });
+    expect(result.provider_output_artifact_refs[0]).toEqual({
+      record_kind: "aar_proposal_provider_output_artifact",
+      id: path.join(
+        tmpDir,
+        ".ouroboros/provider-runs/codex-aar-proposal-provider/aar-proposal-output.json"
+      )
+    });
+    await expect(readFile(result.debug_artifact_refs[0].id, "utf8"))
+      .resolves.toContain("codex-aar-proposal-provider");
   });
 
   it("maps invalid schema output to adapter failure trace material", async () => {

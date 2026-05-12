@@ -71,6 +71,11 @@ describe("Codex AAR proposal dry-run command runner", () => {
       status: "materialized",
       authority_status: "proposal_input_only"
     });
+    expect(attempts[0].debug_artifact_refs.map((artifactRef) => artifactRef.record_kind)).toEqual([
+      "codex_cli_request_artifact",
+      "codex_cli_prompt_artifact",
+      "codex_cli_command_artifact"
+    ]);
     await expect(store.listAarArtifactProposals()).resolves.toEqual([outcome.outcome.proposal]);
     expect(JSON.stringify({ outcome, attempts })).not.toMatch(
       /strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence|venue_adapter/i
