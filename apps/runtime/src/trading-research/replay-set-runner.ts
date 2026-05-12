@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { runTradingArtifact } from "./artifact-runner";
+import { HostTradingArtifactRunner, type TradingArtifactRunner } from "./artifact-runner";
 import { evaluateTradingRun } from "./evaluator";
 import {
   defaultReplayTradingScenarioSet,
@@ -18,6 +18,7 @@ export interface TradingReplaySetRunnerInput {
   manifest: TradingSystemManifest;
   output_dir: string;
   scenarios?: ReplayTradingScenario[];
+  artifact_runner?: TradingArtifactRunner;
 }
 
 export interface TradingReplaySetRunnerResult {
@@ -34,13 +35,14 @@ export async function runTradingReplaySet(
     throw new Error("Replay scenario set must include at least one scenario");
   }
 
+  const artifactRunner = input.artifact_runner ?? new HostTradingArtifactRunner();
   await mkdir(input.output_dir, { recursive: true });
   const scenarioResults: TradingScenarioEvaluationResult[] = [];
 
   for (const scenario of scenarios) {
     const provider = await startReplayTradingApiProvider(scenario);
     try {
-      const run = await runTradingArtifact({
+      const run = await artifactRunner.run({
         artifact_dir: input.artifact_dir,
         manifest: input.manifest,
         provider,
@@ -49,6 +51,8 @@ export async function runTradingReplaySet(
       const evaluation = evaluateTradingRun(run);
       scenarioResults.push({
         scenario_id: scenario.id,
+        runner_kind: run.runner_kind,
+        sandbox_name: run.sandbox_name,
         status: evaluation.status,
         run_status: run.status,
         score: evaluation.score,
@@ -56,7 +60,8 @@ export async function runTradingReplaySet(
         summary: evaluation.summary,
         risk_decision: evaluation.risk_decision,
         events_path: run.events_path,
-        provider_request_count: run.provider_requests.length
+        provider_request_count: run.provider_requests.length,
+        runner_command_count: run.command_evidence?.length ?? 0
       });
     } finally {
       await provider.close();

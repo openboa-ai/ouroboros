@@ -5,9 +5,14 @@ import {
   CodexTradingResearchAgentAdapter,
   FixtureTradingResearchAgentAdapter
 } from "./agent-adapters";
-import { readTradingSystemManifest } from "./artifact-runner";
+import {
+  DockerSandboxesSbxTradingArtifactRunner,
+  readTradingSystemManifest,
+  type TradingArtifactRunner
+} from "./artifact-runner";
 import { runTradingReplaySet } from "./replay-set-runner";
 import type {
+  TradingArtifactRunnerKind,
   TradingResearchAgentAdapter,
   TradingResearchLoopResult,
   TradingResearchMode,
@@ -25,6 +30,8 @@ export interface RunTradingResearchLoopInput {
   run_root?: string;
   session_id?: string;
   agent_adapter?: TradingResearchAgentAdapter;
+  artifact_runner?: TradingArtifactRunner;
+  artifact_runner_kind?: TradingArtifactRunnerKind;
 }
 
 export async function runTradingResearchLoop(
@@ -40,6 +47,7 @@ export async function runTradingResearchLoop(
   const adapter = input.agent_adapter ?? new CodexTradingResearchAgentAdapter({
     timeout_ms: input.agent_timeout_ms
   });
+  const artifactRunner = input.artifact_runner ?? artifactRunnerFor(input.artifact_runner_kind);
   const notebookPath = path.join(runRoot, "notebook.json");
   const bestDir = path.join(runRoot, "best");
   const seedDir = path.join(runRoot, "seed");
@@ -116,7 +124,8 @@ export async function runTradingResearchLoop(
     const replaySet = await runTradingReplaySet({
       artifact_dir: candidateDir,
       manifest,
-      output_dir: outputDir
+      output_dir: outputDir,
+      artifact_runner: artifactRunner
     });
 
     const evaluation = replaySet.evaluation;
@@ -175,6 +184,13 @@ function timestampId(date: Date): string {
   return date.toISOString().replace(/[^0-9]+/g, "").slice(0, 14);
 }
 
+function artifactRunnerFor(kind: TradingArtifactRunnerKind | undefined): TradingArtifactRunner | undefined {
+  if (!kind || kind === "host_process") {
+    return undefined;
+  }
+  return new DockerSandboxesSbxTradingArtifactRunner();
+}
+
 function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: string; model?: string } {
   const parsed: RunTradingResearchLoopInput & { agent?: string; model?: string } = {};
   for (let index = 0; index < args.length; index += 1) {
@@ -194,6 +210,9 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: s
       index += 1;
     } else if (arg === "--agent-timeout-ms" && next) {
       parsed.agent_timeout_ms = Number(next);
+      index += 1;
+    } else if (arg === "--artifact-runner" && next) {
+      parsed.artifact_runner_kind = parseArtifactRunnerKind(next);
       index += 1;
     } else if (arg === "--run-root" && next) {
       parsed.run_root = path.resolve(next);
@@ -223,6 +242,16 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: s
     throw new Error("Only --agent codex and --agent fixture are supported in the S10 MVP.");
   }
   return parsed;
+}
+
+function parseArtifactRunnerKind(value: string): TradingArtifactRunnerKind {
+  if (value === "host" || value === "host_process") {
+    return "host_process";
+  }
+  if (value === "sbx" || value === "sdx" || value === "docker_sandboxes_sbx") {
+    return "docker_sandboxes_sbx";
+  }
+  throw new Error("Only --artifact-runner host and --artifact-runner sbx are supported in the S10 MVP.");
 }
 
 async function main(): Promise<void> {

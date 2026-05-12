@@ -5,6 +5,7 @@ export type TradingResearchMode = "replay";
 export type TradingResearchDecision = "keep" | "discard" | "crash";
 export type TradingEvaluationStatus = "accepted" | "disqualified";
 export type TradingRiskDecision = "valid_order_intent" | "invalid_order_intent" | "no_order_intent";
+export type TradingArtifactRunnerKind = "host_process" | "docker_sandboxes_sbx";
 
 export interface ManagedResearchAgent {
   id: string;
@@ -114,6 +115,7 @@ export interface ReplayTradingScenario {
 
 export interface ArtifactRunResult {
   status: "completed" | "crashed";
+  runner_kind: TradingArtifactRunnerKind;
   artifact_dir: string;
   entrypoint: string[];
   events_path: string;
@@ -122,7 +124,18 @@ export interface ArtifactRunResult {
   exit_code?: number;
   events: TradingSystemEvent[];
   provider_requests: TradingProviderRequestLog[];
+  sandbox_name?: string;
+  command_evidence?: TradingArtifactCommandEvidence[];
   error?: string;
+}
+
+export interface TradingArtifactCommandEvidence {
+  command: string[];
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  started_at: string;
+  completed_at: string;
 }
 
 export interface TradingEvaluationMetric {
@@ -142,6 +155,8 @@ export interface TradingEvaluationResult {
 
 export interface TradingScenarioEvaluationResult {
   scenario_id: string;
+  runner_kind: TradingArtifactRunnerKind;
+  sandbox_name?: string;
   status: TradingEvaluationStatus;
   run_status: ArtifactRunResult["status"];
   score: number;
@@ -150,6 +165,7 @@ export interface TradingScenarioEvaluationResult {
   risk_decision: TradingRiskDecision;
   events_path: string;
   provider_request_count: number;
+  runner_command_count: number;
 }
 
 export interface TradingResearchNotebookEntry {
