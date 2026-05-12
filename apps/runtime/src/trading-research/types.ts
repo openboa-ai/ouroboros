@@ -3,6 +3,8 @@ export type TradingResearchAgentProvider = "codex" | "claude" | "fixture";
 export type TradingResearchMode = "replay";
 
 export type TradingResearchDecision = "keep" | "discard" | "crash";
+export type TradingEvaluationStatus = "accepted" | "disqualified";
+export type TradingRiskDecision = "valid_order_intent" | "invalid_order_intent" | "no_order_intent";
 
 export interface ManagedResearchAgent {
   id: string;
@@ -104,6 +106,8 @@ export interface ReplayTradingApiProviderSession {
 }
 
 export interface ReplayTradingScenario {
+  id: string;
+  description: string;
   market: MarketSnapshot;
   account: AccountState;
 }
@@ -128,11 +132,24 @@ export interface TradingEvaluationMetric {
 }
 
 export interface TradingEvaluationResult {
-  status: "accepted" | "disqualified";
+  status: TradingEvaluationStatus;
   score: number;
   metrics: TradingEvaluationMetric[];
   summary: string;
-  risk_decision: "valid_order_intent" | "invalid_order_intent" | "no_order_intent";
+  risk_decision: TradingRiskDecision;
+  scenario_results?: TradingScenarioEvaluationResult[];
+}
+
+export interface TradingScenarioEvaluationResult {
+  scenario_id: string;
+  status: TradingEvaluationStatus;
+  run_status: ArtifactRunResult["status"];
+  score: number;
+  metrics: TradingEvaluationMetric[];
+  summary: string;
+  risk_decision: TradingRiskDecision;
+  events_path: string;
+  provider_request_count: number;
 }
 
 export interface TradingResearchNotebookEntry {
