@@ -1,0 +1,7 @@
+{
+  "id": "trading-system-mvp",
+  "name": "Minimal Trading System MVP",
+  "entrypoint": ["python3", "run.py"],
+  "editable_paths": ["run.py"],
+  "api_contract": "trading_api_provider_v1"
+}
