@@ -45,6 +45,8 @@ describe("Trading AAR research loop MVP", () => {
       iteration: 1,
       decision: "keep",
       score: 1,
+      agent_status: "edited",
+      agent_changed_paths: ["run.py"],
       evaluation: {
         risk_decision: "valid_order_intent"
       }
@@ -52,6 +54,7 @@ describe("Trading AAR research loop MVP", () => {
     expect(notebook.entries[1]).toMatchObject({
       iteration: 2,
       decision: "discard",
+      agent_status: "edited",
       evaluation: {
         status: "disqualified",
         risk_decision: "invalid_order_intent"
@@ -128,6 +131,7 @@ describe("Trading AAR research loop MVP", () => {
     });
 
     expect(result.status).toBe("edited");
+    expect(result.changed_paths).toEqual(["run.py"]);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual(
       expect.arrayContaining([
@@ -151,6 +155,33 @@ describe("Trading AAR research loop MVP", () => {
     await expect(readFile(path.join(artifactDir, "run.py"), "utf8")).resolves.toContain(
       "RISK_FRACTION = 0.02"
     );
+  });
+
+  it("reports no_change when Codex exits without modifying editable artifact files", async () => {
+    const artifactDir = path.join(tmpDir, "artifact");
+    const notebookPath = path.join(tmpDir, "notebook.json");
+    const programPath = path.join(tmpDir, "program.md");
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await writeFile(programPath, "Improve the trading system artifact.\n", "utf8");
+    await writeFile(notebookPath, "{\"best_score\":1,\"entries\":[]}\n", "utf8");
+
+    const adapter = new CodexTradingResearchAgentAdapter({
+      execFile: async () => ({ stdout: "no edits\n", stderr: "" })
+    });
+
+    const result = await adapter.improveArtifact({
+      agent: adapter.agent,
+      artifact_dir: artifactDir,
+      program_path: programPath,
+      notebook_path: notebookPath,
+      iteration: 2,
+      previous_best_score: 1
+    });
+
+    expect(result).toMatchObject({
+      status: "no_change",
+      changed_paths: []
+    });
   });
 
   it("classifies Codex environment blockers with command evidence", async () => {
@@ -203,6 +234,7 @@ describe("Trading AAR research loop MVP", () => {
       expect.objectContaining({
         decision: "crash",
         score: 0,
+        agent_status: "failed",
         summary: "codex unavailable"
       })
     ]);

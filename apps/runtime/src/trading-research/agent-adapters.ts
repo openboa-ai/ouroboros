@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
@@ -47,15 +48,29 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
     const command = this.buildCommand(input);
     try {
       const prompt = await this.buildPrompt(input);
+      const before = await editableArtifactSnapshot(input.artifact_dir);
       const result = await this.execFile(this.command, command, {
         cwd: input.artifact_dir,
         timeout: this.timeoutMs,
         maxBuffer: 10 * 1024 * 1024,
         stdin: prompt
       });
+      const after = await editableArtifactSnapshot(input.artifact_dir);
+      const changedPaths = changedEditablePaths(before, after);
+      if (changedPaths.length === 0) {
+        return {
+          status: "no_change",
+          summary: "Codex left the trading system artifact unchanged.",
+          changed_paths: [],
+          command,
+          stdout: String(result.stdout),
+          stderr: String(result.stderr)
+        };
+      }
       return {
         status: "edited",
         summary: "Codex edited the trading system artifact workspace.",
+        changed_paths: changedPaths,
         command,
         stdout: String(result.stdout),
         stderr: String(result.stderr)
@@ -101,8 +116,9 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
       "Edit only files in the current trading system artifact directory.",
       "Do not add provider credentials, live trading authority, exchange-specific code, or hidden evaluator assumptions.",
       "The artifact must call the external TradingApiProvider through TRADING_API_BASE_URL.",
-      "Make exactly one small code edit, then stop. Do not run long tests or broad repository commands.",
+      "Make at most one small code edit, then stop. Do not run long tests or broad repository commands.",
       "For the current replay proof, prefer the smallest risk-sizing improvement: if run.py has RISK_FRACTION below 0.02, set it to 0.02.",
+      "If run.py already has RISK_FRACTION = 0.02 or the notebook says best_score is 1, leave the artifact unchanged and stop.",
       `Iteration: ${input.iteration}`,
       `Previous best score: ${input.previous_best_score ?? "none"}`,
       "",
@@ -133,7 +149,8 @@ export class FixtureTradingResearchAgentAdapter implements TradingResearchAgentA
     await writeFile(runPath, edited, "utf8");
     return {
       status: "edited",
-      summary: `Fixture agent set RISK_FRACTION to ${nextRisk}.`
+      summary: `Fixture agent set RISK_FRACTION to ${nextRisk}.`,
+      changed_paths: ["run.py"]
     };
   }
 }
@@ -149,7 +166,8 @@ export class NoopTradingResearchAgentAdapter implements TradingResearchAgentAdap
   async improveArtifact(): Promise<AgentEditResult> {
     return {
       status: "no_change",
-      summary: "Noop fixture left the artifact unchanged."
+      summary: "Noop fixture left the artifact unchanged.",
+      changed_paths: []
     };
   }
 }
@@ -296,4 +314,42 @@ function summarizeNotebook(rawNotebook: string): string {
   } catch {
     return rawNotebook.slice(0, 2_000);
   }
+}
+
+async function editableArtifactSnapshot(artifactDir: string): Promise<Map<string, string>> {
+  const editablePaths = await editablePathsFromManifest(artifactDir);
+  const snapshot = new Map<string, string>();
+  for (const relativePath of editablePaths) {
+    const filePath = path.join(artifactDir, relativePath);
+    snapshot.set(relativePath, digest(await readFile(filePath)));
+  }
+  return snapshot;
+}
+
+async function editablePathsFromManifest(artifactDir: string): Promise<string[]> {
+  try {
+    const manifest = JSON.parse(await readFile(path.join(artifactDir, "manifest.json"), "utf8")) as {
+      editable_paths?: unknown;
+    };
+    const editablePaths = Array.isArray(manifest.editable_paths)
+      ? manifest.editable_paths.filter((value): value is string => typeof value === "string")
+      : [];
+    return editablePaths.length > 0 ? editablePaths.sort() : ["run.py"];
+  } catch {
+    return ["run.py"];
+  }
+}
+
+function changedEditablePaths(
+  before: Map<string, string>,
+  after: Map<string, string>
+): string[] {
+  const paths = new Set([...before.keys(), ...after.keys()]);
+  return [...paths]
+    .filter((relativePath) => before.get(relativePath) !== after.get(relativePath))
+    .sort();
+}
+
+function digest(content: Buffer): string {
+  return createHash("sha256").update(content).digest("hex");
 }

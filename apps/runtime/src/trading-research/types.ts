@@ -31,6 +31,7 @@ export interface AgentEditInput {
 export interface AgentEditResult {
   status: "edited" | "no_change" | "failed";
   summary: string;
+  changed_paths?: string[];
   failure_reason?: AgentEditFailureReason;
   command?: string[];
   stdout?: string;
@@ -139,7 +140,9 @@ export interface TradingResearchNotebookEntry {
   decision: TradingResearchDecision;
   score: number;
   summary: string;
+  agent_status: AgentEditResult["status"];
   agent_summary: string;
+  agent_changed_paths?: string[];
   agent_failure_reason?: AgentEditFailureReason;
   agent_command?: string[];
   artifact_dir: string;
