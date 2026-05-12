@@ -32,6 +32,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
   delete process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_LISTEN_HOST;
   delete process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST;
+  delete process.env.OUROBOROS_TRADING_REPLAY_PROVIDER_TRANSPORT;
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -189,7 +190,6 @@ describe("Trading AAR research loop MVP", () => {
     await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
     await chmod(fakeSbx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
-    process.env.OUROBOROS_TRADING_REPLAY_SANDBOX_HOST = "127.0.0.1";
 
     const result = await runTradingResearchLoop({
       run_root: path.join(tmpDir, "sbx-session"),
@@ -228,6 +228,10 @@ describe("Trading AAR research loop MVP", () => {
             exit_code: 0
           }),
           expect.objectContaining({
+            command: expect.arrayContaining([expect.stringContaining("replay-provider-sidecar.py")]),
+            exit_code: 0
+          }),
+          expect.objectContaining({
             command: expect.arrayContaining(["rm", "--force"]),
             exit_code: 0
           })
@@ -246,10 +250,11 @@ describe("Trading AAR research loop MVP", () => {
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
     expect(commands.filter((command) => command === "version")).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(2);
+    expect(commands.filter((command) => command.startsWith("exec -d -w "))).toHaveLength(0);
     expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(2);
-    expect(commands.join("\n")).toContain("TRADING_API_BASE_URL=http://127.0.0.1:");
+    expect(commands.join("\n")).toContain("TRADING_API_BASE_URL='http://127.0.0.1:");
     delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 
