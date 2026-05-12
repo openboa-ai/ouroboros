@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "trading:research": "tsx apps/runtime/src/trading-research/run-trading-research.ts",
     "aar:proposal:codex": "tsx apps/runtime/src/aar-orchestration/run-codex-aar-proposal.ts",
     "aar:proposal:codex:audit": "tsx apps/runtime/src/aar-orchestration/run-codex-aar-proposal-audit.ts",
     "audit:s9-codex-sbx": "node scripts/audit-s9-codex-sbx.mjs",
