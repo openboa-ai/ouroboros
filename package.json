@@ -12,6 +12,7 @@
     "trading:research:ledger": "node scripts/trading-research-ledger.mjs",
     "trading:research:best-artifact": "node scripts/trading-research-best-artifact.mjs",
     "audit:s10-trading-research": "node scripts/audit-s10-trading-research.mjs",
+    "audit:trading-research:seeded-stability": "node scripts/audit-trading-research-seeded-stability.mjs",
     "prove:trading-research:codex-sdx": "node scripts/prove-trading-research-codex-sdx.mjs",
     "aar:proposal:codex": "tsx apps/runtime/src/aar-orchestration/run-codex-aar-proposal.ts",
     "aar:proposal:codex:audit": "tsx apps/runtime/src/aar-orchestration/run-codex-aar-proposal-audit.ts",
