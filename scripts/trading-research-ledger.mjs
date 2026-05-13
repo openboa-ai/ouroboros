@@ -6,6 +6,8 @@ import process from "node:process";
 const DEFAULT_ROOT = path.join(".ouroboros", "trading-research");
 const DEFAULT_LIMIT = 10;
 const STATUS_VALUES = new Set(["all", "pass", "blocked", "incomplete", "invalid"]);
+const GATE_VALUES = new Set(["completion", "seeded-stability"]);
+const SEEDED_REQUIRED_SCENARIOS = ["trend_long", "range_flat"];
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage: npm run trading:research:ledger
@@ -19,10 +21,13 @@ Options:
                       Default: ${DEFAULT_ROOT}
   --limit <number>    Max runs to print. Default: ${DEFAULT_LIMIT}
   --status <status>   all, pass, blocked, incomplete, invalid. Default: all
+  --gate <gate>       completion or seeded-stability. Default: completion
   --json              Print machine-readable JSON.
 
 Completion status is a ledger summary, not a replacement for the S10 audit gate.
 Use npm run audit:s10-trading-research for completion proof.
+Seeded stability status is a ledger summary, not a replacement for the seeded audit gate.
+Use npm run audit:trading-research:seeded-stability for seeded proof.
 
 Exit codes:
   0  ledger printed
@@ -38,6 +43,10 @@ const statusFilter = args.status ?? "all";
 if (!STATUS_VALUES.has(statusFilter)) {
   failUsage(`--status must be one of ${Array.from(STATUS_VALUES).join(", ")}`);
 }
+const gate = args.gate ?? "completion";
+if (!GATE_VALUES.has(gate)) {
+  failUsage(`--gate must be one of ${Array.from(GATE_VALUES).join(", ")}`);
+}
 
 let runs;
 try {
@@ -48,13 +57,14 @@ try {
 }
 
 const filteredRuns = runs
-  .filter((run) => statusFilter === "all" || run.status === statusFilter)
+  .filter((run) => statusFilter === "all" || statusForGate(run, gate) === statusFilter)
   .sort((left, right) => right.sort_time - left.sort_time)
   .slice(0, limit);
 
 if (args.json === "true") {
   console.log(JSON.stringify({
     root,
+    gate,
     status_filter: statusFilter,
     limit,
     runs: filteredRuns.map(publicRun)
@@ -64,6 +74,7 @@ if (args.json === "true") {
 
 console.log("Trading AAR run ledger");
 console.log(`root=${root}`);
+console.log(`gate=${gate}`);
 console.log(`status_filter=${statusFilter}`);
 console.log(`limit=${limit}`);
 console.log(`runs=${filteredRuns.length}`);
@@ -119,10 +130,14 @@ function summarizeNotebook(notebook, notebookPath, fileStat) {
   const sortTime = completedAt ? Date.parse(completedAt) : fileStat.mtimeMs;
   const missing = completionMissing(notebook, entries, scenarioResults);
   const status = statusFor(notebook, entries, missing);
+  const seededStabilityMissing = seededStabilityMissingFor(notebook, entries, scenarioResults);
+  const seededStabilityStatus = statusFor(notebook, entries, seededStabilityMissing);
   return {
     session_id: stringValue(notebook?.session_id) ?? path.basename(path.dirname(notebookPath)),
     status,
     missing,
+    seeded_stability_status: seededStabilityStatus,
+    seeded_stability_missing: seededStabilityMissing,
     agent_provider: stringValue(notebook?.agent?.provider) ?? "<missing>",
     mode: stringValue(notebook?.mode) ?? "<missing>",
     entry_count: entries.length,
@@ -145,6 +160,8 @@ function invalidRun(sessionId, notebookPath, fileStat, error) {
     session_id: sessionId,
     status: "invalid",
     missing: [`invalid notebook JSON: ${error instanceof Error ? error.message : String(error)}`],
+    seeded_stability_status: "invalid",
+    seeded_stability_missing: [`invalid notebook JSON: ${error instanceof Error ? error.message : String(error)}`],
     agent_provider: "<missing>",
     mode: "<missing>",
     entry_count: 0,
@@ -215,6 +232,154 @@ function completionMissing(notebook, entries, scenarioResults) {
   return missing;
 }
 
+function seededStabilityMissingFor(notebook, entries, scenarioResults) {
+  const missing = [];
+  if (notebook?.agent?.provider !== "codex") {
+    missing.push("agent.provider == codex");
+  }
+  if (notebook?.mode !== "replay") {
+    missing.push("mode == replay");
+  }
+  if (!stringValue(notebook?.program_path)) {
+    missing.push("program_path");
+  }
+  if (!Number.isFinite(notebook?.best_score) || notebook.best_score < 1) {
+    missing.push("best_score >= 1");
+  }
+  const bestArtifactDir = stringValue(notebook?.best_artifact_dir);
+  if (!bestArtifactDir) {
+    missing.push("best_artifact_dir");
+  } else if (!bestArtifactDir.includes("kept-artifact")) {
+    missing.push("best_artifact_dir includes kept-artifact");
+  }
+  if (entries.length < 2) {
+    missing.push("entries >= 2");
+  }
+  if (!entries.some((entry) => entry?.decision === "keep")) {
+    missing.push("at least one keep decision");
+  }
+  if (entries.some((entry) => entry?.agent_status === "failed")) {
+    missing.push("no agent_status failed entries");
+  }
+  if (entries.some((entry) => stringValue(entry?.agent_failure_reason))) {
+    missing.push("no agent_failure_reason entries");
+  }
+  for (const entry of entries) {
+    seededStabilityEntryMissing(entry, missing);
+  }
+  if (scenarioResults.length === 0) {
+    missing.push("scenario_results");
+  }
+  return missing;
+}
+
+function seededStabilityEntryMissing(entry, missing) {
+  const label = `iteration ${entry?.iteration ?? "<missing>"}`;
+  if (!Number.isFinite(entry?.iteration) || entry.iteration < 1) {
+    missing.push(`${label} iteration`);
+  }
+  if (!stringValue(entry?.decision)) {
+    missing.push(`${label} decision`);
+  }
+  if (!Number.isFinite(entry?.score) || entry.score < 1) {
+    missing.push(`${label} score >= 1`);
+  }
+  const agentStatus = stringValue(entry?.agent_status);
+  if (!agentStatus) {
+    missing.push(`${label} agent_status`);
+  } else if (!["edited", "no_change"].includes(agentStatus)) {
+    missing.push(`${label} agent_status is edited or no_change`);
+  }
+  if (!stringValue(entry?.artifact_dir)) {
+    missing.push(`${label} artifact_dir`);
+  }
+  if (!stringValue(entry?.events_path)) {
+    missing.push(`${label} events_path`);
+  }
+  if (entry?.evaluation?.status !== "accepted") {
+    missing.push(`${label} evaluation.status == accepted`);
+  }
+  if (!Number.isFinite(entry?.evaluation?.score) || entry.evaluation.score < 1) {
+    missing.push(`${label} evaluation.score >= 1`);
+  }
+  if (entry?.evaluation?.risk_decision !== "valid_order_intent") {
+    missing.push(`${label} evaluation.risk_decision == valid_order_intent`);
+  }
+  const scenarioResults = asArray(entry?.evaluation?.scenario_results);
+  for (const scenarioId of SEEDED_REQUIRED_SCENARIOS) {
+    if (!scenarioResults.some((scenario) => scenario?.scenario_id === scenarioId)) {
+      missing.push(`${label} scenario ${scenarioId}`);
+    }
+  }
+  for (const scenario of scenarioResults) {
+    seededStabilityScenarioMissing(label, scenario, missing);
+  }
+}
+
+function seededStabilityScenarioMissing(entryLabel, scenario, missing) {
+  const scenarioId = stringValue(scenario?.scenario_id) || "<missing-scenario>";
+  const label = `${entryLabel} scenario ${scenarioId}`;
+  if (scenario?.runner_kind !== "docker_sandboxes_sbx") {
+    missing.push(`${label} runner_kind == docker_sandboxes_sbx`);
+  }
+  if (scenario?.run_status !== "completed") {
+    missing.push(`${label} run_status == completed`);
+  }
+  if (scenario?.status !== "accepted") {
+    missing.push(`${label} status == accepted`);
+  }
+  if (!Number.isFinite(scenario?.score) || scenario.score < 1) {
+    missing.push(`${label} score >= 1`);
+  }
+  if (scenario?.risk_decision !== "valid_order_intent") {
+    missing.push(`${label} risk_decision == valid_order_intent`);
+  }
+  if (!stringValue(scenario?.events_path)) {
+    missing.push(`${label} events_path`);
+  }
+  if (numberValue(scenario?.provider_request_count) < 3) {
+    missing.push(`${label} provider_request_count >= 3`);
+  }
+  if (numberValue(scenario?.runner_command_count) < 5) {
+    missing.push(`${label} runner_command_count >= 5`);
+  }
+
+  const commandEvidence = asArray(scenario?.runner_command_evidence);
+  if (commandEvidence.length < 5) {
+    missing.push(`${label} runner_command_evidence.length >= 5`);
+  }
+  requireLifecycleCommand(commandEvidence, "version", label, missing);
+  requireLifecycleCommand(commandEvidence, "create", label, missing);
+  requireLifecycleCommand(commandEvidence, "exec", label, missing);
+  requireLifecycleCommand(commandEvidence, "stop", label, missing);
+  requireLifecycleCommand(commandEvidence, "rm", label, missing);
+  if (!commandEvidence.some((evidence) => commandText(evidence).includes("replay-provider-sidecar.py"))) {
+    missing.push(`${label} sidecar command evidence`);
+  }
+  if (!commandEvidence.some((evidence) => commandText(evidence).includes("TRADING_API_BASE_URL='http://127.0.0.1:"))) {
+    missing.push(`${label} sandbox-local Trading API base URL evidence`);
+  }
+  if (commandEvidence.some((evidence) => evidence?.exit_code !== 0)) {
+    missing.push(`${label} command evidence exit_code 0`);
+  }
+  if (commandEvidence.some((evidence) => evidence?.timed_out === true)) {
+    missing.push(`${label} command evidence not timed out`);
+  }
+}
+
+function requireLifecycleCommand(commandEvidence, token, label, missing) {
+  if (!commandEvidence.some((evidence) => {
+    const command = asArray(evidence?.command).map(String);
+    return command.includes(token);
+  })) {
+    missing.push(`${label} ${token} command evidence`);
+  }
+}
+
+function commandText(evidence) {
+  return asArray(evidence?.command).map(String).join(" ");
+}
+
 function statusFor(notebook, entries, missing) {
   if (missing.length === 0) {
     return "pass";
@@ -238,8 +403,15 @@ function statusFor(notebook, entries, missing) {
   return "incomplete";
 }
 
+function statusForGate(run, gate) {
+  if (gate === "seeded-stability") {
+    return run.seeded_stability_status;
+  }
+  return run.status;
+}
+
 function printRun(run) {
-  console.log(`run ${run.session_id} status=${run.status} completed_at=${run.completed_at}`);
+  console.log(`run ${run.session_id} status=${run.status} seeded_stability_status=${run.seeded_stability_status} completed_at=${run.completed_at}`);
   console.log(
     `  agent=${run.agent_provider} mode=${run.mode} entries=${run.entry_count} decisions=${formatDecisionCounts(run.decision_counts)} best_score=${formatValue(run.best_score)}`
   );
@@ -253,12 +425,16 @@ function printRun(run) {
   if (run.status !== "pass" && run.missing.length > 0) {
     console.log(`  missing=${run.missing.slice(0, 4).join("; ")}${run.missing.length > 4 ? `; +${run.missing.length - 4} more` : ""}`);
   }
+  if (run.seeded_stability_status !== "pass" && run.seeded_stability_missing.length > 0) {
+    console.log(`  seeded_stability_missing=${run.seeded_stability_missing.slice(0, 4).join("; ")}${run.seeded_stability_missing.length > 4 ? `; +${run.seeded_stability_missing.length - 4} more` : ""}`);
+  }
 }
 
 function publicRun(run) {
   return {
     session_id: run.session_id,
     status: run.status,
+    seeded_stability_status: run.seeded_stability_status,
     completed_at: run.completed_at,
     agent_provider: run.agent_provider,
     mode: run.mode,
@@ -272,7 +448,8 @@ function publicRun(run) {
     runner_command_total: run.runner_command_total,
     notebook_path: run.notebook_path,
     best_artifact_dir: run.best_artifact_dir,
-    missing: run.missing
+    missing: run.missing,
+    seeded_stability_missing: run.seeded_stability_missing
   };
 }
 
@@ -298,7 +475,7 @@ function parseArgs(rawArgs) {
       parsed[key] = "true";
       continue;
     }
-    if (!["root", "limit", "status"].includes(key)) {
+    if (!["root", "limit", "status", "gate"].includes(key)) {
       failUsage(`unknown option: --${key}`);
     }
     const next = rawArgs[index + 1];
