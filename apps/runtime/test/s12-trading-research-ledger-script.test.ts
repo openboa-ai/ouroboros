@@ -8,24 +8,29 @@ import { describe, expect, it } from "vitest";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("S12 trading research ledger script", () => {
-  it("prints passed and blocked local notebook runs distinctly", async () => {
+  it("prints strict completion and seeded stability status distinctly", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "ouroboros-s12-ledger-"));
     try {
       await writeSession(root, "passed-run", makePassedNotebook("passed-run", "2026-05-13T11:00:00.000Z"));
       await writeSession(root, "blocked-run", makeBlockedNotebook("blocked-run", "2026-05-13T11:01:00.000Z"));
+      await writeSession(root, "seeded-run", makeSeededNotebook("seeded-run", "2026-05-13T11:03:00.000Z"));
 
       const result = await runScript(["scripts/trading-research-ledger.mjs", "--root", root, "--limit", "5"]);
 
       expect(result.code, scriptOutput(result)).toBe(0);
       expect(result.stdout).toContain("Trading AAR run ledger");
       expect(result.stdout).toContain(`root=${root}`);
-      expect(result.stdout).toContain("runs=2");
-      expect(result.stdout).toContain("run blocked-run status=blocked");
+      expect(result.stdout).toContain("gate=completion");
+      expect(result.stdout).toContain("runs=3");
+      expect(result.stdout).toContain("run seeded-run status=incomplete seeded_stability_status=pass");
+      expect(result.stdout).toContain("missing=kept edited artifact");
+      expect(result.stdout).toContain("run blocked-run status=blocked seeded_stability_status=blocked");
       expect(result.stdout).toContain("decisions=crash:2");
       expect(result.stdout).toContain("missing=best_score >= 1; best_artifact_dir");
-      expect(result.stdout).toContain("run passed-run status=pass");
+      expect(result.stdout).toContain("run passed-run status=pass seeded_stability_status=pass");
       expect(result.stdout).toContain("decisions=discard:1,keep:1");
       expect(result.stdout).toContain("runners=docker_sandboxes_sbx scenarios=4/4 accepted provider_requests=12 runner_commands=20");
+      expect(result.stdout.indexOf("run seeded-run")).toBeLessThan(result.stdout.indexOf("run blocked-run"));
       expect(result.stdout.indexOf("run blocked-run")).toBeLessThan(result.stdout.indexOf("run passed-run"));
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -42,10 +47,12 @@ describe("S12 trading research ledger script", () => {
 
       expect(result.code, scriptOutput(result)).toBe(0);
       expect(parsed.root).toBe(root);
+      expect(parsed.gate).toBe("completion");
       expect(parsed.runs).toHaveLength(1);
       expect(parsed.runs[0]).toMatchObject({
         session_id: "passed-run",
         status: "pass",
+        seeded_stability_status: "pass",
         agent_provider: "codex",
         mode: "replay",
         entry_count: 2,
@@ -67,6 +74,7 @@ describe("S12 trading research ledger script", () => {
     try {
       await writeSession(root, "passed-run", makePassedNotebook("passed-run", "2026-05-13T11:00:00.000Z"));
       await writeSession(root, "blocked-run", makeBlockedNotebook("blocked-run", "2026-05-13T11:01:00.000Z"));
+      await writeSession(root, "seeded-run", makeSeededNotebook("seeded-run", "2026-05-13T11:03:00.000Z"));
 
       const result = await runScript([
         "scripts/trading-research-ledger.mjs",
@@ -80,6 +88,40 @@ describe("S12 trading research ledger script", () => {
 
       expect(result.code, scriptOutput(result)).toBe(0);
       expect(parsed.runs.map((run: { session_id: string }) => run.session_id)).toEqual(["passed-run"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("filters by seeded stability status without weakening strict completion status", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "ouroboros-s12-ledger-"));
+    try {
+      await writeSession(root, "passed-run", makePassedNotebook("passed-run", "2026-05-13T11:00:00.000Z"));
+      await writeSession(root, "blocked-run", makeBlockedNotebook("blocked-run", "2026-05-13T11:01:00.000Z"));
+      await writeSession(root, "seeded-run", makeSeededNotebook("seeded-run", "2026-05-13T11:03:00.000Z"));
+
+      const result = await runScript([
+        "scripts/trading-research-ledger.mjs",
+        "--root",
+        root,
+        "--gate",
+        "seeded-stability",
+        "--status",
+        "pass",
+        "--json"
+      ]);
+      const parsed = JSON.parse(result.stdout);
+
+      expect(result.code, scriptOutput(result)).toBe(0);
+      expect(parsed.gate).toBe("seeded-stability");
+      expect(parsed.runs.map((run: { session_id: string }) => run.session_id)).toEqual(["seeded-run", "passed-run"]);
+      expect(parsed.runs[0]).toMatchObject({
+        session_id: "seeded-run",
+        status: "incomplete",
+        seeded_stability_status: "pass",
+        missing: ["kept edited artifact"],
+        seeded_stability_missing: []
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -113,6 +155,25 @@ function makePassedNotebook(sessionId: string, completedAt: string) {
     entries: [
       makeEntry(sessionId, 1, "keep", "edited", ["run.py"], completedAt),
       makeEntry(sessionId, 2, "discard", "no_change", [], "2026-05-13T11:02:00.000Z")
+    ]
+  };
+}
+
+function makeSeededNotebook(sessionId: string, completedAt: string) {
+  return {
+    session_id: sessionId,
+    mode: "replay",
+    agent: {
+      id: "managed-agent-codex-trading-research",
+      provider: "codex",
+      permission_policy: "artifact_workspace_only"
+    },
+    program_path: `/tmp/${sessionId}/program.md`,
+    best_score: 1,
+    best_artifact_dir: `/tmp/${sessionId}/iterations/001/kept-artifact`,
+    entries: [
+      makeEntry(sessionId, 1, "keep", "no_change", [], completedAt),
+      makeEntry(sessionId, 2, "discard", "no_change", [], "2026-05-13T11:04:00.000Z")
     ]
   };
 }
@@ -153,6 +214,7 @@ function makeEntry(
 
 function makeScenarioResult(sessionId: string, iteration: number, scenarioId: string) {
   const sandboxName = `ouro-s12-${iteration}-${scenarioId}`;
+  const outputDir = `/tmp/${sessionId}/iterations/${String(iteration).padStart(3, "0")}/run/${scenarioId}`;
   return {
     scenario_id: scenarioId,
     runner_kind: "docker_sandboxes_sbx",
@@ -163,9 +225,37 @@ function makeScenarioResult(sessionId: string, iteration: number, scenarioId: st
     metrics: [],
     summary: "Accepted order intent.",
     risk_decision: "valid_order_intent",
-    events_path: `/tmp/${sessionId}/iterations/${String(iteration).padStart(3, "0")}/run/${scenarioId}/events.jsonl`,
+    events_path: `${outputDir}/events.jsonl`,
     provider_request_count: 3,
-    runner_command_count: 5
+    runner_command_count: 5,
+    runner_command_evidence: [
+      makeCommand(["/repo/scripts/sdx-docker-sandboxes", "version"]),
+      makeCommand(["/repo/scripts/sdx-docker-sandboxes", "create", "--name", sandboxName, "shell", "/repo"]),
+      makeCommand([
+        "/repo/scripts/sdx-docker-sandboxes",
+        "exec",
+        "-w",
+        `/tmp/${sessionId}/candidate`,
+        sandboxName,
+        "sh",
+        "-lc",
+        `'python3' '${outputDir}/replay-provider-sidecar.py' '--scenario' '/tmp/scenario.json' & TRADING_API_BASE_URL='http://127.0.0.1:42100' 'python3' 'run.py'`
+      ]),
+      makeCommand(["/repo/scripts/sdx-docker-sandboxes", "stop", sandboxName]),
+      makeCommand(["/repo/scripts/sdx-docker-sandboxes", "rm", "--force", sandboxName])
+    ]
+  };
+}
+
+function makeCommand(command: string[]) {
+  return {
+    command,
+    exit_code: 0,
+    timed_out: false,
+    stdout_preview: "",
+    stderr_preview: "",
+    started_at: "2026-05-13T11:00:00.000Z",
+    completed_at: "2026-05-13T11:00:01.000Z"
   };
 }
 
