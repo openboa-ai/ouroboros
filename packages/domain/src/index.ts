@@ -353,6 +353,7 @@ export interface TraderSystemCandidateRecord extends BaseRecord {
   evaluation_handoff_ready?: boolean;
   materialized_from_attempt_ref?: Ref;
   active_runnable_artifact_ref?: Ref;
+  authority_status?: "not_live";
 }
 
 export interface CandidateVersionRecord extends BaseRecord {
