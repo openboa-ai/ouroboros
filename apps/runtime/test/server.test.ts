@@ -76,6 +76,110 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("lists local candidate-run evidence for operator inspection", async () => {
+    const runRoot = path.join(tmpDir, "candidate-runs");
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-run-newer",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "docker_sandboxes_sbx",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 2,
+      scenario_total: 2,
+      provider_request_total: 6,
+      runner_command_total: 10,
+      artifact_digest: "sha256:newer",
+      completed_at: "2026-05-13T15:00:00.000Z",
+      authority_status: "not_live"
+    });
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-run-older",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "host_process",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 2,
+      scenario_total: 2,
+      provider_request_total: 6,
+      runner_command_total: 0,
+      artifact_digest: "sha256:older",
+      completed_at: "2026-05-13T14:00:00.000Z",
+      authority_status: "not_live"
+    });
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-run-other",
+      candidate_id: "other-candidate",
+      runner_kind: "host_process",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 1,
+      scenario_total: 1,
+      provider_request_total: 3,
+      runner_command_total: 0,
+      artifact_digest: "sha256:other",
+      completed_at: "2026-05-13T16:00:00.000Z",
+      authority_status: "not_live"
+    });
+
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      candidateRunRoot: runRoot
+    });
+
+    const candidateRuns = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs?limit=2`
+    });
+
+    expect(candidateRuns.statusCode).toBe(200);
+    expect(candidateRuns.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runs: [
+        {
+          run_id: "candidate-run-newer",
+          candidate_id: FIXTURE_CANDIDATE_ID,
+          runner_kind: "docker_sandboxes_sbx",
+          status: "accepted",
+          run_status: "completed",
+          scenario_accepted: 2,
+          scenario_total: 2,
+          provider_request_total: 6,
+          runner_command_total: 10,
+          artifact_digest: "sha256:newer",
+          authority_status: "not_live"
+        },
+        {
+          run_id: "candidate-run-older",
+          candidate_id: FIXTURE_CANDIDATE_ID,
+          runner_kind: "host_process"
+        }
+      ]
+    });
+    expect(candidateRuns.json().runs).toHaveLength(2);
+
+    const allRuns = await server.inject({
+      method: "GET",
+      url: "/api/candidate-runs?limit=1"
+    });
+    expect(allRuns.statusCode).toBe(200);
+    expect(allRuns.json().runs[0]).toMatchObject({
+      run_id: "candidate-run-other",
+      candidate_id: "other-candidate"
+    });
+
+    const missingCandidate = await server.inject({
+      method: "GET",
+      url: "/api/candidates/missing/candidate-runs"
+    });
+    expect(missingCandidate.statusCode).toBe(404);
+    expect(missingCandidate.json()).toEqual({
+      error: "candidate_not_found",
+      candidate_id: "missing"
+    });
+
+    await server.close();
+  });
+
   it("creates and reads deterministic candidate evaluation runs", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({
@@ -982,4 +1086,31 @@ async function writeStoreJson(value: unknown, ...segments: string[]): Promise<vo
   const filePath = path.join(tmpDir, ...segments);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function writeCandidateRunRecord(
+  root: string,
+  value: {
+    run_id: string;
+    candidate_id: string;
+    runner_kind: string;
+    status: string;
+    run_status: string;
+    scenario_accepted: number;
+    scenario_total: number;
+    provider_request_total: number;
+    runner_command_total: number;
+    artifact_digest: string;
+    completed_at: string;
+    authority_status: string;
+  }
+): Promise<void> {
+  const filePath = path.join(root, value.run_id, "run.json");
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(path.join(root, value.run_id, "ignore.txt"), "ignored\n", "utf8");
+  await writeFile(filePath, `${JSON.stringify({
+    record_kind: "trader_system_candidate_run",
+    version: 1,
+    ...value
+  }, null, 2)}\n`, "utf8");
 }

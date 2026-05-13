@@ -1437,6 +1437,22 @@ export interface CandidateEvaluationReadModel {
   sealing_decision: PlaceholderSummary;
 }
 
+export interface CandidateRunEvidenceReadModel {
+  run_id: string;
+  run_dir: string;
+  candidate_id: string;
+  runner_kind: string;
+  status: string;
+  run_status: string;
+  scenario_accepted: number;
+  scenario_total: number;
+  provider_request_total: number;
+  runner_command_total: number;
+  artifact_digest: string;
+  completed_at: string;
+  authority_status: string;
+}
+
 export interface CandidateRuntimeOrderIntentReadModel {
   order_intent_id: string;
   intent_kind: OrderIntentKind;

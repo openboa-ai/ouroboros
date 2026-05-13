@@ -22,12 +22,17 @@ import {
   DockerSandboxesSbxRuntimeAdapter,
   type SandboxRuntimeAdapter
 } from "./runtime-instances/sandbox-runtime-adapter";
+import {
+  DEFAULT_CANDIDATE_RUN_ROOT,
+  listCandidateRunEvidence
+} from "./trading-candidate/candidate-run-ledger";
 
 export interface BuildServerOptions {
   store?: LocalStore;
   providerAdapter?: RuntimeProviderAdapter;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
   runtimeInstanceAdapters?: Partial<Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter>>;
+  candidateRunRoot?: string;
 }
 
 interface CreateEvaluationRunBody {
@@ -182,6 +187,40 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         evaluation_runs: await store.listCandidateEvaluationRuns(request.params.candidate_id)
       };
     }
+  );
+
+  server.get<{ Params: { candidate_id: string }; Querystring: { limit?: string } }>(
+    "/api/candidates/:candidate_id/candidate-runs",
+    async (request, reply) => {
+      const candidate = await store.getCandidate(request.params.candidate_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      return {
+        candidate_id: request.params.candidate_id,
+        runs: await listCandidateRunEvidence({
+          root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+          candidate_id: request.params.candidate_id,
+          limit: parseLimit(request.query.limit)
+        })
+      };
+    }
+  );
+
+  server.get<{ Querystring: { candidate_id?: string; limit?: string } }>(
+    "/api/candidate-runs",
+    async (request) => ({
+      candidate_id: request.query.candidate_id,
+      runs: await listCandidateRunEvidence({
+        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+        candidate_id: request.query.candidate_id,
+        limit: parseLimit(request.query.limit)
+      })
+    })
   );
 
   server.get<{ Params: { candidate_id: string } }>(
@@ -683,6 +722,14 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isPositiveInteger(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) > 0;
+}
+
+function parseLimit(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function runtimeInstanceStatusCode(reason: string): 404 | 422 {

@@ -4,6 +4,7 @@ import type {
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
+  CandidateRunEvidenceReadModel,
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel,
   CandidateSummaryReadModel,
@@ -11,6 +12,7 @@ import type {
 } from "@ouroboros/domain";
 import {
   fetchCandidate,
+  fetchCandidateRunEvidence,
   fetchCandidateSummaries,
   recordCandidateRuntimeAuthority,
   recordCandidateRuntimeControl
@@ -20,6 +22,7 @@ import "./styles.css";
 interface AppState {
   candidates: CandidateSummaryReadModel[];
   selected?: CandidateInspectReadModel;
+  candidateRuns: CandidateRunEvidenceReadModel[];
   error?: string;
   loading: boolean;
   recordingRuntimeAuthority: boolean;
@@ -33,6 +36,7 @@ interface AppState {
 export function App() {
   const [state, setState] = useState<AppState>({
     candidates: [],
+    candidateRuns: [],
     loading: true,
     recordingRuntimeAuthority: false,
     recordingRuntimeControl: false
@@ -45,10 +49,12 @@ export function App() {
         const candidates = await fetchCandidateSummaries();
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
+        const candidateRuns = selected ? await fetchCandidateRunEvidence(selected.candidate_id) : [];
         if (!cancelled) {
           setState({
             candidates,
             selected,
+            candidateRuns,
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false
@@ -58,6 +64,7 @@ export function App() {
         if (!cancelled) {
           setState({
             candidates: [],
+            candidateRuns: [],
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -83,7 +90,8 @@ export function App() {
     }));
     try {
       const selected = await fetchCandidate(candidateId);
-      setState((current) => ({ ...current, selected, loading: false }));
+      const candidateRuns = await fetchCandidateRunEvidence(candidateId);
+      setState((current) => ({ ...current, selected, candidateRuns, loading: false }));
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -108,9 +116,11 @@ export function App() {
     try {
       const outcome = await recordCandidateRuntimeAuthority(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
+      const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
       setState((current) => ({
         ...current,
         selected,
+        candidateRuns,
         recordingRuntimeAuthority: false,
         runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
@@ -138,9 +148,11 @@ export function App() {
     try {
       const outcome = await recordCandidateRuntimeControl(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
+      const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
       setState((current) => ({
         ...current,
         selected,
+        candidateRuns,
         recordingRuntimeControl: false,
         runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
       }));
@@ -182,6 +194,7 @@ export function App() {
         {!state.loading && !state.error && state.selected && (
           <CandidateDetail
             candidate={state.selected}
+            candidateRuns={state.candidateRuns}
             onRecordRuntimeAuthority={() => void recordRuntimeAuthority()}
             onRecordRuntimeControl={() => void recordRuntimeControl()}
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
@@ -199,6 +212,7 @@ export function App() {
 
 export function CandidateDetail({
   candidate,
+  candidateRuns = [],
   onRecordRuntimeAuthority,
   onRecordRuntimeControl,
   recordingRuntimeAuthority = false,
@@ -209,6 +223,7 @@ export function CandidateDetail({
   runtimeControlMessage
 }: {
   candidate: CandidateInspectReadModel;
+  candidateRuns?: CandidateRunEvidenceReadModel[];
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
   recordingRuntimeAuthority?: boolean;
@@ -243,6 +258,8 @@ export function CandidateDetail({
           <Field label="Active version" value={candidate.active_version_id} />
           <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
         </InfoSection>
+
+        <CandidateRunsSection runs={candidateRuns} />
 
         <InfoSection title="Spec">
           <Field label="Ref" value={formatRef(candidate.spec.ref)} />
@@ -316,6 +333,49 @@ export function CandidateDetail({
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function CandidateRunsSection({ runs }: { runs: CandidateRunEvidenceReadModel[] }) {
+  const latestRun = runs[0];
+  return (
+    <InfoSection title="Candidate Runs">
+      <div className="evaluation-status neutral">
+        <span>Candidate-id replay evidence</span>
+        <strong>{latestRun ? latestRun.status : "none"}</strong>
+        <span>{latestRun?.authority_status ?? "not_live"}</span>
+      </div>
+
+      {latestRun ? (
+        <>
+          <Field label="Latest run" value={latestRun.run_id} />
+          <Field label="Runner" value={latestRun.runner_kind} />
+          <Field label="Run status" value={latestRun.run_status} />
+          <Field label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
+          <Field label="Provider requests" value={String(latestRun.provider_request_total)} />
+          <Field label="Runner commands" value={String(latestRun.runner_command_total)} />
+          <Field label="Artifact digest" value={latestRun.artifact_digest} />
+          <Field label="Completed" value={latestRun.completed_at} />
+          <Field label="Authority" value={latestRun.authority_status} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No candidate-id replay runs</strong>
+          <span>run evidence has not been recorded for this candidate</span>
+          <span>not_live</span>
+        </div>
+      )}
+
+      {runs.slice(1, 5).map((run) => (
+        <div className="evaluation-block" key={run.run_id}>
+          <h4>{run.run_id}</h4>
+          <Field label="Runner" value={run.runner_kind} />
+          <Field label="Status" value={`${run.status} / ${run.run_status}`} />
+          <Field label="Scenarios" value={`${run.scenario_accepted}/${run.scenario_total} accepted`} />
+          <Field label="Authority" value={run.authority_status} />
+        </div>
+      ))}
+    </InfoSection>
   );
 }
 

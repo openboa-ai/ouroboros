@@ -1,6 +1,7 @@
 import type {
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
+  CandidateRunEvidenceReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
@@ -34,6 +35,15 @@ export async function fetchCandidateMaterializationAttempts(): Promise<Candidate
   }
   const body = (await response.json()) as { attempts: CandidateMaterializationAttemptReadModel[] };
   return body.attempts;
+}
+
+export async function fetchCandidateRunEvidence(candidateId: string): Promise<CandidateRunEvidenceReadModel[]> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs?limit=5`);
+  if (!response.ok) {
+    throw new Error(`Failed to load candidate runs for ${candidateId}: ${response.status}`);
+  }
+  const body = (await response.json()) as { runs: CandidateRunEvidenceReadModel[] };
+  return body.runs;
 }
 
 export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
+  CandidateRunEvidenceReadModel,
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel
 } from "@ouroboros/domain";
@@ -20,6 +21,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Agent And Provider");
     expect(html).toContain("Runtime Authority");
     expect(html).toContain("Runtime Control");
+    expect(html).toContain("Candidate Runs");
+    expect(html).toContain("No candidate-id replay runs");
     expect(html).toContain("Logical TraderSystemRuntime state");
     expect(html).toContain("Bounded paper state");
     expect(html).toContain("Trace And Evaluation");
@@ -31,6 +34,38 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+  });
+
+  it("renders candidate-run evidence without implying trading authority", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={fixtureCandidate}
+        candidateRuns={[
+          candidateRun({
+            run_id: "s18-01-sdx-candidate-id-smoke",
+            runner_kind: "docker_sandboxes_sbx",
+            runner_command_total: 10
+          }),
+          candidateRun({
+            run_id: "s18-01-host-candidate-id-proof",
+            runner_kind: "host_process",
+            runner_command_total: 0,
+            completed_at: "2026-05-13T14:51:42.271Z"
+          })
+        ]}
+      />
+    );
+
+    expect(html).toContain("Candidate Runs");
+    expect(html).toContain("Candidate-id replay evidence");
+    expect(html).toContain("s18-01-sdx-candidate-id-smoke");
+    expect(html).toContain("docker_sandboxes_sbx");
+    expect(html).toContain("2/2 accepted");
+    expect(html).toContain("Provider requests");
+    expect(html).toContain("Runner commands");
+    expect(html).toContain("sha256:fadd2155");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
   it("renders bounded runtime authority state without implying live authority", () => {
@@ -224,6 +259,25 @@ function candidateWithRuntimeControl(
       ...fixtureCandidate.runtime,
       runtime_control: runtimeControl
     }
+  };
+}
+
+function candidateRun(overrides: Partial<CandidateRunEvidenceReadModel> = {}): CandidateRunEvidenceReadModel {
+  return {
+    run_id: "candidate-run-001",
+    run_dir: "/tmp/candidate-run-001",
+    candidate_id: fixtureCandidate.candidate_id,
+    runner_kind: "host_process",
+    status: "accepted",
+    run_status: "completed",
+    scenario_accepted: 2,
+    scenario_total: 2,
+    provider_request_total: 6,
+    runner_command_total: 0,
+    artifact_digest: "sha256:fadd2155",
+    completed_at: "2026-05-13T15:00:00.000Z",
+    authority_status: "not_live",
+    ...overrides
   };
 }
 
