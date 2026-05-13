@@ -13,6 +13,8 @@
     "trading:research:best-artifact": "node scripts/trading-research-best-artifact.mjs",
     "trading:research:promote-candidate": "node scripts/trading-research-promote-candidate.mjs",
     "trading:candidate:ledger": "node scripts/trading-candidate-ledger.mjs",
+    "trading:candidate:run": "tsx apps/runtime/src/trading-candidate/run-candidate.ts",
+    "trading:candidate:run:ledger": "node scripts/trading-candidate-run-ledger.mjs",
     "audit:s10-trading-research": "node scripts/audit-s10-trading-research.mjs",
     "audit:trading-research:seeded-stability": "node scripts/audit-trading-research-seeded-stability.mjs",
     "prove:trading-research:codex-sdx": "node scripts/prove-trading-research-codex-sdx.mjs",
