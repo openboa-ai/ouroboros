@@ -11,6 +11,8 @@
     "trading:research": "tsx apps/runtime/src/trading-research/run-trading-research.ts",
     "trading:research:ledger": "node scripts/trading-research-ledger.mjs",
     "trading:research:best-artifact": "node scripts/trading-research-best-artifact.mjs",
+    "trading:research:promote-candidate": "node scripts/trading-research-promote-candidate.mjs",
+    "trading:candidate:ledger": "node scripts/trading-candidate-ledger.mjs",
     "audit:s10-trading-research": "node scripts/audit-s10-trading-research.mjs",
     "audit:trading-research:seeded-stability": "node scripts/audit-trading-research-seeded-stability.mjs",
     "prove:trading-research:codex-sdx": "node scripts/prove-trading-research-codex-sdx.mjs",
