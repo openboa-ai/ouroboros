@@ -10,6 +10,7 @@
     "build": "npm run build --workspaces --if-present",
     "trading:research": "tsx apps/runtime/src/trading-research/run-trading-research.ts",
     "trading:research:ledger": "node scripts/trading-research-ledger.mjs",
+    "trading:research:best-artifact": "node scripts/trading-research-best-artifact.mjs",
     "audit:s10-trading-research": "node scripts/audit-s10-trading-research.mjs",
     "prove:trading-research:codex-sdx": "node scripts/prove-trading-research-codex-sdx.mjs",
     "aar:proposal:codex": "tsx apps/runtime/src/aar-orchestration/run-codex-aar-proposal.ts",
