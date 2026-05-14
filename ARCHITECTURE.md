@@ -3,9 +3,9 @@
 Ouroboros is organized around one trust sequence:
 
 ```text
-TraderSystemCandidate
+TradingSystemCandidate
 -> external evaluation
--> bounded live TraderSystemRuntime
+-> bounded live TradingSystemRuntime
 -> runtime control and audit
 ```
 

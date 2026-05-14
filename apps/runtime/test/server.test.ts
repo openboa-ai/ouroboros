@@ -9,7 +9,7 @@ import type {
   BoundedRuntimeAuthorityInput,
   CandidateMaterializationInput,
   RuntimeControlAuditInput,
-  TraderSystemRuntimeRecord
+  TradingSystemRuntimeRecord
 } from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
 import type {
@@ -33,7 +33,7 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
-      candidateRunRoot: path.join(tmpDir, "empty-candidate-runs")
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
     });
     const health = await server.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
@@ -42,14 +42,85 @@ describe("runtime read-only API", () => {
       mode: "fixture_convenience_mode"
     });
 
+    const executionModes = await server.inject({ method: "GET", url: "/api/trading-execution-modes" });
+    expect(executionModes.statusCode).toBe(200);
+    expect(executionModes.json()).toMatchObject({
+      modes: [
+        {
+          mode: "backtest",
+          support_status: "available",
+          artifact_contract: {
+            api_provider_boundary: "TradingApiProvider",
+            credentials_access: "forbidden",
+            order_submission: "forbidden"
+          },
+          provider_contract: {
+            market_data: "historical_replay",
+            order_plane: "order_validation_only"
+          },
+          authority: {
+            artifact_has_credentials: false,
+            artifact_has_order_authority: false,
+            live_exchange_authority: false,
+            status: "not_live"
+          }
+        },
+        {
+          mode: "paper",
+          support_status: "planned",
+          provider_contract: {
+            account: "paper_account",
+            order_plane: "paper_order_sink"
+          },
+          authority: {
+            status: "paper_only"
+          }
+        },
+        {
+          mode: "live",
+          support_status: "planned",
+          provider_contract: {
+            account: "live_account",
+            order_plane: "gated_live_order_gateway",
+            credentials_scope: "provider_side_only"
+          },
+          authority: {
+            status: "live_requires_gateway"
+          }
+        }
+      ]
+    });
+
+    const liveMode = await server.inject({ method: "GET", url: "/api/trading-execution-modes/live" });
+    expect(liveMode.statusCode).toBe(200);
+    expect(liveMode.json()).toMatchObject({
+      mode: {
+        mode: "live",
+        artifact_contract: {
+          credentials_access: "forbidden",
+          order_submission: "forbidden"
+        },
+        authority: {
+          live_exchange_authority: true,
+          status: "live_requires_gateway"
+        }
+      }
+    });
+
+    const missingMode = await server.inject({ method: "GET", url: "/api/trading-execution-modes/direct-broker" });
+    expect(missingMode.statusCode).toBe(404);
+    expect(missingMode.json()).toMatchObject({
+      error: "trading_execution_mode_not_found"
+    });
+
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
     expect(list.statusCode).toBe(200);
     expect(list.json()).toMatchObject({
       candidates: [{
         candidate_id: FIXTURE_CANDIDATE_ID,
-        latest_evidence_posture: {
-          evidence_posture: "run_required",
-          evidence_label: "evidence_posture_not_authority",
+        latest_validation_state: {
+          validation_state: "replay_required",
+          validation_label: "validation_state_not_authority",
           authority_status: "not_live"
         }
       }]
@@ -70,26 +141,26 @@ describe("runtime read-only API", () => {
           authority_status: "not_evidence"
         }
       },
-      latest_evidence_posture: {
-        evidence_posture: "run_required",
+      latest_validation_state: {
+        validation_state: "replay_required",
         reasons: [
-          "no candidate-run evidence has been recorded",
-          "evidence posture cannot be inferred without replay evidence"
+          "no replay-run evidence has been recorded",
+          "validation state cannot be inferred without replay evidence"
         ],
         required_next_evidence: [
           "record at least one candidate replay run",
           "record a second replay run to establish a comparison baseline"
         ],
-        evidence_label: "evidence_posture_not_authority"
+        validation_label: "validation_state_not_authority"
       }
     });
 
     await server.close();
   });
 
-  it("adds latest candidate-run evidence posture summaries to candidate list and detail", async () => {
-    const runRoot = path.join(tmpDir, "candidate-runs");
-    await writeCandidateRunRecord(runRoot, {
+  it("adds latest replay-run validation state summaries to candidate list and detail", async () => {
+    const runRoot = path.join(tmpDir, "replay-runs");
+    await writeReplayRunRecord(runRoot, {
       run_id: "candidate-posture-baseline",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "host_process",
@@ -101,7 +172,7 @@ describe("runtime read-only API", () => {
       runner_command_total: 0,
       artifact_digest: "sha256:baseline",
       score: 0.6,
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_ids: ["trend_long", "range_short"],
       output_dir: path.join(runRoot, "candidate-posture-baseline", "output"),
       events_path: path.join(runRoot, "candidate-posture-baseline", "output", "replay-set.json"),
@@ -109,7 +180,7 @@ describe("runtime read-only API", () => {
       completed_at: "2026-05-14T11:00:00.000Z",
       authority_status: "not_live"
     });
-    await writeCandidateRunRecord(runRoot, {
+    await writeReplayRunRecord(runRoot, {
       run_id: "candidate-posture-latest",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "docker_sandboxes_sbx",
@@ -121,7 +192,7 @@ describe("runtime read-only API", () => {
       runner_command_total: 4,
       artifact_digest: "sha256:latest",
       score: 0.85,
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_ids: ["trend_long", "range_short"],
       output_dir: path.join(runRoot, "candidate-posture-latest", "output"),
       events_path: path.join(runRoot, "candidate-posture-latest", "output", "replay-set.json"),
@@ -133,20 +204,20 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
-      candidateRunRoot: runRoot
+      replayRunRoot: runRoot
     });
 
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
     expect(list.statusCode).toBe(200);
     expect(list.json().candidates[0]).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
-      latest_evidence_posture: {
+      latest_validation_state: {
         candidate_id: FIXTURE_CANDIDATE_ID,
         selected_run_id: "candidate-posture-latest",
         baseline_run_id: "candidate-posture-baseline",
         comparison_verdict: "improved",
-        evidence_posture: "evidence_sufficient",
-        evidence_label: "evidence_posture_not_authority",
+        validation_state: "passes_replay_checks",
+        validation_label: "validation_state_not_authority",
         authority_status: "not_live",
         no_authority: {
           live_exchange: false,
@@ -164,10 +235,10 @@ describe("runtime read-only API", () => {
     expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
-      latest_evidence_posture: {
+      latest_validation_state: {
         selected_run_id: "candidate-posture-latest",
         baseline_run_id: "candidate-posture-baseline",
-        evidence_posture: "evidence_sufficient",
+        validation_state: "passes_replay_checks",
         reasons: [
           "selected run improved against baseline",
           "all selected scenarios were accepted",
@@ -196,10 +267,10 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("lists local candidate-run evidence for operator inspection", async () => {
-    const runRoot = path.join(tmpDir, "candidate-runs");
-    await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-run-newer",
+  it("lists local replay-run evidence for operator inspection", async () => {
+    const runRoot = path.join(tmpDir, "replay-runs");
+    await writeReplayRunRecord(runRoot, {
+      run_id: "replay-run-newer",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "docker_sandboxes_sbx",
       status: "accepted",
@@ -212,8 +283,8 @@ describe("runtime read-only API", () => {
       completed_at: "2026-05-13T15:00:00.000Z",
       authority_status: "not_live"
     });
-    await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-run-older",
+    await writeReplayRunRecord(runRoot, {
+      run_id: "replay-run-older",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "host_process",
       status: "accepted",
@@ -226,8 +297,8 @@ describe("runtime read-only API", () => {
       completed_at: "2026-05-13T14:00:00.000Z",
       authority_status: "not_live"
     });
-    await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-run-other",
+    await writeReplayRunRecord(runRoot, {
+      run_id: "replay-run-other",
       candidate_id: "other-candidate",
       runner_kind: "host_process",
       status: "accepted",
@@ -243,20 +314,20 @@ describe("runtime read-only API", () => {
 
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      candidateRunRoot: runRoot
+      replayRunRoot: runRoot
     });
 
-    const candidateRuns = await server.inject({
+    const replayRuns = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs?limit=2`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs?limit=2`
     });
 
-    expect(candidateRuns.statusCode).toBe(200);
-    expect(candidateRuns.json()).toMatchObject({
+    expect(replayRuns.statusCode).toBe(200);
+    expect(replayRuns.json()).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
       runs: [
         {
-          run_id: "candidate-run-newer",
+          run_id: "replay-run-newer",
           candidate_id: FIXTURE_CANDIDATE_ID,
           runner_kind: "docker_sandboxes_sbx",
           status: "accepted",
@@ -269,27 +340,27 @@ describe("runtime read-only API", () => {
           authority_status: "not_live"
         },
         {
-          run_id: "candidate-run-older",
+          run_id: "replay-run-older",
           candidate_id: FIXTURE_CANDIDATE_ID,
           runner_kind: "host_process"
         }
       ]
     });
-    expect(candidateRuns.json().runs).toHaveLength(2);
+    expect(replayRuns.json().runs).toHaveLength(2);
 
     const allRuns = await server.inject({
       method: "GET",
-      url: "/api/candidate-runs?limit=1"
+      url: "/api/replay-runs?limit=1"
     });
     expect(allRuns.statusCode).toBe(200);
     expect(allRuns.json().runs[0]).toMatchObject({
-      run_id: "candidate-run-other",
+      run_id: "replay-run-other",
       candidate_id: "other-candidate"
     });
 
     const missingCandidate = await server.inject({
       method: "GET",
-      url: "/api/candidates/missing/candidate-runs"
+      url: "/api/candidates/missing/replay-runs"
     });
     expect(missingCandidate.statusCode).toBe(404);
     expect(missingCandidate.json()).toEqual({
@@ -300,13 +371,13 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("surfaces promoted local candidate bundles with candidate-run evidence", async () => {
-    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
-    const candidateRunRoot = path.join(tmpDir, "candidate-runs");
-    const candidateId = "trader-system-candidate-promoted-001";
+  it("surfaces promoted local candidate bundles with replay-run evidence", async () => {
+    const promotedCandidateRoot = path.join(tmpDir, "trading-system-candidates");
+    const replayRunRoot = path.join(tmpDir, "replay-runs");
+    const candidateId = "trading-system-candidate-promoted-001";
     await writePromotedCandidateBundle(promotedCandidateRoot, candidateId);
-    await writeCandidateRunRecord(candidateRunRoot, {
-      run_id: "promoted-candidate-run",
+    await writeReplayRunRecord(replayRunRoot, {
+      run_id: "promoted-replay-run",
       candidate_id: candidateId,
       runner_kind: "docker_sandboxes_sbx",
       status: "accepted",
@@ -323,7 +394,7 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot,
-      candidateRunRoot
+      replayRunRoot
     });
 
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
@@ -347,12 +418,12 @@ describe("runtime read-only API", () => {
     expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({
       candidate_id: candidateId,
-      display_name: "Promoted Trading AAR Candidate",
+      display_name: "Promoted Trading research Candidate",
       status: "materialized",
       program: {
         manifest: {
           declared_runtime: "python python3 run.py",
-          declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_intent"]
+          declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
         }
       },
       runtime: {
@@ -373,16 +444,16 @@ describe("runtime read-only API", () => {
     expect(detail.json().runtime).not.toHaveProperty("bounded_authority");
     expect(detail.json().runtime).not.toHaveProperty("runtime_control");
 
-    const candidateRuns = await server.inject({
+    const replayRuns = await server.inject({
       method: "GET",
-      url: `/api/candidates/${candidateId}/candidate-runs`
+      url: `/api/candidates/${candidateId}/replay-runs`
     });
-    expect(candidateRuns.statusCode).toBe(200);
-    expect(candidateRuns.json()).toMatchObject({
+    expect(replayRuns.statusCode).toBe(200);
+    expect(replayRuns.json()).toMatchObject({
       candidate_id: candidateId,
       runs: [
         {
-          run_id: "promoted-candidate-run",
+          run_id: "promoted-replay-run",
           candidate_id: candidateId,
           runner_kind: "docker_sandboxes_sbx",
           artifact_digest: "sha256:promoted",
@@ -395,20 +466,20 @@ describe("runtime read-only API", () => {
   });
 
   it("creates promoted candidate replay runs through the runtime API", async () => {
-    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
-    const candidateRunRoot = path.join(tmpDir, "candidate-runs");
-    const candidateId = "trader-system-candidate-promoted-001";
+    const promotedCandidateRoot = path.join(tmpDir, "trading-system-candidates");
+    const replayRunRoot = path.join(tmpDir, "replay-runs");
+    const candidateId = "trading-system-candidate-promoted-001";
     await writePromotedCandidateBundle(promotedCandidateRoot, candidateId);
 
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot,
-      candidateRunRoot
+      replayRunRoot
     });
 
     const created = await server.inject({
       method: "POST",
-      url: `/api/candidates/${candidateId}/candidate-runs`,
+      url: `/api/candidates/${candidateId}/replay-runs`,
       payload: {
         run_id: "api-promoted-replay-run",
         runner_kind: "host_process"
@@ -432,12 +503,12 @@ describe("runtime read-only API", () => {
     });
     expect(created.json().run.artifact_digest).toMatch(/^sha256:/);
 
-    const candidateRuns = await server.inject({
+    const replayRuns = await server.inject({
       method: "GET",
-      url: `/api/candidates/${candidateId}/candidate-runs`
+      url: `/api/candidates/${candidateId}/replay-runs`
     });
-    expect(candidateRuns.statusCode).toBe(200);
-    expect(candidateRuns.json().runs[0]).toMatchObject({
+    expect(replayRuns.statusCode).toBe(200);
+    expect(replayRuns.json().runs[0]).toMatchObject({
       run_id: "api-promoted-replay-run",
       candidate_id: candidateId,
       authority_status: "not_live"
@@ -445,26 +516,26 @@ describe("runtime read-only API", () => {
 
     const fixtureRejected = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs`,
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs`,
       payload: { runner_kind: "host_process" }
     });
     expect(fixtureRejected.statusCode).toBe(422);
     expect(fixtureRejected.json()).toMatchObject({
-      error: "candidate_run_rejected",
+      error: "replay_run_rejected",
       reason: "promoted_candidate_bundle_required",
       candidate_id: FIXTURE_CANDIDATE_ID
     });
 
     const sbxRejected = await server.inject({
       method: "POST",
-      url: `/api/candidates/${candidateId}/candidate-runs`,
+      url: `/api/candidates/${candidateId}/replay-runs`,
       payload: {
         runner_kind: "docker_sandboxes_sbx"
       }
     });
     expect(sbxRejected.statusCode).toBe(422);
     expect(sbxRejected.json()).toMatchObject({
-      error: "candidate_run_rejected",
+      error: "replay_run_rejected",
       reason: "docker_sandboxes_sbx_runtime_disabled",
       candidate_id: candidateId
     });
@@ -472,13 +543,13 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("reads candidate-run detail evidence for scenario drilldown", async () => {
-    const runRoot = path.join(tmpDir, "candidate-runs");
-    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
-    const otherCandidateId = "trader-system-candidate-other-001";
+  it("reads replay-run detail evidence for scenario drilldown", async () => {
+    const runRoot = path.join(tmpDir, "replay-runs");
+    const promotedCandidateRoot = path.join(tmpDir, "trading-system-candidates");
+    const otherCandidateId = "trading-system-candidate-other-001";
     await writePromotedCandidateBundle(promotedCandidateRoot, otherCandidateId);
-    await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-run-detail",
+    await writeReplayRunRecord(runRoot, {
+      run_id: "replay-run-detail",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "docker_sandboxes_sbx",
       status: "accepted",
@@ -491,10 +562,10 @@ describe("runtime read-only API", () => {
       started_at: "2026-05-14T12:00:00.000Z",
       completed_at: "2026-05-14T12:01:00.000Z",
       score: 1,
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_ids: ["trend_long"],
-      output_dir: path.join(runRoot, "candidate-run-detail", "output"),
-      events_path: path.join(runRoot, "candidate-run-detail", "output", "replay-set.json"),
+      output_dir: path.join(runRoot, "replay-run-detail", "output"),
+      events_path: path.join(runRoot, "replay-run-detail", "output", "replay-set.json"),
       scenario_results: [
         {
           scenario_id: "trend_long",
@@ -503,9 +574,9 @@ describe("runtime read-only API", () => {
           status: "accepted",
           run_status: "completed",
           score: 1,
-          risk_decision: "valid_order_intent",
-          summary: "Accepted order intent with score 1.000.",
-          events_path: path.join(runRoot, "candidate-run-detail", "output", "trend_long", "events.jsonl"),
+          risk_decision: "valid_order_intent_draft",
+          summary: "Accepted order intent draft with score 1.000.",
+          events_path: path.join(runRoot, "replay-run-detail", "output", "trend_long", "events.jsonl"),
           provider_request_count: 3,
           runner_command_count: 2,
           metrics: [
@@ -543,21 +614,21 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot,
-      candidateRunRoot: runRoot
+      replayRunRoot: runRoot
     });
 
     const detail = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-detail`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/replay-run-detail`
     });
     expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
       run: {
-        run_id: "candidate-run-detail",
+        run_id: "replay-run-detail",
         candidate_id: FIXTURE_CANDIDATE_ID,
         score: 1,
-        risk_decision: "valid_order_intent",
+        risk_decision: "valid_order_intent_draft",
         scenario_ids: ["trend_long"],
         no_authority: {
           live_exchange: false,
@@ -575,7 +646,7 @@ describe("runtime read-only API", () => {
             runner_kind: "docker_sandboxes_sbx",
             sandbox_name: "ouro-s22-detail",
             status: "accepted",
-            risk_decision: "valid_order_intent",
+            risk_decision: "valid_order_intent_draft",
             metrics: [
               {
                 name: "provider_boundary",
@@ -597,22 +668,22 @@ describe("runtime read-only API", () => {
 
     const mismatch = await server.inject({
       method: "GET",
-      url: `/api/candidates/${otherCandidateId}/candidate-runs/candidate-run-detail`
+      url: `/api/candidates/${otherCandidateId}/replay-runs/replay-run-detail`
     });
     expect(mismatch.statusCode).toBe(404);
     expect(mismatch.json()).toEqual({
-      error: "candidate_run_not_found",
+      error: "replay_run_not_found",
       candidate_id: otherCandidateId,
-      run_id: "candidate-run-detail"
+      run_id: "replay-run-detail"
     });
 
     const missingRun = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/missing-run`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/missing-run`
     });
     expect(missingRun.statusCode).toBe(404);
     expect(missingRun.json()).toEqual({
-      error: "candidate_run_not_found",
+      error: "replay_run_not_found",
       candidate_id: FIXTURE_CANDIDATE_ID,
       run_id: "missing-run"
     });
@@ -620,13 +691,13 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("compares selected candidate-run evidence against a baseline run", async () => {
-    const runRoot = path.join(tmpDir, "candidate-runs");
-    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
-    const otherCandidateId = "trader-system-candidate-other-001";
+  it("compares selected replay-run evidence against a baseline run", async () => {
+    const runRoot = path.join(tmpDir, "replay-runs");
+    const promotedCandidateRoot = path.join(tmpDir, "trading-system-candidates");
+    const otherCandidateId = "trading-system-candidate-other-001";
     await writePromotedCandidateBundle(promotedCandidateRoot, otherCandidateId);
-    await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-run-selected",
+    await writeReplayRunRecord(runRoot, {
+      run_id: "replay-run-selected",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "docker_sandboxes_sbx",
       status: "accepted",
@@ -639,10 +710,10 @@ describe("runtime read-only API", () => {
       started_at: "2026-05-14T13:00:00.000Z",
       completed_at: "2026-05-14T13:01:00.000Z",
       score: 0.85,
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_ids: ["trend_long", "range_short"],
-      output_dir: path.join(runRoot, "candidate-run-selected", "output"),
-      events_path: path.join(runRoot, "candidate-run-selected", "output", "replay-set.json"),
+      output_dir: path.join(runRoot, "replay-run-selected", "output"),
+      events_path: path.join(runRoot, "replay-run-selected", "output", "replay-set.json"),
       scenario_results: [],
       no_authority: {
         live_exchange: false,
@@ -652,8 +723,8 @@ describe("runtime read-only API", () => {
       },
       authority_status: "not_live"
     });
-    await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-run-baseline",
+    await writeReplayRunRecord(runRoot, {
+      run_id: "replay-run-baseline",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "host_process",
       status: "accepted",
@@ -666,10 +737,10 @@ describe("runtime read-only API", () => {
       started_at: "2026-05-14T12:00:00.000Z",
       completed_at: "2026-05-14T12:01:00.000Z",
       score: 0.6,
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_ids: ["trend_long", "range_short"],
-      output_dir: path.join(runRoot, "candidate-run-baseline", "output"),
-      events_path: path.join(runRoot, "candidate-run-baseline", "output", "replay-set.json"),
+      output_dir: path.join(runRoot, "replay-run-baseline", "output"),
+      events_path: path.join(runRoot, "replay-run-baseline", "output", "replay-set.json"),
       scenario_results: [],
       no_authority: {
         live_exchange: false,
@@ -683,12 +754,12 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot,
-      candidateRunRoot: runRoot
+      replayRunRoot: runRoot
     });
 
     const comparison = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/comparison?baseline_run_id=candidate-run-baseline`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/replay-run-selected/comparison?baseline_run_id=replay-run-baseline`
     });
     expect(comparison.statusCode).toBe(200);
     expect(comparison.json()).toMatchObject({
@@ -696,13 +767,13 @@ describe("runtime read-only API", () => {
       comparison: {
         candidate_id: FIXTURE_CANDIDATE_ID,
         selected: {
-          run_id: "candidate-run-selected",
+          run_id: "replay-run-selected",
           score: 0.85,
           scenario_accepted: 2,
           authority_status: "not_live"
         },
         baseline: {
-          run_id: "candidate-run-baseline",
+          run_id: "replay-run-baseline",
           score: 0.6,
           scenario_accepted: 1,
           authority_status: "not_live"
@@ -715,10 +786,10 @@ describe("runtime read-only API", () => {
           provider_request_total: 1,
           runner_command_total: 4
         },
-        risk_transition: "valid_order_intent -> valid_order_intent",
+        risk_transition: "valid_order_intent_draft -> valid_order_intent_draft",
         verdict: "improved",
         authority_status: "not_live",
-        evidence_label: "comparison_not_authority",
+        validation_label: "comparison_not_authority",
         no_authority: {
           live_exchange: false,
           order_authority: false,
@@ -730,53 +801,53 @@ describe("runtime read-only API", () => {
 
     const missingBaseline = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/comparison?baseline_run_id=missing-run`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/replay-run-selected/comparison?baseline_run_id=missing-run`
     });
     expect(missingBaseline.statusCode).toBe(404);
     expect(missingBaseline.json()).toEqual({
-      error: "candidate_run_comparison_not_found",
+      error: "replay_run_comparison_not_found",
       candidate_id: FIXTURE_CANDIDATE_ID,
-      run_id: "candidate-run-selected",
+      run_id: "replay-run-selected",
       baseline_run_id: "missing-run"
     });
 
     const mismatch = await server.inject({
       method: "GET",
-      url: `/api/candidates/${otherCandidateId}/candidate-runs/candidate-run-selected/comparison?baseline_run_id=candidate-run-baseline`
+      url: `/api/candidates/${otherCandidateId}/replay-runs/replay-run-selected/comparison?baseline_run_id=replay-run-baseline`
     });
     expect(mismatch.statusCode).toBe(404);
     expect(mismatch.json()).toEqual({
-      error: "candidate_run_comparison_not_found",
+      error: "replay_run_comparison_not_found",
       candidate_id: otherCandidateId,
-      run_id: "candidate-run-selected",
-      baseline_run_id: "candidate-run-baseline"
+      run_id: "replay-run-selected",
+      baseline_run_id: "replay-run-baseline"
     });
 
     const missingQuery = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/comparison`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/replay-run-selected/comparison`
     });
     expect(missingQuery.statusCode).toBe(422);
     expect(missingQuery.json()).toEqual({
-      error: "candidate_run_comparison_rejected",
+      error: "replay_run_comparison_rejected",
       reason: "missing_baseline_run_id",
       candidate_id: FIXTURE_CANDIDATE_ID,
-      run_id: "candidate-run-selected"
+      run_id: "replay-run-selected"
     });
 
-    const evidencePosture = await server.inject({
+    const validationState = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/evidence-posture?baseline_run_id=candidate-run-baseline`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/replay-run-selected/validation-state?baseline_run_id=replay-run-baseline`
     });
-    expect(evidencePosture.statusCode).toBe(200);
-    expect(evidencePosture.json()).toMatchObject({
+    expect(validationState.statusCode).toBe(200);
+    expect(validationState.json()).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
-      evidence_posture: {
+      validation_state: {
         candidate_id: FIXTURE_CANDIDATE_ID,
-        selected_run_id: "candidate-run-selected",
-        baseline_run_id: "candidate-run-baseline",
+        selected_run_id: "replay-run-selected",
+        baseline_run_id: "replay-run-baseline",
         comparison_verdict: "improved",
-        evidence_posture: "evidence_sufficient",
+        validation_state: "passes_replay_checks",
         reasons: [
           "selected run improved against baseline",
           "all selected scenarios were accepted",
@@ -787,7 +858,7 @@ describe("runtime read-only API", () => {
           "future promotion issue with explicit authority scope"
         ],
         authority_status: "not_live",
-        evidence_label: "evidence_posture_not_authority",
+        validation_label: "validation_state_not_authority",
         no_authority: {
           live_exchange: false,
           order_authority: false,
@@ -799,24 +870,24 @@ describe("runtime read-only API", () => {
 
     const noBaseline = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/evidence-posture`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/replay-run-selected/validation-state`
     });
     expect(noBaseline.statusCode).toBe(200);
     expect(noBaseline.json()).toMatchObject({
-      evidence_posture: {
-        selected_run_id: "candidate-run-selected",
-        evidence_posture: "baseline_required",
-        evidence_label: "evidence_posture_not_authority"
+      validation_state: {
+        selected_run_id: "replay-run-selected",
+        validation_state: "comparison_required",
+        validation_label: "validation_state_not_authority"
       }
     });
 
     const missingPostureRun = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/missing-run/evidence-posture`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/replay-runs/missing-run/validation-state`
     });
     expect(missingPostureRun.statusCode).toBe(404);
     expect(missingPostureRun.json()).toEqual({
-      error: "candidate_run_evidence_posture_not_found",
+      error: "replay_run_validation_state_not_found",
       candidate_id: FIXTURE_CANDIDATE_ID,
       run_id: "missing-run"
     });
@@ -988,8 +1059,8 @@ describe("runtime read-only API", () => {
       candidate_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: candidateVersionId,
       runtime_id: candidate.json().runtime.ref.id,
-      order_intent: {
-        record_kind: "order_intent",
+      order_intent_draft: {
+        record_kind: "order_intent_draft",
         status: "proposed",
         authority_status: "not_submitted"
       },
@@ -1015,8 +1086,8 @@ describe("runtime read-only API", () => {
     expect(updatedCandidate.json().runtime.bounded_authority).toMatchObject({
       has_activity: true,
       chain_complete: true,
-      latest_order_intent: {
-        order_intent_id: first.json().order_intent.order_intent_id,
+      latest_order_intent_draft: {
+        order_intent_draft_id: first.json().order_intent_draft.order_intent_draft_id,
         authority_status: "not_submitted"
       },
       latest_gateway_decision: {
@@ -1317,16 +1388,16 @@ describe("runtime read-only API", () => {
 
     await writeStoreJson(
       {
-        record_kind: "trader_system_runtime",
+        record_kind: "trading_system_runtime",
         version: 1,
-        trader_system_runtime_id: "foreign-runtime-001",
+        trading_system_runtime_id: "foreign-runtime-001",
         stage_binding_profile: "paper",
         placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
         hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
         memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
         authority_status: "not_live"
-      } satisfies TraderSystemRuntimeRecord,
-      "trader-system-runtimes",
+      } satisfies TradingSystemRuntimeRecord,
+      "trading-system-runtimes",
       "items",
       "foreign-runtime-001.json"
     );
@@ -1360,12 +1431,12 @@ describe("runtime read-only API", () => {
       candidate_id: "missing"
     });
 
-    const missingCandidateRuns = await server.inject({
+    const missingReplayRuns = await server.inject({
       method: "GET",
       url: "/api/candidates/missing/evaluation-runs"
     });
-    expect(missingCandidateRuns.statusCode).toBe(404);
-    expect(missingCandidateRuns.json()).toEqual({
+    expect(missingReplayRuns.statusCode).toBe(404);
+    expect(missingReplayRuns.json()).toEqual({
       error: "candidate_not_found",
       candidate_id: "missing"
     });
@@ -1467,10 +1538,10 @@ describe("runtime read-only API", () => {
   it("does not expose runtime action routes", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const forbiddenPaths = [
-      "/api/candidates/fixture-candidate-btc-perp-001/start",
-      "/api/candidates/fixture-candidate-btc-perp-001/pause",
-      "/api/candidates/fixture-candidate-btc-perp-001/runtime-control/pause",
-      "/api/candidates/fixture-candidate-btc-perp-001/runtime-control/kill",
+      "/api/candidates/fixture-candidate-sealed-replay-001/start",
+      "/api/candidates/fixture-candidate-sealed-replay-001/pause",
+      "/api/candidates/fixture-candidate-sealed-replay-001/runtime-control/pause",
+      "/api/candidates/fixture-candidate-sealed-replay-001/runtime-control/kill",
       "/api/provider-runs",
       "/api/evaluations",
       "/api/promotions",
@@ -1516,7 +1587,7 @@ describe("runtime read-only API", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/candidate-generation-runs",
-      payload: { prompt: "create one BTC perp candidate" }
+      payload: { prompt: "create one generic trading candidate" }
     });
 
     expect(response.statusCode).toBe(201);
@@ -1529,7 +1600,7 @@ describe("runtime read-only API", () => {
       },
       candidate: {
         status: "materialized",
-        display_name: "BTC Perp Breakout Candidate",
+        display_name: "generic market Perp Breakout Candidate",
         evaluation: {
           run: {
             status: "created",
@@ -1575,7 +1646,7 @@ describe("runtime read-only API", () => {
     const response = await server.inject({
       method: "POST",
       url: "/api/candidate-generation-runs",
-      payload: { prompt: "create one BTC perp candidate" }
+      payload: { prompt: "create one generic trading candidate" }
     });
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({
@@ -1633,23 +1704,23 @@ function validMaterializationInput(): CandidateMaterializationInput {
       output_artifact_hash: "sha256:runtime-success-output-001"
     },
     candidate: {
-      title: "BTC Perp Breakout Candidate",
-      system_summary: "Agent-generated BTC perpetual futures breakout trader-system candidate.",
-      first_market_scope: "binance_btc_perpetual_futures"
+      title: "generic market Perp Breakout Candidate",
+      system_summary: "Agent-generated generic trading instruments breakout trading-system candidate.",
+      first_market_scope: "external_trading_api_fixture"
     },
     spec: {
-      summary: "Trade BTC perpetual futures using volatility breakouts and strict risk caps.",
-      market: "Binance",
-      instrument: "BTC perpetual futures",
+      summary: "Trade generic trading instruments using volatility breakouts and strict risk caps.",
+      market: "ExternalTradingApiProvider",
+      instrument: "generic trading instruments",
       supported_stage_binding_profiles: ["backtest", "paper", "live"]
     },
     program: {
-      summary: "Generated behavior bundle that emits order intents only after validation.",
+      summary: "Generated behavior bundle that emits order intent drafts only after validation.",
       declared_runtime: "python-sandbox-placeholder",
-      declared_outputs: ["OrderIntent", "ProgramEvent", "Trace"]
+      declared_outputs: ["OrderIntentDraft", "ProgramEvent", "Trace"]
     },
     capability_package: {
-      summary: "BTC perpetual market context and indicator package request.",
+      summary: "generic tradingetual market context and indicator package request.",
       allowed_stages: ["backtest", "paper"],
       declared_permissions: ["read_market_bars", "read_position_state"],
       forbidden_contents: ["exchange_credentials", "evaluator_hidden_labels", "live_order_authority"]
@@ -1744,18 +1815,18 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     await writeFile(path.join(bundleDir, "artifact", file.relativePath), file.content, "utf8");
   }
   await writeFile(path.join(bundleDir, "candidate.json"), `${JSON.stringify({
-    record_kind: "trader_system_candidate",
+    record_kind: "trading_system_candidate",
     version: 1,
     candidate_id: candidateId,
-    display_name: "Promoted Trading AAR Candidate",
+    display_name: "Promoted Trading research Candidate",
     status: "materialized",
     active_version_id: candidateVersionId,
     provenance_refs: [
       { record_kind: "trading_research_notebook", id: "test-research-session" },
       { record_kind: "runnable_artifact", id: runnableArtifactId }
     ],
-    title: "Promoted Trading AAR Candidate",
-    system_summary: "Promoted from a test Trading AAR seeded-stability gate.",
+    title: "Promoted Trading research Candidate",
+    system_summary: "Promoted from a test Trading research seeded-stability gate.",
     candidate_status: "handoff_ready",
     evaluation_handoff_ready: true,
     active_runnable_artifact_ref: { record_kind: "runnable_artifact", id: runnableArtifactId },
@@ -1766,13 +1837,13 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     version: 1,
     candidate_version_id: candidateVersionId,
     candidate_id: candidateId,
-    version_label: "trading-aar-v1",
-    spec_ref: { record_kind: "trader_system_spec", id: `${candidateId}-spec` },
-    program_ref: { record_kind: "trader_system_program", id: `${candidateId}-program` },
+    version_label: "trading-research-v1",
+    spec_ref: { record_kind: "trading_system_spec", id: `${candidateId}-spec` },
+    program_ref: { record_kind: "trading_system_program", id: `${candidateId}-program` },
     capability_package_refs: [
       { record_kind: "capability_package", id: `${candidateId}-capabilities` }
     ],
-    runtime_ref: { record_kind: "trader_system_runtime", id: `${candidateId}-runtime` },
+    runtime_ref: { record_kind: "trading_system_runtime", id: `${candidateId}-runtime` },
     trace_placeholder_ref: { record_kind: "trace_placeholder", id: `${candidateId}-trace` },
     runnable_artifact_ref: { record_kind: "runnable_artifact", id: runnableArtifactId }
   }, null, 2)}\n`, "utf8");
@@ -1787,7 +1858,7 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     entrypoint: ["python3", "run.py"],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
-      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent"]
+      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
     },
     secret_policy_ref: { record_kind: "secret_policy", id: "secret-policy-no-raw-values-v1" },
     capability_policy_ref: {
@@ -1874,7 +1945,7 @@ function promotedCandidateArtifactFiles(): Array<{ relativePath: string; content
         "    account = get_json(base_url, '/account/state')",
         "    append_event(args.output_events, {'event': 'account_state', **account})",
         "    intent = build_intent(market, account)",
-        "    append_event(args.output_events, {'event': 'order_intent', **intent})",
+        "    append_event(args.output_events, {'event': 'order_intent_draft', **intent})",
         "    validation = post_json(base_url, '/orders/validate', intent)",
         "    append_event(args.output_events, {'event': 'order_validation', **validation})",
         "    append_event(args.output_events, {'event': 'run_complete', 'accepted': validation['accepted']})",
@@ -1898,7 +1969,7 @@ function digestArtifactFiles(files: Array<{ relativePath: string; content: strin
   return `sha256:${hash.digest("hex")}`;
 }
 
-async function writeCandidateRunRecord(
+async function writeReplayRunRecord(
   root: string,
   value: {
     run_id: string;
@@ -1936,7 +2007,7 @@ async function writeCandidateRunRecord(
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(path.join(root, value.run_id, "ignore.txt"), "ignored\n", "utf8");
   await writeFile(filePath, `${JSON.stringify({
-    record_kind: "trader_system_candidate_run",
+    record_kind: "trading_system_replay_run",
     version: 1,
     ...value
   }, null, 2)}\n`, "utf8");

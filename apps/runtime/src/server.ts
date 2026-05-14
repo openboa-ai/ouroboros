@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type {
   BoundedRuntimeAuthorityInput,
   CandidateSummaryReadModel,
-  CandidateRunEvidenceReadModel,
+  ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
   Ref,
   RuntimeControlAuditInput,
@@ -25,23 +25,27 @@ import {
   type SandboxRuntimeAdapter
 } from "./runtime-instances/sandbox-runtime-adapter";
 import {
-  DEFAULT_CANDIDATE_RUN_ROOT,
-  getCandidateLatestEvidencePosture,
-  getCandidateRunComparison,
-  getCandidateRunDetail,
-  getCandidateRunEvidencePosture,
-  listCandidateRunEvidence
-} from "./trading-candidate/candidate-run-ledger";
+  DEFAULT_REPLAY_RUN_ROOT,
+  getCandidateLatestValidationState,
+  getReplayRunComparison,
+  getReplayRunDetail,
+  getReplayRunValidationState,
+  listReplayRunEvidence
+} from "./trading-candidate/replay-run-ledger";
 import {
   DEFAULT_PROMOTED_CANDIDATE_ROOT,
   getPromotedCandidate,
   listPromotedCandidateSummaries
 } from "./trading-candidate/promoted-candidate-bundles";
 import {
-  CandidateRunError,
-  runPromotedCandidate,
-  type CandidateRunRecord
-} from "./trading-candidate/run-candidate";
+  ReplayRunError,
+  runPromotedCandidateReplay,
+  type ReplayRunRecord
+} from "./trading-candidate/run-replay";
+import {
+  getTradingSystemExecutionModeContract,
+  listTradingSystemExecutionModeContracts
+} from "./trading-execution-mode-contracts";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
 
 export interface BuildServerOptions {
@@ -49,7 +53,7 @@ export interface BuildServerOptions {
   providerAdapter?: RuntimeProviderAdapter;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
   runtimeInstanceAdapters?: Partial<Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter>>;
-  candidateRunRoot?: string;
+  replayRunRoot?: string;
   promotedCandidateRoot?: string;
 }
 
@@ -99,7 +103,7 @@ interface RecordRuntimeControlBody {
     reason?: string;
     reason_summary?: string;
     trace_ref?: Ref;
-    related_order_intent_refs?: Ref[];
+    related_order_intent_draft_refs?: Ref[];
     related_gateway_decision_refs?: Ref[];
     related_execution_attempt_refs?: Ref[];
   };
@@ -111,7 +115,7 @@ interface RecordRuntimeControlBody {
     runtime_operating_policy_ref?: Ref;
     resulting_lifecycle_status?: string;
     trace_ref?: Ref;
-    related_order_intent_refs?: Ref[];
+    related_order_intent_draft_refs?: Ref[];
     related_gateway_decision_refs?: Ref[];
     related_execution_attempt_refs?: Ref[];
   };
@@ -123,14 +127,14 @@ interface RecordRuntimeControlBody {
     message?: string;
     trace_ref?: Ref;
     supporting_record_refs?: Ref[];
-    related_order_intent_refs?: Ref[];
+    related_order_intent_draft_refs?: Ref[];
     related_gateway_decision_refs?: Ref[];
     related_execution_attempt_refs?: Ref[];
   };
   created_at?: string;
 }
 
-interface CreateCandidateRunBody {
+interface CreateReplayRunBody {
   run_id?: string;
   runner_kind?: string;
   scenario_ids?: unknown;
@@ -181,11 +185,29 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     projections: "rebuilt_from_authoritative_item_files"
   }));
 
+  server.get("/api/trading-execution-modes", async () => ({
+    modes: listTradingSystemExecutionModeContracts()
+  }));
+
+  server.get<{ Params: { mode: string } }>(
+    "/api/trading-execution-modes/:mode",
+    async (request, reply) => {
+      const mode = getTradingSystemExecutionModeContract(request.params.mode);
+      if (!mode) {
+        return reply.code(404).send({
+          error: "trading_execution_mode_not_found",
+          mode: request.params.mode
+        });
+      }
+      return { mode };
+    }
+  );
+
   server.get("/api/candidates", async () => ({
     candidates: await listCandidateSummaries(
       store,
       options.promotedCandidateRoot,
-      options.candidateRunRoot
+      options.replayRunRoot
     )
   }));
 
@@ -196,7 +218,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -215,7 +237,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -232,13 +254,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   );
 
   server.get<{ Params: { candidate_id: string }; Querystring: { limit?: string } }>(
-    "/api/candidates/:candidate_id/candidate-runs",
+    "/api/candidates/:candidate_id/replay-runs",
     async (request, reply) => {
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -249,8 +271,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
       return {
         candidate_id: request.params.candidate_id,
-        runs: await listCandidateRunEvidence({
-          root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+        runs: await listReplayRunEvidence({
+          root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
           candidate_id: request.params.candidate_id,
           limit: parseLimit(request.query.limit)
         })
@@ -262,13 +284,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     Params: { candidate_id: string; run_id: string };
     Querystring: { baseline_run_id?: string };
   }>(
-    "/api/candidates/:candidate_id/candidate-runs/:run_id/evidence-posture",
+    "/api/candidates/:candidate_id/replay-runs/:run_id/validation-state",
     async (request, reply) => {
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -277,15 +299,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
 
-      const evidencePosture = await getCandidateRunEvidencePosture({
-        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+      const validationState = await getReplayRunValidationState({
+        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
         candidate_id: request.params.candidate_id,
         run_id: request.params.run_id,
         baseline_run_id: request.query.baseline_run_id
       });
-      if (!evidencePosture) {
+      if (!validationState) {
         return reply.code(404).send({
-          error: "candidate_run_evidence_posture_not_found",
+          error: "replay_run_validation_state_not_found",
           candidate_id: request.params.candidate_id,
           run_id: request.params.run_id,
           baseline_run_id: request.query.baseline_run_id
@@ -294,7 +316,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
       return {
         candidate_id: request.params.candidate_id,
-        evidence_posture: evidencePosture
+        validation_state: validationState
       };
     }
   );
@@ -303,13 +325,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     Params: { candidate_id: string; run_id: string };
     Querystring: { baseline_run_id?: string };
   }>(
-    "/api/candidates/:candidate_id/candidate-runs/:run_id/comparison",
+    "/api/candidates/:candidate_id/replay-runs/:run_id/comparison",
     async (request, reply) => {
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -320,22 +342,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
       if (!request.query.baseline_run_id) {
         return reply.code(422).send({
-          error: "candidate_run_comparison_rejected",
+          error: "replay_run_comparison_rejected",
           reason: "missing_baseline_run_id",
           candidate_id: request.params.candidate_id,
           run_id: request.params.run_id
         });
       }
 
-      const comparison = await getCandidateRunComparison({
-        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+      const comparison = await getReplayRunComparison({
+        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
         candidate_id: request.params.candidate_id,
         run_id: request.params.run_id,
         baseline_run_id: request.query.baseline_run_id
       });
       if (!comparison) {
         return reply.code(404).send({
-          error: "candidate_run_comparison_not_found",
+          error: "replay_run_comparison_not_found",
           candidate_id: request.params.candidate_id,
           run_id: request.params.run_id,
           baseline_run_id: request.query.baseline_run_id
@@ -350,13 +372,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   );
 
   server.get<{ Params: { candidate_id: string; run_id: string } }>(
-    "/api/candidates/:candidate_id/candidate-runs/:run_id",
+    "/api/candidates/:candidate_id/replay-runs/:run_id",
     async (request, reply) => {
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -365,14 +387,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
 
-      const run = await getCandidateRunDetail({
-        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+      const run = await getReplayRunDetail({
+        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
         candidate_id: request.params.candidate_id,
         run_id: request.params.run_id
       });
       if (!run) {
         return reply.code(404).send({
-          error: "candidate_run_not_found",
+          error: "replay_run_not_found",
           candidate_id: request.params.candidate_id,
           run_id: request.params.run_id
         });
@@ -385,14 +407,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   );
 
-  server.post<{ Params: { candidate_id: string }; Body: CreateCandidateRunBody }>(
-    "/api/candidates/:candidate_id/candidate-runs",
+  server.post<{ Params: { candidate_id: string }; Body: CreateReplayRunBody }>(
+    "/api/candidates/:candidate_id/replay-runs",
     async (request, reply) => {
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
         options.promotedCandidateRoot,
-        options.candidateRunRoot
+        options.replayRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -402,33 +424,33 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
       if (candidate.fixture_notice.mode !== "local_promoted_candidate_bundle") {
         return reply.code(422).send({
-          error: "candidate_run_rejected",
+          error: "replay_run_rejected",
           reason: "promoted_candidate_bundle_required",
           candidate_id: request.params.candidate_id
         });
       }
 
       const body = request.body ?? {};
-      const runnerKind = parseCandidateRunRunnerKind(body.runner_kind);
+      const runnerKind = parseReplayRunRunnerKind(body.runner_kind);
       if (!runnerKind) {
         return reply.code(422).send({
-          error: "candidate_run_rejected",
+          error: "replay_run_rejected",
           reason: "invalid_runner_kind",
           candidate_id: request.params.candidate_id
         });
       }
       if (runnerKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
         return reply.code(422).send({
-          error: "candidate_run_rejected",
+          error: "replay_run_rejected",
           reason: "docker_sandboxes_sbx_runtime_disabled",
           candidate_id: request.params.candidate_id
         });
       }
 
-      const scenarioIds = parseCandidateRunScenarioIds(body.scenario_ids);
+      const scenarioIds = parseReplayRunScenarioIds(body.scenario_ids);
       if (!scenarioIds) {
         return reply.code(422).send({
-          error: "candidate_run_rejected",
+          error: "replay_run_rejected",
           reason: "invalid_scenario_ids",
           candidate_id: request.params.candidate_id
         });
@@ -436,17 +458,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const timeoutMs = parseOptionalPositiveInteger(body.timeout_ms);
       if (body.timeout_ms !== undefined && timeoutMs === undefined) {
         return reply.code(422).send({
-          error: "candidate_run_rejected",
+          error: "replay_run_rejected",
           reason: "invalid_timeout_ms",
           candidate_id: request.params.candidate_id
         });
       }
 
       try {
-        const record = await runPromotedCandidate({
+        const record = await runPromotedCandidateReplay({
           candidate_id: request.params.candidate_id,
           candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
-          run_root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+          run_root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
           run_id: body.run_id,
           runner_kind: runnerKind,
           scenario_ids: scenarioIds,
@@ -457,12 +479,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
         return reply.code(201).send({
           candidate_id: request.params.candidate_id,
-          run: candidateRunEvidenceFromRecord(record)
+          run: replayRunEvidenceFromRecord(record)
         });
       } catch (error) {
-        if (error instanceof CandidateRunError) {
-          return reply.code(candidateRunErrorStatus(error)).send({
-            error: "candidate_run_failed",
+        if (error instanceof ReplayRunError) {
+          return reply.code(replayRunErrorStatus(error)).send({
+            error: "replay_run_failed",
             reason: error.reason,
             candidate_id: request.params.candidate_id,
             message: error.message
@@ -474,11 +496,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   );
 
   server.get<{ Querystring: { candidate_id?: string; limit?: string } }>(
-    "/api/candidate-runs",
+    "/api/replay-runs",
     async (request) => ({
       candidate_id: request.query.candidate_id,
-      runs: await listCandidateRunEvidence({
-        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+      runs: await listReplayRunEvidence({
+        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
         candidate_id: request.query.candidate_id,
         limit: parseLimit(request.query.limit)
       })
@@ -712,7 +734,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   server.post<{ Body: { prompt?: string } }>("/api/candidate-generation-runs", async (request, reply) => {
     const outcome = await runCandidateGeneration(store, providerAdapter, {
-      prompt: request.body?.prompt ?? "Create one MLP-01 BTC perpetual trader-system candidate."
+      prompt: request.body?.prompt ?? "Create one MLP-01 generic tradingetual trading-system candidate."
     });
     if (outcome.status === "failed") {
       return reply.code(422).send(outcome);
@@ -776,7 +798,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         instance_id: instanceId,
         sandbox_name: sandboxName,
         runtime_ref: body.runtime_id
-          ? { record_kind: "trader_system_runtime", id: body.runtime_id }
+          ? { record_kind: "trading_system_runtime", id: body.runtime_id }
           : undefined,
         runtime_placement_id: `runtime-placement-${safeRouteId(instanceId)}`,
         created_at: createdAt,
@@ -997,7 +1019,7 @@ function parseLimit(value: string | undefined): number | undefined {
 async function listCandidateSummaries(
   store: LocalStore,
   promotedCandidateRoot?: string,
-  candidateRunRoot?: string
+  replayRunRoot?: string
 ) {
   const promotedCandidates = await listPromotedCandidateSummaries({
     root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT
@@ -1008,36 +1030,36 @@ async function listCandidateSummaries(
     ...promotedCandidates,
     ...storeCandidates.filter((candidate) => !promotedCandidateIds.has(candidate.candidate_id))
   ];
-  return Promise.all(candidates.map((candidate) => withLatestEvidencePosture(candidate, candidateRunRoot)));
+  return Promise.all(candidates.map((candidate) => withLatestValidationState(candidate, replayRunRoot)));
 }
 
 async function getCandidateReadModel(
   store: LocalStore,
   candidateId: string,
   promotedCandidateRoot?: string,
-  candidateRunRoot?: string
+  replayRunRoot?: string
 ) {
   const candidate = await getPromotedCandidate({
     root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
     candidate_id: candidateId
   }) ?? await store.getCandidate(candidateId);
-  return candidate ? withLatestEvidencePosture(candidate, candidateRunRoot) : undefined;
+  return candidate ? withLatestValidationState(candidate, replayRunRoot) : undefined;
 }
 
-async function withLatestEvidencePosture<T extends CandidateSummaryReadModel>(
+async function withLatestValidationState<T extends CandidateSummaryReadModel>(
   candidate: T,
-  candidateRunRoot?: string
+  replayRunRoot?: string
 ): Promise<T> {
   return {
     ...candidate,
-    latest_evidence_posture: await getCandidateLatestEvidencePosture({
-      root: candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+    latest_validation_state: await getCandidateLatestValidationState({
+      root: replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
       candidate_id: candidate.candidate_id
     })
   };
 }
 
-function candidateRunEvidenceFromRecord(record: CandidateRunRecord): CandidateRunEvidenceReadModel {
+function replayRunEvidenceFromRecord(record: ReplayRunRecord): ReplayRunEvidenceReadModel {
   return {
     run_id: record.run_id,
     run_dir: pathFromEvents(record.events_path),
@@ -1061,7 +1083,7 @@ function pathFromEvents(eventsPath: string): string {
     : eventsPath;
 }
 
-function parseCandidateRunRunnerKind(value: string | undefined): TradingArtifactRunnerKind | undefined {
+function parseReplayRunRunnerKind(value: string | undefined): TradingArtifactRunnerKind | undefined {
   if (!value || value === "host" || value === "host_process") {
     return "host_process";
   }
@@ -1071,7 +1093,7 @@ function parseCandidateRunRunnerKind(value: string | undefined): TradingArtifact
   return undefined;
 }
 
-function parseCandidateRunScenarioIds(value: unknown): string[] | undefined {
+function parseReplayRunScenarioIds(value: unknown): string[] | undefined {
   if (value === undefined) {
     return [];
   }
@@ -1088,7 +1110,7 @@ function parseOptionalPositiveInteger(value: unknown): number | undefined {
   return Number.isInteger(value) && Number(value) > 0 ? value as number : undefined;
 }
 
-function candidateRunErrorStatus(error: CandidateRunError): 404 | 422 {
+function replayRunErrorStatus(error: ReplayRunError): 404 | 422 {
   return error.reason === "candidate_not_found" ? 404 : 422;
 }
 

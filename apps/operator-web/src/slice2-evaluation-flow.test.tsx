@@ -45,7 +45,7 @@ describe("Slice 2 evaluation flow", () => {
       const materialize = await server.inject({
         method: "POST",
         url: "/api/candidate-generation-runs",
-        payload: { prompt: "create one deterministic BTC perp candidate" }
+        payload: { prompt: "create one deterministic generic trading candidate" }
       });
       expect(materialize.statusCode).toBe(201);
 
@@ -194,7 +194,7 @@ describe("Slice 2 evaluation flow", () => {
       });
 
       const html = renderToStaticMarkup(<CandidateDetail candidate={candidate} />);
-      expect(html).toContain("BTC Perp Breakout Candidate");
+      expect(html).toContain("generic market Perp Breakout Candidate");
       expect(html).toContain("Latest evaluation run");
       expect(html).toContain("backtest / backtest");
       expect(html).toContain("host_local");
@@ -238,23 +238,23 @@ function validMaterializationInput(): CandidateMaterializationInput {
       output_artifact_hash: "sha256:slice2-e2e-success-output-001"
     },
     candidate: {
-      title: "BTC Perp Breakout Candidate",
-      system_summary: "Agent-generated BTC perpetual futures breakout trader-system candidate.",
-      first_market_scope: "binance_btc_perpetual_futures"
+      title: "generic market Perp Breakout Candidate",
+      system_summary: "Agent-generated generic trading instruments breakout trading-system candidate.",
+      first_market_scope: "external_trading_api_fixture"
     },
     spec: {
-      summary: "Trade BTC perpetual futures using volatility breakouts and strict risk caps.",
-      market: "Binance",
-      instrument: "BTC perpetual futures",
+      summary: "Trade generic trading instruments using volatility breakouts and strict risk caps.",
+      market: "ExternalTradingApiProvider",
+      instrument: "generic trading instruments",
       supported_stage_binding_profiles: ["backtest", "paper", "live"]
     },
     program: {
-      summary: "Generated behavior bundle that emits order intents only after validation.",
+      summary: "Generated behavior bundle that emits order intent drafts only after validation.",
       declared_runtime: "python-sandbox-placeholder",
-      declared_outputs: ["OrderIntent", "ProgramEvent", "Trace"]
+      declared_outputs: ["OrderIntentDraft", "ProgramEvent", "Trace"]
     },
     capability_package: {
-      summary: "BTC perpetual market context and indicator package request.",
+      summary: "generic tradingetual market context and indicator package request.",
       allowed_stages: ["backtest", "paper"],
       declared_permissions: ["read_market_bars", "read_position_state"],
       forbidden_contents: ["exchange_credentials", "evaluator_hidden_labels", "live_order_authority"]

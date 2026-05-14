@@ -3,46 +3,49 @@ import type {
   CandidateEvaluationReadModel,
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
-  CandidateLatestEvidencePostureReadModel,
+  CandidateLatestValidationStateReadModel,
   CandidateMaterializationAttemptReadModel,
-  CandidateRunComparisonReadModel,
-  CandidateRunDetailReadModel,
-  CandidateRunEvidenceReadModel,
-  CandidateRunEvidencePostureReadModel,
-  CandidateRuntimeAuthorityReadModel,
-  CandidateRuntimeControlReadModel,
+  ReplayRunComparisonReadModel,
+  ReplayRunDetailReadModel,
+  ReplayRunEvidenceReadModel,
+  ReplayRunValidationStateReadModel,
+  ReplayRuntimeAuthorityReadModel,
+  ReplayRuntimeControlReadModel,
   CandidateSummaryReadModel,
-  PlaceholderSummary
+  PlaceholderSummary,
+  TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 import {
   fetchCandidate,
-  fetchCandidateRunComparison,
-  fetchCandidateRunDetail,
-  fetchCandidateRunEvidence,
-  fetchCandidateRunEvidencePosture,
+  fetchReplayRunComparison,
+  fetchReplayRunDetail,
+  fetchReplayRunEvidence,
+  fetchReplayRunValidationState,
   fetchCandidateSummaries,
-  recordCandidateRuntimeAuthority,
-  recordCandidateRuntimeControl,
-  runCandidateReplay
+  fetchTradingExecutionModeContracts,
+  recordReplayRuntimeAuthority,
+  recordReplayRuntimeControl,
+  runReplay as submitReplayRun
 } from "./api";
 import "./styles.css";
 
 interface AppState {
   candidates: CandidateSummaryReadModel[];
+  executionModes: TradingSystemExecutionModeContractReadModel[];
   selected?: CandidateInspectReadModel;
-  candidateRuns: CandidateRunEvidenceReadModel[];
-  selectedCandidateRunId?: string;
-  candidateRunDetail?: CandidateRunDetailReadModel;
-  candidateRunComparison?: CandidateRunComparisonReadModel;
-  candidateRunComparisonBaselineId?: string;
-  candidateRunEvidencePosture?: CandidateRunEvidencePostureReadModel;
+  replayRuns: ReplayRunEvidenceReadModel[];
+  selectedReplayRunId?: string;
+  replayRunDetail?: ReplayRunDetailReadModel;
+  replayRunComparison?: ReplayRunComparisonReadModel;
+  replayRunComparisonBaselineId?: string;
+  replayRunValidationState?: ReplayRunValidationStateReadModel;
   error?: string;
   loading: boolean;
   recordingRuntimeAuthority: boolean;
   recordingRuntimeControl: boolean;
   runningCandidateReplay: boolean;
-  candidateRunError?: string;
-  candidateRunMessage?: string;
+  replayRunError?: string;
+  replayRunMessage?: string;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
   runtimeControlError?: string;
@@ -52,7 +55,8 @@ interface AppState {
 export function App() {
   const [state, setState] = useState<AppState>({
     candidates: [],
-    candidateRuns: [],
+    executionModes: [],
+    replayRuns: [],
     loading: true,
     recordingRuntimeAuthority: false,
     recordingRuntimeControl: false,
@@ -63,23 +67,27 @@ export function App() {
     let cancelled = false;
     async function load() {
       try {
-        const candidates = await fetchCandidateSummaries();
+        const [candidates, executionModes] = await Promise.all([
+          fetchCandidateSummaries(),
+          fetchTradingExecutionModeContracts()
+        ]);
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
-        const candidateRuns = selected ? await fetchCandidateRunEvidence(selected.candidate_id) : [];
-        const candidateRunSelection = selected
-          ? await fetchCandidateRunSelection(selected.candidate_id, candidateRuns)
+        const replayRuns = selected ? await fetchReplayRunEvidence(selected.candidate_id) : [];
+        const replayRunSelection = selected
+          ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
           : {};
         if (!cancelled) {
           setState({
             candidates,
+            executionModes,
             selected,
-            candidateRuns,
-            selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
-            candidateRunDetail: candidateRunSelection.candidateRunDetail,
-            candidateRunComparison: candidateRunSelection.candidateRunComparison,
-            candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-            candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
+            replayRuns,
+            selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+            replayRunDetail: replayRunSelection.replayRunDetail,
+            replayRunComparison: replayRunSelection.replayRunComparison,
+            replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+            replayRunValidationState: replayRunSelection.replayRunValidationState,
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -90,7 +98,8 @@ export function App() {
         if (!cancelled) {
           setState({
             candidates: [],
-            candidateRuns: [],
+            executionModes: [],
+            replayRuns: [],
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -114,22 +123,22 @@ export function App() {
       runtimeAuthorityMessage: undefined,
       runtimeControlError: undefined,
       runtimeControlMessage: undefined,
-      candidateRunError: undefined,
-      candidateRunMessage: undefined
+      replayRunError: undefined,
+      replayRunMessage: undefined
     }));
     try {
       const selected = await fetchCandidate(candidateId);
-      const candidateRuns = await fetchCandidateRunEvidence(candidateId);
-      const candidateRunSelection = await fetchCandidateRunSelection(candidateId, candidateRuns);
+      const replayRuns = await fetchReplayRunEvidence(candidateId);
+      const replayRunSelection = await fetchReplayRunSelection(candidateId, replayRuns);
       setState((current) => ({
         ...current,
         selected,
-        candidateRuns,
-        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
-        candidateRunDetail: candidateRunSelection.candidateRunDetail,
-        candidateRunComparison: candidateRunSelection.candidateRunComparison,
-        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
         loading: false
       }));
     } catch (error) {
@@ -141,7 +150,7 @@ export function App() {
     }
   }
 
-  async function selectCandidateRun(runId: string) {
+  async function selectReplayRun(runId: string) {
     const candidate = state.selected;
     if (!candidate) {
       return;
@@ -149,29 +158,29 @@ export function App() {
 
     setState((current) => ({
       ...current,
-      selectedCandidateRunId: runId,
-      candidateRunDetail: undefined,
-      candidateRunComparison: undefined,
-      candidateRunComparisonBaselineId: baselineRunIdForSelection(current.candidateRuns, runId),
-      candidateRunEvidencePosture: undefined,
-      candidateRunError: undefined,
-      candidateRunMessage: undefined
+      selectedReplayRunId: runId,
+      replayRunDetail: undefined,
+      replayRunComparison: undefined,
+      replayRunComparisonBaselineId: baselineRunIdForSelection(current.replayRuns, runId),
+      replayRunValidationState: undefined,
+      replayRunError: undefined,
+      replayRunMessage: undefined
     }));
     try {
-      const candidateRunSelection = await fetchCandidateRunSelection(
+      const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
-        state.candidateRuns,
+        state.replayRuns,
         runId
       );
       setState((current) =>
         current.selected?.candidate_id === candidate.candidate_id
           ? {
               ...current,
-              selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
-              candidateRunDetail: candidateRunSelection.candidateRunDetail,
-              candidateRunComparison: candidateRunSelection.candidateRunComparison,
-              candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-              candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture
+              selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+              replayRunDetail: replayRunSelection.replayRunDetail,
+              replayRunComparison: replayRunSelection.replayRunComparison,
+              replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+              replayRunValidationState: replayRunSelection.replayRunValidationState
             }
           : current
       );
@@ -180,14 +189,14 @@ export function App() {
         current.selected?.candidate_id === candidate.candidate_id
           ? {
               ...current,
-              candidateRunError: error instanceof Error ? error.message : "Unknown candidate run detail error"
+              replayRunError: error instanceof Error ? error.message : "Unknown replay run detail error"
             }
           : current
       );
     }
   }
 
-  async function runReplay() {
+  async function recordReplayRun() {
     const candidate = state.selected;
     if (!candidate || state.runningCandidateReplay) {
       return;
@@ -196,35 +205,35 @@ export function App() {
     setState((current) => ({
       ...current,
       runningCandidateReplay: true,
-      candidateRunError: undefined,
-      candidateRunMessage: undefined
+      replayRunError: undefined,
+      replayRunMessage: undefined
     }));
     try {
-      const outcome = await runCandidateReplay(candidate);
+      const outcome = await submitReplayRun(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
-      const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
-      const candidateRunSelection = await fetchCandidateRunSelection(
+      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
-        candidateRuns,
+        replayRuns,
         outcome.run.run_id
       );
       setState((current) => ({
         ...current,
         selected,
-        candidateRuns,
-        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
-        candidateRunDetail: candidateRunSelection.candidateRunDetail,
-        candidateRunComparison: candidateRunSelection.candidateRunComparison,
-        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
         runningCandidateReplay: false,
-        candidateRunMessage: `replay recorded: ${outcome.run.run_id}`
+        replayRunMessage: `replay recorded: ${outcome.run.run_id}`
       }));
     } catch (error) {
       setState((current) => ({
         ...current,
         runningCandidateReplay: false,
-        candidateRunError: error instanceof Error ? error.message : "Unknown candidate replay error"
+        replayRunError: error instanceof Error ? error.message : "Unknown candidate replay error"
       }));
     }
   }
@@ -242,23 +251,23 @@ export function App() {
       runtimeAuthorityMessage: undefined
     }));
     try {
-      const outcome = await recordCandidateRuntimeAuthority(candidate);
+      const outcome = await recordReplayRuntimeAuthority(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
-      const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
-      const candidateRunSelection = await fetchCandidateRunSelection(
+      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
-        candidateRuns,
-        state.selectedCandidateRunId
+        replayRuns,
+        state.selectedReplayRunId
       );
       setState((current) => ({
         ...current,
         selected,
-        candidateRuns,
-        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
-        candidateRunDetail: candidateRunSelection.candidateRunDetail,
-        candidateRunComparison: candidateRunSelection.candidateRunComparison,
-        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
         recordingRuntimeAuthority: false,
         runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
@@ -284,23 +293,23 @@ export function App() {
       runtimeControlMessage: undefined
     }));
     try {
-      const outcome = await recordCandidateRuntimeControl(candidate);
+      const outcome = await recordReplayRuntimeControl(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
-      const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
-      const candidateRunSelection = await fetchCandidateRunSelection(
+      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
-        candidateRuns,
-        state.selectedCandidateRunId
+        replayRuns,
+        state.selectedReplayRunId
       );
       setState((current) => ({
         ...current,
         selected,
-        candidateRuns,
-        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
-        candidateRunDetail: candidateRunSelection.candidateRunDetail,
-        candidateRunComparison: candidateRunSelection.candidateRunComparison,
-        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
         recordingRuntimeControl: false,
         runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
       }));
@@ -317,7 +326,7 @@ export function App() {
     <main className="shell">
       <aside className="sidebar" aria-label="Candidate list">
         <div className="brand">
-          <span className="brand-mark">AK</span>
+          <span className="brand-mark">OU</span>
           <div>
             <h1>ouroboros</h1>
             <p>Operator inspect</p>
@@ -339,15 +348,16 @@ export function App() {
         {!state.loading && !state.error && state.selected && (
           <CandidateDetail
             candidate={state.selected}
-            candidateRuns={state.candidateRuns}
-            selectedCandidateRunId={state.selectedCandidateRunId}
-            candidateRunDetail={state.candidateRunDetail}
-            candidateRunComparison={state.candidateRunComparison}
-            candidateRunComparisonBaselineId={state.candidateRunComparisonBaselineId}
-            candidateRunEvidencePosture={state.candidateRunEvidencePosture}
-            onSelectCandidateRun={(runId) => void selectCandidateRun(runId)}
+            replayRuns={state.replayRuns}
+            selectedReplayRunId={state.selectedReplayRunId}
+            replayRunDetail={state.replayRunDetail}
+            replayRunComparison={state.replayRunComparison}
+            replayRunComparisonBaselineId={state.replayRunComparisonBaselineId}
+            replayRunValidationState={state.replayRunValidationState}
+            executionModes={state.executionModes}
+            onSelectReplayRun={(runId) => void selectReplayRun(runId)}
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
-              ? () => void runReplay()
+              ? () => void recordReplayRun()
               : undefined}
             onRecordRuntimeAuthority={state.selected.runtime.bounded_authority
               ? () => void recordRuntimeAuthority()
@@ -358,8 +368,8 @@ export function App() {
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
             recordingRuntimeControl={state.recordingRuntimeControl}
             runningCandidateReplay={state.runningCandidateReplay}
-            candidateRunError={state.candidateRunError}
-            candidateRunMessage={state.candidateRunMessage}
+            replayRunError={state.replayRunError}
+            replayRunMessage={state.replayRunMessage}
             runtimeAuthorityError={state.runtimeAuthorityError}
             runtimeAuthorityMessage={state.runtimeAuthorityMessage}
             runtimeControlError={state.runtimeControlError}
@@ -388,45 +398,45 @@ export function CandidateSummaryRow({
     >
       <span>{candidate.display_name}</span>
       <small>
-        {candidate.status} · latest evidence posture: {latestEvidencePostureLabel(candidate.latest_evidence_posture)}
+        {candidate.status} · latest validation state: {latestValidationStateLabel(candidate.latest_validation_state)}
       </small>
     </button>
   );
 }
 
-async function fetchCandidateRunSelection(
+async function fetchReplayRunSelection(
   candidateId: string,
-  runs: CandidateRunEvidenceReadModel[],
+  runs: ReplayRunEvidenceReadModel[],
   preferredRunId?: string
 ): Promise<{
-  selectedCandidateRunId?: string;
-  candidateRunDetail?: CandidateRunDetailReadModel;
-  candidateRunComparison?: CandidateRunComparisonReadModel;
-  candidateRunComparisonBaselineId?: string;
-  candidateRunEvidencePosture?: CandidateRunEvidencePostureReadModel;
+  selectedReplayRunId?: string;
+  replayRunDetail?: ReplayRunDetailReadModel;
+  replayRunComparison?: ReplayRunComparisonReadModel;
+  replayRunComparisonBaselineId?: string;
+  replayRunValidationState?: ReplayRunValidationStateReadModel;
 }> {
   const selectedRun = runs.find((run) => run.run_id === preferredRunId) ?? runs[0];
   if (!selectedRun) {
     return {};
   }
   const baselineRunId = baselineRunIdForSelection(runs, selectedRun.run_id);
-  const [candidateRunDetail, candidateRunComparison, candidateRunEvidencePosture] = await Promise.all([
-    fetchCandidateRunDetail(candidateId, selectedRun.run_id),
-    baselineRunId ? fetchCandidateRunComparison(candidateId, selectedRun.run_id, baselineRunId) : undefined,
-    fetchCandidateRunEvidencePosture(candidateId, selectedRun.run_id, baselineRunId)
+  const [replayRunDetail, replayRunComparison, replayRunValidationState] = await Promise.all([
+    fetchReplayRunDetail(candidateId, selectedRun.run_id),
+    baselineRunId ? fetchReplayRunComparison(candidateId, selectedRun.run_id, baselineRunId) : undefined,
+    fetchReplayRunValidationState(candidateId, selectedRun.run_id, baselineRunId)
   ]);
 
   return {
-    selectedCandidateRunId: selectedRun.run_id,
-    candidateRunDetail,
-    candidateRunComparison,
-    candidateRunComparisonBaselineId: baselineRunId,
-    candidateRunEvidencePosture
+    selectedReplayRunId: selectedRun.run_id,
+    replayRunDetail,
+    replayRunComparison,
+    replayRunComparisonBaselineId: baselineRunId,
+    replayRunValidationState
   };
 }
 
 function baselineRunIdForSelection(
-  runs: CandidateRunEvidenceReadModel[],
+  runs: ReplayRunEvidenceReadModel[],
   selectedRunId: string
 ): string | undefined {
   return runs.find((run) => run.run_id !== selectedRunId)?.run_id;
@@ -434,42 +444,44 @@ function baselineRunIdForSelection(
 
 export function CandidateDetail({
   candidate,
-  candidateRuns = [],
-  selectedCandidateRunId,
-  candidateRunDetail,
-  candidateRunComparison,
-  candidateRunComparisonBaselineId,
-  candidateRunEvidencePosture,
-  onSelectCandidateRun,
+  replayRuns = [],
+  selectedReplayRunId,
+  replayRunDetail,
+  replayRunComparison,
+  replayRunComparisonBaselineId,
+  replayRunValidationState,
+  executionModes = [],
+  onSelectReplayRun,
   onRunCandidateReplay,
   onRecordRuntimeAuthority,
   onRecordRuntimeControl,
   runningCandidateReplay = false,
   recordingRuntimeAuthority = false,
   recordingRuntimeControl = false,
-  candidateRunError,
-  candidateRunMessage,
+  replayRunError,
+  replayRunMessage,
   runtimeAuthorityError,
   runtimeAuthorityMessage,
   runtimeControlError,
   runtimeControlMessage
 }: {
   candidate: CandidateInspectReadModel;
-  candidateRuns?: CandidateRunEvidenceReadModel[];
-  selectedCandidateRunId?: string;
-  candidateRunDetail?: CandidateRunDetailReadModel;
-  candidateRunComparison?: CandidateRunComparisonReadModel;
-  candidateRunComparisonBaselineId?: string;
-  candidateRunEvidencePosture?: CandidateRunEvidencePostureReadModel;
-  onSelectCandidateRun?: (runId: string) => void;
+  replayRuns?: ReplayRunEvidenceReadModel[];
+  selectedReplayRunId?: string;
+  replayRunDetail?: ReplayRunDetailReadModel;
+  replayRunComparison?: ReplayRunComparisonReadModel;
+  replayRunComparisonBaselineId?: string;
+  replayRunValidationState?: ReplayRunValidationStateReadModel;
+  executionModes?: TradingSystemExecutionModeContractReadModel[];
+  onSelectReplayRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
   runningCandidateReplay?: boolean;
   recordingRuntimeAuthority?: boolean;
   recordingRuntimeControl?: boolean;
-  candidateRunError?: string;
-  candidateRunMessage?: string;
+  replayRunError?: string;
+  replayRunMessage?: string;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
   runtimeControlError?: string;
@@ -487,8 +499,8 @@ export function CandidateDetail({
         </div>
         <div className="header-badges">
           <span className="mode-pill">{candidate.fixture_notice.mode}</span>
-          {candidate.latest_evidence_posture && (
-            <EvidencePostureStatus evidencePosture={candidate.latest_evidence_posture} compact />
+          {candidate.latest_validation_state && (
+            <ValidationStateStatus validationState={candidate.latest_validation_state} compact />
           )}
         </div>
       </header>
@@ -499,28 +511,30 @@ export function CandidateDetail({
         ))}
       </section>
 
+      <TradingExecutionModesSection modes={executionModes} />
+
       <div className="section-grid">
         <InfoSection title="Candidate">
           <Field label="Status" value={candidate.status} />
           <Field label="Active version" value={candidate.active_version_id} />
           <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
-          {candidate.latest_evidence_posture && (
-            <CandidateLatestEvidencePostureBlock evidencePosture={candidate.latest_evidence_posture} />
+          {candidate.latest_validation_state && (
+            <CandidateLatestValidationStateBlock validationState={candidate.latest_validation_state} />
           )}
         </InfoSection>
 
-        <CandidateRunsSection
-          runs={candidateRuns}
-          selectedRunId={selectedCandidateRunId}
-          detail={candidateRunDetail}
-          comparison={candidateRunComparison}
-          comparisonBaselineId={candidateRunComparisonBaselineId}
-          evidencePosture={candidateRunEvidencePosture}
-          onSelectRun={onSelectCandidateRun}
+        <ReplayRunsSection
+          runs={replayRuns}
+          selectedRunId={selectedReplayRunId}
+          detail={replayRunDetail}
+          comparison={replayRunComparison}
+          comparisonBaselineId={replayRunComparisonBaselineId}
+          validationState={replayRunValidationState}
+          onSelectRun={onSelectReplayRun}
           onRunCandidateReplay={onRunCandidateReplay}
           runningCandidateReplay={runningCandidateReplay}
-          candidateRunError={candidateRunError}
-          candidateRunMessage={candidateRunMessage}
+          replayRunError={replayRunError}
+          replayRunMessage={replayRunMessage}
         />
 
         <InfoSection title="Spec">
@@ -598,30 +612,67 @@ export function CandidateDetail({
   );
 }
 
-function CandidateRunsSection({
+export function TradingExecutionModesSection({
+  modes
+}: {
+  modes: TradingSystemExecutionModeContractReadModel[];
+}) {
+  if (modes.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="execution-mode-panel" aria-label="Trading execution modes">
+      <div>
+        <p className="eyebrow">Execution modes</p>
+        <h3>Backtest / paper / live contract</h3>
+      </div>
+      <div className="execution-mode-grid">
+        {modes.map((mode) => (
+          <div className="execution-mode-card" key={mode.mode}>
+            <div className="execution-mode-card-header">
+              <strong>{mode.label}</strong>
+              <span>{mode.support_status}</span>
+            </div>
+            <Field label="Mode" value={mode.mode} />
+            <Field label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
+            <Field label="Market data" value={mode.provider_contract.market_data} />
+            <Field label="Account" value={mode.provider_contract.account} />
+            <Field label="Order plane" value={mode.provider_contract.order_plane} />
+            <Field label="Authority" value={mode.authority.status} />
+            <Field label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
+            <Field label="Artifact order submission" value={mode.artifact_contract.order_submission} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReplayRunsSection({
   runs,
   selectedRunId,
   detail,
   comparison,
   comparisonBaselineId,
-  evidencePosture,
+  validationState,
   onSelectRun,
   onRunCandidateReplay,
   runningCandidateReplay,
-  candidateRunError,
-  candidateRunMessage
+  replayRunError,
+  replayRunMessage
 }: {
-  runs: CandidateRunEvidenceReadModel[];
+  runs: ReplayRunEvidenceReadModel[];
   selectedRunId?: string;
-  detail?: CandidateRunDetailReadModel;
-  comparison?: CandidateRunComparisonReadModel;
+  detail?: ReplayRunDetailReadModel;
+  comparison?: ReplayRunComparisonReadModel;
   comparisonBaselineId?: string;
-  evidencePosture?: CandidateRunEvidencePostureReadModel;
+  validationState?: ReplayRunValidationStateReadModel;
   onSelectRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   runningCandidateReplay: boolean;
-  candidateRunError?: string;
-  candidateRunMessage?: string;
+  replayRunError?: string;
+  replayRunMessage?: string;
 }) {
   const latestRun = runs[0];
   const activeRunId = selectedRunId ?? detail?.run_id ?? latestRun?.run_id;
@@ -679,15 +730,15 @@ function CandidateRunsSection({
         </div>
       )}
 
-      <CandidateRunComparisonBlock
+      <ReplayRunComparisonBlock
         comparison={comparison}
         selectedRunId={activeRunId}
         baselineRunId={comparisonBaselineId}
       />
 
-      {evidencePosture && <CandidateRunEvidencePostureBlock evidencePosture={evidencePosture} />}
+      {validationState && <ReplayRunValidationStateBlock validationState={validationState} />}
 
-      {detail && <CandidateRunDetailBlock detail={detail} />}
+      {detail && <ReplayRunDetailBlock detail={detail} />}
 
       {onRunCandidateReplay && (
         <div className="runtime-command">
@@ -702,18 +753,18 @@ function CandidateRunsSection({
           <span>host_process / replay_only / not_live</span>
         </div>
       )}
-      {candidateRunMessage && <div className="inline-status">{candidateRunMessage}</div>}
-      {candidateRunError && <div className="inline-status error">{candidateRunError}</div>}
+      {replayRunMessage && <div className="inline-status">{replayRunMessage}</div>}
+      {replayRunError && <div className="inline-status error">{replayRunError}</div>}
     </InfoSection>
   );
 }
 
-function CandidateRunComparisonBlock({
+function ReplayRunComparisonBlock({
   comparison,
   selectedRunId,
   baselineRunId
 }: {
-  comparison?: CandidateRunComparisonReadModel;
+  comparison?: ReplayRunComparisonReadModel;
   selectedRunId?: string;
   baselineRunId?: string;
 }) {
@@ -726,7 +777,7 @@ function CandidateRunComparisonBlock({
         <h4>Run comparison</h4>
         <div className="placeholder">
           <strong>No comparison baseline</strong>
-          <span>{baselineRunId ?? "single candidate-run history"}</span>
+          <span>{baselineRunId ?? "single replay-run history"}</span>
           <span>comparison_not_authority</span>
         </div>
       </div>
@@ -739,7 +790,7 @@ function CandidateRunComparisonBlock({
       <div className={`evaluation-status ${comparison.verdict === "regressed" ? "failed" : "counted"}`}>
         <span>Selected vs baseline replay evidence</span>
         <strong>{comparison.verdict}</strong>
-        <span>{comparison.evidence_label}</span>
+        <span>{comparison.validation_label}</span>
       </div>
       <Field label="Selected run" value={comparison.selected.run_id} />
       <Field label="Baseline run" value={comparison.baseline.run_id} />
@@ -755,83 +806,83 @@ function CandidateRunComparisonBlock({
   );
 }
 
-function CandidateRunEvidencePostureBlock({
-  evidencePosture
+function ReplayRunValidationStateBlock({
+  validationState
 }: {
-  evidencePosture: CandidateRunEvidencePostureReadModel;
+  validationState: ReplayRunValidationStateReadModel;
 }) {
   return (
     <div className="evaluation-block">
-      <h4>Evidence posture</h4>
-      <EvidencePostureStatus evidencePosture={evidencePosture} />
-      <Field label="Selected run" value={evidencePosture.selected_run_id} />
-      <Field label="Baseline run" value={evidencePosture.baseline_run_id ?? "none"} />
-      <Field label="Comparison verdict" value={evidencePosture.comparison_verdict ?? "none"} />
-      <Field label="Reasons" value={evidencePosture.reasons.join("; ")} />
-      <Field label="Required next evidence" value={evidencePosture.required_next_evidence.join("; ")} />
-      <Field label="Authority" value={evidencePosture.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(evidencePosture.no_authority)} />
+      <h4>Validation state</h4>
+      <ValidationStateStatus validationState={validationState} />
+      <Field label="Selected run" value={validationState.selected_run_id} />
+      <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
+      <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
+      <Field label="Reasons" value={validationState.reasons.join("; ")} />
+      <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
+      <Field label="Authority" value={validationState.authority_status} />
+      <Field label="No authority" value={formatNoAuthority(validationState.no_authority)} />
     </div>
   );
 }
 
-function CandidateLatestEvidencePostureBlock({
-  evidencePosture
+function CandidateLatestValidationStateBlock({
+  validationState
 }: {
-  evidencePosture: CandidateLatestEvidencePostureReadModel;
+  validationState: CandidateLatestValidationStateReadModel;
 }) {
   return (
     <div className="evaluation-block">
-      <h4>Candidate latest evidence posture</h4>
-      <EvidencePostureStatus evidencePosture={evidencePosture} />
-      <Field label="Selected run" value={evidencePosture.selected_run_id ?? "none"} />
-      <Field label="Baseline run" value={evidencePosture.baseline_run_id ?? "none"} />
-      <Field label="Comparison verdict" value={evidencePosture.comparison_verdict ?? "none"} />
-      <Field label="Reasons" value={evidencePosture.reasons.join("; ")} />
-      <Field label="Required next evidence" value={evidencePosture.required_next_evidence.join("; ")} />
-      <Field label="Authority" value={evidencePosture.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(evidencePosture.no_authority)} />
+      <h4>Candidate latest validation state</h4>
+      <ValidationStateStatus validationState={validationState} />
+      <Field label="Selected run" value={validationState.selected_run_id ?? "none"} />
+      <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
+      <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
+      <Field label="Reasons" value={validationState.reasons.join("; ")} />
+      <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
+      <Field label="Authority" value={validationState.authority_status} />
+      <Field label="No authority" value={formatNoAuthority(validationState.no_authority)} />
     </div>
   );
 }
 
-function EvidencePostureStatus({
-  evidencePosture,
+function ValidationStateStatus({
+  validationState,
   compact = false
 }: {
-  evidencePosture: CandidateLatestEvidencePostureReadModel | CandidateRunEvidencePostureReadModel;
+  validationState: CandidateLatestValidationStateReadModel | ReplayRunValidationStateReadModel;
   compact?: boolean;
 }) {
   return (
-    <div className={`evaluation-status ${compact ? "compact" : ""} ${evidencePostureStatusClass(evidencePosture.evidence_posture)}`}>
-      <span>{compact ? "Latest evidence posture" : "Read-only evidence posture"}</span>
-      <strong>{evidencePosture.evidence_posture}</strong>
-      <span>{evidencePosture.evidence_label}</span>
+    <div className={`evaluation-status ${compact ? "compact" : ""} ${validationStateStatusClass(validationState.validation_state)}`}>
+      <span>{compact ? "Latest validation state" : "Read-only validation state"}</span>
+      <strong>{validationState.validation_state}</strong>
+      <span>{validationState.validation_label}</span>
     </div>
   );
 }
 
-function latestEvidencePostureLabel(evidencePosture: CandidateLatestEvidencePostureReadModel | undefined): string {
-  return evidencePosture?.evidence_posture ?? "run_required";
+function latestValidationStateLabel(validationState: CandidateLatestValidationStateReadModel | undefined): string {
+  return validationState?.validation_state ?? "replay_required";
 }
 
-function evidencePostureStatusClass(
-  evidencePosture: CandidateLatestEvidencePostureReadModel["evidence_posture"]
+function validationStateStatusClass(
+  validationState: CandidateLatestValidationStateReadModel["validation_state"]
 ): string {
-  switch (evidencePosture) {
-    case "evidence_sufficient":
+  switch (validationState) {
+    case "passes_replay_checks":
       return "counted";
-    case "evidence_blocked":
+    case "validation_blocked":
       return "failed";
-    case "review_required":
+    case "human_review_required":
       return "sealed";
-    case "baseline_required":
-    case "run_required":
+    case "comparison_required":
+    case "replay_required":
       return "neutral";
   }
 }
 
-function CandidateRunDetailBlock({ detail }: { detail: CandidateRunDetailReadModel }) {
+function ReplayRunDetailBlock({ detail }: { detail: ReplayRunDetailReadModel }) {
   return (
     <div className="evaluation-block">
       <h4>Selected run detail</h4>
@@ -872,7 +923,7 @@ function CandidateRunDetailBlock({ detail }: { detail: CandidateRunDetailReadMod
   );
 }
 
-function formatNoAuthority(noAuthority: CandidateRunDetailReadModel["no_authority"]): string {
+function formatNoAuthority(noAuthority: ReplayRunDetailReadModel["no_authority"]): string {
   return [
     `live_exchange=${String(noAuthority.live_exchange)}`,
     `order_authority=${String(noAuthority.order_authority)}`,
@@ -892,7 +943,7 @@ function RuntimeControlSection({
   runtimeControlError,
   runtimeControlMessage
 }: {
-  control?: CandidateRuntimeControlReadModel;
+  control?: ReplayRuntimeControlReadModel;
   onRecordRuntimeControl?: () => void;
   recordingRuntimeControl: boolean;
   runtimeControlError?: string;
@@ -907,7 +958,7 @@ function RuntimeControlSection({
   return (
     <InfoSection title="Runtime Control">
       <div className={`evaluation-status ${control?.chain_complete ? "counted" : "neutral"}`}>
-        <span>Logical TraderSystemRuntime state</span>
+        <span>Logical TradingSystemRuntime state</span>
         <strong>{statusLabel}</strong>
         <span>{control?.audit_event.authority_status ?? "not_live"}</span>
       </div>
@@ -995,7 +1046,7 @@ function RuntimeAuthoritySection({
   runtimeAuthorityError,
   runtimeAuthorityMessage
 }: {
-  authority?: CandidateRuntimeAuthorityReadModel;
+  authority?: ReplayRuntimeAuthorityReadModel;
   onRecordRuntimeAuthority?: () => void;
   recordingRuntimeAuthority: boolean;
   runtimeAuthorityError?: string;
@@ -1017,23 +1068,23 @@ function RuntimeAuthoritySection({
 
       <Field label="Activity" value={authority?.has_activity ? "recorded" : "none"} />
       <Field label="Complete chain" value={authority?.chain_complete ? "yes" : "no"} />
-      <Field label="Order intent" value={authority?.order_intent.status ?? "not_submitted"} />
+      <Field label="Order intent draft" value={authority?.order_intent_draft.status ?? "not_submitted"} />
       <Field label="Gateway decision" value={authority?.gateway_decision.status ?? "not_evaluated"} />
       <Field label="Execution attempt" value={authority?.execution_attempt.status ?? "not_submitted"} />
 
-      {authority?.latest_order_intent ? (
+      {authority?.latest_order_intent_draft ? (
         <div className="evaluation-block">
-          <h4>Latest order intent</h4>
-          <Field label="Intent" value={authority.latest_order_intent.intent_kind} />
-          <Field label="Status" value={authority.latest_order_intent.status} />
-          <Field label="Side / type" value={`${authority.latest_order_intent.side ?? "none"} / ${authority.latest_order_intent.order_type ?? "none"}`} />
-          <Field label="Quantity" value={authority.latest_order_intent.quantity ?? "none"} />
-          <Field label="Limit" value={authority.latest_order_intent.limit_price ?? "none"} />
-          <Field label="Authority" value={authority.latest_order_intent.authority_status} />
+          <h4>Latest order intent draft</h4>
+          <Field label="Intent" value={authority.latest_order_intent_draft.intent_kind} />
+          <Field label="Status" value={authority.latest_order_intent_draft.status} />
+          <Field label="Side / type" value={`${authority.latest_order_intent_draft.side ?? "none"} / ${authority.latest_order_intent_draft.order_type ?? "none"}`} />
+          <Field label="Quantity" value={authority.latest_order_intent_draft.quantity ?? "none"} />
+          <Field label="Limit" value={authority.latest_order_intent_draft.limit_price ?? "none"} />
+          <Field label="Authority" value={authority.latest_order_intent_draft.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
-          <h4>Latest order intent</h4>
+          <h4>Latest order intent draft</h4>
           <Field label="Status" value="none" />
           <Field label="Authority" value="not_submitted" />
         </div>
@@ -1044,7 +1095,7 @@ function RuntimeAuthoritySection({
           <h4>Latest gateway decision</h4>
           <Field label="Outcome" value={authority.latest_gateway_decision.decision_outcome} />
           <Field label="Reason" value={authority.latest_gateway_decision.decision_reason} />
-          <Field label="Order intent" value={formatRef(authority.latest_gateway_decision.order_intent_ref)} />
+          <Field label="Order intent draft" value={formatRef(authority.latest_gateway_decision.order_intent_draft_ref)} />
           <Field label="Authority" value={authority.latest_gateway_decision.authority_status} />
         </div>
       ) : (

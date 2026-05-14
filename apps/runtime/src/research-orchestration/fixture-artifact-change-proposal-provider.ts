@@ -1,0 +1,156 @@
+import type {
+  ArtifactChangeProposalProviderAttribution,
+  ArtifactChangeProposalProviderProbeResult,
+  ArtifactChangeProposalProviderRequest,
+  ArtifactChangeProposalProviderResult,
+  Ref
+} from "@ouroboros/domain";
+import type { ArtifactChangeProposalProviderAdapter } from "../providers/runtime-provider-adapter";
+import { DeterministicArtifactChangeProposalPlanner } from "./deterministic-proposal-planner";
+
+export interface FixtureArtifactChangeProposalProviderAdapterOptions {
+  model?: string;
+  planner?: DeterministicArtifactChangeProposalPlanner;
+  failureReason?: Extract<
+    ArtifactChangeProposalProviderResult,
+    { status: "failed" }
+  >["failure_reason"];
+}
+
+export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProposalProviderAdapter {
+  private readonly provider: ArtifactChangeProposalProviderAttribution;
+  private readonly planner: DeterministicArtifactChangeProposalPlanner;
+  private readonly failureReason?: Extract<
+    ArtifactChangeProposalProviderResult,
+    { status: "failed" }
+  >["failure_reason"];
+
+  constructor(options: FixtureArtifactChangeProposalProviderAdapterOptions = {}) {
+    this.provider = {
+      provider_kind: "fixture_only",
+      model: options.model ?? "deterministic-artifact-change-proposal-planner-fixture",
+      invocation_surface: "deterministic-artifact-change-proposal-planner-fixture-adapter"
+    };
+    this.planner = options.planner ?? new DeterministicArtifactChangeProposalPlanner();
+    this.failureReason = options.failureReason;
+  }
+
+  async probeArtifactChangeProposal(): Promise<ArtifactChangeProposalProviderProbeResult> {
+    return {
+      ...this.provider,
+      readiness_status: this.failureReason ? "candidate_unverified" : "active_verified",
+      supported_purposes: ["artifact_change_proposal_generation"],
+      failure_reason: this.failureReason
+    };
+  }
+
+  async runArtifactChangeProposalGeneration(
+    request: ArtifactChangeProposalProviderRequest
+  ): Promise<ArtifactChangeProposalProviderResult> {
+    if (this.failureReason) {
+      return this.failureResult(request, this.failureReason);
+    }
+
+    if (!isValidRequest(request)) {
+      return this.failureResult(request, "invalid_artifact_change_proposal_request");
+    }
+
+    try {
+      const outcome = this.planner.plan({
+        task: request.task,
+        findings: request.findings,
+        existing_lineages: request.existing_lineages,
+        parent_runnable_artifact_ref: request.parent_runnable_artifact_ref,
+        idempotency_key: request.idempotency_key,
+        created_at: request.created_at
+      });
+
+      return {
+        status: "succeeded",
+        provider: this.provider,
+        output: {
+          output_kind: "artifact_change_proposal_input",
+          trading_evaluation_task_ref: outcome.proposal.trading_evaluation_task_ref,
+          source_finding_refs: outcome.proposal.source_finding_refs,
+          anti_hacking_finding_refs: outcome.proposal.anti_hacking_finding_refs,
+          parent_runnable_artifact_ref: outcome.proposal.parent_runnable_artifact_ref,
+          proposal_summary: outcome.proposal.proposal_summary,
+          requested_change_summary: outcome.proposal.requested_change_summary,
+          expected_improvement_summary: outcome.proposal.expected_improvement_summary,
+          proposed_artifact_refs: [
+            ref("fixture_provider_artifact_hint", outcome.runnable_artifact.runnable_artifact_id)
+          ],
+          output_authority_status: "proposal_input_only"
+        },
+        agent_run_ref: request.agent_run_ref,
+        agent_event_refs: [agentEventRef(request)],
+        trace_ref: request.trace_ref,
+        provider_output_artifact_refs: [providerOutputArtifactRef(request)],
+        debug_artifact_refs: [
+          ref("debug_artifact", `fixture-artifact-change-proposal-planner-debug-${safeId(request.idempotency_key)}`)
+        ],
+        idempotency_key: request.idempotency_key,
+        authority_status: "proposal_input_only"
+      };
+    } catch (error) {
+      return this.failureResult(
+        request,
+        error instanceof Error && error.message === "no_eligible_research_finding"
+          ? "no_eligible_research_finding"
+          : error instanceof Error && error.message.startsWith("unsupported_")
+          ? "unsupported_artifact_change_proposal_task"
+          : "artifact_change_proposal_provider_failed"
+      );
+    }
+  }
+
+  private failureResult(
+    request: ArtifactChangeProposalProviderRequest,
+    failureReason: Extract<ArtifactChangeProposalProviderResult, { status: "failed" }>["failure_reason"]
+  ): ArtifactChangeProposalProviderResult {
+    return {
+      status: "failed",
+      provider: this.provider,
+      failure_reason: failureReason,
+      agent_run_ref: request.agent_run_ref,
+      agent_event_refs: [agentEventRef(request)],
+      trace_ref: request.trace_ref,
+      provider_output_artifact_refs: [providerOutputArtifactRef(request)],
+      debug_artifact_refs: [
+        ref("debug_artifact", `fixture-artifact-change-proposal-planner-debug-${safeId(request.idempotency_key)}`)
+      ],
+      idempotency_key: request.idempotency_key,
+      authority_status: "proposal_input_only"
+    };
+  }
+}
+
+function isValidRequest(request: ArtifactChangeProposalProviderRequest): boolean {
+  return (
+    Boolean(request.idempotency_key) &&
+    request.agent_run_ref.record_kind === "agent_run" &&
+    request.trace_ref.record_kind === "trace_placeholder" &&
+    request.task.record_kind === "trading_evaluation_task" &&
+    Array.isArray(request.findings)
+  );
+}
+
+function agentEventRef(request: ArtifactChangeProposalProviderRequest): Ref {
+  return ref("agent_event", `agent-event-fixture-artifact-change-proposal-${safeId(request.idempotency_key)}`);
+}
+
+function providerOutputArtifactRef(request: ArtifactChangeProposalProviderRequest): Ref {
+  return ref(
+    "artifact_change_proposal_provider_output_artifact",
+    `fixture-artifact-change-proposal-provider-output-${safeId(request.idempotency_key)}`
+  );
+}
+
+function ref(record_kind: string, id: string): Ref {
+  return { record_kind, id };
+}
+
+function safeId(value: string): string {
+  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized.slice(0, 96) || "empty";
+}

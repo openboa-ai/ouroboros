@@ -17,7 +17,7 @@ describe("S10 trading research audit script", () => {
       const result = await runScript(["scripts/audit-s10-trading-research.mjs", "--notebook", notebookPath]);
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("S10 Trading AAR completion audit");
+      expect(result.stdout).toContain("S10 Trading research completion audit");
       expect(result.stdout).toContain("session_id=s10-audit-fixture");
       expect(result.stdout).toContain("agent_provider=codex");
       expect(result.stdout).toContain("best_artifact_dir=/tmp/s10-audit-fixture/iterations/001/kept-artifact");
@@ -118,7 +118,7 @@ function makeEvaluation(iteration = 1) {
     score: 1,
     metrics: [],
     summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-    risk_decision: "valid_order_intent",
+    risk_decision: "valid_order_intent_draft",
     scenario_results: [
       makeScenarioResult("trend_long", iteration, "01"),
       makeScenarioResult("range_flat", iteration, "02")
@@ -136,8 +136,8 @@ function makeScenarioResult(scenarioId: string, iteration: number, suffix: strin
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent with score 1.000.",
-    risk_decision: "valid_order_intent",
+    summary: "Accepted order intent draft with score 1.000.",
+    risk_decision: "valid_order_intent_draft",
     events_path: `/tmp/s10-audit-fixture/iterations/${String(iteration).padStart(3, "0")}/run/${scenarioId}/events.jsonl`,
     provider_request_count: 3,
     runner_command_count: 5,

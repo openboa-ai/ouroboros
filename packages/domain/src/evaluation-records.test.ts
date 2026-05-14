@@ -13,8 +13,8 @@ const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
 describe("stage-bound evaluation domain records", () => {
   it("models a non-live backtest evaluation run for one candidate version", () => {
-    const candidateRef = ref("trader_system_candidate", "candidate-btc-breakout");
-    const candidateVersionRef = ref("candidate_version", "candidate-version-btc-breakout-v1");
+    const candidateRef = ref("trading_system_candidate", "candidate-market-breakout");
+    const candidateVersionRef = ref("candidate_version", "candidate-version-market-breakout-v1");
     const stageBindingRef = ref("stage_binding", "stage-binding-backtest-v1");
     const traceRef = ref("trace_placeholder", "trace-backtest-evaluation-v1");
     const runtimePlacementRef = ref("runtime_placement", "runtime-placement-host-local");
@@ -32,7 +32,7 @@ describe("stage-bound evaluation domain records", () => {
       execution_mode: "host_local",
       runtime_placement_ref: runtimePlacementRef,
       hands_environment_ref: handsEnvironmentRef,
-      data_window_ref: ref("backtest_data_window", "btc-perp-2026-01"),
+      data_window_ref: ref("backtest_data_window", "sealed-replay-2026-01"),
       simulator_ref: ref("backtest_simulator", "fixture-simulator-v1"),
       created_at: "2026-05-05T00:00:00.000Z",
       authority_status: "not_live"
@@ -157,8 +157,8 @@ describe("stage-bound evaluation domain records", () => {
   });
 
   it("models explicit evidence classification records around a sealing decision", () => {
-    const candidateRef = ref("trader_system_candidate", "candidate-btc-breakout");
-    const candidateVersionRef = ref("candidate_version", "candidate-version-btc-breakout-v1");
+    const candidateRef = ref("trading_system_candidate", "candidate-market-breakout");
+    const candidateVersionRef = ref("candidate_version", "candidate-version-market-breakout-v1");
     const evaluationRunRef = ref("evaluation_run_record", "evaluation-run-backtest-v1");
     const sealingDecisionRef = ref("evidence_sealing_decision", "evidence-sealing-decision-backtest-v1");
 

@@ -10,7 +10,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
        npm run trading:research:best-artifact -- --artifact-only
        npm run trading:research:best-artifact -- --json
 
-Selects the newest passing local Codex replay SDX Trading AAR best artifact.
+Selects the newest passing local Codex replay SDX Trading research best artifact.
 
 Options:
   --root <path>       Directory containing <session>/notebook.json files.
@@ -49,15 +49,15 @@ if (!selected) {
     root,
     scanned_notebooks: candidates.length,
     pass_candidates: 0,
-    message: "NO_PASSING_TRADING_AAR_BEST_ARTIFACT"
+    message: "NO_PASSING_TRADING_RESEARCH_BEST_ARTIFACT"
   };
   if (args.json === "true") {
     console.log(JSON.stringify(failure, null, 2));
   } else if (args["artifact-only"] !== "true") {
-    console.log("Trading AAR best artifact");
+    console.log("Trading research best artifact");
     console.log(`root=${root}`);
     console.log(`scanned_notebooks=${candidates.length}`);
-    console.log("NO_PASSING_TRADING_AAR_BEST_ARTIFACT");
+    console.log("NO_PASSING_TRADING_RESEARCH_BEST_ARTIFACT");
   }
   process.exit(2);
 }
@@ -72,7 +72,7 @@ if (args.json === "true") {
   process.exit(0);
 }
 
-console.log("Trading AAR best artifact");
+console.log("Trading research best artifact");
 console.log(`root=${root}`);
 console.log(`scanned_notebooks=${candidates.length}`);
 console.log(`session_id=${selected.session_id}`);

@@ -112,7 +112,7 @@ export async function runTradingResearchLoop(
             }
           ],
           summary: "Agent failed before artifact execution.",
-          risk_decision: "no_order_intent"
+          risk_decision: "no_order_intent_draft"
         }
       };
       notebook.entries.push(entry);

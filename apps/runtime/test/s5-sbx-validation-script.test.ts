@@ -1931,10 +1931,10 @@ describe("S5 sbx validation harness", () => {
       )).toContain("version");
       expect(calls).toContain("ls");
       expect(calls.some((call) => call.startsWith(
-        `exec -d -w ${repoRoot} ouro-s5-clock-a python3 fixtures/trader-systems/clock.py`
+        `exec -d -w ${repoRoot} ouro-s5-clock-a python3 fixtures/trading-systems/clock.py`
       ))).toBe(true);
       expect(calls.some((call) => call.startsWith(
-        `exec -d -w ${repoRoot} ouro-s5-clock-b python3 fixtures/trader-systems/clock.py`
+        `exec -d -w ${repoRoot} ouro-s5-clock-b python3 fixtures/trading-systems/clock.py`
       ))).toBe(true);
       expect(calls).toContain(
         "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl"
@@ -1948,8 +1948,8 @@ describe("S5 sbx validation harness", () => {
       expect(calls).toContain(
         "exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.heartbeat.json"
       );
-      expect(calls).toContain("exec ouro-s5-clock-a pkill -TERM -f fixtures/trader-systems/clock.py");
-      expect(calls).toContain("exec ouro-s5-clock-b pkill -TERM -f fixtures/trader-systems/clock.py");
+      expect(calls).toContain("exec ouro-s5-clock-a pkill -TERM -f fixtures/trading-systems/clock.py");
+      expect(calls).toContain("exec ouro-s5-clock-b pkill -TERM -f fixtures/trading-systems/clock.py");
       expect(calls.filter((call) => call === "stop ouro-s5-clock-a")).toHaveLength(1);
       expect(calls.filter((call) => call === "stop ouro-s5-clock-b")).toHaveLength(1);
       expect(calls).toContain("rm --force ouro-s5-clock-a");
@@ -3044,7 +3044,7 @@ function fakeCompletionEvidence(
     ? [
         ...stopBResponse,
         "## runtime API stop B command evidence",
-        "$ sbx exec ouro-s5-clock-b pkill -TERM -f fixtures/trader-systems/clock.py",
+        "$ sbx exec ouro-s5-clock-b pkill -TERM -f fixtures/trading-systems/clock.py",
         "exit_code=0",
         "## sbx rm ouro-s5-clock-b",
         "$ sbx rm --force ouro-s5-clock-b",
@@ -3057,7 +3057,7 @@ function fakeCompletionEvidence(
           ...(options.omitCleanupExitCodeB ? [] : ["exit_code=0"]),
           ...stopBResponse,
           "## runtime API stop B command evidence",
-          "$ sbx exec ouro-s5-clock-b pkill -TERM -f fixtures/trader-systems/clock.py",
+          "$ sbx exec ouro-s5-clock-b pkill -TERM -f fixtures/trading-systems/clock.py",
           "exit_code=0",
           "$ sbx stop ouro-s5-clock-b",
           "exit_code=0"
@@ -3065,7 +3065,7 @@ function fakeCompletionEvidence(
       : [
           ...stopBResponse,
           "## runtime API stop B command evidence",
-          "$ sbx exec ouro-s5-clock-b pkill -TERM -f fixtures/trader-systems/clock.py",
+          "$ sbx exec ouro-s5-clock-b pkill -TERM -f fixtures/trading-systems/clock.py",
           "exit_code=0",
           "$ sbx stop ouro-s5-clock-b",
           "exit_code=0",
@@ -3104,7 +3104,7 @@ function fakeCompletionEvidence(
     "## runtime API start A command evidence",
     "$ sbx create --name ouro-s5-clock-a shell /repo",
     "exit_code=0",
-    "$ sbx exec -d -w /repo ouro-s5-clock-a python3 fixtures/trader-systems/clock.py --instance-id sandbox-runtime-instance-clock-a",
+    "$ sbx exec -d -w /repo ouro-s5-clock-a python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-clock-a",
     "exit_code=0",
     "## direct sbx log A",
     "$ sbx exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl",
@@ -3116,7 +3116,7 @@ function fakeCompletionEvidence(
     "## runtime API stop A response",
     '{"runtime_instance":{"sandbox_runtime_instance_id":"sandbox-runtime-instance-clock-a","lifecycle_status":"stopped"}}',
     "## runtime API stop A command evidence",
-    "$ sbx exec ouro-s5-clock-a pkill -TERM -f fixtures/trader-systems/clock.py",
+    "$ sbx exec ouro-s5-clock-a pkill -TERM -f fixtures/trading-systems/clock.py",
     "exit_code=0",
     "$ sbx stop ouro-s5-clock-a",
     "exit_code=0",
@@ -3130,7 +3130,7 @@ function fakeCompletionEvidence(
     "## runtime API start B command evidence",
     "$ sbx create --name ouro-s5-clock-b shell /repo",
     "exit_code=0",
-    "$ sbx exec -d -w /repo ouro-s5-clock-b python3 fixtures/trader-systems/clock.py --instance-id sandbox-runtime-instance-clock-b",
+    "$ sbx exec -d -w /repo ouro-s5-clock-b python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-clock-b",
     ...(options.omitStartBExitCode ? [] : ["exit_code=0"]),
     "## sbx ls",
     "NAME AGENT STATUS WORKSPACE",

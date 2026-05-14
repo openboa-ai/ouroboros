@@ -93,7 +93,7 @@ try {
       runnable_artifact_id: artifactId,
       instance_id: instanceA,
       sandbox_name: sandboxA,
-      runtime_id: "fixture-trader-system-runtime-001",
+      runtime_id: "fixture-trading-system-runtime-001",
       interval_ms: 250
     });
     printJson("runtime API start A response", startA);
@@ -108,7 +108,7 @@ try {
       runnable_artifact_id: artifactId,
       instance_id: instanceB,
       sandbox_name: sandboxB,
-      runtime_id: "fixture-trader-system-runtime-001",
+      runtime_id: "fixture-trading-system-runtime-001",
       interval_ms: 250
     });
     printJson("runtime API start B response", startB);

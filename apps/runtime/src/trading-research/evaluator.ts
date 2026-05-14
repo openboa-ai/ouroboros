@@ -1,6 +1,6 @@
 import type {
   ArtifactRunResult,
-  OrderIntent,
+  OrderIntentDraft,
   OrderValidationResult,
   TradingEvaluationMetric,
   TradingEvaluationResult
@@ -19,11 +19,11 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
         }
       ],
       summary: "Artifact crashed before producing a valid trading run.",
-      risk_decision: "no_order_intent"
+      risk_decision: "no_order_intent_draft"
     };
   }
 
-  const orderIntent = latestPayload<OrderIntent>(run.events, "order_intent");
+  const orderIntent = latestPayload<OrderIntentDraft>(run.events, "order_intent_draft");
   const validation = latestPayload<OrderValidationResult>(run.events, "order_validation");
   const market = latestPayload<{ expected_direction?: string }>(run.events, "market_snapshot");
   const account = latestPayload<{ target_risk_fraction?: number }>(run.events, "account_state");
@@ -38,10 +38,10 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
       score: 0,
       metrics: [
         metric("provider_boundary", usedProviderBoundary ? 0.2 : 0, "provider boundary usage"),
-        metric("order_intent", 0, "missing order intent event")
+        metric("order_intent_draft", 0, "missing order intent draft event")
       ],
-      summary: "Artifact did not emit an order intent.",
-      risk_decision: "no_order_intent"
+      summary: "Artifact did not emit an order intent draft.",
+      risk_decision: "no_order_intent_draft"
     };
   }
 
@@ -70,7 +70,7 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
     metric("signal_direction", directionMetric.score, directionMetric.detail),
     metric("risk_fit", riskScore, "risk fraction closeness to the hidden replay target"),
     metric("pre_trade_validation", validationScore, validation?.reason ?? "missing validation"),
-    metric("rationale", explanationScore, "order intent includes a useful rationale")
+    metric("rationale", explanationScore, "order intent draft includes a useful rationale")
   ];
   if (complexityPenalty > 0) {
     metrics.push(metric("complexity_penalty", -complexityPenalty, "extra event surface adds audit cost"));
@@ -81,9 +81,9 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
     score,
     metrics,
     summary: accepted
-      ? `Accepted order intent with score ${score.toFixed(3)}.`
-      : `Rejected order intent with score ${score.toFixed(3)}.`,
-    risk_decision: validation?.accepted ? "valid_order_intent" : "invalid_order_intent"
+      ? `Accepted order intent draft with score ${score.toFixed(3)}.`
+      : `Rejected order intent draft with score ${score.toFixed(3)}.`,
+    risk_decision: validation?.accepted ? "valid_order_intent_draft" : "invalid_order_intent_draft"
   };
 }
 
@@ -98,7 +98,7 @@ function latestPayload<T>(events: Array<Record<string, unknown>>, eventName: str
 
 function signalDirectionMetric(
   expectedDirection: string | undefined,
-  side: OrderIntent["side"]
+  side: OrderIntentDraft["side"]
 ): TradingEvaluationMetric {
   if (expectedDirection === "long") {
     return metric("signal_direction", side === "buy" ? 0.25 : 0, "long replay regime expects a buy intent");

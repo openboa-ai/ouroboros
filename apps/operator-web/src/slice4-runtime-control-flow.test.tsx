@@ -8,7 +8,7 @@ import type {
   RuntimeAuditEventRecord,
   RuntimeControlCommandRecord,
   RuntimeControlDecisionRecord,
-  TraderSystemRuntimeRecord
+  TradingSystemRuntimeRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../../runtime/src/server";
@@ -96,8 +96,8 @@ describe("Slice 4 runtime control MLP flow", () => {
         "items",
         `${outcome.audit_event.runtime_audit_event_id}.json`
       );
-      const runtime = await readStoreJson<TraderSystemRuntimeRecord>(
-        "trader-system-runtimes",
+      const runtime = await readStoreJson<TradingSystemRuntimeRecord>(
+        "trading-system-runtimes",
         "items",
         `${initialCandidate.runtime.ref.id}.json`
       );
@@ -168,7 +168,7 @@ describe("Slice 4 runtime control MLP flow", () => {
         <CandidateDetail candidate={candidate} onRecordRuntimeControl={() => undefined} />
       );
       expect(html).toContain("Runtime Control");
-      expect(html).toContain("Logical TraderSystemRuntime state");
+      expect(html).toContain("Logical TradingSystemRuntime state");
       expect(html).toContain("chain complete");
       expect(html).toContain("pause");
       expect(html).toContain("allowed");

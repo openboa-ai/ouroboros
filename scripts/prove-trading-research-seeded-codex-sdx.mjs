@@ -33,7 +33,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
        npm run prove:trading-research:seeded-codex-sdx -- --print-only --session-id <id>
        npm run prove:trading-research:seeded-codex-sdx -- --seed-artifact <path> --session-id <id>
 
-Selects the current best Trading AAR artifact, reruns it through Codex replay SDX,
+Selects the current best Trading research artifact, reruns it through Codex replay SDX,
 then audits seeded stability evidence.
 
 Proof path:
@@ -136,7 +136,7 @@ if (args["run-root"] !== undefined) {
 }
 auditArgs.push("--seed-artifact", seedSelection.seedArtifact);
 
-console.log("S15 Seeded Codex SDX Trading AAR proof");
+console.log("S15 Seeded Codex SDX Trading research proof");
 console.log(`session_id=${sessionId}`);
 console.log(`iterations=${iterations}`);
 console.log(`seed_artifact=${seedSelection.seedArtifact}`);

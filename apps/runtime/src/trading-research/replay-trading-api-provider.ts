@@ -2,7 +2,7 @@ import http from "node:http";
 import type {
   AccountState,
   MarketSnapshot,
-  OrderIntent,
+  OrderIntentDraft,
   OrderValidationResult,
   ReplayTradingApiProviderSession,
   ReplayTradingScenario,
@@ -81,7 +81,7 @@ export async function startReplayTradingApiProvider(
     }
 
     if (method === "POST" && path === "/orders/validate") {
-      const validation = validateOrderIntent(body, scenario.market, scenario.account);
+      const validation = validateOrderIntentDraft(body, scenario.market, scenario.account);
       sendJson(response, 200, validation);
       requestLog.push(logRequest(method, path, body, 200));
       return;
@@ -109,16 +109,16 @@ export async function startReplayTradingApiProvider(
   };
 }
 
-export function validateOrderIntent(
+export function validateOrderIntentDraft(
   body: unknown,
   market: MarketSnapshot,
   account: AccountState
 ): OrderValidationResult {
-  const intent = isOrderIntent(body) ? body : undefined;
+  const intent = isOrderIntentDraft(body) ? body : undefined;
   if (!intent) {
     return {
       accepted: false,
-      reason: "malformed_order_intent",
+      reason: "malformed_order_intent_draft",
       notional: 0,
       risk_fraction: 0
     };
@@ -147,11 +147,11 @@ export function validateOrderIntent(
   };
 }
 
-function isOrderIntent(value: unknown): value is OrderIntent {
+function isOrderIntentDraft(value: unknown): value is OrderIntentDraft {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value as Partial<OrderIntent>;
+  const candidate = value as Partial<OrderIntentDraft>;
   return (
     typeof candidate.symbol === "string" &&
     ["buy", "sell", "hold"].includes(String(candidate.side)) &&

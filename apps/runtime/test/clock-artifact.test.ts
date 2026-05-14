@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const artifactPath = path.resolve("fixtures/trader-systems/clock.py");
+const artifactPath = path.resolve("fixtures/trading-systems/clock.py");
 
 let tmpDir: string;
 

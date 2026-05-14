@@ -30,7 +30,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage: npm run prove:trading-research:codex-sdx -- --session-id <id>
        npm run prove:trading-research:codex-sdx -- --print-only --session-id <id>
 
-Runs the Codex-first Trading AAR proof path, then audits the produced notebook.
+Runs the Codex-first Trading research proof path, then audits the produced notebook.
 
 Proof path:
   Codex managed agent
@@ -123,7 +123,7 @@ const auditArgs = [
   sessionId
 ];
 
-console.log("S11 Codex SDX Trading AAR proof");
+console.log("S11 Codex SDX Trading research proof");
 console.log(`session_id=${sessionId}`);
 console.log(`iterations=${iterations}`);
 console.log(`env ${formatEnvAssignment("OUROBOROS_SBX_HOME", env.OUROBOROS_SBX_HOME)}`);

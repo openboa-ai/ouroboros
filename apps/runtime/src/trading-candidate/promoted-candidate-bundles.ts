@@ -8,10 +8,10 @@ import type {
   PlaceholderSummary,
   Ref,
   RunnableArtifactRecord,
-  TraderSystemCandidateRecord
+  TradingSystemCandidateRecord
 } from "@ouroboros/domain";
 
-export const DEFAULT_PROMOTED_CANDIDATE_ROOT = path.join(".ouroboros", "trader-system-candidates");
+export const DEFAULT_PROMOTED_CANDIDATE_ROOT = path.join(".ouroboros", "trading-system-candidates");
 
 export interface PromotedCandidateBundleInput {
   root?: string;
@@ -22,7 +22,7 @@ export interface GetPromotedCandidateInput extends PromotedCandidateBundleInput 
 }
 
 interface PromotedCandidateBundle {
-  candidate: TraderSystemCandidateRecord;
+  candidate: TradingSystemCandidateRecord;
   version: CandidateVersionRecord;
   runnableArtifact: RunnableArtifactRecord;
   promotion?: PromotedCandidatePromotionRecord;
@@ -100,7 +100,7 @@ async function listPromotedCandidates(
 async function readPromotedCandidateBundle(
   bundleDir: string
 ): Promise<PromotedCandidateBundle | undefined> {
-  const candidate = await readOptionalJson<TraderSystemCandidateRecord>(
+  const candidate = await readOptionalJson<TradingSystemCandidateRecord>(
     path.join(bundleDir, "candidate.json")
   );
   const version = await readOptionalJson<CandidateVersionRecord>(
@@ -159,9 +159,9 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
       mode: "local_promoted_candidate_bundle",
       label: "Promoted local candidate bundle",
       statements: [
-        "Read-only TraderSystemCandidate bundle promoted from Trading AAR.",
+        "Read-only TradingSystemCandidate bundle promoted from Trading research.",
         "No exchange credentials or order authority are mounted.",
-        "Candidate-run evidence is replay-only and not counted trading authority."
+        "Replay-run evidence is replay-only and not counted trading authority."
       ]
     },
     candidate_version: {
@@ -172,7 +172,7 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
     },
     spec: {
       ref: version.spec_ref,
-      summary: candidate.system_summary ?? candidate.title ?? "Promoted Trading AAR candidate.",
+      summary: candidate.system_summary ?? candidate.title ?? "Promoted Trading research candidate.",
       market: "External trading API provider",
       instrument: "Trading system",
       supported_stage_binding_profiles: ["backtest"]
@@ -236,13 +236,13 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
       agent_spec: statusPlaceholder(
         version.agent_spec_ref ?? ref("agent_spec", `${candidate.candidate_id}-promoted-agent-spec`),
         "Agent spec",
-        "promoted_from_trading_aar",
+        "promoted_from_trading_research",
         "not_executed"
       ),
       agent_session: statusPlaceholder(
         version.agent_session_ref ?? ref("agent_session", `${candidate.candidate_id}-promoted-agent-session`),
         "Agent session",
-        "promoted_from_trading_aar",
+        "promoted_from_trading_research",
         "not_live"
       ),
       agent_run: statusPlaceholder(
@@ -295,7 +295,7 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
         access_mode: "read_only",
         surface_version: "v1",
         visibility: "operator_visible",
-        quarantine_status: noAuthoritySatisfied(promotion) ? "not_quarantined" : "review_required",
+        quarantine_status: noAuthoritySatisfied(promotion) ? "not_quarantined" : "human_review_required",
         authority_status: "not_evidence"
       }
     },
@@ -310,11 +310,11 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
 }
 
 function isPromotedCandidateBundle(
-  candidate: TraderSystemCandidateRecord,
+  candidate: TradingSystemCandidateRecord,
   version: CandidateVersionRecord,
   runnableArtifact: RunnableArtifactRecord
 ): boolean {
-  return candidate.record_kind === "trader_system_candidate"
+  return candidate.record_kind === "trading_system_candidate"
     && candidate.status === "materialized"
     && candidate.authority_status === "not_live"
     && version.record_kind === "candidate_version"
@@ -347,7 +347,7 @@ async function readOptionalJson<T>(pathname: string): Promise<T | undefined> {
 }
 
 function emptyCandidateEvaluationReadModel(
-  legacyRunRef?: Ref
+  evaluationRunRef?: Ref
 ): CandidateEvaluationReadModel {
   return {
     has_runs: false,
@@ -370,7 +370,7 @@ function emptyCandidateEvaluationReadModel(
     },
     error_state: null,
     run: statusPlaceholder(
-      legacyRunRef ?? ref("evaluation_run_record", "none"),
+      evaluationRunRef ?? ref("evaluation_run_record", "none"),
       "Evaluation run",
       "not_evaluated",
       "not_counted"

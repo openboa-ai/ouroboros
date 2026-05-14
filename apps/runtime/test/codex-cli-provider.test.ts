@@ -33,7 +33,7 @@ describe("CodexCliProviderAdapter", () => {
       }
     });
 
-    const result = await adapter.runCandidateGeneration({ prompt: "create one BTC perp candidate" });
+    const result = await adapter.runCandidateGeneration({ prompt: "create one generic trading candidate" });
 
     expect(calls.map((args) => args[0])).toEqual(["--version", "exec"]);
     expect(result).toMatchObject({
@@ -57,7 +57,7 @@ describe("CodexCliProviderAdapter", () => {
       }
     });
 
-    const result = await adapter.runCandidateGeneration({ prompt: "create one BTC perp candidate" });
+    const result = await adapter.runCandidateGeneration({ prompt: "create one generic trading candidate" });
 
     expect(result).toMatchObject({
       status: "failed",
@@ -83,20 +83,20 @@ function validMaterializationInput(): CandidateMaterializationInput {
       output_artifact_hash: "sha256:provider-test"
     },
     candidate: {
-      title: "BTC Perp Provider Test Candidate",
+      title: "generic market Perp Provider Test Candidate",
       system_summary: "A provider test candidate for materialization.",
-      first_market_scope: "binance_btc_perpetual_futures"
+      first_market_scope: "external_trading_api_fixture"
     },
     spec: {
       summary: "Provider test spec.",
-      market: "Binance",
-      instrument: "BTC perpetual futures",
+      market: "ExternalTradingApiProvider",
+      instrument: "generic trading instruments",
       supported_stage_binding_profiles: ["backtest", "paper"]
     },
     program: {
       summary: "Provider test program.",
       declared_runtime: "typescript-worker",
-      declared_outputs: ["OrderIntent"]
+      declared_outputs: ["OrderIntentDraft"]
     },
     capability_package: {
       summary: "Provider test capability package.",

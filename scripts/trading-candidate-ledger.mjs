@@ -3,7 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-const DEFAULT_ROOT = path.join(".ouroboros", "trader-system-candidates");
+const DEFAULT_ROOT = path.join(".ouroboros", "trading-system-candidates");
 const DEFAULT_LIMIT = 10;
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
@@ -11,7 +11,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
        npm run trading:candidate:ledger -- --limit 5
        npm run trading:candidate:ledger -- --root <path> --json
 
-Lists local TraderSystemCandidate promotions without running agents, providers, sandboxes, or audits.
+Lists local TradingSystemCandidate promotions without running agents, providers, sandboxes, or audits.
 
 Options:
   --root <path>       Candidate promotion root. Default: ${DEFAULT_ROOT}

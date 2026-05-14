@@ -1,6 +1,6 @@
 # Ouroboros
 
-Ouroboros is an automated weak-to-strong trader-system laboratory. Its first product proof is a single serious solo crypto operator evolving one agent-built `TraderSystemCandidate` into a bounded live `TraderSystemRuntime` with durable identity, evaluation, promotion, control, and audit.
+Ouroboros is an automated weak-to-strong trading-system laboratory. Its first product proof is a single serious solo crypto operator evolving one agent-built `TradingSystemCandidate` into a bounded live `TradingSystemRuntime` with durable identity, evaluation, promotion, control, and audit.
 
 ## Source Of Truth
 

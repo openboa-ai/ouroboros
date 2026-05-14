@@ -22,7 +22,7 @@ describe("S9 Codex sbx audit script", () => {
 
     expect(result.code, scriptOutput(result)).toBe(0);
     expect(result.stdout).toContain("host-local Codex CLI availability");
-    expect(result.stdout).toContain("fixture-only Codex AAR dry-run/evaluation proof");
+    expect(result.stdout).toContain("fixture-only Codex research dry-run/evaluation proof");
     expect(result.stdout).toContain("real sbx/sdx preflight");
     expect(result.stdout).toContain("command evidence only");
     expect(result.stdout).toContain("Exit codes:");
@@ -33,10 +33,10 @@ describe("S9 Codex sbx audit script", () => {
 
     expect(result.code, scriptOutput(result)).toBe(0);
     expect(result.stdout).toContain("S9 Codex sbx readiness audit");
-    expect(result.stdout).toContain("PASS required S9 Codex AAR files exist");
+    expect(result.stdout).toContain("PASS required S9 Codex research files exist");
     expect(result.stdout).toContain("PASS npm S9 Codex sbx scripts are registered");
     expect(result.stdout).toContain("PASS S5 sbx/sdx preflight guardrails remain registered");
-    expect(result.stdout).toContain("PASS fixture-only Codex AAR evaluation proof is registered");
+    expect(result.stdout).toContain("PASS fixture-only Codex research evaluation proof is registered");
     expect(result.stdout).toContain("REAL_ENVIRONMENT_PROOF_REQUIRED npm run audit:s9-codex-sdx -- --host-probes");
     expect(result.stdout).not.toContain("host-local Codex probe is observable");
   });
@@ -58,9 +58,9 @@ describe("S9 Codex sbx audit script", () => {
 
     expect(result.code, scriptOutput(result)).toBe(0);
     expect(result.stdout).toContain("PASS host-local Codex probe is observable");
-    expect(result.stdout).toContain("PASS S9 Codex AAR audit command produces structured provider outcome");
+    expect(result.stdout).toContain("PASS S9 Codex research audit command produces structured provider outcome");
     expect(result.stdout).toContain("PASS real sbx/sdx preflight passes or reports precise host blocker");
-    expect(calls[0]).toContain("run aar:proposal:codex:audit --");
+    expect(calls[0]).toContain("run research:proposal:codex:audit --");
     expect(calls[1]).toBe("run validate:s5-sdx:preflight");
     expect(calls).not.toContain("run validate:s5-sdx");
   });
@@ -103,7 +103,7 @@ function fakeNpmScript(): string {
 set -euo pipefail
 echo "$*" >> "$S9_CALL_LOG"
 case "$*" in
-  run\\ aar:proposal:codex:audit\\ --\\ --store-root*)
+  run\\ research:proposal:codex:audit\\ --\\ --store-root*)
     cat <<'JSON'
 {
   "probe": {
@@ -111,14 +111,14 @@ case "$*" in
   },
   "dry_run": {
     "status": "failed",
-    "failure_reason": "aar_proposal_provider_timeout"
+    "failure_reason": "artifact_change_proposal_provider_timeout"
   },
   "delta": {
-    "aar_proposal_materialization_attempts": 1,
-    "aar_artifact_proposals": 0,
+    "artifact_change_proposal_materialization_attempts": 1,
+    "artifact_change_proposals": 0,
     "runnable_artifacts": 0,
-    "aar_artifact_lineages": 0,
-    "aar_orchestration_runs": 0
+    "artifact_lineages": 0,
+    "research_orchestration_runs": 0
   }
 }
 JSON

@@ -7,7 +7,7 @@ import type {
   CandidateInspectReadModel,
   ExecutionAttemptRecord,
   GatewayDecisionRecord,
-  OrderIntentRecord,
+  OrderIntentDraftRecord,
   StageBindingRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
@@ -87,7 +87,7 @@ describe("Slice 3 runtime authority MLP flow", () => {
       const outcome = recorded.json();
       expect(outcome).toMatchObject({
         status: "recorded",
-        order_intent: {
+        order_intent_draft: {
           status: "proposed",
           authority_status: "not_submitted"
         },
@@ -104,10 +104,10 @@ describe("Slice 3 runtime authority MLP flow", () => {
         }
       });
 
-      const orderIntent = await readStoreJson<OrderIntentRecord>(
-        "order-intents",
+      const orderIntent = await readStoreJson<OrderIntentDraftRecord>(
+        "order-intent-drafts",
         "items",
-        `${outcome.order_intent.order_intent_id}.json`
+        `${outcome.order_intent_draft.order_intent_draft_id}.json`
       );
       const gatewayDecision = await readStoreJson<GatewayDecisionRecord>(
         "gateway-decisions",
@@ -126,7 +126,7 @@ describe("Slice 3 runtime authority MLP flow", () => {
       );
 
       expect(orderIntent.runtime_ref.id).toBe(initialCandidate.runtime.ref.id);
-      expect(gatewayDecision.order_intent_ref.id).toBe(orderIntent.order_intent_id);
+      expect(gatewayDecision.order_intent_draft_ref.id).toBe(orderIntent.order_intent_draft_id);
       expect(executionAttempt.gateway_decision_ref.id).toBe(gatewayDecision.gateway_decision_id);
       expect(stageBinding).toMatchObject({
         stage: "paper",
@@ -147,8 +147,8 @@ describe("Slice 3 runtime authority MLP flow", () => {
       expect(candidate.runtime.bounded_authority).toMatchObject({
         has_activity: true,
         chain_complete: true,
-        latest_order_intent: {
-          order_intent_id: orderIntent.order_intent_id,
+        latest_order_intent_draft: {
+          order_intent_draft_id: orderIntent.order_intent_draft_id,
           authority_status: "not_submitted"
         },
         latest_gateway_decision: {
@@ -168,7 +168,7 @@ describe("Slice 3 runtime authority MLP flow", () => {
       expect(html).toContain("chain complete");
       expect(html).toContain("dry_run_only");
       expect(html).toContain("paper_stage_only");
-      expect(html).toContain(`order_intent:${orderIntent.order_intent_id}`);
+      expect(html).toContain(`order_intent_draft:${orderIntent.order_intent_draft_id}`);
       expect(html).toContain(`gateway_decision:${gatewayDecision.gateway_decision_id}`);
       expect(html).toContain("Record dry-run intent");
       expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/i);

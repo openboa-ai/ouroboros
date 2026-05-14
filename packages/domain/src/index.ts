@@ -15,7 +15,7 @@ export type ProviderKind = "codex_cli" | "claude_code" | "local_process" | "fixt
 export type AgentRunPurpose =
   | "candidate_generation"
   | "candidate_generation_placeholder"
-  | "aar_artifact_proposal_generation";
+  | "artifact_change_proposal_generation";
 
 export type AgentRunStatus = "succeeded" | "failed" | "rejected" | "fixture_placeholder";
 
@@ -26,6 +26,57 @@ export type CandidateMaterializationStatus = "materialized" | "failed";
 export type StageBindingStage = "backtest" | "paper" | "live";
 
 export type StageBindingProfile = "backtest" | "paper" | "live";
+
+export type TradingSystemExecutionMode = "backtest" | "paper" | "live";
+
+export type TradingSystemExecutionModeSupportStatus = "available" | "planned";
+
+export type TradingApiProviderMarketDataPlane =
+  | "historical_replay"
+  | "realtime_market_data";
+
+export type TradingApiProviderAccountPlane =
+  | "simulated_account"
+  | "paper_account"
+  | "live_account";
+
+export type TradingApiProviderOrderPlane =
+  | "order_validation_only"
+  | "paper_order_sink"
+  | "gated_live_order_gateway";
+
+export type TradingSystemExecutionAuthorityStatus =
+  | "not_live"
+  | "paper_only"
+  | "live_requires_gateway";
+
+export interface TradingSystemExecutionModeContractReadModel {
+  mode: TradingSystemExecutionMode;
+  label: string;
+  support_status: TradingSystemExecutionModeSupportStatus;
+  stage_binding_profile: StageBindingProfile;
+  artifact_contract: {
+    artifact_shape: "opaque_trading_system";
+    api_provider_boundary: "TradingApiProvider";
+    credentials_access: "forbidden";
+    order_submission: "forbidden";
+  };
+  provider_contract: {
+    market_data: TradingApiProviderMarketDataPlane;
+    account: TradingApiProviderAccountPlane;
+    order_plane: TradingApiProviderOrderPlane;
+    credentials_scope: "none_required" | "provider_side_only";
+  };
+  authority: {
+    artifact_has_credentials: false;
+    artifact_has_order_authority: false;
+    provider_may_submit_orders: boolean;
+    live_exchange_authority: boolean;
+    status: TradingSystemExecutionAuthorityStatus;
+  };
+  required_controls: string[];
+  forbidden_artifact_capabilities: string[];
+}
 
 export type EvaluationExecutionMode =
   | "host_local"
@@ -57,9 +108,9 @@ export type RunnableArtifactOutputKind =
   | "runtime_heartbeat"
   | "metric_snapshot"
   | "diagnostic_artifact"
-  | "order_intent";
+  | "order_intent_draft";
 
-export type RunnableArtifactStatus = "registered" | "deprecated";
+export type RunnableArtifactStatus = "registered";
 
 export type SandboxRuntimeInstanceLifecycleStatus =
   | "requested"
@@ -73,7 +124,7 @@ export type SandboxRuntimeInstanceLifecycleStatus =
 
 export type SandboxRuntimeAdapterKind = "deterministic_test" | "docker_sandboxes_sbx";
 
-export type AarResearchDirectionKind =
+export type ResearchDirectionKind =
   | "trend_following"
   | "mean_reversion"
   | "volatility_regime"
@@ -82,15 +133,15 @@ export type AarResearchDirectionKind =
   | "execution_cost_robustness"
   | "other";
 
-export type AarResearcherStatus = "active" | "retired";
+export type ResearchWorkerStatus = "active" | "retired";
 
-export type AarExperimentStatus =
+export type ExperimentRunStatus =
   | "submitted"
   | "evaluated"
   | "failed"
   | "discarded";
 
-export type TradingEvaluationMarketScope = "binance_btc_perpetual_futures";
+export type TradingEvaluationMarketScope = "external_trading_api_fixture";
 
 export type TradingEvaluationStage = "backtest";
 
@@ -118,25 +169,25 @@ export type TradingEvaluationQuarantineReason =
   | "manual_review_required"
   | "partial_trace";
 
-export type AarFindingKind =
+export type ResearchFindingKind =
   | "positive_result"
   | "negative_result"
   | "failure_analysis"
   | "anti_hacking_case"
   | "next_artifact_hint";
 
-export type AarArtifactProposalStatus =
+export type ArtifactChangeProposalStatus =
   | "proposed"
   | "materialized"
   | "discarded";
 
-export type AarOrchestrationRunStatus =
+export type ResearchOrchestrationRunStatus =
   | "started"
   | "proposed"
   | "failed"
   | "discarded";
 
-export type TraderSystemRuntimeLifecycleStatus =
+export type TradingSystemRuntimeLifecycleStatus =
   | "registered"
   | "deployed"
   | "starting"
@@ -146,7 +197,7 @@ export type TraderSystemRuntimeLifecycleStatus =
   | "stopped"
   | "failed"
   | "killed"
-  | "review_required"
+  | "human_review_required"
   | "fixture_placeholder";
 
 export type RuntimeExecutionStage = "paper" | "live";
@@ -214,14 +265,14 @@ export type RuntimeAuditEventKind =
   | "operator_handoff_recorded"
   | "audit_snapshot_recorded";
 
-export type OrderIntentKind =
+export type OrderIntentDraftKind =
   | "place_order"
   | "cancel_order"
   | "adjust_position";
 
-export type OrderIntentStatus = "proposed" | "withdrawn" | "expired" | "rejected";
+export type OrderIntentDraftStatus = "proposed" | "withdrawn" | "expired" | "rejected";
 
-export type OrderIntentAuthorityStatus = "not_submitted" | "trace_only";
+export type OrderIntentDraftAuthorityStatus = "not_submitted" | "trace_only";
 
 export type GatewayDecisionOutcome =
   | "allowed"
@@ -299,29 +350,29 @@ export type CandidateMaterializationFailureReason =
 
 export type MaterializationValidationStatus = "accepted" | "rejected";
 
-export type AarProposalProviderFailureReason =
-  | "aar_proposal_provider_unavailable"
-  | "aar_proposal_provider_failed"
-  | "aar_proposal_provider_timeout"
-  | "invalid_aar_proposal_request"
-  | "no_eligible_aar_finding"
-  | "unsupported_aar_proposal_task"
-  | "unsupported_aar_proposal_provider";
+export type ArtifactChangeProposalProviderFailureReason =
+  | "artifact_change_proposal_provider_unavailable"
+  | "artifact_change_proposal_provider_failed"
+  | "artifact_change_proposal_provider_timeout"
+  | "invalid_artifact_change_proposal_request"
+  | "no_eligible_research_finding"
+  | "unsupported_artifact_change_proposal_task"
+  | "unsupported_artifact_change_proposal_provider";
 
-export type AarProposalProviderOutputAuthorityStatus = "proposal_input_only";
+export type ArtifactChangeProposalProviderOutputAuthorityStatus = "proposal_input_only";
 
-export type AarProposalProviderReadinessStatus =
+export type ArtifactChangeProposalProviderReadinessStatus =
   | "active_verified"
   | "blocked_or_not_installed"
   | "candidate_unverified";
 
-export type AarProposalMaterializationStatus = "materialized" | "failed";
+export type ArtifactChangeProposalMaterializationStatus = "materialized" | "failed";
 
-export type AarProposalMaterializationFailureReason =
+export type ArtifactChangeProposalMaterializationFailureReason =
   | "provider_output_schema_invalid"
   | "provider_output_rejected"
-  | "aar_proposal_source_finding_not_found"
-  | AarProposalProviderFailureReason;
+  | "artifact_change_proposal_source_finding_not_found"
+  | ArtifactChangeProposalProviderFailureReason;
 
 export interface FixtureNotice {
   mode: FixtureMode;
@@ -339,8 +390,8 @@ export interface Ref {
   id: string;
 }
 
-export interface TraderSystemCandidateRecord extends BaseRecord {
-  record_kind: "trader_system_candidate";
+export interface TradingSystemCandidateRecord extends BaseRecord {
+  record_kind: "trading_system_candidate";
   candidate_id: string;
   display_name: string;
   status: CandidateStatus;
@@ -348,7 +399,7 @@ export interface TraderSystemCandidateRecord extends BaseRecord {
   provenance_refs: Ref[];
   title?: string;
   system_summary?: string;
-  first_market_scope?: "binance_btc_perpetual_futures";
+  first_market_scope?: "external_trading_api_fixture";
   candidate_status?: "materialized" | "handoff_ready" | "archived";
   evaluation_handoff_ready?: boolean;
   materialized_from_attempt_ref?: Ref;
@@ -377,18 +428,18 @@ export interface CandidateVersionRecord extends BaseRecord {
   runnable_artifact_ref?: Ref;
 }
 
-export interface TraderSystemSpecRecord extends BaseRecord {
-  record_kind: "trader_system_spec";
-  trader_system_spec_id: string;
+export interface TradingSystemSpecRecord extends BaseRecord {
+  record_kind: "trading_system_spec";
+  trading_system_spec_id: string;
   summary: string;
   market: string;
   instrument: string;
   supported_stage_binding_profiles: Array<"backtest" | "paper" | "live">;
 }
 
-export interface TraderSystemProgramRecord extends BaseRecord {
-  record_kind: "trader_system_program";
-  trader_system_program_id: string;
+export interface TradingSystemProgramRecord extends BaseRecord {
+  record_kind: "trading_system_program";
+  trading_system_program_id: string;
   summary: string;
   manifest_ref: Ref;
   validation_record_ref: Ref;
@@ -458,10 +509,10 @@ export type RunnableArtifactRecord =
       image_ref: string;
     });
 
-export interface AarResearchDirectionRecord extends BaseRecord {
-  record_kind: "aar_research_direction";
-  aar_research_direction_id: string;
-  direction_kind: AarResearchDirectionKind;
+export interface ResearchDirectionRecord extends BaseRecord {
+  record_kind: "research_direction";
+  research_direction_id: string;
+  direction_kind: ResearchDirectionKind;
   market_scope: TradingEvaluationMarketScope;
   prompt_seed: string;
   diversity_axis?: string;
@@ -469,9 +520,9 @@ export interface AarResearchDirectionRecord extends BaseRecord {
   authority_status: "research_seed_only";
 }
 
-export interface AarResearcherRecord extends BaseRecord {
-  record_kind: "aar_researcher";
-  aar_researcher_id: string;
+export interface ResearchWorkerRecord extends BaseRecord {
+  record_kind: "research_worker";
+  research_worker_id: string;
   display_name: string;
   model?: string;
   provider_kind?: ProviderKind;
@@ -479,7 +530,7 @@ export interface AarResearcherRecord extends BaseRecord {
   sandbox_policy_ref?: Ref;
   budget_policy_ref?: Ref;
   created_at: string;
-  status: AarResearcherStatus;
+  status: ResearchWorkerStatus;
   authority_status: "research_only";
 }
 
@@ -501,10 +552,10 @@ export interface TradingEvaluationTaskRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
-export interface AarExperimentRecord extends BaseRecord {
-  record_kind: "aar_experiment";
-  aar_experiment_id: string;
-  researcher_ref: Ref;
+export interface ExperimentRunRecord extends BaseRecord {
+  record_kind: "experiment_run";
+  experiment_run_id: string;
+  research_worker_ref: Ref;
   research_direction_ref: Ref;
   runnable_artifact_ref: Ref;
   trading_evaluation_task_ref: Ref;
@@ -512,7 +563,7 @@ export interface AarExperimentRecord extends BaseRecord {
   runtime_trace_refs?: Ref[];
   trace_ref?: Ref;
   submitted_at: string;
-  status: AarExperimentStatus;
+  status: ExperimentRunStatus;
   authority_status: "not_live";
 }
 
@@ -529,7 +580,7 @@ export interface TradingEvaluationScoreSummary {
 export interface TradingEvaluationResultRecord extends BaseRecord {
   record_kind: "trading_evaluation_result";
   trading_evaluation_result_id: string;
-  aar_experiment_ref: Ref;
+  experiment_run_ref: Ref;
   trading_evaluation_task_ref: Ref;
   evaluator_ref: Ref;
   result_status: TradingEvaluationResultStatus;
@@ -543,35 +594,35 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
   authority_status: "not_counted" | "counted";
 }
 
-export interface AarFindingRecord extends BaseRecord {
-  record_kind: "aar_finding";
-  aar_finding_id: string;
-  researcher_ref: Ref;
+export interface ResearchFindingRecord extends BaseRecord {
+  record_kind: "research_finding";
+  research_finding_id: string;
+  research_worker_ref: Ref;
   research_direction_ref: Ref;
-  aar_experiment_ref: Ref;
+  experiment_run_ref: Ref;
   trading_evaluation_result_ref: Ref;
-  finding_kind: AarFindingKind;
+  finding_kind: ResearchFindingKind;
   summary: string;
   supporting_record_refs: Ref[];
   created_at: string;
   authority_status: "research_trace_only";
 }
 
-export interface AarArtifactLineageRecord extends BaseRecord {
-  record_kind: "aar_artifact_lineage";
-  aar_artifact_lineage_id: string;
+export interface ArtifactLineageRecord extends BaseRecord {
+  record_kind: "artifact_lineage";
+  artifact_lineage_id: string;
   child_runnable_artifact_ref: Ref;
   parent_runnable_artifact_ref?: Ref;
   source_finding_refs: Ref[];
-  created_by_researcher_ref?: Ref;
+  created_by_research_worker_ref?: Ref;
   created_at: string;
   authority_status: "lineage_only";
 }
 
-export interface AarArtifactProposalRecord extends BaseRecord {
-  record_kind: "aar_artifact_proposal";
-  aar_artifact_proposal_id: string;
-  researcher_ref: Ref;
+export interface ArtifactChangeProposalRecord extends BaseRecord {
+  record_kind: "artifact_change_proposal";
+  artifact_change_proposal_id: string;
+  research_worker_ref: Ref;
   research_direction_ref: Ref;
   trading_evaluation_task_ref: Ref;
   proposed_runnable_artifact_ref: Ref;
@@ -582,14 +633,14 @@ export interface AarArtifactProposalRecord extends BaseRecord {
   requested_change_summary: string;
   expected_improvement_summary?: string;
   created_at: string;
-  status: AarArtifactProposalStatus;
+  status: ArtifactChangeProposalStatus;
   authority_status: "proposal_only";
 }
 
-export interface AarOrchestrationRunRecord extends BaseRecord {
-  record_kind: "aar_orchestration_run";
-  aar_orchestration_run_id: string;
-  researcher_ref: Ref;
+export interface ResearchOrchestrationRunRecord extends BaseRecord {
+  record_kind: "research_orchestration_run";
+  research_orchestration_run_id: string;
+  research_worker_ref: Ref;
   research_direction_ref: Ref;
   trading_evaluation_task_ref: Ref;
   input_finding_refs: Ref[];
@@ -600,30 +651,30 @@ export interface AarOrchestrationRunRecord extends BaseRecord {
   trace_ref?: Ref;
   started_at: string;
   completed_at?: string;
-  status: AarOrchestrationRunStatus;
+  status: ResearchOrchestrationRunStatus;
   authority_status: "research_only";
 }
 
-export interface AarProposalProviderAttribution {
+export interface ArtifactChangeProposalProviderAttribution {
   provider_kind: ProviderKind;
   model: string;
   invocation_surface: string;
 }
 
-export interface AarProposalProviderProbeResult extends AarProposalProviderAttribution {
-  readiness_status: AarProposalProviderReadinessStatus;
-  supported_purposes: Array<Extract<AgentRunPurpose, "aar_artifact_proposal_generation">>;
+export interface ArtifactChangeProposalProviderProbeResult extends ArtifactChangeProposalProviderAttribution {
+  readiness_status: ArtifactChangeProposalProviderReadinessStatus;
+  supported_purposes: Array<Extract<AgentRunPurpose, "artifact_change_proposal_generation">>;
   version?: string;
   provider_readiness_ref?: Ref;
   provider_probe_attempt_ref?: Ref;
-  failure_reason?: AarProposalProviderFailureReason;
+  failure_reason?: ArtifactChangeProposalProviderFailureReason;
 }
 
-export interface AarProposalProviderRequest {
+export interface ArtifactChangeProposalProviderRequest {
   idempotency_key: string;
   task: TradingEvaluationTaskRecord;
-  findings: AarFindingRecord[];
-  existing_lineages?: AarArtifactLineageRecord[];
+  findings: ResearchFindingRecord[];
+  existing_lineages?: ArtifactLineageRecord[];
   existing_lineage_refs?: Ref[];
   parent_runnable_artifact_ref?: Ref;
   input_artifact_refs?: Ref[];
@@ -633,8 +684,8 @@ export interface AarProposalProviderRequest {
   created_at?: string;
 }
 
-export interface AarProposalProviderOutput {
-  output_kind: "aar_artifact_proposal_input";
+export interface ArtifactChangeProposalProviderOutput {
+  output_kind: "artifact_change_proposal_input";
   trading_evaluation_task_ref: Ref;
   source_finding_refs: Ref[];
   anti_hacking_finding_refs?: Ref[];
@@ -643,38 +694,38 @@ export interface AarProposalProviderOutput {
   requested_change_summary: string;
   expected_improvement_summary?: string;
   proposed_artifact_refs: Ref[];
-  output_authority_status: AarProposalProviderOutputAuthorityStatus;
+  output_authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
 }
 
-export type AarProposalProviderResult =
+export type ArtifactChangeProposalProviderResult =
   | {
       status: "succeeded";
-      provider: AarProposalProviderAttribution;
-      output: AarProposalProviderOutput;
+      provider: ArtifactChangeProposalProviderAttribution;
+      output: ArtifactChangeProposalProviderOutput;
       agent_run_ref: Ref;
       agent_event_refs: Ref[];
       trace_ref: Ref;
       provider_output_artifact_refs: Ref[];
       debug_artifact_refs: Ref[];
       idempotency_key: string;
-      authority_status: AarProposalProviderOutputAuthorityStatus;
+      authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
     }
   | {
       status: "failed";
-      provider: AarProposalProviderAttribution;
-      failure_reason: AarProposalProviderFailureReason;
+      provider: ArtifactChangeProposalProviderAttribution;
+      failure_reason: ArtifactChangeProposalProviderFailureReason;
       agent_run_ref: Ref;
       agent_event_refs: Ref[];
       trace_ref: Ref;
       provider_output_artifact_refs: Ref[];
       debug_artifact_refs: Ref[];
       idempotency_key: string;
-      authority_status: AarProposalProviderOutputAuthorityStatus;
+      authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
     };
 
-export interface AarProposalMaterializationInput {
+export interface ArtifactChangeProposalMaterializationInput {
   idempotency_key: string;
-  provider_result: Extract<AarProposalProviderResult, { status: "succeeded" }>;
+  provider_result: Extract<ArtifactChangeProposalProviderResult, { status: "succeeded" }>;
   artifact_path?: string;
   artifact_runtime_contract_ref?: Ref;
   secret_policy_ref?: Ref;
@@ -682,43 +733,43 @@ export interface AarProposalMaterializationInput {
   created_at?: string;
 }
 
-export interface AarProposalProviderFailureInput {
+export interface ArtifactChangeProposalProviderFailureInput {
   idempotency_key: string;
-  provider_result: Extract<AarProposalProviderResult, { status: "failed" }>;
+  provider_result: Extract<ArtifactChangeProposalProviderResult, { status: "failed" }>;
   created_at?: string;
 }
 
-export interface AarProposalMaterializationAttemptRecord extends BaseRecord {
-  record_kind: "aar_proposal_materialization_attempt";
-  aar_proposal_materialization_attempt_id: string;
+export interface ArtifactChangeProposalMaterializationAttemptRecord extends BaseRecord {
+  record_kind: "artifact_change_proposal_materialization_attempt";
+  artifact_change_proposal_materialization_attempt_id: string;
   idempotency_key: string;
-  provider: AarProposalProviderAttribution;
+  provider: ArtifactChangeProposalProviderAttribution;
   agent_run_ref: Ref;
   agent_event_refs: Ref[];
   trace_ref: Ref;
   provider_output_artifact_refs: Ref[];
   debug_artifact_refs: Ref[];
-  status: AarProposalMaterializationStatus;
+  status: ArtifactChangeProposalMaterializationStatus;
   validation_status: MaterializationValidationStatus;
-  failure_reason?: AarProposalMaterializationFailureReason;
+  failure_reason?: ArtifactChangeProposalMaterializationFailureReason;
   output_artifact_proposal_ref?: Ref;
   output_runnable_artifact_ref?: Ref;
   output_lineage_ref?: Ref;
   created_at: string;
-  authority_status: AarProposalProviderOutputAuthorityStatus;
+  authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
 }
 
-export type AarProposalMaterializationOutcome =
+export type ArtifactChangeProposalMaterializationOutcome =
   | {
       status: "materialized";
-      attempt: AarProposalMaterializationAttemptRecord;
-      proposal: AarArtifactProposalRecord;
+      attempt: ArtifactChangeProposalMaterializationAttemptRecord;
+      proposal: ArtifactChangeProposalRecord;
       runnable_artifact: RunnableArtifactRecord;
-      lineage: AarArtifactLineageRecord;
+      lineage: ArtifactLineageRecord;
     }
   | {
       status: "failed";
-      attempt: AarProposalMaterializationAttemptRecord;
+      attempt: ArtifactChangeProposalMaterializationAttemptRecord;
     };
 
 export interface CapabilityPackageRecord extends BaseRecord {
@@ -819,11 +870,11 @@ export interface ProviderProbeAttemptRecord extends BaseRecord {
   authority_status: "not_probed" | "probe_trace_only";
 }
 
-export interface TraderSystemRuntimeRecord extends BaseRecord {
-  record_kind: "trader_system_runtime";
-  trader_system_runtime_id: string;
+export interface TradingSystemRuntimeRecord extends BaseRecord {
+  record_kind: "trading_system_runtime";
+  trading_system_runtime_id: string;
   stage_binding_profile: "paper";
-  runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   candidate_ref?: Ref;
   candidate_version_ref?: Ref;
   stage_binding_ref?: Ref;
@@ -832,7 +883,7 @@ export interface TraderSystemRuntimeRecord extends BaseRecord {
   memory_surface_ref: Ref;
   runtime_operating_policy_ref?: Ref;
   trace_ref?: Ref;
-  order_intent_refs?: Ref[];
+  order_intent_draft_refs?: Ref[];
   gateway_decision_refs?: Ref[];
   execution_attempt_refs?: Ref[];
   runtime_control_command_refs?: Ref[];
@@ -1026,7 +1077,7 @@ export interface RuntimeControlCommandRecord extends BaseRecord {
   runtime_control_command_id: string;
   runtime_ref: Ref;
   action: RuntimeControlAction;
-  requested_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  requested_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   actor_kind: RuntimeControlActorKind;
   actor_ref?: Ref;
   runtime_operating_policy_ref?: Ref;
@@ -1034,7 +1085,7 @@ export interface RuntimeControlCommandRecord extends BaseRecord {
   reason: RuntimeControlCommandReason;
   reason_summary?: string;
   trace_ref?: Ref;
-  related_order_intent_refs?: Ref[];
+  related_order_intent_draft_refs?: Ref[];
   related_gateway_decision_refs?: Ref[];
   related_execution_attempt_refs?: Ref[];
   requested_at: string;
@@ -1052,9 +1103,9 @@ export interface RuntimeControlDecisionRecord extends BaseRecord {
   decided_by_actor_kind: RuntimeControlActorKind;
   decided_by_actor_ref?: Ref;
   runtime_operating_policy_ref?: Ref;
-  resulting_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  resulting_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   trace_ref?: Ref;
-  related_order_intent_refs?: Ref[];
+  related_order_intent_draft_refs?: Ref[];
   related_gateway_decision_refs?: Ref[];
   related_execution_attempt_refs?: Ref[];
   decided_at: string;
@@ -1070,11 +1121,11 @@ export interface RuntimeAuditEventRecord extends BaseRecord {
   decision_ref?: Ref;
   actor_kind?: RuntimeControlActorKind;
   actor_ref?: Ref;
-  runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   message?: string;
   trace_ref?: Ref;
   supporting_record_refs?: Ref[];
-  related_order_intent_refs?: Ref[];
+  related_order_intent_draft_refs?: Ref[];
   related_gateway_decision_refs?: Ref[];
   related_execution_attempt_refs?: Ref[];
   created_at: string;
@@ -1088,14 +1139,14 @@ export interface RuntimeControlAuditInput {
   runtime_id?: string;
   command: {
     action: RuntimeControlAction;
-    requested_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    requested_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
     actor_kind: RuntimeControlActorKind;
     actor_ref?: Ref;
     runtime_operating_policy_ref?: Ref;
     reason: RuntimeControlCommandReason;
     reason_summary?: string;
     trace_ref?: Ref;
-    related_order_intent_refs?: Ref[];
+    related_order_intent_draft_refs?: Ref[];
     related_gateway_decision_refs?: Ref[];
     related_execution_attempt_refs?: Ref[];
   };
@@ -1105,9 +1156,9 @@ export interface RuntimeControlAuditInput {
     decided_by_actor_kind: RuntimeControlActorKind;
     decided_by_actor_ref?: Ref;
     runtime_operating_policy_ref?: Ref;
-    resulting_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    resulting_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
     trace_ref?: Ref;
-    related_order_intent_refs?: Ref[];
+    related_order_intent_draft_refs?: Ref[];
     related_gateway_decision_refs?: Ref[];
     related_execution_attempt_refs?: Ref[];
   };
@@ -1115,11 +1166,11 @@ export interface RuntimeControlAuditInput {
     event_kind: RuntimeAuditEventKind;
     actor_kind?: RuntimeControlActorKind;
     actor_ref?: Ref;
-    runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
     message?: string;
     trace_ref?: Ref;
     supporting_record_refs?: Ref[];
-    related_order_intent_refs?: Ref[];
+    related_order_intent_draft_refs?: Ref[];
     related_gateway_decision_refs?: Ref[];
     related_execution_attempt_refs?: Ref[];
   };
@@ -1141,7 +1192,7 @@ export interface BoundedRuntimeAuthorityInput {
   candidate_version_id?: string;
   runtime_id?: string;
   intent: {
-    intent_kind: OrderIntentKind;
+    intent_kind: OrderIntentDraftKind;
     side?: "buy" | "sell";
     order_type?: "market" | "limit";
     quantity?: string;
@@ -1162,35 +1213,35 @@ export interface BoundedRuntimeAuthorityInput {
   created_at?: string;
 }
 
-export interface OrderIntentRecord extends BaseRecord {
-  record_kind: "order_intent";
-  order_intent_id: string;
+export interface OrderIntentDraftRecord extends BaseRecord {
+  record_kind: "order_intent_draft";
+  order_intent_draft_id: string;
   runtime_ref: Ref;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   stage_binding_ref: Ref;
   trace_ref?: Ref;
-  intent_kind: OrderIntentKind;
-  market_scope: "binance_btc_perpetual_futures";
+  intent_kind: OrderIntentDraftKind;
+  market_scope: "external_trading_api_fixture";
   side?: "buy" | "sell";
   order_type?: "market" | "limit";
   quantity?: string;
   limit_price?: string;
-  status: OrderIntentStatus;
+  status: OrderIntentDraftStatus;
   created_at: string;
-  authority_status: OrderIntentAuthorityStatus;
+  authority_status: OrderIntentDraftAuthorityStatus;
 }
 
 export interface GatewayDecisionRecord extends BaseRecord {
   record_kind: "gateway_decision";
   gateway_decision_id: string;
   runtime_ref: Ref;
-  order_intent_ref: Ref;
+  order_intent_draft_ref: Ref;
   decision_outcome: GatewayDecisionOutcome;
   decision_reason: GatewayDecisionReason;
   decided_at: string;
   policy_ref?: Ref;
-  clipped_order_intent_ref?: Ref;
+  clipped_order_intent_draft_ref?: Ref;
   authority_status: GatewayDecisionAuthorityStatus;
 }
 
@@ -1198,11 +1249,11 @@ export interface ExecutionAttemptRecord extends BaseRecord {
   record_kind: "execution_attempt";
   execution_attempt_id: string;
   runtime_ref: Ref;
-  order_intent_ref: Ref;
+  order_intent_draft_ref: Ref;
   gateway_decision_ref: Ref;
   stage: RuntimeExecutionStage;
   execution_mode: EvaluationExecutionMode;
-  venue_scope: "binance_btc_perpetual_futures";
+  venue_scope: "external_trading_api_fixture";
   trace_ref?: Ref;
   status: ExecutionAttemptStatus;
   result_reason: GatewayDecisionReason;
@@ -1215,7 +1266,7 @@ export interface BoundedRuntimeAuthorityOutcome {
   candidate_id: string;
   candidate_version_id: string;
   runtime_id: string;
-  order_intent: OrderIntentRecord;
+  order_intent_draft: OrderIntentDraftRecord;
   gateway_decision: GatewayDecisionRecord;
   execution_attempt: ExecutionAttemptRecord;
 }
@@ -1234,12 +1285,12 @@ export interface CandidateMaterializationInput {
   candidate: {
     title: string;
     system_summary: string;
-    first_market_scope: "binance_btc_perpetual_futures";
+    first_market_scope: "external_trading_api_fixture";
   };
   spec: {
     summary: string;
-    market: "Binance";
-    instrument: "BTC perpetual futures";
+    market: "ExternalTradingApiProvider";
+    instrument: "generic trading instruments";
     supported_stage_binding_profiles: Array<"backtest" | "paper" | "live">;
   };
   program: {
@@ -1283,10 +1334,10 @@ export interface CandidateMaterializationAttemptRecord extends BaseRecord {
 }
 
 export type FixtureRecord =
-  | TraderSystemCandidateRecord
+  | TradingSystemCandidateRecord
   | CandidateVersionRecord
-  | TraderSystemSpecRecord
-  | TraderSystemProgramRecord
+  | TradingSystemSpecRecord
+  | TradingSystemProgramRecord
   | ProgramManifestRecord
   | ProgramValidationRecord
   | CapabilityPackageRecord
@@ -1296,23 +1347,23 @@ export type FixtureRecord =
   | CapabilityMountRecord
   | ArtifactRuntimeContractRecord
   | RunnableArtifactRecord
-  | AarResearchDirectionRecord
-  | AarResearcherRecord
-  | AarExperimentRecord
+  | ResearchDirectionRecord
+  | ResearchWorkerRecord
+  | ExperimentRunRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
-  | AarFindingRecord
-  | AarArtifactLineageRecord
-  | AarArtifactProposalRecord
-  | AarOrchestrationRunRecord
-  | AarProposalMaterializationAttemptRecord
+  | ResearchFindingRecord
+  | ArtifactLineageRecord
+  | ArtifactChangeProposalRecord
+  | ResearchOrchestrationRunRecord
+  | ArtifactChangeProposalMaterializationAttemptRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
   | AgentEventRecord
   | ProviderReadinessRecord
   | ProviderProbeAttemptRecord
-  | TraderSystemRuntimeRecord
+  | TradingSystemRuntimeRecord
   | RuntimePlacementRecord
   | SandboxRuntimeInstanceRecord
   | RuntimeInstanceLogRecord
@@ -1329,7 +1380,7 @@ export type FixtureRecord =
   | RuntimeControlCommandRecord
   | RuntimeControlDecisionRecord
   | RuntimeAuditEventRecord
-  | OrderIntentRecord
+  | OrderIntentDraftRecord
   | GatewayDecisionRecord
   | ExecutionAttemptRecord
   | CandidateMaterializationAttemptRecord;
@@ -1340,7 +1391,7 @@ export interface CandidateSummaryReadModel {
   status: CandidateStatus;
   active_version_id: string;
   fixture_notice: FixtureNotice;
-  latest_evidence_posture?: CandidateLatestEvidencePostureReadModel;
+  latest_validation_state?: CandidateLatestValidationStateReadModel;
 }
 
 export interface PlaceholderSummary {
@@ -1438,7 +1489,7 @@ export interface CandidateEvaluationReadModel {
   sealing_decision: PlaceholderSummary;
 }
 
-export interface CandidateRunEvidenceReadModel {
+export interface ReplayRunEvidenceReadModel {
   run_id: string;
   run_dir: string;
   candidate_id: string;
@@ -1454,13 +1505,13 @@ export interface CandidateRunEvidenceReadModel {
   authority_status: string;
 }
 
-export interface CandidateRunMetricReadModel {
+export interface ReplayRunMetricReadModel {
   name: string;
   score: number;
   detail: string;
 }
 
-export interface CandidateRunCommandEvidenceReadModel {
+export interface ReplayRunCommandEvidenceReadModel {
   command: string[];
   exit_code: number | null;
   signal?: string;
@@ -1472,7 +1523,7 @@ export interface CandidateRunCommandEvidenceReadModel {
   completed_at: string;
 }
 
-export interface CandidateRunScenarioReadModel {
+export interface ReplayRunScenarioReadModel {
   scenario_id: string;
   runner_kind: string;
   sandbox_name?: string;
@@ -1484,11 +1535,11 @@ export interface CandidateRunScenarioReadModel {
   events_path: string;
   provider_request_count: number;
   runner_command_count: number;
-  metrics: CandidateRunMetricReadModel[];
-  runner_command_evidence: CandidateRunCommandEvidenceReadModel[];
+  metrics: ReplayRunMetricReadModel[];
+  runner_command_evidence: ReplayRunCommandEvidenceReadModel[];
 }
 
-export interface CandidateRunDetailReadModel extends CandidateRunEvidenceReadModel {
+export interface ReplayRunDetailReadModel extends ReplayRunEvidenceReadModel {
   score: number;
   risk_decision: string;
   scenario_ids: string[];
@@ -1505,16 +1556,16 @@ export interface CandidateRunDetailReadModel extends CandidateRunEvidenceReadMod
     promotion_id?: string;
     source_session_id?: string;
   };
-  scenarios: CandidateRunScenarioReadModel[];
+  scenarios: ReplayRunScenarioReadModel[];
 }
 
-export type CandidateRunComparisonVerdict =
+export type ReplayRunComparisonVerdict =
   | "improved"
   | "unchanged"
   | "regressed"
   | "incomparable";
 
-export interface CandidateRunComparisonRunReadModel {
+export interface ReplayRunComparisonRunReadModel {
   run_id: string;
   status: string;
   run_status: string;
@@ -1528,10 +1579,10 @@ export interface CandidateRunComparisonRunReadModel {
   authority_status: string;
 }
 
-export interface CandidateRunComparisonReadModel {
+export interface ReplayRunComparisonReadModel {
   candidate_id: string;
-  selected: CandidateRunComparisonRunReadModel;
-  baseline: CandidateRunComparisonRunReadModel;
+  selected: ReplayRunComparisonRunReadModel;
+  baseline: ReplayRunComparisonRunReadModel;
   baseline_selection: "explicit_baseline_run_id";
   deltas: {
     score: number;
@@ -1541,10 +1592,10 @@ export interface CandidateRunComparisonReadModel {
     runner_command_total: number;
   };
   risk_transition: string;
-  verdict: CandidateRunComparisonVerdict;
+  verdict: ReplayRunComparisonVerdict;
   verdict_reason: string;
   authority_status: "not_live";
-  evidence_label: "comparison_not_authority";
+  validation_label: "comparison_not_authority";
   no_authority: {
     live_exchange: false;
     order_authority: false;
@@ -1553,26 +1604,26 @@ export interface CandidateRunComparisonReadModel {
   };
 }
 
-export type CandidateRunEvidencePostureStatus =
-  | "evidence_sufficient"
-  | "review_required"
-  | "evidence_blocked"
-  | "baseline_required";
+export type ReplayRunValidationStateStatus =
+  | "passes_replay_checks"
+  | "human_review_required"
+  | "validation_blocked"
+  | "comparison_required";
 
-export type CandidateLatestEvidencePostureStatus =
-  | CandidateRunEvidencePostureStatus
-  | "run_required";
+export type CandidateLatestValidationStateStatus =
+  | ReplayRunValidationStateStatus
+  | "replay_required";
 
-export interface CandidateRunEvidencePostureReadModel {
+export interface ReplayRunValidationStateReadModel {
   candidate_id: string;
   selected_run_id: string;
   baseline_run_id?: string;
-  comparison_verdict?: CandidateRunComparisonVerdict;
-  evidence_posture: CandidateRunEvidencePostureStatus;
+  comparison_verdict?: ReplayRunComparisonVerdict;
+  validation_state: ReplayRunValidationStateStatus;
   reasons: string[];
   required_next_evidence: string[];
   authority_status: "not_live";
-  evidence_label: "evidence_posture_not_authority";
+  validation_label: "validation_state_not_authority";
   no_authority: {
     live_exchange: false;
     order_authority: false;
@@ -1581,16 +1632,16 @@ export interface CandidateRunEvidencePostureReadModel {
   };
 }
 
-export interface CandidateLatestEvidencePostureReadModel {
+export interface CandidateLatestValidationStateReadModel {
   candidate_id: string;
   selected_run_id?: string;
   baseline_run_id?: string;
-  comparison_verdict?: CandidateRunComparisonVerdict;
-  evidence_posture: CandidateLatestEvidencePostureStatus;
+  comparison_verdict?: ReplayRunComparisonVerdict;
+  validation_state: CandidateLatestValidationStateStatus;
   reasons: string[];
   required_next_evidence: string[];
   authority_status: "not_live";
-  evidence_label: "evidence_posture_not_authority";
+  validation_label: "validation_state_not_authority";
   no_authority: {
     live_exchange: false;
     order_authority: false;
@@ -1599,35 +1650,35 @@ export interface CandidateLatestEvidencePostureReadModel {
   };
 }
 
-export interface CandidateRuntimeOrderIntentReadModel {
-  order_intent_id: string;
-  intent_kind: OrderIntentKind;
-  market_scope: "binance_btc_perpetual_futures";
+export interface ReplayRuntimeOrderIntentDraftReadModel {
+  order_intent_draft_id: string;
+  intent_kind: OrderIntentDraftKind;
+  market_scope: "external_trading_api_fixture";
   side?: "buy" | "sell";
   order_type?: "market" | "limit";
   quantity?: string;
   limit_price?: string;
-  status: OrderIntentStatus;
+  status: OrderIntentDraftStatus;
   created_at: string;
-  authority_status: OrderIntentAuthorityStatus;
+  authority_status: OrderIntentDraftAuthorityStatus;
 }
 
-export interface CandidateRuntimeGatewayDecisionReadModel {
+export interface ReplayRuntimeGatewayDecisionReadModel {
   gateway_decision_id: string;
-  order_intent_ref: Ref;
+  order_intent_draft_ref: Ref;
   decision_outcome: GatewayDecisionOutcome;
   decision_reason: GatewayDecisionReason;
   decided_at: string;
   authority_status: GatewayDecisionAuthorityStatus;
 }
 
-export interface CandidateRuntimeExecutionAttemptReadModel {
+export interface ReplayRuntimeExecutionAttemptReadModel {
   execution_attempt_id: string;
-  order_intent_ref: Ref;
+  order_intent_draft_ref: Ref;
   gateway_decision_ref: Ref;
   stage: RuntimeExecutionStage;
   execution_mode: EvaluationExecutionMode;
-  venue_scope: "binance_btc_perpetual_futures";
+  venue_scope: "external_trading_api_fixture";
   status: ExecutionAttemptStatus;
   result_reason: GatewayDecisionReason;
   created_at: string;
@@ -1635,21 +1686,21 @@ export interface CandidateRuntimeExecutionAttemptReadModel {
   authority_status: ExecutionAttemptAuthorityStatus;
 }
 
-export interface CandidateRuntimeAuthorityReadModel {
+export interface ReplayRuntimeAuthorityReadModel {
   has_activity: boolean;
   chain_complete: boolean;
-  latest_order_intent: CandidateRuntimeOrderIntentReadModel | null;
-  latest_gateway_decision: CandidateRuntimeGatewayDecisionReadModel | null;
-  latest_execution_attempt: CandidateRuntimeExecutionAttemptReadModel | null;
-  order_intent: PlaceholderSummary;
+  latest_order_intent_draft: ReplayRuntimeOrderIntentDraftReadModel | null;
+  latest_gateway_decision: ReplayRuntimeGatewayDecisionReadModel | null;
+  latest_execution_attempt: ReplayRuntimeExecutionAttemptReadModel | null;
+  order_intent_draft: PlaceholderSummary;
   gateway_decision: PlaceholderSummary;
   execution_attempt: PlaceholderSummary;
 }
 
-export interface CandidateRuntimeControlCommandReadModel {
+export interface ReplayRuntimeControlCommandReadModel {
   command_id: string;
   action: RuntimeControlAction;
-  requested_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  requested_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   actor_kind: RuntimeControlActorKind;
   actor_ref?: Ref;
   reason: RuntimeControlCommandReason;
@@ -1658,37 +1709,37 @@ export interface CandidateRuntimeControlCommandReadModel {
   authority_status: RuntimeControlAuthorityStatus;
 }
 
-export interface CandidateRuntimeControlDecisionReadModel {
+export interface ReplayRuntimeControlDecisionReadModel {
   decision_id: string;
   command_ref: Ref;
   decision_outcome: RuntimeControlDecisionOutcome;
   decision_reason: RuntimeControlDecisionReason;
   decided_by_actor_kind: RuntimeControlActorKind;
   decided_by_actor_ref?: Ref;
-  resulting_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  resulting_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   decided_at: string;
   authority_status: RuntimeControlAuthorityStatus;
 }
 
-export interface CandidateRuntimeAuditEventReadModel {
+export interface ReplayRuntimeAuditEventReadModel {
   audit_event_id: string;
   event_kind: RuntimeAuditEventKind;
   command_ref?: Ref;
   decision_ref?: Ref;
   actor_kind?: RuntimeControlActorKind;
   actor_ref?: Ref;
-  runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+  runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
   message?: string;
   created_at: string;
   authority_status: "not_live" | "audit_only";
 }
 
-export interface CandidateRuntimeControlReadModel {
+export interface ReplayRuntimeControlReadModel {
   has_activity: boolean;
   chain_complete: boolean;
-  latest_command: CandidateRuntimeControlCommandReadModel | null;
-  latest_decision: CandidateRuntimeControlDecisionReadModel | null;
-  latest_audit_event: CandidateRuntimeAuditEventReadModel | null;
+  latest_command: ReplayRuntimeControlCommandReadModel | null;
+  latest_decision: ReplayRuntimeControlDecisionReadModel | null;
+  latest_audit_event: ReplayRuntimeAuditEventReadModel | null;
   command: PlaceholderSummary;
   decision: PlaceholderSummary;
   audit_event: PlaceholderSummary;
@@ -1742,7 +1793,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   runtime: {
     ref: Ref;
     stage_binding_profile: string;
-    runtime_lifecycle_status?: TraderSystemRuntimeLifecycleStatus;
+    runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
     authority_status: string;
     placement: PlaceholderSummary;
     hands_environment: PlaceholderSummary;
@@ -1755,8 +1806,8 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
       quarantine_status: string;
       authority_status: string;
     };
-    bounded_authority?: CandidateRuntimeAuthorityReadModel;
-    runtime_control?: CandidateRuntimeControlReadModel;
+    bounded_authority?: ReplayRuntimeAuthorityReadModel;
+    runtime_control?: ReplayRuntimeControlReadModel;
   };
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;

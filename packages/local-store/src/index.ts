@@ -5,22 +5,22 @@ import type {
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
-  AarExperimentRecord,
-  AarArtifactLineageRecord,
-  AarArtifactProposalRecord,
-  AarFindingRecord,
-  AarOrchestrationRunRecord,
+  ExperimentRunRecord,
+  ArtifactLineageRecord,
+  ArtifactChangeProposalRecord,
+  ResearchFindingRecord,
+  ResearchOrchestrationRunRecord,
   ArtifactRuntimeContractRecord,
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
   AgentSpecRecord,
-  AarProposalMaterializationAttemptRecord,
-  AarProposalMaterializationFailureReason,
-  AarProposalMaterializationInput,
-  AarProposalMaterializationOutcome,
-  AarProposalProviderAttribution,
-  AarProposalProviderFailureInput,
-  AarProposalProviderOutput,
+  ArtifactChangeProposalMaterializationAttemptRecord,
+  ArtifactChangeProposalMaterializationFailureReason,
+  ArtifactChangeProposalMaterializationInput,
+  ArtifactChangeProposalMaterializationOutcome,
+  ArtifactChangeProposalProviderAttribution,
+  ArtifactChangeProposalProviderFailureInput,
+  ArtifactChangeProposalProviderOutput,
   CandidateMaterializationAttemptIndexProjection,
   CandidateMaterializationAttemptReadModel,
   CandidateMaterializationAttemptRecord,
@@ -31,8 +31,8 @@ import type {
   CandidateIndexProjection,
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
-  CandidateRuntimeAuthorityReadModel,
-  CandidateRuntimeControlReadModel,
+  ReplayRuntimeAuthorityReadModel,
+  ReplayRuntimeControlReadModel,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
   CandidateEvaluationRunInput,
@@ -62,7 +62,7 @@ import type {
   GatewayDecisionOutcome,
   GatewayDecisionReason,
   HandsEnvironmentRecord,
-  OrderIntentRecord,
+  OrderIntentDraftRecord,
   PlaceholderSummary,
   ProgramManifestRecord,
   ProgramValidationRecord,
@@ -100,16 +100,16 @@ import type {
   StopRuntimeInstanceInput,
   StageBindingRecord,
   TracePlaceholderRecord,
-  TraderSystemCandidateRecord,
+  TradingSystemCandidateRecord,
   TradingEvaluationResultRecord,
-  TraderSystemProgramRecord,
-  TraderSystemRuntimeLifecycleStatus,
-  TraderSystemRuntimeRecord,
-  TraderSystemSpecRecord
+  TradingSystemProgramRecord,
+  TradingSystemRuntimeLifecycleStatus,
+  TradingSystemRuntimeRecord,
+  TradingSystemSpecRecord
 } from "@ouroboros/domain";
 
 export const DEFAULT_STORE_ROOT = ".ouroboros/dev-store";
-export const FIXTURE_CANDIDATE_ID = "fixture-candidate-btc-perp-001";
+export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
 export const FIXTURE_RUNNABLE_ARTIFACT_ID = "fixture-runnable-artifact-clock-python-001";
 
 export type LocalStoreErrorCode =
@@ -133,16 +133,16 @@ export type LocalStoreErrorCode =
   | "runtime_authority_reload_failed"
   | "runtime_control_reload_failed"
   | "runtime_instance_reload_failed"
-  | "invalid_aar_finding_input"
-  | "invalid_aar_artifact_lineage_input"
-  | "invalid_aar_artifact_proposal_input"
-  | "invalid_aar_orchestration_run_input"
-  | "invalid_aar_experiment_input"
+  | "invalid_research_finding_input"
+  | "invalid_artifact_lineage_input"
+  | "invalid_artifact_change_proposal_input"
+  | "invalid_research_orchestration_run_input"
+  | "invalid_experiment_run_input"
   | "invalid_trading_evaluation_result_input"
-  | "aar_proposal_materialization_reload_failed"
-  | "aar_finding_not_found"
-  | "aar_artifact_proposal_not_found"
-  | "aar_artifact_lineage_not_found";
+  | "artifact_change_proposal_materialization_reload_failed"
+  | "research_finding_not_found"
+  | "artifact_change_proposal_not_found"
+  | "artifact_lineage_not_found";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -173,8 +173,8 @@ type Collection =
   | "candidates"
   | "candidate-materialization-attempts"
   | "candidate-versions"
-  | "trader-system-specs"
-  | "trader-system-programs"
+  | "trading-system-specs"
+  | "trading-system-programs"
   | "program-manifests"
   | "program-validations"
   | "capability-packages"
@@ -188,7 +188,7 @@ type Collection =
   | "agent-events"
   | "provider-readiness-records"
   | "provider-probe-attempts"
-  | "trader-system-runtimes"
+  | "trading-system-runtimes"
   | "runtime-placements"
   | "hands-environments"
   | "runtime-memory-surfaces"
@@ -198,7 +198,7 @@ type Collection =
   | "evaluation-comparison-sets"
   | "evidence-sealing-decisions"
   | "evidence-classifications"
-  | "order-intents"
+  | "order-intent-drafts"
   | "gateway-decisions"
   | "execution-attempts"
   | "runtime-control-commands"
@@ -208,12 +208,12 @@ type Collection =
   | "runtime-instance-logs"
   | "runtime-heartbeats"
   | "sandbox-command-evidence"
-  | "aar-findings"
-  | "aar-artifact-lineages"
-  | "aar-artifact-proposals"
-  | "aar-proposal-materialization-attempts"
-  | "aar-orchestration-runs"
-  | "aar-experiments"
+  | "research-findings"
+  | "artifact-lineages"
+  | "artifact-change-proposals"
+  | "artifact-change-proposal-materialization-attempts"
+  | "research-orchestration-runs"
+  | "experiment-runs"
   | "trading-evaluation-results";
 
 interface FixtureItem {
@@ -239,7 +239,7 @@ const fixtureNotice: FixtureNotice = {
   label: "Fixture / convenience mode",
   statements: [
     "No provider has run.",
-    "No trader-system program has executed.",
+    "No trading-system program has executed.",
     "No package has been scanned, granted, or mounted for real.",
     "No evaluator has run and no evidence has counted.",
     "No promotion, live gate, marketplace, or runtime action authority exists."
@@ -253,8 +253,8 @@ const ids = {
   version: "fixture-candidate-version-001",
   artifactRuntimeContract: "fixture-artifact-runtime-contract-clock-python-001",
   runnableArtifact: FIXTURE_RUNNABLE_ARTIFACT_ID,
-  spec: "fixture-trader-system-spec-btc-perp-001",
-  program: "fixture-trader-system-program-001",
+  spec: "fixture-trading-system-spec-sealed-replay-001",
+  program: "fixture-trading-system-program-001",
   programManifest: "fixture-program-manifest-001",
   programValidation: "fixture-program-validation-001",
   capabilityPackage: "fixture-capability-package-001",
@@ -268,7 +268,7 @@ const ids = {
   agentEvent: "fixture-agent-event-001",
   providerReadiness: "fixture-provider-readiness-001",
   providerProbe: "fixture-provider-probe-001",
-  runtime: "fixture-trader-system-runtime-001",
+  runtime: "fixture-trading-system-runtime-001",
   placement: "fixture-runtime-placement-001",
   handsEnvironment: "fixture-hands-environment-001",
   memorySurface: "fixture-runtime-memory-surface-001",
@@ -291,7 +291,7 @@ export function createFixtureRecords(): FixtureItem[] {
     version: 1,
     artifact_runtime_contract_id: ids.artifactRuntimeContract,
     runtime_kind: "python",
-    entrypoint: ["python3", "fixtures/trader-systems/clock.py"],
+    entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
       declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat"],
@@ -309,7 +309,7 @@ export function createFixtureRecords(): FixtureItem[] {
     version: 1,
     runnable_artifact_id: ids.runnableArtifact,
     artifact_kind: "python_file",
-    artifact_path: "fixtures/trader-systems/clock.py",
+    artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture-clock-python-artifact-v1",
     artifact_runtime_contract_ref: ref(
       "artifact_runtime_contract",
@@ -325,11 +325,11 @@ export function createFixtureRecords(): FixtureItem[] {
     created_at: fixtureEvaluationCreatedAt,
     authority_status: "not_live"
   };
-  const candidate: TraderSystemCandidateRecord = {
-    record_kind: "trader_system_candidate",
+  const candidate: TradingSystemCandidateRecord = {
+    record_kind: "trading_system_candidate",
     version: 1,
     candidate_id: ids.candidate,
-    display_name: "Fixture BTC perpetual trader-system candidate",
+    display_name: "Fixture generic tradingetual trading-system candidate",
     status: "fixture_only",
     active_version_id: ids.version,
     provenance_refs: [
@@ -344,27 +344,27 @@ export function createFixtureRecords(): FixtureItem[] {
     candidate_version_id: ids.version,
     candidate_id: ids.candidate,
     version_label: "fixture-v1",
-    spec_ref: ref("trader_system_spec", ids.spec),
-    program_ref: ref("trader_system_program", ids.program),
+    spec_ref: ref("trading_system_spec", ids.spec),
+    program_ref: ref("trading_system_program", ids.program),
     capability_package_refs: [ref("capability_package", ids.capabilityPackage)],
-    runtime_ref: ref("trader_system_runtime", ids.runtime),
+    runtime_ref: ref("trading_system_runtime", ids.runtime),
     trace_placeholder_ref: ref("trace_placeholder", ids.trace),
     evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
     runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact)
   };
-  const spec: TraderSystemSpecRecord = {
-    record_kind: "trader_system_spec",
+  const spec: TradingSystemSpecRecord = {
+    record_kind: "trading_system_spec",
     version: 1,
-    trader_system_spec_id: ids.spec,
-    summary: "BTC perpetual futures trader-system fixture spec for inspect-only bootstrap.",
-    market: "Binance",
-    instrument: "BTC perpetual futures",
+    trading_system_spec_id: ids.spec,
+    summary: "generic trading instruments trading-system fixture spec for inspect-only bootstrap.",
+    market: "ExternalTradingApiProvider",
+    instrument: "generic trading instruments",
     supported_stage_binding_profiles: ["backtest", "paper", "live"]
   };
-  const program: TraderSystemProgramRecord = {
-    record_kind: "trader_system_program",
+  const program: TradingSystemProgramRecord = {
+    record_kind: "trading_system_program",
     version: 1,
-    trader_system_program_id: ids.program,
+    trading_system_program_id: ids.program,
     summary: "Agent-authored program placeholder; no code has executed.",
     manifest_ref: ref("program_manifest", ids.programManifest),
     validation_record_ref: ref("program_validation_record", ids.programValidation)
@@ -374,7 +374,7 @@ export function createFixtureRecords(): FixtureItem[] {
     version: 1,
     program_manifest_id: ids.programManifest,
     declared_runtime: "fixture-sandbox-placeholder",
-    declared_outputs: ["OrderIntent placeholder", "Trace placeholder"]
+    declared_outputs: ["OrderIntentDraft placeholder", "Trace placeholder"]
   };
   const programValidation: ProgramValidationRecord = {
     record_kind: "program_validation_record",
@@ -465,10 +465,10 @@ export function createFixtureRecords(): FixtureItem[] {
     provider_readiness_record_ref: ref("provider_readiness_record", ids.providerReadiness),
     authority_status: "not_probed"
   };
-  const runtime: TraderSystemRuntimeRecord = {
-    record_kind: "trader_system_runtime",
+  const runtime: TradingSystemRuntimeRecord = {
+    record_kind: "trading_system_runtime",
     version: 1,
-    trader_system_runtime_id: ids.runtime,
+    trading_system_runtime_id: ids.runtime,
     stage_binding_profile: "paper",
     runtime_lifecycle_status: "fixture_placeholder",
     placement_ref: ref("runtime_placement", ids.placement),
@@ -513,7 +513,7 @@ export function createFixtureRecords(): FixtureItem[] {
     record_kind: "stage_binding",
     version: 1,
     stage_binding_id: ids.stageBinding,
-    candidate_ref: ref("trader_system_candidate", ids.candidate),
+    candidate_ref: ref("trading_system_candidate", ids.candidate),
     candidate_version_ref: ref("candidate_version", ids.version),
     stage: "backtest",
     profile: "backtest",
@@ -527,7 +527,7 @@ export function createFixtureRecords(): FixtureItem[] {
     record_kind: "evaluation_run_record",
     version: 1,
     evaluation_run_record_id: ids.evaluationRun,
-    candidate_ref: ref("trader_system_candidate", ids.candidate),
+    candidate_ref: ref("trading_system_candidate", ids.candidate),
     candidate_version_ref: ref("candidate_version", ids.version),
     stage_binding_ref: ref("stage_binding", ids.stageBinding),
     trace_ref: ref("trace_placeholder", ids.trace),
@@ -539,7 +539,7 @@ export function createFixtureRecords(): FixtureItem[] {
     record_kind: "evaluation_comparison_set",
     version: 1,
     evaluation_comparison_set_id: ids.evaluationComparisonSet,
-    candidate_ref: ref("trader_system_candidate", ids.candidate),
+    candidate_ref: ref("trading_system_candidate", ids.candidate),
     candidate_version_ref: ref("candidate_version", ids.version),
     stage_binding_ref: ref("stage_binding", ids.stageBinding),
     evaluation_run_refs: [ref("evaluation_run_record", ids.evaluationRun)],
@@ -564,7 +564,7 @@ export function createFixtureRecords(): FixtureItem[] {
       record_kind: "evidence_classification",
       version: 1,
       evidence_classification_id: ids.evidenceClassificationTrace,
-      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_ref: ref("trading_system_candidate", ids.candidate),
       candidate_version_ref: ref("candidate_version", ids.version),
       evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
       classified_ref: ref("trace_placeholder", ids.trace),
@@ -578,7 +578,7 @@ export function createFixtureRecords(): FixtureItem[] {
       record_kind: "evidence_classification",
       version: 1,
       evidence_classification_id: ids.evidenceClassificationCandidate,
-      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_ref: ref("trading_system_candidate", ids.candidate),
       candidate_version_ref: ref("candidate_version", ids.version),
       evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
       classified_ref: ref("evaluation_run_record", ids.evaluationRun),
@@ -592,7 +592,7 @@ export function createFixtureRecords(): FixtureItem[] {
       record_kind: "evidence_classification",
       version: 1,
       evidence_classification_id: ids.evidenceClassificationNonCounted,
-      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_ref: ref("trading_system_candidate", ids.candidate),
       candidate_version_ref: ref("candidate_version", ids.version),
       evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
       classified_ref: ref("evaluation_run_record", ids.evaluationRun),
@@ -607,7 +607,7 @@ export function createFixtureRecords(): FixtureItem[] {
       record_kind: "evidence_classification",
       version: 1,
       evidence_classification_id: ids.evidenceClassificationSealedDecision,
-      candidate_ref: ref("trader_system_candidate", ids.candidate),
+      candidate_ref: ref("trading_system_candidate", ids.candidate),
       candidate_version_ref: ref("candidate_version", ids.version),
       evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
       classified_ref: ref("evidence_sealing_decision", ids.evidenceSealingDecision),
@@ -625,8 +625,8 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "runnable-artifacts", id: ids.runnableArtifact, record: runnableArtifact },
     { collection: "candidates", id: ids.candidate, record: candidate },
     { collection: "candidate-versions", id: ids.version, record: candidateVersion },
-    { collection: "trader-system-specs", id: ids.spec, record: spec },
-    { collection: "trader-system-programs", id: ids.program, record: program },
+    { collection: "trading-system-specs", id: ids.spec, record: spec },
+    { collection: "trading-system-programs", id: ids.program, record: program },
     { collection: "program-manifests", id: ids.programManifest, record: programManifest },
     { collection: "program-validations", id: ids.programValidation, record: programValidation },
     { collection: "capability-packages", id: ids.capabilityPackage, record: capabilityPackage },
@@ -640,7 +640,7 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "agent-events", id: ids.agentEvent, record: agentEvent },
     { collection: "provider-readiness-records", id: ids.providerReadiness, record: providerReadiness },
     { collection: "provider-probe-attempts", id: ids.providerProbe, record: providerProbe },
-    { collection: "trader-system-runtimes", id: ids.runtime, record: runtime },
+    { collection: "trading-system-runtimes", id: ids.runtime, record: runtime },
     { collection: "runtime-placements", id: ids.placement, record: placement },
     { collection: "hands-environments", id: ids.handsEnvironment, record: handsEnvironment },
     { collection: "runtime-memory-surfaces", id: ids.memorySurface, record: memorySurface },
@@ -675,7 +675,7 @@ export class LocalStore {
   }
 
   async rebuildProjections(): Promise<void> {
-    const candidates = await this.readCollection<TraderSystemCandidateRecord>("candidates");
+    const candidates = await this.readCollection<TradingSystemCandidateRecord>("candidates");
     const summaries = candidates
       .map((candidate) => this.toCandidateSummary(candidate))
       .sort((a, b) => a.candidate_id.localeCompare(b.candidate_id));
@@ -798,167 +798,167 @@ export class LocalStore {
     return artifact;
   }
 
-  async recordAarFinding(finding: AarFindingRecord): Promise<AarFindingRecord> {
-    if (!isAarFindingRecord(finding)) {
+  async recordResearchFinding(finding: ResearchFindingRecord): Promise<ResearchFindingRecord> {
+    if (!isResearchFindingRecord(finding)) {
       throw new LocalStoreError(
-        "invalid_aar_finding_input",
-        "invalid AAR finding input",
-        { aar_finding_id: (finding as Partial<AarFindingRecord> | undefined)?.aar_finding_id }
+        "invalid_research_finding_input",
+        "invalid automated research finding input",
+        { research_finding_id: (finding as Partial<ResearchFindingRecord> | undefined)?.research_finding_id }
       );
     }
-    await this.writeJson(this.itemPath("aar-findings", finding.aar_finding_id), finding);
+    await this.writeJson(this.itemPath("research-findings", finding.research_finding_id), finding);
     return finding;
   }
 
-  async listAarFindings(): Promise<AarFindingRecord[]> {
-    return (await this.readCollection<AarFindingRecord>("aar-findings")).sort(compareAarFindings);
+  async listResearchFindings(): Promise<ResearchFindingRecord[]> {
+    return (await this.readCollection<ResearchFindingRecord>("research-findings")).sort(compareResearchFindings);
   }
 
-  async listAarFindingsForExperiment(aarExperimentId: string): Promise<AarFindingRecord[]> {
-    return (await this.listAarFindings()).filter(
-      (finding) => finding.aar_experiment_ref.id === aarExperimentId
+  async listResearchFindingsForExperiment(researchExperimentId: string): Promise<ResearchFindingRecord[]> {
+    return (await this.listResearchFindings()).filter(
+      (finding) => finding.experiment_run_ref.id === researchExperimentId
     );
   }
 
-  async recordAarArtifactLineage(
-    lineage: AarArtifactLineageRecord
-  ): Promise<AarArtifactLineageRecord> {
-    if (!isAarArtifactLineageRecord(lineage)) {
+  async recordArtifactLineage(
+    lineage: ArtifactLineageRecord
+  ): Promise<ArtifactLineageRecord> {
+    if (!isArtifactLineageRecord(lineage)) {
       throw new LocalStoreError(
-        "invalid_aar_artifact_lineage_input",
-        "invalid AAR artifact lineage input",
+        "invalid_artifact_lineage_input",
+        "invalid artifact change lineage input",
         {
-          aar_artifact_lineage_id: (lineage as Partial<AarArtifactLineageRecord> | undefined)
-            ?.aar_artifact_lineage_id
+          artifact_lineage_id: (lineage as Partial<ArtifactLineageRecord> | undefined)
+            ?.artifact_lineage_id
         }
       );
     }
-    await this.assertAarArtifactLineageLinks(lineage);
-    await this.writeJson(this.itemPath("aar-artifact-lineages", lineage.aar_artifact_lineage_id), lineage);
+    await this.assertArtifactLineageLinks(lineage);
+    await this.writeJson(this.itemPath("artifact-lineages", lineage.artifact_lineage_id), lineage);
     return lineage;
   }
 
-  async listAarArtifactLineages(): Promise<AarArtifactLineageRecord[]> {
-    return (await this.readCollection<AarArtifactLineageRecord>("aar-artifact-lineages"))
-      .sort(compareAarArtifactLineages);
+  async listArtifactLineages(): Promise<ArtifactLineageRecord[]> {
+    return (await this.readCollection<ArtifactLineageRecord>("artifact-lineages"))
+      .sort(compareArtifactLineages);
   }
 
-  async listAarArtifactLineagesForArtifact(
+  async listArtifactLineagesForArtifact(
     runnableArtifactId: string
-  ): Promise<AarArtifactLineageRecord[]> {
-    return (await this.listAarArtifactLineages()).filter(
+  ): Promise<ArtifactLineageRecord[]> {
+    return (await this.listArtifactLineages()).filter(
       (lineage) =>
         lineage.child_runnable_artifact_ref.id === runnableArtifactId ||
         lineage.parent_runnable_artifact_ref?.id === runnableArtifactId
     );
   }
 
-  async recordAarArtifactProposal(
-    proposal: AarArtifactProposalRecord
-  ): Promise<AarArtifactProposalRecord> {
-    if (!isAarArtifactProposalRecord(proposal)) {
+  async recordArtifactChangeProposal(
+    proposal: ArtifactChangeProposalRecord
+  ): Promise<ArtifactChangeProposalRecord> {
+    if (!isArtifactChangeProposalRecord(proposal)) {
       throw new LocalStoreError(
-        "invalid_aar_artifact_proposal_input",
-        "invalid AAR artifact proposal input",
+        "invalid_artifact_change_proposal_input",
+        "invalid artifact change proposal input",
         {
-          aar_artifact_proposal_id: (proposal as Partial<AarArtifactProposalRecord> | undefined)
-            ?.aar_artifact_proposal_id
+          artifact_change_proposal_id: (proposal as Partial<ArtifactChangeProposalRecord> | undefined)
+            ?.artifact_change_proposal_id
         }
       );
     }
-    await this.assertAarFindingRefsExist(
+    await this.assertResearchFindingRefsExist(
       [...proposal.source_finding_refs, ...(proposal.anti_hacking_finding_refs ?? [])],
-      proposal.aar_artifact_proposal_id
+      proposal.artifact_change_proposal_id
     );
     await this.writeJson(
-      this.itemPath("aar-artifact-proposals", proposal.aar_artifact_proposal_id),
+      this.itemPath("artifact-change-proposals", proposal.artifact_change_proposal_id),
       proposal
     );
     return proposal;
   }
 
-  async listAarArtifactProposals(): Promise<AarArtifactProposalRecord[]> {
-    return (await this.readCollection<AarArtifactProposalRecord>("aar-artifact-proposals"))
-      .sort(compareAarArtifactProposals);
+  async listArtifactChangeProposals(): Promise<ArtifactChangeProposalRecord[]> {
+    return (await this.readCollection<ArtifactChangeProposalRecord>("artifact-change-proposals"))
+      .sort(compareArtifactChangeProposals);
   }
 
-  async listAarArtifactProposalsForFinding(aarFindingId: string): Promise<AarArtifactProposalRecord[]> {
-    return (await this.listAarArtifactProposals()).filter((proposal) =>
-      proposal.source_finding_refs.some((findingRef) => findingRef.id === aarFindingId) ||
-      (proposal.anti_hacking_finding_refs ?? []).some((findingRef) => findingRef.id === aarFindingId)
+  async listArtifactChangeProposalsForFinding(researchFindingId: string): Promise<ArtifactChangeProposalRecord[]> {
+    return (await this.listArtifactChangeProposals()).filter((proposal) =>
+      proposal.source_finding_refs.some((findingRef) => findingRef.id === researchFindingId) ||
+      (proposal.anti_hacking_finding_refs ?? []).some((findingRef) => findingRef.id === researchFindingId)
     );
   }
 
-  async recordAarOrchestrationRun(
-    run: AarOrchestrationRunRecord
-  ): Promise<AarOrchestrationRunRecord> {
-    if (!isAarOrchestrationRunRecord(run)) {
+  async recordResearchOrchestrationRun(
+    run: ResearchOrchestrationRunRecord
+  ): Promise<ResearchOrchestrationRunRecord> {
+    if (!isResearchOrchestrationRunRecord(run)) {
       throw new LocalStoreError(
-        "invalid_aar_orchestration_run_input",
-        "invalid AAR orchestration run input",
+        "invalid_research_orchestration_run_input",
+        "invalid automated research orchestration run input",
         {
-          aar_orchestration_run_id: (run as Partial<AarOrchestrationRunRecord> | undefined)
-            ?.aar_orchestration_run_id
+          research_orchestration_run_id: (run as Partial<ResearchOrchestrationRunRecord> | undefined)
+            ?.research_orchestration_run_id
         }
       );
     }
-    await this.assertAarFindingRefsExist(run.input_finding_refs, run.aar_orchestration_run_id);
+    await this.assertResearchFindingRefsExist(run.input_finding_refs, run.research_orchestration_run_id);
     if (run.output_artifact_proposal_ref) {
-      const proposal = await this.readOptionalRecord<AarArtifactProposalRecord>(
-        "aar-artifact-proposals",
+      const proposal = await this.readOptionalRecord<ArtifactChangeProposalRecord>(
+        "artifact-change-proposals",
         run.output_artifact_proposal_ref.id
       );
       if (!proposal) {
         throw new LocalStoreError(
-          "aar_artifact_proposal_not_found",
-          `AAR artifact proposal ${run.output_artifact_proposal_ref.id} not found`,
+          "artifact_change_proposal_not_found",
+          `artifact change proposal ${run.output_artifact_proposal_ref.id} not found`,
           {
-            aar_artifact_proposal_id: run.output_artifact_proposal_ref.id,
-            aar_orchestration_run_id: run.aar_orchestration_run_id
+            artifact_change_proposal_id: run.output_artifact_proposal_ref.id,
+            research_orchestration_run_id: run.research_orchestration_run_id
           }
         );
       }
     }
     for (const lineageRef of run.input_lineage_refs ?? []) {
-      const lineage = await this.readOptionalRecord<AarArtifactLineageRecord>(
-        "aar-artifact-lineages",
+      const lineage = await this.readOptionalRecord<ArtifactLineageRecord>(
+        "artifact-lineages",
         lineageRef.id
       );
       if (!lineage) {
         throw new LocalStoreError(
-          "aar_artifact_lineage_not_found",
-          `AAR artifact lineage ${lineageRef.id} not found`,
+          "artifact_lineage_not_found",
+          `artifact change lineage ${lineageRef.id} not found`,
           {
-            aar_artifact_lineage_id: lineageRef.id,
-            aar_orchestration_run_id: run.aar_orchestration_run_id
+            artifact_lineage_id: lineageRef.id,
+            research_orchestration_run_id: run.research_orchestration_run_id
           }
         );
       }
     }
-    await this.writeJson(this.itemPath("aar-orchestration-runs", run.aar_orchestration_run_id), run);
+    await this.writeJson(this.itemPath("research-orchestration-runs", run.research_orchestration_run_id), run);
     return run;
   }
 
-  async listAarOrchestrationRuns(): Promise<AarOrchestrationRunRecord[]> {
-    return (await this.readCollection<AarOrchestrationRunRecord>("aar-orchestration-runs"))
-      .sort(compareAarOrchestrationRuns);
+  async listResearchOrchestrationRuns(): Promise<ResearchOrchestrationRunRecord[]> {
+    return (await this.readCollection<ResearchOrchestrationRunRecord>("research-orchestration-runs"))
+      .sort(compareResearchOrchestrationRuns);
   }
 
-  async recordAarExperiment(experiment: AarExperimentRecord): Promise<AarExperimentRecord> {
-    if (!isAarExperimentRecord(experiment)) {
+  async recordExperimentRun(experiment: ExperimentRunRecord): Promise<ExperimentRunRecord> {
+    if (!isExperimentRunRecord(experiment)) {
       throw new LocalStoreError(
-        "invalid_aar_experiment_input",
-        "invalid AAR experiment record",
-        { aar_experiment_id: (experiment as Partial<AarExperimentRecord> | undefined)?.aar_experiment_id }
+        "invalid_experiment_run_input",
+        "invalid automated research experiment record",
+        { experiment_run_id: (experiment as Partial<ExperimentRunRecord> | undefined)?.experiment_run_id }
       );
     }
-    await this.writeJson(this.itemPath("aar-experiments", experiment.aar_experiment_id), experiment);
+    await this.writeJson(this.itemPath("experiment-runs", experiment.experiment_run_id), experiment);
     return experiment;
   }
 
-  async listAarExperiments(): Promise<AarExperimentRecord[]> {
-    return (await this.readCollection<AarExperimentRecord>("aar-experiments"))
-      .sort(compareAarExperiments);
+  async listExperimentRuns(): Promise<ExperimentRunRecord[]> {
+    return (await this.readCollection<ExperimentRunRecord>("experiment-runs"))
+      .sort(compareExperimentRuns);
   }
 
   async recordTradingEvaluationResult(
@@ -986,64 +986,64 @@ export class LocalStore {
       .sort(compareTradingEvaluationResults);
   }
 
-  async listAarProposalMaterializationAttempts(): Promise<AarProposalMaterializationAttemptRecord[]> {
-    return (await this.readCollection<AarProposalMaterializationAttemptRecord>(
-      "aar-proposal-materialization-attempts"
-    )).sort(compareAarProposalMaterializationAttempts);
+  async listArtifactChangeProposalMaterializationAttempts(): Promise<ArtifactChangeProposalMaterializationAttemptRecord[]> {
+    return (await this.readCollection<ArtifactChangeProposalMaterializationAttemptRecord>(
+      "artifact-change-proposal-materialization-attempts"
+    )).sort(compareArtifactChangeProposalMaterializationAttempts);
   }
 
-  async materializeAarProposal(
-    input: AarProposalMaterializationInput
-  ): Promise<AarProposalMaterializationOutcome> {
-    const existing = await this.findAarProposalMaterializationAttemptByIdempotencyKey(
+  async materializeArtifactChangeProposal(
+    input: ArtifactChangeProposalMaterializationInput
+  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
+    const existing = await this.findArtifactChangeProposalMaterializationAttemptByIdempotencyKey(
       input.idempotency_key
     );
     if (existing) {
-      return this.toAarProposalMaterializationOutcome(existing);
+      return this.toArtifactChangeProposalMaterializationOutcome(existing);
     }
 
-    const validationFailure = validateAarProposalMaterializationInput(input);
+    const validationFailure = validateArtifactChangeProposalMaterializationInput(input);
     if (validationFailure) {
-      return this.recordAarProposalMaterializationFailure(input, validationFailure);
+      return this.recordArtifactChangeProposalMaterializationFailure(input, validationFailure);
     }
 
     const providerResult = input.provider_result;
     const output = providerResult.output;
-    const sourceFindings: AarFindingRecord[] = [];
+    const sourceFindings: ResearchFindingRecord[] = [];
     for (const findingRef of output.source_finding_refs) {
-      const finding = await this.readOptionalRecord<AarFindingRecord>("aar-findings", findingRef.id);
+      const finding = await this.readOptionalRecord<ResearchFindingRecord>("research-findings", findingRef.id);
       if (!finding) {
-        return this.recordAarProposalMaterializationFailure(
+        return this.recordArtifactChangeProposalMaterializationFailure(
           input,
-          "aar_proposal_source_finding_not_found"
+          "artifact_change_proposal_source_finding_not_found"
         );
       }
       sourceFindings.push(finding);
     }
 
     for (const findingRef of output.anti_hacking_finding_refs ?? []) {
-      const finding = await this.readOptionalRecord<AarFindingRecord>("aar-findings", findingRef.id);
+      const finding = await this.readOptionalRecord<ResearchFindingRecord>("research-findings", findingRef.id);
       if (!finding) {
-        return this.recordAarProposalMaterializationFailure(
+        return this.recordArtifactChangeProposalMaterializationFailure(
           input,
-          "aar_proposal_source_finding_not_found"
+          "artifact_change_proposal_source_finding_not_found"
         );
       }
     }
 
     const createdAt = input.created_at ?? new Date().toISOString();
     const suffix = stableSuffix(input.idempotency_key);
-    const attemptId = `aar-proposal-materialization-attempt-${suffix}`;
-    const proposalRef = ref("aar_artifact_proposal", `aar-artifact-proposal-${suffix}`);
-    const runnableArtifactRef = ref("runnable_artifact", `aar-runnable-artifact-proposal-${suffix}`);
-    const lineageRef = ref("aar_artifact_lineage", `aar-artifact-lineage-${suffix}`);
+    const attemptId = `artifact-change-proposal-materialization-attempt-${suffix}`;
+    const proposalRef = ref("artifact_change_proposal", `artifact-change-proposal-${suffix}`);
+    const runnableArtifactRef = ref("runnable_artifact", `research-runnable-artifact-proposal-${suffix}`);
+    const lineageRef = ref("artifact_lineage", `artifact-lineage-${suffix}`);
     const sourceFinding = sourceFindings[0];
-    const artifactPath = input.artifact_path ?? "fixtures/trader-systems/clock.py";
+    const artifactPath = input.artifact_path ?? "fixtures/trading-systems/clock.py";
 
-    const attempt: AarProposalMaterializationAttemptRecord = {
-      record_kind: "aar_proposal_materialization_attempt",
+    const attempt: ArtifactChangeProposalMaterializationAttemptRecord = {
+      record_kind: "artifact_change_proposal_materialization_attempt",
       version: 1,
-      aar_proposal_materialization_attempt_id: attemptId,
+      artifact_change_proposal_materialization_attempt_id: attemptId,
       idempotency_key: input.idempotency_key,
       provider: providerResult.provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -1059,11 +1059,11 @@ export class LocalStore {
       created_at: createdAt,
       authority_status: "proposal_input_only"
     };
-    const proposal: AarArtifactProposalRecord = stripUndefined({
-      record_kind: "aar_artifact_proposal",
+    const proposal: ArtifactChangeProposalRecord = stripUndefined({
+      record_kind: "artifact_change_proposal",
       version: 1,
-      aar_artifact_proposal_id: proposalRef.id,
-      researcher_ref: sourceFinding.researcher_ref,
+      artifact_change_proposal_id: proposalRef.id,
+      research_worker_ref: sourceFinding.research_worker_ref,
       research_direction_ref: sourceFinding.research_direction_ref,
       trading_evaluation_task_ref: output.trading_evaluation_task_ref,
       proposed_runnable_artifact_ref: runnableArtifactRef,
@@ -1076,7 +1076,7 @@ export class LocalStore {
       created_at: createdAt,
       status: "proposed",
       authority_status: "proposal_only"
-    } satisfies AarArtifactProposalRecord);
+    } satisfies ArtifactChangeProposalRecord);
     const runnableArtifact: RunnableArtifactRecord = {
       record_kind: "runnable_artifact",
       version: 1,
@@ -1092,7 +1092,7 @@ export class LocalStore {
       },
       artifact_runtime_contract_ref: input.artifact_runtime_contract_ref,
       secret_policy_ref: input.secret_policy_ref ?? ref("secret_policy", "no-raw-secrets"),
-      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "provider-aar-proposal"),
+      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "provider-artifact-change-proposal"),
       provenance_refs: [
         proposalRef,
         providerResult.agent_run_ref,
@@ -1103,22 +1103,22 @@ export class LocalStore {
       created_at: createdAt,
       authority_status: "not_live"
     };
-    const lineage: AarArtifactLineageRecord = stripUndefined({
-      record_kind: "aar_artifact_lineage",
+    const lineage: ArtifactLineageRecord = stripUndefined({
+      record_kind: "artifact_lineage",
       version: 1,
-      aar_artifact_lineage_id: lineageRef.id,
+      artifact_lineage_id: lineageRef.id,
       child_runnable_artifact_ref: runnableArtifactRef,
       parent_runnable_artifact_ref: output.parent_runnable_artifact_ref,
       source_finding_refs: output.source_finding_refs,
-      created_by_researcher_ref: sourceFinding.researcher_ref,
+      created_by_research_worker_ref: sourceFinding.research_worker_ref,
       created_at: createdAt,
       authority_status: "lineage_only"
-    } satisfies AarArtifactLineageRecord);
+    } satisfies ArtifactLineageRecord);
 
-    await this.writeJson(this.itemPath("aar-proposal-materialization-attempts", attemptId), attempt);
-    await this.writeJson(this.itemPath("aar-artifact-proposals", proposal.aar_artifact_proposal_id), proposal);
+    await this.writeJson(this.itemPath("artifact-change-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("artifact-change-proposals", proposal.artifact_change_proposal_id), proposal);
     await this.writeJson(this.itemPath("runnable-artifacts", runnableArtifact.runnable_artifact_id), runnableArtifact);
-    await this.writeJson(this.itemPath("aar-artifact-lineages", lineage.aar_artifact_lineage_id), lineage);
+    await this.writeJson(this.itemPath("artifact-lineages", lineage.artifact_lineage_id), lineage);
 
     return {
       status: "materialized",
@@ -1129,22 +1129,22 @@ export class LocalStore {
     };
   }
 
-  async recordAarProposalProviderFailure(
-    input: AarProposalProviderFailureInput
-  ): Promise<AarProposalMaterializationOutcome> {
-    const existing = await this.findAarProposalMaterializationAttemptByIdempotencyKey(
+  async recordArtifactChangeProposalProviderFailure(
+    input: ArtifactChangeProposalProviderFailureInput
+  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
+    const existing = await this.findArtifactChangeProposalMaterializationAttemptByIdempotencyKey(
       input.idempotency_key
     );
     if (existing) {
-      return this.toAarProposalMaterializationOutcome(existing);
+      return this.toArtifactChangeProposalMaterializationOutcome(existing);
     }
 
     const providerResult = input.provider_result;
-    const attemptId = `aar-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
-    const attempt: AarProposalMaterializationAttemptRecord = {
-      record_kind: "aar_proposal_materialization_attempt",
+    const attemptId = `artifact-change-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
+    const attempt: ArtifactChangeProposalMaterializationAttemptRecord = {
+      record_kind: "artifact_change_proposal_materialization_attempt",
       version: 1,
-      aar_proposal_materialization_attempt_id: attemptId,
+      artifact_change_proposal_materialization_attempt_id: attemptId,
       idempotency_key: input.idempotency_key,
       provider: providerResult.provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -1159,7 +1159,7 @@ export class LocalStore {
       authority_status: "proposal_input_only"
     };
 
-    await this.writeJson(this.itemPath("aar-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("artifact-change-proposal-materialization-attempts", attemptId), attempt);
     return {
       status: "failed",
       attempt
@@ -1325,12 +1325,12 @@ export class LocalStore {
 
   async listCandidateEvaluationRuns(candidateId: string): Promise<CandidateEvaluationRunOutcome[]> {
     const evaluationRuns = await this.readCollection<EvaluationRunRecord>("evaluation-runs");
-    const candidateRuns = evaluationRuns
+    const replayRuns = evaluationRuns
       .filter((run) => run.candidate_ref.id === candidateId)
       .sort(compareEvaluationRuns);
 
     return Promise.all(
-      candidateRuns.map((evaluationRun) => this.toCandidateEvaluationRunOutcome(evaluationRun))
+      replayRuns.map((evaluationRun) => this.toCandidateEvaluationRunOutcome(evaluationRun))
     );
   }
 
@@ -1351,7 +1351,7 @@ export class LocalStore {
       );
     }
 
-    const candidate = await this.readOptionalRecord<TraderSystemCandidateRecord>(
+    const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
       "candidates",
       input.candidate_id
     );
@@ -1423,7 +1423,7 @@ export class LocalStore {
       record_kind: "stage_binding",
       version: 1,
       stage_binding_id: stageBindingId,
-      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
       candidate_version_ref: ref("candidate_version", candidateVersion.candidate_version_id),
       stage: "backtest",
       profile: "backtest",
@@ -1435,7 +1435,7 @@ export class LocalStore {
       record_kind: "evaluation_run_record",
       version: 1,
       evaluation_run_record_id: evaluationRunId,
-      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
       candidate_version_ref: ref("candidate_version", candidateVersion.candidate_version_id),
       stage_binding_ref: ref("stage_binding", stageBinding.stage_binding_id),
       trace_ref: traceRef,
@@ -1448,7 +1448,7 @@ export class LocalStore {
       record_kind: "evaluation_comparison_set",
       version: 1,
       evaluation_comparison_set_id: comparisonSetId,
-      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
       candidate_version_ref: ref("candidate_version", candidateVersion.candidate_version_id),
       stage_binding_ref: ref("stage_binding", stageBinding.stage_binding_id),
       evaluation_run_refs: [ref("evaluation_run_record", evaluationRun.evaluation_run_record_id)],
@@ -1635,7 +1635,7 @@ export class LocalStore {
       throw new LocalStoreError(validationFailure, "invalid bounded runtime authority input");
     }
 
-    const candidate = await this.readOptionalRecord<TraderSystemCandidateRecord>(
+    const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
       "candidates",
       input.candidate_id
     );
@@ -1672,8 +1672,8 @@ export class LocalStore {
     }
 
     const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
-    const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
-      "trader-system-runtimes",
+    const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
+      "trading-system-runtimes",
       runtimeId
     );
     if (!runtime) {
@@ -1684,7 +1684,7 @@ export class LocalStore {
       );
     }
     if (
-      runtime.trader_system_runtime_id !== candidateVersion.runtime_ref.id ||
+      runtime.trading_system_runtime_id !== candidateVersion.runtime_ref.id ||
       (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
       (
         runtime.candidate_version_ref !== undefined &&
@@ -1693,12 +1693,12 @@ export class LocalStore {
     ) {
       throw new LocalStoreError(
         "runtime_mismatch",
-        `runtime ${runtime.trader_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
+        `runtime ${runtime.trading_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
         {
           candidate_id: candidate.candidate_id,
           candidate_version_id: candidateVersion.candidate_version_id,
           candidate_version_runtime_id: candidateVersion.runtime_ref.id,
-          runtime_id: runtime.trader_system_runtime_id
+          runtime_id: runtime.trading_system_runtime_id
         }
       );
     }
@@ -1706,13 +1706,13 @@ export class LocalStore {
     const recordIds = boundedRuntimeAuthorityRecordIds({
       candidate_id: candidate.candidate_id,
       candidate_version_id: candidateVersion.candidate_version_id,
-      runtime_id: runtime.trader_system_runtime_id,
+      runtime_id: runtime.trading_system_runtime_id,
       idempotency_key: input.idempotency_key
     });
     const existing = await this.readBoundedRuntimeAuthorityOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trader_system_runtime_id,
+      runtime.trading_system_runtime_id,
       recordIds
     );
     if (existing) {
@@ -1720,31 +1720,31 @@ export class LocalStore {
     }
 
     const createdAt = input.created_at ?? new Date().toISOString();
-    const orderIntentRef = ref("order_intent", recordIds.orderIntent);
+    const orderIntentRef = ref("order_intent_draft", recordIds.orderIntent);
     const gatewayDecisionRef = ref("gateway_decision", recordIds.gatewayDecision);
     const executionAttemptRef = ref("execution_attempt", recordIds.executionAttempt);
-    const runtimeRef = ref("trader_system_runtime", runtime.trader_system_runtime_id);
-    const candidateRef = ref("trader_system_candidate", candidate.candidate_id);
+    const runtimeRef = ref("trading_system_runtime", runtime.trading_system_runtime_id);
+    const candidateRef = ref("trading_system_candidate", candidate.candidate_id);
     const candidateVersionRef = ref("candidate_version", candidateVersion.candidate_version_id);
     const stageBindingId = runtime.stage_binding_ref?.id
-      ?? `stage-binding-paper-${stableSuffix(runtime.trader_system_runtime_id)}`;
+      ?? `stage-binding-paper-${stableSuffix(runtime.trading_system_runtime_id)}`;
     const stageBindingRef = ref("stage_binding", stageBindingId);
     const existingStageBinding = await this.readOptionalRecord<StageBindingRecord>(
       "stage-bindings",
       stageBindingId
     );
 
-    const orderIntent: OrderIntentRecord = stripUndefined({
-      record_kind: "order_intent",
+    const orderIntent: OrderIntentDraftRecord = stripUndefined({
+      record_kind: "order_intent_draft",
       version: 1,
-      order_intent_id: recordIds.orderIntent,
+      order_intent_draft_id: recordIds.orderIntent,
       runtime_ref: runtimeRef,
       candidate_ref: candidateRef,
       candidate_version_ref: candidateVersionRef,
       stage_binding_ref: stageBindingRef,
       trace_ref: input.execution_attempt?.trace_ref ?? runtime.trace_ref,
       intent_kind: input.intent.intent_kind,
-      market_scope: "binance_btc_perpetual_futures",
+      market_scope: "external_trading_api_fixture",
       side: input.intent.side,
       order_type: input.intent.order_type,
       quantity: input.intent.quantity,
@@ -1752,7 +1752,7 @@ export class LocalStore {
       status: "proposed",
       created_at: createdAt,
       authority_status: "not_submitted"
-    } satisfies OrderIntentRecord);
+    } satisfies OrderIntentDraftRecord);
     const gatewayDecisionAuthorityStatus = gatewayDecisionAuthorityStatusForOutcome(
       input.gateway_decision.decision_outcome
     );
@@ -1761,7 +1761,7 @@ export class LocalStore {
       version: 1,
       gateway_decision_id: recordIds.gatewayDecision,
       runtime_ref: runtimeRef,
-      order_intent_ref: orderIntentRef,
+      order_intent_draft_ref: orderIntentRef,
       decision_outcome: input.gateway_decision.decision_outcome,
       decision_reason: input.gateway_decision.decision_reason,
       decided_at: createdAt,
@@ -1779,11 +1779,11 @@ export class LocalStore {
       version: 1,
       execution_attempt_id: recordIds.executionAttempt,
       runtime_ref: runtimeRef,
-      order_intent_ref: orderIntentRef,
+      order_intent_draft_ref: orderIntentRef,
       gateway_decision_ref: gatewayDecisionRef,
       stage: "paper",
       execution_mode: input.execution_attempt?.execution_mode ?? "host_local",
-      venue_scope: "binance_btc_perpetual_futures",
+      venue_scope: "external_trading_api_fixture",
       trace_ref: input.execution_attempt?.trace_ref ?? runtime.trace_ref,
       status: executionAttemptStatus,
       result_reason: input.execution_attempt?.result_reason ?? input.gateway_decision.decision_reason,
@@ -1807,26 +1807,26 @@ export class LocalStore {
           created_at: createdAt,
           authority_status: "not_live"
         } satisfies StageBindingRecord);
-    const updatedRuntime: TraderSystemRuntimeRecord = stripUndefined({
+    const updatedRuntime: TradingSystemRuntimeRecord = stripUndefined({
       ...runtime,
       runtime_lifecycle_status: runtime.runtime_lifecycle_status ?? "registered",
       candidate_ref: runtime.candidate_ref ?? candidateRef,
       candidate_version_ref: runtime.candidate_version_ref ?? candidateVersionRef,
       stage_binding_ref: stageBindingRef,
-      order_intent_refs: appendUniqueRefs(runtime.order_intent_refs, orderIntentRef),
+      order_intent_draft_refs: appendUniqueRefs(runtime.order_intent_draft_refs, orderIntentRef),
       gateway_decision_refs: appendUniqueRefs(runtime.gateway_decision_refs, gatewayDecisionRef),
       execution_attempt_refs: appendUniqueRefs(runtime.execution_attempt_refs, executionAttemptRef),
       created_at: runtime.created_at ?? createdAt
-    } satisfies TraderSystemRuntimeRecord);
+    } satisfies TradingSystemRuntimeRecord);
 
     const records: FixtureItem[] = [
       ...(stageBinding
         ? [{ collection: "stage-bindings" as const, id: stageBinding.stage_binding_id, record: stageBinding }]
         : []),
-      { collection: "order-intents", id: orderIntent.order_intent_id, record: orderIntent },
+      { collection: "order-intent-drafts", id: orderIntent.order_intent_draft_id, record: orderIntent },
       { collection: "gateway-decisions", id: gatewayDecision.gateway_decision_id, record: gatewayDecision },
       { collection: "execution-attempts", id: executionAttempt.execution_attempt_id, record: executionAttempt },
-      { collection: "trader-system-runtimes", id: updatedRuntime.trader_system_runtime_id, record: updatedRuntime }
+      { collection: "trading-system-runtimes", id: updatedRuntime.trading_system_runtime_id, record: updatedRuntime }
     ];
     for (const item of records) {
       await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
@@ -1836,14 +1836,14 @@ export class LocalStore {
     const outcome = await this.readBoundedRuntimeAuthorityOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trader_system_runtime_id,
+      runtime.trading_system_runtime_id,
       recordIds
     );
     if (!outcome) {
       throw new LocalStoreError(
         "runtime_authority_reload_failed",
         `bounded runtime authority records were not reloaded after write`,
-        { runtime_id: runtime.trader_system_runtime_id }
+        { runtime_id: runtime.trading_system_runtime_id }
       );
     }
     return outcome;
@@ -1857,7 +1857,7 @@ export class LocalStore {
       throw new LocalStoreError(validationFailure, "invalid runtime control input");
     }
 
-    const candidate = await this.readOptionalRecord<TraderSystemCandidateRecord>(
+    const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
       "candidates",
       input.candidate_id
     );
@@ -1894,8 +1894,8 @@ export class LocalStore {
     }
 
     const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
-    const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
-      "trader-system-runtimes",
+    const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
+      "trading-system-runtimes",
       runtimeId
     );
     if (!runtime) {
@@ -1906,7 +1906,7 @@ export class LocalStore {
       );
     }
     if (
-      runtime.trader_system_runtime_id !== candidateVersion.runtime_ref.id ||
+      runtime.trading_system_runtime_id !== candidateVersion.runtime_ref.id ||
       (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
       (
         runtime.candidate_version_ref !== undefined &&
@@ -1915,12 +1915,12 @@ export class LocalStore {
     ) {
       throw new LocalStoreError(
         "runtime_mismatch",
-        `runtime ${runtime.trader_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
+        `runtime ${runtime.trading_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
         {
           candidate_id: candidate.candidate_id,
           candidate_version_id: candidateVersion.candidate_version_id,
           candidate_version_runtime_id: candidateVersion.runtime_ref.id,
-          runtime_id: runtime.trader_system_runtime_id
+          runtime_id: runtime.trading_system_runtime_id
         }
       );
     }
@@ -1928,13 +1928,13 @@ export class LocalStore {
     const recordIds = runtimeControlAuditRecordIds({
       candidate_id: candidate.candidate_id,
       candidate_version_id: candidateVersion.candidate_version_id,
-      runtime_id: runtime.trader_system_runtime_id,
+      runtime_id: runtime.trading_system_runtime_id,
       idempotency_key: input.idempotency_key
     });
     const existing = await this.readRuntimeControlAuditOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trader_system_runtime_id,
+      runtime.trading_system_runtime_id,
       recordIds
     );
     if (existing) {
@@ -1942,8 +1942,8 @@ export class LocalStore {
     }
 
     const createdAt = input.created_at ?? new Date().toISOString();
-    const runtimeRef = ref("trader_system_runtime", runtime.trader_system_runtime_id);
-    const candidateRef = ref("trader_system_candidate", candidate.candidate_id);
+    const runtimeRef = ref("trading_system_runtime", runtime.trading_system_runtime_id);
+    const candidateRef = ref("trading_system_candidate", candidate.candidate_id);
     const candidateVersionRef = ref("candidate_version", candidateVersion.candidate_version_id);
     const commandRef = ref("runtime_control_command", recordIds.command);
     const decisionRef = ref("runtime_control_decision", recordIds.decision);
@@ -1965,7 +1965,7 @@ export class LocalStore {
       reason: input.command.reason,
       reason_summary: input.command.reason_summary,
       trace_ref: input.command.trace_ref ?? runtime.trace_ref,
-      related_order_intent_refs: input.command.related_order_intent_refs,
+      related_order_intent_draft_refs: input.command.related_order_intent_draft_refs,
       related_gateway_decision_refs: input.command.related_gateway_decision_refs,
       related_execution_attempt_refs: input.command.related_execution_attempt_refs,
       requested_at: createdAt,
@@ -1986,8 +1986,8 @@ export class LocalStore {
         ?? input.command.runtime_operating_policy_ref,
       resulting_lifecycle_status: input.decision.resulting_lifecycle_status,
       trace_ref: input.decision.trace_ref ?? input.command.trace_ref ?? runtime.trace_ref,
-      related_order_intent_refs: input.decision.related_order_intent_refs
-        ?? input.command.related_order_intent_refs,
+      related_order_intent_draft_refs: input.decision.related_order_intent_draft_refs
+        ?? input.command.related_order_intent_draft_refs,
       related_gateway_decision_refs: input.decision.related_gateway_decision_refs
         ?? input.command.related_gateway_decision_refs,
       related_execution_attempt_refs: input.decision.related_execution_attempt_refs
@@ -2014,8 +2014,8 @@ export class LocalStore {
         ?? runtime.trace_ref,
       supporting_record_refs: input.audit_event.supporting_record_refs
         ?? [commandRef, decisionRef],
-      related_order_intent_refs: input.audit_event.related_order_intent_refs
-        ?? decision.related_order_intent_refs,
+      related_order_intent_draft_refs: input.audit_event.related_order_intent_draft_refs
+        ?? decision.related_order_intent_draft_refs,
       related_gateway_decision_refs: input.audit_event.related_gateway_decision_refs
         ?? decision.related_gateway_decision_refs,
       related_execution_attempt_refs: input.audit_event.related_execution_attempt_refs
@@ -2023,7 +2023,7 @@ export class LocalStore {
       created_at: createdAt,
       authority_status: "audit_only"
     } satisfies RuntimeAuditEventRecord);
-    const updatedRuntime: TraderSystemRuntimeRecord = stripUndefined({
+    const updatedRuntime: TradingSystemRuntimeRecord = stripUndefined({
       ...runtime,
       runtime_lifecycle_status: decision.resulting_lifecycle_status
         ?? runtime.runtime_lifecycle_status
@@ -2034,13 +2034,13 @@ export class LocalStore {
       runtime_control_decision_refs: appendUniqueRefs(runtime.runtime_control_decision_refs, decisionRef),
       runtime_audit_event_refs: appendUniqueRefs(runtime.runtime_audit_event_refs, auditEventRef),
       created_at: runtime.created_at ?? createdAt
-    } satisfies TraderSystemRuntimeRecord);
+    } satisfies TradingSystemRuntimeRecord);
 
     const records: FixtureItem[] = [
       { collection: "runtime-control-commands", id: command.runtime_control_command_id, record: command },
       { collection: "runtime-control-decisions", id: decision.runtime_control_decision_id, record: decision },
       { collection: "runtime-audit-events", id: auditEvent.runtime_audit_event_id, record: auditEvent },
-      { collection: "trader-system-runtimes", id: updatedRuntime.trader_system_runtime_id, record: updatedRuntime }
+      { collection: "trading-system-runtimes", id: updatedRuntime.trading_system_runtime_id, record: updatedRuntime }
     ];
     for (const item of records) {
       await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
@@ -2050,14 +2050,14 @@ export class LocalStore {
     const outcome = await this.readRuntimeControlAuditOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trader_system_runtime_id,
+      runtime.trading_system_runtime_id,
       recordIds
     );
     if (!outcome) {
       throw new LocalStoreError(
         "runtime_control_reload_failed",
         `runtime control records were not reloaded after write`,
-        { runtime_id: runtime.trader_system_runtime_id }
+        { runtime_id: runtime.trading_system_runtime_id }
       );
     }
     return outcome;
@@ -2117,8 +2117,8 @@ export class LocalStore {
       attempt: `candidate-materialization-attempt-${suffix}`,
       candidate: candidateId,
       version: `candidate-version-${suffix}`,
-      spec: `trader-system-spec-${suffix}`,
-      program: `trader-system-program-${suffix}`,
+      spec: `trading-system-spec-${suffix}`,
+      program: `trading-system-program-${suffix}`,
       programManifest: `program-manifest-${suffix}`,
       programValidation: `program-validation-${suffix}`,
       capabilityPackage: `capability-package-${suffix}`,
@@ -2130,7 +2130,7 @@ export class LocalStore {
       agentSession: `agent-session-${suffix}`,
       providerReadiness: `provider-readiness-${suffix}`,
       providerProbe: `provider-probe-${suffix}`,
-      runtime: `trader-system-runtime-${suffix}`,
+      runtime: `trading-system-runtime-${suffix}`,
       placement: `runtime-placement-${suffix}`,
       handsEnvironment: `hands-environment-${suffix}`,
       memorySurface: `runtime-memory-surface-${suffix}`,
@@ -2156,13 +2156,13 @@ export class LocalStore {
       trace_ref: traceRef,
       status: "materialized",
       validation_status: "accepted",
-      resulting_candidate_ref: ref("trader_system_candidate", candidateId),
+      resulting_candidate_ref: ref("trading_system_candidate", candidateId),
       artifact_refs: input.artifact_refs,
       created_at: new Date().toISOString()
     };
 
-    const candidate: TraderSystemCandidateRecord = {
-      record_kind: "trader_system_candidate",
+    const candidate: TradingSystemCandidateRecord = {
+      record_kind: "trading_system_candidate",
       version: 1,
       candidate_id: candidateId,
       display_name: input.candidate.title,
@@ -2182,10 +2182,10 @@ export class LocalStore {
       candidate_version_id: idsForCandidate.version,
       candidate_id: candidateId,
       version_label: "materialized-v1",
-      spec_ref: ref("trader_system_spec", idsForCandidate.spec),
-      program_ref: ref("trader_system_program", idsForCandidate.program),
+      spec_ref: ref("trading_system_spec", idsForCandidate.spec),
+      program_ref: ref("trading_system_program", idsForCandidate.program),
       capability_package_refs: [ref("capability_package", idsForCandidate.capabilityPackage)],
-      runtime_ref: ref("trader_system_runtime", idsForCandidate.runtime),
+      runtime_ref: ref("trading_system_runtime", idsForCandidate.runtime),
       trace_placeholder_ref: traceRef,
       evaluation_run_ref: ref("evaluation_run_record", idsForCandidate.evaluationRun),
       materialization_attempt_ref: attemptRef,
@@ -2202,7 +2202,7 @@ export class LocalStore {
       idsForCandidate.evidenceSealingDecision
     );
     const materializedEvidenceClassifications = defaultEvidenceClassificationRecords({
-      candidateRef: ref("trader_system_candidate", candidateId),
+      candidateRef: ref("trading_system_candidate", candidateId),
       candidateVersionRef: ref("candidate_version", idsForCandidate.version),
       evaluationRunRef: materializedEvaluationRunRef,
       traceRef,
@@ -2216,29 +2216,29 @@ export class LocalStore {
       { collection: "candidates", id: candidateId, record: candidate },
       { collection: "candidate-versions", id: idsForCandidate.version, record: candidateVersion },
       {
-        collection: "trader-system-specs",
+        collection: "trading-system-specs",
         id: idsForCandidate.spec,
         record: {
-          record_kind: "trader_system_spec",
+          record_kind: "trading_system_spec",
           version: 1,
-          trader_system_spec_id: idsForCandidate.spec,
+          trading_system_spec_id: idsForCandidate.spec,
           summary: input.spec.summary,
           market: input.spec.market,
           instrument: input.spec.instrument,
           supported_stage_binding_profiles: input.spec.supported_stage_binding_profiles
-        } satisfies TraderSystemSpecRecord
+        } satisfies TradingSystemSpecRecord
       },
       {
-        collection: "trader-system-programs",
+        collection: "trading-system-programs",
         id: idsForCandidate.program,
         record: {
-          record_kind: "trader_system_program",
+          record_kind: "trading_system_program",
           version: 1,
-          trader_system_program_id: idsForCandidate.program,
+          trading_system_program_id: idsForCandidate.program,
           summary: input.program.summary,
           manifest_ref: ref("program_manifest", idsForCandidate.programManifest),
           validation_record_ref: ref("program_validation_record", idsForCandidate.programValidation)
-        } satisfies TraderSystemProgramRecord
+        } satisfies TradingSystemProgramRecord
       },
       {
         collection: "program-manifests",
@@ -2402,21 +2402,21 @@ export class LocalStore {
         } satisfies ProviderProbeAttemptRecord
       },
       {
-        collection: "trader-system-runtimes",
+        collection: "trading-system-runtimes",
         id: idsForCandidate.runtime,
         record: {
-          record_kind: "trader_system_runtime",
+          record_kind: "trading_system_runtime",
           version: 1,
-          trader_system_runtime_id: idsForCandidate.runtime,
+          trading_system_runtime_id: idsForCandidate.runtime,
           stage_binding_profile: "paper",
           runtime_lifecycle_status: "registered",
-          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_ref: ref("trading_system_candidate", candidateId),
           candidate_version_ref: ref("candidate_version", idsForCandidate.version),
           placement_ref: ref("runtime_placement", idsForCandidate.placement),
           hands_environment_ref: ref("hands_environment", idsForCandidate.handsEnvironment),
           memory_surface_ref: ref("runtime_memory_surface", idsForCandidate.memorySurface),
           authority_status: "not_live"
-        } satisfies TraderSystemRuntimeRecord
+        } satisfies TradingSystemRuntimeRecord
       },
       {
         collection: "runtime-placements",
@@ -2474,7 +2474,7 @@ export class LocalStore {
           record_kind: "stage_binding",
           version: 1,
           stage_binding_id: idsForCandidate.stageBinding,
-          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_ref: ref("trading_system_candidate", candidateId),
           candidate_version_ref: ref("candidate_version", idsForCandidate.version),
           stage: "backtest",
           profile: "backtest",
@@ -2492,7 +2492,7 @@ export class LocalStore {
           record_kind: "evaluation_run_record",
           version: 1,
           evaluation_run_record_id: idsForCandidate.evaluationRun,
-          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_ref: ref("trading_system_candidate", candidateId),
           candidate_version_ref: ref("candidate_version", idsForCandidate.version),
           stage_binding_ref: ref("stage_binding", idsForCandidate.stageBinding),
           trace_ref: traceRef,
@@ -2508,7 +2508,7 @@ export class LocalStore {
           record_kind: "evaluation_comparison_set",
           version: 1,
           evaluation_comparison_set_id: idsForCandidate.evaluationComparisonSet,
-          candidate_ref: ref("trader_system_candidate", candidateId),
+          candidate_ref: ref("trading_system_candidate", candidateId),
           candidate_version_ref: ref("candidate_version", idsForCandidate.version),
           stage_binding_ref: ref("stage_binding", idsForCandidate.stageBinding),
           evaluation_run_refs: [ref("evaluation_run_record", idsForCandidate.evaluationRun)],
@@ -2594,16 +2594,16 @@ export class LocalStore {
     };
   }
 
-  private async recordAarProposalMaterializationFailure(
-    input: AarProposalMaterializationInput,
-    failureReason: AarProposalMaterializationFailureReason
-  ): Promise<AarProposalMaterializationOutcome> {
-    const attemptId = `aar-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
+  private async recordArtifactChangeProposalMaterializationFailure(
+    input: ArtifactChangeProposalMaterializationInput,
+    failureReason: ArtifactChangeProposalMaterializationFailureReason
+  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
+    const attemptId = `artifact-change-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
     const providerResult = input.provider_result;
-    const attempt: AarProposalMaterializationAttemptRecord = {
-      record_kind: "aar_proposal_materialization_attempt",
+    const attempt: ArtifactChangeProposalMaterializationAttemptRecord = {
+      record_kind: "artifact_change_proposal_materialization_attempt",
       version: 1,
-      aar_proposal_materialization_attempt_id: attemptId,
+      artifact_change_proposal_materialization_attempt_id: attemptId,
       idempotency_key: input.idempotency_key,
       provider: providerResult.provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -2618,25 +2618,25 @@ export class LocalStore {
       authority_status: "proposal_input_only"
     };
 
-    await this.writeJson(this.itemPath("aar-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("artifact-change-proposal-materialization-attempts", attemptId), attempt);
     return {
       status: "failed",
       attempt
     };
   }
 
-  private async findAarProposalMaterializationAttemptByIdempotencyKey(
+  private async findArtifactChangeProposalMaterializationAttemptByIdempotencyKey(
     idempotencyKey: string
-  ): Promise<AarProposalMaterializationAttemptRecord | undefined> {
-    const attempts = await this.readCollection<AarProposalMaterializationAttemptRecord>(
-      "aar-proposal-materialization-attempts"
+  ): Promise<ArtifactChangeProposalMaterializationAttemptRecord | undefined> {
+    const attempts = await this.readCollection<ArtifactChangeProposalMaterializationAttemptRecord>(
+      "artifact-change-proposal-materialization-attempts"
     );
     return attempts.find((attempt) => attempt.idempotency_key === idempotencyKey);
   }
 
-  private async toAarProposalMaterializationOutcome(
-    attempt: AarProposalMaterializationAttemptRecord
-  ): Promise<AarProposalMaterializationOutcome> {
+  private async toArtifactChangeProposalMaterializationOutcome(
+    attempt: ArtifactChangeProposalMaterializationAttemptRecord
+  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
     if (attempt.status === "failed") {
       return {
         status: "failed",
@@ -2650,29 +2650,29 @@ export class LocalStore {
       !attempt.output_lineage_ref
     ) {
       throw new LocalStoreError(
-        "aar_proposal_materialization_reload_failed",
-        `AAR proposal materialization attempt ${attempt.aar_proposal_materialization_attempt_id} has no output refs`,
-        { attempt_id: attempt.aar_proposal_materialization_attempt_id }
+        "artifact_change_proposal_materialization_reload_failed",
+        `artifact change proposal materialization attempt ${attempt.artifact_change_proposal_materialization_attempt_id} has no output refs`,
+        { attempt_id: attempt.artifact_change_proposal_materialization_attempt_id }
       );
     }
 
-    const proposal = await this.readOptionalRecord<AarArtifactProposalRecord>(
-      "aar-artifact-proposals",
+    const proposal = await this.readOptionalRecord<ArtifactChangeProposalRecord>(
+      "artifact-change-proposals",
       attempt.output_artifact_proposal_ref.id
     );
     const runnableArtifact = await this.readOptionalRecord<RunnableArtifactRecord>(
       "runnable-artifacts",
       attempt.output_runnable_artifact_ref.id
     );
-    const lineage = await this.readOptionalRecord<AarArtifactLineageRecord>(
-      "aar-artifact-lineages",
+    const lineage = await this.readOptionalRecord<ArtifactLineageRecord>(
+      "artifact-lineages",
       attempt.output_lineage_ref.id
     );
     if (!proposal || !runnableArtifact || !lineage) {
       throw new LocalStoreError(
-        "aar_proposal_materialization_reload_failed",
-        `AAR proposal materialization attempt ${attempt.aar_proposal_materialization_attempt_id} was not reloaded`,
-        { attempt_id: attempt.aar_proposal_materialization_attempt_id }
+        "artifact_change_proposal_materialization_reload_failed",
+        `artifact change proposal materialization attempt ${attempt.artifact_change_proposal_materialization_attempt_id} was not reloaded`,
+        { attempt_id: attempt.artifact_change_proposal_materialization_attempt_id }
       );
     }
 
@@ -2761,14 +2761,14 @@ export class LocalStore {
   }
 
   private async buildCandidateInspectReadModel(candidateId: string): Promise<CandidateInspectReadModel> {
-    const candidate = await this.readRecord<TraderSystemCandidateRecord>("candidates", candidateId);
+    const candidate = await this.readRecord<TradingSystemCandidateRecord>("candidates", candidateId);
     const version = await this.readRecord<CandidateVersionRecord>(
       "candidate-versions",
       candidate.active_version_id
     );
-    const spec = await this.readRecord<TraderSystemSpecRecord>("trader-system-specs", version.spec_ref.id);
-    const program = await this.readRecord<TraderSystemProgramRecord>(
-      "trader-system-programs",
+    const spec = await this.readRecord<TradingSystemSpecRecord>("trading-system-specs", version.spec_ref.id);
+    const program = await this.readRecord<TradingSystemProgramRecord>(
+      "trading-system-programs",
       version.program_ref.id
     );
     const programManifest = await this.readRecord<ProgramManifestRecord>(
@@ -2819,8 +2819,8 @@ export class LocalStore {
       "provider-probe-attempts",
       providerProbeAttemptRef.id
     );
-    const runtime = await this.readRecord<TraderSystemRuntimeRecord>(
-      "trader-system-runtimes",
+    const runtime = await this.readRecord<TradingSystemRuntimeRecord>(
+      "trading-system-runtimes",
       version.runtime_ref.id
     );
     const placement = await this.readRecord<RuntimePlacementRecord>(
@@ -2910,8 +2910,8 @@ export class LocalStore {
           quarantine_status: memorySurface.quarantine_status,
           authority_status: memorySurface.authority_status
         },
-        bounded_authority: await this.buildCandidateRuntimeAuthorityReadModel(runtime),
-        runtime_control: await this.buildCandidateRuntimeControlReadModel(runtime)
+        bounded_authority: await this.buildReplayRuntimeAuthorityReadModel(runtime),
+        runtime_control: await this.buildReplayRuntimeControlReadModel(runtime)
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
@@ -2921,20 +2921,20 @@ export class LocalStore {
     };
   }
 
-  private async buildCandidateRuntimeAuthorityReadModel(
-    runtime: TraderSystemRuntimeRecord
-  ): Promise<CandidateRuntimeAuthorityReadModel> {
-    const runtimeId = runtime.trader_system_runtime_id;
-    const orderIntents = (await this.readCollection<OrderIntentRecord>("order-intents"))
+  private async buildReplayRuntimeAuthorityReadModel(
+    runtime: TradingSystemRuntimeRecord
+  ): Promise<ReplayRuntimeAuthorityReadModel> {
+    const runtimeId = runtime.trading_system_runtime_id;
+    const orderIntents = (await this.readCollection<OrderIntentDraftRecord>("order-intent-drafts"))
       .filter((orderIntent) => orderIntent.runtime_ref.id === runtimeId)
-      .sort(compareOrderIntents);
-    const latestOrderIntent = orderIntents.at(-1);
-    if (!latestOrderIntent) {
-      return emptyCandidateRuntimeAuthorityReadModel();
+      .sort(compareOrderIntentDrafts);
+    const latestOrderIntentDraft = orderIntents.at(-1);
+    if (!latestOrderIntentDraft) {
+      return emptyReplayRuntimeAuthorityReadModel();
     }
 
     const gatewayDecisions = (await this.readCollection<GatewayDecisionRecord>("gateway-decisions"))
-      .filter((gatewayDecision) => gatewayDecision.order_intent_ref.id === latestOrderIntent.order_intent_id)
+      .filter((gatewayDecision) => gatewayDecision.order_intent_draft_ref.id === latestOrderIntentDraft.order_intent_draft_id)
       .sort(compareGatewayDecisions);
     const latestGatewayDecision = gatewayDecisions.at(-1);
     const executionAttempts = latestGatewayDecision
@@ -2949,18 +2949,18 @@ export class LocalStore {
     return {
       has_activity: true,
       chain_complete: Boolean(latestGatewayDecision && latestExecutionAttempt),
-      latest_order_intent: toCandidateRuntimeOrderIntentReadModel(latestOrderIntent),
+      latest_order_intent_draft: toReplayRuntimeOrderIntentDraftReadModel(latestOrderIntentDraft),
       latest_gateway_decision: latestGatewayDecision
-        ? toCandidateRuntimeGatewayDecisionReadModel(latestGatewayDecision)
+        ? toReplayRuntimeGatewayDecisionReadModel(latestGatewayDecision)
         : null,
       latest_execution_attempt: latestExecutionAttempt
-        ? toCandidateRuntimeExecutionAttemptReadModel(latestExecutionAttempt)
+        ? toReplayRuntimeExecutionAttemptReadModel(latestExecutionAttempt)
         : null,
-      order_intent: statusPlaceholder(
-        ref(latestOrderIntent.record_kind, latestOrderIntent.order_intent_id),
-        "Order intent",
-        latestOrderIntent.status,
-        latestOrderIntent.authority_status
+      order_intent_draft: statusPlaceholder(
+        ref(latestOrderIntentDraft.record_kind, latestOrderIntentDraft.order_intent_draft_id),
+        "Order intent draft",
+        latestOrderIntentDraft.status,
+        latestOrderIntentDraft.authority_status
       ),
       gateway_decision: latestGatewayDecision
         ? statusPlaceholder(
@@ -2991,16 +2991,16 @@ export class LocalStore {
     };
   }
 
-  private async buildCandidateRuntimeControlReadModel(
-    runtime: TraderSystemRuntimeRecord
-  ): Promise<CandidateRuntimeControlReadModel> {
-    const runtimeId = runtime.trader_system_runtime_id;
+  private async buildReplayRuntimeControlReadModel(
+    runtime: TradingSystemRuntimeRecord
+  ): Promise<ReplayRuntimeControlReadModel> {
+    const runtimeId = runtime.trading_system_runtime_id;
     const commands = (await this.readCollection<RuntimeControlCommandRecord>("runtime-control-commands"))
       .filter((command) => command.runtime_ref.id === runtimeId)
       .sort(compareRuntimeControlCommands);
     const latestCommand = commands.at(-1);
     if (!latestCommand) {
-      return emptyCandidateRuntimeControlReadModel();
+      return emptyReplayRuntimeControlReadModel();
     }
 
     const decisions = (await this.readCollection<RuntimeControlDecisionRecord>("runtime-control-decisions"))
@@ -3021,12 +3021,12 @@ export class LocalStore {
     return {
       has_activity: true,
       chain_complete: Boolean(latestDecision && latestAuditEvent),
-      latest_command: toCandidateRuntimeControlCommandReadModel(latestCommand),
+      latest_command: toReplayRuntimeControlCommandReadModel(latestCommand),
       latest_decision: latestDecision
-        ? toCandidateRuntimeControlDecisionReadModel(latestDecision)
+        ? toReplayRuntimeControlDecisionReadModel(latestDecision)
         : null,
       latest_audit_event: latestAuditEvent
-        ? toCandidateRuntimeAuditEventReadModel(latestAuditEvent)
+        ? toReplayRuntimeAuditEventReadModel(latestAuditEvent)
         : null,
       command: statusPlaceholder(
         ref(latestCommand.record_kind, latestCommand.runtime_control_command_id),
@@ -3069,8 +3069,8 @@ export class LocalStore {
     runtimeId: string,
     recordIds: BoundedRuntimeAuthorityRecordIds
   ): Promise<BoundedRuntimeAuthorityOutcome | undefined> {
-    const orderIntent = await this.readOptionalRecord<OrderIntentRecord>(
-      "order-intents",
+    const orderIntent = await this.readOptionalRecord<OrderIntentDraftRecord>(
+      "order-intent-drafts",
       recordIds.orderIntent
     );
     const gatewayDecision = await this.readOptionalRecord<GatewayDecisionRecord>(
@@ -3088,7 +3088,7 @@ export class LocalStore {
       candidate_id: candidateId,
       candidate_version_id: candidateVersionId,
       runtime_id: runtimeId,
-      order_intent: orderIntent,
+      order_intent_draft: orderIntent,
       gateway_decision: gatewayDecision,
       execution_attempt: executionAttempt
     };
@@ -3126,18 +3126,18 @@ export class LocalStore {
   }
 
   private async buildCandidateEvaluationReadModel(
-    candidate: TraderSystemCandidateRecord,
+    candidate: TradingSystemCandidateRecord,
     version: CandidateVersionRecord
   ): Promise<CandidateEvaluationReadModel> {
     const evaluationRuns = await this.readCollection<EvaluationRunRecord>("evaluation-runs");
-    const candidateRuns = evaluationRuns
+    const replayRuns = evaluationRuns
       .filter((run) => (
         run.candidate_ref.id === candidate.candidate_id &&
         run.candidate_version_ref.id === version.candidate_version_id
       ))
       .sort(compareEvaluationRuns);
 
-    const latestRun = candidateRuns.at(-1);
+    const latestRun = replayRuns.at(-1);
     if (!latestRun) {
       return emptyCandidateEvaluationReadModel(version.evaluation_run_ref);
     }
@@ -3337,8 +3337,8 @@ export class LocalStore {
     }
 
     if (instance.runtime_ref) {
-      const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
-        "trader-system-runtimes",
+      const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
+        "trading-system-runtimes",
         instance.runtime_ref.id
       );
       if (!runtime) {
@@ -3351,18 +3351,18 @@ export class LocalStore {
     }
   }
 
-  private async assertAarArtifactLineageLinks(lineage: AarArtifactLineageRecord): Promise<void> {
-    await this.assertAarFindingRefsExist(lineage.source_finding_refs, lineage.aar_artifact_lineage_id);
+  private async assertArtifactLineageLinks(lineage: ArtifactLineageRecord): Promise<void> {
+    await this.assertResearchFindingRefsExist(lineage.source_finding_refs, lineage.artifact_lineage_id);
   }
 
-  private async assertAarFindingRefsExist(findingRefs: Ref[], ownerId: string): Promise<void> {
+  private async assertResearchFindingRefsExist(findingRefs: Ref[], ownerId: string): Promise<void> {
     for (const findingRef of findingRefs) {
-      const finding = await this.readOptionalRecord<AarFindingRecord>("aar-findings", findingRef.id);
+      const finding = await this.readOptionalRecord<ResearchFindingRecord>("research-findings", findingRef.id);
       if (!finding) {
         throw new LocalStoreError(
-          "aar_finding_not_found",
-          `AAR finding ${findingRef.id} not found`,
-          { aar_finding_id: findingRef.id, owner_id: ownerId }
+          "research_finding_not_found",
+          `automated research finding ${findingRef.id} not found`,
+          { research_finding_id: findingRef.id, owner_id: ownerId }
         );
       }
     }
@@ -3398,14 +3398,14 @@ export class LocalStore {
     ];
 
     if (input.instance.runtime_ref) {
-      const runtime = await this.readOptionalRecord<TraderSystemRuntimeRecord>(
-        "trader-system-runtimes",
+      const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
+        "trading-system-runtimes",
         input.instance.runtime_ref.id
       );
       if (runtime) {
         records.push({
-          collection: "trader-system-runtimes",
-          id: runtime.trader_system_runtime_id,
+          collection: "trading-system-runtimes",
+          id: runtime.trading_system_runtime_id,
           record: stripUndefined({
             ...runtime,
             runtime_lifecycle_status: runtimeLifecycleForSandboxInstance(input.instance.lifecycle_status),
@@ -3416,7 +3416,7 @@ export class LocalStore {
               input.instance.sandbox_runtime_instance_id
             ),
             created_at: runtime.created_at ?? input.instance.created_at
-          } satisfies TraderSystemRuntimeRecord)
+          } satisfies TradingSystemRuntimeRecord)
         });
       }
     }
@@ -3454,7 +3454,7 @@ export class LocalStore {
     };
   }
 
-  private toCandidateSummary(candidate: TraderSystemCandidateRecord): CandidateSummaryReadModel {
+  private toCandidateSummary(candidate: TradingSystemCandidateRecord): CandidateSummaryReadModel {
     return {
       candidate_id: candidate.candidate_id,
       display_name: candidate.display_name,
@@ -3548,7 +3548,7 @@ function statusPlaceholder(
 }
 
 function emptyCandidateEvaluationReadModel(
-  legacyRunRef?: Ref
+  evaluationRunRef?: Ref
 ): CandidateEvaluationReadModel {
   return {
     has_runs: false,
@@ -3571,7 +3571,7 @@ function emptyCandidateEvaluationReadModel(
     },
     error_state: null,
     run: statusPlaceholder(
-      legacyRunRef ?? ref("evaluation_run_record", "none"),
+      evaluationRunRef ?? ref("evaluation_run_record", "none"),
       "Evaluation run",
       "not_evaluated",
       "not_counted"
@@ -3591,16 +3591,16 @@ function emptyCandidateEvaluationReadModel(
   };
 }
 
-function emptyCandidateRuntimeAuthorityReadModel(): CandidateRuntimeAuthorityReadModel {
+function emptyReplayRuntimeAuthorityReadModel(): ReplayRuntimeAuthorityReadModel {
   return {
     has_activity: false,
     chain_complete: false,
-    latest_order_intent: null,
+    latest_order_intent_draft: null,
     latest_gateway_decision: null,
     latest_execution_attempt: null,
-    order_intent: statusPlaceholder(
-      ref("order_intent", "none"),
-      "Order intent",
+    order_intent_draft: statusPlaceholder(
+      ref("order_intent_draft", "none"),
+      "Order intent draft",
       "not_submitted",
       "not_submitted"
     ),
@@ -3619,7 +3619,7 @@ function emptyCandidateRuntimeAuthorityReadModel(): CandidateRuntimeAuthorityRea
   };
 }
 
-function emptyCandidateRuntimeControlReadModel(): CandidateRuntimeControlReadModel {
+function emptyReplayRuntimeControlReadModel(): ReplayRuntimeControlReadModel {
   return {
     has_activity: false,
     chain_complete: false,
@@ -3647,9 +3647,9 @@ function emptyCandidateRuntimeControlReadModel(): CandidateRuntimeControlReadMod
   };
 }
 
-function toCandidateRuntimeOrderIntentReadModel(orderIntent: OrderIntentRecord) {
+function toReplayRuntimeOrderIntentDraftReadModel(orderIntent: OrderIntentDraftRecord) {
   return {
-    order_intent_id: orderIntent.order_intent_id,
+    order_intent_draft_id: orderIntent.order_intent_draft_id,
     intent_kind: orderIntent.intent_kind,
     market_scope: orderIntent.market_scope,
     side: orderIntent.side,
@@ -3662,10 +3662,10 @@ function toCandidateRuntimeOrderIntentReadModel(orderIntent: OrderIntentRecord) 
   };
 }
 
-function toCandidateRuntimeGatewayDecisionReadModel(gatewayDecision: GatewayDecisionRecord) {
+function toReplayRuntimeGatewayDecisionReadModel(gatewayDecision: GatewayDecisionRecord) {
   return {
     gateway_decision_id: gatewayDecision.gateway_decision_id,
-    order_intent_ref: gatewayDecision.order_intent_ref,
+    order_intent_draft_ref: gatewayDecision.order_intent_draft_ref,
     decision_outcome: gatewayDecision.decision_outcome,
     decision_reason: gatewayDecision.decision_reason,
     decided_at: gatewayDecision.decided_at,
@@ -3673,10 +3673,10 @@ function toCandidateRuntimeGatewayDecisionReadModel(gatewayDecision: GatewayDeci
   };
 }
 
-function toCandidateRuntimeExecutionAttemptReadModel(executionAttempt: ExecutionAttemptRecord) {
+function toReplayRuntimeExecutionAttemptReadModel(executionAttempt: ExecutionAttemptRecord) {
   return {
     execution_attempt_id: executionAttempt.execution_attempt_id,
-    order_intent_ref: executionAttempt.order_intent_ref,
+    order_intent_draft_ref: executionAttempt.order_intent_draft_ref,
     gateway_decision_ref: executionAttempt.gateway_decision_ref,
     stage: executionAttempt.stage,
     execution_mode: executionAttempt.execution_mode,
@@ -3689,7 +3689,7 @@ function toCandidateRuntimeExecutionAttemptReadModel(executionAttempt: Execution
   };
 }
 
-function toCandidateRuntimeControlCommandReadModel(command: RuntimeControlCommandRecord) {
+function toReplayRuntimeControlCommandReadModel(command: RuntimeControlCommandRecord) {
   return {
     command_id: command.runtime_control_command_id,
     action: command.action,
@@ -3703,7 +3703,7 @@ function toCandidateRuntimeControlCommandReadModel(command: RuntimeControlComman
   };
 }
 
-function toCandidateRuntimeControlDecisionReadModel(decision: RuntimeControlDecisionRecord) {
+function toReplayRuntimeControlDecisionReadModel(decision: RuntimeControlDecisionRecord) {
   return {
     decision_id: decision.runtime_control_decision_id,
     command_ref: decision.command_ref,
@@ -3717,7 +3717,7 @@ function toCandidateRuntimeControlDecisionReadModel(decision: RuntimeControlDeci
   };
 }
 
-function toCandidateRuntimeAuditEventReadModel(auditEvent: RuntimeAuditEventRecord) {
+function toReplayRuntimeAuditEventReadModel(auditEvent: RuntimeAuditEventRecord) {
   return {
     audit_event_id: auditEvent.runtime_audit_event_id,
     event_kind: auditEvent.event_kind,
@@ -3832,7 +3832,7 @@ function latestObservedAt(heartbeats: RuntimeHeartbeatRecord[] | undefined): str
 
 function runtimeLifecycleForSandboxInstance(
   lifecycleStatus: SandboxRuntimeInstanceRecord["lifecycle_status"]
-): TraderSystemRuntimeLifecycleStatus {
+): TradingSystemRuntimeLifecycleStatus {
   switch (lifecycleStatus) {
     case "starting":
       return "starting";
@@ -3913,12 +3913,12 @@ function compareEvidenceClassifications(
   return a.evidence_classification_id.localeCompare(b.evidence_classification_id);
 }
 
-function compareOrderIntents(a: OrderIntentRecord, b: OrderIntentRecord): number {
+function compareOrderIntentDrafts(a: OrderIntentDraftRecord, b: OrderIntentDraftRecord): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.order_intent_id.localeCompare(b.order_intent_id);
+  return a.order_intent_draft_id.localeCompare(b.order_intent_draft_id);
 }
 
 function compareGatewayDecisions(a: GatewayDecisionRecord, b: GatewayDecisionRecord): number {
@@ -3970,53 +3970,53 @@ function compareRuntimeAuditEvents(
   return a.runtime_audit_event_id.localeCompare(b.runtime_audit_event_id);
 }
 
-function compareAarFindings(a: AarFindingRecord, b: AarFindingRecord): number {
+function compareResearchFindings(a: ResearchFindingRecord, b: ResearchFindingRecord): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.aar_finding_id.localeCompare(b.aar_finding_id);
+  return a.research_finding_id.localeCompare(b.research_finding_id);
 }
 
-function compareAarArtifactLineages(
-  a: AarArtifactLineageRecord,
-  b: AarArtifactLineageRecord
+function compareArtifactLineages(
+  a: ArtifactLineageRecord,
+  b: ArtifactLineageRecord
 ): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.aar_artifact_lineage_id.localeCompare(b.aar_artifact_lineage_id);
+  return a.artifact_lineage_id.localeCompare(b.artifact_lineage_id);
 }
 
-function compareAarArtifactProposals(
-  a: AarArtifactProposalRecord,
-  b: AarArtifactProposalRecord
+function compareArtifactChangeProposals(
+  a: ArtifactChangeProposalRecord,
+  b: ArtifactChangeProposalRecord
 ): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.aar_artifact_proposal_id.localeCompare(b.aar_artifact_proposal_id);
+  return a.artifact_change_proposal_id.localeCompare(b.artifact_change_proposal_id);
 }
 
-function compareAarOrchestrationRuns(
-  a: AarOrchestrationRunRecord,
-  b: AarOrchestrationRunRecord
+function compareResearchOrchestrationRuns(
+  a: ResearchOrchestrationRunRecord,
+  b: ResearchOrchestrationRunRecord
 ): number {
   const timeCompare = a.started_at.localeCompare(b.started_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.aar_orchestration_run_id.localeCompare(b.aar_orchestration_run_id);
+  return a.research_orchestration_run_id.localeCompare(b.research_orchestration_run_id);
 }
 
-function compareAarExperiments(a: AarExperimentRecord, b: AarExperimentRecord): number {
+function compareExperimentRuns(a: ExperimentRunRecord, b: ExperimentRunRecord): number {
   const timeCompare = a.submitted_at.localeCompare(b.submitted_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.aar_experiment_id.localeCompare(b.aar_experiment_id);
+  return a.experiment_run_id.localeCompare(b.experiment_run_id);
 }
 
 function compareTradingEvaluationResults(
@@ -4030,16 +4030,16 @@ function compareTradingEvaluationResults(
   return a.trading_evaluation_result_id.localeCompare(b.trading_evaluation_result_id);
 }
 
-function compareAarProposalMaterializationAttempts(
-  a: AarProposalMaterializationAttemptRecord,
-  b: AarProposalMaterializationAttemptRecord
+function compareArtifactChangeProposalMaterializationAttempts(
+  a: ArtifactChangeProposalMaterializationAttemptRecord,
+  b: ArtifactChangeProposalMaterializationAttemptRecord
 ): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.aar_proposal_materialization_attempt_id.localeCompare(
-    b.aar_proposal_materialization_attempt_id
+  return a.artifact_change_proposal_materialization_attempt_id.localeCompare(
+    b.artifact_change_proposal_materialization_attempt_id
   );
 }
 
@@ -4055,8 +4055,7 @@ function comparisonSetIncludesRun(
 function evaluationRunRefsForComparisonSet(
   comparisonSet: EvaluationComparisonSetRecord
 ): Ref[] {
-  const legacyRef = (comparisonSet as { evaluation_run_record_ref?: Ref }).evaluation_run_record_ref;
-  return comparisonSet.evaluation_run_refs ?? (legacyRef ? [legacyRef] : []);
+  return comparisonSet.evaluation_run_refs ?? [];
 }
 
 function defaultEvidenceClassificationRecords(input: {
@@ -4374,7 +4373,7 @@ function validateBoundedRuntimeAuthorityInput(
   }
   if (
     !raw.intent ||
-    !isOrderIntentKind(raw.intent.intent_kind) ||
+    !isOrderIntentDraftKind(raw.intent.intent_kind) ||
     (raw.intent.side !== undefined && raw.intent.side !== "buy" && raw.intent.side !== "sell") ||
     (
       raw.intent.order_type !== undefined &&
@@ -4456,7 +4455,7 @@ function validateRuntimeControlAuditInput(
     !isRuntimeControlCommandReason(raw.command.reason) ||
     (
       raw.command.requested_lifecycle_status !== undefined &&
-      !isTraderSystemRuntimeLifecycleStatus(raw.command.requested_lifecycle_status)
+      !isTradingSystemRuntimeLifecycleStatus(raw.command.requested_lifecycle_status)
     ) ||
     (raw.command.actor_ref !== undefined && !isRef(raw.command.actor_ref)) ||
     (
@@ -4465,7 +4464,7 @@ function validateRuntimeControlAuditInput(
     ) ||
     (raw.command.reason_summary !== undefined && !nonEmpty(raw.command.reason_summary)) ||
     (raw.command.trace_ref !== undefined && !isRef(raw.command.trace_ref, "trace_placeholder")) ||
-    !isOptionalRefArray(raw.command.related_order_intent_refs) ||
+    !isOptionalRefArray(raw.command.related_order_intent_draft_refs) ||
     !isOptionalRefArray(raw.command.related_gateway_decision_refs) ||
     !isOptionalRefArray(raw.command.related_execution_attempt_refs)
   ) {
@@ -4484,10 +4483,10 @@ function validateRuntimeControlAuditInput(
     ) ||
     (
       raw.decision.resulting_lifecycle_status !== undefined &&
-      !isTraderSystemRuntimeLifecycleStatus(raw.decision.resulting_lifecycle_status)
+      !isTradingSystemRuntimeLifecycleStatus(raw.decision.resulting_lifecycle_status)
     ) ||
     (raw.decision.trace_ref !== undefined && !isRef(raw.decision.trace_ref, "trace_placeholder")) ||
-    !isOptionalRefArray(raw.decision.related_order_intent_refs) ||
+    !isOptionalRefArray(raw.decision.related_order_intent_draft_refs) ||
     !isOptionalRefArray(raw.decision.related_gateway_decision_refs) ||
     !isOptionalRefArray(raw.decision.related_execution_attempt_refs)
   ) {
@@ -4504,12 +4503,12 @@ function validateRuntimeControlAuditInput(
     (raw.audit_event.actor_ref !== undefined && !isRef(raw.audit_event.actor_ref)) ||
     (
       raw.audit_event.runtime_lifecycle_status !== undefined &&
-      !isTraderSystemRuntimeLifecycleStatus(raw.audit_event.runtime_lifecycle_status)
+      !isTradingSystemRuntimeLifecycleStatus(raw.audit_event.runtime_lifecycle_status)
     ) ||
     (raw.audit_event.message !== undefined && !nonEmpty(raw.audit_event.message)) ||
     (raw.audit_event.trace_ref !== undefined && !isRef(raw.audit_event.trace_ref, "trace_placeholder")) ||
     !isOptionalRefArray(raw.audit_event.supporting_record_refs) ||
-    !isOptionalRefArray(raw.audit_event.related_order_intent_refs) ||
+    !isOptionalRefArray(raw.audit_event.related_order_intent_draft_refs) ||
     !isOptionalRefArray(raw.audit_event.related_gateway_decision_refs) ||
     !isOptionalRefArray(raw.audit_event.related_execution_attempt_refs)
   ) {
@@ -4527,7 +4526,7 @@ function isEvidenceDispositionReason(value: unknown): value is EvidenceDispositi
   return typeof value === "string" && evidenceDispositionReasons.has(value as EvidenceDispositionReason);
 }
 
-function isOrderIntentKind(value: unknown): boolean {
+function isOrderIntentDraftKind(value: unknown): boolean {
   return value === "place_order" || value === "cancel_order" || value === "adjust_position";
 }
 
@@ -4629,9 +4628,9 @@ function isRuntimeAuditEventKind(value: unknown): value is RuntimeAuditEventKind
   );
 }
 
-function isTraderSystemRuntimeLifecycleStatus(
+function isTradingSystemRuntimeLifecycleStatus(
   value: unknown
-): value is TraderSystemRuntimeLifecycleStatus {
+): value is TradingSystemRuntimeLifecycleStatus {
   return (
     value === "registered" ||
     value === "deployed" ||
@@ -4642,7 +4641,7 @@ function isTraderSystemRuntimeLifecycleStatus(
     value === "stopped" ||
     value === "failed" ||
     value === "killed" ||
-    value === "review_required" ||
+    value === "human_review_required" ||
     value === "fixture_placeholder"
   );
 }
@@ -4670,7 +4669,7 @@ function isRunnableArtifactRecord(value: unknown): value is RunnableArtifactReco
     isRef(raw.capability_policy_ref, "capability_policy") &&
     Array.isArray(raw.provenance_refs) &&
     raw.provenance_refs.every((item) => isRef(item)) &&
-    (raw.status === "registered" || raw.status === "deprecated") &&
+    raw.status === "registered" &&
     nonEmpty(raw.created_at) &&
     raw.authority_status === "not_live" &&
     (
@@ -4680,20 +4679,20 @@ function isRunnableArtifactRecord(value: unknown): value is RunnableArtifactReco
   );
 }
 
-function isAarFindingRecord(value: unknown): value is AarFindingRecord {
+function isResearchFindingRecord(value: unknown): value is ResearchFindingRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<AarFindingRecord>;
+  const raw = value as Partial<ResearchFindingRecord>;
   return (
-    raw.record_kind === "aar_finding" &&
+    raw.record_kind === "research_finding" &&
     raw.version === 1 &&
-    nonEmpty(raw.aar_finding_id) &&
-    isRef(raw.researcher_ref, "aar_researcher") &&
-    isRef(raw.research_direction_ref, "aar_research_direction") &&
-    isRef(raw.aar_experiment_ref, "aar_experiment") &&
+    nonEmpty(raw.research_finding_id) &&
+    isRef(raw.research_worker_ref, "research_worker") &&
+    isRef(raw.research_direction_ref, "research_direction") &&
+    isRef(raw.experiment_run_ref, "experiment_run") &&
     isRef(raw.trading_evaluation_result_ref, "trading_evaluation_result") &&
-    isAarFindingKind(raw.finding_kind) &&
+    isResearchFindingKind(raw.finding_kind) &&
     nonEmpty(raw.summary) &&
     Array.isArray(raw.supporting_record_refs) &&
     raw.supporting_record_refs.every((item) => isRef(item)) &&
@@ -4702,108 +4701,108 @@ function isAarFindingRecord(value: unknown): value is AarFindingRecord {
   );
 }
 
-function isAarArtifactLineageRecord(value: unknown): value is AarArtifactLineageRecord {
+function isArtifactLineageRecord(value: unknown): value is ArtifactLineageRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<AarArtifactLineageRecord>;
+  const raw = value as Partial<ArtifactLineageRecord>;
   return (
-    raw.record_kind === "aar_artifact_lineage" &&
+    raw.record_kind === "artifact_lineage" &&
     raw.version === 1 &&
-    nonEmpty(raw.aar_artifact_lineage_id) &&
+    nonEmpty(raw.artifact_lineage_id) &&
     isRef(raw.child_runnable_artifact_ref, "runnable_artifact") &&
     (raw.parent_runnable_artifact_ref === undefined ||
       isRef(raw.parent_runnable_artifact_ref, "runnable_artifact")) &&
     Array.isArray(raw.source_finding_refs) &&
     raw.source_finding_refs.length > 0 &&
-    raw.source_finding_refs.every((item) => isRef(item, "aar_finding")) &&
-    (raw.created_by_researcher_ref === undefined ||
-      isRef(raw.created_by_researcher_ref, "aar_researcher")) &&
+    raw.source_finding_refs.every((item) => isRef(item, "research_finding")) &&
+    (raw.created_by_research_worker_ref === undefined ||
+      isRef(raw.created_by_research_worker_ref, "research_worker")) &&
     nonEmpty(raw.created_at) &&
     raw.authority_status === "lineage_only"
   );
 }
 
-function isAarArtifactProposalRecord(value: unknown): value is AarArtifactProposalRecord {
+function isArtifactChangeProposalRecord(value: unknown): value is ArtifactChangeProposalRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<AarArtifactProposalRecord>;
+  const raw = value as Partial<ArtifactChangeProposalRecord>;
   return (
-    raw.record_kind === "aar_artifact_proposal" &&
+    raw.record_kind === "artifact_change_proposal" &&
     raw.version === 1 &&
-    nonEmpty(raw.aar_artifact_proposal_id) &&
-    isRef(raw.researcher_ref, "aar_researcher") &&
-    isRef(raw.research_direction_ref, "aar_research_direction") &&
+    nonEmpty(raw.artifact_change_proposal_id) &&
+    isRef(raw.research_worker_ref, "research_worker") &&
+    isRef(raw.research_direction_ref, "research_direction") &&
     isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
     isRef(raw.proposed_runnable_artifact_ref, "runnable_artifact") &&
     (raw.parent_runnable_artifact_ref === undefined ||
       isRef(raw.parent_runnable_artifact_ref, "runnable_artifact")) &&
     Array.isArray(raw.source_finding_refs) &&
     raw.source_finding_refs.length > 0 &&
-    raw.source_finding_refs.every((item) => isRef(item, "aar_finding")) &&
+    raw.source_finding_refs.every((item) => isRef(item, "research_finding")) &&
     (
       raw.anti_hacking_finding_refs === undefined ||
       (
         Array.isArray(raw.anti_hacking_finding_refs) &&
-        raw.anti_hacking_finding_refs.every((item) => isRef(item, "aar_finding"))
+        raw.anti_hacking_finding_refs.every((item) => isRef(item, "research_finding"))
       )
     ) &&
     nonEmpty(raw.proposal_summary) &&
     nonEmpty(raw.requested_change_summary) &&
     (raw.expected_improvement_summary === undefined || nonEmpty(raw.expected_improvement_summary)) &&
     nonEmpty(raw.created_at) &&
-    isAarArtifactProposalStatus(raw.status) &&
+    isArtifactChangeProposalStatus(raw.status) &&
     raw.authority_status === "proposal_only"
   );
 }
 
-function isAarOrchestrationRunRecord(value: unknown): value is AarOrchestrationRunRecord {
+function isResearchOrchestrationRunRecord(value: unknown): value is ResearchOrchestrationRunRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<AarOrchestrationRunRecord>;
+  const raw = value as Partial<ResearchOrchestrationRunRecord>;
   return (
-    raw.record_kind === "aar_orchestration_run" &&
+    raw.record_kind === "research_orchestration_run" &&
     raw.version === 1 &&
-    nonEmpty(raw.aar_orchestration_run_id) &&
-    isRef(raw.researcher_ref, "aar_researcher") &&
-    isRef(raw.research_direction_ref, "aar_research_direction") &&
+    nonEmpty(raw.research_orchestration_run_id) &&
+    isRef(raw.research_worker_ref, "research_worker") &&
+    isRef(raw.research_direction_ref, "research_direction") &&
     isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
     Array.isArray(raw.input_finding_refs) &&
     raw.input_finding_refs.length > 0 &&
-    raw.input_finding_refs.every((item) => isRef(item, "aar_finding")) &&
+    raw.input_finding_refs.every((item) => isRef(item, "research_finding")) &&
     (
       raw.input_lineage_refs === undefined ||
       (
         Array.isArray(raw.input_lineage_refs) &&
-        raw.input_lineage_refs.every((item) => isRef(item, "aar_artifact_lineage"))
+        raw.input_lineage_refs.every((item) => isRef(item, "artifact_lineage"))
       )
     ) &&
     (raw.output_artifact_proposal_ref === undefined ||
-      isRef(raw.output_artifact_proposal_ref, "aar_artifact_proposal")) &&
+      isRef(raw.output_artifact_proposal_ref, "artifact_change_proposal")) &&
     (raw.output_runnable_artifact_ref === undefined ||
       isRef(raw.output_runnable_artifact_ref, "runnable_artifact")) &&
-    (raw.output_lineage_ref === undefined || isRef(raw.output_lineage_ref, "aar_artifact_lineage")) &&
+    (raw.output_lineage_ref === undefined || isRef(raw.output_lineage_ref, "artifact_lineage")) &&
     (raw.trace_ref === undefined || isRef(raw.trace_ref, "trace_placeholder")) &&
     nonEmpty(raw.started_at) &&
     (raw.completed_at === undefined || nonEmpty(raw.completed_at)) &&
-    isAarOrchestrationRunStatus(raw.status) &&
+    isResearchOrchestrationRunStatus(raw.status) &&
     raw.authority_status === "research_only"
   );
 }
 
-function isAarExperimentRecord(value: unknown): value is AarExperimentRecord {
+function isExperimentRunRecord(value: unknown): value is ExperimentRunRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<AarExperimentRecord>;
+  const raw = value as Partial<ExperimentRunRecord>;
   return (
-    raw.record_kind === "aar_experiment" &&
+    raw.record_kind === "experiment_run" &&
     raw.version === 1 &&
-    nonEmpty(raw.aar_experiment_id) &&
-    isRef(raw.researcher_ref, "aar_researcher") &&
-    isRef(raw.research_direction_ref, "aar_research_direction") &&
+    nonEmpty(raw.experiment_run_id) &&
+    isRef(raw.research_worker_ref, "research_worker") &&
+    isRef(raw.research_direction_ref, "research_direction") &&
     isRef(raw.runnable_artifact_ref, "runnable_artifact") &&
     isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
     (
@@ -4819,7 +4818,7 @@ function isAarExperimentRecord(value: unknown): value is AarExperimentRecord {
     ) &&
     (raw.trace_ref === undefined || isRef(raw.trace_ref, "trace_placeholder")) &&
     nonEmpty(raw.submitted_at) &&
-    isAarExperimentStatus(raw.status) &&
+    isExperimentRunStatus(raw.status) &&
     raw.authority_status === "not_live"
   );
 }
@@ -4833,7 +4832,7 @@ function isTradingEvaluationResultRecord(value: unknown): value is TradingEvalua
     raw.record_kind === "trading_evaluation_result" &&
     raw.version === 1 &&
     nonEmpty(raw.trading_evaluation_result_id) &&
-    isRef(raw.aar_experiment_ref, "aar_experiment") &&
+    isRef(raw.experiment_run_ref, "experiment_run") &&
     isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
     isRef(raw.evaluator_ref, "external_evaluator") &&
     isTradingEvaluationResultStatus(raw.result_status) &&
@@ -4855,7 +4854,7 @@ function isTradingEvaluationResultRecord(value: unknown): value is TradingEvalua
   );
 }
 
-function isAarFindingKind(value: unknown): boolean {
+function isResearchFindingKind(value: unknown): boolean {
   return (
     value === "positive_result" ||
     value === "negative_result" ||
@@ -4865,15 +4864,15 @@ function isAarFindingKind(value: unknown): boolean {
   );
 }
 
-function isAarArtifactProposalStatus(value: unknown): boolean {
+function isArtifactChangeProposalStatus(value: unknown): boolean {
   return value === "proposed" || value === "materialized" || value === "discarded";
 }
 
-function isAarOrchestrationRunStatus(value: unknown): boolean {
+function isResearchOrchestrationRunStatus(value: unknown): boolean {
   return value === "started" || value === "proposed" || value === "failed" || value === "discarded";
 }
 
-function isAarExperimentStatus(value: unknown): boolean {
+function isExperimentRunStatus(value: unknown): boolean {
   return value === "submitted" || value === "evaluated" || value === "failed" || value === "discarded";
 }
 
@@ -4955,7 +4954,7 @@ function isRunnableArtifactOutputKind(value: unknown): boolean {
     value === "runtime_heartbeat" ||
     value === "metric_snapshot" ||
     value === "diagnostic_artifact" ||
-    value === "order_intent"
+    value === "order_intent_draft"
   );
 }
 
@@ -5019,7 +5018,7 @@ function boundedRuntimeAuthorityRecordIds(input: {
     input.idempotency_key
   ].join(":"));
   return {
-    orderIntent: `order-intent-${suffix}`,
+    orderIntent: `order-intent-draft-${suffix}`,
     gatewayDecision: `gateway-decision-${suffix}`,
     executionAttempt: `execution-attempt-${suffix}`
   };
@@ -5129,19 +5128,19 @@ function evidenceClassificationRecordId(input: {
   ].join(":"))}`;
 }
 
-function validateAarProposalMaterializationInput(
-  input: AarProposalMaterializationInput
-): AarProposalMaterializationFailureReason | undefined {
+function validateArtifactChangeProposalMaterializationInput(
+  input: ArtifactChangeProposalMaterializationInput
+): ArtifactChangeProposalMaterializationFailureReason | undefined {
   if (!input || typeof input !== "object") {
     return "provider_output_schema_invalid";
   }
 
-  const raw = input as Partial<AarProposalMaterializationInput>;
+  const raw = input as Partial<ArtifactChangeProposalMaterializationInput>;
   const result = raw.provider_result as
-    | Partial<AarProposalMaterializationInput["provider_result"]>
+    | Partial<ArtifactChangeProposalMaterializationInput["provider_result"]>
     | undefined;
-  const provider = (result?.provider ?? {}) as Partial<AarProposalProviderAttribution>;
-  const output = (result?.output ?? {}) as Partial<AarProposalProviderOutput>;
+  const provider = (result?.provider ?? {}) as Partial<ArtifactChangeProposalProviderAttribution>;
+  const output = (result?.output ?? {}) as Partial<ArtifactChangeProposalProviderOutput>;
 
   if (
     !nonEmpty(raw.idempotency_key) ||
@@ -5158,16 +5157,16 @@ function validateAarProposalMaterializationInput(
     !isRequiredRefArray(result.debug_artifact_refs) ||
     !nonEmpty(result.idempotency_key) ||
     result.authority_status !== "proposal_input_only" ||
-    output.output_kind !== "aar_artifact_proposal_input" ||
+    output.output_kind !== "artifact_change_proposal_input" ||
     !isRef(output.trading_evaluation_task_ref, "trading_evaluation_task") ||
     !Array.isArray(output.source_finding_refs) ||
     output.source_finding_refs.length === 0 ||
-    !output.source_finding_refs.every((item) => isRef(item, "aar_finding")) ||
+    !output.source_finding_refs.every((item) => isRef(item, "research_finding")) ||
     (
       output.anti_hacking_finding_refs !== undefined &&
       (
         !Array.isArray(output.anti_hacking_finding_refs) ||
-        !output.anti_hacking_finding_refs.every((item) => isRef(item, "aar_finding"))
+        !output.anti_hacking_finding_refs.every((item) => isRef(item, "research_finding"))
       )
     ) ||
     (
@@ -5199,7 +5198,7 @@ function validateAarProposalMaterializationInput(
     return "provider_output_schema_invalid";
   }
 
-  if (containsForbiddenAarProposalProviderOutputKey(result)) {
+  if (containsForbiddenArtifactChangeProposalProviderOutputKey(result)) {
     return "provider_output_rejected";
   }
 
@@ -5239,9 +5238,9 @@ function validateCandidateMaterializationInput(
   }
 
   if (
-    candidate.first_market_scope !== "binance_btc_perpetual_futures" ||
-    spec.market !== "Binance" ||
-    spec.instrument !== "BTC perpetual futures" ||
+    candidate.first_market_scope !== "external_trading_api_fixture" ||
+    spec.market !== "ExternalTradingApiProvider" ||
+    spec.instrument !== "generic trading instruments" ||
     containsForbiddenMaterializationKey(input)
   ) {
     return "materialization_rejected";
@@ -5263,7 +5262,7 @@ function isProviderKind(value: unknown): value is ProviderKind {
   );
 }
 
-function containsForbiddenAarProposalProviderOutputKey(value: unknown): boolean {
+function containsForbiddenArtifactChangeProposalProviderOutputKey(value: unknown): boolean {
   const forbiddenKeys = new Set([
     "evidence",
     "evidence_record",
@@ -5284,12 +5283,12 @@ function containsForbiddenAarProposalProviderOutputKey(value: unknown): boolean 
   ]);
 
   if (Array.isArray(value)) {
-    return value.some(containsForbiddenAarProposalProviderOutputKey);
+    return value.some(containsForbiddenArtifactChangeProposalProviderOutputKey);
   }
   if (value && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>).some(([key, child]) => {
       const normalized = key.toLowerCase();
-      return forbiddenKeys.has(normalized) || containsForbiddenAarProposalProviderOutputKey(child);
+      return forbiddenKeys.has(normalized) || containsForbiddenArtifactChangeProposalProviderOutputKey(child);
     });
   }
   return false;

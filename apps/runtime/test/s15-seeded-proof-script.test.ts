@@ -19,7 +19,7 @@ describe("S15 seeded Codex SDX trading research proof script", () => {
     ]);
 
     expect(result.code, scriptOutput(result)).toBe(0);
-    expect(result.stdout).toContain("S15 Seeded Codex SDX Trading AAR proof");
+    expect(result.stdout).toContain("S15 Seeded Codex SDX Trading research proof");
     expect(result.stdout).toContain("session_id=example");
     expect(result.stdout).toContain("seed_artifact=/tmp/seed");
     expect(result.stdout).toContain("seed_selector_command=<explicit seed-artifact>");
@@ -261,7 +261,7 @@ function makeEntry(
       score: 1,
       metrics: [],
       summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_results: [
         makeScenarioResult(sessionId, iteration, "trend_long"),
         makeScenarioResult(sessionId, iteration, "range_flat")
@@ -279,8 +279,8 @@ function makeScenarioResult(sessionId: string, iteration: number, scenarioId: st
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent.",
-    risk_decision: "valid_order_intent",
+    summary: "Accepted order intent draft.",
+    risk_decision: "valid_order_intent_draft",
     events_path: `/tmp/${sessionId}/iterations/${String(iteration).padStart(3, "0")}/run/${scenarioId}/events.jsonl`,
     provider_request_count: 3,
     runner_command_count: 5

@@ -335,7 +335,7 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
       "pkill",
       "-TERM",
       "-f",
-      "fixtures/trader-systems/clock.py"
+      "fixtures/trading-systems/clock.py"
     ]);
     const stopResult = await this.runSbxCommand([this.sbxPath, "stop", sandboxName]);
     const stopped = stopResult.exit_code === 0;

@@ -1,15 +1,16 @@
 import type {
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
-  CandidateRunComparisonReadModel,
-  CandidateRunDetailReadModel,
-  CandidateRunEvidenceReadModel,
-  CandidateRunEvidencePostureReadModel,
+  ReplayRunComparisonReadModel,
+  ReplayRunDetailReadModel,
+  ReplayRunEvidenceReadModel,
+  ReplayRunValidationStateReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
   RuntimeControlAuditInput,
-  RuntimeControlAuditOutcome
+  RuntimeControlAuditOutcome,
+  TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 
 const runtimeBaseUrl = import.meta.env.VITE_OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
@@ -40,56 +41,65 @@ export async function fetchCandidateMaterializationAttempts(): Promise<Candidate
   return body.attempts;
 }
 
-export async function fetchCandidateRunEvidence(candidateId: string): Promise<CandidateRunEvidenceReadModel[]> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs?limit=5`);
+export async function fetchTradingExecutionModeContracts(): Promise<TradingSystemExecutionModeContractReadModel[]> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-execution-modes`);
   if (!response.ok) {
-    throw new Error(`Failed to load candidate runs for ${candidateId}: ${response.status}`);
+    throw new Error(`Failed to load trading execution modes: ${response.status}`);
   }
-  const body = (await response.json()) as { runs: CandidateRunEvidenceReadModel[] };
+  const body = (await response.json()) as { modes: TradingSystemExecutionModeContractReadModel[] };
+  return body.modes;
+}
+
+export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs?limit=5`);
+  if (!response.ok) {
+    throw new Error(`Failed to load replay runs for ${candidateId}: ${response.status}`);
+  }
+  const body = (await response.json()) as { runs: ReplayRunEvidenceReadModel[] };
   return body.runs;
 }
 
-export async function fetchCandidateRunDetail(
+export async function fetchReplayRunDetail(
   candidateId: string,
   runId: string
-): Promise<CandidateRunDetailReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}`);
+): Promise<ReplayRunDetailReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs/${runId}`);
   if (!response.ok) {
-    throw new Error(`Failed to load candidate run ${runId} for ${candidateId}: ${response.status}`);
+    throw new Error(`Failed to load replay run ${runId} for ${candidateId}: ${response.status}`);
   }
-  const body = (await response.json()) as { run: CandidateRunDetailReadModel };
+  const body = (await response.json()) as { run: ReplayRunDetailReadModel };
   return body.run;
 }
 
-export async function fetchCandidateRunComparison(
+export async function fetchReplayRunComparison(
   candidateId: string,
   runId: string,
   baselineRunId: string
-): Promise<CandidateRunComparisonReadModel> {
+): Promise<ReplayRunComparisonReadModel> {
   const response = await fetch(
-    `${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}/comparison?baseline_run_id=${encodeURIComponent(baselineRunId)}`
+    `${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs/${runId}/comparison?baseline_run_id=${encodeURIComponent(baselineRunId)}`
   );
   if (!response.ok) {
-    throw new Error(`Failed to compare candidate run ${runId} for ${candidateId}: ${response.status}`);
+    throw new Error(`Failed to compare replay run ${runId} for ${candidateId}: ${response.status}`);
   }
-  const body = (await response.json()) as { comparison: CandidateRunComparisonReadModel };
+  const body = (await response.json()) as { comparison: ReplayRunComparisonReadModel };
   return body.comparison;
 }
 
-export async function fetchCandidateRunEvidencePosture(
+export async function fetchReplayRunValidationState(
   candidateId: string,
   runId: string,
   baselineRunId?: string
-): Promise<CandidateRunEvidencePostureReadModel> {
+): Promise<ReplayRunValidationStateReadModel> {
   const query = baselineRunId ? `?baseline_run_id=${encodeURIComponent(baselineRunId)}` : "";
   const response = await fetch(
-    `${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}/evidence-posture${query}`
+    `${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs/${runId}/validation-state${query}`
   );
   if (!response.ok) {
-    throw new Error(`Failed to load candidate run evidence posture ${runId} for ${candidateId}: ${response.status}`);
+    throw new Error(`Failed to load replay run validation state ${runId} for ${candidateId}: ${response.status}`);
   }
-  const body = (await response.json()) as { evidence_posture: CandidateRunEvidencePostureReadModel };
-  return body.evidence_posture;
+  const body = (await response.json()) as { validation_state: ReplayRunValidationStateReadModel };
+  return body.validation_state;
 }
 
 export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;
@@ -104,13 +114,13 @@ export type RuntimeControlCommandOutcome = RuntimeControlAuditOutcome & {
   status: "recorded";
 };
 
-export interface CandidateReplayRunCommandPayload {
+export interface ReplayRunCommandPayload {
   runner_kind: "host_process";
 }
 
-export interface CandidateReplayRunOutcome {
+export interface ReplayRunOutcome {
   candidate_id: string;
-  run: CandidateRunEvidenceReadModel;
+  run: ReplayRunEvidenceReadModel;
 }
 
 export function runtimeAuthorityCommandPayload(
@@ -212,7 +222,7 @@ export function runtimeControlPausePayload(
   };
 }
 
-export async function recordCandidateRuntimeAuthority(
+export async function recordReplayRuntimeAuthority(
   candidate: CandidateInspectReadModel
 ): Promise<RuntimeAuthorityCommandOutcome> {
   const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/runtime-authority`, {
@@ -226,7 +236,7 @@ export async function recordCandidateRuntimeAuthority(
   return (await response.json()) as RuntimeAuthorityCommandOutcome;
 }
 
-export async function recordCandidateRuntimeControl(
+export async function recordReplayRuntimeControl(
   candidate: CandidateInspectReadModel
 ): Promise<RuntimeControlCommandOutcome> {
   const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/runtime-control`, {
@@ -240,22 +250,22 @@ export async function recordCandidateRuntimeControl(
   return (await response.json()) as RuntimeControlCommandOutcome;
 }
 
-export function candidateReplayRunPayload(): CandidateReplayRunCommandPayload {
+export function replayRunPayload(): ReplayRunCommandPayload {
   return {
     runner_kind: "host_process"
   };
 }
 
-export async function runCandidateReplay(
+export async function runReplay(
   candidate: CandidateInspectReadModel
-): Promise<CandidateReplayRunOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/candidate-runs`, {
+): Promise<ReplayRunOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/replay-runs`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(candidateReplayRunPayload())
+    body: JSON.stringify(replayRunPayload())
   });
   if (!response.ok) {
     throw new Error(`Failed to run candidate replay for ${candidate.candidate_id}: ${response.status}`);
   }
-  return (await response.json()) as CandidateReplayRunOutcome;
+  return (await response.json()) as ReplayRunOutcome;
 }

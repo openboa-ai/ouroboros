@@ -22,7 +22,7 @@ describe("S13 trading research best artifact selector", () => {
       const result = await runScript(["scripts/trading-research-best-artifact.mjs", "--root", root]);
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("Trading AAR best artifact");
+      expect(result.stdout).toContain("Trading research best artifact");
       expect(result.stdout).toContain(`root=${root}`);
       expect(result.stdout).toContain("scanned_notebooks=3");
       expect(result.stdout).toContain("session_id=latest-pass");
@@ -96,7 +96,7 @@ describe("S13 trading research best artifact selector", () => {
       const result = await runScript(["scripts/trading-research-best-artifact.mjs", "--root", root]);
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("NO_PASSING_TRADING_AAR_BEST_ARTIFACT");
+      expect(result.stdout).toContain("NO_PASSING_TRADING_RESEARCH_BEST_ARTIFACT");
       expect(result.stdout).toContain("scanned_notebooks=1");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -161,7 +161,7 @@ function makeEntry(
       score: 1,
       metrics: [],
       summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_results: [
         makeScenarioResult(sessionId, iteration, "trend_long"),
         makeScenarioResult(sessionId, iteration, "range_flat")
@@ -179,8 +179,8 @@ function makeScenarioResult(sessionId: string, iteration: number, scenarioId: st
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent.",
-    risk_decision: "valid_order_intent",
+    summary: "Accepted order intent draft.",
+    risk_decision: "valid_order_intent_draft",
     events_path: `/tmp/${sessionId}/iterations/${String(iteration).padStart(3, "0")}/run/${scenarioId}/events.jsonl`,
     provider_request_count: 3,
     runner_command_count: 5
@@ -221,7 +221,7 @@ function makeBlockedNotebook(sessionId: string, completedAt: string) {
             }
           ],
           summary: "Agent failed before artifact execution.",
-          risk_decision: "no_order_intent"
+          risk_decision: "no_order_intent_draft"
         }
       }
     ]
