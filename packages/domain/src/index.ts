@@ -1340,7 +1340,7 @@ export interface CandidateSummaryReadModel {
   status: CandidateStatus;
   active_version_id: string;
   fixture_notice: FixtureNotice;
-  latest_readiness?: CandidateLatestReadinessReadModel;
+  latest_evidence_posture?: CandidateLatestEvidencePostureReadModel;
 }
 
 export interface PlaceholderSummary {
@@ -1553,26 +1553,26 @@ export interface CandidateRunComparisonReadModel {
   };
 }
 
-export type CandidateRunReadinessStatus =
-  | "ready"
-  | "review_needed"
-  | "blocked"
-  | "no_baseline";
+export type CandidateRunEvidencePostureStatus =
+  | "evidence_sufficient"
+  | "review_required"
+  | "evidence_blocked"
+  | "baseline_required";
 
-export type CandidateLatestReadinessStatus =
-  | CandidateRunReadinessStatus
-  | "no_runs";
+export type CandidateLatestEvidencePostureStatus =
+  | CandidateRunEvidencePostureStatus
+  | "run_required";
 
-export interface CandidateRunReadinessReadModel {
+export interface CandidateRunEvidencePostureReadModel {
   candidate_id: string;
   selected_run_id: string;
   baseline_run_id?: string;
   comparison_verdict?: CandidateRunComparisonVerdict;
-  readiness: CandidateRunReadinessStatus;
+  evidence_posture: CandidateRunEvidencePostureStatus;
   reasons: string[];
   required_next_evidence: string[];
   authority_status: "not_live";
-  evidence_label: "readiness_not_authority";
+  evidence_label: "evidence_posture_not_authority";
   no_authority: {
     live_exchange: false;
     order_authority: false;
@@ -1581,16 +1581,16 @@ export interface CandidateRunReadinessReadModel {
   };
 }
 
-export interface CandidateLatestReadinessReadModel {
+export interface CandidateLatestEvidencePostureReadModel {
   candidate_id: string;
   selected_run_id?: string;
   baseline_run_id?: string;
   comparison_verdict?: CandidateRunComparisonVerdict;
-  readiness: CandidateLatestReadinessStatus;
+  evidence_posture: CandidateLatestEvidencePostureStatus;
   reasons: string[];
   required_next_evidence: string[];
   authority_status: "not_live";
-  evidence_label: "readiness_not_authority";
+  evidence_label: "evidence_posture_not_authority";
   no_authority: {
     live_exchange: false;
     order_authority: false;

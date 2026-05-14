@@ -26,10 +26,10 @@ import {
 } from "./runtime-instances/sandbox-runtime-adapter";
 import {
   DEFAULT_CANDIDATE_RUN_ROOT,
-  getCandidateLatestReadiness,
+  getCandidateLatestEvidencePosture,
   getCandidateRunComparison,
   getCandidateRunDetail,
-  getCandidateRunReadiness,
+  getCandidateRunEvidencePosture,
   listCandidateRunEvidence
 } from "./trading-candidate/candidate-run-ledger";
 import {
@@ -262,7 +262,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     Params: { candidate_id: string; run_id: string };
     Querystring: { baseline_run_id?: string };
   }>(
-    "/api/candidates/:candidate_id/candidate-runs/:run_id/readiness",
+    "/api/candidates/:candidate_id/candidate-runs/:run_id/evidence-posture",
     async (request, reply) => {
       const candidate = await getCandidateReadModel(
         store,
@@ -277,15 +277,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
 
-      const readiness = await getCandidateRunReadiness({
+      const evidencePosture = await getCandidateRunEvidencePosture({
         root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
         candidate_id: request.params.candidate_id,
         run_id: request.params.run_id,
         baseline_run_id: request.query.baseline_run_id
       });
-      if (!readiness) {
+      if (!evidencePosture) {
         return reply.code(404).send({
-          error: "candidate_run_readiness_not_found",
+          error: "candidate_run_evidence_posture_not_found",
           candidate_id: request.params.candidate_id,
           run_id: request.params.run_id,
           baseline_run_id: request.query.baseline_run_id
@@ -294,7 +294,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
       return {
         candidate_id: request.params.candidate_id,
-        readiness
+        evidence_posture: evidencePosture
       };
     }
   );
@@ -1008,7 +1008,7 @@ async function listCandidateSummaries(
     ...promotedCandidates,
     ...storeCandidates.filter((candidate) => !promotedCandidateIds.has(candidate.candidate_id))
   ];
-  return Promise.all(candidates.map((candidate) => withLatestReadiness(candidate, candidateRunRoot)));
+  return Promise.all(candidates.map((candidate) => withLatestEvidencePosture(candidate, candidateRunRoot)));
 }
 
 async function getCandidateReadModel(
@@ -1021,16 +1021,16 @@ async function getCandidateReadModel(
     root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
     candidate_id: candidateId
   }) ?? await store.getCandidate(candidateId);
-  return candidate ? withLatestReadiness(candidate, candidateRunRoot) : undefined;
+  return candidate ? withLatestEvidencePosture(candidate, candidateRunRoot) : undefined;
 }
 
-async function withLatestReadiness<T extends CandidateSummaryReadModel>(
+async function withLatestEvidencePosture<T extends CandidateSummaryReadModel>(
   candidate: T,
   candidateRunRoot?: string
 ): Promise<T> {
   return {
     ...candidate,
-    latest_readiness: await getCandidateLatestReadiness({
+    latest_evidence_posture: await getCandidateLatestEvidencePosture({
       root: candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
       candidate_id: candidate.candidate_id
     })

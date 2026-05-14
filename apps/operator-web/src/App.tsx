@@ -3,12 +3,12 @@ import type {
   CandidateEvaluationReadModel,
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
-  CandidateLatestReadinessReadModel,
+  CandidateLatestEvidencePostureReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
-  CandidateRunReadinessReadModel,
+  CandidateRunEvidencePostureReadModel,
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel,
   CandidateSummaryReadModel,
@@ -19,7 +19,7 @@ import {
   fetchCandidateRunComparison,
   fetchCandidateRunDetail,
   fetchCandidateRunEvidence,
-  fetchCandidateRunReadiness,
+  fetchCandidateRunEvidencePosture,
   fetchCandidateSummaries,
   recordCandidateRuntimeAuthority,
   recordCandidateRuntimeControl,
@@ -35,7 +35,7 @@ interface AppState {
   candidateRunDetail?: CandidateRunDetailReadModel;
   candidateRunComparison?: CandidateRunComparisonReadModel;
   candidateRunComparisonBaselineId?: string;
-  candidateRunReadiness?: CandidateRunReadinessReadModel;
+  candidateRunEvidencePosture?: CandidateRunEvidencePostureReadModel;
   error?: string;
   loading: boolean;
   recordingRuntimeAuthority: boolean;
@@ -79,7 +79,7 @@ export function App() {
             candidateRunDetail: candidateRunSelection.candidateRunDetail,
             candidateRunComparison: candidateRunSelection.candidateRunComparison,
             candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-            candidateRunReadiness: candidateRunSelection.candidateRunReadiness,
+            candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -129,7 +129,7 @@ export function App() {
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
         candidateRunComparison: candidateRunSelection.candidateRunComparison,
         candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunReadiness: candidateRunSelection.candidateRunReadiness,
+        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
         loading: false
       }));
     } catch (error) {
@@ -153,7 +153,7 @@ export function App() {
       candidateRunDetail: undefined,
       candidateRunComparison: undefined,
       candidateRunComparisonBaselineId: baselineRunIdForSelection(current.candidateRuns, runId),
-      candidateRunReadiness: undefined,
+      candidateRunEvidencePosture: undefined,
       candidateRunError: undefined,
       candidateRunMessage: undefined
     }));
@@ -171,7 +171,7 @@ export function App() {
               candidateRunDetail: candidateRunSelection.candidateRunDetail,
               candidateRunComparison: candidateRunSelection.candidateRunComparison,
               candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-              candidateRunReadiness: candidateRunSelection.candidateRunReadiness
+              candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture
             }
           : current
       );
@@ -216,7 +216,7 @@ export function App() {
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
         candidateRunComparison: candidateRunSelection.candidateRunComparison,
         candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunReadiness: candidateRunSelection.candidateRunReadiness,
+        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
         runningCandidateReplay: false,
         candidateRunMessage: `replay recorded: ${outcome.run.run_id}`
       }));
@@ -258,7 +258,7 @@ export function App() {
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
         candidateRunComparison: candidateRunSelection.candidateRunComparison,
         candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunReadiness: candidateRunSelection.candidateRunReadiness,
+        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
         recordingRuntimeAuthority: false,
         runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
@@ -300,7 +300,7 @@ export function App() {
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
         candidateRunComparison: candidateRunSelection.candidateRunComparison,
         candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
-        candidateRunReadiness: candidateRunSelection.candidateRunReadiness,
+        candidateRunEvidencePosture: candidateRunSelection.candidateRunEvidencePosture,
         recordingRuntimeControl: false,
         runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
       }));
@@ -344,7 +344,7 @@ export function App() {
             candidateRunDetail={state.candidateRunDetail}
             candidateRunComparison={state.candidateRunComparison}
             candidateRunComparisonBaselineId={state.candidateRunComparisonBaselineId}
-            candidateRunReadiness={state.candidateRunReadiness}
+            candidateRunEvidencePosture={state.candidateRunEvidencePosture}
             onSelectCandidateRun={(runId) => void selectCandidateRun(runId)}
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
               ? () => void runReplay()
@@ -388,7 +388,7 @@ export function CandidateSummaryRow({
     >
       <span>{candidate.display_name}</span>
       <small>
-        {candidate.status} · latest readiness: {latestReadinessLabel(candidate.latest_readiness)}
+        {candidate.status} · latest evidence posture: {latestEvidencePostureLabel(candidate.latest_evidence_posture)}
       </small>
     </button>
   );
@@ -403,17 +403,17 @@ async function fetchCandidateRunSelection(
   candidateRunDetail?: CandidateRunDetailReadModel;
   candidateRunComparison?: CandidateRunComparisonReadModel;
   candidateRunComparisonBaselineId?: string;
-  candidateRunReadiness?: CandidateRunReadinessReadModel;
+  candidateRunEvidencePosture?: CandidateRunEvidencePostureReadModel;
 }> {
   const selectedRun = runs.find((run) => run.run_id === preferredRunId) ?? runs[0];
   if (!selectedRun) {
     return {};
   }
   const baselineRunId = baselineRunIdForSelection(runs, selectedRun.run_id);
-  const [candidateRunDetail, candidateRunComparison, candidateRunReadiness] = await Promise.all([
+  const [candidateRunDetail, candidateRunComparison, candidateRunEvidencePosture] = await Promise.all([
     fetchCandidateRunDetail(candidateId, selectedRun.run_id),
     baselineRunId ? fetchCandidateRunComparison(candidateId, selectedRun.run_id, baselineRunId) : undefined,
-    fetchCandidateRunReadiness(candidateId, selectedRun.run_id, baselineRunId)
+    fetchCandidateRunEvidencePosture(candidateId, selectedRun.run_id, baselineRunId)
   ]);
 
   return {
@@ -421,7 +421,7 @@ async function fetchCandidateRunSelection(
     candidateRunDetail,
     candidateRunComparison,
     candidateRunComparisonBaselineId: baselineRunId,
-    candidateRunReadiness
+    candidateRunEvidencePosture
   };
 }
 
@@ -439,7 +439,7 @@ export function CandidateDetail({
   candidateRunDetail,
   candidateRunComparison,
   candidateRunComparisonBaselineId,
-  candidateRunReadiness,
+  candidateRunEvidencePosture,
   onSelectCandidateRun,
   onRunCandidateReplay,
   onRecordRuntimeAuthority,
@@ -460,7 +460,7 @@ export function CandidateDetail({
   candidateRunDetail?: CandidateRunDetailReadModel;
   candidateRunComparison?: CandidateRunComparisonReadModel;
   candidateRunComparisonBaselineId?: string;
-  candidateRunReadiness?: CandidateRunReadinessReadModel;
+  candidateRunEvidencePosture?: CandidateRunEvidencePostureReadModel;
   onSelectCandidateRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
@@ -487,8 +487,8 @@ export function CandidateDetail({
         </div>
         <div className="header-badges">
           <span className="mode-pill">{candidate.fixture_notice.mode}</span>
-          {candidate.latest_readiness && (
-            <LatestReadinessStatus readiness={candidate.latest_readiness} compact />
+          {candidate.latest_evidence_posture && (
+            <EvidencePostureStatus evidencePosture={candidate.latest_evidence_posture} compact />
           )}
         </div>
       </header>
@@ -504,7 +504,9 @@ export function CandidateDetail({
           <Field label="Status" value={candidate.status} />
           <Field label="Active version" value={candidate.active_version_id} />
           <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
-          {candidate.latest_readiness && <CandidateLatestReadinessBlock readiness={candidate.latest_readiness} />}
+          {candidate.latest_evidence_posture && (
+            <CandidateLatestEvidencePostureBlock evidencePosture={candidate.latest_evidence_posture} />
+          )}
         </InfoSection>
 
         <CandidateRunsSection
@@ -513,7 +515,7 @@ export function CandidateDetail({
           detail={candidateRunDetail}
           comparison={candidateRunComparison}
           comparisonBaselineId={candidateRunComparisonBaselineId}
-          readiness={candidateRunReadiness}
+          evidencePosture={candidateRunEvidencePosture}
           onSelectRun={onSelectCandidateRun}
           onRunCandidateReplay={onRunCandidateReplay}
           runningCandidateReplay={runningCandidateReplay}
@@ -602,7 +604,7 @@ function CandidateRunsSection({
   detail,
   comparison,
   comparisonBaselineId,
-  readiness,
+  evidencePosture,
   onSelectRun,
   onRunCandidateReplay,
   runningCandidateReplay,
@@ -614,7 +616,7 @@ function CandidateRunsSection({
   detail?: CandidateRunDetailReadModel;
   comparison?: CandidateRunComparisonReadModel;
   comparisonBaselineId?: string;
-  readiness?: CandidateRunReadinessReadModel;
+  evidencePosture?: CandidateRunEvidencePostureReadModel;
   onSelectRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   runningCandidateReplay: boolean;
@@ -683,7 +685,7 @@ function CandidateRunsSection({
         baselineRunId={comparisonBaselineId}
       />
 
-      {readiness && <CandidateRunReadinessBlock readiness={readiness} />}
+      {evidencePosture && <CandidateRunEvidencePostureBlock evidencePosture={evidencePosture} />}
 
       {detail && <CandidateRunDetailBlock detail={detail} />}
 
@@ -753,68 +755,78 @@ function CandidateRunComparisonBlock({
   );
 }
 
-function CandidateRunReadinessBlock({ readiness }: { readiness: CandidateRunReadinessReadModel }) {
+function CandidateRunEvidencePostureBlock({
+  evidencePosture
+}: {
+  evidencePosture: CandidateRunEvidencePostureReadModel;
+}) {
   return (
     <div className="evaluation-block">
-      <h4>Readiness gate</h4>
-      <LatestReadinessStatus readiness={readiness} />
-      <Field label="Selected run" value={readiness.selected_run_id} />
-      <Field label="Baseline run" value={readiness.baseline_run_id ?? "none"} />
-      <Field label="Comparison verdict" value={readiness.comparison_verdict ?? "none"} />
-      <Field label="Reasons" value={readiness.reasons.join("; ")} />
-      <Field label="Required next evidence" value={readiness.required_next_evidence.join("; ")} />
-      <Field label="Authority" value={readiness.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(readiness.no_authority)} />
+      <h4>Evidence posture</h4>
+      <EvidencePostureStatus evidencePosture={evidencePosture} />
+      <Field label="Selected run" value={evidencePosture.selected_run_id} />
+      <Field label="Baseline run" value={evidencePosture.baseline_run_id ?? "none"} />
+      <Field label="Comparison verdict" value={evidencePosture.comparison_verdict ?? "none"} />
+      <Field label="Reasons" value={evidencePosture.reasons.join("; ")} />
+      <Field label="Required next evidence" value={evidencePosture.required_next_evidence.join("; ")} />
+      <Field label="Authority" value={evidencePosture.authority_status} />
+      <Field label="No authority" value={formatNoAuthority(evidencePosture.no_authority)} />
     </div>
   );
 }
 
-function CandidateLatestReadinessBlock({ readiness }: { readiness: CandidateLatestReadinessReadModel }) {
+function CandidateLatestEvidencePostureBlock({
+  evidencePosture
+}: {
+  evidencePosture: CandidateLatestEvidencePostureReadModel;
+}) {
   return (
     <div className="evaluation-block">
-      <h4>Candidate latest readiness</h4>
-      <LatestReadinessStatus readiness={readiness} />
-      <Field label="Selected run" value={readiness.selected_run_id ?? "none"} />
-      <Field label="Baseline run" value={readiness.baseline_run_id ?? "none"} />
-      <Field label="Comparison verdict" value={readiness.comparison_verdict ?? "none"} />
-      <Field label="Reasons" value={readiness.reasons.join("; ")} />
-      <Field label="Required next evidence" value={readiness.required_next_evidence.join("; ")} />
-      <Field label="Authority" value={readiness.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(readiness.no_authority)} />
+      <h4>Candidate latest evidence posture</h4>
+      <EvidencePostureStatus evidencePosture={evidencePosture} />
+      <Field label="Selected run" value={evidencePosture.selected_run_id ?? "none"} />
+      <Field label="Baseline run" value={evidencePosture.baseline_run_id ?? "none"} />
+      <Field label="Comparison verdict" value={evidencePosture.comparison_verdict ?? "none"} />
+      <Field label="Reasons" value={evidencePosture.reasons.join("; ")} />
+      <Field label="Required next evidence" value={evidencePosture.required_next_evidence.join("; ")} />
+      <Field label="Authority" value={evidencePosture.authority_status} />
+      <Field label="No authority" value={formatNoAuthority(evidencePosture.no_authority)} />
     </div>
   );
 }
 
-function LatestReadinessStatus({
-  readiness,
+function EvidencePostureStatus({
+  evidencePosture,
   compact = false
 }: {
-  readiness: CandidateLatestReadinessReadModel | CandidateRunReadinessReadModel;
+  evidencePosture: CandidateLatestEvidencePostureReadModel | CandidateRunEvidencePostureReadModel;
   compact?: boolean;
 }) {
   return (
-    <div className={`evaluation-status ${compact ? "compact" : ""} ${readinessStatusClass(readiness.readiness)}`}>
-      <span>{compact ? "Latest readiness" : "Read-only candidate readiness"}</span>
-      <strong>{readiness.readiness}</strong>
-      <span>{readiness.evidence_label}</span>
+    <div className={`evaluation-status ${compact ? "compact" : ""} ${evidencePostureStatusClass(evidencePosture.evidence_posture)}`}>
+      <span>{compact ? "Latest evidence posture" : "Read-only evidence posture"}</span>
+      <strong>{evidencePosture.evidence_posture}</strong>
+      <span>{evidencePosture.evidence_label}</span>
     </div>
   );
 }
 
-function latestReadinessLabel(readiness: CandidateLatestReadinessReadModel | undefined): string {
-  return readiness?.readiness ?? "no_runs";
+function latestEvidencePostureLabel(evidencePosture: CandidateLatestEvidencePostureReadModel | undefined): string {
+  return evidencePosture?.evidence_posture ?? "run_required";
 }
 
-function readinessStatusClass(readiness: CandidateLatestReadinessReadModel["readiness"]): string {
-  switch (readiness) {
-    case "ready":
+function evidencePostureStatusClass(
+  evidencePosture: CandidateLatestEvidencePostureReadModel["evidence_posture"]
+): string {
+  switch (evidencePosture) {
+    case "evidence_sufficient":
       return "counted";
-    case "blocked":
+    case "evidence_blocked":
       return "failed";
-    case "review_needed":
+    case "review_required":
       return "sealed";
-    case "no_baseline":
-    case "no_runs":
+    case "baseline_required":
+    case "run_required":
       return "neutral";
   }
 }

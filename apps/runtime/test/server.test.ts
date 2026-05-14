@@ -47,9 +47,9 @@ describe("runtime read-only API", () => {
     expect(list.json()).toMatchObject({
       candidates: [{
         candidate_id: FIXTURE_CANDIDATE_ID,
-        latest_readiness: {
-          readiness: "no_runs",
-          evidence_label: "readiness_not_authority",
+        latest_evidence_posture: {
+          evidence_posture: "run_required",
+          evidence_label: "evidence_posture_not_authority",
           authority_status: "not_live"
         }
       }]
@@ -70,27 +70,27 @@ describe("runtime read-only API", () => {
           authority_status: "not_evidence"
         }
       },
-      latest_readiness: {
-        readiness: "no_runs",
+      latest_evidence_posture: {
+        evidence_posture: "run_required",
         reasons: [
           "no candidate-run evidence has been recorded",
-          "readiness cannot be inferred without replay evidence"
+          "evidence posture cannot be inferred without replay evidence"
         ],
         required_next_evidence: [
           "record at least one candidate replay run",
           "record a second replay run to establish a comparison baseline"
         ],
-        evidence_label: "readiness_not_authority"
+        evidence_label: "evidence_posture_not_authority"
       }
     });
 
     await server.close();
   });
 
-  it("adds latest candidate-run readiness summaries to candidate list and detail", async () => {
+  it("adds latest candidate-run evidence posture summaries to candidate list and detail", async () => {
     const runRoot = path.join(tmpDir, "candidate-runs");
     await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-readiness-baseline",
+      run_id: "candidate-posture-baseline",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "host_process",
       status: "accepted",
@@ -103,14 +103,14 @@ describe("runtime read-only API", () => {
       score: 0.6,
       risk_decision: "valid_order_intent",
       scenario_ids: ["trend_long", "range_short"],
-      output_dir: path.join(runRoot, "candidate-readiness-baseline", "output"),
-      events_path: path.join(runRoot, "candidate-readiness-baseline", "output", "replay-set.json"),
+      output_dir: path.join(runRoot, "candidate-posture-baseline", "output"),
+      events_path: path.join(runRoot, "candidate-posture-baseline", "output", "replay-set.json"),
       started_at: "2026-05-14T10:59:00.000Z",
       completed_at: "2026-05-14T11:00:00.000Z",
       authority_status: "not_live"
     });
     await writeCandidateRunRecord(runRoot, {
-      run_id: "candidate-readiness-latest",
+      run_id: "candidate-posture-latest",
       candidate_id: FIXTURE_CANDIDATE_ID,
       runner_kind: "docker_sandboxes_sbx",
       status: "accepted",
@@ -123,8 +123,8 @@ describe("runtime read-only API", () => {
       score: 0.85,
       risk_decision: "valid_order_intent",
       scenario_ids: ["trend_long", "range_short"],
-      output_dir: path.join(runRoot, "candidate-readiness-latest", "output"),
-      events_path: path.join(runRoot, "candidate-readiness-latest", "output", "replay-set.json"),
+      output_dir: path.join(runRoot, "candidate-posture-latest", "output"),
+      events_path: path.join(runRoot, "candidate-posture-latest", "output", "replay-set.json"),
       started_at: "2026-05-14T11:59:00.000Z",
       completed_at: "2026-05-14T12:00:00.000Z",
       authority_status: "not_live"
@@ -140,13 +140,13 @@ describe("runtime read-only API", () => {
     expect(list.statusCode).toBe(200);
     expect(list.json().candidates[0]).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
-      latest_readiness: {
+      latest_evidence_posture: {
         candidate_id: FIXTURE_CANDIDATE_ID,
-        selected_run_id: "candidate-readiness-latest",
-        baseline_run_id: "candidate-readiness-baseline",
+        selected_run_id: "candidate-posture-latest",
+        baseline_run_id: "candidate-posture-baseline",
         comparison_verdict: "improved",
-        readiness: "ready",
-        evidence_label: "readiness_not_authority",
+        evidence_posture: "evidence_sufficient",
+        evidence_label: "evidence_posture_not_authority",
         authority_status: "not_live",
         no_authority: {
           live_exchange: false,
@@ -164,14 +164,14 @@ describe("runtime read-only API", () => {
     expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
-      latest_readiness: {
-        selected_run_id: "candidate-readiness-latest",
-        baseline_run_id: "candidate-readiness-baseline",
-        readiness: "ready",
+      latest_evidence_posture: {
+        selected_run_id: "candidate-posture-latest",
+        baseline_run_id: "candidate-posture-baseline",
+        evidence_posture: "evidence_sufficient",
         reasons: [
           "selected run improved against baseline",
           "all selected scenarios were accepted",
-          "selected score meets the readiness threshold"
+          "selected score meets the evidence threshold"
         ],
         required_next_evidence: [
           "human review of replay evidence",
@@ -764,30 +764,30 @@ describe("runtime read-only API", () => {
       run_id: "candidate-run-selected"
     });
 
-    const readiness = await server.inject({
+    const evidencePosture = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/readiness?baseline_run_id=candidate-run-baseline`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/evidence-posture?baseline_run_id=candidate-run-baseline`
     });
-    expect(readiness.statusCode).toBe(200);
-    expect(readiness.json()).toMatchObject({
+    expect(evidencePosture.statusCode).toBe(200);
+    expect(evidencePosture.json()).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
-      readiness: {
+      evidence_posture: {
         candidate_id: FIXTURE_CANDIDATE_ID,
         selected_run_id: "candidate-run-selected",
         baseline_run_id: "candidate-run-baseline",
         comparison_verdict: "improved",
-        readiness: "ready",
+        evidence_posture: "evidence_sufficient",
         reasons: [
           "selected run improved against baseline",
           "all selected scenarios were accepted",
-          "selected score meets the readiness threshold"
+          "selected score meets the evidence threshold"
         ],
         required_next_evidence: [
           "human review of replay evidence",
           "future promotion issue with explicit authority scope"
         ],
         authority_status: "not_live",
-        evidence_label: "readiness_not_authority",
+        evidence_label: "evidence_posture_not_authority",
         no_authority: {
           live_exchange: false,
           order_authority: false,
@@ -799,24 +799,24 @@ describe("runtime read-only API", () => {
 
     const noBaseline = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/readiness`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/evidence-posture`
     });
     expect(noBaseline.statusCode).toBe(200);
     expect(noBaseline.json()).toMatchObject({
-      readiness: {
+      evidence_posture: {
         selected_run_id: "candidate-run-selected",
-        readiness: "no_baseline",
-        evidence_label: "readiness_not_authority"
+        evidence_posture: "baseline_required",
+        evidence_label: "evidence_posture_not_authority"
       }
     });
 
-    const missingReadinessRun = await server.inject({
+    const missingPostureRun = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/missing-run/readiness`
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/missing-run/evidence-posture`
     });
-    expect(missingReadinessRun.statusCode).toBe(404);
-    expect(missingReadinessRun.json()).toEqual({
-      error: "candidate_run_readiness_not_found",
+    expect(missingPostureRun.statusCode).toBe(404);
+    expect(missingPostureRun.json()).toEqual({
+      error: "candidate_run_evidence_posture_not_found",
       candidate_id: FIXTURE_CANDIDATE_ID,
       run_id: "missing-run"
     });
