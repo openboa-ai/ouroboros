@@ -26,6 +26,7 @@ interface AppState {
   candidates: CandidateSummaryReadModel[];
   selected?: CandidateInspectReadModel;
   candidateRuns: CandidateRunEvidenceReadModel[];
+  selectedCandidateRunId?: string;
   candidateRunDetail?: CandidateRunDetailReadModel;
   error?: string;
   loading: boolean;
@@ -58,15 +59,16 @@ export function App() {
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
         const candidateRuns = selected ? await fetchCandidateRunEvidence(selected.candidate_id) : [];
-        const candidateRunDetail = selected
-          ? await fetchLatestCandidateRunDetail(selected.candidate_id, candidateRuns)
-          : undefined;
+        const candidateRunSelection = selected
+          ? await fetchCandidateRunSelection(selected.candidate_id, candidateRuns)
+          : {};
         if (!cancelled) {
           setState({
             candidates,
             selected,
             candidateRuns,
-            candidateRunDetail,
+            selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
+            candidateRunDetail: candidateRunSelection.candidateRunDetail,
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -107,14 +109,57 @@ export function App() {
     try {
       const selected = await fetchCandidate(candidateId);
       const candidateRuns = await fetchCandidateRunEvidence(candidateId);
-      const candidateRunDetail = await fetchLatestCandidateRunDetail(candidateId, candidateRuns);
-      setState((current) => ({ ...current, selected, candidateRuns, candidateRunDetail, loading: false }));
+      const candidateRunSelection = await fetchCandidateRunSelection(candidateId, candidateRuns);
+      setState((current) => ({
+        ...current,
+        selected,
+        candidateRuns,
+        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
+        candidateRunDetail: candidateRunSelection.candidateRunDetail,
+        loading: false
+      }));
     } catch (error) {
       setState((current) => ({
         ...current,
         loading: false,
         error: error instanceof Error ? error.message : "Unknown runtime error"
       }));
+    }
+  }
+
+  async function selectCandidateRun(runId: string) {
+    const candidate = state.selected;
+    if (!candidate) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      selectedCandidateRunId: runId,
+      candidateRunDetail: undefined,
+      candidateRunError: undefined,
+      candidateRunMessage: undefined
+    }));
+    try {
+      const candidateRunDetail = await fetchCandidateRunDetail(candidate.candidate_id, runId);
+      setState((current) =>
+        current.selected?.candidate_id === candidate.candidate_id
+          ? {
+              ...current,
+              selectedCandidateRunId: runId,
+              candidateRunDetail
+            }
+          : current
+      );
+    } catch (error) {
+      setState((current) =>
+        current.selected?.candidate_id === candidate.candidate_id
+          ? {
+              ...current,
+              candidateRunError: error instanceof Error ? error.message : "Unknown candidate run detail error"
+            }
+          : current
+      );
     }
   }
 
@@ -139,6 +184,7 @@ export function App() {
         ...current,
         selected,
         candidateRuns,
+        selectedCandidateRunId: outcome.run.run_id,
         candidateRunDetail,
         runningCandidateReplay: false,
         candidateRunMessage: `replay recorded: ${outcome.run.run_id}`
@@ -168,12 +214,17 @@ export function App() {
       const outcome = await recordCandidateRuntimeAuthority(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
-      const candidateRunDetail = await fetchLatestCandidateRunDetail(candidate.candidate_id, candidateRuns);
+      const candidateRunSelection = await fetchCandidateRunSelection(
+        candidate.candidate_id,
+        candidateRuns,
+        state.selectedCandidateRunId
+      );
       setState((current) => ({
         ...current,
         selected,
         candidateRuns,
-        candidateRunDetail,
+        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
+        candidateRunDetail: candidateRunSelection.candidateRunDetail,
         recordingRuntimeAuthority: false,
         runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
@@ -202,12 +253,17 @@ export function App() {
       const outcome = await recordCandidateRuntimeControl(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
-      const candidateRunDetail = await fetchLatestCandidateRunDetail(candidate.candidate_id, candidateRuns);
+      const candidateRunSelection = await fetchCandidateRunSelection(
+        candidate.candidate_id,
+        candidateRuns,
+        state.selectedCandidateRunId
+      );
       setState((current) => ({
         ...current,
         selected,
         candidateRuns,
-        candidateRunDetail,
+        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
+        candidateRunDetail: candidateRunSelection.candidateRunDetail,
         recordingRuntimeControl: false,
         runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
       }));
@@ -250,7 +306,9 @@ export function App() {
           <CandidateDetail
             candidate={state.selected}
             candidateRuns={state.candidateRuns}
+            selectedCandidateRunId={state.selectedCandidateRunId}
             candidateRunDetail={state.candidateRunDetail}
+            onSelectCandidateRun={(runId) => void selectCandidateRun(runId)}
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
               ? () => void runReplay()
               : undefined}
@@ -276,18 +334,31 @@ export function App() {
   );
 }
 
-async function fetchLatestCandidateRunDetail(
+async function fetchCandidateRunSelection(
   candidateId: string,
-  runs: CandidateRunEvidenceReadModel[]
-): Promise<CandidateRunDetailReadModel | undefined> {
-  const latestRun = runs[0];
-  return latestRun ? await fetchCandidateRunDetail(candidateId, latestRun.run_id) : undefined;
+  runs: CandidateRunEvidenceReadModel[],
+  preferredRunId?: string
+): Promise<{
+  selectedCandidateRunId?: string;
+  candidateRunDetail?: CandidateRunDetailReadModel;
+}> {
+  const selectedRun = runs.find((run) => run.run_id === preferredRunId) ?? runs[0];
+  if (!selectedRun) {
+    return {};
+  }
+
+  return {
+    selectedCandidateRunId: selectedRun.run_id,
+    candidateRunDetail: await fetchCandidateRunDetail(candidateId, selectedRun.run_id)
+  };
 }
 
 export function CandidateDetail({
   candidate,
   candidateRuns = [],
+  selectedCandidateRunId,
   candidateRunDetail,
+  onSelectCandidateRun,
   onRunCandidateReplay,
   onRecordRuntimeAuthority,
   onRecordRuntimeControl,
@@ -303,7 +374,9 @@ export function CandidateDetail({
 }: {
   candidate: CandidateInspectReadModel;
   candidateRuns?: CandidateRunEvidenceReadModel[];
+  selectedCandidateRunId?: string;
   candidateRunDetail?: CandidateRunDetailReadModel;
+  onSelectCandidateRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
@@ -345,7 +418,9 @@ export function CandidateDetail({
 
         <CandidateRunsSection
           runs={candidateRuns}
+          selectedRunId={selectedCandidateRunId}
           detail={candidateRunDetail}
+          onSelectRun={onSelectCandidateRun}
           onRunCandidateReplay={onRunCandidateReplay}
           runningCandidateReplay={runningCandidateReplay}
           candidateRunError={candidateRunError}
@@ -429,20 +504,25 @@ export function CandidateDetail({
 
 function CandidateRunsSection({
   runs,
+  selectedRunId,
   detail,
+  onSelectRun,
   onRunCandidateReplay,
   runningCandidateReplay,
   candidateRunError,
   candidateRunMessage
 }: {
   runs: CandidateRunEvidenceReadModel[];
+  selectedRunId?: string;
   detail?: CandidateRunDetailReadModel;
+  onSelectRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   runningCandidateReplay: boolean;
   candidateRunError?: string;
   candidateRunMessage?: string;
 }) {
   const latestRun = runs[0];
+  const activeRunId = selectedRunId ?? detail?.run_id ?? latestRun?.run_id;
   return (
     <InfoSection title="Candidate Runs">
       <div className="evaluation-status neutral">
@@ -454,6 +534,7 @@ function CandidateRunsSection({
       {latestRun ? (
         <>
           <Field label="Latest run" value={latestRun.run_id} />
+          <Field label="Selected run" value={activeRunId ?? "none"} />
           <Field label="Runner" value={latestRun.runner_kind} />
           <Field label="Run status" value={latestRun.run_status} />
           <Field label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
@@ -471,15 +552,30 @@ function CandidateRunsSection({
         </div>
       )}
 
-      {runs.slice(1, 5).map((run) => (
-        <div className="evaluation-block" key={run.run_id}>
-          <h4>{run.run_id}</h4>
-          <Field label="Runner" value={run.runner_kind} />
-          <Field label="Status" value={`${run.status} / ${run.run_status}`} />
-          <Field label="Scenarios" value={`${run.scenario_accepted}/${run.scenario_total} accepted`} />
-          <Field label="Authority" value={run.authority_status} />
+      {runs.length > 0 && (
+        <div className="evaluation-block">
+          <h4>Run history</h4>
+          <div className="run-history-list">
+            {runs.map((run) => (
+              <button
+                aria-pressed={activeRunId === run.run_id}
+                className={`run-history-row ${activeRunId === run.run_id ? "active" : ""}`}
+                key={run.run_id}
+                type="button"
+                onClick={() => onSelectRun?.(run.run_id)}
+              >
+                <span>{run.run_id}</span>
+                <small>
+                  {run.status} / {run.runner_kind} / {run.authority_status}
+                </small>
+                <small>
+                  {run.scenario_accepted}/{run.scenario_total} accepted · {run.completed_at}
+                </small>
+              </button>
+            ))}
+          </div>
         </div>
-      ))}
+      )}
 
       {detail && <CandidateRunDetailBlock detail={detail} />}
 
@@ -505,7 +601,8 @@ function CandidateRunsSection({
 function CandidateRunDetailBlock({ detail }: { detail: CandidateRunDetailReadModel }) {
   return (
     <div className="evaluation-block">
-      <h4>Latest run detail</h4>
+      <h4>Selected run detail</h4>
+      <Field label="Run" value={detail.run_id} />
       <Field label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
       <Field label="Scenario ids" value={detail.scenario_ids.join(", ")} />
       <Field label="No authority" value={formatNoAuthority(detail.no_authority)} />

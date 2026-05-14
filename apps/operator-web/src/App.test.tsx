@@ -82,7 +82,8 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("Latest run detail");
+    expect(html).toContain("Selected run detail");
+    expect(html).toContain("candidate-run-detail");
     expect(html).toContain("1 / valid_order_intent");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expect(html).toContain("promotion-detail");
@@ -92,6 +93,45 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Metric provider_boundary");
     expect(html).toContain("0.2: market/account/order validation went through the external provider");
     expect(html).toContain("sbx version");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+  });
+
+  it("renders selectable candidate-run history with non-latest detail selected", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={fixtureCandidate}
+        candidateRuns={[
+          candidateRun({
+            run_id: "latest-run",
+            runner_kind: "host_process",
+            completed_at: "2026-05-14T12:00:00.000Z"
+          }),
+          candidateRun({
+            run_id: "older-sdx-run",
+            runner_kind: "docker_sandboxes_sbx",
+            runner_command_total: 4,
+            completed_at: "2026-05-14T11:00:00.000Z"
+          })
+        ]}
+        selectedCandidateRunId="older-sdx-run"
+        candidateRunDetail={candidateRunDetail({
+          run_id: "older-sdx-run",
+          runner_kind: "docker_sandboxes_sbx"
+        })}
+        onSelectCandidateRun={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Latest run");
+    expect(html).toContain("latest-run");
+    expect(html).toContain("Selected run");
+    expect(html).toContain("older-sdx-run");
+    expect(html).toContain("Run history");
+    expect(html).toContain("aria-pressed=\"true\"");
+    expect(html).toContain("docker_sandboxes_sbx");
+    expect(html).toContain("Selected run detail");
+    expect(html).toContain("trend_long");
     expect(html).toContain("not_live");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
