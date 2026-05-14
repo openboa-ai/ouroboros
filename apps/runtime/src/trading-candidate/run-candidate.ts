@@ -13,8 +13,8 @@ import { defaultReplayTradingScenarioSet } from "../trading-research/replay-trad
 import { runTradingReplaySet } from "../trading-research/replay-set-runner";
 import type { ReplayTradingScenario, TradingArtifactRunnerKind } from "../trading-research/types";
 
-const DEFAULT_CANDIDATE_ROOT = path.join(".ouroboros", "trader-system-candidates");
-const DEFAULT_RUN_ROOT = path.join(".ouroboros", "trader-system-candidate-runs");
+export const DEFAULT_CANDIDATE_ROOT = path.join(".ouroboros", "trader-system-candidates");
+export const DEFAULT_RUN_ROOT = path.join(".ouroboros", "trader-system-candidate-runs");
 
 const knownArgs = new Set([
   "candidate-id",
@@ -54,7 +54,20 @@ interface CandidateBundle {
   artifactDigest: string;
 }
 
-interface CandidateRunRecord {
+export interface RunPromotedCandidateInput {
+  candidate_id: string;
+  candidate_root?: string;
+  run_root?: string;
+  run_id?: string;
+  runner_kind?: TradingArtifactRunnerKind;
+  scenario_ids?: string[];
+  timeout_ms?: number;
+  sbx_path?: string;
+  sbx_home?: string;
+  workspace_path?: string;
+}
+
+export interface CandidateRunRecord {
   record_kind: "trader_system_candidate_run";
   version: 1;
   run_id: string;
@@ -92,6 +105,17 @@ interface CandidateRunRecord {
   };
 }
 
+export class CandidateRunError extends Error {
+  constructor(
+    readonly reason: string,
+    message: string,
+    readonly exitCode: 1 | 2 = 2
+  ) {
+    super(message);
+    this.name = "CandidateRunError";
+  }
+}
+
 export async function runCandidateFromCli(argv = process.argv.slice(2)): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h")) {
     printHelp();
@@ -99,11 +123,72 @@ export async function runCandidateFromCli(argv = process.argv.slice(2)): Promise
   }
 
   const options = parseArgs(argv);
+  try {
+    const record = await runPromotedCandidate({
+      candidate_id: options.candidateId,
+      candidate_root: options.candidateRoot,
+      run_root: options.runRoot,
+      run_id: options.runId,
+      runner_kind: options.runnerKind,
+      scenario_ids: options.scenarioIds,
+      timeout_ms: options.timeoutMs,
+      sbx_path: options.sbxPath,
+      sbx_home: options.sbxHome,
+      workspace_path: options.workspacePath
+    });
+
+    if (options.json) {
+      console.log(JSON.stringify(record, null, 2));
+    } else {
+      printRunResult(record);
+    }
+
+    if (record.status !== "accepted") {
+      process.exitCode = 2;
+    }
+  } catch (error) {
+    if (error instanceof CandidateRunError) {
+      if (options.json) {
+        console.log(JSON.stringify({
+          status: "failed",
+          candidate_id: options.candidateId,
+          reason: error.reason,
+          message: error.message
+        }, null, 2));
+      } else {
+        printCandidateFailure(options.candidateId, error.message);
+      }
+      process.exitCode = error.exitCode;
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function runPromotedCandidate(
+  input: RunPromotedCandidateInput
+): Promise<CandidateRunRecord> {
+  assertPathSafeId(input.candidate_id, "candidate_id");
+  if (input.run_id) {
+    assertPathSafeId(input.run_id, "run_id");
+  }
+
+  const options = {
+    candidateId: input.candidate_id,
+    candidateRoot: path.resolve(input.candidate_root ?? DEFAULT_CANDIDATE_ROOT),
+    runRoot: path.resolve(input.run_root ?? DEFAULT_RUN_ROOT),
+    runId: input.run_id,
+    runnerKind: input.runner_kind ?? "host_process",
+    scenarioIds: input.scenario_ids ?? [],
+    timeoutMs: input.timeout_ms,
+    sbxPath: input.sbx_path,
+    sbxHome: input.sbx_home,
+    workspacePath: input.workspace_path
+  };
   const bundle = await loadCandidateBundle(options.candidateRoot, options.candidateId);
   const manifest = await readTradingSystemManifest(bundle.artifactDir);
   const scenarios = selectedScenarios(options.scenarioIds);
   const runId = options.runId ?? defaultRunId(options.candidateId, new Date());
-  validatePathSafeId(runId, "--run-id");
   const runDir = path.join(options.runRoot, runId);
   const outputDir = path.join(runDir, "output");
   const startedAt = new Date().toISOString();
@@ -172,15 +257,7 @@ export async function runCandidateFromCli(argv = process.argv.slice(2)): Promise
   await writeJson(path.join(runDir, "run.json"), record);
   await rebuildRunIndex(options.runRoot);
 
-  if (options.json) {
-    console.log(JSON.stringify(record, null, 2));
-  } else {
-    printRunResult(record);
-  }
-
-  if (!accepted) {
-    process.exitCode = 2;
-  }
+  return record;
 }
 
 function printHelp(): void {
@@ -260,13 +337,17 @@ function parseArgs(rawArgs: string[]): CliOptions {
 async function loadCandidateBundle(candidateRoot: string, candidateId: string): Promise<CandidateBundle> {
   const candidateDir = path.join(candidateRoot, candidateId);
   if (!await directoryExists(candidateDir)) {
-    printCandidateFailure(candidateId, "candidate bundle exists");
-    process.exit(2);
+    throw new CandidateRunError(
+      "candidate_not_found",
+      "candidate bundle exists"
+    );
   }
   const artifactDir = path.join(candidateDir, "artifact");
   if (!await directoryExists(artifactDir)) {
-    printCandidateFailure(candidateId, "candidate artifact snapshot exists");
-    process.exit(2);
+    throw new CandidateRunError(
+      "candidate_artifact_missing",
+      "candidate artifact snapshot exists"
+    );
   }
 
   try {
@@ -276,12 +357,16 @@ async function loadCandidateBundle(candidateRoot: string, candidateId: string): 
     const artifactDigest = await artifactDigestFor(artifactDir);
     const declaredDigest = stringValue(runnableArtifact.artifact_digest);
     if (declaredDigest && declaredDigest !== artifactDigest) {
-      printCandidateFailure(candidateId, `artifact digest matches runnable artifact (${declaredDigest})`);
-      process.exit(2);
+      throw new CandidateRunError(
+        "artifact_digest_mismatch",
+        `artifact digest matches runnable artifact (${declaredDigest})`
+      );
     }
     if (candidate.authority_status !== "not_live" || runnableArtifact.authority_status !== "not_live") {
-      printCandidateFailure(candidateId, "candidate and runnable artifact authority_status == not_live");
-      process.exit(2);
+      throw new CandidateRunError(
+        "candidate_authority_not_live_required",
+        "candidate and runnable artifact authority_status == not_live"
+      );
     }
     return {
       candidateDir,
@@ -292,8 +377,14 @@ async function loadCandidateBundle(candidateRoot: string, candidateId: string): 
       artifactDigest
     };
   } catch (error) {
-    console.error(`ERROR failed to read candidate bundle: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
+    if (error instanceof CandidateRunError) {
+      throw error;
+    }
+    throw new CandidateRunError(
+      "candidate_bundle_read_failed",
+      `failed to read candidate bundle: ${error instanceof Error ? error.message : String(error)}`,
+      1
+    );
   }
 }
 
@@ -305,14 +396,20 @@ function selectedScenarios(requestedIds: string[]): ReplayTradingScenario[] {
   for (const scenarioId of requestedIds) {
     const scenario = defaultReplayTradingScenarioSet.find((item) => item.id === scenarioId);
     if (!scenario) {
-      failUsage(`unknown replay scenario: ${scenarioId}`);
+      throw new CandidateRunError(
+        "unknown_replay_scenario",
+        `unknown replay scenario: ${scenarioId}`,
+        1
+      );
     }
     scenarios.push(scenario);
   }
   return scenarios;
 }
 
-function artifactRunnerFor(options: CliOptions): TradingArtifactRunner {
+function artifactRunnerFor(
+  options: Pick<CliOptions, "runnerKind" | "sbxPath" | "sbxHome" | "workspacePath" | "timeoutMs">
+): TradingArtifactRunner {
   if (options.runnerKind === "docker_sandboxes_sbx") {
     return new DockerSandboxesSbxTradingArtifactRunner({
       sbxPath: options.sbxPath,
@@ -493,6 +590,16 @@ function safeId(value: string): string {
 function validatePathSafeId(value: string, label: string): void {
   if (!/^[a-zA-Z0-9._:-]+$/.test(value) || value.includes("..")) {
     failUsage(`${label} must be path-safe`);
+  }
+}
+
+function assertPathSafeId(value: string, label: string): void {
+  if (!/^[a-zA-Z0-9._:-]+$/.test(value) || value.includes("..")) {
+    throw new CandidateRunError(
+      "invalid_path_safe_id",
+      `${label} must be path-safe`,
+      1
+    );
   }
 }
 

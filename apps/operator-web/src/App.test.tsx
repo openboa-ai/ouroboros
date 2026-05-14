@@ -8,7 +8,11 @@ import type {
   CandidateRuntimeControlReadModel
 } from "@ouroboros/domain";
 import { CandidateDetail } from "./App";
-import { runtimeAuthorityCommandPayload, runtimeControlPausePayload } from "./api";
+import {
+  candidateReplayRunPayload,
+  runtimeAuthorityCommandPayload,
+  runtimeControlPausePayload
+} from "./api";
 
 describe("CandidateDetail", () => {
   it("renders fixture labels and inspect sections without action controls", () => {
@@ -73,6 +77,7 @@ describe("CandidateDetail", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={candidate}
+        onRunCandidateReplay={() => undefined}
         candidateRuns={[
           candidateRun({
             candidate_id: candidate.candidate_id,
@@ -90,6 +95,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("materialized");
     expect(html).toContain("External trading API provider / Trading system");
     expect(html).toContain("docker_sandboxes_sbx");
+    expect(html).toContain("Run replay");
+    expect(html).toContain("host_process / replay_only / not_live");
     expect(html).toContain("No evaluation runs");
     expect(html).toContain("not_live");
     expect(html).not.toMatch(/Record dry-run intent|Record pause control|Live order|broker|provider_api_key/i);
@@ -187,6 +194,15 @@ describe("CandidateDetail", () => {
     });
     expect(payload.idempotency_key).toContain("operator-web-runtime-control-pause");
     expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker|provider_api_key/i);
+  });
+
+  it("builds replay-only candidate-run payloads", () => {
+    const payload = candidateReplayRunPayload();
+
+    expect(payload).toEqual({
+      runner_kind: "host_process"
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|paper_order|broker|provider_api_key/i);
   });
 
   it("renders materialization attempts as provider output, not evidence", () => {

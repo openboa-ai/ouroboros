@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
   BoundedRuntimeAuthorityInput,
+  CandidateRunEvidenceReadModel,
   EvaluationExecutionMode,
   Ref,
   RuntimeControlAuditInput,
@@ -31,6 +32,12 @@ import {
   getPromotedCandidate,
   listPromotedCandidateSummaries
 } from "./trading-candidate/promoted-candidate-bundles";
+import {
+  CandidateRunError,
+  runPromotedCandidate,
+  type CandidateRunRecord
+} from "./trading-candidate/run-candidate";
+import type { TradingArtifactRunnerKind } from "./trading-research/types";
 
 export interface BuildServerOptions {
   store?: LocalStore;
@@ -116,6 +123,16 @@ interface RecordRuntimeControlBody {
     related_execution_attempt_refs?: Ref[];
   };
   created_at?: string;
+}
+
+interface CreateCandidateRunBody {
+  run_id?: string;
+  runner_kind?: string;
+  scenario_ids?: unknown;
+  timeout_ms?: unknown;
+  sbx_path?: string;
+  sbx_home?: string;
+  workspace_path?: string;
 }
 
 interface StartRuntimeInstanceBody {
@@ -226,6 +243,93 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           limit: parseLimit(request.query.limit)
         })
       };
+    }
+  );
+
+  server.post<{ Params: { candidate_id: string }; Body: CreateCandidateRunBody }>(
+    "/api/candidates/:candidate_id/candidate-runs",
+    async (request, reply) => {
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+      if (candidate.fixture_notice.mode !== "local_promoted_candidate_bundle") {
+        return reply.code(422).send({
+          error: "candidate_run_rejected",
+          reason: "promoted_candidate_bundle_required",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      const body = request.body ?? {};
+      const runnerKind = parseCandidateRunRunnerKind(body.runner_kind);
+      if (!runnerKind) {
+        return reply.code(422).send({
+          error: "candidate_run_rejected",
+          reason: "invalid_runner_kind",
+          candidate_id: request.params.candidate_id
+        });
+      }
+      if (runnerKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
+        return reply.code(422).send({
+          error: "candidate_run_rejected",
+          reason: "docker_sandboxes_sbx_runtime_disabled",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      const scenarioIds = parseCandidateRunScenarioIds(body.scenario_ids);
+      if (!scenarioIds) {
+        return reply.code(422).send({
+          error: "candidate_run_rejected",
+          reason: "invalid_scenario_ids",
+          candidate_id: request.params.candidate_id
+        });
+      }
+      const timeoutMs = parseOptionalPositiveInteger(body.timeout_ms);
+      if (body.timeout_ms !== undefined && timeoutMs === undefined) {
+        return reply.code(422).send({
+          error: "candidate_run_rejected",
+          reason: "invalid_timeout_ms",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      try {
+        const record = await runPromotedCandidate({
+          candidate_id: request.params.candidate_id,
+          candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
+          run_root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+          run_id: body.run_id,
+          runner_kind: runnerKind,
+          scenario_ids: scenarioIds,
+          timeout_ms: timeoutMs,
+          sbx_path: body.sbx_path,
+          sbx_home: body.sbx_home,
+          workspace_path: body.workspace_path
+        });
+        return reply.code(201).send({
+          candidate_id: request.params.candidate_id,
+          run: candidateRunEvidenceFromRecord(record)
+        });
+      } catch (error) {
+        if (error instanceof CandidateRunError) {
+          return reply.code(candidateRunErrorStatus(error)).send({
+            error: "candidate_run_failed",
+            reason: error.reason,
+            candidate_id: request.params.candidate_id,
+            message: error.message
+          });
+        }
+        throw error;
+      }
     }
   );
 
@@ -774,6 +878,61 @@ async function getCandidateReadModel(
     root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
     candidate_id: candidateId
   }) ?? await store.getCandidate(candidateId);
+}
+
+function candidateRunEvidenceFromRecord(record: CandidateRunRecord): CandidateRunEvidenceReadModel {
+  return {
+    run_id: record.run_id,
+    run_dir: pathFromEvents(record.events_path),
+    candidate_id: record.candidate_id,
+    runner_kind: record.runner_kind,
+    status: record.status,
+    run_status: record.run_status,
+    scenario_accepted: record.scenario_accepted,
+    scenario_total: record.scenario_total,
+    provider_request_total: record.provider_request_total,
+    runner_command_total: record.runner_command_total,
+    artifact_digest: record.artifact_digest,
+    completed_at: record.completed_at,
+    authority_status: record.authority_status
+  };
+}
+
+function pathFromEvents(eventsPath: string): string {
+  return eventsPath.endsWith("output/replay-set.json")
+    ? eventsPath.slice(0, -"output/replay-set.json".length - 1)
+    : eventsPath;
+}
+
+function parseCandidateRunRunnerKind(value: string | undefined): TradingArtifactRunnerKind | undefined {
+  if (!value || value === "host" || value === "host_process") {
+    return "host_process";
+  }
+  if (value === "sbx" || value === "sdx" || value === "docker_sandboxes_sbx") {
+    return "docker_sandboxes_sbx";
+  }
+  return undefined;
+}
+
+function parseCandidateRunScenarioIds(value: unknown): string[] | undefined {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    return undefined;
+  }
+  return value;
+}
+
+function parseOptionalPositiveInteger(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return Number.isInteger(value) && Number(value) > 0 ? value as number : undefined;
+}
+
+function candidateRunErrorStatus(error: CandidateRunError): 404 | 422 {
+  return error.reason === "candidate_not_found" ? 404 : 422;
 }
 
 function runtimeInstanceStatusCode(reason: string): 404 | 422 {
