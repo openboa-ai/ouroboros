@@ -1552,6 +1552,30 @@ export interface CandidateRunComparisonReadModel {
   };
 }
 
+export type CandidateRunReadinessStatus =
+  | "ready"
+  | "review_needed"
+  | "blocked"
+  | "no_baseline";
+
+export interface CandidateRunReadinessReadModel {
+  candidate_id: string;
+  selected_run_id: string;
+  baseline_run_id?: string;
+  comparison_verdict?: CandidateRunComparisonVerdict;
+  readiness: CandidateRunReadinessStatus;
+  reasons: string[];
+  required_next_evidence: string[];
+  authority_status: "not_live";
+  evidence_label: "readiness_not_authority";
+  no_authority: {
+    live_exchange: false;
+    order_authority: false;
+    credentials: false;
+    paper_trading: false;
+  };
+}
+
 export interface CandidateRuntimeOrderIntentReadModel {
   order_intent_id: string;
   intent_kind: OrderIntentKind;

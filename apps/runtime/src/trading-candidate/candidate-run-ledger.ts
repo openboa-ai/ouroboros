@@ -8,6 +8,8 @@ import type {
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRunMetricReadModel,
+  CandidateRunReadinessReadModel,
+  CandidateRunReadinessStatus,
   CandidateRunScenarioReadModel
 } from "@ouroboros/domain";
 
@@ -30,6 +32,13 @@ export interface GetCandidateRunComparisonInput {
   candidate_id: string;
   run_id: string;
   baseline_run_id: string;
+}
+
+export interface GetCandidateRunReadinessInput {
+  root?: string;
+  candidate_id: string;
+  run_id: string;
+  baseline_run_id?: string;
 }
 
 interface RawCandidateRunRecord {
@@ -143,6 +152,47 @@ export async function getCandidateRunComparison(
     verdict_reason: candidateRunComparisonReason(verdict, deltas),
     authority_status: "not_live",
     evidence_label: "comparison_not_authority",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    }
+  };
+}
+
+export async function getCandidateRunReadiness(
+  input: GetCandidateRunReadinessInput
+): Promise<CandidateRunReadinessReadModel | undefined> {
+  const selected = await getCandidateRunDetail({
+    root: input.root,
+    candidate_id: input.candidate_id,
+    run_id: input.run_id
+  });
+  if (!selected) {
+    return undefined;
+  }
+
+  const comparison = input.baseline_run_id
+    ? await getCandidateRunComparison({
+        root: input.root,
+        candidate_id: input.candidate_id,
+        run_id: input.run_id,
+        baseline_run_id: input.baseline_run_id
+      })
+    : undefined;
+  const readiness = candidateRunReadinessStatus(selected, comparison);
+
+  return {
+    candidate_id: input.candidate_id,
+    selected_run_id: selected.run_id,
+    baseline_run_id: comparison?.baseline.run_id ?? input.baseline_run_id,
+    comparison_verdict: comparison?.verdict,
+    readiness,
+    reasons: candidateRunReadinessReasons(readiness, selected, comparison),
+    required_next_evidence: candidateRunReadinessNextEvidence(readiness),
+    authority_status: "not_live",
+    evidence_label: "readiness_not_authority",
     no_authority: {
       live_exchange: false,
       order_authority: false,
@@ -403,6 +453,95 @@ function candidateRunComparisonReason(
       return "selected run matched baseline score and accepted scenario count";
     case "incomparable":
       return "selected and baseline runs do not share enough scenario coverage";
+  }
+}
+
+function candidateRunReadinessStatus(
+  selected: CandidateRunDetailReadModel,
+  comparison?: CandidateRunComparisonReadModel
+): CandidateRunReadinessStatus {
+  if (!comparison) {
+    return "no_baseline";
+  }
+  if (
+    selected.status !== "accepted" ||
+    selected.run_status !== "completed" ||
+    comparison.verdict === "regressed" ||
+    comparison.verdict === "incomparable"
+  ) {
+    return "blocked";
+  }
+  if (
+    comparison.verdict === "unchanged" ||
+    selected.scenario_accepted < selected.scenario_total ||
+    selected.score < 0.8
+  ) {
+    return "review_needed";
+  }
+  return "ready";
+}
+
+function candidateRunReadinessReasons(
+  readiness: CandidateRunReadinessStatus,
+  selected: CandidateRunDetailReadModel,
+  comparison?: CandidateRunComparisonReadModel
+): string[] {
+  switch (readiness) {
+    case "ready":
+      return [
+        "selected run improved against baseline",
+        "all selected scenarios were accepted",
+        "selected score meets the readiness threshold"
+      ];
+    case "review_needed":
+      return [
+        comparison?.verdict === "unchanged"
+          ? "selected run did not improve against baseline"
+          : "selected run passed comparison but needs human review",
+        selected.scenario_accepted < selected.scenario_total
+          ? "not all selected scenarios were accepted"
+          : "selected scenario coverage is accepted",
+        selected.score < 0.8
+          ? "selected score is below readiness threshold"
+          : "selected score meets readiness threshold"
+      ];
+    case "blocked":
+      return [
+        selected.status !== "accepted" || selected.run_status !== "completed"
+          ? "selected run is not accepted and completed"
+          : `comparison verdict is ${comparison?.verdict ?? "missing"}`,
+        "readiness cannot advance without non-regressed replay evidence"
+      ];
+    case "no_baseline":
+      return [
+        "no baseline run was available for readiness comparison",
+        "readiness is not promotable from a single run"
+      ];
+  }
+}
+
+function candidateRunReadinessNextEvidence(readiness: CandidateRunReadinessStatus): string[] {
+  switch (readiness) {
+    case "ready":
+      return [
+        "human review of replay evidence",
+        "future promotion issue with explicit authority scope"
+      ];
+    case "review_needed":
+      return [
+        "additional replay run or manual review",
+        "confirm comparison deltas before promotion consideration"
+      ];
+    case "blocked":
+      return [
+        "new accepted replay run with non-regressed comparison",
+        "inspect failed or regressed scenario evidence"
+      ];
+    case "no_baseline":
+      return [
+        "record at least one baseline replay run",
+        "compare selected run against baseline before readiness promotion"
+      ];
   }
 }
 

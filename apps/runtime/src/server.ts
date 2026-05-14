@@ -27,6 +27,7 @@ import {
   DEFAULT_CANDIDATE_RUN_ROOT,
   getCandidateRunComparison,
   getCandidateRunDetail,
+  getCandidateRunReadiness,
   listCandidateRunEvidence
 } from "./trading-candidate/candidate-run-ledger";
 import {
@@ -244,6 +245,46 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id,
           limit: parseLimit(request.query.limit)
         })
+      };
+    }
+  );
+
+  server.get<{
+    Params: { candidate_id: string; run_id: string };
+    Querystring: { baseline_run_id?: string };
+  }>(
+    "/api/candidates/:candidate_id/candidate-runs/:run_id/readiness",
+    async (request, reply) => {
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      const readiness = await getCandidateRunReadiness({
+        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+        candidate_id: request.params.candidate_id,
+        run_id: request.params.run_id,
+        baseline_run_id: request.query.baseline_run_id
+      });
+      if (!readiness) {
+        return reply.code(404).send({
+          error: "candidate_run_readiness_not_found",
+          candidate_id: request.params.candidate_id,
+          run_id: request.params.run_id,
+          baseline_run_id: request.query.baseline_run_id
+        });
+      }
+
+      return {
+        candidate_id: request.params.candidate_id,
+        readiness
       };
     }
   );

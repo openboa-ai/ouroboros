@@ -648,6 +648,63 @@ describe("runtime read-only API", () => {
       run_id: "candidate-run-selected"
     });
 
+    const readiness = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/readiness?baseline_run_id=candidate-run-baseline`
+    });
+    expect(readiness.statusCode).toBe(200);
+    expect(readiness.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      readiness: {
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        selected_run_id: "candidate-run-selected",
+        baseline_run_id: "candidate-run-baseline",
+        comparison_verdict: "improved",
+        readiness: "ready",
+        reasons: [
+          "selected run improved against baseline",
+          "all selected scenarios were accepted",
+          "selected score meets the readiness threshold"
+        ],
+        required_next_evidence: [
+          "human review of replay evidence",
+          "future promotion issue with explicit authority scope"
+        ],
+        authority_status: "not_live",
+        evidence_label: "readiness_not_authority",
+        no_authority: {
+          live_exchange: false,
+          order_authority: false,
+          credentials: false,
+          paper_trading: false
+        }
+      }
+    });
+
+    const noBaseline = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/readiness`
+    });
+    expect(noBaseline.statusCode).toBe(200);
+    expect(noBaseline.json()).toMatchObject({
+      readiness: {
+        selected_run_id: "candidate-run-selected",
+        readiness: "no_baseline",
+        evidence_label: "readiness_not_authority"
+      }
+    });
+
+    const missingReadinessRun = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/missing-run/readiness`
+    });
+    expect(missingReadinessRun.statusCode).toBe(404);
+    expect(missingReadinessRun.json()).toEqual({
+      error: "candidate_run_readiness_not_found",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      run_id: "missing-run"
+    });
+
     await server.close();
   });
 
