@@ -25,6 +25,7 @@ import {
 } from "./runtime-instances/sandbox-runtime-adapter";
 import {
   DEFAULT_CANDIDATE_RUN_ROOT,
+  getCandidateRunDetail,
   listCandidateRunEvidence
 } from "./trading-candidate/candidate-run-ledger";
 import {
@@ -242,6 +243,41 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id,
           limit: parseLimit(request.query.limit)
         })
+      };
+    }
+  );
+
+  server.get<{ Params: { candidate_id: string; run_id: string } }>(
+    "/api/candidates/:candidate_id/candidate-runs/:run_id",
+    async (request, reply) => {
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      const run = await getCandidateRunDetail({
+        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+        candidate_id: request.params.candidate_id,
+        run_id: request.params.run_id
+      });
+      if (!run) {
+        return reply.code(404).send({
+          error: "candidate_run_not_found",
+          candidate_id: request.params.candidate_id,
+          run_id: request.params.run_id
+        });
+      }
+
+      return {
+        candidate_id: request.params.candidate_id,
+        run
       };
     }
   );

@@ -1453,6 +1453,60 @@ export interface CandidateRunEvidenceReadModel {
   authority_status: string;
 }
 
+export interface CandidateRunMetricReadModel {
+  name: string;
+  score: number;
+  detail: string;
+}
+
+export interface CandidateRunCommandEvidenceReadModel {
+  command: string[];
+  exit_code: number | null;
+  signal?: string;
+  timed_out?: boolean;
+  error_message?: string;
+  stdout_preview: string;
+  stderr_preview: string;
+  started_at: string;
+  completed_at: string;
+}
+
+export interface CandidateRunScenarioReadModel {
+  scenario_id: string;
+  runner_kind: string;
+  sandbox_name?: string;
+  status: string;
+  run_status: string;
+  score: number;
+  risk_decision: string;
+  summary: string;
+  events_path: string;
+  provider_request_count: number;
+  runner_command_count: number;
+  metrics: CandidateRunMetricReadModel[];
+  runner_command_evidence: CandidateRunCommandEvidenceReadModel[];
+}
+
+export interface CandidateRunDetailReadModel extends CandidateRunEvidenceReadModel {
+  score: number;
+  risk_decision: string;
+  scenario_ids: string[];
+  output_dir: string;
+  events_path: string;
+  started_at: string;
+  no_authority: {
+    live_exchange: boolean;
+    order_authority: boolean;
+    credentials: boolean;
+    paper_trading: boolean;
+  };
+  provenance: {
+    promotion_id?: string;
+    source_session_id?: string;
+  };
+  scenarios: CandidateRunScenarioReadModel[];
+}
+
 export interface CandidateRuntimeOrderIntentReadModel {
   order_intent_id: string;
   intent_kind: OrderIntentKind;
