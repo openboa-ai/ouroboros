@@ -68,6 +68,33 @@ describe("CandidateDetail", () => {
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
+  it("renders promoted local candidate bundles as read-only replay candidates", () => {
+    const candidate = promotedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={candidate}
+        candidateRuns={[
+          candidateRun({
+            candidate_id: candidate.candidate_id,
+            run_id: "promoted-sdx-run",
+            runner_kind: "docker_sandboxes_sbx",
+            runner_command_total: 10
+          })
+        ]}
+      />
+    );
+
+    expect(html).toContain("Promoted local candidate bundle");
+    expect(html).toContain("local_promoted_candidate_bundle");
+    expect(html).toContain("Trading AAR candidate");
+    expect(html).toContain("materialized");
+    expect(html).toContain("External trading API provider / Trading system");
+    expect(html).toContain("docker_sandboxes_sbx");
+    expect(html).toContain("No evaluation runs");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Record dry-run intent|Record pause control|Live order|broker|provider_api_key/i);
+  });
+
   it("renders bounded runtime authority state without implying live authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
@@ -259,6 +286,103 @@ function candidateWithRuntimeControl(
       ...fixtureCandidate.runtime,
       runtime_control: runtimeControl
     }
+  };
+}
+
+function promotedCandidate(): CandidateInspectReadModel {
+  const candidateId = "trader-system-candidate-8d42977b8c79";
+  return {
+    ...fixtureCandidate,
+    candidate_id: candidateId,
+    display_name: "Trading AAR candidate s15-02-seeded-codex-real-sdx-proof",
+    status: "materialized",
+    active_version_id: `${candidateId}-v1`,
+    fixture_notice: {
+      mode: "local_promoted_candidate_bundle",
+      label: "Promoted local candidate bundle",
+      statements: [
+        "Read-only TraderSystemCandidate bundle promoted from Trading AAR.",
+        "No exchange credentials or order authority are mounted.",
+        "Candidate-run evidence is replay-only and not counted trading authority."
+      ]
+    },
+    candidate_version: {
+      candidate_version_id: `${candidateId}-v1`,
+      version_label: "trading-aar-v1",
+      provenance_refs: [
+        { record_kind: "trading_research_notebook", id: "s15-02-seeded-codex-real-sdx-proof" },
+        { record_kind: "runnable_artifact", id: "runnable-artifact-8d42977b8c79" }
+      ]
+    },
+    spec: {
+      ref: { record_kind: "trader_system_spec", id: `${candidateId}-spec` },
+      summary: "Promoted from Trading AAR seeded-stability gate using artifact trading-system-mvp.",
+      market: "External trading API provider",
+      instrument: "Trading system",
+      supported_stage_binding_profiles: ["backtest"]
+    },
+    program: {
+      ref: { record_kind: "trader_system_program", id: `${candidateId}-program` },
+      summary: "Minimal Trading System MVP / sha256:fadd2155",
+      manifest: {
+        ref: { record_kind: "program_manifest", id: "trading-system-mvp-manifest" },
+        declared_runtime: "python python3 run.py",
+        declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_intent"]
+      },
+      validation: {
+        ref: { record_kind: "program_validation_record", id: `${candidateId}-validation` },
+        label: "Program validation",
+        status: "promoted_from_seeded_stability_gate",
+        authority_status: "not_counted"
+      }
+    },
+    capability_package: {
+      ref: { record_kind: "capability_package", id: `${candidateId}-capabilities` },
+      summary: "Read-only replay capability for promoted local candidate artifacts.",
+      manifest: {
+        ref: { record_kind: "capability_manifest", id: `${candidateId}-capabilities-manifest` },
+        allowed_stages: ["backtest"],
+        declared_permissions: ["trading_api_provider_v1"],
+        forbidden_contents: ["exchange_credentials", "live_order_submission", "paper_order_submission"]
+      },
+      admission: placeholder("capability_package_admission_record", `${candidateId}-admission`, "Capability admission"),
+      grant: placeholder("capability_grant", `${candidateId}-grant`, "Capability grant"),
+      mount: placeholder("capability_mount_record", `${candidateId}-mount`, "Capability mount")
+    },
+    runtime: {
+      ref: { record_kind: "trader_system_runtime", id: `${candidateId}-runtime` },
+      stage_binding_profile: "backtest",
+      runtime_lifecycle_status: "registered",
+      authority_status: "not_live",
+      placement: {
+        ref: { record_kind: "runtime_placement", id: `${candidateId}-placement` },
+        label: "Runtime placement",
+        status: "candidate_replay_only",
+        authority_status: "not_live"
+      },
+      hands_environment: {
+        ref: { record_kind: "hands_environment", id: `${candidateId}-hands` },
+        label: "Hands environment",
+        status: "not_mounted",
+        authority_status: "not_mounted"
+      },
+      memory_surface: {
+        ref: { record_kind: "runtime_memory_surface", id: `${candidateId}-memory` },
+        trust_class: "local_promoted_candidate_bundle",
+        access_mode: "read_only",
+        surface_version: "v1",
+        visibility: "operator_visible",
+        quarantine_status: "not_quarantined",
+        authority_status: "not_evidence"
+      }
+    },
+    trace: {
+      ref: { record_kind: "trace_placeholder", id: `${candidateId}-trace` },
+      label: "Trace placeholder",
+      status: "source_trace_only",
+      authority_status: "not_counted"
+    },
+    evaluation: emptyEvaluation()
   };
 }
 

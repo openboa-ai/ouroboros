@@ -1,4 +1,4 @@
-export type FixtureMode = "fixture_convenience_mode";
+export type FixtureMode = "fixture_convenience_mode" | "local_promoted_candidate_bundle";
 
 export type NonAuthorityStatus =
   | "not_executed"

@@ -26,6 +26,11 @@ import {
   DEFAULT_CANDIDATE_RUN_ROOT,
   listCandidateRunEvidence
 } from "./trading-candidate/candidate-run-ledger";
+import {
+  DEFAULT_PROMOTED_CANDIDATE_ROOT,
+  getPromotedCandidate,
+  listPromotedCandidateSummaries
+} from "./trading-candidate/promoted-candidate-bundles";
 
 export interface BuildServerOptions {
   store?: LocalStore;
@@ -33,6 +38,7 @@ export interface BuildServerOptions {
   evaluationProviderAdapter?: EvaluationProviderAdapter;
   runtimeInstanceAdapters?: Partial<Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter>>;
   candidateRunRoot?: string;
+  promotedCandidateRoot?: string;
 }
 
 interface CreateEvaluationRunBody {
@@ -154,13 +160,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   }));
 
   server.get("/api/candidates", async () => ({
-    candidates: await store.listCandidates()
+    candidates: await listCandidateSummaries(store, options.promotedCandidateRoot)
   }));
 
   server.get<{ Params: { candidate_id: string } }>(
     "/api/candidates/:candidate_id",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
       if (!candidate) {
         return reply.code(404).send({
           error: "candidate_not_found",
@@ -174,7 +184,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.get<{ Params: { candidate_id: string } }>(
     "/api/candidates/:candidate_id/evaluation-runs",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
       if (!candidate) {
         return reply.code(404).send({
           error: "candidate_not_found",
@@ -192,7 +206,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.get<{ Params: { candidate_id: string }; Querystring: { limit?: string } }>(
     "/api/candidates/:candidate_id/candidate-runs",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
       if (!candidate) {
         return reply.code(404).send({
           error: "candidate_not_found",
@@ -730,6 +748,32 @@ function parseLimit(value: string | undefined): number | undefined {
   }
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+async function listCandidateSummaries(
+  store: LocalStore,
+  promotedCandidateRoot?: string
+) {
+  const promotedCandidates = await listPromotedCandidateSummaries({
+    root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT
+  });
+  const promotedCandidateIds = new Set(promotedCandidates.map((candidate) => candidate.candidate_id));
+  const storeCandidates = await store.listCandidates();
+  return [
+    ...promotedCandidates,
+    ...storeCandidates.filter((candidate) => !promotedCandidateIds.has(candidate.candidate_id))
+  ];
+}
+
+async function getCandidateReadModel(
+  store: LocalStore,
+  candidateId: string,
+  promotedCandidateRoot?: string
+) {
+  return await getPromotedCandidate({
+    root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
+    candidate_id: candidateId
+  }) ?? await store.getCandidate(candidateId);
 }
 
 function runtimeInstanceStatusCode(reason: string): 404 | 422 {
