@@ -133,6 +133,13 @@ button {
   white-space: nowrap;
 }
 
+.header-badges {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  min-width: 220px;
+}
+
 .notice-band {
   display: flex;
   flex-wrap: wrap;
@@ -221,6 +228,15 @@ button {
 .evaluation-status strong {
   font-size: 18px;
   line-height: 1.2;
+}
+
+.evaluation-status.compact {
+  min-width: 220px;
+  padding: 8px 10px;
+}
+
+.evaluation-status.compact strong {
+  font-size: 16px;
 }
 
 .evaluation-status.neutral {
@@ -360,5 +376,14 @@ button {
 
   .detail-header {
     display: grid;
+  }
+
+  .header-badges {
+    justify-items: stretch;
+    min-width: 0;
+  }
+
+  .evaluation-status.compact {
+    min-width: 0;
   }
 }

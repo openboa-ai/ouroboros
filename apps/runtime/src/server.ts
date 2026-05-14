@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
   BoundedRuntimeAuthorityInput,
+  CandidateSummaryReadModel,
   CandidateRunEvidenceReadModel,
   EvaluationExecutionMode,
   Ref,
@@ -25,6 +26,7 @@ import {
 } from "./runtime-instances/sandbox-runtime-adapter";
 import {
   DEFAULT_CANDIDATE_RUN_ROOT,
+  getCandidateLatestReadiness,
   getCandidateRunComparison,
   getCandidateRunDetail,
   getCandidateRunReadiness,
@@ -180,7 +182,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   }));
 
   server.get("/api/candidates", async () => ({
-    candidates: await listCandidateSummaries(store, options.promotedCandidateRoot)
+    candidates: await listCandidateSummaries(
+      store,
+      options.promotedCandidateRoot,
+      options.candidateRunRoot
+    )
   }));
 
   server.get<{ Params: { candidate_id: string } }>(
@@ -189,7 +195,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -207,7 +214,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -229,7 +237,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -258,7 +267,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -298,7 +308,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -344,7 +355,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -379,7 +391,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
-        options.promotedCandidateRoot
+        options.promotedCandidateRoot,
+        options.candidateRunRoot
       );
       if (!candidate) {
         return reply.code(404).send({
@@ -983,28 +996,45 @@ function parseLimit(value: string | undefined): number | undefined {
 
 async function listCandidateSummaries(
   store: LocalStore,
-  promotedCandidateRoot?: string
+  promotedCandidateRoot?: string,
+  candidateRunRoot?: string
 ) {
   const promotedCandidates = await listPromotedCandidateSummaries({
     root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT
   });
   const promotedCandidateIds = new Set(promotedCandidates.map((candidate) => candidate.candidate_id));
   const storeCandidates = await store.listCandidates();
-  return [
+  const candidates = [
     ...promotedCandidates,
     ...storeCandidates.filter((candidate) => !promotedCandidateIds.has(candidate.candidate_id))
   ];
+  return Promise.all(candidates.map((candidate) => withLatestReadiness(candidate, candidateRunRoot)));
 }
 
 async function getCandidateReadModel(
   store: LocalStore,
   candidateId: string,
-  promotedCandidateRoot?: string
+  promotedCandidateRoot?: string,
+  candidateRunRoot?: string
 ) {
-  return await getPromotedCandidate({
+  const candidate = await getPromotedCandidate({
     root: promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
     candidate_id: candidateId
   }) ?? await store.getCandidate(candidateId);
+  return candidate ? withLatestReadiness(candidate, candidateRunRoot) : undefined;
+}
+
+async function withLatestReadiness<T extends CandidateSummaryReadModel>(
+  candidate: T,
+  candidateRunRoot?: string
+): Promise<T> {
+  return {
+    ...candidate,
+    latest_readiness: await getCandidateLatestReadiness({
+      root: candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+      candidate_id: candidate.candidate_id
+    })
+  };
 }
 
 function candidateRunEvidenceFromRecord(record: CandidateRunRecord): CandidateRunEvidenceReadModel {
