@@ -4,6 +4,7 @@ import type {
   CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
+  CandidateRunReadinessReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
@@ -73,6 +74,22 @@ export async function fetchCandidateRunComparison(
   }
   const body = (await response.json()) as { comparison: CandidateRunComparisonReadModel };
   return body.comparison;
+}
+
+export async function fetchCandidateRunReadiness(
+  candidateId: string,
+  runId: string,
+  baselineRunId?: string
+): Promise<CandidateRunReadinessReadModel> {
+  const query = baselineRunId ? `?baseline_run_id=${encodeURIComponent(baselineRunId)}` : "";
+  const response = await fetch(
+    `${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}/readiness${query}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load candidate run readiness ${runId} for ${candidateId}: ${response.status}`);
+  }
+  const body = (await response.json()) as { readiness: CandidateRunReadinessReadModel };
+  return body.readiness;
 }
 
 export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;

@@ -6,6 +6,7 @@ import type {
   CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
+  CandidateRunReadinessReadModel,
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel
 } from "@ouroboros/domain";
@@ -164,6 +165,10 @@ describe("CandidateDetail", () => {
           }
         })}
         candidateRunComparisonBaselineId="baseline-run"
+        candidateRunReadiness={candidateRunReadiness({
+          selected_run_id: "latest-run",
+          baseline_run_id: "baseline-run"
+        })}
       />
     );
 
@@ -176,9 +181,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("+0.25");
     expect(html).toContain("+1");
     expect(html).toContain("valid_order_intent -&gt; valid_order_intent");
+    expect(html).toContain("Readiness gate");
+    expect(html).toContain("Read-only candidate readiness");
+    expect(html).toContain("readiness_not_authority");
+    expect(html).toContain("human review of replay evidence; future promotion issue with explicit authority scope");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote button|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
   it("renders no-baseline candidate-run comparison state without authority actions", () => {
@@ -188,6 +197,7 @@ describe("CandidateDetail", () => {
         candidateRuns={[candidateRun({ run_id: "single-run" })]}
         selectedCandidateRunId="single-run"
         candidateRunDetail={candidateRunDetail({ run_id: "single-run" })}
+        candidateRunReadiness={candidateRunNoBaselineReadiness("single-run")}
       />
     );
 
@@ -195,6 +205,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No comparison baseline");
     expect(html).toContain("single candidate-run history");
     expect(html).toContain("comparison_not_authority");
+    expect(html).toContain("Readiness gate");
+    expect(html).toContain("no_baseline");
+    expect(html).toContain("record at least one baseline replay run; compare selected run against baseline before readiness promotion");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
@@ -654,6 +667,60 @@ function candidateRunComparison(
       paper_trading: false
     },
     ...overrides
+  };
+}
+
+function candidateRunReadiness(
+  overrides: Partial<CandidateRunReadinessReadModel> = {}
+): CandidateRunReadinessReadModel {
+  return {
+    candidate_id: fixtureCandidate.candidate_id,
+    selected_run_id: "selected-run",
+    baseline_run_id: "baseline-run",
+    comparison_verdict: "improved",
+    readiness: "ready",
+    reasons: [
+      "selected run improved against baseline",
+      "all selected scenarios were accepted",
+      "selected score meets the readiness threshold"
+    ],
+    required_next_evidence: [
+      "human review of replay evidence",
+      "future promotion issue with explicit authority scope"
+    ],
+    authority_status: "not_live",
+    evidence_label: "readiness_not_authority",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    },
+    ...overrides
+  };
+}
+
+function candidateRunNoBaselineReadiness(selectedRunId: string): CandidateRunReadinessReadModel {
+  return {
+    candidate_id: fixtureCandidate.candidate_id,
+    selected_run_id: selectedRunId,
+    readiness: "no_baseline",
+    reasons: [
+      "no baseline run was available for readiness comparison",
+      "readiness is not promotable from a single run"
+    ],
+    required_next_evidence: [
+      "record at least one baseline replay run",
+      "compare selected run against baseline before readiness promotion"
+    ],
+    authority_status: "not_live",
+    evidence_label: "readiness_not_authority",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    }
   };
 }
 
