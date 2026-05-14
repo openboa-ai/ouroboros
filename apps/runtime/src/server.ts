@@ -25,6 +25,7 @@ import {
 } from "./runtime-instances/sandbox-runtime-adapter";
 import {
   DEFAULT_CANDIDATE_RUN_ROOT,
+  getCandidateRunComparison,
   getCandidateRunDetail,
   listCandidateRunEvidence
 } from "./trading-candidate/candidate-run-ledger";
@@ -243,6 +244,55 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id,
           limit: parseLimit(request.query.limit)
         })
+      };
+    }
+  );
+
+  server.get<{
+    Params: { candidate_id: string; run_id: string };
+    Querystring: { baseline_run_id?: string };
+  }>(
+    "/api/candidates/:candidate_id/candidate-runs/:run_id/comparison",
+    async (request, reply) => {
+      const candidate = await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot
+      );
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      if (!request.query.baseline_run_id) {
+        return reply.code(422).send({
+          error: "candidate_run_comparison_rejected",
+          reason: "missing_baseline_run_id",
+          candidate_id: request.params.candidate_id,
+          run_id: request.params.run_id
+        });
+      }
+
+      const comparison = await getCandidateRunComparison({
+        root: options.candidateRunRoot ?? DEFAULT_CANDIDATE_RUN_ROOT,
+        candidate_id: request.params.candidate_id,
+        run_id: request.params.run_id,
+        baseline_run_id: request.query.baseline_run_id
+      });
+      if (!comparison) {
+        return reply.code(404).send({
+          error: "candidate_run_comparison_not_found",
+          candidate_id: request.params.candidate_id,
+          run_id: request.params.run_id,
+          baseline_run_id: request.query.baseline_run_id
+        });
+      }
+
+      return {
+        candidate_id: request.params.candidate_id,
+        comparison
       };
     }
   );

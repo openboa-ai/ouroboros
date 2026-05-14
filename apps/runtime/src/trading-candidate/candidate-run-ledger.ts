@@ -2,6 +2,9 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   CandidateRunCommandEvidenceReadModel,
+  CandidateRunComparisonReadModel,
+  CandidateRunComparisonRunReadModel,
+  CandidateRunComparisonVerdict,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRunMetricReadModel,
@@ -20,6 +23,13 @@ export interface GetCandidateRunDetailInput {
   root?: string;
   candidate_id: string;
   run_id: string;
+}
+
+export interface GetCandidateRunComparisonInput {
+  root?: string;
+  candidate_id: string;
+  run_id: string;
+  baseline_run_id: string;
 }
 
 interface RawCandidateRunRecord {
@@ -92,6 +102,54 @@ export async function getCandidateRunDetail(
     return undefined;
   }
   return run;
+}
+
+export async function getCandidateRunComparison(
+  input: GetCandidateRunComparisonInput
+): Promise<CandidateRunComparisonReadModel | undefined> {
+  const [selected, baseline] = await Promise.all([
+    getCandidateRunDetail({
+      root: input.root,
+      candidate_id: input.candidate_id,
+      run_id: input.run_id
+    }),
+    getCandidateRunDetail({
+      root: input.root,
+      candidate_id: input.candidate_id,
+      run_id: input.baseline_run_id
+    })
+  ]);
+  if (!selected || !baseline) {
+    return undefined;
+  }
+
+  const deltas = {
+    score: roundDelta(selected.score - baseline.score),
+    scenario_accepted: selected.scenario_accepted - baseline.scenario_accepted,
+    scenario_total: selected.scenario_total - baseline.scenario_total,
+    provider_request_total: selected.provider_request_total - baseline.provider_request_total,
+    runner_command_total: selected.runner_command_total - baseline.runner_command_total
+  };
+  const verdict = candidateRunComparisonVerdict(selected, baseline, deltas);
+
+  return {
+    candidate_id: input.candidate_id,
+    selected: candidateRunComparisonRun(selected),
+    baseline: candidateRunComparisonRun(baseline),
+    baseline_selection: "explicit_baseline_run_id",
+    deltas,
+    risk_transition: `${baseline.risk_decision} -> ${selected.risk_decision}`,
+    verdict,
+    verdict_reason: candidateRunComparisonReason(verdict, deltas),
+    authority_status: "not_live",
+    evidence_label: "comparison_not_authority",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    }
+  };
 }
 
 async function readRunIfPresent(
@@ -291,6 +349,65 @@ function commandEvidenceValues(value: unknown): CandidateRunCommandEvidenceReadM
       completed_at: completedAt
     }];
   });
+}
+
+function candidateRunComparisonRun(run: CandidateRunDetailReadModel): CandidateRunComparisonRunReadModel {
+  return {
+    run_id: run.run_id,
+    status: run.status,
+    run_status: run.run_status,
+    score: run.score,
+    risk_decision: run.risk_decision,
+    scenario_accepted: run.scenario_accepted,
+    scenario_total: run.scenario_total,
+    provider_request_total: run.provider_request_total,
+    runner_command_total: run.runner_command_total,
+    completed_at: run.completed_at,
+    authority_status: run.authority_status
+  };
+}
+
+function candidateRunComparisonVerdict(
+  selected: CandidateRunDetailReadModel,
+  baseline: CandidateRunDetailReadModel,
+  deltas: CandidateRunComparisonReadModel["deltas"]
+): CandidateRunComparisonVerdict {
+  if (selected.scenario_total === 0 || baseline.scenario_total === 0) {
+    return "incomparable";
+  }
+  if (selected.status !== "accepted" || selected.run_status !== "completed") {
+    return "regressed";
+  }
+  if (baseline.status !== "accepted" || baseline.run_status !== "completed") {
+    return "improved";
+  }
+  if (deltas.score < 0 || deltas.scenario_accepted < 0) {
+    return "regressed";
+  }
+  if (deltas.score > 0 || deltas.scenario_accepted > 0) {
+    return "improved";
+  }
+  return "unchanged";
+}
+
+function candidateRunComparisonReason(
+  verdict: CandidateRunComparisonVerdict,
+  deltas: CandidateRunComparisonReadModel["deltas"]
+): string {
+  switch (verdict) {
+    case "improved":
+      return `selected run improved score by ${deltas.score} and accepted scenarios by ${deltas.scenario_accepted}`;
+    case "regressed":
+      return `selected run regressed score by ${deltas.score} or accepted scenarios by ${deltas.scenario_accepted}`;
+    case "unchanged":
+      return "selected run matched baseline score and accepted scenario count";
+    case "incomparable":
+      return "selected and baseline runs do not share enough scenario coverage";
+  }
+}
+
+function roundDelta(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 function noAuthorityValue(value: unknown): CandidateRunDetailReadModel["no_authority"] {

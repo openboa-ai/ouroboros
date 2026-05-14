@@ -504,6 +504,153 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("compares selected candidate-run evidence against a baseline run", async () => {
+    const runRoot = path.join(tmpDir, "candidate-runs");
+    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
+    const otherCandidateId = "trader-system-candidate-other-001";
+    await writePromotedCandidateBundle(promotedCandidateRoot, otherCandidateId);
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-run-selected",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "docker_sandboxes_sbx",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 2,
+      scenario_total: 2,
+      provider_request_total: 6,
+      runner_command_total: 4,
+      artifact_digest: "sha256:selected",
+      started_at: "2026-05-14T13:00:00.000Z",
+      completed_at: "2026-05-14T13:01:00.000Z",
+      score: 0.85,
+      risk_decision: "valid_order_intent",
+      scenario_ids: ["trend_long", "range_short"],
+      output_dir: path.join(runRoot, "candidate-run-selected", "output"),
+      events_path: path.join(runRoot, "candidate-run-selected", "output", "replay-set.json"),
+      scenario_results: [],
+      no_authority: {
+        live_exchange: false,
+        order_authority: false,
+        credentials: false,
+        paper_trading: false
+      },
+      authority_status: "not_live"
+    });
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-run-baseline",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "host_process",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 1,
+      scenario_total: 2,
+      provider_request_total: 5,
+      runner_command_total: 0,
+      artifact_digest: "sha256:baseline",
+      started_at: "2026-05-14T12:00:00.000Z",
+      completed_at: "2026-05-14T12:01:00.000Z",
+      score: 0.6,
+      risk_decision: "valid_order_intent",
+      scenario_ids: ["trend_long", "range_short"],
+      output_dir: path.join(runRoot, "candidate-run-baseline", "output"),
+      events_path: path.join(runRoot, "candidate-run-baseline", "output", "replay-set.json"),
+      scenario_results: [],
+      no_authority: {
+        live_exchange: false,
+        order_authority: false,
+        credentials: false,
+        paper_trading: false
+      },
+      authority_status: "not_live"
+    });
+
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot,
+      candidateRunRoot: runRoot
+    });
+
+    const comparison = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/comparison?baseline_run_id=candidate-run-baseline`
+    });
+    expect(comparison.statusCode).toBe(200);
+    expect(comparison.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      comparison: {
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        selected: {
+          run_id: "candidate-run-selected",
+          score: 0.85,
+          scenario_accepted: 2,
+          authority_status: "not_live"
+        },
+        baseline: {
+          run_id: "candidate-run-baseline",
+          score: 0.6,
+          scenario_accepted: 1,
+          authority_status: "not_live"
+        },
+        baseline_selection: "explicit_baseline_run_id",
+        deltas: {
+          score: 0.25,
+          scenario_accepted: 1,
+          scenario_total: 0,
+          provider_request_total: 1,
+          runner_command_total: 4
+        },
+        risk_transition: "valid_order_intent -> valid_order_intent",
+        verdict: "improved",
+        authority_status: "not_live",
+        evidence_label: "comparison_not_authority",
+        no_authority: {
+          live_exchange: false,
+          order_authority: false,
+          credentials: false,
+          paper_trading: false
+        }
+      }
+    });
+
+    const missingBaseline = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/comparison?baseline_run_id=missing-run`
+    });
+    expect(missingBaseline.statusCode).toBe(404);
+    expect(missingBaseline.json()).toEqual({
+      error: "candidate_run_comparison_not_found",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      run_id: "candidate-run-selected",
+      baseline_run_id: "missing-run"
+    });
+
+    const mismatch = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${otherCandidateId}/candidate-runs/candidate-run-selected/comparison?baseline_run_id=candidate-run-baseline`
+    });
+    expect(mismatch.statusCode).toBe(404);
+    expect(mismatch.json()).toEqual({
+      error: "candidate_run_comparison_not_found",
+      candidate_id: otherCandidateId,
+      run_id: "candidate-run-selected",
+      baseline_run_id: "candidate-run-baseline"
+    });
+
+    const missingQuery = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-selected/comparison`
+    });
+    expect(missingQuery.statusCode).toBe(422);
+    expect(missingQuery.json()).toEqual({
+      error: "candidate_run_comparison_rejected",
+      reason: "missing_baseline_run_id",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      run_id: "candidate-run-selected"
+    });
+
+    await server.close();
+  });
+
   it("creates and reads deterministic candidate evaluation runs", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({

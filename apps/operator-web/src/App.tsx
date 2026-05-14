@@ -4,6 +4,7 @@ import type {
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
+  CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRuntimeAuthorityReadModel,
@@ -13,6 +14,7 @@ import type {
 } from "@ouroboros/domain";
 import {
   fetchCandidate,
+  fetchCandidateRunComparison,
   fetchCandidateRunDetail,
   fetchCandidateRunEvidence,
   fetchCandidateSummaries,
@@ -28,6 +30,8 @@ interface AppState {
   candidateRuns: CandidateRunEvidenceReadModel[];
   selectedCandidateRunId?: string;
   candidateRunDetail?: CandidateRunDetailReadModel;
+  candidateRunComparison?: CandidateRunComparisonReadModel;
+  candidateRunComparisonBaselineId?: string;
   error?: string;
   loading: boolean;
   recordingRuntimeAuthority: boolean;
@@ -69,6 +73,8 @@ export function App() {
             candidateRuns,
             selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
             candidateRunDetail: candidateRunSelection.candidateRunDetail,
+            candidateRunComparison: candidateRunSelection.candidateRunComparison,
+            candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -116,6 +122,8 @@ export function App() {
         candidateRuns,
         selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
+        candidateRunComparison: candidateRunSelection.candidateRunComparison,
+        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
         loading: false
       }));
     } catch (error) {
@@ -137,17 +145,25 @@ export function App() {
       ...current,
       selectedCandidateRunId: runId,
       candidateRunDetail: undefined,
+      candidateRunComparison: undefined,
+      candidateRunComparisonBaselineId: baselineRunIdForSelection(current.candidateRuns, runId),
       candidateRunError: undefined,
       candidateRunMessage: undefined
     }));
     try {
-      const candidateRunDetail = await fetchCandidateRunDetail(candidate.candidate_id, runId);
+      const candidateRunSelection = await fetchCandidateRunSelection(
+        candidate.candidate_id,
+        state.candidateRuns,
+        runId
+      );
       setState((current) =>
         current.selected?.candidate_id === candidate.candidate_id
           ? {
               ...current,
-              selectedCandidateRunId: runId,
-              candidateRunDetail
+              selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
+              candidateRunDetail: candidateRunSelection.candidateRunDetail,
+              candidateRunComparison: candidateRunSelection.candidateRunComparison,
+              candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId
             }
           : current
       );
@@ -179,13 +195,19 @@ export function App() {
       const outcome = await runCandidateReplay(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
-      const candidateRunDetail = await fetchCandidateRunDetail(candidate.candidate_id, outcome.run.run_id);
+      const candidateRunSelection = await fetchCandidateRunSelection(
+        candidate.candidate_id,
+        candidateRuns,
+        outcome.run.run_id
+      );
       setState((current) => ({
         ...current,
         selected,
         candidateRuns,
-        selectedCandidateRunId: outcome.run.run_id,
-        candidateRunDetail,
+        selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
+        candidateRunDetail: candidateRunSelection.candidateRunDetail,
+        candidateRunComparison: candidateRunSelection.candidateRunComparison,
+        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
         runningCandidateReplay: false,
         candidateRunMessage: `replay recorded: ${outcome.run.run_id}`
       }));
@@ -225,6 +247,8 @@ export function App() {
         candidateRuns,
         selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
+        candidateRunComparison: candidateRunSelection.candidateRunComparison,
+        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
         recordingRuntimeAuthority: false,
         runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
@@ -264,6 +288,8 @@ export function App() {
         candidateRuns,
         selectedCandidateRunId: candidateRunSelection.selectedCandidateRunId,
         candidateRunDetail: candidateRunSelection.candidateRunDetail,
+        candidateRunComparison: candidateRunSelection.candidateRunComparison,
+        candidateRunComparisonBaselineId: candidateRunSelection.candidateRunComparisonBaselineId,
         recordingRuntimeControl: false,
         runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
       }));
@@ -308,6 +334,8 @@ export function App() {
             candidateRuns={state.candidateRuns}
             selectedCandidateRunId={state.selectedCandidateRunId}
             candidateRunDetail={state.candidateRunDetail}
+            candidateRunComparison={state.candidateRunComparison}
+            candidateRunComparisonBaselineId={state.candidateRunComparisonBaselineId}
             onSelectCandidateRun={(runId) => void selectCandidateRun(runId)}
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
               ? () => void runReplay()
@@ -341,16 +369,32 @@ async function fetchCandidateRunSelection(
 ): Promise<{
   selectedCandidateRunId?: string;
   candidateRunDetail?: CandidateRunDetailReadModel;
+  candidateRunComparison?: CandidateRunComparisonReadModel;
+  candidateRunComparisonBaselineId?: string;
 }> {
   const selectedRun = runs.find((run) => run.run_id === preferredRunId) ?? runs[0];
   if (!selectedRun) {
     return {};
   }
+  const baselineRunId = baselineRunIdForSelection(runs, selectedRun.run_id);
+  const [candidateRunDetail, candidateRunComparison] = await Promise.all([
+    fetchCandidateRunDetail(candidateId, selectedRun.run_id),
+    baselineRunId ? fetchCandidateRunComparison(candidateId, selectedRun.run_id, baselineRunId) : undefined
+  ]);
 
   return {
     selectedCandidateRunId: selectedRun.run_id,
-    candidateRunDetail: await fetchCandidateRunDetail(candidateId, selectedRun.run_id)
+    candidateRunDetail,
+    candidateRunComparison,
+    candidateRunComparisonBaselineId: baselineRunId
   };
+}
+
+function baselineRunIdForSelection(
+  runs: CandidateRunEvidenceReadModel[],
+  selectedRunId: string
+): string | undefined {
+  return runs.find((run) => run.run_id !== selectedRunId)?.run_id;
 }
 
 export function CandidateDetail({
@@ -358,6 +402,8 @@ export function CandidateDetail({
   candidateRuns = [],
   selectedCandidateRunId,
   candidateRunDetail,
+  candidateRunComparison,
+  candidateRunComparisonBaselineId,
   onSelectCandidateRun,
   onRunCandidateReplay,
   onRecordRuntimeAuthority,
@@ -376,6 +422,8 @@ export function CandidateDetail({
   candidateRuns?: CandidateRunEvidenceReadModel[];
   selectedCandidateRunId?: string;
   candidateRunDetail?: CandidateRunDetailReadModel;
+  candidateRunComparison?: CandidateRunComparisonReadModel;
+  candidateRunComparisonBaselineId?: string;
   onSelectCandidateRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
@@ -420,6 +468,8 @@ export function CandidateDetail({
           runs={candidateRuns}
           selectedRunId={selectedCandidateRunId}
           detail={candidateRunDetail}
+          comparison={candidateRunComparison}
+          comparisonBaselineId={candidateRunComparisonBaselineId}
           onSelectRun={onSelectCandidateRun}
           onRunCandidateReplay={onRunCandidateReplay}
           runningCandidateReplay={runningCandidateReplay}
@@ -506,6 +556,8 @@ function CandidateRunsSection({
   runs,
   selectedRunId,
   detail,
+  comparison,
+  comparisonBaselineId,
   onSelectRun,
   onRunCandidateReplay,
   runningCandidateReplay,
@@ -515,6 +567,8 @@ function CandidateRunsSection({
   runs: CandidateRunEvidenceReadModel[];
   selectedRunId?: string;
   detail?: CandidateRunDetailReadModel;
+  comparison?: CandidateRunComparisonReadModel;
+  comparisonBaselineId?: string;
   onSelectRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   runningCandidateReplay: boolean;
@@ -577,6 +631,12 @@ function CandidateRunsSection({
         </div>
       )}
 
+      <CandidateRunComparisonBlock
+        comparison={comparison}
+        selectedRunId={activeRunId}
+        baselineRunId={comparisonBaselineId}
+      />
+
       {detail && <CandidateRunDetailBlock detail={detail} />}
 
       {onRunCandidateReplay && (
@@ -595,6 +655,53 @@ function CandidateRunsSection({
       {candidateRunMessage && <div className="inline-status">{candidateRunMessage}</div>}
       {candidateRunError && <div className="inline-status error">{candidateRunError}</div>}
     </InfoSection>
+  );
+}
+
+function CandidateRunComparisonBlock({
+  comparison,
+  selectedRunId,
+  baselineRunId
+}: {
+  comparison?: CandidateRunComparisonReadModel;
+  selectedRunId?: string;
+  baselineRunId?: string;
+}) {
+  if (!selectedRunId) {
+    return null;
+  }
+  if (!comparison) {
+    return (
+      <div className="evaluation-block">
+        <h4>Run comparison</h4>
+        <div className="placeholder">
+          <strong>No comparison baseline</strong>
+          <span>{baselineRunId ?? "single candidate-run history"}</span>
+          <span>comparison_not_authority</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="evaluation-block">
+      <h4>Run comparison</h4>
+      <div className={`evaluation-status ${comparison.verdict === "regressed" ? "failed" : "counted"}`}>
+        <span>Selected vs baseline replay evidence</span>
+        <strong>{comparison.verdict}</strong>
+        <span>{comparison.evidence_label}</span>
+      </div>
+      <Field label="Selected run" value={comparison.selected.run_id} />
+      <Field label="Baseline run" value={comparison.baseline.run_id} />
+      <Field label="Score delta" value={formatSignedNumber(comparison.deltas.score)} />
+      <Field label="Accepted scenario delta" value={formatSignedNumber(comparison.deltas.scenario_accepted)} />
+      <Field label="Provider request delta" value={formatSignedNumber(comparison.deltas.provider_request_total)} />
+      <Field label="Runner command delta" value={formatSignedNumber(comparison.deltas.runner_command_total)} />
+      <Field label="Risk transition" value={comparison.risk_transition} />
+      <Field label="Reason" value={comparison.verdict_reason} />
+      <Field label="Authority" value={comparison.authority_status} />
+      <Field label="No authority" value={formatNoAuthority(comparison.no_authority)} />
+    </div>
   );
 }
 
@@ -646,6 +753,10 @@ function formatNoAuthority(noAuthority: CandidateRunDetailReadModel["no_authorit
     `credentials=${String(noAuthority.credentials)}`,
     `paper_trading=${String(noAuthority.paper_trading)}`
   ].join(", ");
+}
+
+function formatSignedNumber(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function RuntimeControlSection({
