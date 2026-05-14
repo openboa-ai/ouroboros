@@ -32,7 +32,8 @@ describe("runtime read-only API", () => {
   it("serves health and candidate read models", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates")
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      candidateRunRoot: path.join(tmpDir, "empty-candidate-runs")
     });
     const health = await server.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
@@ -44,7 +45,14 @@ describe("runtime read-only API", () => {
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
     expect(list.statusCode).toBe(200);
     expect(list.json()).toMatchObject({
-      candidates: [{ candidate_id: FIXTURE_CANDIDATE_ID }]
+      candidates: [{
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        latest_readiness: {
+          readiness: "no_runs",
+          evidence_label: "readiness_not_authority",
+          authority_status: "not_live"
+        }
+      }]
     });
 
     const detail = await server.inject({
@@ -61,6 +69,114 @@ describe("runtime read-only API", () => {
           access_mode: "read_only",
           authority_status: "not_evidence"
         }
+      },
+      latest_readiness: {
+        readiness: "no_runs",
+        reasons: [
+          "no candidate-run evidence has been recorded",
+          "readiness cannot be inferred without replay evidence"
+        ],
+        required_next_evidence: [
+          "record at least one candidate replay run",
+          "record a second replay run to establish a comparison baseline"
+        ],
+        evidence_label: "readiness_not_authority"
+      }
+    });
+
+    await server.close();
+  });
+
+  it("adds latest candidate-run readiness summaries to candidate list and detail", async () => {
+    const runRoot = path.join(tmpDir, "candidate-runs");
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-readiness-baseline",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "host_process",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 1,
+      scenario_total: 2,
+      provider_request_total: 5,
+      runner_command_total: 0,
+      artifact_digest: "sha256:baseline",
+      score: 0.6,
+      risk_decision: "valid_order_intent",
+      scenario_ids: ["trend_long", "range_short"],
+      output_dir: path.join(runRoot, "candidate-readiness-baseline", "output"),
+      events_path: path.join(runRoot, "candidate-readiness-baseline", "output", "replay-set.json"),
+      started_at: "2026-05-14T10:59:00.000Z",
+      completed_at: "2026-05-14T11:00:00.000Z",
+      authority_status: "not_live"
+    });
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-readiness-latest",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "docker_sandboxes_sbx",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 2,
+      scenario_total: 2,
+      provider_request_total: 6,
+      runner_command_total: 4,
+      artifact_digest: "sha256:latest",
+      score: 0.85,
+      risk_decision: "valid_order_intent",
+      scenario_ids: ["trend_long", "range_short"],
+      output_dir: path.join(runRoot, "candidate-readiness-latest", "output"),
+      events_path: path.join(runRoot, "candidate-readiness-latest", "output", "replay-set.json"),
+      started_at: "2026-05-14T11:59:00.000Z",
+      completed_at: "2026-05-14T12:00:00.000Z",
+      authority_status: "not_live"
+    });
+
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      candidateRunRoot: runRoot
+    });
+
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().candidates[0]).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      latest_readiness: {
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        selected_run_id: "candidate-readiness-latest",
+        baseline_run_id: "candidate-readiness-baseline",
+        comparison_verdict: "improved",
+        readiness: "ready",
+        evidence_label: "readiness_not_authority",
+        authority_status: "not_live",
+        no_authority: {
+          live_exchange: false,
+          order_authority: false,
+          credentials: false,
+          paper_trading: false
+        }
+      }
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      latest_readiness: {
+        selected_run_id: "candidate-readiness-latest",
+        baseline_run_id: "candidate-readiness-baseline",
+        readiness: "ready",
+        reasons: [
+          "selected run improved against baseline",
+          "all selected scenarios were accepted",
+          "selected score meets the readiness threshold"
+        ],
+        required_next_evidence: [
+          "human review of replay evidence",
+          "future promotion issue with explicit authority scope"
+        ]
       }
     });
 

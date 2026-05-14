@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
+  CandidateLatestReadinessReadModel,
   CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
@@ -10,7 +11,7 @@ import type {
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel
 } from "@ouroboros/domain";
-import { CandidateDetail } from "./App";
+import { CandidateDetail, CandidateSummaryRow } from "./App";
 import {
   candidateReplayRunPayload,
   runtimeAuthorityCommandPayload,
@@ -41,6 +42,31 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+  });
+
+  it("renders candidate-level latest readiness in the sidebar row and detail header", () => {
+    const candidate: CandidateInspectReadModel = {
+      ...fixtureCandidate,
+      latest_readiness: candidateLatestReadiness()
+    };
+    const rowHtml = renderToStaticMarkup(
+      <CandidateSummaryRow
+        active
+        candidate={candidate}
+        onSelectCandidate={() => undefined}
+      />
+    );
+    const detailHtml = renderToStaticMarkup(<CandidateDetail candidate={candidate} />);
+
+    expect(rowHtml).toContain("latest readiness: ready");
+    expect(rowHtml).toContain("active");
+    expect(detailHtml).toContain("Latest readiness");
+    expect(detailHtml).toContain("Candidate latest readiness");
+    expect(detailHtml).toContain("latest-candidate-run");
+    expect(detailHtml).toContain("baseline-candidate-run");
+    expect(detailHtml).toContain("readiness_not_authority");
+    expect(detailHtml).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
+    expect(detailHtml).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
   it("renders candidate-run evidence without implying trading authority", () => {
@@ -721,6 +747,36 @@ function candidateRunNoBaselineReadiness(selectedRunId: string): CandidateRunRea
       credentials: false,
       paper_trading: false
     }
+  };
+}
+
+function candidateLatestReadiness(
+  overrides: Partial<CandidateLatestReadinessReadModel> = {}
+): CandidateLatestReadinessReadModel {
+  return {
+    candidate_id: fixtureCandidate.candidate_id,
+    selected_run_id: "latest-candidate-run",
+    baseline_run_id: "baseline-candidate-run",
+    comparison_verdict: "improved",
+    readiness: "ready",
+    reasons: [
+      "selected run improved against baseline",
+      "all selected scenarios were accepted",
+      "selected score meets the readiness threshold"
+    ],
+    required_next_evidence: [
+      "human review of replay evidence",
+      "future promotion issue with explicit authority scope"
+    ],
+    authority_status: "not_live",
+    evidence_label: "readiness_not_authority",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    },
+    ...overrides
   };
 }
 

@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type {
+  CandidateLatestReadinessReadModel,
   CandidateRunCommandEvidenceReadModel,
   CandidateRunComparisonReadModel,
   CandidateRunComparisonRunReadModel,
@@ -39,6 +40,11 @@ export interface GetCandidateRunReadinessInput {
   candidate_id: string;
   run_id: string;
   baseline_run_id?: string;
+}
+
+export interface GetCandidateLatestReadinessInput {
+  root?: string;
+  candidate_id: string;
 }
 
 interface RawCandidateRunRecord {
@@ -200,6 +206,33 @@ export async function getCandidateRunReadiness(
       paper_trading: false
     }
   };
+}
+
+export async function getCandidateLatestReadiness(
+  input: GetCandidateLatestReadinessInput
+): Promise<CandidateLatestReadinessReadModel> {
+  const runs = await listCandidateRunEvidence({
+    root: input.root,
+    candidate_id: input.candidate_id,
+    limit: 10
+  });
+  const selectedRun = runs[0];
+  if (!selectedRun) {
+    return noCandidateRunsReadiness(input.candidate_id);
+  }
+
+  const baselineRun = runs.find((run) => run.run_id !== selectedRun.run_id);
+  const readiness = await getCandidateRunReadiness({
+    root: input.root,
+    candidate_id: input.candidate_id,
+    run_id: selectedRun.run_id,
+    baseline_run_id: baselineRun?.run_id
+  });
+  if (readiness) {
+    return readiness;
+  }
+
+  return incompleteLatestRunReadiness(input.candidate_id, selectedRun.run_id, baselineRun?.run_id);
 }
 
 async function readRunIfPresent(
@@ -543,6 +576,57 @@ function candidateRunReadinessNextEvidence(readiness: CandidateRunReadinessStatu
         "compare selected run against baseline before readiness promotion"
       ];
   }
+}
+
+function noCandidateRunsReadiness(candidateId: string): CandidateLatestReadinessReadModel {
+  return {
+    candidate_id: candidateId,
+    readiness: "no_runs",
+    reasons: [
+      "no candidate-run evidence has been recorded",
+      "readiness cannot be inferred without replay evidence"
+    ],
+    required_next_evidence: [
+      "record at least one candidate replay run",
+      "record a second replay run to establish a comparison baseline"
+    ],
+    authority_status: "not_live",
+    evidence_label: "readiness_not_authority",
+    no_authority: noAuthorityFalse()
+  };
+}
+
+function incompleteLatestRunReadiness(
+  candidateId: string,
+  selectedRunId: string,
+  baselineRunId: string | undefined
+): CandidateLatestReadinessReadModel {
+  return {
+    candidate_id: candidateId,
+    selected_run_id: selectedRunId,
+    baseline_run_id: baselineRunId,
+    readiness: "blocked",
+    reasons: [
+      "latest candidate run detail is incomplete",
+      "readiness requires full replay detail evidence"
+    ],
+    required_next_evidence: [
+      "rerun candidate replay to record full run detail",
+      baselineRunId ? "inspect latest run detail fields before readiness review" : "record a baseline replay run"
+    ],
+    authority_status: "not_live",
+    evidence_label: "readiness_not_authority",
+    no_authority: noAuthorityFalse()
+  };
+}
+
+function noAuthorityFalse(): CandidateLatestReadinessReadModel["no_authority"] {
+  return {
+    live_exchange: false,
+    order_authority: false,
+    credentials: false,
+    paper_trading: false
+  };
 }
 
 function roundDelta(value: number): number {

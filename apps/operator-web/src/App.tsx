@@ -3,6 +3,7 @@ import type {
   CandidateEvaluationReadModel,
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
+  CandidateLatestReadinessReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
@@ -323,15 +324,12 @@ export function App() {
           </div>
         </div>
         {state.candidates.map((candidate) => (
-          <button
-            className={`candidate-row ${state.selected?.candidate_id === candidate.candidate_id ? "active" : ""}`}
+          <CandidateSummaryRow
+            active={state.selected?.candidate_id === candidate.candidate_id}
+            candidate={candidate}
             key={candidate.candidate_id}
-            type="button"
-            onClick={() => void selectCandidate(candidate.candidate_id)}
-          >
-            <span>{candidate.display_name}</span>
-            <small>{candidate.status}</small>
-          </button>
+            onSelectCandidate={selectCandidate}
+          />
         ))}
       </aside>
 
@@ -370,6 +368,29 @@ export function App() {
         )}
       </section>
     </main>
+  );
+}
+
+export function CandidateSummaryRow({
+  candidate,
+  active,
+  onSelectCandidate
+}: {
+  candidate: CandidateSummaryReadModel;
+  active: boolean;
+  onSelectCandidate: (candidateId: string) => void | Promise<void>;
+}) {
+  return (
+    <button
+      className={`candidate-row ${active ? "active" : ""}`}
+      type="button"
+      onClick={() => void onSelectCandidate(candidate.candidate_id)}
+    >
+      <span>{candidate.display_name}</span>
+      <small>
+        {candidate.status} · latest readiness: {latestReadinessLabel(candidate.latest_readiness)}
+      </small>
+    </button>
   );
 }
 
@@ -464,7 +485,12 @@ export function CandidateDetail({
             {candidate.candidate_id} · {candidate.candidate_version.version_label}
           </p>
         </div>
-        <span className="mode-pill">{candidate.fixture_notice.mode}</span>
+        <div className="header-badges">
+          <span className="mode-pill">{candidate.fixture_notice.mode}</span>
+          {candidate.latest_readiness && (
+            <LatestReadinessStatus readiness={candidate.latest_readiness} compact />
+          )}
+        </div>
       </header>
 
       <section className="notice-band">
@@ -478,6 +504,7 @@ export function CandidateDetail({
           <Field label="Status" value={candidate.status} />
           <Field label="Active version" value={candidate.active_version_id} />
           <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
+          {candidate.latest_readiness && <CandidateLatestReadinessBlock readiness={candidate.latest_readiness} />}
         </InfoSection>
 
         <CandidateRunsSection
@@ -730,11 +757,7 @@ function CandidateRunReadinessBlock({ readiness }: { readiness: CandidateRunRead
   return (
     <div className="evaluation-block">
       <h4>Readiness gate</h4>
-      <div className={`evaluation-status ${readinessStatusClass(readiness.readiness)}`}>
-        <span>Read-only candidate readiness</span>
-        <strong>{readiness.readiness}</strong>
-        <span>{readiness.evidence_label}</span>
-      </div>
+      <LatestReadinessStatus readiness={readiness} />
       <Field label="Selected run" value={readiness.selected_run_id} />
       <Field label="Baseline run" value={readiness.baseline_run_id ?? "none"} />
       <Field label="Comparison verdict" value={readiness.comparison_verdict ?? "none"} />
@@ -746,7 +769,43 @@ function CandidateRunReadinessBlock({ readiness }: { readiness: CandidateRunRead
   );
 }
 
-function readinessStatusClass(readiness: CandidateRunReadinessReadModel["readiness"]): string {
+function CandidateLatestReadinessBlock({ readiness }: { readiness: CandidateLatestReadinessReadModel }) {
+  return (
+    <div className="evaluation-block">
+      <h4>Candidate latest readiness</h4>
+      <LatestReadinessStatus readiness={readiness} />
+      <Field label="Selected run" value={readiness.selected_run_id ?? "none"} />
+      <Field label="Baseline run" value={readiness.baseline_run_id ?? "none"} />
+      <Field label="Comparison verdict" value={readiness.comparison_verdict ?? "none"} />
+      <Field label="Reasons" value={readiness.reasons.join("; ")} />
+      <Field label="Required next evidence" value={readiness.required_next_evidence.join("; ")} />
+      <Field label="Authority" value={readiness.authority_status} />
+      <Field label="No authority" value={formatNoAuthority(readiness.no_authority)} />
+    </div>
+  );
+}
+
+function LatestReadinessStatus({
+  readiness,
+  compact = false
+}: {
+  readiness: CandidateLatestReadinessReadModel | CandidateRunReadinessReadModel;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`evaluation-status ${compact ? "compact" : ""} ${readinessStatusClass(readiness.readiness)}`}>
+      <span>{compact ? "Latest readiness" : "Read-only candidate readiness"}</span>
+      <strong>{readiness.readiness}</strong>
+      <span>{readiness.evidence_label}</span>
+    </div>
+  );
+}
+
+function latestReadinessLabel(readiness: CandidateLatestReadinessReadModel | undefined): string {
+  return readiness?.readiness ?? "no_runs";
+}
+
+function readinessStatusClass(readiness: CandidateLatestReadinessReadModel["readiness"]): string {
   switch (readiness) {
     case "ready":
       return "counted";
@@ -755,6 +814,7 @@ function readinessStatusClass(readiness: CandidateRunReadinessReadModel["readine
     case "review_needed":
       return "sealed";
     case "no_baseline":
+    case "no_runs":
       return "neutral";
   }
 }
