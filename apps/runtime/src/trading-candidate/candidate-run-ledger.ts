@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type {
-  CandidateLatestReadinessReadModel,
+  CandidateLatestEvidencePostureReadModel,
   CandidateRunCommandEvidenceReadModel,
   CandidateRunComparisonReadModel,
   CandidateRunComparisonRunReadModel,
@@ -9,8 +9,8 @@ import type {
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRunMetricReadModel,
-  CandidateRunReadinessReadModel,
-  CandidateRunReadinessStatus,
+  CandidateRunEvidencePostureReadModel,
+  CandidateRunEvidencePostureStatus,
   CandidateRunScenarioReadModel
 } from "@ouroboros/domain";
 
@@ -35,14 +35,14 @@ export interface GetCandidateRunComparisonInput {
   baseline_run_id: string;
 }
 
-export interface GetCandidateRunReadinessInput {
+export interface GetCandidateRunEvidencePostureInput {
   root?: string;
   candidate_id: string;
   run_id: string;
   baseline_run_id?: string;
 }
 
-export interface GetCandidateLatestReadinessInput {
+export interface GetCandidateLatestEvidencePostureInput {
   root?: string;
   candidate_id: string;
 }
@@ -167,9 +167,9 @@ export async function getCandidateRunComparison(
   };
 }
 
-export async function getCandidateRunReadiness(
-  input: GetCandidateRunReadinessInput
-): Promise<CandidateRunReadinessReadModel | undefined> {
+export async function getCandidateRunEvidencePosture(
+  input: GetCandidateRunEvidencePostureInput
+): Promise<CandidateRunEvidencePostureReadModel | undefined> {
   const selected = await getCandidateRunDetail({
     root: input.root,
     candidate_id: input.candidate_id,
@@ -187,18 +187,18 @@ export async function getCandidateRunReadiness(
         baseline_run_id: input.baseline_run_id
       })
     : undefined;
-  const readiness = candidateRunReadinessStatus(selected, comparison);
+  const evidencePosture = candidateRunEvidencePostureStatus(selected, comparison);
 
   return {
     candidate_id: input.candidate_id,
     selected_run_id: selected.run_id,
     baseline_run_id: comparison?.baseline.run_id ?? input.baseline_run_id,
     comparison_verdict: comparison?.verdict,
-    readiness,
-    reasons: candidateRunReadinessReasons(readiness, selected, comparison),
-    required_next_evidence: candidateRunReadinessNextEvidence(readiness),
+    evidence_posture: evidencePosture,
+    reasons: candidateRunEvidencePostureReasons(evidencePosture, selected, comparison),
+    required_next_evidence: candidateRunEvidencePostureNextEvidence(evidencePosture),
     authority_status: "not_live",
-    evidence_label: "readiness_not_authority",
+    evidence_label: "evidence_posture_not_authority",
     no_authority: {
       live_exchange: false,
       order_authority: false,
@@ -208,9 +208,9 @@ export async function getCandidateRunReadiness(
   };
 }
 
-export async function getCandidateLatestReadiness(
-  input: GetCandidateLatestReadinessInput
-): Promise<CandidateLatestReadinessReadModel> {
+export async function getCandidateLatestEvidencePosture(
+  input: GetCandidateLatestEvidencePostureInput
+): Promise<CandidateLatestEvidencePostureReadModel> {
   const runs = await listCandidateRunEvidence({
     root: input.root,
     candidate_id: input.candidate_id,
@@ -218,21 +218,21 @@ export async function getCandidateLatestReadiness(
   });
   const selectedRun = runs[0];
   if (!selectedRun) {
-    return noCandidateRunsReadiness(input.candidate_id);
+    return noCandidateRunEvidencePosture(input.candidate_id);
   }
 
   const baselineRun = runs.find((run) => run.run_id !== selectedRun.run_id);
-  const readiness = await getCandidateRunReadiness({
+  const evidencePosture = await getCandidateRunEvidencePosture({
     root: input.root,
     candidate_id: input.candidate_id,
     run_id: selectedRun.run_id,
     baseline_run_id: baselineRun?.run_id
   });
-  if (readiness) {
-    return readiness;
+  if (evidencePosture) {
+    return evidencePosture;
   }
 
-  return incompleteLatestRunReadiness(input.candidate_id, selectedRun.run_id, baselineRun?.run_id);
+  return incompleteLatestEvidencePosture(input.candidate_id, selectedRun.run_id, baselineRun?.run_id);
 }
 
 async function readRunIfPresent(
@@ -489,12 +489,12 @@ function candidateRunComparisonReason(
   }
 }
 
-function candidateRunReadinessStatus(
+function candidateRunEvidencePostureStatus(
   selected: CandidateRunDetailReadModel,
   comparison?: CandidateRunComparisonReadModel
-): CandidateRunReadinessStatus {
+): CandidateRunEvidencePostureStatus {
   if (!comparison) {
-    return "no_baseline";
+    return "baseline_required";
   }
   if (
     selected.status !== "accepted" ||
@@ -502,31 +502,31 @@ function candidateRunReadinessStatus(
     comparison.verdict === "regressed" ||
     comparison.verdict === "incomparable"
   ) {
-    return "blocked";
+    return "evidence_blocked";
   }
   if (
     comparison.verdict === "unchanged" ||
     selected.scenario_accepted < selected.scenario_total ||
     selected.score < 0.8
   ) {
-    return "review_needed";
+    return "review_required";
   }
-  return "ready";
+  return "evidence_sufficient";
 }
 
-function candidateRunReadinessReasons(
-  readiness: CandidateRunReadinessStatus,
+function candidateRunEvidencePostureReasons(
+  evidencePosture: CandidateRunEvidencePostureStatus,
   selected: CandidateRunDetailReadModel,
   comparison?: CandidateRunComparisonReadModel
 ): string[] {
-  switch (readiness) {
-    case "ready":
+  switch (evidencePosture) {
+    case "evidence_sufficient":
       return [
         "selected run improved against baseline",
         "all selected scenarios were accepted",
-        "selected score meets the readiness threshold"
+        "selected score meets the evidence threshold"
       ];
-    case "review_needed":
+    case "review_required":
       return [
         comparison?.verdict === "unchanged"
           ? "selected run did not improve against baseline"
@@ -535,92 +535,92 @@ function candidateRunReadinessReasons(
           ? "not all selected scenarios were accepted"
           : "selected scenario coverage is accepted",
         selected.score < 0.8
-          ? "selected score is below readiness threshold"
-          : "selected score meets readiness threshold"
+          ? "selected score is below evidence threshold"
+          : "selected score meets evidence threshold"
       ];
-    case "blocked":
+    case "evidence_blocked":
       return [
         selected.status !== "accepted" || selected.run_status !== "completed"
           ? "selected run is not accepted and completed"
           : `comparison verdict is ${comparison?.verdict ?? "missing"}`,
-        "readiness cannot advance without non-regressed replay evidence"
+        "evidence posture cannot advance without non-regressed replay evidence"
       ];
-    case "no_baseline":
+    case "baseline_required":
       return [
-        "no baseline run was available for readiness comparison",
-        "readiness is not promotable from a single run"
+        "no baseline run was available for evidence comparison",
+        "evidence posture cannot advance from a single run"
       ];
   }
 }
 
-function candidateRunReadinessNextEvidence(readiness: CandidateRunReadinessStatus): string[] {
-  switch (readiness) {
-    case "ready":
+function candidateRunEvidencePostureNextEvidence(evidencePosture: CandidateRunEvidencePostureStatus): string[] {
+  switch (evidencePosture) {
+    case "evidence_sufficient":
       return [
         "human review of replay evidence",
         "future promotion issue with explicit authority scope"
       ];
-    case "review_needed":
+    case "review_required":
       return [
         "additional replay run or manual review",
         "confirm comparison deltas before promotion consideration"
       ];
-    case "blocked":
+    case "evidence_blocked":
       return [
         "new accepted replay run with non-regressed comparison",
         "inspect failed or regressed scenario evidence"
       ];
-    case "no_baseline":
+    case "baseline_required":
       return [
         "record at least one baseline replay run",
-        "compare selected run against baseline before readiness promotion"
+        "compare selected run against baseline before posture review"
       ];
   }
 }
 
-function noCandidateRunsReadiness(candidateId: string): CandidateLatestReadinessReadModel {
+function noCandidateRunEvidencePosture(candidateId: string): CandidateLatestEvidencePostureReadModel {
   return {
     candidate_id: candidateId,
-    readiness: "no_runs",
+    evidence_posture: "run_required",
     reasons: [
       "no candidate-run evidence has been recorded",
-      "readiness cannot be inferred without replay evidence"
+      "evidence posture cannot be inferred without replay evidence"
     ],
     required_next_evidence: [
       "record at least one candidate replay run",
       "record a second replay run to establish a comparison baseline"
     ],
     authority_status: "not_live",
-    evidence_label: "readiness_not_authority",
+    evidence_label: "evidence_posture_not_authority",
     no_authority: noAuthorityFalse()
   };
 }
 
-function incompleteLatestRunReadiness(
+function incompleteLatestEvidencePosture(
   candidateId: string,
   selectedRunId: string,
   baselineRunId: string | undefined
-): CandidateLatestReadinessReadModel {
+): CandidateLatestEvidencePostureReadModel {
   return {
     candidate_id: candidateId,
     selected_run_id: selectedRunId,
     baseline_run_id: baselineRunId,
-    readiness: "blocked",
+    evidence_posture: "evidence_blocked",
     reasons: [
       "latest candidate run detail is incomplete",
-      "readiness requires full replay detail evidence"
+      "evidence posture requires full replay detail evidence"
     ],
     required_next_evidence: [
       "rerun candidate replay to record full run detail",
-      baselineRunId ? "inspect latest run detail fields before readiness review" : "record a baseline replay run"
+      baselineRunId ? "inspect latest run detail fields before posture review" : "record a baseline replay run"
     ],
     authority_status: "not_live",
-    evidence_label: "readiness_not_authority",
+    evidence_label: "evidence_posture_not_authority",
     no_authority: noAuthorityFalse()
   };
 }
 
-function noAuthorityFalse(): CandidateLatestReadinessReadModel["no_authority"] {
+function noAuthorityFalse(): CandidateLatestEvidencePostureReadModel["no_authority"] {
   return {
     live_exchange: false,
     order_authority: false,

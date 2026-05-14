@@ -4,7 +4,7 @@ import type {
   CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
-  CandidateRunReadinessReadModel,
+  CandidateRunEvidencePostureReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
@@ -76,20 +76,20 @@ export async function fetchCandidateRunComparison(
   return body.comparison;
 }
 
-export async function fetchCandidateRunReadiness(
+export async function fetchCandidateRunEvidencePosture(
   candidateId: string,
   runId: string,
   baselineRunId?: string
-): Promise<CandidateRunReadinessReadModel> {
+): Promise<CandidateRunEvidencePostureReadModel> {
   const query = baselineRunId ? `?baseline_run_id=${encodeURIComponent(baselineRunId)}` : "";
   const response = await fetch(
-    `${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}/readiness${query}`
+    `${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}/evidence-posture${query}`
   );
   if (!response.ok) {
-    throw new Error(`Failed to load candidate run readiness ${runId} for ${candidateId}: ${response.status}`);
+    throw new Error(`Failed to load candidate run evidence posture ${runId} for ${candidateId}: ${response.status}`);
   }
-  const body = (await response.json()) as { readiness: CandidateRunReadinessReadModel };
-  return body.readiness;
+  const body = (await response.json()) as { evidence_posture: CandidateRunEvidencePostureReadModel };
+  return body.evidence_posture;
 }
 
 export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;
