@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
+  CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel
@@ -68,6 +69,29 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Provider requests");
     expect(html).toContain("Runner commands");
     expect(html).toContain("sha256:fadd2155");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+  });
+
+  it("renders candidate-run detail evidence without adding authority actions", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={fixtureCandidate}
+        candidateRuns={[candidateRun({ run_id: "candidate-run-detail" })]}
+        candidateRunDetail={candidateRunDetail({ run_id: "candidate-run-detail" })}
+      />
+    );
+
+    expect(html).toContain("Latest run detail");
+    expect(html).toContain("1 / valid_order_intent");
+    expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
+    expect(html).toContain("promotion-detail");
+    expect(html).toContain("research-detail");
+    expect(html).toContain("trend_long");
+    expect(html).toContain("Accepted order intent with score 1.000.");
+    expect(html).toContain("Metric provider_boundary");
+    expect(html).toContain("0.2: market/account/order validation went through the external provider");
+    expect(html).toContain("sbx version");
     expect(html).toContain("not_live");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
@@ -417,6 +441,62 @@ function candidateRun(overrides: Partial<CandidateRunEvidenceReadModel> = {}): C
     artifact_digest: "sha256:fadd2155",
     completed_at: "2026-05-13T15:00:00.000Z",
     authority_status: "not_live",
+    ...overrides
+  };
+}
+
+function candidateRunDetail(overrides: Partial<CandidateRunDetailReadModel> = {}): CandidateRunDetailReadModel {
+  const summary = candidateRun(overrides);
+  return {
+    ...summary,
+    score: 1,
+    risk_decision: "valid_order_intent",
+    scenario_ids: ["trend_long"],
+    output_dir: "/tmp/candidate-run-001/output",
+    events_path: "/tmp/candidate-run-001/output/replay-set.json",
+    started_at: "2026-05-13T14:59:00.000Z",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    },
+    provenance: {
+      promotion_id: "promotion-detail",
+      source_session_id: "research-detail"
+    },
+    scenarios: [
+      {
+        scenario_id: "trend_long",
+        runner_kind: "docker_sandboxes_sbx",
+        sandbox_name: "ouro-s22-detail",
+        status: "accepted",
+        run_status: "completed",
+        score: 1,
+        risk_decision: "valid_order_intent",
+        summary: "Accepted order intent with score 1.000.",
+        events_path: "/tmp/candidate-run-001/output/trend_long/events.jsonl",
+        provider_request_count: 3,
+        runner_command_count: 1,
+        metrics: [
+          {
+            name: "provider_boundary",
+            score: 0.2,
+            detail: "market/account/order validation went through the external provider"
+          }
+        ],
+        runner_command_evidence: [
+          {
+            command: ["sbx", "version"],
+            exit_code: 0,
+            stdout_preview: "Docker Sandboxes",
+            stderr_preview: "",
+            started_at: "2026-05-13T14:59:01.000Z",
+            completed_at: "2026-05-13T14:59:02.000Z"
+          }
+        ]
+      }
+    ],
     ...overrides
   };
 }

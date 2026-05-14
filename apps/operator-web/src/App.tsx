@@ -4,6 +4,7 @@ import type {
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
+  CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRuntimeAuthorityReadModel,
   CandidateRuntimeControlReadModel,
@@ -12,6 +13,7 @@ import type {
 } from "@ouroboros/domain";
 import {
   fetchCandidate,
+  fetchCandidateRunDetail,
   fetchCandidateRunEvidence,
   fetchCandidateSummaries,
   recordCandidateRuntimeAuthority,
@@ -24,6 +26,7 @@ interface AppState {
   candidates: CandidateSummaryReadModel[];
   selected?: CandidateInspectReadModel;
   candidateRuns: CandidateRunEvidenceReadModel[];
+  candidateRunDetail?: CandidateRunDetailReadModel;
   error?: string;
   loading: boolean;
   recordingRuntimeAuthority: boolean;
@@ -55,11 +58,15 @@ export function App() {
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
         const candidateRuns = selected ? await fetchCandidateRunEvidence(selected.candidate_id) : [];
+        const candidateRunDetail = selected
+          ? await fetchLatestCandidateRunDetail(selected.candidate_id, candidateRuns)
+          : undefined;
         if (!cancelled) {
           setState({
             candidates,
             selected,
             candidateRuns,
+            candidateRunDetail,
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
@@ -100,7 +107,8 @@ export function App() {
     try {
       const selected = await fetchCandidate(candidateId);
       const candidateRuns = await fetchCandidateRunEvidence(candidateId);
-      setState((current) => ({ ...current, selected, candidateRuns, loading: false }));
+      const candidateRunDetail = await fetchLatestCandidateRunDetail(candidateId, candidateRuns);
+      setState((current) => ({ ...current, selected, candidateRuns, candidateRunDetail, loading: false }));
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -126,10 +134,12 @@ export function App() {
       const outcome = await runCandidateReplay(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
+      const candidateRunDetail = await fetchCandidateRunDetail(candidate.candidate_id, outcome.run.run_id);
       setState((current) => ({
         ...current,
         selected,
         candidateRuns,
+        candidateRunDetail,
         runningCandidateReplay: false,
         candidateRunMessage: `replay recorded: ${outcome.run.run_id}`
       }));
@@ -158,10 +168,12 @@ export function App() {
       const outcome = await recordCandidateRuntimeAuthority(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
+      const candidateRunDetail = await fetchLatestCandidateRunDetail(candidate.candidate_id, candidateRuns);
       setState((current) => ({
         ...current,
         selected,
         candidateRuns,
+        candidateRunDetail,
         recordingRuntimeAuthority: false,
         runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
@@ -190,10 +202,12 @@ export function App() {
       const outcome = await recordCandidateRuntimeControl(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
+      const candidateRunDetail = await fetchLatestCandidateRunDetail(candidate.candidate_id, candidateRuns);
       setState((current) => ({
         ...current,
         selected,
         candidateRuns,
+        candidateRunDetail,
         recordingRuntimeControl: false,
         runtimeControlMessage: `control_only recorded: ${outcome.command.runtime_control_command_id}`
       }));
@@ -236,6 +250,7 @@ export function App() {
           <CandidateDetail
             candidate={state.selected}
             candidateRuns={state.candidateRuns}
+            candidateRunDetail={state.candidateRunDetail}
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
               ? () => void runReplay()
               : undefined}
@@ -261,9 +276,18 @@ export function App() {
   );
 }
 
+async function fetchLatestCandidateRunDetail(
+  candidateId: string,
+  runs: CandidateRunEvidenceReadModel[]
+): Promise<CandidateRunDetailReadModel | undefined> {
+  const latestRun = runs[0];
+  return latestRun ? await fetchCandidateRunDetail(candidateId, latestRun.run_id) : undefined;
+}
+
 export function CandidateDetail({
   candidate,
   candidateRuns = [],
+  candidateRunDetail,
   onRunCandidateReplay,
   onRecordRuntimeAuthority,
   onRecordRuntimeControl,
@@ -279,6 +303,7 @@ export function CandidateDetail({
 }: {
   candidate: CandidateInspectReadModel;
   candidateRuns?: CandidateRunEvidenceReadModel[];
+  candidateRunDetail?: CandidateRunDetailReadModel;
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
@@ -320,6 +345,7 @@ export function CandidateDetail({
 
         <CandidateRunsSection
           runs={candidateRuns}
+          detail={candidateRunDetail}
           onRunCandidateReplay={onRunCandidateReplay}
           runningCandidateReplay={runningCandidateReplay}
           candidateRunError={candidateRunError}
@@ -403,12 +429,14 @@ export function CandidateDetail({
 
 function CandidateRunsSection({
   runs,
+  detail,
   onRunCandidateReplay,
   runningCandidateReplay,
   candidateRunError,
   candidateRunMessage
 }: {
   runs: CandidateRunEvidenceReadModel[];
+  detail?: CandidateRunDetailReadModel;
   onRunCandidateReplay?: () => void;
   runningCandidateReplay: boolean;
   candidateRunError?: string;
@@ -453,6 +481,8 @@ function CandidateRunsSection({
         </div>
       ))}
 
+      {detail && <CandidateRunDetailBlock detail={detail} />}
+
       {onRunCandidateReplay && (
         <div className="runtime-command">
           <button
@@ -470,6 +500,55 @@ function CandidateRunsSection({
       {candidateRunError && <div className="inline-status error">{candidateRunError}</div>}
     </InfoSection>
   );
+}
+
+function CandidateRunDetailBlock({ detail }: { detail: CandidateRunDetailReadModel }) {
+  return (
+    <div className="evaluation-block">
+      <h4>Latest run detail</h4>
+      <Field label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
+      <Field label="Scenario ids" value={detail.scenario_ids.join(", ")} />
+      <Field label="No authority" value={formatNoAuthority(detail.no_authority)} />
+      <Field label="Promotion" value={detail.provenance.promotion_id ?? "none"} />
+      <Field label="Source session" value={detail.provenance.source_session_id ?? "none"} />
+      <Field label="Events" value={detail.events_path} />
+
+      {detail.scenarios.map((scenario) => (
+        <div className="evaluation-block" key={scenario.scenario_id}>
+          <h4>{scenario.scenario_id}</h4>
+          <Field label="Status" value={`${scenario.status} / ${scenario.run_status}`} />
+          <Field label="Runner" value={scenario.runner_kind} />
+          <Field label="Score / risk" value={`${scenario.score} / ${scenario.risk_decision}`} />
+          <Field label="Summary" value={scenario.summary} />
+          <Field label="Provider requests" value={String(scenario.provider_request_count)} />
+          <Field label="Runner commands" value={String(scenario.runner_command_count)} />
+          {scenario.metrics.map((metric) => (
+            <Field
+              key={metric.name}
+              label={`Metric ${metric.name}`}
+              value={`${metric.score}: ${metric.detail}`}
+            />
+          ))}
+          {scenario.runner_command_evidence.map((evidence, index) => (
+            <Field
+              key={`${scenario.scenario_id}-command-${index}`}
+              label={`Command ${index + 1}`}
+              value={`${evidence.command.join(" ")} -> ${evidence.exit_code ?? "signal"}`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function formatNoAuthority(noAuthority: CandidateRunDetailReadModel["no_authority"]): string {
+  return [
+    `live_exchange=${String(noAuthority.live_exchange)}`,
+    `order_authority=${String(noAuthority.order_authority)}`,
+    `credentials=${String(noAuthority.credentials)}`,
+    `paper_trading=${String(noAuthority.paper_trading)}`
+  ].join(", ");
 }
 
 function RuntimeControlSection({

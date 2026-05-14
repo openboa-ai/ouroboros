@@ -356,6 +356,154 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("reads candidate-run detail evidence for scenario drilldown", async () => {
+    const runRoot = path.join(tmpDir, "candidate-runs");
+    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
+    const otherCandidateId = "trader-system-candidate-other-001";
+    await writePromotedCandidateBundle(promotedCandidateRoot, otherCandidateId);
+    await writeCandidateRunRecord(runRoot, {
+      run_id: "candidate-run-detail",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      runner_kind: "docker_sandboxes_sbx",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 1,
+      scenario_total: 1,
+      provider_request_total: 3,
+      runner_command_total: 2,
+      artifact_digest: "sha256:detail",
+      started_at: "2026-05-14T12:00:00.000Z",
+      completed_at: "2026-05-14T12:01:00.000Z",
+      score: 1,
+      risk_decision: "valid_order_intent",
+      scenario_ids: ["trend_long"],
+      output_dir: path.join(runRoot, "candidate-run-detail", "output"),
+      events_path: path.join(runRoot, "candidate-run-detail", "output", "replay-set.json"),
+      scenario_results: [
+        {
+          scenario_id: "trend_long",
+          runner_kind: "docker_sandboxes_sbx",
+          sandbox_name: "ouro-s22-detail",
+          status: "accepted",
+          run_status: "completed",
+          score: 1,
+          risk_decision: "valid_order_intent",
+          summary: "Accepted order intent with score 1.000.",
+          events_path: path.join(runRoot, "candidate-run-detail", "output", "trend_long", "events.jsonl"),
+          provider_request_count: 3,
+          runner_command_count: 2,
+          metrics: [
+            {
+              name: "provider_boundary",
+              score: 0.2,
+              detail: "market/account/order validation went through the external provider"
+            }
+          ],
+          runner_command_evidence: [
+            {
+              command: ["sbx", "version"],
+              exit_code: 0,
+              stdout_preview: "Docker Sandboxes",
+              stderr_preview: "",
+              started_at: "2026-05-14T12:00:01.000Z",
+              completed_at: "2026-05-14T12:00:02.000Z"
+            }
+          ]
+        }
+      ],
+      no_authority: {
+        live_exchange: false,
+        order_authority: false,
+        credentials: false,
+        paper_trading: false
+      },
+      provenance: {
+        promotion_id: "promotion-detail",
+        source_session_id: "research-detail"
+      },
+      authority_status: "not_live"
+    });
+
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot,
+      candidateRunRoot: runRoot
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/candidate-run-detail`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      run: {
+        run_id: "candidate-run-detail",
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        score: 1,
+        risk_decision: "valid_order_intent",
+        scenario_ids: ["trend_long"],
+        no_authority: {
+          live_exchange: false,
+          order_authority: false,
+          credentials: false,
+          paper_trading: false
+        },
+        provenance: {
+          promotion_id: "promotion-detail",
+          source_session_id: "research-detail"
+        },
+        scenarios: [
+          {
+            scenario_id: "trend_long",
+            runner_kind: "docker_sandboxes_sbx",
+            sandbox_name: "ouro-s22-detail",
+            status: "accepted",
+            risk_decision: "valid_order_intent",
+            metrics: [
+              {
+                name: "provider_boundary",
+                score: 0.2
+              }
+            ],
+            runner_command_evidence: [
+              {
+                command: ["sbx", "version"],
+                exit_code: 0,
+                stdout_preview: "Docker Sandboxes",
+                stderr_preview: ""
+              }
+            ]
+          }
+        ]
+      }
+    });
+
+    const mismatch = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${otherCandidateId}/candidate-runs/candidate-run-detail`
+    });
+    expect(mismatch.statusCode).toBe(404);
+    expect(mismatch.json()).toEqual({
+      error: "candidate_run_not_found",
+      candidate_id: otherCandidateId,
+      run_id: "candidate-run-detail"
+    });
+
+    const missingRun = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs/missing-run`
+    });
+    expect(missingRun.statusCode).toBe(404);
+    expect(missingRun.json()).toEqual({
+      error: "candidate_run_not_found",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      run_id: "missing-run"
+    });
+
+    await server.close();
+  });
+
   it("creates and reads deterministic candidate evaluation runs", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({
@@ -1443,8 +1591,25 @@ async function writeCandidateRunRecord(
     provider_request_total: number;
     runner_command_total: number;
     artifact_digest: string;
+    score?: number;
+    risk_decision?: string;
+    scenario_ids?: string[];
+    output_dir?: string;
+    events_path?: string;
+    scenario_results?: unknown[];
+    started_at?: string;
     completed_at: string;
     authority_status: string;
+    no_authority?: {
+      live_exchange: boolean;
+      order_authority: boolean;
+      credentials: boolean;
+      paper_trading: boolean;
+    };
+    provenance?: {
+      promotion_id?: string;
+      source_session_id?: string;
+    };
   }
 ): Promise<void> {
   const filePath = path.join(root, value.run_id, "run.json");
