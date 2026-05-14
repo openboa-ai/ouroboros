@@ -53,7 +53,7 @@ describe("FixtureEvaluationProviderAdapter", () => {
 
     const result = await adapter.runCandidateEvaluation({
       ...validEvaluationRequest("candidate-version-001"),
-      stage_binding_ref: { record_kind: "trader_system_candidate", id: "wrong-ref" }
+      stage_binding_ref: { record_kind: "trading_system_candidate", id: "wrong-ref" }
     });
 
     expect(result).toMatchObject({

@@ -17,7 +17,7 @@ describe("S11 Codex SDX trading research proof script", () => {
     ]);
 
     expect(result.code, scriptOutput(result)).toBe(0);
-    expect(result.stdout).toContain("S11 Codex SDX Trading AAR proof");
+    expect(result.stdout).toContain("S11 Codex SDX Trading research proof");
     expect(result.stdout).toContain("session_id=example");
     expect(result.stdout).toContain("env OUROBOROS_SBX_HOME=/private/tmp/ouro-s5-sdx-home");
     expect(result.stdout).toContain("env OUROBOROS_SDX_BIN=./scripts/sdx-docker-sandboxes");

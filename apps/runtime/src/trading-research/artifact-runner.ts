@@ -481,11 +481,11 @@ def round_value(value):
     return round(value, 6)
 
 
-def validate_order_intent(body, market, account):
+def validate_order_intent_draft(body, market, account):
     if not isinstance(body, dict):
         return {
             "accepted": False,
-            "reason": "malformed_order_intent",
+            "reason": "malformed_order_intent_draft",
             "notional": 0,
             "risk_fraction": 0,
         }
@@ -555,7 +555,7 @@ def make_handler(scenario, requests_path):
         def do_POST(self):
             body = read_body(self)
             if self.path == "/orders/validate":
-                validation = validate_order_intent(body, scenario["market"], scenario["account"])
+                validation = validate_order_intent_draft(body, scenario["market"], scenario["account"])
                 self.respond_and_log(200, validation, body)
                 return
             self.respond_and_log(404, {"error": "not_found"}, body)

@@ -18,7 +18,7 @@ describe("S12 trading research ledger script", () => {
       const result = await runScript(["scripts/trading-research-ledger.mjs", "--root", root, "--limit", "5"]);
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("Trading AAR run ledger");
+      expect(result.stdout).toContain("Trading research run ledger");
       expect(result.stdout).toContain(`root=${root}`);
       expect(result.stdout).toContain("gate=completion");
       expect(result.stdout).toContain("runs=3");
@@ -203,7 +203,7 @@ function makeEntry(
       score: 1,
       metrics: [],
       summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_results: [
         makeScenarioResult(sessionId, iteration, "trend_long"),
         makeScenarioResult(sessionId, iteration, "range_flat")
@@ -223,8 +223,8 @@ function makeScenarioResult(sessionId: string, iteration: number, scenarioId: st
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent.",
-    risk_decision: "valid_order_intent",
+    summary: "Accepted order intent draft.",
+    risk_decision: "valid_order_intent_draft",
     events_path: `${outputDir}/events.jsonl`,
     provider_request_count: 3,
     runner_command_count: 5,
@@ -300,7 +300,7 @@ function makeBlockedEntry(iteration: number, completedAt: string) {
         }
       ],
       summary: "Agent failed before artifact execution.",
-      risk_decision: "no_order_intent"
+      risk_decision: "no_order_intent_draft"
     }
   };
 }

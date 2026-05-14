@@ -5,14 +5,14 @@ import type {
   RuntimeControlCommandRecord,
   RuntimeControlDecisionRecord,
   RuntimePlacementRecord,
-  TraderSystemRuntimeRecord
+  TradingSystemRuntimeRecord
 } from "./index";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("TraderSystemRuntime control and audit records", () => {
+describe("TradingSystemRuntime control and audit records", () => {
   it("models a pause decision against logical runtime identity instead of placement identity", () => {
-    const runtimeRef = ref("trader_system_runtime", "runtime-paper-btc-breakout-v1");
+    const runtimeRef = ref("trading_system_runtime", "runtime-paper-market-breakout-v1");
     const placementRef = ref("runtime_placement", "runtime-placement-compose-local");
     const commandRef = ref("runtime_control_command", "runtime-control-command-pause-v1");
     const decisionRef = ref("runtime_control_decision", "runtime-control-decision-pause-v1");
@@ -21,13 +21,13 @@ describe("TraderSystemRuntime control and audit records", () => {
     const operatorRef = ref("operator", "operator-sjson");
 
     const runtime = {
-      record_kind: "trader_system_runtime",
+      record_kind: "trading_system_runtime",
       version: 1,
-      trader_system_runtime_id: runtimeRef.id,
+      trading_system_runtime_id: runtimeRef.id,
       stage_binding_profile: "paper",
       runtime_lifecycle_status: "running",
-      candidate_ref: ref("trader_system_candidate", "candidate-btc-breakout"),
-      candidate_version_ref: ref("candidate_version", "candidate-version-btc-breakout-v1"),
+      candidate_ref: ref("trading_system_candidate", "candidate-market-breakout"),
+      candidate_version_ref: ref("candidate_version", "candidate-version-market-breakout-v1"),
       stage_binding_ref: ref("stage_binding", "stage-binding-paper-v1"),
       placement_ref: placementRef,
       hands_environment_ref: ref("hands_environment", "hands-environment-paper"),
@@ -38,7 +38,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       runtime_control_decision_refs: [decisionRef],
       runtime_audit_event_refs: [auditEventRef],
       authority_status: "not_live"
-    } satisfies TraderSystemRuntimeRecord;
+    } satisfies TradingSystemRuntimeRecord;
 
     const pauseCommand = {
       record_kind: "runtime_control_command",
@@ -50,7 +50,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       actor_kind: "human_operator",
       actor_ref: operatorRef,
       runtime_operating_policy_ref: policyRef,
-      idempotency_key: "pause-runtime-paper-btc-breakout-v1",
+      idempotency_key: "pause-runtime-paper-market-breakout-v1",
       reason: "operator_request",
       reason_summary: "Pause before reviewing paper-stage behavior.",
       requested_at: "2026-05-10T00:10:00.000Z",
@@ -90,7 +90,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       authority_status: "audit_only"
     } satisfies RuntimeAuditEventRecord;
 
-    expect(runtime.trader_system_runtime_id).not.toBe(runtime.placement_ref.id);
+    expect(runtime.trading_system_runtime_id).not.toBe(runtime.placement_ref.id);
     expect(pauseCommand.runtime_ref).toEqual(runtimeRef);
     expect(pauseCommand.runtime_ref).not.toEqual(placementRef);
     expect(pauseDecision.command_ref).toEqual(commandRef);
@@ -99,7 +99,7 @@ describe("TraderSystemRuntime control and audit records", () => {
   });
 
   it("models kill rejection and no-live authority without converting placement or gateway state into control truth", () => {
-    const runtimeRef = ref("trader_system_runtime", "runtime-paper-btc-breakout-v1");
+    const runtimeRef = ref("trading_system_runtime", "runtime-paper-market-breakout-v1");
     const placement = {
       record_kind: "runtime_placement",
       version: 1,
@@ -124,7 +124,7 @@ describe("TraderSystemRuntime control and audit records", () => {
         "runtime_operating_policy",
         "runtime-operating-policy-paper-v1"
       ),
-      idempotency_key: "kill-runtime-paper-btc-breakout-v1",
+      idempotency_key: "kill-runtime-paper-market-breakout-v1",
       reason: "safety_intervention",
       related_gateway_decision_refs: [],
       related_execution_attempt_refs: [],
@@ -142,8 +142,8 @@ describe("TraderSystemRuntime control and audit records", () => {
       decision_outcome: "no_live_authority",
       decision_reason: "no_live_authority",
       decided_by_actor_kind: "policy_engine",
-      resulting_lifecycle_status: "review_required",
-      related_order_intent_refs: [],
+      resulting_lifecycle_status: "human_review_required",
+      related_order_intent_draft_refs: [],
       related_gateway_decision_refs: [],
       related_execution_attempt_refs: [],
       decided_at: "2026-05-10T00:20:01.000Z",
@@ -160,7 +160,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       decision_reason: "fixture_only",
       decided_by_actor_kind: "policy_engine",
       resulting_lifecycle_status: "running",
-      related_order_intent_refs: [],
+      related_order_intent_draft_refs: [],
       related_gateway_decision_refs: [],
       related_execution_attempt_refs: [],
       decided_at: "2026-05-10T00:20:03.000Z",
@@ -176,8 +176,8 @@ describe("TraderSystemRuntime control and audit records", () => {
       decision_outcome: "rejected",
       decision_reason: "runtime_lifecycle_incompatible",
       decided_by_actor_kind: "policy_engine",
-      resulting_lifecycle_status: "review_required",
-      related_order_intent_refs: [],
+      resulting_lifecycle_status: "human_review_required",
+      related_order_intent_draft_refs: [],
       related_gateway_decision_refs: [],
       related_execution_attempt_refs: [],
       decided_at: "2026-05-10T00:20:04.000Z",
@@ -192,7 +192,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       event_kind: "control_kill_recorded",
       command_ref: ref("runtime_control_command", killCommand.runtime_control_command_id),
       decision_ref: ref("runtime_control_decision", noLiveDecision.runtime_control_decision_id),
-      runtime_lifecycle_status: "review_required",
+      runtime_lifecycle_status: "human_review_required",
       message: "Kill request recorded, but no live runtime authority exists in this MLP boundary.",
       supporting_record_refs: [
         ref("runtime_control_command", killCommand.runtime_control_command_id),
@@ -203,7 +203,7 @@ describe("TraderSystemRuntime control and audit records", () => {
     } satisfies RuntimeAuditEventRecord;
 
     expect(placement.authority_status).toBe("not_launched");
-    expect(killCommand.runtime_ref.record_kind).toBe("trader_system_runtime");
+    expect(killCommand.runtime_ref.record_kind).toBe("trading_system_runtime");
     expect(noLiveDecision.decision_outcome).toBe("no_live_authority");
     expect(dryRunInspectionDecision.decision_outcome).toBe("dry_run_only");
     expect(rejectedStopDecision.decision_outcome).toBe("rejected");
@@ -213,7 +213,7 @@ describe("TraderSystemRuntime control and audit records", () => {
   });
 
   it("models override and handoff audit chains with operator and policy attribution", () => {
-    const runtimeRef = ref("trader_system_runtime", "runtime-paper-btc-breakout-v1");
+    const runtimeRef = ref("trading_system_runtime", "runtime-paper-market-breakout-v1");
     const operatorRef = ref("operator", "operator-sjson");
     const handoffTargetRef = ref("operator", "operator-next-reviewer");
     const policyRef = ref("runtime_operating_policy", "runtime-operating-policy-paper-v1");
@@ -236,15 +236,15 @@ describe("TraderSystemRuntime control and audit records", () => {
       runtime_control_command_id: overrideCommandRef.id,
       runtime_ref: runtimeRef,
       action: "override",
-      requested_lifecycle_status: "review_required",
+      requested_lifecycle_status: "human_review_required",
       actor_kind: "human_operator",
       actor_ref: operatorRef,
       runtime_operating_policy_ref: policyRef,
-      idempotency_key: "override-runtime-paper-btc-breakout-v1",
+      idempotency_key: "override-runtime-paper-market-breakout-v1",
       reason: "manual_override",
       reason_summary: "Force review-required posture after operator inspection.",
       trace_ref: ref("trace_placeholder", "trace-runtime-paper-v1"),
-      related_order_intent_refs: [ref("order_intent", "order-intent-paper-buy-v1")],
+      related_order_intent_draft_refs: [ref("order_intent_draft", "order-intent-draft-paper-buy-v1")],
       related_gateway_decision_refs: [ref("gateway_decision", "gateway-decision-paper-v1")],
       related_execution_attempt_refs: [
         ref("execution_attempt", "execution-attempt-paper-dry-run-v1")
@@ -265,8 +265,8 @@ describe("TraderSystemRuntime control and audit records", () => {
       decided_by_actor_kind: "human_operator",
       decided_by_actor_ref: operatorRef,
       runtime_operating_policy_ref: policyRef,
-      resulting_lifecycle_status: "review_required",
-      related_order_intent_refs: overrideCommand.related_order_intent_refs,
+      resulting_lifecycle_status: "human_review_required",
+      related_order_intent_draft_refs: overrideCommand.related_order_intent_draft_refs,
       related_gateway_decision_refs: overrideCommand.related_gateway_decision_refs,
       related_execution_attempt_refs: overrideCommand.related_execution_attempt_refs,
       decided_at: "2026-05-10T00:30:01.000Z",
@@ -281,7 +281,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       action: "handoff",
       actor_kind: "human_operator",
       actor_ref: operatorRef,
-      idempotency_key: "handoff-runtime-paper-btc-breakout-v1",
+      idempotency_key: "handoff-runtime-paper-market-breakout-v1",
       reason: "handoff_requested",
       reason_summary: "Move follow-up runtime review to the next operator.",
       requested_at: "2026-05-10T00:31:00.000Z",
@@ -298,7 +298,7 @@ describe("TraderSystemRuntime control and audit records", () => {
       command_ref: handoffCommandRef,
       actor_kind: "external_handoff",
       actor_ref: handoffTargetRef,
-      runtime_lifecycle_status: "review_required",
+      runtime_lifecycle_status: "human_review_required",
       supporting_record_refs: [
         overrideCommandRef,
         overrideDecisionRef,
@@ -309,8 +309,8 @@ describe("TraderSystemRuntime control and audit records", () => {
       authority_status: "audit_only"
     } satisfies RuntimeAuditEventRecord;
 
-    expect(overrideDecision.related_order_intent_refs).toEqual([
-      ref("order_intent", "order-intent-paper-buy-v1")
+    expect(overrideDecision.related_order_intent_draft_refs).toEqual([
+      ref("order_intent_draft", "order-intent-draft-paper-buy-v1")
     ]);
     expect(overrideDecision.related_gateway_decision_refs).toEqual([
       ref("gateway_decision", "gateway-decision-paper-v1")

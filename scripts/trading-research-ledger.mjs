@@ -14,7 +14,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
        npm run trading:research:ledger -- --limit 5
        npm run trading:research:ledger -- --root <path> --json
 
-Lists local Trading AAR notebook runs without executing Codex, SDX, or an audit.
+Lists local Trading research notebook runs without executing Codex, SDX, or an audit.
 
 Options:
   --root <path>       Directory containing <session>/notebook.json files.
@@ -72,7 +72,7 @@ if (args.json === "true") {
   process.exit(0);
 }
 
-console.log("Trading AAR run ledger");
+console.log("Trading research run ledger");
 console.log(`root=${root}`);
 console.log(`gate=${gate}`);
 console.log(`status_filter=${statusFilter}`);
@@ -302,8 +302,8 @@ function seededStabilityEntryMissing(entry, missing) {
   if (!Number.isFinite(entry?.evaluation?.score) || entry.evaluation.score < 1) {
     missing.push(`${label} evaluation.score >= 1`);
   }
-  if (entry?.evaluation?.risk_decision !== "valid_order_intent") {
-    missing.push(`${label} evaluation.risk_decision == valid_order_intent`);
+  if (entry?.evaluation?.risk_decision !== "valid_order_intent_draft") {
+    missing.push(`${label} evaluation.risk_decision == valid_order_intent_draft`);
   }
   const scenarioResults = asArray(entry?.evaluation?.scenario_results);
   for (const scenarioId of SEEDED_REQUIRED_SCENARIOS) {
@@ -331,8 +331,8 @@ function seededStabilityScenarioMissing(entryLabel, scenario, missing) {
   if (!Number.isFinite(scenario?.score) || scenario.score < 1) {
     missing.push(`${label} score >= 1`);
   }
-  if (scenario?.risk_decision !== "valid_order_intent") {
-    missing.push(`${label} risk_decision == valid_order_intent`);
+  if (scenario?.risk_decision !== "valid_order_intent_draft") {
+    missing.push(`${label} risk_decision == valid_order_intent_draft`);
   }
   if (!stringValue(scenario?.events_path)) {
     missing.push(`${label} events_path`);

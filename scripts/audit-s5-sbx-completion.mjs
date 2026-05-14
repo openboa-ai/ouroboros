@@ -60,7 +60,7 @@ const completionChecklist = [
     label: "clock fixture emitted runtime heartbeats",
     evidence: [
       "runtime_heartbeat",
-      "fixtures/trader-systems/clock.py"
+      "fixtures/trading-systems/clock.py"
     ]
   },
   {
@@ -468,7 +468,7 @@ function parseArgs(argv) {
 
 function printSummary() {
   console.log("S5 sbx completion audit");
-  console.log("objective: prove the opaque TraderSystem artifact runtime in a real Docker Sandboxes sbx environment");
+  console.log("objective: prove the opaque TradingSystem artifact runtime in a real Docker Sandboxes sbx environment");
   console.log(`evidence_transcript=${selectedEvidencePath ?? "missing"}`);
   console.log("prompt-to-artifact checklist:");
   for (const item of completionChecklist) {

@@ -112,7 +112,7 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
     const notebook = await readFile(input.notebook_path, "utf8");
     const recentNotebook = summarizeNotebook(notebook);
     return [
-      "You are a Codex managed agent in the Ouroboros Trading AAR loop.",
+      "You are a Codex managed agent in the Ouroboros Trading research loop.",
       "Edit only files in the current trading system artifact directory.",
       "Do not add provider credentials, live trading authority, exchange-specific code, or hidden evaluator assumptions.",
       "The artifact must call the external TradingApiProvider through TRADING_API_BASE_URL.",

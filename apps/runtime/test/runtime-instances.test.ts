@@ -183,7 +183,7 @@ describe("runtime instance API", () => {
           adapter_kind: "docker_sandboxes_sbx",
           instance_id: "sandbox-runtime-instance-sdx-api-rejected",
           sandbox_name: "ouro-s5-clock-sdx-api-rejected",
-          runtime_id: "fixture-trader-system-runtime-001"
+          runtime_id: "fixture-trading-system-runtime-001"
         }
       });
 
@@ -228,7 +228,7 @@ describe("runtime instance API", () => {
           adapter_kind: "docker_sandboxes_sbx",
           instance_id: "sandbox-runtime-instance-real-adapter-evidence",
           sandbox_name: "ouro-s5-clock-real-adapter-evidence",
-          runtime_id: "fixture-trader-system-runtime-001",
+          runtime_id: "fixture-trading-system-runtime-001",
           interval_ms: 1
         }
       });
@@ -412,7 +412,7 @@ describe("runtime instance API", () => {
         idempotency_key: "runtime-instance-start-fails",
         instance_id: "sandbox-runtime-instance-start-fails",
         sandbox_name: "ouro-s5-clock-start-fails",
-        runtime_id: "fixture-trader-system-runtime-001"
+        runtime_id: "fixture-trading-system-runtime-001"
       }
     });
 
@@ -462,7 +462,7 @@ async function startClockInstance(
     url: "/api/runtime-instances",
     payload: {
       ...input,
-      runtime_id: "fixture-trader-system-runtime-001",
+      runtime_id: "fixture-trading-system-runtime-001",
       test_ticks: 2,
       interval_ms: 1
     }

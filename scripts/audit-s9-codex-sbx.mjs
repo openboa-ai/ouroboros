@@ -15,12 +15,12 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
        npm run audit:s9-codex-sbx -- --host-probes
        npm run audit:s9-codex-sdx -- --host-probes
 
-Audits Slice 9 Codex AAR provider dry-run readiness for Docker Sandboxes sbx/sdx.
+Audits Slice 9 Codex research provider dry-run readiness for Docker Sandboxes sbx/sdx.
 
 Default mode is fixture-only and non-mutating: it checks repo files, S9 scripts, and S5 sbx/sdx
 guardrails. Host probe mode additionally distinguishes:
 - host-local Codex CLI availability with codex --version
-- fixture-only Codex AAR dry-run/evaluation proof in repo tests and scripts
+- fixture-only Codex research dry-run/evaluation proof in repo tests and scripts
 - real sbx/sdx preflight through the existing S5 non-mutating preflight harness
 
 Evidence boundary:
@@ -45,16 +45,16 @@ Exit codes:
 
 const checks = [];
 
-await check("required S9 Codex AAR files exist", async () => {
+await check("required S9 Codex research files exist", async () => {
   await assertFilesExist([
-    "apps/runtime/src/aar-orchestration/codex-aar-proposal-dry-run.ts",
-    "apps/runtime/src/aar-orchestration/codex-aar-proposal-dry-run-audit.ts",
-    "apps/runtime/src/aar-orchestration/codex-aar-proposal-evaluation-dry-run.ts",
-    "apps/runtime/src/aar-orchestration/run-codex-aar-proposal.ts",
-    "apps/runtime/src/aar-orchestration/run-codex-aar-proposal-audit.ts",
-    "apps/runtime/src/providers/codex-cli-aar-proposal-provider.ts",
-    "apps/runtime/test/codex-aar-proposal-dry-run-audit.test.ts",
-    "apps/runtime/test/codex-aar-proposal-evaluation-dry-run.test.ts",
+    "apps/runtime/src/research-orchestration/codex-artifact-change-proposal-dry-run.ts",
+    "apps/runtime/src/research-orchestration/codex-artifact-change-proposal-dry-run-audit.ts",
+    "apps/runtime/src/research-orchestration/codex-artifact-change-proposal-evaluation-dry-run.ts",
+    "apps/runtime/src/research-orchestration/run-codex-artifact-change-proposal.ts",
+    "apps/runtime/src/research-orchestration/run-codex-artifact-change-proposal-audit.ts",
+    "apps/runtime/src/providers/codex-cli-artifact-change-proposal-provider.ts",
+    "apps/runtime/test/codex-artifact-change-proposal-dry-run-audit.test.ts",
+    "apps/runtime/test/codex-artifact-change-proposal-evaluation-dry-run.test.ts",
     "scripts/validate-s5-sbx-runtime.mjs",
     "scripts/sdx-docker-sandboxes"
   ]);
@@ -62,8 +62,8 @@ await check("required S9 Codex AAR files exist", async () => {
 
 await check("npm S9 Codex sbx scripts are registered", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-  assertValue(packageJson.scripts?.["aar:proposal:codex"], "missing aar:proposal:codex");
-  assertValue(packageJson.scripts?.["aar:proposal:codex:audit"], "missing aar:proposal:codex:audit");
+  assertValue(packageJson.scripts?.["research:proposal:codex"], "missing research:proposal:codex");
+  assertValue(packageJson.scripts?.["research:proposal:codex:audit"], "missing research:proposal:codex:audit");
   assertValue(packageJson.scripts?.["audit:s9-codex-sbx"], "missing audit:s9-codex-sbx");
   assertValue(packageJson.scripts?.["audit:s9-codex-sdx"], "missing audit:s9-codex-sdx");
   assertValue(packageJson.scripts?.["audit:s9-codex-sdx-local"], "missing audit:s9-codex-sdx-local");
@@ -82,9 +82,9 @@ await check("S5 sbx/sdx preflight guardrails remain registered", async () => {
   assertIncludes(help.stdout, "host sbx preflight/runtime-control is blocked");
 });
 
-await check("fixture-only Codex AAR evaluation proof is registered", async () => {
-  const testFile = await readFile("apps/runtime/test/codex-aar-proposal-evaluation-dry-run.test.ts", "utf8");
-  assertIncludes(testFile, "continues a Codex-shaped proposal through runtime instance and sealed BTC perp evaluation");
+await check("fixture-only Codex research evaluation proof is registered", async () => {
+  const testFile = await readFile("apps/runtime/test/codex-artifact-change-proposal-evaluation-dry-run.test.ts", "utf8");
+  assertIncludes(testFile, "continues a Codex-shaped proposal through runtime instance and sealed generic trading evaluation");
   assertIncludes(testFile, "evidence_disposition: \"not_counted\"");
   assertIncludes(testFile, "authority_status: \"not_counted\"");
 });
@@ -96,13 +96,13 @@ if (hostProbes) {
     assertIncludes(result.stdout, "codex");
   });
 
-  await check("S9 Codex AAR audit command produces structured provider outcome", async () => {
+  await check("S9 Codex research audit command produces structured provider outcome", async () => {
     const storeRoot = await mkdtemp(path.join(tmpdir(), "ouroboros-s9-codex-sbx-audit-"));
     try {
       const result = await run([
         "npm",
         "run",
-        "aar:proposal:codex:audit",
+        "research:proposal:codex:audit",
         "--",
         "--store-root",
         storeRoot,
@@ -115,8 +115,8 @@ if (hostProbes) {
         "--expect-status",
         "any"
       ], timeoutMs + codexTimeoutMs + 5_000);
-      assertExitZero(result, "S9 Codex AAR audit command failed");
-      const parsed = parseJsonObject(result.stdout, "S9 Codex AAR audit output");
+      assertExitZero(result, "S9 Codex research audit command failed");
+      const parsed = parseJsonObject(result.stdout, "S9 Codex research audit output");
       assertValue(parsed.probe?.readiness_status, "missing provider probe readiness_status");
       assertValue(parsed.dry_run?.status, "missing dry_run status");
       assertIncludes(["materialized", "failed"], parsed.dry_run.status);

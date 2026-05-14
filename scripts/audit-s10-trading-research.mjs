@@ -16,7 +16,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`Usage: npm run audit:s10-trading-research -- --session-id <id>
        npm run audit:s10-trading-research -- --notebook <path>
 
-Audits a Slice 10 Trading AAR research notebook for Codex-first sandbox sidecar completion proof.
+Audits a Slice 10 Trading research research notebook for Codex-first sandbox sidecar completion proof.
 
 Default completion gates:
 - agent.provider is codex
@@ -105,7 +105,7 @@ for (const entry of entries) {
   auditEntry(entry);
 }
 
-console.log("S10 Trading AAR completion audit");
+console.log("S10 Trading research completion audit");
 console.log(`notebook=${notebookPath}`);
 console.log(`session_id=${sessionId || "<missing>"}`);
 console.log(`agent_provider=${agentProvider || "<missing>"}`);
@@ -146,7 +146,7 @@ function auditEntry(entry) {
   requireValue(stringValue(entry?.events_path), `${label} events_path`);
   requireEqual(stringValue(entry?.evaluation?.status), "accepted", `${label} evaluation.status`);
   requireAtLeast(finiteNumber(entry?.evaluation?.score), minScore, `${label} evaluation.score`);
-  requireEqual(stringValue(entry?.evaluation?.risk_decision), "valid_order_intent", `${label} evaluation.risk_decision`);
+  requireEqual(stringValue(entry?.evaluation?.risk_decision), "valid_order_intent_draft", `${label} evaluation.risk_decision`);
 
   const scenarioResults = asArray(entry?.evaluation?.scenario_results);
   if (scenarioResults.length === 0) {
@@ -169,7 +169,7 @@ function auditScenario(entryLabelText, scenario) {
   requireEqual(stringValue(scenario?.run_status), "completed", `${label} run_status`);
   requireEqual(stringValue(scenario?.status), "accepted", `${label} status`);
   requireAtLeast(finiteNumber(scenario?.score), minScore, `${label} score`);
-  requireEqual(stringValue(scenario?.risk_decision), "valid_order_intent", `${label} risk_decision`);
+  requireEqual(stringValue(scenario?.risk_decision), "valid_order_intent_draft", `${label} risk_decision`);
   requireValue(stringValue(scenario?.events_path), `${label} events_path`);
   requireAtLeast(finiteNumber(scenario?.provider_request_count), DEFAULT_MIN_PROVIDER_REQUESTS, `${label} provider_request_count`);
   requireAtLeast(finiteNumber(scenario?.runner_command_count), DEFAULT_MIN_RUNNER_COMMANDS, `${label} runner_command_count`);

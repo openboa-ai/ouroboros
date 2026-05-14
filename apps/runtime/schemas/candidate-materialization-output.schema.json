@@ -81,7 +81,7 @@
           "minLength": 1
         },
         "first_market_scope": {
-          "const": "binance_btc_perpetual_futures"
+          "const": "external_trading_api_fixture"
         }
       }
     },

@@ -36,7 +36,7 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("Trading AAR research loop MVP", () => {
+describe("Trading research research loop MVP", () => {
   it("runs one artifact through replay provider, evaluator, keep, discard, and notebook output", async () => {
     const runRoot = path.join(tmpDir, "session");
     const result = await runTradingResearchLoop({
@@ -60,7 +60,7 @@ describe("Trading AAR research loop MVP", () => {
       agent_changed_paths: ["run.py"],
       evaluation: {
         status: "accepted",
-        risk_decision: "valid_order_intent"
+        risk_decision: "valid_order_intent_draft"
       }
     });
     expect(notebook.entries[0].events_path).toContain("replay-set.json");
@@ -78,7 +78,7 @@ describe("Trading AAR research loop MVP", () => {
       agent_status: "edited",
       evaluation: {
         status: "disqualified",
-        risk_decision: "invalid_order_intent"
+        risk_decision: "invalid_order_intent_draft"
       }
     });
     expect(notebook.entries[1].evaluation.scenario_results).toEqual([
@@ -95,7 +95,7 @@ describe("Trading AAR research loop MVP", () => {
     expect(notebookSurface).toContain("provider_boundary");
     expect(notebookSurface).toContain("replay_set_average");
     expect(notebookSurface).not.toMatch(
-      /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|btc-perp|binance/i
+      /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|sealed-replay|venue/i
     );
   });
 
@@ -121,14 +121,14 @@ describe("Trading AAR research loop MVP", () => {
     expect(run.events.map((event) => event.event)).toEqual([
       "market_snapshot",
       "account_state",
-      "order_intent",
+      "order_intent_draft",
       "order_validation",
       "run_complete"
     ]);
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
       score: 0.85,
-      risk_decision: "valid_order_intent"
+      risk_decision: "valid_order_intent_draft"
     });
   });
 
@@ -151,7 +151,7 @@ describe("Trading AAR research loop MVP", () => {
     expect(run.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          event: "order_intent",
+          event: "order_intent_draft",
           side: "hold",
           quantity: 0
         })
@@ -160,7 +160,7 @@ describe("Trading AAR research loop MVP", () => {
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
       score: 1,
-      risk_decision: "valid_order_intent"
+      risk_decision: "valid_order_intent_draft"
     });
   });
 
@@ -282,7 +282,7 @@ describe("Trading AAR research loop MVP", () => {
       score: 0,
       evaluation: {
         status: "disqualified",
-        risk_decision: "no_order_intent"
+        risk_decision: "no_order_intent_draft"
       }
     });
     const scenarioResult = result.entries[0].evaluation.scenario_results?.[0];
@@ -308,7 +308,7 @@ describe("Trading AAR research loop MVP", () => {
     delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 
-  it("builds a Codex-first artifact edit command without exposing legacy proposal internals", async () => {
+  it("builds a Codex-first artifact edit command without exposing provider proposal internals", async () => {
     const artifactDir = path.join(tmpDir, "artifact");
     const notebookPath = path.join(tmpDir, "notebook.json");
     const programPath = path.join(tmpDir, "program.md");

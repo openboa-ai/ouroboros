@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 
 const DEFAULT_RESEARCH_ROOT = path.join(".ouroboros", "trading-research");
-const DEFAULT_CANDIDATE_ROOT = path.join(".ouroboros", "trader-system-candidates");
+const DEFAULT_CANDIDATE_ROOT = path.join(".ouroboros", "trading-system-candidates");
 const GATE_VALUES = new Set(["completion", "seeded-stability"]);
 const REQUIRED_SCENARIOS = ["trend_long", "range_flat"];
 
@@ -27,7 +27,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
        npm run trading:research:promote-candidate -- --session-id <id> --gate seeded-stability --seed-artifact <path>
        npm run trading:research:promote-candidate -- --notebook <path> --gate seeded-stability --seed-artifact <path>
 
-Promotes a verified Trading AAR notebook best artifact into a local TraderSystemCandidate record.
+Promotes a verified Trading research notebook best artifact into a local TradingSystemCandidate record.
 
 Options:
   --session-id <id>        Read <research-root>/<id>/notebook.json.
@@ -93,7 +93,7 @@ if (selectedStatus !== "pass") {
 
 const sourceDigest = await artifactDigest(bestArtifactDir);
 const suffix = stableSuffix(`${sessionId}:${gate}:${sourceDigest}`);
-const candidateId = args["candidate-id"] ?? `trader-system-candidate-${suffix}`;
+const candidateId = args["candidate-id"] ?? `trading-system-candidate-${suffix}`;
 validateCandidateId(candidateId);
 const candidateVersionId = `${candidateId}-v1`;
 const runnableArtifactId = `runnable-artifact-${suffix}`;
@@ -104,7 +104,7 @@ const manifest = await readArtifactManifest(bestArtifactDir);
 const promotedAt = new Date().toISOString();
 
 const refs = {
-  candidate: ref("trader_system_candidate", candidateId),
+  candidate: ref("trading_system_candidate", candidateId),
   candidateVersion: ref("candidate_version", candidateVersionId),
   runnableArtifact: ref("runnable_artifact", runnableArtifactId),
   notebook: ref("trading_research_notebook", sessionId),
@@ -112,15 +112,15 @@ const refs = {
 };
 
 const candidate = {
-  record_kind: "trader_system_candidate",
+  record_kind: "trading_system_candidate",
   version: 1,
   candidate_id: candidateId,
-  display_name: `Trading AAR candidate ${sessionId}`,
+  display_name: `Trading research candidate ${sessionId}`,
   status: "materialized",
   active_version_id: candidateVersionId,
   provenance_refs: [refs.notebook, refs.runnableArtifact, refs.promotion],
-  title: `Trading AAR candidate from ${sessionId}`,
-  system_summary: `Promoted from Trading AAR ${gate} gate using artifact ${manifest.id ?? "unknown"}.`,
+  title: `Trading research candidate from ${sessionId}`,
+  system_summary: `Promoted from Trading research ${gate} gate using artifact ${manifest.id ?? "unknown"}.`,
   candidate_status: "handoff_ready",
   evaluation_handoff_ready: true,
   active_runnable_artifact_ref: refs.runnableArtifact,
@@ -132,11 +132,11 @@ const candidateVersion = {
   version: 1,
   candidate_version_id: candidateVersionId,
   candidate_id: candidateId,
-  version_label: "trading-aar-v1",
-  spec_ref: ref("trader_system_spec", `${candidateId}-spec`),
-  program_ref: ref("trader_system_program", `${candidateId}-program`),
+  version_label: "trading-research-v1",
+  spec_ref: ref("trading_system_spec", `${candidateId}-spec`),
+  program_ref: ref("trading_system_program", `${candidateId}-program`),
   capability_package_refs: [ref("capability_package", `${candidateId}-capabilities`)],
-  runtime_ref: ref("trader_system_runtime", `${candidateId}-runtime`),
+  runtime_ref: ref("trading_system_runtime", `${candidateId}-runtime`),
   trace_placeholder_ref: ref("trace_placeholder", `${candidateId}-trace`),
   runnable_artifact_ref: refs.runnableArtifact
 };
@@ -152,7 +152,7 @@ const runnableArtifact = {
   entrypoint: asArray(manifest.entrypoint).map(String),
   declared_output_contract: {
     contract_kind: "opaque_runtime_boundary",
-    declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent"]
+    declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
   },
   secret_policy_ref: ref("secret_policy", "secret-policy-no-raw-values-v1"),
   capability_policy_ref: ref("capability_policy", "capability-policy-trading-replay-readonly-v1"),
@@ -219,7 +219,7 @@ const outcome = {
 if (args.json === "true") {
   console.log(JSON.stringify(outcome, null, 2));
 } else {
-  console.log("Trading AAR candidate promotion");
+  console.log("Trading research candidate promotion");
   console.log(`candidate_id=${candidateId}`);
   console.log(`gate=${gate}`);
   console.log(`completion_status=${gateSummary.completion_status}`);
@@ -445,8 +445,8 @@ function addSeededEntryMissing(missing, entry) {
   if (!Number.isFinite(entry?.evaluation?.score) || entry.evaluation.score < 1) {
     missing.push(`${label} evaluation.score >= 1`);
   }
-  if (entry?.evaluation?.risk_decision !== "valid_order_intent") {
-    missing.push(`${label} evaluation.risk_decision == valid_order_intent`);
+  if (entry?.evaluation?.risk_decision !== "valid_order_intent_draft") {
+    missing.push(`${label} evaluation.risk_decision == valid_order_intent_draft`);
   }
   const scenarioResults = asArray(entry?.evaluation?.scenario_results);
   for (const scenarioId of REQUIRED_SCENARIOS) {
@@ -474,8 +474,8 @@ function addSeededScenarioMissing(missing, entryLabel, scenario) {
   if (!Number.isFinite(scenario?.score) || scenario.score < 1) {
     missing.push(`${label} score >= 1`);
   }
-  if (scenario?.risk_decision !== "valid_order_intent") {
-    missing.push(`${label} risk_decision == valid_order_intent`);
+  if (scenario?.risk_decision !== "valid_order_intent_draft") {
+    missing.push(`${label} risk_decision == valid_order_intent_draft`);
   }
   if (!stringValue(scenario?.events_path)) {
     missing.push(`${label} events_path`);
@@ -639,7 +639,7 @@ async function rebuildCandidateIndex(root) {
   }
   candidates.sort((left, right) => Date.parse(right.promoted_at ?? "") - Date.parse(left.promoted_at ?? ""));
   await writeJson(path.join(root, "index.json"), {
-    record_kind: "trader_system_candidate_index",
+    record_kind: "trading_system_candidate_index",
     version: 1,
     root,
     candidates
@@ -647,7 +647,7 @@ async function rebuildCandidateIndex(root) {
 }
 
 function printFailure(gate, status, missing) {
-  console.log("Trading AAR candidate promotion");
+  console.log("Trading research candidate promotion");
   console.log(`gate=${gate}`);
   console.log(`gate_status=${status}`);
   for (const item of missing) {

@@ -1,7 +1,7 @@
 import type {
-  AarProposalProviderProbeResult,
-  AarProposalProviderRequest,
-  AarProposalProviderResult,
+  ArtifactChangeProposalProviderProbeResult,
+  ArtifactChangeProposalProviderRequest,
+  ArtifactChangeProposalProviderResult,
   CandidateMaterializationFailureReason,
   CandidateMaterializationInput,
   EvaluationExecutionMode,
@@ -88,7 +88,7 @@ export interface EvaluationProviderAdapter {
   runCandidateEvaluation(request: CandidateEvaluationRequest): Promise<EvaluationProviderResult>;
 }
 
-export interface AarProposalProviderAdapter {
-  probeAarProposal?(): Promise<AarProposalProviderProbeResult>;
-  runAarProposalGeneration(request: AarProposalProviderRequest): Promise<AarProposalProviderResult>;
+export interface ArtifactChangeProposalProviderAdapter {
+  probeArtifactChangeProposal?(): Promise<ArtifactChangeProposalProviderProbeResult>;
+  runArtifactChangeProposalGeneration(request: ArtifactChangeProposalProviderRequest): Promise<ArtifactChangeProposalProviderResult>;
 }

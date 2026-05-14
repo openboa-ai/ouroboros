@@ -6,8 +6,8 @@ import type {
   RunnableArtifactRecord,
   RuntimePlacementRecord,
   SandboxRuntimeInstanceRecord,
-  TraderSystemCandidateRecord,
-  TraderSystemRuntimeRecord
+  TradingSystemCandidateRecord,
+  TradingSystemRuntimeRecord
 } from "./index";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
@@ -40,7 +40,7 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       version: 1,
       runnable_artifact_id: "runnable-artifact-python-clock-v1",
       artifact_kind: "python_file",
-      artifact_path: "fixtures/trader-systems/clock.py",
+      artifact_path: "fixtures/trading-systems/clock.py",
       artifact_digest: "sha256:fixture-clock-python-artifact-v1",
       artifact_runtime_contract_ref: ref(
         "artifact_runtime_contract",
@@ -59,7 +59,7 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
 
     expect(artifact.runnable_artifact_id).toBe("runnable-artifact-python-clock-v1");
     expect(artifact.artifact_digest).toMatch(/^sha256:/);
-    expect(artifact.artifact_path).toBe("fixtures/trader-systems/clock.py");
+    expect(artifact.artifact_path).toBe("fixtures/trading-systems/clock.py");
     expect(artifact.entrypoint).toEqual(["python", "/workspace/clock.py"]);
     expect(artifact.declared_output_contract.declared_output_kinds).toEqual([
       "program_event",
@@ -106,7 +106,7 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       sandbox_runtime_instance_id: "sandbox-runtime-instance-clock-alpha-v1",
       adapter_kind: "docker_sandboxes_sbx",
       runnable_artifact_ref: ref("runnable_artifact", imageArtifact.runnable_artifact_id),
-      runtime_ref: ref("trader_system_runtime", "runtime-clock-paper-v1"),
+      runtime_ref: ref("trading_system_runtime", "runtime-clock-paper-v1"),
       runtime_placement_ref: ref("runtime_placement", placement.runtime_placement_id),
       lifecycle_status: "running",
       sandbox_name: "sbx-clock-alpha",
@@ -137,23 +137,23 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
     const instanceRef = ref("sandbox_runtime_instance", "sandbox-runtime-instance-clock-alpha-v1");
 
     const candidate = {
-      record_kind: "trader_system_candidate",
+      record_kind: "trading_system_candidate",
       version: 1,
       candidate_id: "candidate-opaque-clock",
-      display_name: "Opaque clock trader-system candidate",
+      display_name: "Opaque clock trading-system candidate",
       status: "materialized",
       active_version_id: "candidate-version-opaque-clock-v1",
       provenance_refs: [ref("agent_run", "agent-run-authored-clock-v1")],
       active_runnable_artifact_ref: artifactRef
-    } satisfies TraderSystemCandidateRecord;
+    } satisfies TradingSystemCandidateRecord;
 
     const runtime = {
-      record_kind: "trader_system_runtime",
+      record_kind: "trading_system_runtime",
       version: 1,
-      trader_system_runtime_id: "runtime-clock-paper-v1",
+      trading_system_runtime_id: "runtime-clock-paper-v1",
       stage_binding_profile: "paper",
       runtime_lifecycle_status: "running",
-      candidate_ref: ref("trader_system_candidate", candidate.candidate_id),
+      candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
       candidate_version_ref: ref("candidate_version", candidate.active_version_id),
       stage_binding_ref: ref("stage_binding", "stage-binding-clock-paper-v1"),
       placement_ref: ref("runtime_placement", "runtime-placement-docker-sandboxes-clock-v1"),
@@ -165,11 +165,11 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       sandbox_runtime_instance_ref: instanceRef,
       created_at: "2026-05-10T12:07:00.000Z",
       authority_status: "not_live"
-    } satisfies TraderSystemRuntimeRecord;
+    } satisfies TradingSystemRuntimeRecord;
 
     expect(candidate.candidate_id).not.toBe(artifactRef.id);
-    expect(runtime.trader_system_runtime_id).not.toBe(instanceRef.id);
-    expect(runtime.trader_system_runtime_id).not.toBe(runtime.placement_ref.id);
+    expect(runtime.trading_system_runtime_id).not.toBe(instanceRef.id);
+    expect(runtime.trading_system_runtime_id).not.toBe(runtime.placement_ref.id);
     expect(runtime.runnable_artifact_ref).toEqual(artifactRef);
     expect(runtime.sandbox_runtime_instance_ref).toEqual(instanceRef);
   });
@@ -181,7 +181,7 @@ if (false) {
     version: 1,
     runnable_artifact_id: "runnable-artifact-invalid-secret",
     artifact_kind: "python_file",
-    artifact_path: "fixtures/trader-systems/clock.py",
+    artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture-clock-python-artifact-v1",
     runtime_kind: "python",
     entrypoint: ["python", "/workspace/clock.py"],
@@ -201,7 +201,7 @@ if (false) {
     version: 1,
     runnable_artifact_id: "runnable-artifact-invalid-strategy",
     artifact_kind: "python_file",
-    artifact_path: "fixtures/trader-systems/clock.py",
+    artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture-clock-python-artifact-v1",
     runtime_kind: "python",
     entrypoint: ["python", "/workspace/clock.py"],

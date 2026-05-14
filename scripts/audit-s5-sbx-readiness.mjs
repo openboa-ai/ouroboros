@@ -31,7 +31,7 @@ await check("required S5 artifact/runtime files exist", async () => {
   await assertFilesExist([
     "packages/domain/src/index.ts",
     "packages/domain/src/opaque-runnable-artifact-records.test.ts",
-    "fixtures/trader-systems/clock.py",
+    "fixtures/trading-systems/clock.py",
     "apps/runtime/src/runtime-instances/sandbox-runtime-adapter.ts",
     "apps/runtime/test/clock-artifact.test.ts",
     "apps/runtime/test/runtime-instances.test.ts",

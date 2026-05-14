@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-describe("S14 seeded Trading AAR stability audit script", () => {
+describe("S14 seeded Trading research stability audit script", () => {
   it("passes a no-change seeded stability notebook with seed digest evidence", async () => {
     const tempDir = await mkdtemp(path.join(tmpdir(), "ouroboros-s14-seeded-audit-"));
     try {
@@ -33,7 +33,7 @@ describe("S14 seeded Trading AAR stability audit script", () => {
       ]);
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("Trading AAR seeded stability audit");
+      expect(result.stdout).toContain("Trading research seeded stability audit");
       expect(result.stdout).toContain("session_id=seeded-stability-fixture");
       expect(result.stdout).toContain("iteration 1: decision=keep score=1 agent_status=no_change changed_paths=none");
       expect(result.stdout).toContain("iteration 2: decision=discard score=1 agent_status=no_change changed_paths=none");
@@ -179,7 +179,7 @@ function makeEntry(input: { iteration: number; decision: string; artifactDir: st
       score: 1,
       metrics: [],
       summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-      risk_decision: "valid_order_intent",
+      risk_decision: "valid_order_intent_draft",
       scenario_results: [
         makeScenarioResult(input.outputDir, input.iteration, "trend_long", "01"),
         makeScenarioResult(input.outputDir, input.iteration, "range_flat", "02")
@@ -198,8 +198,8 @@ function makeScenarioResult(outputDir: string, iteration: number, scenarioId: st
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent.",
-    risk_decision: "valid_order_intent",
+    summary: "Accepted order intent draft.",
+    risk_decision: "valid_order_intent_draft",
     events_path: path.join(outputDir, scenarioId, "events.jsonl"),
     provider_request_count: 3,
     runner_command_count: 5,

@@ -4,7 +4,7 @@ export type TradingResearchMode = "replay";
 
 export type TradingResearchDecision = "keep" | "discard" | "crash";
 export type TradingEvaluationStatus = "accepted" | "disqualified";
-export type TradingRiskDecision = "valid_order_intent" | "invalid_order_intent" | "no_order_intent";
+export type TradingRiskDecision = "valid_order_intent_draft" | "invalid_order_intent_draft" | "no_order_intent_draft";
 export type TradingArtifactRunnerKind = "host_process" | "docker_sandboxes_sbx";
 
 export interface ManagedResearchAgent {
@@ -70,7 +70,7 @@ export interface AccountState {
   target_risk_fraction: number;
 }
 
-export interface OrderIntent {
+export interface OrderIntentDraft {
   symbol: string;
   side: "buy" | "sell" | "hold";
   quantity: number;

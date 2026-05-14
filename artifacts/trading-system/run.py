@@ -35,7 +35,7 @@ def append_event(events_path, event):
         handle.write(json.dumps(event, sort_keys=True) + "\n")
 
 
-def build_order_intent(market, account):
+def build_order_intent_draft(market, account):
     if market["moving_average_fast"] <= market["moving_average_slow"]:
         return {
             "symbol": market["symbol"],
@@ -65,8 +65,8 @@ def main():
     append_event(args.output_events, {"event": "market_snapshot", **market})
     account = get_json(base_url, "/account/state")
     append_event(args.output_events, {"event": "account_state", **account})
-    intent = build_order_intent(market, account)
-    append_event(args.output_events, {"event": "order_intent", **intent})
+    intent = build_order_intent_draft(market, account)
+    append_event(args.output_events, {"event": "order_intent_draft", **intent})
     validation = post_json(base_url, "/orders/validate", intent)
     append_event(args.output_events, {"event": "order_validation", **validation})
     append_event(args.output_events, {"event": "run_complete", "accepted": validation["accepted"]})
