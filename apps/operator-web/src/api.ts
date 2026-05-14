@@ -1,6 +1,7 @@
 import type {
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
+  CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateInspectReadModel,
@@ -57,6 +58,21 @@ export async function fetchCandidateRunDetail(
   }
   const body = (await response.json()) as { run: CandidateRunDetailReadModel };
   return body.run;
+}
+
+export async function fetchCandidateRunComparison(
+  candidateId: string,
+  runId: string,
+  baselineRunId: string
+): Promise<CandidateRunComparisonReadModel> {
+  const response = await fetch(
+    `${runtimeBaseUrl}/api/candidates/${candidateId}/candidate-runs/${runId}/comparison?baseline_run_id=${encodeURIComponent(baselineRunId)}`
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to compare candidate run ${runId} for ${candidateId}: ${response.status}`);
+  }
+  const body = (await response.json()) as { comparison: CandidateRunComparisonReadModel };
+  return body.comparison;
 }
 
 export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;

@@ -1507,6 +1507,51 @@ export interface CandidateRunDetailReadModel extends CandidateRunEvidenceReadMod
   scenarios: CandidateRunScenarioReadModel[];
 }
 
+export type CandidateRunComparisonVerdict =
+  | "improved"
+  | "unchanged"
+  | "regressed"
+  | "incomparable";
+
+export interface CandidateRunComparisonRunReadModel {
+  run_id: string;
+  status: string;
+  run_status: string;
+  score: number;
+  risk_decision: string;
+  scenario_accepted: number;
+  scenario_total: number;
+  provider_request_total: number;
+  runner_command_total: number;
+  completed_at: string;
+  authority_status: string;
+}
+
+export interface CandidateRunComparisonReadModel {
+  candidate_id: string;
+  selected: CandidateRunComparisonRunReadModel;
+  baseline: CandidateRunComparisonRunReadModel;
+  baseline_selection: "explicit_baseline_run_id";
+  deltas: {
+    score: number;
+    scenario_accepted: number;
+    scenario_total: number;
+    provider_request_total: number;
+    runner_command_total: number;
+  };
+  risk_transition: string;
+  verdict: CandidateRunComparisonVerdict;
+  verdict_reason: string;
+  authority_status: "not_live";
+  evidence_label: "comparison_not_authority";
+  no_authority: {
+    live_exchange: false;
+    order_authority: false;
+    credentials: false;
+    paper_trading: false;
+  };
+}
+
 export interface CandidateRuntimeOrderIntentReadModel {
   order_intent_id: string;
   intent_kind: OrderIntentKind;

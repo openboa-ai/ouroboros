@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
+  CandidateRunComparisonReadModel,
   CandidateRunDetailReadModel,
   CandidateRunEvidenceReadModel,
   CandidateRuntimeAuthorityReadModel,
@@ -133,6 +134,67 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Selected run detail");
     expect(html).toContain("trend_long");
     expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+  });
+
+  it("renders selected candidate-run comparison as non-authority evidence", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={fixtureCandidate}
+        candidateRuns={[
+          candidateRun({
+            run_id: "latest-run",
+            completed_at: "2026-05-14T12:00:00.000Z"
+          }),
+          candidateRun({
+            run_id: "baseline-run",
+            completed_at: "2026-05-14T11:00:00.000Z"
+          })
+        ]}
+        selectedCandidateRunId="latest-run"
+        candidateRunDetail={candidateRunDetail({ run_id: "latest-run" })}
+        candidateRunComparison={candidateRunComparison({
+          selected: {
+            ...candidateRunComparison().selected,
+            run_id: "latest-run"
+          },
+          baseline: {
+            ...candidateRunComparison().baseline,
+            run_id: "baseline-run"
+          }
+        })}
+        candidateRunComparisonBaselineId="baseline-run"
+      />
+    );
+
+    expect(html).toContain("Run comparison");
+    expect(html).toContain("Selected vs baseline replay evidence");
+    expect(html).toContain("improved");
+    expect(html).toContain("comparison_not_authority");
+    expect(html).toContain("latest-run");
+    expect(html).toContain("baseline-run");
+    expect(html).toContain("+0.25");
+    expect(html).toContain("+1");
+    expect(html).toContain("valid_order_intent -&gt; valid_order_intent");
+    expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+  });
+
+  it("renders no-baseline candidate-run comparison state without authority actions", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={fixtureCandidate}
+        candidateRuns={[candidateRun({ run_id: "single-run" })]}
+        selectedCandidateRunId="single-run"
+        candidateRunDetail={candidateRunDetail({ run_id: "single-run" })}
+      />
+    );
+
+    expect(html).toContain("Run comparison");
+    expect(html).toContain("No comparison baseline");
+    expect(html).toContain("single candidate-run history");
+    expect(html).toContain("comparison_not_authority");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
@@ -537,6 +599,60 @@ function candidateRunDetail(overrides: Partial<CandidateRunDetailReadModel> = {}
         ]
       }
     ],
+    ...overrides
+  };
+}
+
+function candidateRunComparison(
+  overrides: Partial<CandidateRunComparisonReadModel> = {}
+): CandidateRunComparisonReadModel {
+  return {
+    candidate_id: fixtureCandidate.candidate_id,
+    selected: {
+      run_id: "selected-run",
+      status: "accepted",
+      run_status: "completed",
+      score: 0.85,
+      risk_decision: "valid_order_intent",
+      scenario_accepted: 2,
+      scenario_total: 2,
+      provider_request_total: 6,
+      runner_command_total: 4,
+      completed_at: "2026-05-14T12:00:00.000Z",
+      authority_status: "not_live"
+    },
+    baseline: {
+      run_id: "baseline-run",
+      status: "accepted",
+      run_status: "completed",
+      score: 0.6,
+      risk_decision: "valid_order_intent",
+      scenario_accepted: 1,
+      scenario_total: 2,
+      provider_request_total: 5,
+      runner_command_total: 0,
+      completed_at: "2026-05-14T11:00:00.000Z",
+      authority_status: "not_live"
+    },
+    baseline_selection: "explicit_baseline_run_id",
+    deltas: {
+      score: 0.25,
+      scenario_accepted: 1,
+      scenario_total: 0,
+      provider_request_total: 1,
+      runner_command_total: 4
+    },
+    risk_transition: "valid_order_intent -> valid_order_intent",
+    verdict: "improved",
+    verdict_reason: "selected run improved score by 0.25 and accepted scenarios by 1",
+    authority_status: "not_live",
+    evidence_label: "comparison_not_authority",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    },
     ...overrides
   };
 }
