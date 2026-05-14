@@ -15,7 +15,8 @@ import {
   fetchCandidateRunEvidence,
   fetchCandidateSummaries,
   recordCandidateRuntimeAuthority,
-  recordCandidateRuntimeControl
+  recordCandidateRuntimeControl,
+  runCandidateReplay
 } from "./api";
 import "./styles.css";
 
@@ -27,6 +28,9 @@ interface AppState {
   loading: boolean;
   recordingRuntimeAuthority: boolean;
   recordingRuntimeControl: boolean;
+  runningCandidateReplay: boolean;
+  candidateRunError?: string;
+  candidateRunMessage?: string;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
   runtimeControlError?: string;
@@ -39,7 +43,8 @@ export function App() {
     candidateRuns: [],
     loading: true,
     recordingRuntimeAuthority: false,
-    recordingRuntimeControl: false
+    recordingRuntimeControl: false,
+    runningCandidateReplay: false
   });
 
   useEffect(() => {
@@ -57,7 +62,8 @@ export function App() {
             candidateRuns,
             loading: false,
             recordingRuntimeAuthority: false,
-            recordingRuntimeControl: false
+            recordingRuntimeControl: false,
+            runningCandidateReplay: false
           });
         }
       } catch (error) {
@@ -68,6 +74,7 @@ export function App() {
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
+            runningCandidateReplay: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
         }
@@ -86,7 +93,9 @@ export function App() {
       runtimeAuthorityError: undefined,
       runtimeAuthorityMessage: undefined,
       runtimeControlError: undefined,
-      runtimeControlMessage: undefined
+      runtimeControlMessage: undefined,
+      candidateRunError: undefined,
+      candidateRunMessage: undefined
     }));
     try {
       const selected = await fetchCandidate(candidateId);
@@ -97,6 +106,38 @@ export function App() {
         ...current,
         loading: false,
         error: error instanceof Error ? error.message : "Unknown runtime error"
+      }));
+    }
+  }
+
+  async function runReplay() {
+    const candidate = state.selected;
+    if (!candidate || state.runningCandidateReplay) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      runningCandidateReplay: true,
+      candidateRunError: undefined,
+      candidateRunMessage: undefined
+    }));
+    try {
+      const outcome = await runCandidateReplay(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      const candidateRuns = await fetchCandidateRunEvidence(candidate.candidate_id);
+      setState((current) => ({
+        ...current,
+        selected,
+        candidateRuns,
+        runningCandidateReplay: false,
+        candidateRunMessage: `replay recorded: ${outcome.run.run_id}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningCandidateReplay: false,
+        candidateRunError: error instanceof Error ? error.message : "Unknown candidate replay error"
       }));
     }
   }
@@ -195,6 +236,9 @@ export function App() {
           <CandidateDetail
             candidate={state.selected}
             candidateRuns={state.candidateRuns}
+            onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
+              ? () => void runReplay()
+              : undefined}
             onRecordRuntimeAuthority={state.selected.runtime.bounded_authority
               ? () => void recordRuntimeAuthority()
               : undefined}
@@ -203,6 +247,9 @@ export function App() {
               : undefined}
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
             recordingRuntimeControl={state.recordingRuntimeControl}
+            runningCandidateReplay={state.runningCandidateReplay}
+            candidateRunError={state.candidateRunError}
+            candidateRunMessage={state.candidateRunMessage}
             runtimeAuthorityError={state.runtimeAuthorityError}
             runtimeAuthorityMessage={state.runtimeAuthorityMessage}
             runtimeControlError={state.runtimeControlError}
@@ -217,10 +264,14 @@ export function App() {
 export function CandidateDetail({
   candidate,
   candidateRuns = [],
+  onRunCandidateReplay,
   onRecordRuntimeAuthority,
   onRecordRuntimeControl,
+  runningCandidateReplay = false,
   recordingRuntimeAuthority = false,
   recordingRuntimeControl = false,
+  candidateRunError,
+  candidateRunMessage,
   runtimeAuthorityError,
   runtimeAuthorityMessage,
   runtimeControlError,
@@ -228,10 +279,14 @@ export function CandidateDetail({
 }: {
   candidate: CandidateInspectReadModel;
   candidateRuns?: CandidateRunEvidenceReadModel[];
+  onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
+  runningCandidateReplay?: boolean;
   recordingRuntimeAuthority?: boolean;
   recordingRuntimeControl?: boolean;
+  candidateRunError?: string;
+  candidateRunMessage?: string;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
   runtimeControlError?: string;
@@ -263,7 +318,13 @@ export function CandidateDetail({
           <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
         </InfoSection>
 
-        <CandidateRunsSection runs={candidateRuns} />
+        <CandidateRunsSection
+          runs={candidateRuns}
+          onRunCandidateReplay={onRunCandidateReplay}
+          runningCandidateReplay={runningCandidateReplay}
+          candidateRunError={candidateRunError}
+          candidateRunMessage={candidateRunMessage}
+        />
 
         <InfoSection title="Spec">
           <Field label="Ref" value={formatRef(candidate.spec.ref)} />
@@ -340,7 +401,19 @@ export function CandidateDetail({
   );
 }
 
-function CandidateRunsSection({ runs }: { runs: CandidateRunEvidenceReadModel[] }) {
+function CandidateRunsSection({
+  runs,
+  onRunCandidateReplay,
+  runningCandidateReplay,
+  candidateRunError,
+  candidateRunMessage
+}: {
+  runs: CandidateRunEvidenceReadModel[];
+  onRunCandidateReplay?: () => void;
+  runningCandidateReplay: boolean;
+  candidateRunError?: string;
+  candidateRunMessage?: string;
+}) {
   const latestRun = runs[0];
   return (
     <InfoSection title="Candidate Runs">
@@ -379,6 +452,22 @@ function CandidateRunsSection({ runs }: { runs: CandidateRunEvidenceReadModel[] 
           <Field label="Authority" value={run.authority_status} />
         </div>
       ))}
+
+      {onRunCandidateReplay && (
+        <div className="runtime-command">
+          <button
+            className="runtime-command-button"
+            type="button"
+            onClick={onRunCandidateReplay}
+            disabled={runningCandidateReplay}
+          >
+            {runningCandidateReplay ? "Running replay" : "Run replay"}
+          </button>
+          <span>host_process / replay_only / not_live</span>
+        </div>
+      )}
+      {candidateRunMessage && <div className="inline-status">{candidateRunMessage}</div>}
+      {candidateRunError && <div className="inline-status error">{candidateRunError}</div>}
     </InfoSection>
   );
 }

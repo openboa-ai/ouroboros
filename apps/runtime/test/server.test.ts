@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -272,6 +273,84 @@ describe("runtime read-only API", () => {
           authority_status: "not_live"
         }
       ]
+    });
+
+    await server.close();
+  });
+
+  it("creates promoted candidate replay runs through the runtime API", async () => {
+    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
+    const candidateRunRoot = path.join(tmpDir, "candidate-runs");
+    const candidateId = "trader-system-candidate-promoted-001";
+    await writePromotedCandidateBundle(promotedCandidateRoot, candidateId);
+
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot,
+      candidateRunRoot
+    });
+
+    const created = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${candidateId}/candidate-runs`,
+      payload: {
+        run_id: "api-promoted-replay-run",
+        runner_kind: "host_process"
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      candidate_id: candidateId,
+      run: {
+        run_id: "api-promoted-replay-run",
+        candidate_id: candidateId,
+        runner_kind: "host_process",
+        status: "accepted",
+        run_status: "completed",
+        scenario_accepted: 2,
+        scenario_total: 2,
+        provider_request_total: 6,
+        runner_command_total: 0,
+        authority_status: "not_live"
+      }
+    });
+    expect(created.json().run.artifact_digest).toMatch(/^sha256:/);
+
+    const candidateRuns = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${candidateId}/candidate-runs`
+    });
+    expect(candidateRuns.statusCode).toBe(200);
+    expect(candidateRuns.json().runs[0]).toMatchObject({
+      run_id: "api-promoted-replay-run",
+      candidate_id: candidateId,
+      authority_status: "not_live"
+    });
+
+    const fixtureRejected = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/candidate-runs`,
+      payload: { runner_kind: "host_process" }
+    });
+    expect(fixtureRejected.statusCode).toBe(422);
+    expect(fixtureRejected.json()).toMatchObject({
+      error: "candidate_run_rejected",
+      reason: "promoted_candidate_bundle_required",
+      candidate_id: FIXTURE_CANDIDATE_ID
+    });
+
+    const sbxRejected = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${candidateId}/candidate-runs`,
+      payload: {
+        runner_kind: "docker_sandboxes_sbx"
+      }
+    });
+    expect(sbxRejected.statusCode).toBe(422);
+    expect(sbxRejected.json()).toMatchObject({
+      error: "candidate_run_rejected",
+      reason: "docker_sandboxes_sbx_runtime_disabled",
+      candidate_id: candidateId
     });
 
     await server.close();
@@ -1190,8 +1269,12 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
   const bundleDir = path.join(root, candidateId);
   const runnableArtifactId = `${candidateId}-artifact`;
   const candidateVersionId = `${candidateId}-v1`;
+  const artifactFiles = promotedCandidateArtifactFiles();
+  const artifactDigest = digestArtifactFiles(artifactFiles);
   await mkdir(path.join(bundleDir, "artifact"), { recursive: true });
-  await writeFile(path.join(bundleDir, "artifact", "run.py"), "print('promoted candidate')\n", "utf8");
+  for (const file of artifactFiles) {
+    await writeFile(path.join(bundleDir, "artifact", file.relativePath), file.content, "utf8");
+  }
   await writeFile(path.join(bundleDir, "candidate.json"), `${JSON.stringify({
     record_kind: "trader_system_candidate",
     version: 1,
@@ -1231,7 +1314,7 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     runnable_artifact_id: runnableArtifactId,
     artifact_kind: "python_file",
     artifact_path: path.join(bundleDir, "artifact"),
-    artifact_digest: "sha256:promoted",
+    artifact_digest: artifactDigest,
     runtime_kind: "python",
     entrypoint: ["python3", "run.py"],
     declared_output_contract: {
@@ -1261,7 +1344,7 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
       entrypoint: ["python3", "run.py"],
       api_contract: "trading_api_provider_v1"
     },
-    artifact_digest: "sha256:promoted",
+    artifact_digest: artifactDigest,
     evidence_disposition: "not_counted",
     authority_status: "not_live",
     no_authority: {
@@ -1271,6 +1354,80 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
       paper_trading: false
     }
   }, null, 2)}\n`, "utf8");
+}
+
+function promotedCandidateArtifactFiles(): Array<{ relativePath: string; content: string }> {
+  return [
+    {
+      relativePath: "manifest.json",
+      content: `${JSON.stringify({
+        id: "trading-system-mvp",
+        name: "Minimal Trading System MVP",
+        entrypoint: ["python3", "run.py"],
+        editable_paths: ["run.py"],
+        api_contract: "trading_api_provider_v1"
+      }, null, 2)}\n`
+    },
+    {
+      relativePath: "run.py",
+      content: [
+        "#!/usr/bin/env python3",
+        "import argparse",
+        "import json",
+        "import os",
+        "from urllib import request",
+        "",
+        "def get_json(base_url, path):",
+        "    with request.urlopen(base_url + path, timeout=10) as response:",
+        "        return json.loads(response.read().decode('utf-8'))",
+        "",
+        "def post_json(base_url, path, payload):",
+        "    body = json.dumps(payload).encode('utf-8')",
+        "    req = request.Request(base_url + path, data=body, headers={'content-type': 'application/json'}, method='POST')",
+        "    with request.urlopen(req, timeout=10) as response:",
+        "        return json.loads(response.read().decode('utf-8'))",
+        "",
+        "def append_event(events_path, event):",
+        "    with open(events_path, 'a', encoding='utf-8') as handle:",
+        "        handle.write(json.dumps(event, sort_keys=True) + '\\n')",
+        "",
+        "def build_intent(market, account):",
+        "    if market['moving_average_fast'] <= market['moving_average_slow']:",
+        "        return {'symbol': market['symbol'], 'side': 'hold', 'quantity': 0, 'order_type': 'none'}",
+        "    return {'symbol': market['symbol'], 'side': 'buy', 'quantity': round((account['equity'] * 0.02) / market['price'], 8), 'order_type': 'market'}",
+        "",
+        "def main():",
+        "    parser = argparse.ArgumentParser()",
+        "    parser.add_argument('--output-events', required=True)",
+        "    args = parser.parse_args()",
+        "    base_url = os.environ['TRADING_API_BASE_URL']",
+        "    market = get_json(base_url, '/market/snapshot')",
+        "    append_event(args.output_events, {'event': 'market_snapshot', **market})",
+        "    account = get_json(base_url, '/account/state')",
+        "    append_event(args.output_events, {'event': 'account_state', **account})",
+        "    intent = build_intent(market, account)",
+        "    append_event(args.output_events, {'event': 'order_intent', **intent})",
+        "    validation = post_json(base_url, '/orders/validate', intent)",
+        "    append_event(args.output_events, {'event': 'order_validation', **validation})",
+        "    append_event(args.output_events, {'event': 'run_complete', 'accepted': validation['accepted']})",
+        "",
+        "if __name__ == '__main__':",
+        "    main()",
+        ""
+      ].join("\n")
+    }
+  ];
+}
+
+function digestArtifactFiles(files: Array<{ relativePath: string; content: string }>): string {
+  const hash = createHash("sha256");
+  for (const file of [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath))) {
+    hash.update(file.relativePath);
+    hash.update("\0");
+    hash.update(file.content);
+    hash.update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 
 async function writeCandidateRunRecord(

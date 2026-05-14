@@ -58,6 +58,15 @@ export type RuntimeControlCommandOutcome = RuntimeControlAuditOutcome & {
   status: "recorded";
 };
 
+export interface CandidateReplayRunCommandPayload {
+  runner_kind: "host_process";
+}
+
+export interface CandidateReplayRunOutcome {
+  candidate_id: string;
+  run: CandidateRunEvidenceReadModel;
+}
+
 export function runtimeAuthorityCommandPayload(
   candidate: CandidateInspectReadModel
 ): RuntimeAuthorityCommandPayload {
@@ -183,4 +192,24 @@ export async function recordCandidateRuntimeControl(
     throw new Error(`Failed to record runtime control for ${candidate.candidate_id}: ${response.status}`);
   }
   return (await response.json()) as RuntimeControlCommandOutcome;
+}
+
+export function candidateReplayRunPayload(): CandidateReplayRunCommandPayload {
+  return {
+    runner_kind: "host_process"
+  };
+}
+
+export async function runCandidateReplay(
+  candidate: CandidateInspectReadModel
+): Promise<CandidateReplayRunOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/candidate-runs`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(candidateReplayRunPayload())
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to run candidate replay for ${candidate.candidate_id}: ${response.status}`);
+  }
+  return (await response.json()) as CandidateReplayRunOutcome;
 }
