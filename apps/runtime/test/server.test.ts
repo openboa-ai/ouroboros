@@ -29,7 +29,10 @@ afterEach(async () => {
 
 describe("runtime read-only API", () => {
   it("serves health and candidate read models", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates")
+    });
     const health = await server.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
     expect(health.json()).toMatchObject({
@@ -175,6 +178,100 @@ describe("runtime read-only API", () => {
     expect(missingCandidate.json()).toEqual({
       error: "candidate_not_found",
       candidate_id: "missing"
+    });
+
+    await server.close();
+  });
+
+  it("surfaces promoted local candidate bundles with candidate-run evidence", async () => {
+    const promotedCandidateRoot = path.join(tmpDir, "trader-system-candidates");
+    const candidateRunRoot = path.join(tmpDir, "candidate-runs");
+    const candidateId = "trader-system-candidate-promoted-001";
+    await writePromotedCandidateBundle(promotedCandidateRoot, candidateId);
+    await writeCandidateRunRecord(candidateRunRoot, {
+      run_id: "promoted-candidate-run",
+      candidate_id: candidateId,
+      runner_kind: "docker_sandboxes_sbx",
+      status: "accepted",
+      run_status: "completed",
+      scenario_accepted: 2,
+      scenario_total: 2,
+      provider_request_total: 6,
+      runner_command_total: 10,
+      artifact_digest: "sha256:promoted",
+      completed_at: "2026-05-14T10:00:00.000Z",
+      authority_status: "not_live"
+    });
+
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot,
+      candidateRunRoot
+    });
+
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().candidates[0]).toMatchObject({
+      candidate_id: candidateId,
+      status: "materialized",
+      fixture_notice: {
+        mode: "local_promoted_candidate_bundle",
+        label: "Promoted local candidate bundle"
+      }
+    });
+    expect(list.json().candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ candidate_id: FIXTURE_CANDIDATE_ID })
+    ]));
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${candidateId}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: candidateId,
+      display_name: "Promoted Trading AAR Candidate",
+      status: "materialized",
+      program: {
+        manifest: {
+          declared_runtime: "python python3 run.py",
+          declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_intent"]
+        }
+      },
+      runtime: {
+        authority_status: "not_live",
+        memory_surface: {
+          access_mode: "read_only",
+          authority_status: "not_evidence"
+        }
+      },
+      evaluation: {
+        has_runs: false,
+        counted_evidence: {
+          disposition_reason: "no_evaluation_runs",
+          authority_status: "not_counted"
+        }
+      }
+    });
+    expect(detail.json().runtime).not.toHaveProperty("bounded_authority");
+    expect(detail.json().runtime).not.toHaveProperty("runtime_control");
+
+    const candidateRuns = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${candidateId}/candidate-runs`
+    });
+    expect(candidateRuns.statusCode).toBe(200);
+    expect(candidateRuns.json()).toMatchObject({
+      candidate_id: candidateId,
+      runs: [
+        {
+          run_id: "promoted-candidate-run",
+          candidate_id: candidateId,
+          runner_kind: "docker_sandboxes_sbx",
+          artifact_digest: "sha256:promoted",
+          authority_status: "not_live"
+        }
+      ]
     });
 
     await server.close();
@@ -915,6 +1012,7 @@ describe("runtime read-only API", () => {
   it("keeps provider failures inspectable without creating a candidate", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
       providerAdapter: fakeProvider({
         status: "failed",
         failure_reason: "provider_failed",
@@ -1086,6 +1184,93 @@ async function writeStoreJson(value: unknown, ...segments: string[]): Promise<vo
   const filePath = path.join(tmpDir, ...segments);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function writePromotedCandidateBundle(root: string, candidateId: string): Promise<void> {
+  const bundleDir = path.join(root, candidateId);
+  const runnableArtifactId = `${candidateId}-artifact`;
+  const candidateVersionId = `${candidateId}-v1`;
+  await mkdir(path.join(bundleDir, "artifact"), { recursive: true });
+  await writeFile(path.join(bundleDir, "artifact", "run.py"), "print('promoted candidate')\n", "utf8");
+  await writeFile(path.join(bundleDir, "candidate.json"), `${JSON.stringify({
+    record_kind: "trader_system_candidate",
+    version: 1,
+    candidate_id: candidateId,
+    display_name: "Promoted Trading AAR Candidate",
+    status: "materialized",
+    active_version_id: candidateVersionId,
+    provenance_refs: [
+      { record_kind: "trading_research_notebook", id: "test-research-session" },
+      { record_kind: "runnable_artifact", id: runnableArtifactId }
+    ],
+    title: "Promoted Trading AAR Candidate",
+    system_summary: "Promoted from a test Trading AAR seeded-stability gate.",
+    candidate_status: "handoff_ready",
+    evaluation_handoff_ready: true,
+    active_runnable_artifact_ref: { record_kind: "runnable_artifact", id: runnableArtifactId },
+    authority_status: "not_live"
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(bundleDir, "candidate-version.json"), `${JSON.stringify({
+    record_kind: "candidate_version",
+    version: 1,
+    candidate_version_id: candidateVersionId,
+    candidate_id: candidateId,
+    version_label: "trading-aar-v1",
+    spec_ref: { record_kind: "trader_system_spec", id: `${candidateId}-spec` },
+    program_ref: { record_kind: "trader_system_program", id: `${candidateId}-program` },
+    capability_package_refs: [
+      { record_kind: "capability_package", id: `${candidateId}-capabilities` }
+    ],
+    runtime_ref: { record_kind: "trader_system_runtime", id: `${candidateId}-runtime` },
+    trace_placeholder_ref: { record_kind: "trace_placeholder", id: `${candidateId}-trace` },
+    runnable_artifact_ref: { record_kind: "runnable_artifact", id: runnableArtifactId }
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(bundleDir, "runnable-artifact.json"), `${JSON.stringify({
+    record_kind: "runnable_artifact",
+    version: 1,
+    runnable_artifact_id: runnableArtifactId,
+    artifact_kind: "python_file",
+    artifact_path: path.join(bundleDir, "artifact"),
+    artifact_digest: "sha256:promoted",
+    runtime_kind: "python",
+    entrypoint: ["python3", "run.py"],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent"]
+    },
+    secret_policy_ref: { record_kind: "secret_policy", id: "secret-policy-no-raw-values-v1" },
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "capability-policy-trading-replay-readonly-v1"
+    },
+    provenance_refs: [
+      { record_kind: "trading_research_notebook", id: "test-research-session" }
+    ],
+    status: "registered",
+    created_at: "2026-05-14T10:00:00.000Z",
+    authority_status: "not_live"
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(bundleDir, "promotion.json"), `${JSON.stringify({
+    record_kind: "trading_research_candidate_promotion",
+    version: 1,
+    promotion_id: `${candidateId}-promotion`,
+    gate: "seeded-stability",
+    artifact_manifest: {
+      id: "trading-system-mvp",
+      name: "Minimal Trading System MVP",
+      entrypoint: ["python3", "run.py"],
+      api_contract: "trading_api_provider_v1"
+    },
+    artifact_digest: "sha256:promoted",
+    evidence_disposition: "not_counted",
+    authority_status: "not_live",
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    }
+  }, null, 2)}\n`, "utf8");
 }
 
 async function writeCandidateRunRecord(

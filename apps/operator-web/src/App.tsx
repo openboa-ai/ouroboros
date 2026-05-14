@@ -195,8 +195,12 @@ export function App() {
           <CandidateDetail
             candidate={state.selected}
             candidateRuns={state.candidateRuns}
-            onRecordRuntimeAuthority={() => void recordRuntimeAuthority()}
-            onRecordRuntimeControl={() => void recordRuntimeControl()}
+            onRecordRuntimeAuthority={state.selected.runtime.bounded_authority
+              ? () => void recordRuntimeAuthority()
+              : undefined}
+            onRecordRuntimeControl={state.selected.runtime.runtime_control
+              ? () => void recordRuntimeControl()
+              : undefined}
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
             recordingRuntimeControl={state.recordingRuntimeControl}
             runtimeAuthorityError={state.runtimeAuthorityError}
