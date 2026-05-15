@@ -734,7 +734,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   server.post<{ Body: { prompt?: string } }>("/api/candidate-generation-runs", async (request, reply) => {
     const outcome = await runCandidateGeneration(store, providerAdapter, {
-      prompt: request.body?.prompt ?? "Create one MLP-01 generic tradingetual trading-system candidate."
+      prompt: request.body?.prompt ?? "Create one MLP-01 generic trading-system candidate."
     });
     if (outcome.status === "failed") {
       return reply.code(422).send(outcome);

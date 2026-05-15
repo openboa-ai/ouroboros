@@ -1107,7 +1107,7 @@ function tradingExecutionModes(): TradingSystemExecutionModeContractReadModel[] 
 
 const fixtureCandidate: CandidateInspectReadModel = {
   candidate_id: "fixture-candidate-sealed-replay-001",
-  display_name: "Fixture generic tradingetual trading-system candidate",
+  display_name: "Fixture generic trading-system candidate",
   status: "fixture_only",
   active_version_id: "fixture-candidate-version-001",
   fixture_notice: {

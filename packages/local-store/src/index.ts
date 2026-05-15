@@ -329,7 +329,7 @@ export function createFixtureRecords(): FixtureItem[] {
     record_kind: "trading_system_candidate",
     version: 1,
     candidate_id: ids.candidate,
-    display_name: "Fixture generic tradingetual trading-system candidate",
+    display_name: "Fixture generic trading-system candidate",
     status: "fixture_only",
     active_version_id: ids.version,
     provenance_refs: [
