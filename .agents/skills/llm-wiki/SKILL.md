@@ -1,6 +1,6 @@
 ---
 name: llm-wiki
-description: "Use when a repository needs durable knowledge maintenance: source ingestion, source-to-synthesis promotion, project-document health checks, stale naming repair, cross-reference repair, active/historical cleanup, or durable branch/task/PR/run/design/CI writeback."
+description: "Use when repository knowledge needs durable maintenance: source ingestion, synthesis promotion, project-document health, stale naming repair, cross-reference repair, active/historical cleanup, or branch/task/PR/run/design/CI writeback."
 ---
 
 # LLM Wiki

@@ -1,6 +1,6 @@
 ---
 name: auto-qa
-description: "Use when a project frontier, branch, task, release, or PR needs independent QA: scenario testing, regression pressure, edge-case review, reader acceptance testing, risk severity, confidence, and a pass, conditional-pass, or veto recommendation."
+description: "Use when a project frontier, branch, task, release, or PR needs independent scenario, regression, edge-case, or reader-acceptance QA with risk severity, confidence, and pass/conditional-pass/veto recommendation."
 ---
 
 # Auto QA

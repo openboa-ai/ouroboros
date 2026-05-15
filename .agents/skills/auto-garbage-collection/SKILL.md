@@ -1,6 +1,6 @@
 ---
 name: auto-garbage-collection
-description: Use when stale run notes, duplicate syntheses, outdated docs, historical drift, dead branches, obsolete skill instructions, or competing memory records make a repository hard to resume and a cleanup decision is needed.
+description: "Use when stale run notes, duplicate docs, historical drift, dead branches, obsolete skill instructions, or competing memory records block repository resumption."
 ---
 
 # Auto Garbage Collection

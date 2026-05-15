@@ -1,6 +1,6 @@
 ---
 name: ci-recovery
-description: Use when GitHub Actions, CI services, or local validation checks fail and the repository needs failing check evidence, smallest actionable root cause, bounded fix owner, scope status, and writeback status.
+description: "Use when local validation, GitHub Actions, or CI services fail and the repo needs exact failing evidence, smallest actionable root cause, bounded fix owner, scope status, and writeback status."
 ---
 
 # CI Recovery

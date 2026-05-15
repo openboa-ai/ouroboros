@@ -1,6 +1,6 @@
 ---
 name: auto-coding
-description: Use when a locked project frontier needs exactly one bounded code, docs, config, or CI change; the task has an owned boundary; verification can run locally or in CI; and the result needs a keep/discard/reroute decision without widening interfaces, docs truth, or scope.
+description: "Use when a planned repo frontier needs one bounded code, docs, config, or CI change plus local/CI verification and a keep/discard/reroute decision."
 ---
 
 # Auto Coding

@@ -1,6 +1,6 @@
 ---
 name: project-context
-description: Use when a worker needs the current repository's thesis, domain, product, architecture, constraints, active docs, or wiki-grounded context before planning, coding, QA, reviewing, or explaining a decision.
+description: "Use when a worker needs current repository thesis, domain, product, architecture, constraints, active docs, or maintained project-document context before planning, coding, QA, review, or explanation."
 ---
 
 # Project Context

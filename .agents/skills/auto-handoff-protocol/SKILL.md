@@ -1,6 +1,6 @@
 ---
 name: auto-handoff-protocol
-description: Use when repository work moves between PM, coding, QA, wiki, CI recovery, skill audit, or final review and needs a standard handoff packet with ownership, evidence, decision, next owner, and writeback status.
+description: "Use when repo work moves between PM, coding, QA, wiki, CI recovery, skill audit, or review and needs a compact handoff packet with ownership, evidence, decision, next owner, and writeback status."
 ---
 
 # Auto Handoff Protocol

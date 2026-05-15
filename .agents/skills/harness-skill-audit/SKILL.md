@@ -1,6 +1,6 @@
 ---
 name: harness-skill-audit
-description: Use when auditing repo-local skills for trigger precision, overlap, context cost, workflow utility, validation, generic portability, writeback behavior, or deciding whether skills should be removed, merged, rewritten, renamed, or re-routed.
+description: "Use when auditing repo-local skills for trigger precision, overlap, context cost, workflow utility, validation coverage, generic portability, writeback behavior, or remove/merge/rewrite/rename decisions."
 ---
 
 # Harness Skill Audit
@@ -20,9 +20,12 @@ description: Use when auditing repo-local skills for trigger precision, overlap,
 
 ## Audit Checklist
 
-- Trigger precision: description clearly says when the skill should load.
+- Format: `SKILL.md` has valid YAML frontmatter with only `name` and `description`.
+- Name: lowercase hyphen-case, under 64 characters, no leading/trailing hyphen, no `--`, and matches the directory.
+- Description: starts with `Use when`, stays under 1024 characters, and names user intent, trigger context, and ownership boundary.
+- Trigger precision: description is specific enough to load for relevant prompts and avoid near-misses.
 - Overlap: no two skills own the same decision unless one is a shared protocol.
-- Context cost: body is short enough and references are loaded only when needed.
+- Context cost: body is short enough, high-value, and references are loaded only when needed.
 - Workflow utility: steps tell the worker what to read, decide, do, and output.
 - Validation: skill names evidence or checks needed to keep a result.
 - Portability: skill is generic and reads repo truth instead of embedding domain truth.

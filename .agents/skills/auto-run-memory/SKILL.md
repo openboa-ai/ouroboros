@@ -1,6 +1,6 @@
 ---
 name: auto-run-memory
-description: "Use when a worker needs to reconstruct current project state from repo evidence instead of chat history: branch/task/PR status, assumptions, failed attempts, winning evidence, owner, open risks, and writeback gaps."
+description: "Use when current project state must be reconstructed from repo evidence rather than chat: branch, task, PR, dirty state, assumptions, failed attempts, winning evidence, owner, risks, and writeback gaps."
 ---
 
 # Auto Run Memory
@@ -27,7 +27,7 @@ description: "Use when a worker needs to reconstruct current project state from 
 - Check recent commits with a narrow log when branch history matters.
 - Inspect `git diff --stat`, `git diff --name-status`, and staged diff only when dirty state exists.
 - Read task/PR metadata only when branch state alone does not explain the frontier.
-- Read the project project state document before inferring the next PR-sized task.
+- Read the project state document before inferring the next PR-sized task.
 - Read docs through the repo navigation path instead of scanning the whole repo.
 
 ## Recovery Rules

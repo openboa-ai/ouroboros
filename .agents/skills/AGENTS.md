@@ -41,7 +41,14 @@ When a repo has a project state document, `auto-project` uses it as the first op
 
 ## Skill Quality Standard
 
-Every `SKILL.md` must keep only `name` and `description` frontmatter, start description with `Use when`, and include `Role`, `Workflow`, `Required Output`, `Handoff`, and `Hard Boundaries`. Skills must not embed project-specific product truth. Read root `AGENTS.md`, `README.md`, `LINEAR.md`, and maintained project documents for project context.
+Every `SKILL.md` must be a valid Agent Skill and stay cheap to discover.
+
+- Use YAML frontmatter with only `name` and `description`.
+- Keep `name` lowercase hyphen-case, 1-64 characters, no leading/trailing hyphen, no `--`, and matching the skill directory.
+- Keep `description` under 1024 characters, start it with `Use when`, and describe user intent, trigger context, and ownership boundary. Prefer one precise sentence over a generic capability summary.
+- Quote frontmatter values that contain YAML-sensitive punctuation such as `: `.
+- Keep the body focused on `Role`, `Workflow`, `Required Output`, `Handoff`, and `Hard Boundaries`. Put detailed examples or long references in one-hop `references/` files and say exactly when to read them.
+- Keep each skill generic. Skills must not embed project-specific product truth; read root `AGENTS.md`, `README.md`, `LINEAR.md`, and maintained project documents for project context.
 
 ## Mandatory llm-wiki Gate
 
