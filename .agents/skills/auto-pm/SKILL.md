@@ -1,6 +1,6 @@
 ---
 name: auto-pm
-description: Use when a rough request, blocked branch, ambiguous design/code task, or drifting work item needs one bounded frontier with goal, owned boundary, non-goals, acceptance criteria, validation evidence, next owner, and writeback expectations.
+description: "Use when a rough request, blocked branch, ambiguous design/code task, or drifting work item needs one bounded frontier with goal, non-goals, acceptance, validation, owner, and writeback expectations."
 ---
 
 # Auto PM

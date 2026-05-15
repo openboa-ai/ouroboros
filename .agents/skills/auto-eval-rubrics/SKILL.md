@@ -1,6 +1,6 @@
 ---
 name: auto-eval-rubrics
-description: Use when a worker needs shared pass/fail language for PM clarity, coding quality, QA outcomes, wiki writeback, CI recovery, promotion readiness, evidence confidence, or keep/discard/reroute decisions.
+description: "Use when workers need shared pass/fail language for acceptance, QA, CI, wiki writeback, promotion readiness, evidence confidence, or keep/discard/reroute decisions."
 ---
 
 # Auto Eval Rubrics

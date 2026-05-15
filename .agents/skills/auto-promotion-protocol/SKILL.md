@@ -1,6 +1,6 @@
 ---
 name: auto-promotion-protocol
-description: Use when deciding whether a project frontier, branch, task, release, or PR can move to final signoff, ready-to-land, reroute, looping, or discard based on acceptance, verification, QA, CI, and writeback evidence.
+description: "Use when deciding whether a frontier, branch, task, release, or PR is ready for final signoff, ready to land, still looping, rerouted, or discarded based on acceptance, verification, QA, CI, and writeback evidence."
 ---
 
 # Auto Promotion Protocol

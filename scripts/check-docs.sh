@@ -53,6 +53,7 @@ for path in active:
       if not candidate.exists(): broken.append(f"{path}: {target}")
 if broken: fail(f"Broken local markdown links ({len(broken)}):\n"+"\n".join(broken[:200]))
 skill_files=sorted(Path(".agents/skills").glob("*/SKILL.md")); skill_errors=[]
+skill_name_re=re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 def has_unescaped_double_quote(value):
   escaped=False
   for char in value:
@@ -133,8 +134,16 @@ for path in skill_files:
   _, fm, _ = body.split("---", 2)
   meta, fm_errors = frontmatter_scalars(fm, path)
   skill_errors.extend(fm_errors)
-  if meta.get("name") != path.parent.name: skill_errors.append(f"{path}: bad name")
-  if not str(meta.get("description", "")).startswith("Use when"): skill_errors.append(f"{path}: bad description")
+  name=meta.get("name", "")
+  desc=meta.get("description", "")
+  if name != path.parent.name: skill_errors.append(f"{path}: bad name")
+  if not skill_name_re.fullmatch(name) or "--" in name:
+      skill_errors.append(f"{path}: name must be lowercase hyphen-case, 1-64 chars, no edge hyphen or double hyphen")
+  if len(desc) > 1024:
+      skill_errors.append(f"{path}: description longer than 1024 characters")
+  if not desc.startswith("Use when"): skill_errors.append(f"{path}: bad description")
+  if len(body.splitlines()) > 500:
+      skill_errors.append(f"{path}: SKILL.md longer than 500 lines")
   for heading in ["## Role", "## Workflow", "## Required Output", "## Handoff", "## Hard Boundaries"]:
       if heading not in body: skill_errors.append(f"{path}: missing heading {heading}")
 if skill_errors: fail("Skill check failed:\n"+"\n".join(skill_errors[:200]))
