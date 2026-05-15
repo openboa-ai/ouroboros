@@ -1720,7 +1720,7 @@ function validMaterializationInput(): CandidateMaterializationInput {
       declared_outputs: ["OrderIntentDraft", "ProgramEvent", "Trace"]
     },
     capability_package: {
-      summary: "generic tradingetual market context and indicator package request.",
+      summary: "generic trading market context and indicator package request.",
       allowed_stages: ["backtest", "paper"],
       declared_permissions: ["read_market_bars", "read_position_state"],
       forbidden_contents: ["exchange_credentials", "evaluator_hidden_labels", "live_order_authority"]

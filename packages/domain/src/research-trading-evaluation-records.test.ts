@@ -20,7 +20,7 @@ const trendDirection = {
   research_direction_id: "research-direction-market-trend-v1",
   direction_kind: "trend_following",
   market_scope: "external_trading_api_fixture",
-  prompt_seed: "Explore robust generic tradingetual trend behavior without choosing a specific indicator upfront.",
+  prompt_seed: "Explore robust generic trading trend behavior without choosing a specific indicator upfront.",
   diversity_axis: "price-continuation",
   created_at: "2026-05-11T10:00:00.000Z",
   authority_status: "research_seed_only"
@@ -32,7 +32,7 @@ const fundingDirection = {
   research_direction_id: "research-direction-market-funding-risk-v1",
   direction_kind: "funding_aware_risk",
   market_scope: "external_trading_api_fixture",
-  prompt_seed: "Explore whether funding and liquidation-aware risk constraints improve generic tradingetual survivability.",
+  prompt_seed: "Explore whether funding and liquidation-aware risk constraints improve generic trading survivability.",
   diversity_axis: "carry-and-risk",
   created_at: "2026-05-11T10:00:01.000Z",
   authority_status: "research_seed_only"
