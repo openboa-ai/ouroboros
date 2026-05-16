@@ -263,6 +263,36 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return { surface };
   });
 
+  server.get<{
+    Querystring: {
+      venue?: string;
+      instrument?: string;
+    };
+  }>("/api/trading-substrate/private-readiness/latest", async (request, reply) => {
+    const venue = request.query.venue ?? "binance_usd_m_futures";
+    const instrument = request.query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return reply.code(404).send({
+        error: "private_readiness_preflight_surface_not_found",
+        venue,
+        instrument
+      });
+    }
+
+    const surface = await store.getLatestPrivateReadinessPreflightSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    if (!surface) {
+      return reply.code(404).send({
+        error: "private_readiness_preflight_surface_not_found",
+        venue,
+        instrument
+      });
+    }
+    return { surface };
+  });
+
   server.get("/api/candidates", async () => ({
     candidates: await listCandidateSummaries(
       store,
