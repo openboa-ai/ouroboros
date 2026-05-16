@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AccountPositionRiskMirrorSurfaceReadModel,
+  AccountPositionRiskMirrorSurfaceRecord,
   OrderFillPosture,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
@@ -413,6 +415,188 @@ describe("Trading substrate private-readiness preflight surface records", () => 
     expect(surface.account_information_endpoint).toBe("GET /fapi/v3/account");
     expect(surface.user_data_stream_endpoint).toBe("POST /fapi/v1/listenKey");
     expect(surface.order_endpoint).toBe("POST /fapi/v1/order");
+    expect(surface.transport).toMatchObject({
+      repository: "binance/binance-connector-js",
+      package_name: "@binance/derivatives-trading-usds-futures",
+      integration_role: "transport_only",
+      authority_status: "not_live"
+    });
+    expect(surface.no_authority).toEqual({
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    });
+    expect(readModel.no_authority_label).toBe("live_exchange=false, order_submission=false, credentials=false");
+    expect(readModel.authority_status).toBe("not_live");
+  });
+});
+
+describe("Trading substrate account-position-risk mirror surface records", () => {
+  it("models Binance BTCUSDT account, position, and risk posture without private reads or mutation authority", () => {
+    const surfaceRef = ref(
+      "account_position_risk_mirror_surface",
+      "binance-btcusdt-account-position-risk-mirror-surface-001"
+    );
+
+    const surface = {
+      record_kind: "account_position_risk_mirror_surface",
+      version: 1,
+      account_position_risk_mirror_surface_id: surfaceRef.id,
+      surface_family: "account_position_risk_mirror",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      account_scope_ref: "fixture-binance-usdt-account-mirror",
+      asset: "USDT",
+      account_mode: "single_asset",
+      total_wallet_balance: "1250.00000000",
+      total_unrealized_profit: "12.50000000",
+      total_margin_balance: "1262.50000000",
+      available_balance: "1100.00000000",
+      max_withdraw_amount: "1100.00000000",
+      total_initial_margin: "162.50000000",
+      total_maint_margin: "35.00000000",
+      total_position_initial_margin: "150.00000000",
+      total_open_order_initial_margin: "12.50000000",
+      total_cross_wallet_balance: "1250.00000000",
+      total_cross_un_pnl: "12.50000000",
+      position_side: "BOTH",
+      position_amount: "0.015",
+      entry_price: "65000.00000000",
+      break_even_price: "65010.00000000",
+      mark_price: "65833.33333333",
+      unrealized_profit: "12.50000000",
+      liquidation_price: "42000.00000000",
+      notional: "987.50000000",
+      margin_asset: "USDT",
+      margin_type: "cross",
+      leverage: 5,
+      isolated_margin: "0.00000000",
+      isolated_wallet: "0.00000000",
+      initial_margin: "150.00000000",
+      maint_margin: "35.00000000",
+      position_initial_margin: "150.00000000",
+      open_order_initial_margin: "12.50000000",
+      adl_quantile: 2,
+      risk_status: "watch",
+      risk_limit_profile_ref: "fixture-btcusdt-risk-limit-profile-001",
+      max_notional_value: "1000000",
+      kill_switch_status: "inactive",
+      runtime_pause_status: "not_paused",
+      account_information_endpoint: "GET /fapi/v3/account",
+      position_information_endpoint: "GET /fapi/v3/positionRisk",
+      leverage_endpoint: "POST /fapi/v1/leverage",
+      margin_type_endpoint: "POST /fapi/v1/marginType",
+      next_blocked_action: "configure_private_read_credentials",
+      next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
+      source_timestamp: "2026-05-16T00:00:00.000Z",
+      observed_at: "2026-05-16T00:00:04.000Z",
+      updated_at: "2026-05-16T00:00:04.000Z",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_private_account_or_position_read",
+      source_kind: "fixture",
+      source_ref: ref("fixture", "binance-btcusdt-account-position-risk-mirror"),
+      transport: {
+        transport_kind: "official_binance_connector",
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        api_family: "derivatives_trading_usds_futures",
+        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+        production_base_url: "https://fapi.binance.com",
+        testnet_base_url: "https://testnet.binancefuture.com",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    } satisfies AccountPositionRiskMirrorSurfaceRecord;
+
+    const readModel = {
+      surface_id: surface.account_position_risk_mirror_surface_id,
+      surface_family: surface.surface_family,
+      surface_label: "Binance BTCUSDT account_position_risk_mirror",
+      venue: surface.venue,
+      instrument: surface.instrument,
+      product_category: surface.product_category,
+      account_scope_ref: surface.account_scope_ref,
+      asset: surface.asset,
+      account_mode: surface.account_mode,
+      total_wallet_balance: surface.total_wallet_balance,
+      total_unrealized_profit: surface.total_unrealized_profit,
+      total_margin_balance: surface.total_margin_balance,
+      available_balance: surface.available_balance,
+      max_withdraw_amount: surface.max_withdraw_amount,
+      total_initial_margin: surface.total_initial_margin,
+      total_maint_margin: surface.total_maint_margin,
+      total_position_initial_margin: surface.total_position_initial_margin,
+      total_open_order_initial_margin: surface.total_open_order_initial_margin,
+      total_cross_wallet_balance: surface.total_cross_wallet_balance,
+      total_cross_un_pnl: surface.total_cross_un_pnl,
+      position_side: surface.position_side,
+      position_amount: surface.position_amount,
+      entry_price: surface.entry_price,
+      break_even_price: surface.break_even_price,
+      mark_price: surface.mark_price,
+      unrealized_profit: surface.unrealized_profit,
+      liquidation_price: surface.liquidation_price,
+      notional: surface.notional,
+      margin_asset: surface.margin_asset,
+      margin_type: surface.margin_type,
+      leverage: surface.leverage,
+      isolated_margin: surface.isolated_margin,
+      isolated_wallet: surface.isolated_wallet,
+      initial_margin: surface.initial_margin,
+      maint_margin: surface.maint_margin,
+      position_initial_margin: surface.position_initial_margin,
+      open_order_initial_margin: surface.open_order_initial_margin,
+      adl_quantile: surface.adl_quantile,
+      risk_status: surface.risk_status,
+      risk_limit_profile_ref: surface.risk_limit_profile_ref,
+      max_notional_value: surface.max_notional_value,
+      kill_switch_status: surface.kill_switch_status,
+      runtime_pause_status: surface.runtime_pause_status,
+      account_information_endpoint: surface.account_information_endpoint,
+      position_information_endpoint: surface.position_information_endpoint,
+      leverage_endpoint: surface.leverage_endpoint,
+      margin_type_endpoint: surface.margin_type_endpoint,
+      next_blocked_action: surface.next_blocked_action,
+      next_blocked_reason: surface.next_blocked_reason,
+      source_timestamp: surface.source_timestamp,
+      observed_at: surface.observed_at,
+      updated_at: surface.updated_at,
+      freshness: surface.freshness,
+      liveness: surface.liveness,
+      degraded_reason: surface.degraded_reason,
+      source_kind: surface.source_kind,
+      source_ref: surface.source_ref,
+      transport: surface.transport,
+      fixture_backed: surface.fixture_backed,
+      simulated: surface.simulated,
+      no_authority: surface.no_authority,
+      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      authority_status: surface.authority_status
+    } satisfies AccountPositionRiskMirrorSurfaceReadModel;
+
+    expect(surface.surface_family).toBe("account_position_risk_mirror");
+    expect(surface.venue).toBe("binance_usd_m_futures");
+    expect(surface.instrument).toBe("BTCUSDT");
+    expect(surface.asset).toBe("USDT");
+    expect(surface.position_amount).toBe("0.015");
+    expect(surface.unrealized_profit).toBe("12.50000000");
+    expect(surface.risk_status).toBe("watch");
+    expect(surface.kill_switch_status).toBe("inactive");
+    expect(surface.runtime_pause_status).toBe("not_paused");
+    expect(surface.account_information_endpoint).toBe("GET /fapi/v3/account");
+    expect(surface.position_information_endpoint).toBe("GET /fapi/v3/positionRisk");
+    expect(surface.leverage_endpoint).toBe("POST /fapi/v1/leverage");
+    expect(surface.margin_type_endpoint).toBe("POST /fapi/v1/marginType");
     expect(surface.transport).toMatchObject({
       repository: "binance/binance-connector-js",
       package_name: "@binance/derivatives-trading-usds-futures",

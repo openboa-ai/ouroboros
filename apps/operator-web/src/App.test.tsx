@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type {
+  AccountPositionRiskMirrorSurfaceReadModel,
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
   CandidateLatestValidationStateReadModel,
@@ -56,7 +57,8 @@ describe("CandidateDetail", () => {
           trading_substrate: {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: null,
-            latest_private_readiness_preflight_surface: null
+            latest_private_readiness_preflight_surface: null,
+            latest_account_position_risk_mirror_surface: null
           }
         }}
       />
@@ -86,7 +88,8 @@ describe("CandidateDetail", () => {
           trading_substrate: {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
-            latest_private_readiness_preflight_surface: null
+            latest_private_readiness_preflight_surface: null,
+            latest_account_position_risk_mirror_surface: null
           }
         }}
       />
@@ -121,7 +124,8 @@ describe("CandidateDetail", () => {
           trading_substrate: {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
-            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface()
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_account_position_risk_mirror_surface: null
           }
         }}
       />
@@ -144,6 +148,48 @@ describe("CandidateDetail", () => {
     expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
     expect(html).toContain("not_live");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key|apiKey|secretKey/i);
+  });
+
+  it("renders Binance BTCUSDT account-position-risk mirror posture without action controls", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface()
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Account position risk mirror");
+    expect(html).toContain("Binance BTCUSDT account_position_risk_mirror");
+    expect(html).toContain("fixture-binance-usdt-account-mirror");
+    expect(html).toContain("1250.00000000");
+    expect(html).toContain("1262.50000000");
+    expect(html).toContain("1100.00000000");
+    expect(html).toContain("0.015");
+    expect(html).toContain("65000.00000000");
+    expect(html).toContain("65833.33333333");
+    expect(html).toContain("42000.00000000");
+    expect(html).toContain("987.50000000");
+    expect(html).toContain("cross");
+    expect(html).toContain("watch");
+    expect(html).toContain("inactive");
+    expect(html).toContain("not_paused");
+    expect(html).toContain("GET /fapi/v3/account");
+    expect(html).toContain("GET /fapi/v3/positionRisk");
+    expect(html).toContain("POST /fapi/v1/leverage");
+    expect(html).toContain("POST /fapi/v1/marginType");
+    expect(html).toContain("mirror_is_fixture_backed_no_signed_user_data_read");
+    expect(html).toContain("fixture_seed_no_private_account_or_position_read");
+    expect(html).toContain("transport_only");
+    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key|apiKey|secretKey|signature/i);
   });
 
   it("renders candidate-level latest validation state in the sidebar row and detail header", () => {
@@ -1543,6 +1589,88 @@ function fixturePrivateReadinessPreflightSurface(): PrivateReadinessPreflightSur
     degraded_reason: "fixture_seed_no_private_authority",
     source_kind: "fixture",
     source_ref: { record_kind: "fixture", id: "binance-btcusdt-private-readiness-preflight" },
+    transport: {
+      transport_kind: "official_binance_connector",
+      repository: "binance/binance-connector-js",
+      package_name: "@binance/derivatives-trading-usds-futures",
+      api_family: "derivatives_trading_usds_futures",
+      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+      production_base_url: "https://fapi.binance.com",
+      testnet_base_url: "https://testnet.binancefuture.com",
+      integration_role: "transport_only",
+      authority_status: "not_live"
+    },
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+    authority_status: "not_live"
+  };
+}
+
+function fixtureAccountPositionRiskMirrorSurface(): AccountPositionRiskMirrorSurfaceReadModel {
+  return {
+    surface_id: "fixture-binance-btcusdt-account-position-risk-mirror-surface-001",
+    surface_family: "account_position_risk_mirror",
+    surface_label: "Binance BTCUSDT account_position_risk_mirror",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    account_scope_ref: "fixture-binance-usdt-account-mirror",
+    asset: "USDT",
+    account_mode: "single_asset",
+    total_wallet_balance: "1250.00000000",
+    total_unrealized_profit: "12.50000000",
+    total_margin_balance: "1262.50000000",
+    available_balance: "1100.00000000",
+    max_withdraw_amount: "1100.00000000",
+    total_initial_margin: "162.50000000",
+    total_maint_margin: "35.00000000",
+    total_position_initial_margin: "150.00000000",
+    total_open_order_initial_margin: "12.50000000",
+    total_cross_wallet_balance: "1250.00000000",
+    total_cross_un_pnl: "12.50000000",
+    position_side: "BOTH",
+    position_amount: "0.015",
+    entry_price: "65000.00000000",
+    break_even_price: "65010.00000000",
+    mark_price: "65833.33333333",
+    unrealized_profit: "12.50000000",
+    liquidation_price: "42000.00000000",
+    notional: "987.50000000",
+    margin_asset: "USDT",
+    margin_type: "cross",
+    leverage: 5,
+    isolated_margin: "0.00000000",
+    isolated_wallet: "0.00000000",
+    initial_margin: "150.00000000",
+    maint_margin: "35.00000000",
+    position_initial_margin: "150.00000000",
+    open_order_initial_margin: "12.50000000",
+    adl_quantile: 2,
+    risk_status: "watch",
+    risk_limit_profile_ref: "fixture-btcusdt-risk-limit-profile-001",
+    max_notional_value: "1000000",
+    kill_switch_status: "inactive",
+    runtime_pause_status: "not_paused",
+    account_information_endpoint: "GET /fapi/v3/account",
+    position_information_endpoint: "GET /fapi/v3/positionRisk",
+    leverage_endpoint: "POST /fapi/v1/leverage",
+    margin_type_endpoint: "POST /fapi/v1/marginType",
+    next_blocked_action: "configure_private_read_credentials",
+    next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:04.000Z",
+    updated_at: "2026-05-16T00:00:04.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_private_account_or_position_read",
+    source_kind: "fixture",
+    source_ref: { record_kind: "fixture", id: "binance-btcusdt-account-position-risk-mirror" },
     transport: {
       transport_kind: "official_binance_connector",
       repository: "binance/binance-connector-js",

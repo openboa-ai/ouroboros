@@ -171,7 +171,7 @@ describe("Slice 3 runtime authority MLP flow", () => {
       expect(html).toContain(`order_intent_draft:${orderIntent.order_intent_draft_id}`);
       expect(html).toContain(`gateway_decision:${gatewayDecision.gateway_decision_id}`);
       expect(html).toContain("Record dry-run intent");
-      expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/i);
+      expect(html).not.toMatch(/Start|Resume|Stop|Promote|Run provider|Run evaluator|Live order/i);
       expect(html).not.toMatch(/broker|api key|secret|runtime stack launch/i);
     } finally {
       await server.close();

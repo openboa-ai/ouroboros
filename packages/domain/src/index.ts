@@ -438,6 +438,8 @@ export type PublicMarketLivenessSurfaceAuthorityStatus = "not_live" | "read_only
 
 export type PrivateReadinessPreflightSurfaceAuthorityStatus = "not_live";
 
+export type AccountPositionRiskMirrorSurfaceAuthorityStatus = "not_live";
+
 export type PrivateReadinessPreflightGateStatus =
   | "not_configured"
   | "not_evaluated"
@@ -690,10 +692,154 @@ export interface PrivateReadinessPreflightSurfaceReadModel {
   authority_status: PrivateReadinessPreflightSurfaceAuthorityStatus;
 }
 
+export type AccountPositionRiskMirrorAccountMode = "single_asset" | "multi_assets";
+
+export type AccountPositionRiskMirrorPositionSide = "BOTH" | "LONG" | "SHORT";
+
+export type AccountPositionRiskMirrorMarginType = "cross" | "isolated";
+
+export type AccountPositionRiskMirrorRiskStatus = "nominal" | "watch" | "breach";
+
+export type AccountPositionRiskMirrorKillSwitchStatus = "inactive" | "active";
+
+export type AccountPositionRiskMirrorRuntimePauseStatus = "not_paused" | "paused";
+
+export interface AccountPositionRiskMirrorSurfaceRecord extends BaseRecord {
+  record_kind: "account_position_risk_mirror_surface";
+  account_position_risk_mirror_surface_id: string;
+  surface_family: "account_position_risk_mirror";
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  account_scope_ref: string;
+  asset: "USDT";
+  account_mode: AccountPositionRiskMirrorAccountMode;
+  total_wallet_balance: string;
+  total_unrealized_profit: string;
+  total_margin_balance: string;
+  available_balance: string;
+  max_withdraw_amount: string;
+  total_initial_margin: string;
+  total_maint_margin: string;
+  total_position_initial_margin: string;
+  total_open_order_initial_margin: string;
+  total_cross_wallet_balance: string;
+  total_cross_un_pnl: string;
+  position_side: AccountPositionRiskMirrorPositionSide;
+  position_amount: string;
+  entry_price: string;
+  break_even_price: string;
+  mark_price: string;
+  unrealized_profit: string;
+  liquidation_price: string;
+  notional: string;
+  margin_asset: "USDT";
+  margin_type: AccountPositionRiskMirrorMarginType;
+  leverage: number;
+  isolated_margin: string;
+  isolated_wallet: string;
+  initial_margin: string;
+  maint_margin: string;
+  position_initial_margin: string;
+  open_order_initial_margin: string;
+  adl_quantile?: number;
+  risk_status: AccountPositionRiskMirrorRiskStatus;
+  risk_limit_profile_ref: string;
+  max_notional_value: string;
+  kill_switch_status: AccountPositionRiskMirrorKillSwitchStatus;
+  runtime_pause_status: AccountPositionRiskMirrorRuntimePauseStatus;
+  account_information_endpoint: "GET /fapi/v3/account";
+  position_information_endpoint: "GET /fapi/v3/positionRisk";
+  leverage_endpoint: "POST /fapi/v1/leverage";
+  margin_type_endpoint: "POST /fapi/v1/marginType";
+  next_blocked_action: string;
+  next_blocked_reason: string;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  authority_status: AccountPositionRiskMirrorSurfaceAuthorityStatus;
+}
+
+export interface AccountPositionRiskMirrorSurfaceReadModel {
+  surface_id: string;
+  surface_family: "account_position_risk_mirror";
+  surface_label: string;
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  account_scope_ref: string;
+  asset: "USDT";
+  account_mode: AccountPositionRiskMirrorAccountMode;
+  total_wallet_balance: string;
+  total_unrealized_profit: string;
+  total_margin_balance: string;
+  available_balance: string;
+  max_withdraw_amount: string;
+  total_initial_margin: string;
+  total_maint_margin: string;
+  total_position_initial_margin: string;
+  total_open_order_initial_margin: string;
+  total_cross_wallet_balance: string;
+  total_cross_un_pnl: string;
+  position_side: AccountPositionRiskMirrorPositionSide;
+  position_amount: string;
+  entry_price: string;
+  break_even_price: string;
+  mark_price: string;
+  unrealized_profit: string;
+  liquidation_price: string;
+  notional: string;
+  margin_asset: "USDT";
+  margin_type: AccountPositionRiskMirrorMarginType;
+  leverage: number;
+  isolated_margin: string;
+  isolated_wallet: string;
+  initial_margin: string;
+  maint_margin: string;
+  position_initial_margin: string;
+  open_order_initial_margin: string;
+  adl_quantile?: number;
+  risk_status: AccountPositionRiskMirrorRiskStatus;
+  risk_limit_profile_ref: string;
+  max_notional_value: string;
+  kill_switch_status: AccountPositionRiskMirrorKillSwitchStatus;
+  runtime_pause_status: AccountPositionRiskMirrorRuntimePauseStatus;
+  account_information_endpoint: AccountPositionRiskMirrorSurfaceRecord["account_information_endpoint"];
+  position_information_endpoint: AccountPositionRiskMirrorSurfaceRecord["position_information_endpoint"];
+  leverage_endpoint: AccountPositionRiskMirrorSurfaceRecord["leverage_endpoint"];
+  margin_type_endpoint: AccountPositionRiskMirrorSurfaceRecord["margin_type_endpoint"];
+  next_blocked_action: string;
+  next_blocked_reason: string;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  no_authority_label: string;
+  authority_status: AccountPositionRiskMirrorSurfaceAuthorityStatus;
+}
+
 export interface TradingSubstrateReadModel {
   latest_order_fill_surface: OrderFillSurfaceReadModel | null;
   latest_public_market_liveness_surface: PublicMarketLivenessSurfaceReadModel | null;
   latest_private_readiness_preflight_surface: PrivateReadinessPreflightSurfaceReadModel | null;
+  latest_account_position_risk_mirror_surface: AccountPositionRiskMirrorSurfaceReadModel | null;
 }
 
 export interface TradingSystemCandidateRecord extends BaseRecord {
@@ -1692,6 +1838,7 @@ export type FixtureRecord =
   | OrderFillSurfaceRecord
   | PublicMarketLivenessSurfaceRecord
   | PrivateReadinessPreflightSurfaceRecord
+  | AccountPositionRiskMirrorSurfaceRecord
   | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {
