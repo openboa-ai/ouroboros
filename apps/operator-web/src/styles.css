@@ -471,6 +471,19 @@ button {
   font-size: 12px;
 }
 
+.policy-impact {
+  border-top: 1px solid #eaecf0;
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.policy-impact h4 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
 .inline-status {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;

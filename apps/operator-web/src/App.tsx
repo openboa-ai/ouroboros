@@ -1393,6 +1393,40 @@ function TradingSubstrateSection({
               `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
             ].join(", ")}
           />
+          {privateReadinessPosture && (
+            <div className="policy-impact" aria-label="Private-readiness policy impact interpretation">
+              <h4>Policy impact interpretation</h4>
+              <Field label="Policy input posture" value={privateReadinessPosture.posture_id} />
+              <Field label="History role" value="inspection_context_only" />
+              <Field
+                label="Policy impact"
+                value={[
+                  `status=${privateReadinessPolicyDecision.status}`,
+                  `blocking_conditions=${privateReadinessPolicyDecision.blocking_conditions.length}`,
+                  `required_next_actions=${privateReadinessPolicyDecision.required_next_actions.length}`
+                ].join(", ")}
+              />
+              <Field
+                label="Policy next actions"
+                value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
+              />
+              <Field
+                label="Evidence boundary"
+                value="local_config_inspection_not_counted_evidence_or_promotion"
+              />
+              <Field
+                label="No-authority proof"
+                value={[
+                  `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
+                  `authority_status=${privateReadinessPolicyDecision.authority_status}`
+                ].join(", ")}
+              />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
+            </div>
+          )}
         </>
       ) : (
         <div className="placeholder">
@@ -1699,6 +1733,15 @@ function formatPrivateReadinessPostureGateSummary(
     `secret_handling=${posture.secret_handling_gate.status}`,
     `stop_behavior=${posture.stop_behavior_gate.status}`
   ].join(", ");
+}
+
+function formatPolicyListSummary(items: string[]): string {
+  if (items.length === 0) {
+    return "none";
+  }
+  const visibleItems = items.slice(0, 3);
+  const suffix = items.length > visibleItems.length ? `, +${items.length - visibleItems.length} more` : "";
+  return `${visibleItems.join(", ")}${suffix}`;
 }
 
 function formatSubstrateSource(

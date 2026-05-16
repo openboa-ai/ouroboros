@@ -188,6 +188,17 @@ describe("CandidateDetail", () => {
     expect(html).toContain("false");
     expect(html).toContain("Private-readiness policy");
     expect(html).toContain("private_readiness_policy_decision");
+    expect(html).toContain("Policy impact interpretation");
+    expect(html).toContain("Policy input posture");
+    expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
+    expect(html).toContain("History role");
+    expect(html).toContain("inspection_context_only");
+    expect(html).toContain("Policy impact");
+    expect(html).toContain("status=not_ready");
+    expect(html).toContain("local_config_inspection_not_counted_evidence_or_promotion");
+    expect(html).toContain("No-authority proof");
+    expect(html).toContain("authority_status=not_live");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("secret_handling_not_ready");
