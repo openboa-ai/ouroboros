@@ -261,6 +261,14 @@ describe("LocalStore", () => {
     expect(item.record_kind).toBe("private_readiness_posture");
     expect(latest).toMatchObject(binancePrivateReadinessPostureNoAuthorityExpectation({
       posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+      operator_approval_gate: {
+        status: "not_ready",
+        reason: "operator_live_private_read_approval_missing"
+      },
+      jurisdiction_risk_gate: {
+        status: "review_required",
+        reason: "operator_jurisdiction_not_recorded"
+      },
       live_binding_gate: {
         status: "not_ready",
         reason: "live_binding_profile_not_configured"
@@ -307,10 +315,20 @@ describe("LocalStore", () => {
       "blocked",
       "operator_live_binding_blocked_for_test"
     );
+    const operatorApprovalGate = privateReadinessPolicyGate(
+      "blocked",
+      "operator_approval_posture_blocked_for_test"
+    );
+    const jurisdictionRiskGate = privateReadinessPolicyGate(
+      "review_required",
+      "jurisdiction_risk_posture_review_for_test"
+    );
 
     await store.recordPrivateReadinessPosture({
       ...seeded,
       private_readiness_posture_id: "local-binance-btcusdt-private-readiness-posture-002",
+      operator_approval_gate: operatorApprovalGate,
+      jurisdiction_risk_gate: jurisdictionRiskGate,
       live_binding_gate: liveBindingGate,
       source_kind: "local_config",
       source_ref: {
@@ -326,6 +344,8 @@ describe("LocalStore", () => {
 
     expect(candidate?.trading_substrate?.latest_private_readiness_posture).toMatchObject({
       posture_id: "local-binance-btcusdt-private-readiness-posture-002",
+      operator_approval_gate: operatorApprovalGate,
+      jurisdiction_risk_gate: jurisdictionRiskGate,
       live_binding_gate: liveBindingGate,
       source_kind: "local_config",
       fixture_backed: false
@@ -333,11 +353,69 @@ describe("LocalStore", () => {
     expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision).toMatchObject({
       status: "blocked",
       evaluated_at: "2026-05-16T00:00:05.000Z",
-      reason_codes: expect.arrayContaining(["live_binding_blocked"]),
+      reason_codes: expect.arrayContaining([
+        "operator_approval_blocked",
+        "jurisdiction_review_required",
+        "live_binding_blocked"
+      ]),
       blocking_conditions: expect.arrayContaining([
+        "operator_approval: operator_approval_posture_blocked_for_test",
+        "jurisdiction_risk: jurisdiction_risk_posture_review_for_test",
         "live_binding: operator_live_binding_blocked_for_test"
       ])
     });
+  });
+
+  it("keeps S40 posture records readable with default approval and jurisdiction gates", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const seeded = await readStoreJson<PrivateReadinessPostureRecord>(
+      "private-readiness-postures",
+      "items",
+      "fixture-binance-btcusdt-private-readiness-posture-001.json"
+    );
+    const legacyPosture = {
+      ...seeded,
+      private_readiness_posture_id: "legacy-binance-btcusdt-private-readiness-posture-s40",
+      observed_at: "2026-05-16T00:00:06.000Z",
+      updated_at: "2026-05-16T00:00:06.000Z"
+    };
+    delete (legacyPosture as Partial<PrivateReadinessPostureRecord>).operator_approval_gate;
+    delete (legacyPosture as Partial<PrivateReadinessPostureRecord>).jurisdiction_risk_gate;
+
+    await writeStoreJson(
+      legacyPosture,
+      "private-readiness-postures",
+      "items",
+      "legacy-binance-btcusdt-private-readiness-posture-s40.json"
+    );
+    await store.rebuildProjections();
+
+    const latest = await store.getLatestPrivateReadinessPosture(BINANCE_BTCUSDT_QUERY);
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+
+    expect(latest).toMatchObject(binancePrivateReadinessPostureNoAuthorityExpectation({
+      posture_id: "legacy-binance-btcusdt-private-readiness-posture-s40",
+      operator_approval_gate: {
+        status: "not_ready",
+        reason: "operator_live_private_read_approval_missing"
+      },
+      jurisdiction_risk_gate: {
+        status: "review_required",
+        reason: "operator_jurisdiction_not_recorded"
+      }
+    }));
+    expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision)
+      .toMatchObject({
+        reason_codes: expect.arrayContaining([
+          "operator_approval_missing",
+          "jurisdiction_review_required"
+        ]),
+        blocking_conditions: expect.arrayContaining([
+          "operator_approval: operator_live_private_read_approval_missing",
+          "jurisdiction_risk: operator_jurisdiction_not_recorded"
+        ])
+      });
   });
 
   it("seeds a Binance BTCUSDT account-position-risk mirror surface into candidate inspect read models", async () => {

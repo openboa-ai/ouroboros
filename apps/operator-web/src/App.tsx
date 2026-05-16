@@ -1117,6 +1117,14 @@ function TradingSubstrateSection({
           />
           <Field label="Posture instrument" value={privateReadinessPosture.instrument} />
           <Field
+            label="Operator approval gate"
+            value={formatPrivateReadinessPolicyGate(privateReadinessPosture.operator_approval_gate)}
+          />
+          <Field
+            label="Jurisdiction / risk gate"
+            value={formatPrivateReadinessPolicyGate(privateReadinessPosture.jurisdiction_risk_gate)}
+          />
+          <Field
             label="Live binding gate"
             value={formatPrivateReadinessPolicyGate(privateReadinessPosture.live_binding_gate)}
           />
@@ -1404,14 +1412,18 @@ function privateReadinessPostureStatusTone(
   if (
     posture.live_binding_gate.status === "blocked" ||
     posture.secret_handling_gate.status === "blocked" ||
-    posture.stop_behavior_gate.status === "blocked"
+    posture.stop_behavior_gate.status === "blocked" ||
+    posture.operator_approval_gate.status === "blocked" ||
+    posture.jurisdiction_risk_gate.status === "blocked"
   ) {
     return "failed";
   }
   if (
     posture.live_binding_gate.status === "ready" &&
     posture.secret_handling_gate.status === "ready" &&
-    posture.stop_behavior_gate.status === "ready"
+    posture.stop_behavior_gate.status === "ready" &&
+    posture.operator_approval_gate.status === "ready" &&
+    posture.jurisdiction_risk_gate.status === "ready"
   ) {
     return "counted";
   }

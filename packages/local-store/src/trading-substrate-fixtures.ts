@@ -216,6 +216,14 @@ export function createBinanceBtcusdtTradingSubstrateFixtureItems({
     venue: "binance_usd_m_futures",
     instrument: "BTCUSDT",
     product_category: "perpetual_futures",
+    operator_approval_gate: {
+      status: "not_ready",
+      reason: "operator_live_private_read_approval_missing"
+    },
+    jurisdiction_risk_gate: {
+      status: "review_required",
+      reason: "operator_jurisdiction_not_recorded"
+    },
     live_binding_gate: {
       status: "not_ready",
       reason: "live_binding_profile_not_configured"
