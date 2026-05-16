@@ -623,6 +623,7 @@ function isTradingSubstrateSourceKind(value: unknown): boolean {
     value === "binance_user_data_stream" ||
     value === "binance_market_data_rest" ||
     value === "binance_rest_query" ||
+    value === "local_config" ||
     value === "fixture"
   );
 }

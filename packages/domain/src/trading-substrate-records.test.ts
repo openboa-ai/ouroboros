@@ -51,6 +51,7 @@ describe("Trading substrate taxonomy contract", () => {
       "order",
       "execution",
       "risk",
+      "posture",
       "gate",
       "connector",
       "authority",

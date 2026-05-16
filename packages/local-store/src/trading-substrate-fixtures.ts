@@ -1,6 +1,7 @@
 import type {
   AccountPositionRiskMirrorSurfaceRecord,
   OrderFillSurfaceRecord,
+  PrivateReadinessPostureRecord,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceRecord,
   Ref
@@ -10,6 +11,7 @@ export interface TradingSubstrateFixtureIds {
   orderFillSurface: string;
   publicMarketLivenessSurface: string;
   privateReadinessPreflightSurface: string;
+  privateReadinessPosture: string;
   accountPositionRiskMirrorSurface: string;
   runtime: string;
   candidate: string;
@@ -17,12 +19,13 @@ export interface TradingSubstrateFixtureIds {
 }
 
 export interface TradingSubstrateFixtureItem {
-  collection: "substrate-state-surfaces";
+  collection: "substrate-state-surfaces" | "private-readiness-postures";
   id: string;
   record:
     | OrderFillSurfaceRecord
     | PublicMarketLivenessSurfaceRecord
     | PrivateReadinessPreflightSurfaceRecord
+    | PrivateReadinessPostureRecord
     | AccountPositionRiskMirrorSurfaceRecord;
 }
 
@@ -206,6 +209,41 @@ export function createBinanceBtcusdtTradingSubstrateFixtureItems({
     },
     authority_status: "not_live"
   };
+  const privateReadinessPosture: PrivateReadinessPostureRecord = {
+    record_kind: "private_readiness_posture",
+    version: 1,
+    private_readiness_posture_id: ids.privateReadinessPosture,
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    live_binding_gate: {
+      status: "not_ready",
+      reason: "live_binding_profile_not_configured"
+    },
+    secret_handling_gate: {
+      status: "not_ready",
+      reason: "secret_handling_profile_not_configured"
+    },
+    stop_behavior_gate: {
+      status: "not_ready",
+      reason: "operator_stop_behavior_not_recorded"
+    },
+    secret_reference_configured: false,
+    raw_secret_material_present: false,
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:04.000Z",
+    updated_at: "2026-05-16T00:00:04.000Z",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "binance-btcusdt-private-readiness-posture"),
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    authority_status: "not_live"
+  };
   const accountPositionRiskMirrorSurface: AccountPositionRiskMirrorSurfaceRecord = {
     record_kind: "account_position_risk_mirror_surface",
     version: 1,
@@ -287,6 +325,11 @@ export function createBinanceBtcusdtTradingSubstrateFixtureItems({
       collection: "substrate-state-surfaces",
       id: ids.privateReadinessPreflightSurface,
       record: privateReadinessPreflightSurface
+    },
+    {
+      collection: "private-readiness-postures",
+      id: ids.privateReadinessPosture,
+      record: privateReadinessPosture
     },
     {
       collection: "substrate-state-surfaces",

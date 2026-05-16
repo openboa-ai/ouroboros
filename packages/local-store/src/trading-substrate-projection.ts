@@ -3,9 +3,11 @@ import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   CandidateInspectReadModel,
   OrderFillSurfaceReadModel,
+  PrivateReadinessPostureReadModel,
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel
 } from "@ouroboros/domain";
+import type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 import type {
   AccountPositionRiskMirrorSurfaceQueryInput,
   OrderFillSurfaceQueryInput,
@@ -23,6 +25,9 @@ export interface TradingSubstrateProjectionReader {
   getLatestPrivateReadinessPreflightSurface(
     query?: PrivateReadinessPreflightSurfaceQueryInput
   ): Promise<PrivateReadinessPreflightSurfaceReadModel | undefined>;
+  getLatestPrivateReadinessPosture(
+    query?: PrivateReadinessPostureQueryInput
+  ): Promise<PrivateReadinessPostureReadModel | undefined>;
   getLatestAccountPositionRiskMirrorSurface(
     query?: AccountPositionRiskMirrorSurfaceQueryInput
   ): Promise<AccountPositionRiskMirrorSurfaceReadModel | undefined>;
@@ -41,28 +46,23 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
     await reader.getLatestPublicMarketLivenessSurface(BINANCE_BTCUSDT_QUERY);
   const latestPrivateReadinessPreflightSurface =
     await reader.getLatestPrivateReadinessPreflightSurface(BINANCE_BTCUSDT_QUERY);
+  const latestPrivateReadinessPosture =
+    await reader.getLatestPrivateReadinessPosture(BINANCE_BTCUSDT_QUERY);
   const latestAccountPositionRiskMirrorSurface =
     await reader.getLatestAccountPositionRiskMirrorSurface(BINANCE_BTCUSDT_QUERY);
-  const latestPrivateReadinessPolicyDecision = latestPrivateReadinessPreflightSurface
+  const latestPrivateReadinessPolicyDecision =
+    latestPrivateReadinessPreflightSurface && latestPrivateReadinessPosture
     ? evaluatePrivateReadinessPolicyDecision({
-        evaluated_at: latestAccountPositionRiskMirrorSurface &&
-          latestAccountPositionRiskMirrorSurface.updated_at > latestPrivateReadinessPreflightSurface.updated_at
-          ? latestAccountPositionRiskMirrorSurface.updated_at
-          : latestPrivateReadinessPreflightSurface.updated_at,
+        evaluated_at: latestUpdatedAt([
+          latestPrivateReadinessPreflightSurface,
+          latestPrivateReadinessPosture,
+          latestAccountPositionRiskMirrorSurface
+        ]),
         private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface,
         account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null,
-        live_binding_gate: {
-          status: "not_ready",
-          reason: "live_binding_profile_not_configured"
-        },
-        secret_handling_gate: {
-          status: "not_ready",
-          reason: "secret_handling_profile_not_configured"
-        },
-        stop_behavior_gate: {
-          status: "not_ready",
-          reason: "operator_stop_behavior_not_recorded"
-        }
+        live_binding_gate: latestPrivateReadinessPosture.live_binding_gate,
+        secret_handling_gate: latestPrivateReadinessPosture.secret_handling_gate,
+        stop_behavior_gate: latestPrivateReadinessPosture.stop_behavior_gate
       })
     : null;
 
@@ -70,7 +70,17 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
     latest_order_fill_surface: latestOrderFillSurface ?? null,
     latest_public_market_liveness_surface: latestPublicMarketLivenessSurface ?? null,
     latest_private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface ?? null,
+    latest_private_readiness_posture: latestPrivateReadinessPosture ?? null,
     latest_private_readiness_policy_decision: latestPrivateReadinessPolicyDecision,
     latest_account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null
   };
+}
+
+function latestUpdatedAt(
+  inputs: ReadonlyArray<{ updated_at: string } | null | undefined>
+): string {
+  const timestamps = inputs
+    .map((input) => input?.updated_at)
+    .filter((timestamp): timestamp is string => typeof timestamp === "string");
+  return timestamps.sort().at(-1) ?? new Date(0).toISOString();
 }

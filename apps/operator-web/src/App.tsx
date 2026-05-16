@@ -16,6 +16,7 @@ import type {
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
   PrivateReadinessPolicyDecision,
+  PrivateReadinessPostureReadModel,
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -597,6 +598,7 @@ export function CandidateDetail({
           orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
           publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
           privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
+          privateReadinessPosture={candidate.trading_substrate?.latest_private_readiness_posture}
           privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
         />
@@ -953,12 +955,14 @@ function TradingSubstrateSection({
   orderFillSurface,
   publicMarketSurface,
   privateReadinessSurface,
+  privateReadinessPosture,
   privateReadinessPolicyDecision,
   accountPositionRiskSurface
 }: {
   orderFillSurface?: OrderFillSurfaceReadModel | null;
   publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
   privateReadinessSurface?: PrivateReadinessPreflightSurfaceReadModel | null;
+  privateReadinessPosture?: PrivateReadinessPostureReadModel | null;
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
 }) {
@@ -1096,6 +1100,53 @@ function TradingSubstrateSection({
         <div className="placeholder">
           <strong>No private readiness preflight</strong>
           <span>BTCUSDT private-read gates have not been recorded</span>
+          <span>not_live</span>
+        </div>
+      )}
+      {privateReadinessPosture ? (
+        <>
+          <div className={`evaluation-status ${privateReadinessPostureStatusTone(privateReadinessPosture)}`}>
+            <span>Private-readiness posture</span>
+            <strong>{privateReadinessPosture.live_binding_gate.status}</strong>
+            <span>{privateReadinessPosture.authority_status}</span>
+          </div>
+          <Field label="Local posture" value={privateReadinessPosture.posture_label} />
+          <Field
+            label="Posture venue"
+            value={`${privateReadinessPosture.venue} / ${privateReadinessPosture.product_category}`}
+          />
+          <Field label="Posture instrument" value={privateReadinessPosture.instrument} />
+          <Field
+            label="Live binding gate"
+            value={formatPrivateReadinessPolicyGate(privateReadinessPosture.live_binding_gate)}
+          />
+          <Field
+            label="Secret handling gate"
+            value={formatPrivateReadinessPolicyGate(privateReadinessPosture.secret_handling_gate)}
+          />
+          <Field
+            label="Stop behavior gate"
+            value={formatPrivateReadinessPolicyGate(privateReadinessPosture.stop_behavior_gate)}
+          />
+          <Field
+            label="Secret reference"
+            value={privateReadinessPosture.secret_reference_configured ? "configured" : "not_configured"}
+          />
+          <Field
+            label="Raw secret material"
+            value={String(privateReadinessPosture.raw_secret_material_present)}
+          />
+          <Field label="Posture source" value={formatSubstrateSource(privateReadinessPosture)} />
+          <Field label="Posture source timestamp" value={privateReadinessPosture.source_timestamp} />
+          <Field label="Posture observed" value={privateReadinessPosture.observed_at} />
+          <Field label="Posture updated" value={privateReadinessPosture.updated_at} />
+          <Field label="Posture no authority" value={privateReadinessPosture.no_authority_label} />
+          <Field label="Posture authority" value={privateReadinessPosture.authority_status} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No private-readiness posture</strong>
+          <span>BTCUSDT local private-readiness gates have not been recorded</span>
           <span>not_live</span>
         </div>
       )}
@@ -1347,6 +1398,26 @@ function privateReadinessStatusTone(
   return "neutral";
 }
 
+function privateReadinessPostureStatusTone(
+  posture: PrivateReadinessPostureReadModel
+): "counted" | "failed" | "neutral" {
+  if (
+    posture.live_binding_gate.status === "blocked" ||
+    posture.secret_handling_gate.status === "blocked" ||
+    posture.stop_behavior_gate.status === "blocked"
+  ) {
+    return "failed";
+  }
+  if (
+    posture.live_binding_gate.status === "ready" &&
+    posture.secret_handling_gate.status === "ready" &&
+    posture.stop_behavior_gate.status === "ready"
+  ) {
+    return "counted";
+  }
+  return "neutral";
+}
+
 function accountPositionRiskStatusTone(
   surface: AccountPositionRiskMirrorSurfaceReadModel
 ): "counted" | "failed" | "neutral" {
@@ -1377,11 +1448,18 @@ function formatPrivateReadinessGate(
   return `${gate.status}, enabled=${String(gate.enabled)}, reason=${gate.reason}`;
 }
 
+function formatPrivateReadinessPolicyGate(
+  gate: PrivateReadinessPostureReadModel["live_binding_gate"]
+): string {
+  return `${gate.status}, reason=${gate.reason}`;
+}
+
 function formatSubstrateSource(
   surface:
     | AccountPositionRiskMirrorSurfaceReadModel
     | OrderFillSurfaceReadModel
     | PublicMarketLivenessSurfaceReadModel
+    | PrivateReadinessPostureReadModel
     | PrivateReadinessPreflightSurfaceReadModel
 ): string {
   return [

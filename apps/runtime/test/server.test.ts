@@ -10,6 +10,7 @@ import {
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
   binanceBtcusdtNoAuthoritySurfaceExpectation,
   binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
+  binancePrivateReadinessPostureNoAuthorityExpectation,
   expectNoPrivateReadSecrets
 } from "../../../test/support/binance-no-authority";
 import type {
@@ -344,6 +345,22 @@ describe("runtime read-only API", () => {
           },
           authority_status: "not_live"
         },
+        latest_private_readiness_posture: binancePrivateReadinessPostureNoAuthorityExpectation({
+          posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+          live_binding_gate: {
+            status: "not_ready",
+            reason: "live_binding_profile_not_configured"
+          },
+          secret_handling_gate: {
+            status: "not_ready",
+            reason: "secret_handling_profile_not_configured"
+          },
+          stop_behavior_gate: {
+            status: "not_ready",
+            reason: "operator_stop_behavior_not_recorded"
+          },
+          raw_secret_material_present: false
+        }),
         latest_private_readiness_policy_decision: {
           ...binancePrivateReadinessPolicyDecisionNoAuthorityExpectation([
             "configuration_not_ready",

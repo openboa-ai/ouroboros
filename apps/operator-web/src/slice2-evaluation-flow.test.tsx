@@ -14,6 +14,7 @@ import type {
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../../runtime/src/server";
+import { expectNoOperatorActionControls } from "../../../test/support/binance-no-authority";
 import type {
   CandidateGenerationProviderResult,
   RuntimeProviderAdapter
@@ -203,7 +204,7 @@ describe("Slice 2 evaluation flow", () => {
       expect(html).toContain("Evidence state");
       expect(html).toContain("counted_evidence");
       expect(html).toContain("sealed_counted_fixture_only_allowed_by_test");
-      expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+      expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
     } finally {
       await server.close();
     }

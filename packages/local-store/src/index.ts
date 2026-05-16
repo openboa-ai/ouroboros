@@ -1,6 +1,13 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import {
+  comparePrivateReadinessPostures,
+  isPrivateReadinessPostureRecord,
+  matchesPrivateReadinessPostureQuery,
+  toPrivateReadinessPostureReadModel
+} from "./private-readiness-postures";
+import type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 import { createBinanceBtcusdtTradingSubstrateFixtureItems } from "./trading-substrate-fixtures";
 import { buildLatestBinanceBtcusdtTradingSubstrateProjection } from "./trading-substrate-projection";
 import {
@@ -27,6 +34,7 @@ import type {
   PrivateReadinessPreflightSurfaceQueryInput,
   PublicMarketLivenessSurfaceQueryInput
 } from "./trading-substrate-surfaces";
+export type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 export type {
   AccountPositionRiskMirrorSurfaceQueryInput,
   OrderFillSurfaceQueryInput,
@@ -98,6 +106,8 @@ import type {
   HandsEnvironmentRecord,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
+  PrivateReadinessPostureReadModel,
+  PrivateReadinessPostureRecord,
   PrivateReadinessPreflightSurfaceReadModel,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
@@ -168,6 +178,7 @@ export type LocalStoreErrorCode =
   | "invalid_order_fill_surface_input"
   | "invalid_public_market_liveness_surface_input"
   | "invalid_private_readiness_preflight_surface_input"
+  | "invalid_private_readiness_posture_input"
   | "invalid_account_position_risk_mirror_surface_input"
   | "invalid_runnable_artifact_input"
   | "runtime_not_found"
@@ -249,6 +260,7 @@ type Collection =
   | "runtime-control-decisions"
   | "runtime-audit-events"
   | "substrate-state-surfaces"
+  | "private-readiness-postures"
   | "sandbox-runtime-instances"
   | "runtime-instance-logs"
   | "runtime-heartbeats"
@@ -329,6 +341,7 @@ const ids = {
   orderFillSurface: "fixture-binance-btcusdt-order-fill-surface-001",
   publicMarketLivenessSurface: "fixture-binance-btcusdt-public-market-liveness-surface-001",
   privateReadinessPreflightSurface: "fixture-binance-btcusdt-private-readiness-preflight-surface-001",
+  privateReadinessPosture: "fixture-binance-btcusdt-private-readiness-posture-001",
   accountPositionRiskMirrorSurface: "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
 };
 
@@ -701,6 +714,7 @@ export function createFixtureRecords(): FixtureItem[] {
         orderFillSurface: ids.orderFillSurface,
         publicMarketLivenessSurface: ids.publicMarketLivenessSurface,
         privateReadinessPreflightSurface: ids.privateReadinessPreflightSurface,
+        privateReadinessPosture: ids.privateReadinessPosture,
         accountPositionRiskMirrorSurface: ids.accountPositionRiskMirrorSurface,
         runtime: ids.runtime,
         candidate: ids.candidate,
@@ -939,6 +953,44 @@ export class LocalStore {
     query: PrivateReadinessPreflightSurfaceQueryInput = {}
   ): Promise<PrivateReadinessPreflightSurfaceReadModel | undefined> {
     return (await this.listPrivateReadinessPreflightSurfaces(query)).at(-1);
+  }
+
+  async recordPrivateReadinessPosture(
+    posture: PrivateReadinessPostureRecord
+  ): Promise<PrivateReadinessPostureReadModel> {
+    if (!isPrivateReadinessPostureRecord(posture)) {
+      throw new LocalStoreError(
+        "invalid_private_readiness_posture_input",
+        "invalid private-readiness posture input",
+        {
+          private_readiness_posture_id:
+            (posture as Partial<PrivateReadinessPostureRecord> | undefined)
+              ?.private_readiness_posture_id
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath("private-readiness-postures", posture.private_readiness_posture_id),
+      posture
+    );
+    await this.rebuildProjections();
+    return toPrivateReadinessPostureReadModel(posture);
+  }
+
+  async listPrivateReadinessPostures(
+    query: PrivateReadinessPostureQueryInput = {}
+  ): Promise<PrivateReadinessPostureReadModel[]> {
+    return (await this.readCollection<FixtureRecord>("private-readiness-postures"))
+      .filter(isPrivateReadinessPostureRecord)
+      .filter((posture) => matchesPrivateReadinessPostureQuery(posture, query))
+      .sort(comparePrivateReadinessPostures)
+      .map(toPrivateReadinessPostureReadModel);
+  }
+
+  async getLatestPrivateReadinessPosture(
+    query: PrivateReadinessPostureQueryInput = {}
+  ): Promise<PrivateReadinessPostureReadModel | undefined> {
+    return (await this.listPrivateReadinessPostures(query)).at(-1);
   }
 
   async recordAccountPositionRiskMirrorSurface(
