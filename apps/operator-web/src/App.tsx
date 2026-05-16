@@ -1506,6 +1506,55 @@ function TradingSubstrateSection({
                   value="not_private_read_permission_or_execution_authority"
                 />
               </div>
+              <div className="authority-preview" aria-label="Private-readiness authority gate preview">
+                <h4>Private-readiness authority gate preview</h4>
+                <Field
+                  label="Preview scope"
+                  value={[
+                    privateReadinessPolicyDecision.venue,
+                    privateReadinessPolicyDecision.instrument,
+                    privateReadinessPolicyDecision.product_category
+                  ].join(" / ")}
+                />
+                <Field
+                  label="Private-read authority"
+                  value={formatPrivateReadinessAuthorityGateState(privateReadinessPolicyDecision)}
+                />
+                <Field
+                  label="Gate readiness"
+                  value={formatPrivateReadinessAuthorityGateReadiness(privateReadinessPolicyDecision)}
+                />
+                <Field
+                  label={
+                    privateReadinessPolicyDecision.blocking_conditions.length > 0
+                      ? "Blocking conditions"
+                      : "No blocking conditions"
+                  }
+                  value={formatPolicyListSummary(privateReadinessPolicyDecision.blocking_conditions)}
+                />
+                <Field
+                  label="Required next actions"
+                  value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
+                />
+                <Field
+                  label="Preview next step"
+                  value={formatPrivateReadinessAuthorityGateNextStep(privateReadinessPolicyDecision)}
+                />
+                <Field
+                  label="Preview boundary"
+                  value="authority_gate_preview_only_not_private_read_permission_or_execution_authority"
+                />
+                <Field label="Preview evidence boundary" value="not_counted_evidence_or_promotion" />
+                <Field
+                  label="No-authority proof"
+                  value={[
+                    `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
+                    `signed_request_authority=${String(privateReadinessPolicyDecision.signed_request_authority)}`,
+                    `live_exchange_authority=${String(privateReadinessPolicyDecision.live_exchange_authority)}`,
+                    `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
+                  ].join(", ")}
+                />
+              </div>
             </>
           )}
         </>
@@ -1903,6 +1952,44 @@ function formatPrivateReadinessReviewChecklist(
     "review_policy_impact",
     decision.required_next_actions.length > 0 ? "resolve_required_next_actions" : "no_required_next_actions",
     "keep_no_authority_boundary"
+  ].join(", ");
+}
+
+function formatPrivateReadinessAuthorityGateState(decision: PrivateReadinessPolicyDecision): string {
+  return [
+    "private_read_authority=not_granted",
+    `policy_status=${decision.status}`,
+    `authority_status=${decision.authority_status}`
+  ].join(", ");
+}
+
+function formatPrivateReadinessAuthorityGateReadiness(
+  decision: PrivateReadinessPolicyDecision
+): string {
+  const gateCounts: Record<PrivateReadinessPolicyDecision["status"], number> = {
+    ready: 0,
+    not_ready: 0,
+    review_required: 0,
+    blocked: 0
+  };
+  for (const gate of decision.checked_gates) {
+    gateCounts[gate.status] += 1;
+  }
+  return [
+    `ready=${gateCounts.ready}`,
+    `not_ready=${gateCounts.not_ready}`,
+    `review_required=${gateCounts.review_required}`,
+    `blocked=${gateCounts.blocked}`
+  ].join(", ");
+}
+
+function formatPrivateReadinessAuthorityGateNextStep(
+  decision: PrivateReadinessPolicyDecision
+): string {
+  return [
+    decision.blocking_conditions.length > 0 ? "resolve_blocking_conditions" : "no_blocking_conditions",
+    decision.required_next_actions.length > 0 ? "complete_required_next_actions" : "no_required_next_actions",
+    "keep_authority_status_not_live"
   ].join(", ");
 }
 
