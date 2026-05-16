@@ -6,6 +6,8 @@ import type {
   CandidateSummaryReadModel,
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
+  PrivateReadinessPolicyGateInput,
+  PrivateReadinessPostureWriteInput,
   Ref,
   RuntimeControlAuditInput,
   SandboxRuntimeAdapterKind
@@ -132,6 +134,22 @@ interface RecordRuntimeControlBody {
     related_execution_attempt_refs?: Ref[];
   };
   created_at?: string;
+}
+
+interface RecordPrivateReadinessPostureBody {
+  idempotency_key?: string;
+  venue?: string;
+  instrument?: string;
+  product_category?: string;
+  operator_approval_gate?: PrivateReadinessPolicyGateInput;
+  jurisdiction_risk_gate?: PrivateReadinessPolicyGateInput;
+  live_binding_gate?: PrivateReadinessPolicyGateInput;
+  secret_handling_gate?: PrivateReadinessPolicyGateInput;
+  stop_behavior_gate?: PrivateReadinessPolicyGateInput;
+  secret_reference_configured?: boolean;
+  secret_reference_ref?: Ref;
+  source_ref?: Ref;
+  observed_at?: string;
 }
 
 interface CreateReplayRunBody {
@@ -291,6 +309,91 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
     }
     return { surface };
+  });
+
+  server.get<{
+    Querystring: {
+      venue?: string;
+      instrument?: string;
+    };
+  }>("/api/trading-substrate/private-readiness-posture/latest", async (request, reply) => {
+    const venue = request.query.venue ?? "binance_usd_m_futures";
+    const instrument = request.query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return reply.code(404).send({
+        error: "private_readiness_posture_not_found",
+        venue,
+        instrument
+      });
+    }
+
+    const posture = await store.getLatestPrivateReadinessPosture({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    if (!posture) {
+      return reply.code(404).send({
+        error: "private_readiness_posture_not_found",
+        venue,
+        instrument
+      });
+    }
+    return { posture };
+  });
+
+  server.post<{
+    Body: RecordPrivateReadinessPostureBody;
+  }>("/api/trading-substrate/private-readiness-posture", async (request, reply) => {
+    const body = request.body ?? {};
+    if (hasForbiddenPrivateReadinessPostureMaterial(body)) {
+      return reply.code(422).send(privateReadinessPostureError({
+        reason: "raw_secret_material_forbidden",
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+    if (!isSupportedPrivateReadinessPostureScope(body)) {
+      return reply.code(422).send(privateReadinessPostureError({
+        reason: "unsupported_private_readiness_posture_scope",
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+    if (!isPrivateReadinessPostureRequestComplete(body)) {
+      return reply.code(422).send(privateReadinessPostureError({
+        reason: "invalid_private_readiness_posture_request",
+        idempotencyKey: body.idempotency_key
+      }));
+    }
+
+    try {
+      const posture = await store.recordLocalPrivateReadinessPosture({
+        idempotency_key: body.idempotency_key,
+        venue: "binance_usd_m_futures",
+        instrument: "BTCUSDT",
+        product_category: "perpetual_futures",
+        operator_approval_gate: body.operator_approval_gate,
+        jurisdiction_risk_gate: body.jurisdiction_risk_gate,
+        live_binding_gate: body.live_binding_gate,
+        secret_handling_gate: body.secret_handling_gate,
+        stop_behavior_gate: body.stop_behavior_gate,
+        secret_reference_configured: body.secret_reference_configured,
+        secret_reference_ref: body.secret_reference_ref,
+        source_ref: body.source_ref,
+        observed_at: body.observed_at
+      } satisfies PrivateReadinessPostureWriteInput);
+
+      return reply.code(201).send({
+        status: "recorded",
+        posture
+      });
+    } catch (error) {
+      if (error instanceof LocalStoreError) {
+        return reply.code(422).send(privateReadinessPostureError({
+          reason: error.code,
+          idempotencyKey: body.idempotency_key
+        }));
+      }
+      throw error;
+    }
   });
 
   server.get<{
@@ -1104,6 +1207,78 @@ function runtimeControlError(input: {
     candidate_version_id: input.candidateVersionId,
     idempotency_key: input.idempotencyKey
   };
+}
+
+function isPrivateReadinessPostureRequestComplete(
+  body: RecordPrivateReadinessPostureBody
+): body is RecordPrivateReadinessPostureBody & {
+  idempotency_key: string;
+  operator_approval_gate: PrivateReadinessPolicyGateInput;
+  jurisdiction_risk_gate: PrivateReadinessPolicyGateInput;
+  live_binding_gate: PrivateReadinessPolicyGateInput;
+  secret_handling_gate: PrivateReadinessPolicyGateInput;
+  stop_behavior_gate: PrivateReadinessPolicyGateInput;
+  secret_reference_configured: boolean;
+} {
+  return Boolean(
+    body.idempotency_key &&
+    body.operator_approval_gate &&
+    body.jurisdiction_risk_gate &&
+    body.live_binding_gate &&
+    body.secret_handling_gate &&
+    body.stop_behavior_gate &&
+    typeof body.secret_reference_configured === "boolean"
+  );
+}
+
+function isSupportedPrivateReadinessPostureScope(body: RecordPrivateReadinessPostureBody): boolean {
+  return (
+    (body.venue === undefined || body.venue === "binance_usd_m_futures") &&
+    (body.instrument === undefined || body.instrument === "BTCUSDT") &&
+    (body.product_category === undefined || body.product_category === "perpetual_futures")
+  );
+}
+
+function privateReadinessPostureError(input: {
+  reason: string;
+  idempotencyKey?: string;
+}) {
+  return {
+    error: "private_readiness_posture_record_failed",
+    reason: input.reason,
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    idempotency_key: input.idempotencyKey
+  };
+}
+
+function hasForbiddenPrivateReadinessPostureMaterial(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some(hasForbiddenPrivateReadinessPostureMaterial);
+  }
+
+  return Object.entries(value as Record<string, unknown>).some(([key, entry]) => {
+    if (isForbiddenPrivateReadinessPostureMaterialKey(key, entry)) {
+      return true;
+    }
+    return hasForbiddenPrivateReadinessPostureMaterial(entry);
+  });
+}
+
+function isForbiddenPrivateReadinessPostureMaterialKey(key: string, value: unknown): boolean {
+  return (
+    key === "apiKey" ||
+    key === "secretKey" ||
+    key === "listenKey" ||
+    key === "signature" ||
+    key === "provider_api_key" ||
+    key === "exchange_credentials" ||
+    key === "raw_secret_material" ||
+    (key === "raw_secret_material_present" && value !== false)
+  );
 }
 
 function parseRuntimeInstanceAdapterKind(value: string | undefined): SandboxRuntimeAdapterKind | undefined {

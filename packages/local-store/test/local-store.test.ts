@@ -366,6 +366,71 @@ describe("LocalStore", () => {
     });
   });
 
+  it("records local private-readiness posture writes idempotently without private authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const input = {
+      idempotency_key: "local-posture-write-test-001",
+      operator_approval_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_approval_recorded_without_live_private_read"
+      ),
+      jurisdiction_risk_gate: privateReadinessPolicyGate(
+        "review_required",
+        "jurisdiction_risk_review_recorded_without_live_private_read"
+      ),
+      live_binding_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "live_binding_profile_not_configured"
+      ),
+      secret_handling_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "secret_reference_recorded_without_secret_material"
+      ),
+      stop_behavior_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_stop_behavior_not_recorded"
+      ),
+      secret_reference_configured: false,
+      observed_at: "2026-05-16T00:00:07.000Z"
+    };
+
+    const first = await store.recordLocalPrivateReadinessPosture(input);
+    const duplicate = await store.recordLocalPrivateReadinessPosture(input);
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+
+    expect(duplicate).toEqual(first);
+    expect(first).toMatchObject(binancePrivateReadinessPostureNoAuthorityExpectation({
+      posture_id: expect.stringContaining("local-binance-btcusdt-private-readiness-posture-"),
+      source_kind: "local_config",
+      fixture_backed: false,
+      simulated: true,
+      raw_secret_material_present: false,
+      operator_approval_gate: input.operator_approval_gate,
+      jurisdiction_risk_gate: input.jurisdiction_risk_gate,
+      secret_handling_gate: input.secret_handling_gate,
+      authority_status: "not_live"
+    }));
+    expect(candidate?.trading_substrate?.latest_private_readiness_posture).toEqual(first);
+    expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision)
+      .toMatchObject({
+        status: "not_ready",
+        reason_codes: expect.arrayContaining([
+          "operator_approval_missing",
+          "jurisdiction_review_required",
+          "secret_handling_not_ready",
+          "no_private_read_performed"
+        ]),
+        signed_request_authority: false,
+        live_exchange_authority: false,
+        order_submission_authority: false,
+        authority_status: "not_live"
+      });
+    expect(JSON.stringify(first)).not.toMatch(
+      /exchange_credentials|provider_api_key|apiKey|secretKey|signature|direct_exchange_order/
+    );
+  });
+
   it("keeps S40 posture records readable with default approval and jurisdiction gates", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

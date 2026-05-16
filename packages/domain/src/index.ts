@@ -672,6 +672,22 @@ export interface PrivateReadinessPostureReadModel {
   authority_status: PrivateReadinessPostureAuthorityStatus;
 }
 
+export interface PrivateReadinessPostureWriteInput {
+  idempotency_key: string;
+  venue?: TradingSubstrateVenue;
+  instrument?: TradingSubstrateInstrument;
+  product_category?: TradingSubstrateProductCategory;
+  operator_approval_gate: PrivateReadinessPolicyGateInput;
+  jurisdiction_risk_gate: PrivateReadinessPolicyGateInput;
+  live_binding_gate: PrivateReadinessPolicyGateInput;
+  secret_handling_gate: PrivateReadinessPolicyGateInput;
+  stop_behavior_gate: PrivateReadinessPolicyGateInput;
+  secret_reference_configured: boolean;
+  secret_reference_ref?: Ref;
+  source_ref?: Ref;
+  observed_at?: string;
+}
+
 export interface TradingSubstrateNoAuthority {
   live_exchange: false;
   order_submission: false;

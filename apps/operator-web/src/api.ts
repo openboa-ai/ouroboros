@@ -8,6 +8,9 @@ import type {
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
+  PrivateReadinessPolicyGateInput,
+  PrivateReadinessPostureReadModel,
+  PrivateReadinessPostureWriteInput,
   RuntimeControlAuditInput,
   RuntimeControlAuditOutcome,
   TradingSystemExecutionModeContractReadModel
@@ -113,6 +116,13 @@ export type RuntimeControlCommandPayload = Omit<RuntimeControlAuditInput, "candi
 export type RuntimeControlCommandOutcome = RuntimeControlAuditOutcome & {
   status: "recorded";
 };
+
+export type PrivateReadinessPostureCommandPayload = PrivateReadinessPostureWriteInput;
+
+export interface PrivateReadinessPostureCommandOutcome {
+  status: "recorded";
+  posture: PrivateReadinessPostureReadModel;
+}
 
 export interface ReplayRunCommandPayload {
   runner_kind: "host_process";
@@ -222,6 +232,49 @@ export function runtimeControlPausePayload(
   };
 }
 
+export function privateReadinessPosturePayload(
+  candidate: CandidateInspectReadModel
+): PrivateReadinessPostureCommandPayload {
+  const posture = candidate.trading_substrate?.latest_private_readiness_posture;
+  const preflight = candidate.trading_substrate?.latest_private_readiness_preflight_surface;
+  return {
+    idempotency_key: [
+      "operator-web-private-readiness-posture",
+      candidate.candidate_id,
+      candidate.candidate_version.candidate_version_id
+    ].join("-"),
+    venue: posture?.venue ?? preflight?.venue ?? "binance_usd_m_futures",
+    instrument: posture?.instrument ?? preflight?.instrument ?? "BTCUSDT",
+    product_category: posture?.product_category ?? preflight?.product_category ?? "perpetual_futures",
+    operator_approval_gate: posture?.operator_approval_gate ?? privateReadinessGate(
+      "not_ready",
+      "operator_live_private_read_approval_missing"
+    ),
+    jurisdiction_risk_gate: posture?.jurisdiction_risk_gate ?? privateReadinessGate(
+      "review_required",
+      "operator_jurisdiction_not_recorded"
+    ),
+    live_binding_gate: posture?.live_binding_gate ?? privateReadinessGate(
+      "not_ready",
+      "live_binding_profile_not_configured"
+    ),
+    secret_handling_gate: posture?.secret_handling_gate ?? privateReadinessGate(
+      "not_ready",
+      "secret_handling_profile_not_configured"
+    ),
+    stop_behavior_gate: posture?.stop_behavior_gate ?? privateReadinessGate(
+      "not_ready",
+      "operator_stop_behavior_not_recorded"
+    ),
+    secret_reference_configured: posture?.secret_reference_configured ?? false,
+    secret_reference_ref: posture?.secret_reference_ref,
+    source_ref: {
+      record_kind: "operator",
+      id: "operator-web"
+    }
+  };
+}
+
 export async function recordReplayRuntimeAuthority(
   candidate: CandidateInspectReadModel
 ): Promise<RuntimeAuthorityCommandOutcome> {
@@ -250,10 +303,31 @@ export async function recordReplayRuntimeControl(
   return (await response.json()) as RuntimeControlCommandOutcome;
 }
 
+export async function recordPrivateReadinessPosture(
+  candidate: CandidateInspectReadModel
+): Promise<PrivateReadinessPostureCommandOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-substrate/private-readiness-posture`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(privateReadinessPosturePayload(candidate))
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to record private-readiness posture for ${candidate.candidate_id}: ${response.status}`);
+  }
+  return (await response.json()) as PrivateReadinessPostureCommandOutcome;
+}
+
 export function replayRunPayload(): ReplayRunCommandPayload {
   return {
     runner_kind: "host_process"
   };
+}
+
+function privateReadinessGate(
+  status: PrivateReadinessPolicyGateInput["status"],
+  reason: string
+): PrivateReadinessPolicyGateInput {
+  return { status, reason };
 }
 
 export async function runReplay(
