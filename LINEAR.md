@@ -44,6 +44,7 @@ Linear is the Ouroboros source of truth for product, planning, project state, Pr
 - 33 Source Library - OpenAI URL Notes D: https://linear.app/openboa/document/33-source-library-openai-url-notes-d-0592a84e24e6
 - 34 Source Library - Google and Synthesis Inputs E: https://linear.app/openboa/document/34-source-library-google-and-synthesis-inputs-e-22de8a782cae
 - 35 Source Synthesis - Runtime, Evaluation, Product Postures: https://linear.app/openboa/document/35-source-synthesis-runtime-evaluation-product-postures-fd857d802e22
+- 37 Source Addendum - Trading Taxonomy References: https://linear.app/openboa/document/37-source-addendum-trading-taxonomy-references-33f2442f6588
 - 40 Agent Operating Guide - Repo Harness and Skills: https://linear.app/openboa/document/40-agent-operating-guide-repo-harness-and-skills-7b1d4d884739
 - 50 Service Docs - Runtime, Operator, Policies: https://linear.app/openboa/document/50-service-docs-runtime-operator-policies-578ec402e4d8
 - 90-95 Architecture Archive documents: listed in the Documentation Index

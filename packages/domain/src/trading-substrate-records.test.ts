@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  TRADING_SUBSTRATE_CANONICAL_NOUNS,
+  TRADING_SUBSTRATE_SURFACE_FAMILIES,
+  TRADING_SUBSTRATE_SURFACE_TAXONOMY
+} from "./index";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   AccountPositionRiskMirrorSurfaceRecord,
@@ -13,6 +18,70 @@ import type {
 } from "./index";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
+
+describe("Trading substrate taxonomy contract", () => {
+  it("keeps every landed substrate family in the canonical family list", () => {
+    expect(TRADING_SUBSTRATE_SURFACE_FAMILIES).toEqual([
+      "order_fill",
+      "public_market_liveness",
+      "private_readiness_preflight",
+      "account_position_risk_mirror"
+    ]);
+  });
+
+  it("separates compact canonical nouns from compatibility names and persisted keys", () => {
+    expect(TRADING_SUBSTRATE_CANONICAL_NOUNS).toEqual([
+      "market",
+      "account",
+      "position",
+      "order",
+      "execution",
+      "risk",
+      "gate",
+      "connector",
+      "authority",
+      "snapshot",
+      "event",
+      "command",
+      "decision"
+    ]);
+
+    expect(TRADING_SUBSTRATE_SURFACE_TAXONOMY).toMatchObject([
+      {
+        family: "order_fill",
+        canonical_noun: "execution",
+        data_role: "snapshot",
+        compatibility_type_prefix: "OrderFillSurface",
+        persisted_record_kind: "order_fill_surface",
+        persisted_latest_key: "latest_order_fill_surface"
+      },
+      {
+        family: "public_market_liveness",
+        canonical_noun: "market",
+        data_role: "snapshot",
+        compatibility_type_prefix: "PublicMarketLivenessSurface",
+        persisted_record_kind: "public_market_liveness_surface",
+        persisted_latest_key: "latest_public_market_liveness_surface"
+      },
+      {
+        family: "private_readiness_preflight",
+        canonical_noun: "gate",
+        data_role: "gate",
+        compatibility_type_prefix: "PrivateReadinessPreflightSurface",
+        persisted_record_kind: "private_readiness_preflight_surface",
+        persisted_latest_key: "latest_private_readiness_preflight_surface"
+      },
+      {
+        family: "account_position_risk_mirror",
+        canonical_noun: "account",
+        data_role: "snapshot",
+        compatibility_type_prefix: "AccountPositionRiskMirrorSurface",
+        persisted_record_kind: "account_position_risk_mirror_surface",
+        persisted_latest_key: "latest_account_position_risk_mirror_surface"
+      }
+    ]);
+  });
+});
 
 describe("Trading substrate order-fill surface records", () => {
   it("models Binance BTCUSDT perpetual futures order-fill posture without order authority", () => {

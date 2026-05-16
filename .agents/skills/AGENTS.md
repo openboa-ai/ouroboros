@@ -12,6 +12,7 @@ Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clea
 | Context | `project-context` | current repo thesis, domain, constraints, active docs, or project-document context is needed |
 | Shape | `auto-project` | ownership, route, stop state, or work direction is unclear |
 | Shape | `auto-pm` | a rough request needs one bounded frontier with acceptance and validation |
+| Shape | `taxonomy-design` | durable concepts, schema families, or domain names need vocabulary design before implementation |
 | Execute | `auto-coding` | one bounded code, documentation, or config change must be made and verified |
 | Evaluate | `auto-qa` | a frontier needs scenario, regression, edge-case, or reader acceptance pressure |
 | Evaluate | `ci-recovery` | local checks or remote CI fail and need root-cause routing |
@@ -27,9 +28,10 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 
 1. If current state is unclear, use `auto-run-memory`.
 2. If the next owner is unclear, use `auto-project`.
-3. If the task is already bounded, use the matching worker directly.
-4. Before stopping, decide `writeback_needed: yes/no`.
-5. If `writeback_needed: yes`, route to `llm-wiki`.
+3. If naming or taxonomy is the source of ambiguity, use `taxonomy-design`.
+4. If the task is already bounded, use the matching worker directly.
+5. Before stopping, decide `writeback_needed: yes/no`.
+6. If `writeback_needed: yes`, route to `llm-wiki`.
 
 ## External Workflow Skills
 
