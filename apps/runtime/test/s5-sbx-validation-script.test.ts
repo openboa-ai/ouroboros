@@ -3,9 +3,28 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
+
+beforeEach(() => {
+  delete process.env.OUROBOROS_ALLOW_ACTIVE_SBX_SESSION_INTERRUPTION;
+  delete process.env.OUROBOROS_ALLOW_SBX_CREATE_PROBE;
+  delete process.env.OUROBOROS_ALLOW_SBX_DAEMON_RESTART;
+  delete process.env.OUROBOROS_PROBE_S5_SBX_CREATE_PATH;
+  delete process.env.OUROBOROS_SBX_BIN;
+  delete process.env.OUROBOROS_SBX_DAEMON_LOG_PATH;
+  delete process.env.OUROBOROS_SBX_EVIDENCE_PATH;
+  delete process.env.OUROBOROS_SBX_HOME;
+  delete process.env.OUROBOROS_SBX_VALIDATE_NAME_SUFFIX;
+  delete process.env.OUROBOROS_SBX_VALIDATE_PORT;
+  delete process.env.OUROBOROS_SDX_BIN;
+  delete process.env.OUROBOROS_VALIDATE_S5_SBX_AFTER_RECOVERY;
+  delete process.env.SBX_CALL_LOG;
+  delete process.env.SBX_EXPECT_HOME;
+  delete process.env.SBX_FAKE_COMMAND_LOG;
+  delete process.env.SBX_FAKE_INSTANCE_ID;
+});
 
 describe("S5 sbx validation harness", () => {
   it("stops at the runtime-control preflight probe before mutating sandbox state", async () => {
