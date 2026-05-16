@@ -210,6 +210,21 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No-authority proof");
     expect(html).toContain("authority_status=not_live");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expect(html).toContain("Private-readiness review handoff");
+    expect(html).toContain("Review scope");
+    expect(html).toContain("binance_usd_m_futures / BTCUSDT / perpetual_futures");
+    expect(html).toContain("Latest posture");
+    expect(html).toContain("Posture delta");
+    expect(html).toContain("previous=fixture-binance-btcusdt-private-readiness-posture-001, 1 changed gate");
+    expect(html).toContain("Policy summary");
+    expect(html).toContain("status=not_ready, blocking_conditions=5, required_next_actions=6");
+    expect(html).toContain("Required next actions");
+    expect(html).toContain("configure_private_read_credentials, configuration, operator_approval, +3 more");
+    expect(html).toContain("Review checklist");
+    expect(html).toContain(
+      "inspect_latest_posture, review_posture_delta, review_policy_impact, resolve_required_next_actions, keep_no_authority_boundary"
+    );
+    expect(html).toContain("review_handoff_only_not_counted_evidence_or_promotion");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("secret_handling_not_ready");
@@ -263,6 +278,39 @@ describe("CandidateDetail", () => {
     expect(html).toContain("none");
     expect(html).toContain("local_config_delta_inspection_only");
     expect(html).toContain("not_counted_evidence_or_promotion");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders a private-readiness review handoff without previous posture history", () => {
+    const localPosture = fixturePrivateReadinessPosture({
+      posture_id: "local-binance-btcusdt-private-readiness-posture-history-004",
+      source_kind: "local_config",
+      fixture_backed: false,
+      updated_at: "2026-05-16T00:00:12.000Z"
+    });
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: localPosture,
+            private_readiness_posture_history: [localPosture],
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
+            latest_account_position_risk_mirror_surface: null
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Private-readiness review handoff");
+    expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-004");
+    expect(html).toContain("previous_posture_not_available");
+    expect(html).toContain("record_previous_posture_before_delta_review");
+    expect(html).toContain("review_handoff_only_not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });

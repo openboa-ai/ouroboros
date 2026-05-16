@@ -472,7 +472,8 @@ button {
 }
 
 .posture-delta,
-.policy-impact {
+.policy-impact,
+.review-handoff {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
   display: grid;
@@ -480,7 +481,8 @@ button {
 }
 
 .posture-delta h4,
-.policy-impact h4 {
+.policy-impact h4,
+.review-handoff h4 {
   margin: 0;
   font-size: 13px;
   line-height: 1.3;

@@ -1434,38 +1434,79 @@ function TradingSubstrateSection({
             ].join(", ")}
           />
           {privateReadinessPosture && (
-            <div className="policy-impact" aria-label="Private-readiness policy impact interpretation">
-              <h4>Policy impact interpretation</h4>
-              <Field label="Policy input posture" value={privateReadinessPosture.posture_id} />
-              <Field label="History role" value="inspection_context_only" />
-              <Field
-                label="Policy impact"
-                value={[
-                  `status=${privateReadinessPolicyDecision.status}`,
-                  `blocking_conditions=${privateReadinessPolicyDecision.blocking_conditions.length}`,
-                  `required_next_actions=${privateReadinessPolicyDecision.required_next_actions.length}`
-                ].join(", ")}
-              />
-              <Field
-                label="Policy next actions"
-                value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
-              />
-              <Field
-                label="Evidence boundary"
-                value="local_config_inspection_not_counted_evidence_or_promotion"
-              />
-              <Field
-                label="No-authority proof"
-                value={[
-                  `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
-                  `authority_status=${privateReadinessPolicyDecision.authority_status}`
-                ].join(", ")}
-              />
-              <Field
-                label="Authority boundary"
-                value="not_private_read_permission_or_execution_authority"
-              />
-            </div>
+            <>
+              <div className="policy-impact" aria-label="Private-readiness policy impact interpretation">
+                <h4>Policy impact interpretation</h4>
+                <Field label="Policy input posture" value={privateReadinessPosture.posture_id} />
+                <Field label="History role" value="inspection_context_only" />
+                <Field
+                  label="Policy impact"
+                  value={formatPrivateReadinessPolicyImpact(privateReadinessPolicyDecision)}
+                />
+                <Field
+                  label="Policy next actions"
+                  value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
+                />
+                <Field
+                  label="Evidence boundary"
+                  value="local_config_inspection_not_counted_evidence_or_promotion"
+                />
+                <Field
+                  label="No-authority proof"
+                  value={[
+                    `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
+                    `authority_status=${privateReadinessPolicyDecision.authority_status}`
+                  ].join(", ")}
+                />
+                <Field
+                  label="Authority boundary"
+                  value="not_private_read_permission_or_execution_authority"
+                />
+              </div>
+              <div className="review-handoff" aria-label="Private-readiness review handoff">
+                <h4>Private-readiness review handoff</h4>
+                <Field
+                  label="Review scope"
+                  value={[
+                    privateReadinessPolicyDecision.venue,
+                    privateReadinessPolicyDecision.instrument,
+                    privateReadinessPolicyDecision.product_category
+                  ].join(" / ")}
+                />
+                <Field label="Latest posture" value={privateReadinessPosture.posture_id} />
+                <Field
+                  label="Posture delta"
+                  value={formatPrivateReadinessReviewHandoffDelta(previousPosture, postureGateChanges)}
+                />
+                <Field
+                  label="Policy summary"
+                  value={formatPrivateReadinessPolicyImpact(privateReadinessPolicyDecision)}
+                />
+                <Field
+                  label="Required next actions"
+                  value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
+                />
+                <Field
+                  label="Review checklist"
+                  value={formatPrivateReadinessReviewChecklist(privateReadinessPolicyDecision, previousPosture)}
+                />
+                <Field
+                  label="Handoff boundary"
+                  value="review_handoff_only_not_counted_evidence_or_promotion"
+                />
+                <Field
+                  label="No-authority proof"
+                  value={[
+                    `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
+                    `authority_status=${privateReadinessPolicyDecision.authority_status}`
+                  ].join(", ")}
+                />
+                <Field
+                  label="Authority boundary"
+                  value="not_private_read_permission_or_execution_authority"
+                />
+              </div>
+            </>
           )}
         </>
       ) : (
@@ -1829,6 +1870,40 @@ function formatPrivateReadinessPostureGateChanges(
         .join(", ")
     )
     .join("; ");
+}
+
+function formatPrivateReadinessReviewHandoffDelta(
+  previousPosture: PrivateReadinessPostureReadModel | undefined,
+  changes: PrivateReadinessPostureGateChange[]
+): string {
+  if (!previousPosture) {
+    return "previous_posture_not_available";
+  }
+  return [
+    `previous=${previousPosture.posture_id}`,
+    formatPrivateReadinessPostureGateChangeCount(changes)
+  ].join(", ");
+}
+
+function formatPrivateReadinessPolicyImpact(decision: PrivateReadinessPolicyDecision): string {
+  return [
+    `status=${decision.status}`,
+    `blocking_conditions=${decision.blocking_conditions.length}`,
+    `required_next_actions=${decision.required_next_actions.length}`
+  ].join(", ");
+}
+
+function formatPrivateReadinessReviewChecklist(
+  decision: PrivateReadinessPolicyDecision,
+  previousPosture: PrivateReadinessPostureReadModel | undefined
+): string {
+  return [
+    "inspect_latest_posture",
+    previousPosture ? "review_posture_delta" : "record_previous_posture_before_delta_review",
+    "review_policy_impact",
+    decision.required_next_actions.length > 0 ? "resolve_required_next_actions" : "no_required_next_actions",
+    "keep_no_authority_boundary"
+  ].join(", ");
 }
 
 function formatPolicyListSummary(items: string[]): string {
