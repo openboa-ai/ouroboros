@@ -7,6 +7,16 @@ import type {
   TradingSubstrateVenue
 } from "@ouroboros/domain";
 
+const DEFAULT_OPERATOR_APPROVAL_GATE: PrivateReadinessPolicyGateInput = {
+  status: "not_ready",
+  reason: "operator_live_private_read_approval_missing"
+};
+
+const DEFAULT_JURISDICTION_RISK_GATE: PrivateReadinessPolicyGateInput = {
+  status: "review_required",
+  reason: "operator_jurisdiction_not_recorded"
+};
+
 export interface PrivateReadinessPostureQueryInput {
   venue?: TradingSubstrateVenue;
   instrument?: TradingSubstrateInstrument;
@@ -21,6 +31,8 @@ export function toPrivateReadinessPostureReadModel(
     venue: posture.venue,
     instrument: posture.instrument,
     product_category: posture.product_category,
+    operator_approval_gate: operatorApprovalGateFor(posture),
+    jurisdiction_risk_gate: jurisdictionRiskGateFor(posture),
     live_binding_gate: posture.live_binding_gate,
     secret_handling_gate: posture.secret_handling_gate,
     stop_behavior_gate: posture.stop_behavior_gate,
@@ -75,6 +87,10 @@ export function isPrivateReadinessPostureRecord(
     raw.venue === "binance_usd_m_futures" &&
     raw.instrument === "BTCUSDT" &&
     raw.product_category === "perpetual_futures" &&
+    (raw.operator_approval_gate === undefined ||
+      isPrivateReadinessPolicyGate(raw.operator_approval_gate)) &&
+    (raw.jurisdiction_risk_gate === undefined ||
+      isPrivateReadinessPolicyGate(raw.jurisdiction_risk_gate)) &&
     isPrivateReadinessPolicyGate(raw.live_binding_gate) &&
     isPrivateReadinessPolicyGate(raw.secret_handling_gate) &&
     isPrivateReadinessPolicyGate(raw.stop_behavior_gate) &&
@@ -96,9 +112,33 @@ export function isPrivateReadinessPostureRecord(
   );
 }
 
+export function isCompletePrivateReadinessPostureRecord(
+  value: unknown
+): value is PrivateReadinessPostureRecord {
+  if (!isPrivateReadinessPostureRecord(value)) {
+    return false;
+  }
+  return (
+    isPrivateReadinessPolicyGate(value.operator_approval_gate) &&
+    isPrivateReadinessPolicyGate(value.jurisdiction_risk_gate)
+  );
+}
+
 function privateReadinessPostureLabel(posture: PrivateReadinessPostureRecord): string {
   const venueLabel = posture.venue === "binance_usd_m_futures" ? "Binance" : posture.venue;
   return `${venueLabel} ${posture.instrument} private_readiness_posture`;
+}
+
+function operatorApprovalGateFor(
+  posture: PrivateReadinessPostureRecord
+): PrivateReadinessPolicyGateInput {
+  return posture.operator_approval_gate ?? { ...DEFAULT_OPERATOR_APPROVAL_GATE };
+}
+
+function jurisdictionRiskGateFor(
+  posture: PrivateReadinessPostureRecord
+): PrivateReadinessPolicyGateInput {
+  return posture.jurisdiction_risk_gate ?? { ...DEFAULT_JURISDICTION_RISK_GATE };
 }
 
 function formatPostureNoAuthority(

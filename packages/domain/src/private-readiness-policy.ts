@@ -73,6 +73,8 @@ export interface PrivateReadinessPolicyEvaluationInput {
   evaluated_at: string;
   private_readiness_preflight_surface: PrivateReadinessPreflightSurfaceReadModel;
   account_position_risk_mirror_surface?: AccountPositionRiskMirrorSurfaceReadModel | null;
+  operator_approval_gate?: PrivateReadinessPolicyGateInput;
+  jurisdiction_risk_gate?: PrivateReadinessPolicyGateInput;
   live_binding_gate: PrivateReadinessPolicyGateInput;
   secret_handling_gate: PrivateReadinessPolicyGateInput;
   stop_behavior_gate: PrivateReadinessPolicyGateInput;
@@ -178,28 +180,36 @@ export function evaluatePrivateReadinessPolicyDecision(
     "configuration_not_ready",
     "configuration_blocked"
   );
-  addGateCheck(
-    "operator_approval",
-    privateSurface.operator_approval_gate,
-    "operator_approval_missing",
-    "operator_approval_blocked"
-  );
-
-  if (gateReady(privateSurface.jurisdiction_gate)) {
-    if (accountSurface?.risk_status === "breach") {
-      addCheck("jurisdiction_risk", "blocked", "risk_limit_breach", "risk_status=breach");
-    } else {
-      addCheck("jurisdiction_risk", "ready", "ready", privateSurface.jurisdiction_gate.reason);
-    }
-  } else if (gateBlocked(privateSurface.jurisdiction_gate)) {
-    addCheck("jurisdiction_risk", "blocked", "jurisdiction_blocked", privateSurface.jurisdiction_gate.reason);
+  if (input.operator_approval_gate) {
+    addPolicyGateInputCheck("operator_approval", input.operator_approval_gate);
   } else {
-    addCheck(
-      "jurisdiction_risk",
-      "review_required",
-      "jurisdiction_review_required",
-      privateSurface.jurisdiction_gate.reason
+    addGateCheck(
+      "operator_approval",
+      privateSurface.operator_approval_gate,
+      "operator_approval_missing",
+      "operator_approval_blocked"
     );
+  }
+
+  if (input.jurisdiction_risk_gate) {
+    addJurisdictionRiskPolicyGateInputCheck(input.jurisdiction_risk_gate);
+  } else {
+    if (gateReady(privateSurface.jurisdiction_gate)) {
+      if (accountSurface?.risk_status === "breach") {
+        addCheck("jurisdiction_risk", "blocked", "risk_limit_breach", "risk_status=breach");
+      } else {
+        addCheck("jurisdiction_risk", "ready", "ready", privateSurface.jurisdiction_gate.reason);
+      }
+    } else if (gateBlocked(privateSurface.jurisdiction_gate)) {
+      addCheck("jurisdiction_risk", "blocked", "jurisdiction_blocked", privateSurface.jurisdiction_gate.reason);
+    } else {
+      addCheck(
+        "jurisdiction_risk",
+        "review_required",
+        "jurisdiction_review_required",
+        privateSurface.jurisdiction_gate.reason
+      );
+    }
   }
 
   addPolicyGateInputCheck("live_binding", input.live_binding_gate);
@@ -349,10 +359,14 @@ export function evaluatePrivateReadinessPolicyDecision(
   };
 
   function addPolicyGateInputCheck(
-    dimension: "live_binding" | "secret_handling" | "stop_behavior",
+    dimension: "operator_approval" | "live_binding" | "secret_handling" | "stop_behavior",
     gate: PrivateReadinessPolicyGateInput
   ) {
     const reasonCodeByDimension = {
+      operator_approval: {
+        notReady: "operator_approval_missing",
+        blocked: "operator_approval_blocked"
+      },
       live_binding: {
         notReady: "live_binding_not_ready",
         blocked: "live_binding_blocked"
@@ -370,8 +384,26 @@ export function evaluatePrivateReadinessPolicyDecision(
       addCheck(dimension, "ready", "ready", gate.reason);
     } else if (gate.status === "blocked") {
       addCheck(dimension, "blocked", reasonCodeByDimension[dimension].blocked, gate.reason);
+    } else if (gate.status === "review_required") {
+      addCheck(dimension, "review_required", reasonCodeByDimension[dimension].notReady, gate.reason);
     } else {
       addCheck(dimension, "not_ready", reasonCodeByDimension[dimension].notReady, gate.reason);
+    }
+  }
+
+  function addJurisdictionRiskPolicyGateInputCheck(gate: PrivateReadinessPolicyGateInput) {
+    if (gate.status === "ready") {
+      if (accountSurface?.risk_status === "breach") {
+        addCheck("jurisdiction_risk", "blocked", "risk_limit_breach", "risk_status=breach");
+      } else {
+        addCheck("jurisdiction_risk", "ready", "ready", gate.reason);
+      }
+    } else if (gate.status === "blocked") {
+      addCheck("jurisdiction_risk", "blocked", "jurisdiction_blocked", gate.reason);
+    } else if (gate.status === "review_required") {
+      addCheck("jurisdiction_risk", "review_required", "jurisdiction_review_required", gate.reason);
+    } else {
+      addCheck("jurisdiction_risk", "not_ready", "jurisdiction_review_required", gate.reason);
     }
   }
 }

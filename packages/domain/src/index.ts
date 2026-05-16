@@ -627,6 +627,8 @@ export interface PrivateReadinessPostureRecord extends BaseRecord {
   venue: TradingSubstrateVenue;
   instrument: TradingSubstrateInstrument;
   product_category: TradingSubstrateProductCategory;
+  operator_approval_gate: PrivateReadinessPolicyGateInput;
+  jurisdiction_risk_gate: PrivateReadinessPolicyGateInput;
   live_binding_gate: PrivateReadinessPolicyGateInput;
   secret_handling_gate: PrivateReadinessPolicyGateInput;
   stop_behavior_gate: PrivateReadinessPolicyGateInput;
@@ -650,6 +652,8 @@ export interface PrivateReadinessPostureReadModel {
   venue: TradingSubstrateVenue;
   instrument: TradingSubstrateInstrument;
   product_category: TradingSubstrateProductCategory;
+  operator_approval_gate: PrivateReadinessPolicyGateInput;
+  jurisdiction_risk_gate: PrivateReadinessPolicyGateInput;
   live_binding_gate: PrivateReadinessPolicyGateInput;
   secret_handling_gate: PrivateReadinessPolicyGateInput;
   stop_behavior_gate: PrivateReadinessPolicyGateInput;

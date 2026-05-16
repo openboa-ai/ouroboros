@@ -155,6 +155,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("configure_private_read_credentials");
     expect(html).toContain("Private-readiness posture");
     expect(html).toContain("Binance BTCUSDT private_readiness_posture");
+    expect(html).toContain("Operator approval gate");
+    expect(html).toContain("Jurisdiction / risk gate");
+    expect(html).toContain("operator_live_private_read_approval_missing");
+    expect(html).toContain("operator_jurisdiction_not_recorded");
     expect(html).toContain("live_binding_profile_not_configured");
     expect(html).toContain("secret_handling_profile_not_configured");
     expect(html).toContain("operator_stop_behavior_not_recorded");

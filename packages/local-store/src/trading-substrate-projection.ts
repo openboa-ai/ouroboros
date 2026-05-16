@@ -60,6 +60,8 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
         ]),
         private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface,
         account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null,
+        operator_approval_gate: latestPrivateReadinessPosture.operator_approval_gate,
+        jurisdiction_risk_gate: latestPrivateReadinessPosture.jurisdiction_risk_gate,
         live_binding_gate: latestPrivateReadinessPosture.live_binding_gate,
         secret_handling_gate: latestPrivateReadinessPosture.secret_handling_gate,
         stop_behavior_gate: latestPrivateReadinessPosture.stop_behavior_gate

@@ -133,6 +133,14 @@ export function binancePrivateReadinessPostureNoAuthorityExpectation(
     venue: BINANCE_USDM_FUTURES_VENUE,
     instrument: BINANCE_BTCUSDT_INSTRUMENT,
     product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+    operator_approval_gate: {
+      status: "not_ready",
+      reason: "operator_live_private_read_approval_missing"
+    },
+    jurisdiction_risk_gate: {
+      status: "review_required",
+      reason: "operator_jurisdiction_not_recorded"
+    },
     fixture_backed: true,
     simulated: true,
     no_authority: BINANCE_NO_AUTHORITY,
@@ -311,6 +319,14 @@ export function fixturePrivateReadinessPosture(
     venue: BINANCE_USDM_FUTURES_VENUE,
     instrument: BINANCE_BTCUSDT_INSTRUMENT,
     product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+    operator_approval_gate: privateReadinessPolicyGate(
+      "not_ready",
+      "operator_live_private_read_approval_missing"
+    ),
+    jurisdiction_risk_gate: privateReadinessPolicyGate(
+      "review_required",
+      "operator_jurisdiction_not_recorded"
+    ),
     live_binding_gate: privateReadinessPolicyGate(
       "not_ready",
       "live_binding_profile_not_configured"

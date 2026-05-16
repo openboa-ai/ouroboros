@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   comparePrivateReadinessPostures,
+  isCompletePrivateReadinessPostureRecord,
   isPrivateReadinessPostureRecord,
   matchesPrivateReadinessPostureQuery,
   toPrivateReadinessPostureReadModel
@@ -958,7 +959,7 @@ export class LocalStore {
   async recordPrivateReadinessPosture(
     posture: PrivateReadinessPostureRecord
   ): Promise<PrivateReadinessPostureReadModel> {
-    if (!isPrivateReadinessPostureRecord(posture)) {
+    if (!isCompletePrivateReadinessPostureRecord(posture)) {
       throw new LocalStoreError(
         "invalid_private_readiness_posture_input",
         "invalid private-readiness posture input",

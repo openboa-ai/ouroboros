@@ -347,6 +347,14 @@ describe("runtime read-only API", () => {
         },
         latest_private_readiness_posture: binancePrivateReadinessPostureNoAuthorityExpectation({
           posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+          operator_approval_gate: {
+            status: "not_ready",
+            reason: "operator_live_private_read_approval_missing"
+          },
+          jurisdiction_risk_gate: {
+            status: "review_required",
+            reason: "operator_jurisdiction_not_recorded"
+          },
           live_binding_gate: {
             status: "not_ready",
             reason: "live_binding_profile_not_configured"

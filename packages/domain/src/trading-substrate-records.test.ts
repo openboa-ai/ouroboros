@@ -19,6 +19,7 @@ import {
   fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface,
   fixturePrivateReadinessPolicyReadyPreflightSurface,
   privateReadinessGate,
+  privateReadinessPolicyGate,
   ref
 } from "../../../test/support/binance-no-authority";
 import type {
@@ -586,6 +587,59 @@ describe("Trading substrate private-readiness policy decisions", () => {
       "user_data_stream",
       "trade_authority"
     ]);
+  });
+
+  it("uses stored posture gates for operator approval and jurisdiction risk when provided", () => {
+    const decision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface(),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      operator_approval_gate: privateReadinessPolicyGate(
+        "blocked",
+        "operator_approval_posture_blocked_for_test"
+      ),
+      jurisdiction_risk_gate: privateReadinessPolicyGate(
+        "review_required",
+        "jurisdiction_risk_posture_review_for_test"
+      ),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+
+    expect(decision.status).toBe("blocked");
+    expect(decision.reason_codes).toEqual(expect.arrayContaining([
+      "operator_approval_blocked",
+      "jurisdiction_review_required",
+      "no_private_read_performed"
+    ]));
+    expect(decision.checked_gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dimension: "operator_approval",
+        status: "blocked",
+        reason_code: "operator_approval_blocked",
+        reason: "operator_approval_posture_blocked_for_test"
+      }),
+      expect.objectContaining({
+        dimension: "jurisdiction_risk",
+        status: "review_required",
+        reason_code: "jurisdiction_review_required",
+        reason: "jurisdiction_risk_posture_review_for_test"
+      })
+    ]));
+    expect(decision.blocking_conditions).toEqual(expect.arrayContaining([
+      "operator_approval: operator_approval_posture_blocked_for_test",
+      "jurisdiction_risk: jurisdiction_risk_posture_review_for_test"
+    ]));
   });
 
   it("returns not_ready with explicit reason codes for fixture-backed no-authority posture", () => {
