@@ -5,6 +5,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
+import {
+  BINANCE_BTCUSDT_QUERY,
+  BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
+  binanceBtcusdtNoAuthoritySurfaceExpectation,
+  binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
+  expectNoPrivateReadSecrets
+} from "../../../test/support/binance-no-authority";
 import type {
   BoundedRuntimeAuthorityInput,
   CandidateMaterializationInput,
@@ -167,36 +174,19 @@ describe("runtime read-only API", () => {
 
     const surface = await server.inject({
       method: "GET",
-      url: "/api/trading-substrate/order-fill/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+      url: `/api/trading-substrate/order-fill/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
     });
     expect(surface.statusCode).toBe(200);
     expect(surface.json()).toMatchObject({
-      surface: {
+      surface: binanceBtcusdtNoAuthoritySurfaceExpectation({
         surface_family: "order_fill",
         surface_label: "Binance BTCUSDT order_fill",
-        venue: "binance_usd_m_futures",
-        instrument: "BTCUSDT",
-        product_category: "perpetual_futures",
         posture: "partially_filled",
         raw_upstream_status: "PARTIALLY_FILLED",
         raw_upstream_execution_type: "TRADE",
         freshness: "stale",
-        liveness: "degraded",
-        transport: {
-          repository: "binance/binance-connector-js",
-          package_name: "@binance/derivatives-trading-usds-futures",
-          integration_role: "transport_only",
-          authority_status: "not_live"
-        },
-        fixture_backed: true,
-        simulated: true,
-        no_authority: {
-          live_exchange: false,
-          order_submission: false,
-          credentials: false
-        },
-        authority_status: "not_live"
-      }
+        liveness: "degraded"
+      })
     });
 
     const detail = await server.inject({
@@ -227,16 +217,13 @@ describe("runtime read-only API", () => {
 
     const surface = await server.inject({
       method: "GET",
-      url: "/api/trading-substrate/public-market/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+      url: `/api/trading-substrate/public-market/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
     });
     expect(surface.statusCode).toBe(200);
     expect(surface.json()).toMatchObject({
-      surface: {
+      surface: binanceBtcusdtNoAuthoritySurfaceExpectation({
         surface_family: "public_market_liveness",
         surface_label: "Binance BTCUSDT public_market_liveness",
-        venue: "binance_usd_m_futures",
-        instrument: "BTCUSDT",
-        product_category: "perpetual_futures",
         symbol_status: "TRADING",
         contract_type: "PERPETUAL",
         price_tick_size: "0.10",
@@ -249,22 +236,8 @@ describe("runtime read-only API", () => {
         next_funding_time: "2026-05-16T08:00:00.000Z",
         server_time: "2026-05-16T00:00:01.000Z",
         freshness: "stale",
-        liveness: "degraded",
-        transport: {
-          repository: "binance/binance-connector-js",
-          package_name: "@binance/derivatives-trading-usds-futures",
-          integration_role: "transport_only",
-          authority_status: "not_live"
-        },
-        fixture_backed: true,
-        simulated: true,
-        no_authority: {
-          live_exchange: false,
-          order_submission: false,
-          credentials: false
-        },
-        authority_status: "not_live"
-      }
+        liveness: "degraded"
+      })
     });
 
     const detail = await server.inject({
@@ -295,16 +268,13 @@ describe("runtime read-only API", () => {
 
     const surface = await server.inject({
       method: "GET",
-      url: "/api/trading-substrate/private-readiness/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+      url: `/api/trading-substrate/private-readiness/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
     });
     expect(surface.statusCode).toBe(200);
     expect(surface.json()).toMatchObject({
-      surface: {
+      surface: binanceBtcusdtNoAuthoritySurfaceExpectation({
         surface_family: "private_readiness_preflight",
         surface_label: "Binance BTCUSDT private_readiness_preflight",
-        venue: "binance_usd_m_futures",
-        instrument: "BTCUSDT",
-        product_category: "perpetual_futures",
         credential_gate: {
           status: "not_configured",
           enabled: false
@@ -347,28 +317,12 @@ describe("runtime read-only API", () => {
         next_blocked_action: "configure_private_read_credentials",
         next_blocked_reason: "credential_and_operator_gates_not_ready",
         freshness: "stale",
-        liveness: "degraded",
-        transport: {
-          repository: "binance/binance-connector-js",
-          package_name: "@binance/derivatives-trading-usds-futures",
-          integration_role: "transport_only",
-          authority_status: "not_live"
-        },
-        fixture_backed: true,
-        simulated: true,
-        no_authority: {
-          live_exchange: false,
-          order_submission: false,
-          credentials: false
-        },
-        authority_status: "not_live"
-      }
+        liveness: "degraded"
+      })
     });
 
     const body = JSON.stringify(surface.json());
-    expect(body).not.toContain("apiKey");
-    expect(body).not.toContain("secretKey");
-    expect(body).not.toContain("listenKey\":\"");
+    expectNoPrivateReadSecrets(body);
 
     const detail = await server.inject({
       method: "GET",
@@ -391,10 +345,7 @@ describe("runtime read-only API", () => {
           authority_status: "not_live"
         },
         latest_private_readiness_policy_decision: {
-          decision_kind: "private_readiness_policy_decision",
-          status: "not_ready",
-          binance_security_types: ["USER_DATA", "USER_STREAM", "TRADE"],
-          reason_codes: expect.arrayContaining([
+          ...binancePrivateReadinessPolicyDecisionNoAuthorityExpectation([
             "configuration_not_ready",
             "operator_approval_missing",
             "jurisdiction_review_required",
@@ -402,11 +353,16 @@ describe("runtime read-only API", () => {
             "secret_handling_not_ready",
             "no_private_read_performed"
           ]),
-          no_private_read_performed: true,
-          signed_request_authority: false,
-          live_exchange_authority: false,
-          order_submission_authority: false,
-          authority_status: "not_live"
+          status: "not_ready",
+          binance_security_types: [...BINANCE_PRIVATE_READINESS_SECURITY_TYPES],
+          reason_codes: expect.arrayContaining([
+            "configuration_not_ready",
+            "operator_approval_missing",
+            "jurisdiction_review_required",
+            "live_binding_not_ready",
+            "secret_handling_not_ready",
+            "no_private_read_performed"
+          ])
         }
       }
     });
@@ -423,16 +379,13 @@ describe("runtime read-only API", () => {
 
     const surface = await server.inject({
       method: "GET",
-      url: "/api/trading-substrate/account-position-risk/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+      url: `/api/trading-substrate/account-position-risk/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
     });
     expect(surface.statusCode).toBe(200);
     expect(surface.json()).toMatchObject({
-      surface: {
+      surface: binanceBtcusdtNoAuthoritySurfaceExpectation({
         surface_family: "account_position_risk_mirror",
         surface_label: "Binance BTCUSDT account_position_risk_mirror",
-        venue: "binance_usd_m_futures",
-        instrument: "BTCUSDT",
-        product_category: "perpetual_futures",
         account_scope_ref: "fixture-binance-usdt-account-mirror",
         asset: "USDT",
         account_mode: "single_asset",
@@ -461,29 +414,12 @@ describe("runtime read-only API", () => {
         next_blocked_action: "configure_private_read_credentials",
         next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
         freshness: "stale",
-        liveness: "degraded",
-        transport: {
-          repository: "binance/binance-connector-js",
-          package_name: "@binance/derivatives-trading-usds-futures",
-          integration_role: "transport_only",
-          authority_status: "not_live"
-        },
-        fixture_backed: true,
-        simulated: true,
-        no_authority: {
-          live_exchange: false,
-          order_submission: false,
-          credentials: false
-        },
-        authority_status: "not_live"
-      }
+        liveness: "degraded"
+      })
     });
 
     const body = JSON.stringify(surface.json());
-    expect(body).not.toContain("apiKey");
-    expect(body).not.toContain("secretKey");
-    expect(body).not.toContain("signature");
-    expect(body).not.toContain("listenKey\":\"");
+    expectNoPrivateReadSecrets(body);
 
     const detail = await server.inject({
       method: "GET",

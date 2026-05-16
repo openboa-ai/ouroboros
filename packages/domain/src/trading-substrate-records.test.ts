@@ -6,6 +6,21 @@ import {
   TRADING_SUBSTRATE_SURFACE_TAXONOMY,
   evaluatePrivateReadinessPolicyDecision
 } from "./index";
+import {
+  BINANCE_BTCUSDT_INSTRUMENT,
+  BINANCE_NO_AUTHORITY,
+  BINANCE_NO_AUTHORITY_LABEL,
+  BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
+  BINANCE_USDM_CONNECTOR_TRANSPORT,
+  BINANCE_USDM_FUTURES_VENUE,
+  BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+  binanceBtcusdtNoAuthoritySurfaceExpectation,
+  binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
+  fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface,
+  fixturePrivateReadinessPolicyReadyPreflightSurface,
+  privateReadinessGate,
+  ref
+} from "../../../test/support/binance-no-authority";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   AccountPositionRiskMirrorSurfaceRecord,
@@ -15,147 +30,8 @@ import type {
   PrivateReadinessPreflightSurfaceReadModel,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
-  PublicMarketLivenessSurfaceRecord,
-  Ref
+  PublicMarketLivenessSurfaceRecord
 } from "./index";
-
-const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
-
-const substrateTransport = {
-  transport_kind: "official_binance_connector",
-  repository: "binance/binance-connector-js",
-  package_name: "@binance/derivatives-trading-usds-futures",
-  api_family: "derivatives_trading_usds_futures",
-  supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-  production_base_url: "https://fapi.binance.com",
-  testnet_base_url: "https://testnet.binancefuture.com",
-  integration_role: "transport_only",
-  authority_status: "not_live"
-} as const;
-
-const substrateNoAuthority = {
-  live_exchange: false,
-  order_submission: false,
-  credentials: false
-} as const;
-
-function privateReadinessGate(
-  status: PrivateReadinessPreflightSurfaceReadModel["credential_gate"]["status"],
-  enabled: PrivateReadinessPreflightSurfaceReadModel["credential_gate"]["enabled"],
-  reason: string
-): PrivateReadinessPreflightSurfaceReadModel["credential_gate"] {
-  return { status, enabled, reason };
-}
-
-function privateReadinessPolicySurface(
-  overrides: Partial<PrivateReadinessPreflightSurfaceReadModel> = {}
-): PrivateReadinessPreflightSurfaceReadModel {
-  return {
-    surface_id: "policy-ready-private-readiness-preflight-surface-001",
-    surface_family: "private_readiness_preflight",
-    surface_label: "Binance BTCUSDT private_readiness_preflight",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    credential_gate: privateReadinessGate("ready", true, "USER_DATA_secret_reference_configured"),
-    jurisdiction_gate: privateReadinessGate("ready", true, "operator_jurisdiction_and_risk_policy_recorded"),
-    operator_approval_gate: privateReadinessGate("ready", true, "operator_private_read_approval_recorded"),
-    private_account_read_gate: privateReadinessGate("ready", true, "GET_/fapi/v3/account_preflight_ready"),
-    private_position_read_gate: privateReadinessGate("ready", true, "GET_/fapi/v3/positionRisk_preflight_ready"),
-    user_data_stream_gate: privateReadinessGate("ready", true, "USER_STREAM_lifecycle_policy_ready"),
-    listen_key_gate: privateReadinessGate("ready", true, "listenKey_lifecycle_policy_ready"),
-    order_submission_gate: privateReadinessGate("disabled", false, "TRADE_endpoint_out_of_private_readiness_scope"),
-    leverage_or_margin_mutation_gate: privateReadinessGate("disabled", false, "account_mutation_out_of_scope"),
-    account_information_endpoint: "GET /fapi/v3/account",
-    user_data_stream_endpoint: "POST /fapi/v1/listenKey",
-    order_endpoint: "POST /fapi/v1/order",
-    next_blocked_action: "none",
-    next_blocked_reason: "private_readiness_policy_ready",
-    source_timestamp: "2026-05-16T00:00:00.000Z",
-    observed_at: "2026-05-16T00:00:01.000Z",
-    updated_at: "2026-05-16T00:00:01.000Z",
-    freshness: "fresh",
-    liveness: "connected",
-    source_kind: "fixture",
-    source_ref: ref("fixture", "policy-ready-private-readiness-preflight"),
-    transport: substrateTransport,
-    fixture_backed: true,
-    simulated: true,
-    no_authority: substrateNoAuthority,
-    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
-    authority_status: "not_live",
-    ...overrides
-  };
-}
-
-function accountPositionRiskPolicySurface(
-  overrides: Partial<AccountPositionRiskMirrorSurfaceReadModel> = {}
-): AccountPositionRiskMirrorSurfaceReadModel {
-  return {
-    surface_id: "policy-ready-account-position-risk-mirror-surface-001",
-    surface_family: "account_position_risk_mirror",
-    surface_label: "Binance BTCUSDT account_position_risk_mirror",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    account_scope_ref: "policy-ready-binance-usdt-account-mirror",
-    asset: "USDT",
-    account_mode: "single_asset",
-    total_wallet_balance: "1250.00000000",
-    total_unrealized_profit: "0.00000000",
-    total_margin_balance: "1250.00000000",
-    available_balance: "1250.00000000",
-    max_withdraw_amount: "1250.00000000",
-    total_initial_margin: "0.00000000",
-    total_maint_margin: "0.00000000",
-    total_position_initial_margin: "0.00000000",
-    total_open_order_initial_margin: "0.00000000",
-    total_cross_wallet_balance: "1250.00000000",
-    total_cross_un_pnl: "0.00000000",
-    position_side: "BOTH",
-    position_amount: "0.000",
-    entry_price: "0.00000000",
-    break_even_price: "0.00000000",
-    mark_price: "65000.00000000",
-    unrealized_profit: "0.00000000",
-    liquidation_price: "0.00000000",
-    notional: "0.00000000",
-    margin_asset: "USDT",
-    margin_type: "cross",
-    leverage: 5,
-    isolated_margin: "0.00000000",
-    isolated_wallet: "0.00000000",
-    initial_margin: "0.00000000",
-    maint_margin: "0.00000000",
-    position_initial_margin: "0.00000000",
-    open_order_initial_margin: "0.00000000",
-    risk_status: "nominal",
-    risk_limit_profile_ref: "policy-ready-btcusdt-risk-limit-profile-001",
-    max_notional_value: "1000000",
-    kill_switch_status: "inactive",
-    runtime_pause_status: "not_paused",
-    account_information_endpoint: "GET /fapi/v3/account",
-    position_information_endpoint: "GET /fapi/v3/positionRisk",
-    leverage_endpoint: "POST /fapi/v1/leverage",
-    margin_type_endpoint: "POST /fapi/v1/marginType",
-    next_blocked_action: "none",
-    next_blocked_reason: "account_position_policy_ready",
-    source_timestamp: "2026-05-16T00:00:00.000Z",
-    observed_at: "2026-05-16T00:00:01.000Z",
-    updated_at: "2026-05-16T00:00:01.000Z",
-    freshness: "fresh",
-    liveness: "connected",
-    source_kind: "fixture",
-    source_ref: ref("fixture", "policy-ready-account-position-risk-mirror"),
-    transport: substrateTransport,
-    fixture_backed: true,
-    simulated: true,
-    no_authority: substrateNoAuthority,
-    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
-    authority_status: "not_live",
-    ...overrides
-  };
-}
 
 describe("Trading substrate taxonomy contract", () => {
   it("keeps every landed substrate family in the canonical family list", () => {
@@ -320,9 +196,9 @@ describe("Trading substrate order-fill surface records", () => {
       version: 1,
       order_fill_surface_id: surfaceRef.id,
       surface_family: "order_fill",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
+      venue: BINANCE_USDM_FUTURES_VENUE,
+      instrument: BINANCE_BTCUSDT_INSTRUMENT,
+      product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
       runtime_ref: ref("trading_system_runtime", "runtime-paper-btcusdt"),
       order_scope_ref: "fixture-btcusdt-paper-order-001",
       local_client_order_id: "fixture-btcusdt-paper-order-001",
@@ -348,23 +224,11 @@ describe("Trading substrate order-fill surface records", () => {
       source_kind: "fixture",
       source_ref: ref("fixture", "binance-btcusdt-order-fill"),
       transport: {
-        transport_kind: "official_binance_connector",
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        api_family: "derivatives_trading_usds_futures",
-        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-        production_base_url: "https://fapi.binance.com",
-        testnet_base_url: "https://testnet.binancefuture.com",
-        integration_role: "transport_only",
-        authority_status: "not_live"
+        ...BINANCE_USDM_CONNECTOR_TRANSPORT
       },
       fixture_backed: true,
       simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
+      no_authority: BINANCE_NO_AUTHORITY,
       authority_status: "not_live"
     } satisfies OrderFillSurfaceRecord;
 
@@ -402,7 +266,7 @@ describe("Trading substrate order-fill surface records", () => {
       fixture_backed: surface.fixture_backed,
       simulated: surface.simulated,
       no_authority: surface.no_authority,
-      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      no_authority_label: BINANCE_NO_AUTHORITY_LABEL,
       authority_status: surface.authority_status
     } satisfies OrderFillSurfaceReadModel;
 
@@ -414,20 +278,17 @@ describe("Trading substrate order-fill surface records", () => {
     expect(requiredPostures).toContain("rejected");
     expect(requiredPostures).toContain("expired");
     expect(requiredPostures).toContain("unknown");
-    expect(surface.venue).toBe("binance_usd_m_futures");
-    expect(surface.instrument).toBe("BTCUSDT");
-    expect(surface.product_category).toBe("perpetual_futures");
+    expect(surface).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation());
+    expect(surface.venue).toBe(BINANCE_USDM_FUTURES_VENUE);
+    expect(surface.instrument).toBe(BINANCE_BTCUSDT_INSTRUMENT);
+    expect(surface.product_category).toBe(BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY);
     expect(surface.transport).toMatchObject({
       repository: "binance/binance-connector-js",
       package_name: "@binance/derivatives-trading-usds-futures",
       integration_role: "transport_only",
       authority_status: "not_live"
     });
-    expect(surface.no_authority).toEqual({
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    });
+    expect(surface.no_authority).toEqual(BINANCE_NO_AUTHORITY);
     expect(readModel.surface_label).toBe("Binance BTCUSDT order_fill");
     expect(readModel.authority_status).toBe("not_live");
   });
@@ -445,9 +306,9 @@ describe("Trading substrate public market and liveness surface records", () => {
       version: 1,
       public_market_liveness_surface_id: surfaceRef.id,
       surface_family: "public_market_liveness",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
+      venue: BINANCE_USDM_FUTURES_VENUE,
+      instrument: BINANCE_BTCUSDT_INSTRUMENT,
+      product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
       symbol_status: "TRADING",
       contract_type: "PERPETUAL",
       price_tick_size: "0.10",
@@ -469,24 +330,10 @@ describe("Trading substrate public market and liveness surface records", () => {
       degraded_reason: "fixture_seed_no_live_connector",
       source_kind: "fixture",
       source_ref: ref("fixture", "binance-btcusdt-public-market-liveness"),
-      transport: {
-        transport_kind: "official_binance_connector",
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        api_family: "derivatives_trading_usds_futures",
-        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-        production_base_url: "https://fapi.binance.com",
-        testnet_base_url: "https://testnet.binancefuture.com",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
+      transport: BINANCE_USDM_CONNECTOR_TRANSPORT,
       fixture_backed: true,
       simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
+      no_authority: BINANCE_NO_AUTHORITY,
       authority_status: "not_live"
     } satisfies PublicMarketLivenessSurfaceRecord;
 
@@ -522,13 +369,14 @@ describe("Trading substrate public market and liveness surface records", () => {
       fixture_backed: surface.fixture_backed,
       simulated: surface.simulated,
       no_authority: surface.no_authority,
-      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      no_authority_label: BINANCE_NO_AUTHORITY_LABEL,
       authority_status: surface.authority_status
     } satisfies PublicMarketLivenessSurfaceReadModel;
 
     expect(surface.surface_family).toBe("public_market_liveness");
-    expect(surface.venue).toBe("binance_usd_m_futures");
-    expect(surface.instrument).toBe("BTCUSDT");
+    expect(surface).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation());
+    expect(surface.venue).toBe(BINANCE_USDM_FUTURES_VENUE);
+    expect(surface.instrument).toBe(BINANCE_BTCUSDT_INSTRUMENT);
     expect(surface.symbol_status).toBe("TRADING");
     expect(surface.price_tick_size).toBe("0.10");
     expect(surface.quantity_step_size).toBe("0.001");
@@ -544,11 +392,7 @@ describe("Trading substrate public market and liveness surface records", () => {
       integration_role: "transport_only",
       authority_status: "not_live"
     });
-    expect(surface.no_authority).toEqual({
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    });
+    expect(surface.no_authority).toEqual(BINANCE_NO_AUTHORITY);
     expect(readModel.surface_label).toBe("Binance BTCUSDT public_market_liveness");
     expect(readModel.authority_status).toBe("not_live");
   });
@@ -566,9 +410,9 @@ describe("Trading substrate private-readiness preflight surface records", () => 
       version: 1,
       private_readiness_preflight_surface_id: surfaceRef.id,
       surface_family: "private_readiness_preflight",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
+      venue: BINANCE_USDM_FUTURES_VENUE,
+      instrument: BINANCE_BTCUSDT_INSTRUMENT,
+      product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
       credential_gate: {
         status: "not_configured",
         enabled: false,
@@ -627,24 +471,10 @@ describe("Trading substrate private-readiness preflight surface records", () => 
       degraded_reason: "fixture_seed_no_private_authority",
       source_kind: "fixture",
       source_ref: ref("fixture", "binance-btcusdt-private-readiness-preflight"),
-      transport: {
-        transport_kind: "official_binance_connector",
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        api_family: "derivatives_trading_usds_futures",
-        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-        production_base_url: "https://fapi.binance.com",
-        testnet_base_url: "https://testnet.binancefuture.com",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
+      transport: BINANCE_USDM_CONNECTOR_TRANSPORT,
       fixture_backed: true,
       simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
+      no_authority: BINANCE_NO_AUTHORITY,
       authority_status: "not_live"
     } satisfies PrivateReadinessPreflightSurfaceRecord;
 
@@ -681,13 +511,14 @@ describe("Trading substrate private-readiness preflight surface records", () => 
       fixture_backed: surface.fixture_backed,
       simulated: surface.simulated,
       no_authority: surface.no_authority,
-      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      no_authority_label: BINANCE_NO_AUTHORITY_LABEL,
       authority_status: surface.authority_status
     } satisfies PrivateReadinessPreflightSurfaceReadModel;
 
     expect(surface.surface_family).toBe("private_readiness_preflight");
-    expect(surface.venue).toBe("binance_usd_m_futures");
-    expect(surface.instrument).toBe("BTCUSDT");
+    expect(surface).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation());
+    expect(surface.venue).toBe(BINANCE_USDM_FUTURES_VENUE);
+    expect(surface.instrument).toBe(BINANCE_BTCUSDT_INSTRUMENT);
     expect(surface.credential_gate).toEqual({
       status: "not_configured",
       enabled: false,
@@ -708,12 +539,8 @@ describe("Trading substrate private-readiness preflight surface records", () => 
       integration_role: "transport_only",
       authority_status: "not_live"
     });
-    expect(surface.no_authority).toEqual({
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    });
-    expect(readModel.no_authority_label).toBe("live_exchange=false, order_submission=false, credentials=false");
+    expect(surface.no_authority).toEqual(BINANCE_NO_AUTHORITY);
+    expect(readModel.no_authority_label).toBe(BINANCE_NO_AUTHORITY_LABEL);
     expect(readModel.authority_status).toBe("not_live");
   });
 });
@@ -722,8 +549,8 @@ describe("Trading substrate private-readiness policy decisions", () => {
   it("returns ready from explicit Binance USER_DATA and USER_STREAM posture without private reads", () => {
     const decision = evaluatePrivateReadinessPolicyDecision({
       evaluated_at: "2026-05-16T00:00:02.000Z",
-      private_readiness_preflight_surface: privateReadinessPolicySurface(),
-      account_position_risk_mirror_surface: accountPositionRiskPolicySurface(),
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface(),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
       live_binding_gate: {
         status: "ready",
         reason: "operator_bound_private_read_profile_recorded"
@@ -739,18 +566,10 @@ describe("Trading substrate private-readiness policy decisions", () => {
     });
 
     expect(decision).toMatchObject({
-      decision_kind: "private_readiness_policy_decision",
-      status: "ready",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
-      no_private_read_performed: true,
-      signed_request_authority: false,
-      live_exchange_authority: false,
-      order_submission_authority: false,
-      authority_status: "not_live"
+      ...binancePrivateReadinessPolicyDecisionNoAuthorityExpectation(),
+      status: "ready"
     });
-    expect(decision.binance_security_types).toEqual(["USER_DATA", "USER_STREAM", "TRADE"]);
+    expect(decision.binance_security_types).toEqual([...BINANCE_PRIVATE_READINESS_SECURITY_TYPES]);
     expect(decision.reason_codes).toEqual(["no_private_read_performed"]);
     expect(decision.blocking_conditions).toEqual([]);
     expect(decision.checked_gates.map((gate) => gate.dimension)).toEqual([
@@ -771,7 +590,7 @@ describe("Trading substrate private-readiness policy decisions", () => {
   it("returns not_ready with explicit reason codes for fixture-backed no-authority posture", () => {
     const decision = evaluatePrivateReadinessPolicyDecision({
       evaluated_at: "2026-05-16T00:00:02.000Z",
-      private_readiness_preflight_surface: privateReadinessPolicySurface({
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface({
         credential_gate: privateReadinessGate("not_configured", false, "no_binance_api_key_configured"),
         jurisdiction_gate: privateReadinessGate("not_evaluated", false, "operator_jurisdiction_not_recorded"),
         operator_approval_gate: privateReadinessGate(
@@ -799,7 +618,7 @@ describe("Trading substrate private-readiness policy decisions", () => {
         liveness: "degraded",
         degraded_reason: "fixture_seed_no_private_authority"
       }),
-      account_position_risk_mirror_surface: accountPositionRiskPolicySurface({
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface({
         risk_status: "watch",
         freshness: "stale",
         liveness: "degraded",
@@ -820,6 +639,20 @@ describe("Trading substrate private-readiness policy decisions", () => {
     });
 
     expect(decision.status).toBe("not_ready");
+    expect(decision).toMatchObject(binancePrivateReadinessPolicyDecisionNoAuthorityExpectation([
+      "configuration_not_ready",
+      "operator_approval_missing",
+      "jurisdiction_review_required",
+      "live_binding_not_ready",
+      "secret_handling_not_ready",
+      "account_position_freshness_not_ready",
+      "stop_behavior_not_ready",
+      "listen_key_not_ready",
+      "user_data_stream_not_ready",
+      "private_account_read_not_ready",
+      "private_position_read_not_ready",
+      "no_private_read_performed"
+    ]));
     expect(decision.reason_codes).toEqual(expect.arrayContaining([
       "configuration_not_ready",
       "operator_approval_missing",
@@ -839,18 +672,15 @@ describe("Trading substrate private-readiness policy decisions", () => {
       "operator_approval: operator_live_private_read_approval_missing",
       "secret_handling: secret_handling_profile_not_configured"
     ]));
-    expect(decision.no_private_read_performed).toBe(true);
-    expect(decision.signed_request_authority).toBe(false);
-    expect(decision.live_exchange_authority).toBe(false);
   });
 
   it("returns blocked when stop controls or Binance TRADE authority expand beyond private-read scope", () => {
     const decision = evaluatePrivateReadinessPolicyDecision({
       evaluated_at: "2026-05-16T00:00:02.000Z",
-      private_readiness_preflight_surface: privateReadinessPolicySurface({
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface({
         order_submission_gate: privateReadinessGate("ready", true, "TRADE_endpoint_enabled")
       }),
-      account_position_risk_mirror_surface: accountPositionRiskPolicySurface({
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface({
         kill_switch_status: "active"
       }),
       live_binding_gate: {
@@ -868,6 +698,12 @@ describe("Trading substrate private-readiness policy decisions", () => {
     });
 
     expect(decision.status).toBe("blocked");
+    expect(decision).toMatchObject(binancePrivateReadinessPolicyDecisionNoAuthorityExpectation([
+      "kill_switch_active",
+      "stop_behavior_blocked",
+      "trade_authority_scope_expanded",
+      "no_private_read_performed"
+    ]));
     expect(decision.reason_codes).toEqual(expect.arrayContaining([
       "kill_switch_active",
       "stop_behavior_blocked",
@@ -879,8 +715,6 @@ describe("Trading substrate private-readiness policy decisions", () => {
       "stop_behavior: runtime_stop_semantics_conflict_with_active_kill_switch",
       "trade_authority: TRADE_endpoint_enabled"
     ]));
-    expect(decision.order_submission_authority).toBe(false);
-    expect(decision.no_private_read_performed).toBe(true);
   });
 });
 
@@ -896,9 +730,9 @@ describe("Trading substrate account-position-risk mirror surface records", () =>
       version: 1,
       account_position_risk_mirror_surface_id: surfaceRef.id,
       surface_family: "account_position_risk_mirror",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
+      venue: BINANCE_USDM_FUTURES_VENUE,
+      instrument: BINANCE_BTCUSDT_INSTRUMENT,
+      product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
       account_scope_ref: "fixture-binance-usdt-account-mirror",
       asset: "USDT",
       account_mode: "single_asset",
@@ -950,24 +784,10 @@ describe("Trading substrate account-position-risk mirror surface records", () =>
       degraded_reason: "fixture_seed_no_private_account_or_position_read",
       source_kind: "fixture",
       source_ref: ref("fixture", "binance-btcusdt-account-position-risk-mirror"),
-      transport: {
-        transport_kind: "official_binance_connector",
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        api_family: "derivatives_trading_usds_futures",
-        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-        production_base_url: "https://fapi.binance.com",
-        testnet_base_url: "https://testnet.binancefuture.com",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
+      transport: BINANCE_USDM_CONNECTOR_TRANSPORT,
       fixture_backed: true,
       simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
+      no_authority: BINANCE_NO_AUTHORITY,
       authority_status: "not_live"
     } satisfies AccountPositionRiskMirrorSurfaceRecord;
 
@@ -1033,13 +853,14 @@ describe("Trading substrate account-position-risk mirror surface records", () =>
       fixture_backed: surface.fixture_backed,
       simulated: surface.simulated,
       no_authority: surface.no_authority,
-      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      no_authority_label: BINANCE_NO_AUTHORITY_LABEL,
       authority_status: surface.authority_status
     } satisfies AccountPositionRiskMirrorSurfaceReadModel;
 
     expect(surface.surface_family).toBe("account_position_risk_mirror");
-    expect(surface.venue).toBe("binance_usd_m_futures");
-    expect(surface.instrument).toBe("BTCUSDT");
+    expect(surface).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation());
+    expect(surface.venue).toBe(BINANCE_USDM_FUTURES_VENUE);
+    expect(surface.instrument).toBe(BINANCE_BTCUSDT_INSTRUMENT);
     expect(surface.asset).toBe("USDT");
     expect(surface.position_amount).toBe("0.015");
     expect(surface.unrealized_profit).toBe("12.50000000");
@@ -1056,12 +877,8 @@ describe("Trading substrate account-position-risk mirror surface records", () =>
       integration_role: "transport_only",
       authority_status: "not_live"
     });
-    expect(surface.no_authority).toEqual({
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    });
-    expect(readModel.no_authority_label).toBe("live_exchange=false, order_submission=false, credentials=false");
+    expect(surface.no_authority).toEqual(BINANCE_NO_AUTHORITY);
+    expect(readModel.no_authority_label).toBe(BINANCE_NO_AUTHORITY_LABEL);
     expect(readModel.authority_status).toBe("not_live");
   });
 });

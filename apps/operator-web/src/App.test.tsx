@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type {
-  AccountPositionRiskMirrorSurfaceReadModel,
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
   CandidateLatestValidationStateReadModel,
@@ -9,14 +8,19 @@ import type {
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
-  OrderFillSurfaceReadModel,
-  PrivateReadinessPolicyDecision,
-  PrivateReadinessPreflightSurfaceReadModel,
-  PublicMarketLivenessSurfaceReadModel,
   ReplayRuntimeAuthorityReadModel,
   ReplayRuntimeControlReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
+import {
+  BINANCE_NO_AUTHORITY_LABEL,
+  expectNoOperatorActionControls,
+  fixtureAccountPositionRiskMirrorSurface,
+  fixtureOrderFillSurface,
+  fixturePrivateReadinessPolicyDecision,
+  fixturePrivateReadinessPreflightSurface,
+  fixturePublicMarketLivenessSurface
+} from "../../../test/support/binance-no-authority";
 import { CandidateDetail, CandidateSummaryRow, TradingExecutionModesSection } from "./App";
 import {
   replayRunPayload,
@@ -47,7 +51,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Trace material");
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+    expectNoOperatorActionControls(html);
   });
 
   it("renders Binance BTCUSDT order-fill substrate posture without action controls", () => {
@@ -76,9 +80,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("binance/binance-connector-js");
     expect(html).toContain("transport_only");
     expect(html).toContain("fixture_seed_no_live_connector");
-    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders Binance BTCUSDT public market and liveness posture without action controls", () => {
@@ -112,9 +116,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("@binance/derivatives-trading-usds-futures");
     expect(html).toContain("transport_only");
     expect(html).toContain("fixture_seed_no_live_connector");
-    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders Binance BTCUSDT private-readiness preflight gates without action controls", () => {
@@ -154,9 +158,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("signed_request_authority=false");
     expect(html).toContain("transport_only");
     expect(html).toContain("fixture_seed_no_private_authority");
-    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/\b(Start|Pause|Resume|Stop|Promote)\b|Run provider|Run evaluator|Live order|broker|provider_api_key|apiKey|secretKey/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders Binance BTCUSDT account-position-risk mirror posture without action controls", () => {
@@ -196,9 +200,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("mirror_is_fixture_backed_no_signed_user_data_read");
     expect(html).toContain("fixture_seed_no_private_account_or_position_read");
     expect(html).toContain("transport_only");
-    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key|apiKey|secretKey|signature/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders candidate-level latest validation state in the sidebar row and detail header", () => {
@@ -223,7 +227,7 @@ describe("CandidateDetail", () => {
     expect(detailHtml).toContain("baseline-replay-run");
     expect(detailHtml).toContain("validation_state_not_authority");
     expect(detailHtml).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
-    expect(detailHtml).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(detailHtml, { includePrivateAuthorityTerms: true });
   });
 
   it("renders backtest, paper, and live execution mode contracts without action controls", () => {
@@ -243,7 +247,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("live_requires_gateway");
     expect(html).toContain("TradingApiProvider");
     expect(html).toContain("forbidden");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders replay-run evidence without implying trading authority", () => {
@@ -275,7 +279,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Runner commands");
     expect(html).toContain("sha256:fadd2155");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders replay-run detail evidence without adding authority actions", () => {
@@ -299,7 +303,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("0.2: market/account/order validation went through the external provider");
     expect(html).toContain("sbx version");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders selectable replay-run history with non-latest detail selected", () => {
@@ -338,7 +342,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Selected run detail");
     expect(html).toContain("trend_long");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders selected replay-run comparison as non-authority evidence", () => {
@@ -390,7 +394,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("human review of replay evidence; future promotion issue with explicit authority scope");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote button|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders no-baseline replay-run comparison state without authority actions", () => {
@@ -411,7 +415,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Validation state");
     expect(html).toContain("comparison_required");
     expect(html).toContain("record at least one baseline replay run; compare selected run against baseline before posture review");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders promoted local candidate bundles as read-only replay candidates", () => {
@@ -441,7 +445,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("host_process / replay_only / not_live");
     expect(html).toContain("No evaluation runs");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Record dry-run intent|Record pause control|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+    expect(html).not.toMatch(/Record dry-run intent|Record pause control/i);
   });
 
   it("renders bounded runtime authority state without implying live authority", () => {
@@ -466,7 +471,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("gateway_decision:gateway-decision-001");
     expect(html).toContain("Record dry-run intent");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders runtime control state and bounded pause command without implying live authority", () => {
@@ -491,7 +496,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Record pause control");
     expect(html).toContain("control_only");
     expect(html).toContain("audit_only");
-    expect(html).not.toMatch(/Start|Resume|Stop|Kill|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+    expect(html).not.toMatch(/\bKill\b/i);
   });
 
   it("builds fixture-safe runtime authority command payloads", () => {
@@ -612,7 +618,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("sealed_counted_fixture_only_allowed_by_test");
     expect(html).toContain("partial_trace");
     expect(html).toContain("evidence_sealing_decision:fixture-sealing");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+    expectNoOperatorActionControls(html);
   });
 });
 
@@ -1423,406 +1429,5 @@ function placeholder(record_kind: string, id: string, label: string) {
     label,
     status: "fixture_placeholder",
     authority_status: "not_executed"
-  };
-}
-
-function fixtureOrderFillSurface(): OrderFillSurfaceReadModel {
-  return {
-    surface_id: "fixture-binance-btcusdt-order-fill-surface-001",
-    surface_family: "order_fill",
-    surface_label: "Binance BTCUSDT order_fill",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    order_scope_ref: "fixture-btcusdt-paper-order-001",
-    local_client_order_id: "fixture-btcusdt-paper-order-001",
-    upstream_order_id: "fixture-upstream-order-001",
-    side: "buy",
-    order_type: "limit",
-    time_in_force: "GTC",
-    requested_quantity: "0.001",
-    cumulative_filled_quantity: "0.0004",
-    remaining_quantity: "0.0006",
-    average_fill_price: "65000",
-    last_fill_price: "65010",
-    last_fill_quantity: "0.0004",
-    raw_upstream_status: "PARTIALLY_FILLED",
-    raw_upstream_execution_type: "TRADE",
-    posture: "partially_filled",
-    source_timestamp: "2026-05-16T00:00:02.000Z",
-    observed_at: "2026-05-16T00:00:03.000Z",
-    updated_at: "2026-05-16T00:00:03.000Z",
-    freshness: "stale",
-    liveness: "degraded",
-    degraded_reason: "fixture_seed_no_live_connector",
-    source_kind: "fixture",
-    source_ref: { record_kind: "fixture", id: "binance-btcusdt-order-fill" },
-    transport: {
-      transport_kind: "official_binance_connector",
-      repository: "binance/binance-connector-js",
-      package_name: "@binance/derivatives-trading-usds-futures",
-      api_family: "derivatives_trading_usds_futures",
-      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-      production_base_url: "https://fapi.binance.com",
-      testnet_base_url: "https://testnet.binancefuture.com",
-      integration_role: "transport_only",
-      authority_status: "not_live"
-    },
-    fixture_backed: true,
-    simulated: true,
-    no_authority: {
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    },
-    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
-    authority_status: "not_live"
-  };
-}
-
-function fixturePublicMarketLivenessSurface(): PublicMarketLivenessSurfaceReadModel {
-  return {
-    surface_id: "fixture-binance-btcusdt-public-market-liveness-surface-001",
-    surface_family: "public_market_liveness",
-    surface_label: "Binance BTCUSDT public_market_liveness",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    symbol_status: "TRADING",
-    contract_type: "PERPETUAL",
-    price_tick_size: "0.10",
-    quantity_step_size: "0.001",
-    min_quantity: "0.001",
-    min_notional: "100",
-    mark_price: "65000.12340000",
-    index_price: "64995.00000000",
-    estimated_settle_price: "64990.00000000",
-    funding_rate: "0.00010000",
-    interest_rate: "0.00010000",
-    next_funding_time: "2026-05-16T08:00:00.000Z",
-    server_time: "2026-05-16T00:00:01.000Z",
-    source_timestamp: "2026-05-16T00:00:00.000Z",
-    observed_at: "2026-05-16T00:00:03.000Z",
-    updated_at: "2026-05-16T00:00:03.000Z",
-    freshness: "stale",
-    liveness: "degraded",
-    degraded_reason: "fixture_seed_no_live_connector",
-    source_kind: "fixture",
-    source_ref: { record_kind: "fixture", id: "binance-btcusdt-public-market-liveness" },
-    transport: {
-      transport_kind: "official_binance_connector",
-      repository: "binance/binance-connector-js",
-      package_name: "@binance/derivatives-trading-usds-futures",
-      api_family: "derivatives_trading_usds_futures",
-      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-      production_base_url: "https://fapi.binance.com",
-      testnet_base_url: "https://testnet.binancefuture.com",
-      integration_role: "transport_only",
-      authority_status: "not_live"
-    },
-    fixture_backed: true,
-    simulated: true,
-    no_authority: {
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    },
-    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
-    authority_status: "not_live"
-  };
-}
-
-function fixturePrivateReadinessPreflightSurface(): PrivateReadinessPreflightSurfaceReadModel {
-  return {
-    surface_id: "fixture-binance-btcusdt-private-readiness-preflight-surface-001",
-    surface_family: "private_readiness_preflight",
-    surface_label: "Binance BTCUSDT private_readiness_preflight",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    credential_gate: {
-      status: "not_configured",
-      enabled: false,
-      reason: "no_binance_api_key_configured"
-    },
-    jurisdiction_gate: {
-      status: "not_evaluated",
-      enabled: false,
-      reason: "operator_jurisdiction_not_recorded"
-    },
-    operator_approval_gate: {
-      status: "not_approved",
-      enabled: false,
-      reason: "operator_live_private_read_approval_missing"
-    },
-    private_account_read_gate: {
-      status: "disabled",
-      enabled: false,
-      reason: "signed_user_data_account_read_deferred"
-    },
-    private_position_read_gate: {
-      status: "disabled",
-      enabled: false,
-      reason: "signed_user_data_position_read_deferred"
-    },
-    user_data_stream_gate: {
-      status: "disabled",
-      enabled: false,
-      reason: "listen_key_lifecycle_not_enabled"
-    },
-    listen_key_gate: {
-      status: "disabled",
-      enabled: false,
-      reason: "listen_key_creation_forbidden_in_preflight"
-    },
-    order_submission_gate: {
-      status: "disabled",
-      enabled: false,
-      reason: "trade_endpoint_forbidden"
-    },
-    leverage_or_margin_mutation_gate: {
-      status: "disabled",
-      enabled: false,
-      reason: "account_mutation_forbidden"
-    },
-    account_information_endpoint: "GET /fapi/v3/account",
-    user_data_stream_endpoint: "POST /fapi/v1/listenKey",
-    order_endpoint: "POST /fapi/v1/order",
-    next_blocked_action: "configure_private_read_credentials",
-    next_blocked_reason: "credential_and_operator_gates_not_ready",
-    source_timestamp: "2026-05-16T00:00:00.000Z",
-    observed_at: "2026-05-16T00:00:03.000Z",
-    updated_at: "2026-05-16T00:00:03.000Z",
-    freshness: "stale",
-    liveness: "degraded",
-    degraded_reason: "fixture_seed_no_private_authority",
-    source_kind: "fixture",
-    source_ref: { record_kind: "fixture", id: "binance-btcusdt-private-readiness-preflight" },
-    transport: {
-      transport_kind: "official_binance_connector",
-      repository: "binance/binance-connector-js",
-      package_name: "@binance/derivatives-trading-usds-futures",
-      api_family: "derivatives_trading_usds_futures",
-      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-      production_base_url: "https://fapi.binance.com",
-      testnet_base_url: "https://testnet.binancefuture.com",
-      integration_role: "transport_only",
-      authority_status: "not_live"
-    },
-    fixture_backed: true,
-    simulated: true,
-    no_authority: {
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    },
-    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
-    authority_status: "not_live"
-  };
-}
-
-function fixturePrivateReadinessPolicyDecision(): PrivateReadinessPolicyDecision {
-  return {
-    decision_kind: "private_readiness_policy_decision",
-    status: "not_ready",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    evaluated_at: "2026-05-16T00:00:04.000Z",
-    source_surface_refs: [
-      {
-        record_kind: "private_readiness_preflight_surface",
-        id: "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
-      },
-      {
-        record_kind: "account_position_risk_mirror_surface",
-        id: "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
-      }
-    ],
-    checked_gates: [
-      {
-        dimension: "configuration",
-        status: "not_ready",
-        reason_code: "configuration_not_ready",
-        reason: "no_binance_api_key_configured"
-      },
-      {
-        dimension: "operator_approval",
-        status: "not_ready",
-        reason_code: "operator_approval_missing",
-        reason: "operator_live_private_read_approval_missing"
-      },
-      {
-        dimension: "jurisdiction_risk",
-        status: "review_required",
-        reason_code: "jurisdiction_review_required",
-        reason: "operator_jurisdiction_not_recorded"
-      },
-      {
-        dimension: "live_binding",
-        status: "not_ready",
-        reason_code: "live_binding_not_ready",
-        reason: "live_binding_profile_not_configured"
-      },
-      {
-        dimension: "secret_handling",
-        status: "not_ready",
-        reason_code: "secret_handling_not_ready",
-        reason: "secret_handling_profile_not_configured"
-      },
-      {
-        dimension: "account_position_freshness",
-        status: "not_ready",
-        reason_code: "account_position_freshness_not_ready",
-        reason: "fixture_seed_no_private_account_or_position_read"
-      },
-      {
-        dimension: "kill_switch",
-        status: "ready",
-        reason_code: "ready",
-        reason: "inactive"
-      },
-      {
-        dimension: "stop_behavior",
-        status: "not_ready",
-        reason_code: "stop_behavior_not_ready",
-        reason: "operator_stop_behavior_not_recorded"
-      },
-      {
-        dimension: "listen_key",
-        status: "not_ready",
-        reason_code: "listen_key_not_ready",
-        reason: "listen_key_creation_forbidden_in_preflight"
-      },
-      {
-        dimension: "user_data_stream",
-        status: "not_ready",
-        reason_code: "user_data_stream_not_ready",
-        reason: "listen_key_lifecycle_not_enabled"
-      },
-      {
-        dimension: "trade_authority",
-        status: "ready",
-        reason_code: "ready",
-        reason: "TRADE authority disabled for private-read readiness"
-      }
-    ],
-    reason_codes: [
-      "configuration_not_ready",
-      "operator_approval_missing",
-      "jurisdiction_review_required",
-      "live_binding_not_ready",
-      "secret_handling_not_ready",
-      "account_position_freshness_not_ready",
-      "stop_behavior_not_ready",
-      "listen_key_not_ready",
-      "user_data_stream_not_ready",
-      "private_account_read_not_ready",
-      "private_position_read_not_ready",
-      "no_private_read_performed"
-    ],
-    blocking_conditions: [
-      "configuration: no_binance_api_key_configured",
-      "operator_approval: operator_live_private_read_approval_missing",
-      "jurisdiction_risk: operator_jurisdiction_not_recorded",
-      "live_binding: live_binding_profile_not_configured",
-      "secret_handling: secret_handling_profile_not_configured"
-    ],
-    required_next_actions: [
-      "configure_private_read_credentials",
-      "configuration",
-      "operator_approval",
-      "jurisdiction_risk",
-      "live_binding",
-      "secret_handling"
-    ],
-    binance_security_types: ["USER_DATA", "USER_STREAM", "TRADE"],
-    no_private_read_performed: true,
-    signed_request_authority: false,
-    live_exchange_authority: false,
-    order_submission_authority: false,
-    authority_status: "not_live"
-  };
-}
-
-function fixtureAccountPositionRiskMirrorSurface(): AccountPositionRiskMirrorSurfaceReadModel {
-  return {
-    surface_id: "fixture-binance-btcusdt-account-position-risk-mirror-surface-001",
-    surface_family: "account_position_risk_mirror",
-    surface_label: "Binance BTCUSDT account_position_risk_mirror",
-    venue: "binance_usd_m_futures",
-    instrument: "BTCUSDT",
-    product_category: "perpetual_futures",
-    account_scope_ref: "fixture-binance-usdt-account-mirror",
-    asset: "USDT",
-    account_mode: "single_asset",
-    total_wallet_balance: "1250.00000000",
-    total_unrealized_profit: "12.50000000",
-    total_margin_balance: "1262.50000000",
-    available_balance: "1100.00000000",
-    max_withdraw_amount: "1100.00000000",
-    total_initial_margin: "162.50000000",
-    total_maint_margin: "35.00000000",
-    total_position_initial_margin: "150.00000000",
-    total_open_order_initial_margin: "12.50000000",
-    total_cross_wallet_balance: "1250.00000000",
-    total_cross_un_pnl: "12.50000000",
-    position_side: "BOTH",
-    position_amount: "0.015",
-    entry_price: "65000.00000000",
-    break_even_price: "65010.00000000",
-    mark_price: "65833.33333333",
-    unrealized_profit: "12.50000000",
-    liquidation_price: "42000.00000000",
-    notional: "987.50000000",
-    margin_asset: "USDT",
-    margin_type: "cross",
-    leverage: 5,
-    isolated_margin: "0.00000000",
-    isolated_wallet: "0.00000000",
-    initial_margin: "150.00000000",
-    maint_margin: "35.00000000",
-    position_initial_margin: "150.00000000",
-    open_order_initial_margin: "12.50000000",
-    adl_quantile: 2,
-    risk_status: "watch",
-    risk_limit_profile_ref: "fixture-btcusdt-risk-limit-profile-001",
-    max_notional_value: "1000000",
-    kill_switch_status: "inactive",
-    runtime_pause_status: "not_paused",
-    account_information_endpoint: "GET /fapi/v3/account",
-    position_information_endpoint: "GET /fapi/v3/positionRisk",
-    leverage_endpoint: "POST /fapi/v1/leverage",
-    margin_type_endpoint: "POST /fapi/v1/marginType",
-    next_blocked_action: "configure_private_read_credentials",
-    next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
-    source_timestamp: "2026-05-16T00:00:00.000Z",
-    observed_at: "2026-05-16T00:00:04.000Z",
-    updated_at: "2026-05-16T00:00:04.000Z",
-    freshness: "stale",
-    liveness: "degraded",
-    degraded_reason: "fixture_seed_no_private_account_or_position_read",
-    source_kind: "fixture",
-    source_ref: { record_kind: "fixture", id: "binance-btcusdt-account-position-risk-mirror" },
-    transport: {
-      transport_kind: "official_binance_connector",
-      repository: "binance/binance-connector-js",
-      package_name: "@binance/derivatives-trading-usds-futures",
-      api_family: "derivatives_trading_usds_futures",
-      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
-      production_base_url: "https://fapi.binance.com",
-      testnet_base_url: "https://testnet.binancefuture.com",
-      integration_role: "transport_only",
-      authority_status: "not_live"
-    },
-    fixture_backed: true,
-    simulated: true,
-    no_authority: {
-      live_exchange: false,
-      order_submission: false,
-      credentials: false
-    },
-    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
-    authority_status: "not_live"
   };
 }
