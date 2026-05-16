@@ -62,6 +62,10 @@ import type {
   GatewayDecisionOutcome,
   GatewayDecisionReason,
   HandsEnvironmentRecord,
+  OrderFillSurfaceReadModel,
+  OrderFillSurfaceRecord,
+  TradingSubstrateInstrument,
+  TradingSubstrateVenue,
   OrderIntentDraftRecord,
   PlaceholderSummary,
   ProgramManifestRecord,
@@ -125,6 +129,7 @@ export type LocalStoreErrorCode =
   | "invalid_runtime_authority_input"
   | "invalid_runtime_control_input"
   | "invalid_runtime_instance_input"
+  | "invalid_order_fill_surface_input"
   | "invalid_runnable_artifact_input"
   | "runtime_not_found"
   | "runtime_mismatch"
@@ -204,6 +209,7 @@ type Collection =
   | "runtime-control-commands"
   | "runtime-control-decisions"
   | "runtime-audit-events"
+  | "substrate-state-surfaces"
   | "sandbox-runtime-instances"
   | "runtime-instance-logs"
   | "runtime-heartbeats"
@@ -232,6 +238,11 @@ export interface RuntimeInstanceObservationInput {
   logs?: RuntimeInstanceLogRecord[];
   heartbeats?: RuntimeHeartbeatRecord[];
   command_evidence?: SandboxCommandEvidenceRecord[];
+}
+
+export interface OrderFillSurfaceQueryInput {
+  venue?: TradingSubstrateVenue;
+  instrument?: TradingSubstrateInstrument;
 }
 
 const fixtureNotice: FixtureNotice = {
@@ -280,10 +291,23 @@ const ids = {
   evidenceClassificationTrace: "fixture-evidence-classification-trace-001",
   evidenceClassificationCandidate: "fixture-evidence-classification-candidate-001",
   evidenceClassificationNonCounted: "fixture-evidence-classification-non-counted-001",
-  evidenceClassificationSealedDecision: "fixture-evidence-classification-sealed-decision-001"
+  evidenceClassificationSealedDecision: "fixture-evidence-classification-sealed-decision-001",
+  orderFillSurface: "fixture-binance-btcusdt-order-fill-surface-001"
 };
 
 const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
+
+const binanceUsdsFuturesConnectorTransport = {
+  transport_kind: "official_binance_connector",
+  repository: "binance/binance-connector-js",
+  package_name: "@binance/derivatives-trading-usds-futures",
+  api_family: "derivatives_trading_usds_futures",
+  supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+  production_base_url: "https://fapi.binance.com",
+  testnet_base_url: "https://testnet.binancefuture.com",
+  integration_role: "transport_only",
+  authority_status: "not_live"
+} as const;
 
 export function createFixtureRecords(): FixtureItem[] {
   const artifactRuntimeContract: ArtifactRuntimeContractRecord = {
@@ -535,6 +559,50 @@ export function createFixtureRecords(): FixtureItem[] {
     created_at: fixtureEvaluationCreatedAt,
     authority_status: "not_counted"
   };
+  const orderFillSurface: OrderFillSurfaceRecord = {
+    record_kind: "order_fill_surface",
+    version: 1,
+    order_fill_surface_id: ids.orderFillSurface,
+    surface_family: "order_fill",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    runtime_ref: ref("trading_system_runtime", ids.runtime),
+    candidate_ref: ref("trading_system_candidate", ids.candidate),
+    stage_binding_ref: ref("stage_binding", ids.stageBinding),
+    order_scope_ref: "fixture-btcusdt-paper-order-001",
+    local_client_order_id: "fixture-btcusdt-paper-order-001",
+    upstream_order_id: "fixture-upstream-order-001",
+    side: "buy",
+    order_type: "limit",
+    time_in_force: "GTC",
+    requested_quantity: "0.001",
+    cumulative_filled_quantity: "0.0004",
+    remaining_quantity: "0.0006",
+    average_fill_price: "65000",
+    last_fill_price: "65010",
+    last_fill_quantity: "0.0004",
+    raw_upstream_status: "PARTIALLY_FILLED",
+    raw_upstream_execution_type: "TRADE",
+    posture: "partially_filled",
+    source_timestamp: "2026-05-16T00:00:02.000Z",
+    observed_at: "2026-05-16T00:00:03.000Z",
+    updated_at: "2026-05-16T00:00:03.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_live_connector",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "binance-btcusdt-order-fill"),
+    transport: binanceUsdsFuturesConnectorTransport,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    authority_status: "not_live"
+  };
   const comparisonSet: EvaluationComparisonSetRecord = {
     record_kind: "evaluation_comparison_set",
     version: 1,
@@ -647,6 +715,7 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "traces", id: ids.trace, record: trace, itemDir: "placeholders" },
     { collection: "stage-bindings", id: ids.stageBinding, record: stageBinding },
     { collection: "evaluation-runs", id: ids.evaluationRun, record: evaluationRun },
+    { collection: "substrate-state-surfaces", id: ids.orderFillSurface, record: orderFillSurface },
     { collection: "evaluation-comparison-sets", id: ids.evaluationComparisonSet, record: comparisonSet },
     { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision },
     ...evidenceClassifications.map((classification) => ({
@@ -767,6 +836,37 @@ export class LocalStore {
       }
       throw error;
     }
+  }
+
+  async recordOrderFillSurface(surface: OrderFillSurfaceRecord): Promise<OrderFillSurfaceReadModel> {
+    if (!isOrderFillSurfaceRecord(surface)) {
+      throw new LocalStoreError(
+        "invalid_order_fill_surface_input",
+        "invalid order-fill substrate surface input",
+        { order_fill_surface_id: (surface as Partial<OrderFillSurfaceRecord> | undefined)?.order_fill_surface_id }
+      );
+    }
+    await this.writeJson(
+      this.itemPath("substrate-state-surfaces", surface.order_fill_surface_id),
+      surface
+    );
+    await this.rebuildProjections();
+    return toOrderFillSurfaceReadModel(surface);
+  }
+
+  async listOrderFillSurfaces(
+    query: OrderFillSurfaceQueryInput = {}
+  ): Promise<OrderFillSurfaceReadModel[]> {
+    return (await this.readCollection<OrderFillSurfaceRecord>("substrate-state-surfaces"))
+      .filter((surface) => matchesOrderFillSurfaceQuery(surface, query))
+      .sort(compareOrderFillSurfaces)
+      .map(toOrderFillSurfaceReadModel);
+  }
+
+  async getLatestOrderFillSurface(
+    query: OrderFillSurfaceQueryInput = {}
+  ): Promise<OrderFillSurfaceReadModel | undefined> {
+    return (await this.listOrderFillSurfaces(query)).at(-1);
   }
 
   async getCandidateEvaluationRun(
@@ -2913,6 +3013,12 @@ export class LocalStore {
         bounded_authority: await this.buildReplayRuntimeAuthorityReadModel(runtime),
         runtime_control: await this.buildReplayRuntimeControlReadModel(runtime)
       },
+      trading_substrate: {
+        latest_order_fill_surface: await this.getLatestOrderFillSurface({
+          venue: "binance_usd_m_futures",
+          instrument: "BTCUSDT"
+        }) ?? null
+      },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
       materialization_attempt: materializationAttempt
@@ -3689,6 +3795,59 @@ function toReplayRuntimeExecutionAttemptReadModel(executionAttempt: ExecutionAtt
   };
 }
 
+function toOrderFillSurfaceReadModel(surface: OrderFillSurfaceRecord): OrderFillSurfaceReadModel {
+  return {
+    surface_id: surface.order_fill_surface_id,
+    surface_family: surface.surface_family,
+    surface_label: orderFillSurfaceLabel(surface),
+    venue: surface.venue,
+    instrument: surface.instrument,
+    product_category: surface.product_category,
+    order_scope_ref: surface.order_scope_ref,
+    local_client_order_id: surface.local_client_order_id,
+    upstream_order_id: surface.upstream_order_id,
+    side: surface.side,
+    order_type: surface.order_type,
+    time_in_force: surface.time_in_force,
+    requested_quantity: surface.requested_quantity,
+    cumulative_filled_quantity: surface.cumulative_filled_quantity,
+    remaining_quantity: surface.remaining_quantity,
+    average_fill_price: surface.average_fill_price,
+    last_fill_price: surface.last_fill_price,
+    last_fill_quantity: surface.last_fill_quantity,
+    raw_upstream_status: surface.raw_upstream_status,
+    raw_upstream_execution_type: surface.raw_upstream_execution_type,
+    posture: surface.posture,
+    source_timestamp: surface.source_timestamp,
+    observed_at: surface.observed_at,
+    updated_at: surface.updated_at,
+    freshness: surface.freshness,
+    liveness: surface.liveness,
+    degraded_reason: surface.degraded_reason,
+    source_kind: surface.source_kind,
+    source_ref: surface.source_ref,
+    transport: surface.transport,
+    fixture_backed: surface.fixture_backed,
+    simulated: surface.simulated,
+    no_authority: surface.no_authority,
+    no_authority_label: formatSubstrateNoAuthority(surface.no_authority),
+    authority_status: surface.authority_status
+  };
+}
+
+function orderFillSurfaceLabel(surface: OrderFillSurfaceRecord): string {
+  const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
+  return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
+}
+
+function formatSubstrateNoAuthority(noAuthority: OrderFillSurfaceRecord["no_authority"]): string {
+  return [
+    `live_exchange=${noAuthority.live_exchange}`,
+    `order_submission=${noAuthority.order_submission}`,
+    `credentials=${noAuthority.credentials}`
+  ].join(", ");
+}
+
 function toReplayRuntimeControlCommandReadModel(command: RuntimeControlCommandRecord) {
   return {
     command_id: command.runtime_control_command_id,
@@ -3935,6 +4094,14 @@ function compareExecutionAttempts(a: ExecutionAttemptRecord, b: ExecutionAttempt
     return timeCompare;
   }
   return a.execution_attempt_id.localeCompare(b.execution_attempt_id);
+}
+
+function compareOrderFillSurfaces(a: OrderFillSurfaceRecord, b: OrderFillSurfaceRecord): number {
+  const timeCompare = a.updated_at.localeCompare(b.updated_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.order_fill_surface_id.localeCompare(b.order_fill_surface_id);
 }
 
 function compareRuntimeControlCommands(
@@ -4643,6 +4810,121 @@ function isTradingSystemRuntimeLifecycleStatus(
     value === "killed" ||
     value === "human_review_required" ||
     value === "fixture_placeholder"
+  );
+}
+
+function matchesOrderFillSurfaceQuery(
+  surface: OrderFillSurfaceRecord,
+  query: OrderFillSurfaceQueryInput
+): boolean {
+  return (
+    (query.venue === undefined || surface.venue === query.venue) &&
+    (query.instrument === undefined || surface.instrument === query.instrument)
+  );
+}
+
+function isOrderFillSurfaceRecord(value: unknown): value is OrderFillSurfaceRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<OrderFillSurfaceRecord>;
+  return (
+    raw.record_kind === "order_fill_surface" &&
+    raw.version === 1 &&
+    nonEmpty(raw.order_fill_surface_id) &&
+    raw.surface_family === "order_fill" &&
+    raw.venue === "binance_usd_m_futures" &&
+    raw.instrument === "BTCUSDT" &&
+    raw.product_category === "perpetual_futures" &&
+    nonEmpty(raw.order_scope_ref) &&
+    raw.cumulative_filled_quantity !== undefined &&
+    raw.remaining_quantity !== undefined &&
+    nonEmpty(raw.raw_upstream_status) &&
+    isOrderFillPosture(raw.posture) &&
+    nonEmpty(raw.source_timestamp) &&
+    nonEmpty(raw.observed_at) &&
+    nonEmpty(raw.updated_at) &&
+    isTradingSubstrateFreshness(raw.freshness) &&
+    isTradingSubstrateLiveness(raw.liveness) &&
+    isTradingSubstrateSourceKind(raw.source_kind) &&
+    isBinanceUsdsFuturesConnectorTransport(raw.transport) &&
+    typeof raw.fixture_backed === "boolean" &&
+    typeof raw.simulated === "boolean" &&
+    raw.no_authority !== undefined &&
+    raw.no_authority.live_exchange === false &&
+    raw.no_authority.order_submission === false &&
+    raw.no_authority.credentials === false &&
+    (raw.authority_status === "not_live" || raw.authority_status === "read_only") &&
+    (raw.runtime_ref === undefined || isRef(raw.runtime_ref, "trading_system_runtime")) &&
+    (raw.candidate_ref === undefined || isRef(raw.candidate_ref, "trading_system_candidate")) &&
+    (raw.stage_binding_ref === undefined || isRef(raw.stage_binding_ref, "stage_binding")) &&
+    (raw.source_ref === undefined || isRef(raw.source_ref))
+  );
+}
+
+function isBinanceUsdsFuturesConnectorTransport(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<OrderFillSurfaceRecord["transport"]>;
+  return (
+    raw.transport_kind === "official_binance_connector" &&
+    raw.repository === "binance/binance-connector-js" &&
+    raw.package_name === "@binance/derivatives-trading-usds-futures" &&
+    raw.api_family === "derivatives_trading_usds_futures" &&
+    Array.isArray(raw.supported_endpoints) &&
+    raw.supported_endpoints.includes("rest_api") &&
+    raw.supported_endpoints.includes("websocket_api") &&
+    raw.supported_endpoints.includes("websocket_streams") &&
+    raw.production_base_url === "https://fapi.binance.com" &&
+    raw.testnet_base_url === "https://testnet.binancefuture.com" &&
+    raw.integration_role === "transport_only" &&
+    raw.authority_status === "not_live"
+  );
+}
+
+function isOrderFillPosture(value: unknown): boolean {
+  return (
+    value === "received" ||
+    value === "working" ||
+    value === "partially_filled" ||
+    value === "filled" ||
+    value === "cancel_pending" ||
+    value === "canceled" ||
+    value === "replace_pending" ||
+    value === "replaced" ||
+    value === "rejected" ||
+    value === "expired" ||
+    value === "suspended_or_blocked" ||
+    value === "unknown"
+  );
+}
+
+function isTradingSubstrateFreshness(value: unknown): boolean {
+  return (
+    value === "fresh" ||
+    value === "delayed" ||
+    value === "stale" ||
+    value === "degraded" ||
+    value === "disconnected"
+  );
+}
+
+function isTradingSubstrateLiveness(value: unknown): boolean {
+  return (
+    value === "connected" ||
+    value === "stale" ||
+    value === "degraded" ||
+    value === "disconnected" ||
+    value === "fixture"
+  );
+}
+
+function isTradingSubstrateSourceKind(value: unknown): boolean {
+  return (
+    value === "binance_user_data_stream" ||
+    value === "binance_rest_query" ||
+    value === "fixture"
   );
 }
 

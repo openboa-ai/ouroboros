@@ -158,6 +158,66 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("serves the latest Binance BTCUSDT order-fill substrate surface without authority", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+    });
+
+    const surface = await server.inject({
+      method: "GET",
+      url: "/api/trading-substrate/order-fill/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+    });
+    expect(surface.statusCode).toBe(200);
+    expect(surface.json()).toMatchObject({
+      surface: {
+        surface_family: "order_fill",
+        surface_label: "Binance BTCUSDT order_fill",
+        venue: "binance_usd_m_futures",
+        instrument: "BTCUSDT",
+        product_category: "perpetual_futures",
+        posture: "partially_filled",
+        raw_upstream_status: "PARTIALLY_FILLED",
+        raw_upstream_execution_type: "TRADE",
+        freshness: "stale",
+        liveness: "degraded",
+        transport: {
+          repository: "binance/binance-connector-js",
+          package_name: "@binance/derivatives-trading-usds-futures",
+          integration_role: "transport_only",
+          authority_status: "not_live"
+        },
+        fixture_backed: true,
+        simulated: true,
+        no_authority: {
+          live_exchange: false,
+          order_submission: false,
+          credentials: false
+        },
+        authority_status: "not_live"
+      }
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_order_fill_surface: {
+          surface_label: "Binance BTCUSDT order_fill",
+          posture: "partially_filled",
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    await server.close();
+  });
+
   it("adds latest replay-run validation state summaries to candidate list and detail", async () => {
     const runRoot = path.join(tmpDir, "replay-runs");
     await writeReplayRunRecord(runRoot, {
