@@ -119,6 +119,15 @@ export type RuntimeControlCommandOutcome = RuntimeControlAuditOutcome & {
 
 export type PrivateReadinessPostureCommandPayload = PrivateReadinessPostureWriteInput;
 
+export type PrivateReadinessPostureDraft = Pick<
+  PrivateReadinessPostureWriteInput,
+  | "operator_approval_gate"
+  | "jurisdiction_risk_gate"
+  | "live_binding_gate"
+  | "secret_handling_gate"
+  | "stop_behavior_gate"
+>;
+
 export interface PrivateReadinessPostureCommandOutcome {
   status: "recorded";
   posture: PrivateReadinessPostureReadModel;
@@ -232,20 +241,11 @@ export function runtimeControlPausePayload(
   };
 }
 
-export function privateReadinessPosturePayload(
+export function privateReadinessPostureDraftFromCandidate(
   candidate: CandidateInspectReadModel
-): PrivateReadinessPostureCommandPayload {
+): PrivateReadinessPostureDraft {
   const posture = candidate.trading_substrate?.latest_private_readiness_posture;
-  const preflight = candidate.trading_substrate?.latest_private_readiness_preflight_surface;
   return {
-    idempotency_key: [
-      "operator-web-private-readiness-posture",
-      candidate.candidate_id,
-      candidate.candidate_version.candidate_version_id
-    ].join("-"),
-    venue: posture?.venue ?? preflight?.venue ?? "binance_usd_m_futures",
-    instrument: posture?.instrument ?? preflight?.instrument ?? "BTCUSDT",
-    product_category: posture?.product_category ?? preflight?.product_category ?? "perpetual_futures",
     operator_approval_gate: posture?.operator_approval_gate ?? privateReadinessGate(
       "not_ready",
       "operator_live_private_read_approval_missing"
@@ -265,7 +265,32 @@ export function privateReadinessPosturePayload(
     stop_behavior_gate: posture?.stop_behavior_gate ?? privateReadinessGate(
       "not_ready",
       "operator_stop_behavior_not_recorded"
-    ),
+    )
+  };
+}
+
+export function privateReadinessPosturePayload(
+  candidate: CandidateInspectReadModel,
+  draft: PrivateReadinessPostureDraft = privateReadinessPostureDraftFromCandidate(candidate)
+): PrivateReadinessPostureCommandPayload {
+  const posture = candidate.trading_substrate?.latest_private_readiness_posture;
+  const preflight = candidate.trading_substrate?.latest_private_readiness_preflight_surface;
+  const draftSuffix = stablePostureDraftSuffix(draft);
+  return {
+    idempotency_key: [
+      "operator-web-private-readiness-posture",
+      candidate.candidate_id,
+      candidate.candidate_version.candidate_version_id,
+      draftSuffix
+    ].join("-"),
+    venue: posture?.venue ?? preflight?.venue ?? "binance_usd_m_futures",
+    instrument: posture?.instrument ?? preflight?.instrument ?? "BTCUSDT",
+    product_category: posture?.product_category ?? preflight?.product_category ?? "perpetual_futures",
+    operator_approval_gate: draft.operator_approval_gate,
+    jurisdiction_risk_gate: draft.jurisdiction_risk_gate,
+    live_binding_gate: draft.live_binding_gate,
+    secret_handling_gate: draft.secret_handling_gate,
+    stop_behavior_gate: draft.stop_behavior_gate,
     secret_reference_configured: posture?.secret_reference_configured ?? false,
     secret_reference_ref: posture?.secret_reference_ref,
     source_ref: {
@@ -304,12 +329,13 @@ export async function recordReplayRuntimeControl(
 }
 
 export async function recordPrivateReadinessPosture(
-  candidate: CandidateInspectReadModel
+  candidate: CandidateInspectReadModel,
+  draft?: PrivateReadinessPostureDraft
 ): Promise<PrivateReadinessPostureCommandOutcome> {
   const response = await fetch(`${runtimeBaseUrl}/api/trading-substrate/private-readiness-posture`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(privateReadinessPosturePayload(candidate))
+    body: JSON.stringify(privateReadinessPosturePayload(candidate, draft))
   });
   if (!response.ok) {
     throw new Error(`Failed to record private-readiness posture for ${candidate.candidate_id}: ${response.status}`);
@@ -328,6 +354,22 @@ function privateReadinessGate(
   reason: string
 ): PrivateReadinessPolicyGateInput {
   return { status, reason };
+}
+
+function stablePostureDraftSuffix(draft: PrivateReadinessPostureDraft): string {
+  const serialized = JSON.stringify({
+    operator_approval_gate: draft.operator_approval_gate,
+    jurisdiction_risk_gate: draft.jurisdiction_risk_gate,
+    live_binding_gate: draft.live_binding_gate,
+    secret_handling_gate: draft.secret_handling_gate,
+    stop_behavior_gate: draft.stop_behavior_gate
+  });
+  let hash = 2166136261;
+  for (let index = 0; index < serialized.length; index += 1) {
+    hash ^= serialized.charCodeAt(index);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return `draft-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 export async function runReplay(
