@@ -5,6 +5,7 @@ import {
   comparePrivateReadinessPostures,
   isCompletePrivateReadinessPostureRecord,
   isPrivateReadinessPostureRecord,
+  isPrivateReadinessPostureWriteInput,
   matchesPrivateReadinessPostureQuery,
   toPrivateReadinessPostureReadModel
 } from "./private-readiness-postures";
@@ -109,6 +110,7 @@ import type {
   OrderFillSurfaceRecord,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureRecord,
+  PrivateReadinessPostureWriteInput,
   PrivateReadinessPreflightSurfaceReadModel,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
@@ -976,6 +978,63 @@ export class LocalStore {
     );
     await this.rebuildProjections();
     return toPrivateReadinessPostureReadModel(posture);
+  }
+
+  async recordLocalPrivateReadinessPosture(
+    input: PrivateReadinessPostureWriteInput
+  ): Promise<PrivateReadinessPostureReadModel> {
+    if (!isPrivateReadinessPostureWriteInput(input)) {
+      throw new LocalStoreError(
+        "invalid_private_readiness_posture_input",
+        "invalid private-readiness posture write input",
+        {
+          idempotency_key: (input as Partial<PrivateReadinessPostureWriteInput> | undefined)
+            ?.idempotency_key
+        }
+      );
+    }
+
+    const postureId = privateReadinessPostureRecordId(input.idempotency_key);
+    const existing = await this.readOptionalRecord<PrivateReadinessPostureRecord>(
+      "private-readiness-postures",
+      postureId
+    );
+    if (existing && isPrivateReadinessPostureRecord(existing)) {
+      return toPrivateReadinessPostureReadModel(existing);
+    }
+
+    const observedAt = input.observed_at ?? new Date().toISOString();
+    const posture: PrivateReadinessPostureRecord = stripUndefined({
+      record_kind: "private_readiness_posture",
+      version: 1,
+      private_readiness_posture_id: postureId,
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      operator_approval_gate: input.operator_approval_gate,
+      jurisdiction_risk_gate: input.jurisdiction_risk_gate,
+      live_binding_gate: input.live_binding_gate,
+      secret_handling_gate: input.secret_handling_gate,
+      stop_behavior_gate: input.stop_behavior_gate,
+      secret_reference_configured: input.secret_reference_configured,
+      secret_reference_ref: input.secret_reference_ref,
+      raw_secret_material_present: false,
+      source_timestamp: observedAt,
+      observed_at: observedAt,
+      updated_at: observedAt,
+      source_kind: "local_config",
+      source_ref: input.source_ref ?? ref("local_config", postureId),
+      fixture_backed: false,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    } satisfies PrivateReadinessPostureRecord);
+
+    return this.recordPrivateReadinessPosture(posture);
   }
 
   async listPrivateReadinessPostures(
@@ -5315,6 +5374,10 @@ function runtimeControlAuditRecordIds(input: {
     decision: `runtime-control-decision-${suffix}`,
     auditEvent: `runtime-audit-event-${suffix}`
   };
+}
+
+function privateReadinessPostureRecordId(idempotencyKey: string): string {
+  return `local-binance-btcusdt-private-readiness-posture-${stableSuffix(idempotencyKey)}`;
 }
 
 function runtimeControlAuthorityStatusForOutcome(

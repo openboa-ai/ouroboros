@@ -29,6 +29,7 @@ import {
   fetchReplayRunValidationState,
   fetchCandidateSummaries,
   fetchTradingExecutionModeContracts,
+  recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordReplayRuntimeAuthority,
   recordReplayRuntimeControl,
   runReplay as submitReplayRun
@@ -49,6 +50,7 @@ interface AppState {
   loading: boolean;
   recordingRuntimeAuthority: boolean;
   recordingRuntimeControl: boolean;
+  recordingPrivateReadinessPosture: boolean;
   runningCandidateReplay: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
@@ -56,6 +58,8 @@ interface AppState {
   runtimeAuthorityMessage?: string;
   runtimeControlError?: string;
   runtimeControlMessage?: string;
+  privateReadinessPostureError?: string;
+  privateReadinessPostureMessage?: string;
 }
 
 export function App() {
@@ -66,6 +70,7 @@ export function App() {
     loading: true,
     recordingRuntimeAuthority: false,
     recordingRuntimeControl: false,
+    recordingPrivateReadinessPosture: false,
     runningCandidateReplay: false
   });
 
@@ -97,6 +102,7 @@ export function App() {
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
+            recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false
           });
         }
@@ -109,6 +115,7 @@ export function App() {
             loading: false,
             recordingRuntimeAuthority: false,
             recordingRuntimeControl: false,
+            recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
@@ -129,6 +136,8 @@ export function App() {
       runtimeAuthorityMessage: undefined,
       runtimeControlError: undefined,
       runtimeControlMessage: undefined,
+      privateReadinessPostureError: undefined,
+      privateReadinessPostureMessage: undefined,
       replayRunError: undefined,
       replayRunMessage: undefined
     }));
@@ -328,6 +337,49 @@ export function App() {
     }
   }
 
+  async function recordPrivateReadinessPosture() {
+    const candidate = state.selected;
+    if (!candidate || state.recordingPrivateReadinessPosture) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      recordingPrivateReadinessPosture: true,
+      privateReadinessPostureError: undefined,
+      privateReadinessPostureMessage: undefined
+    }));
+    try {
+      const outcome = await submitPrivateReadinessPosture(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(
+        candidate.candidate_id,
+        replayRuns,
+        state.selectedReplayRunId
+      );
+      setState((current) => ({
+        ...current,
+        selected,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
+        recordingPrivateReadinessPosture: false,
+        privateReadinessPostureMessage: `local_config recorded: ${outcome.posture.posture_id}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        recordingPrivateReadinessPosture: false,
+        privateReadinessPostureError:
+          error instanceof Error ? error.message : "Unknown private-readiness posture error"
+      }));
+    }
+  }
+
   return (
     <main className="shell">
       <aside className="sidebar" aria-label="Candidate list">
@@ -371,8 +423,10 @@ export function App() {
             onRecordRuntimeControl={state.selected.runtime.runtime_control
               ? () => void recordRuntimeControl()
               : undefined}
+            onRecordPrivateReadinessPosture={() => void recordPrivateReadinessPosture()}
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
             recordingRuntimeControl={state.recordingRuntimeControl}
+            recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
             runningCandidateReplay={state.runningCandidateReplay}
             replayRunError={state.replayRunError}
             replayRunMessage={state.replayRunMessage}
@@ -380,6 +434,8 @@ export function App() {
             runtimeAuthorityMessage={state.runtimeAuthorityMessage}
             runtimeControlError={state.runtimeControlError}
             runtimeControlMessage={state.runtimeControlMessage}
+            privateReadinessPostureError={state.privateReadinessPostureError}
+            privateReadinessPostureMessage={state.privateReadinessPostureMessage}
           />
         )}
       </section>
@@ -461,15 +517,19 @@ export function CandidateDetail({
   onRunCandidateReplay,
   onRecordRuntimeAuthority,
   onRecordRuntimeControl,
+  onRecordPrivateReadinessPosture,
   runningCandidateReplay = false,
   recordingRuntimeAuthority = false,
   recordingRuntimeControl = false,
+  recordingPrivateReadinessPosture = false,
   replayRunError,
   replayRunMessage,
   runtimeAuthorityError,
   runtimeAuthorityMessage,
   runtimeControlError,
-  runtimeControlMessage
+  runtimeControlMessage,
+  privateReadinessPostureError,
+  privateReadinessPostureMessage
 }: {
   candidate: CandidateInspectReadModel;
   replayRuns?: ReplayRunEvidenceReadModel[];
@@ -483,15 +543,19 @@ export function CandidateDetail({
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
+  onRecordPrivateReadinessPosture?: () => void;
   runningCandidateReplay?: boolean;
   recordingRuntimeAuthority?: boolean;
   recordingRuntimeControl?: boolean;
+  recordingPrivateReadinessPosture?: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
   runtimeAuthorityError?: string;
   runtimeAuthorityMessage?: string;
   runtimeControlError?: string;
   runtimeControlMessage?: string;
+  privateReadinessPostureError?: string;
+  privateReadinessPostureMessage?: string;
 }) {
   return (
     <article className="detail">
@@ -601,6 +665,10 @@ export function CandidateDetail({
           privateReadinessPosture={candidate.trading_substrate?.latest_private_readiness_posture}
           privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
+          onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
+          recordingPrivateReadinessPosture={recordingPrivateReadinessPosture}
+          privateReadinessPostureError={privateReadinessPostureError}
+          privateReadinessPostureMessage={privateReadinessPostureMessage}
         />
 
         <RuntimeControlSection
@@ -957,7 +1025,11 @@ function TradingSubstrateSection({
   privateReadinessSurface,
   privateReadinessPosture,
   privateReadinessPolicyDecision,
-  accountPositionRiskSurface
+  accountPositionRiskSurface,
+  onRecordPrivateReadinessPosture,
+  recordingPrivateReadinessPosture = false,
+  privateReadinessPostureError,
+  privateReadinessPostureMessage
 }: {
   orderFillSurface?: OrderFillSurfaceReadModel | null;
   publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
@@ -965,6 +1037,10 @@ function TradingSubstrateSection({
   privateReadinessPosture?: PrivateReadinessPostureReadModel | null;
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
+  onRecordPrivateReadinessPosture?: () => void;
+  recordingPrivateReadinessPosture?: boolean;
+  privateReadinessPostureError?: string;
+  privateReadinessPostureMessage?: string;
 }) {
   return (
     <InfoSection title="Trading Substrate">
@@ -1157,6 +1233,25 @@ function TradingSubstrateSection({
           <span>BTCUSDT local private-readiness gates have not been recorded</span>
           <span>not_live</span>
         </div>
+      )}
+      {onRecordPrivateReadinessPosture && (
+        <div className="runtime-command">
+          <button
+            className="runtime-command-button"
+            type="button"
+            onClick={onRecordPrivateReadinessPosture}
+            disabled={recordingPrivateReadinessPosture}
+          >
+            {recordingPrivateReadinessPosture ? "Recording posture" : "Record local posture"}
+          </button>
+          <span>local_config / no_secret / not_live</span>
+        </div>
+      )}
+      {privateReadinessPostureMessage && (
+        <div className="inline-status">{privateReadinessPostureMessage}</div>
+      )}
+      {privateReadinessPostureError && (
+        <div className="inline-status error">{privateReadinessPostureError}</div>
       )}
       {privateReadinessPolicyDecision ? (
         <>

@@ -11,7 +11,8 @@ import {
   binanceBtcusdtNoAuthoritySurfaceExpectation,
   binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
   binancePrivateReadinessPostureNoAuthorityExpectation,
-  expectNoPrivateReadSecrets
+  expectNoPrivateReadSecrets,
+  privateReadinessPolicyGate
 } from "../../../test/support/binance-no-authority";
 import type {
   BoundedRuntimeAuthorityInput,
@@ -390,6 +391,198 @@ describe("runtime read-only API", () => {
           ])
         }
       }
+    });
+
+    await server.close();
+  });
+
+  it("records Binance BTCUSDT private-readiness posture writes without private authority", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+    });
+    const payload = {
+      idempotency_key: "runtime-private-readiness-posture-write-001",
+      venue: BINANCE_BTCUSDT_QUERY.venue,
+      instrument: BINANCE_BTCUSDT_QUERY.instrument,
+      product_category: "perpetual_futures",
+      operator_approval_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_approval_recorded_without_live_private_read"
+      ),
+      jurisdiction_risk_gate: privateReadinessPolicyGate(
+        "review_required",
+        "jurisdiction_risk_review_recorded_without_live_private_read"
+      ),
+      live_binding_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "live_binding_profile_not_configured"
+      ),
+      secret_handling_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "secret_reference_recorded_without_secret_material"
+      ),
+      stop_behavior_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_stop_behavior_not_recorded"
+      ),
+      secret_reference_configured: false,
+      observed_at: "2026-05-16T00:00:07.000Z"
+    };
+
+    const first = await server.inject({
+      method: "POST",
+      url: "/api/trading-substrate/private-readiness-posture",
+      payload
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: "/api/trading-substrate/private-readiness-posture",
+      payload
+    });
+    expect(first.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(201);
+    expect(duplicate.json()).toEqual(first.json());
+    expect(first.json()).toMatchObject({
+      status: "recorded",
+      posture: binancePrivateReadinessPostureNoAuthorityExpectation({
+        posture_id: expect.stringContaining("local-binance-btcusdt-private-readiness-posture-"),
+        source_kind: "local_config",
+        fixture_backed: false,
+        raw_secret_material_present: false,
+        operator_approval_gate: payload.operator_approval_gate,
+        jurisdiction_risk_gate: payload.jurisdiction_risk_gate,
+        secret_handling_gate: payload.secret_handling_gate,
+        authority_status: "not_live"
+      })
+    });
+    expectNoPrivateReadSecrets(JSON.stringify(first.json()));
+
+    const latest = await server.inject({
+      method: "GET",
+      url: `/api/trading-substrate/private-readiness-posture/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
+    });
+    expect(latest.statusCode).toBe(200);
+    expect(latest.json()).toMatchObject({
+      posture: {
+        posture_id: first.json().posture.posture_id,
+        source_kind: "local_config",
+        fixture_backed: false,
+        authority_status: "not_live"
+      }
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_private_readiness_posture: {
+          posture_id: first.json().posture.posture_id,
+          source_kind: "local_config",
+          fixture_backed: false,
+          raw_secret_material_present: false,
+          authority_status: "not_live"
+        },
+        latest_private_readiness_policy_decision: {
+          status: "not_ready",
+          reason_codes: expect.arrayContaining([
+            "operator_approval_missing",
+            "jurisdiction_review_required",
+            "secret_handling_not_ready",
+            "no_private_read_performed"
+          ]),
+          signed_request_authority: false,
+          live_exchange_authority: false,
+          order_submission_authority: false,
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    await server.close();
+  });
+
+  it("rejects invalid private-readiness posture writes before local storage", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+    });
+    const payload = {
+      idempotency_key: "runtime-private-readiness-posture-write-rejected",
+      venue: BINANCE_BTCUSDT_QUERY.venue,
+      instrument: BINANCE_BTCUSDT_QUERY.instrument,
+      product_category: "perpetual_futures",
+      operator_approval_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_approval_recorded_without_live_private_read"
+      ),
+      jurisdiction_risk_gate: privateReadinessPolicyGate(
+        "review_required",
+        "jurisdiction_risk_review_recorded_without_live_private_read"
+      ),
+      live_binding_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "live_binding_profile_not_configured"
+      ),
+      secret_handling_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "secret_reference_recorded_without_secret_material"
+      ),
+      stop_behavior_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_stop_behavior_not_recorded"
+      ),
+      secret_reference_configured: false
+    };
+
+    const missingGate = await server.inject({
+      method: "POST",
+      url: "/api/trading-substrate/private-readiness-posture",
+      payload: {
+        idempotency_key: "runtime-private-readiness-posture-missing-gate",
+        secret_reference_configured: false
+      }
+    });
+    expect(missingGate.statusCode).toBe(422);
+    expect(missingGate.json()).toMatchObject({
+      error: "private_readiness_posture_record_failed",
+      reason: "invalid_private_readiness_posture_request"
+    });
+
+    const unsupportedScope = await server.inject({
+      method: "POST",
+      url: "/api/trading-substrate/private-readiness-posture",
+      payload: {
+        ...payload,
+        idempotency_key: "runtime-private-readiness-posture-unsupported",
+        instrument: "ETHUSDT"
+      }
+    });
+    expect(unsupportedScope.statusCode).toBe(422);
+    expect(unsupportedScope.json()).toMatchObject({
+      error: "private_readiness_posture_record_failed",
+      reason: "unsupported_private_readiness_posture_scope"
+    });
+
+    const rawSecret = await server.inject({
+      method: "POST",
+      url: "/api/trading-substrate/private-readiness-posture",
+      payload: {
+        ...payload,
+        idempotency_key: "runtime-private-readiness-posture-raw-secret",
+        secretKey: "fixture-raw-secret"
+      }
+    });
+    expect(rawSecret.statusCode).toBe(422);
+    expect(rawSecret.json()).toMatchObject({
+      error: "private_readiness_posture_record_failed",
+      reason: "raw_secret_material_forbidden"
     });
 
     await server.close();

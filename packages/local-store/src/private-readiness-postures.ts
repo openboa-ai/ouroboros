@@ -2,6 +2,7 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureRecord,
+  PrivateReadinessPostureWriteInput,
   Ref,
   TradingSubstrateInstrument,
   TradingSubstrateVenue
@@ -124,6 +125,30 @@ export function isCompletePrivateReadinessPostureRecord(
   );
 }
 
+export function isPrivateReadinessPostureWriteInput(
+  value: unknown
+): value is PrivateReadinessPostureWriteInput {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<PrivateReadinessPostureWriteInput>;
+  return (
+    nonEmpty(raw.idempotency_key) &&
+    (raw.venue === undefined || raw.venue === "binance_usd_m_futures") &&
+    (raw.instrument === undefined || raw.instrument === "BTCUSDT") &&
+    (raw.product_category === undefined || raw.product_category === "perpetual_futures") &&
+    isPrivateReadinessPolicyGate(raw.operator_approval_gate) &&
+    isPrivateReadinessPolicyGate(raw.jurisdiction_risk_gate) &&
+    isPrivateReadinessPolicyGate(raw.live_binding_gate) &&
+    isPrivateReadinessPolicyGate(raw.secret_handling_gate) &&
+    isPrivateReadinessPolicyGate(raw.stop_behavior_gate) &&
+    typeof raw.secret_reference_configured === "boolean" &&
+    (!raw.secret_reference_configured || isRef(raw.secret_reference_ref)) &&
+    (raw.source_ref === undefined || isRef(raw.source_ref)) &&
+    (raw.observed_at === undefined || nonEmpty(raw.observed_at))
+  );
+}
+
 function privateReadinessPostureLabel(posture: PrivateReadinessPostureRecord): string {
   const venueLabel = posture.venue === "binance_usd_m_futures" ? "Binance" : posture.venue;
   return `${venueLabel} ${posture.instrument} private_readiness_posture`;
@@ -151,7 +176,7 @@ function formatPostureNoAuthority(
   ].join(", ");
 }
 
-function isPrivateReadinessPolicyGate(value: unknown): value is PrivateReadinessPolicyGateInput {
+export function isPrivateReadinessPolicyGate(value: unknown): value is PrivateReadinessPolicyGateInput {
   if (!value || typeof value !== "object") {
     return false;
   }

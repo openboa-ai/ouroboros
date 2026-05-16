@@ -24,6 +24,7 @@ import {
 } from "../../../test/support/binance-no-authority";
 import { CandidateDetail, CandidateSummaryRow, TradingExecutionModesSection } from "./App";
 import {
+  privateReadinessPosturePayload,
   replayRunPayload,
   runtimeAuthorityCommandPayload,
   runtimeControlPausePayload
@@ -175,6 +176,31 @@ describe("CandidateDetail", () => {
     expect(html).toContain("fixture_seed_no_private_authority");
     expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders a local private-readiness posture write action without live authority language", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
+            latest_account_position_risk_mirror_surface: null
+          }
+        }}
+        onRecordPrivateReadinessPosture={() => undefined}
+        privateReadinessPostureMessage="local_config recorded: local-binance-btcusdt-private-readiness-posture-001"
+      />
+    );
+
+    expect(html).toContain("Record local posture");
+    expect(html).toContain("local_config / no_secret / not_live");
+    expect(html).toContain("local_config recorded: local-binance-btcusdt-private-readiness-posture-001");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
@@ -558,6 +584,45 @@ describe("CandidateDetail", () => {
     });
     expect(payload.idempotency_key).toContain("operator-web-runtime-control-pause");
     expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker|provider_api_key/i);
+  });
+
+  it("builds fixture-safe private-readiness posture payloads", () => {
+    const candidate: CandidateInspectReadModel = {
+      ...fixtureCandidate,
+      trading_substrate: {
+        latest_order_fill_surface: fixtureOrderFillSurface(),
+        latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+        latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+        latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+        latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
+        latest_account_position_risk_mirror_surface: null
+      }
+    };
+
+    const payload = privateReadinessPosturePayload(candidate);
+
+    expect(payload).toMatchObject({
+      idempotency_key: expect.stringContaining("operator-web-private-readiness-posture"),
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      operator_approval_gate: {
+        status: "not_ready",
+        reason: "operator_live_private_read_approval_missing"
+      },
+      jurisdiction_risk_gate: {
+        status: "review_required",
+        reason: "operator_jurisdiction_not_recorded"
+      },
+      secret_reference_configured: false,
+      source_ref: {
+        record_kind: "operator",
+        id: "operator-web"
+      }
+    });
+    expect(JSON.stringify(payload)).not.toMatch(
+      /exchange_credentials|provider_api_key|apiKey|secretKey|signature|direct_exchange_order/
+    );
   });
 
   it("builds replay-only replay-run payloads", () => {
