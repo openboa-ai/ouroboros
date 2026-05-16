@@ -390,13 +390,40 @@ export interface Ref {
   id: string;
 }
 
-export type TradingSubstrateSurfaceFamily = "order_fill" | "public_market_liveness";
+export const TRADING_SUBSTRATE_SURFACE_FAMILIES = [
+  "order_fill",
+  "public_market_liveness",
+  "private_readiness_preflight",
+  "account_position_risk_mirror"
+] as const;
+
+export type TradingSubstrateSurfaceFamily = (typeof TRADING_SUBSTRATE_SURFACE_FAMILIES)[number];
 
 export type TradingSubstrateVenue = "binance_usd_m_futures";
 
 export type TradingSubstrateInstrument = "BTCUSDT";
 
 export type TradingSubstrateProductCategory = "perpetual_futures";
+
+export const TRADING_SUBSTRATE_CANONICAL_NOUNS = [
+  "market",
+  "account",
+  "position",
+  "order",
+  "execution",
+  "risk",
+  "gate",
+  "connector",
+  "authority",
+  "snapshot",
+  "event",
+  "command",
+  "decision"
+] as const;
+
+export type TradingSubstrateCanonicalNoun = (typeof TRADING_SUBSTRATE_CANONICAL_NOUNS)[number];
+
+export type TradingSubstrateTaxonomyDataRole = "snapshot" | "gate";
 
 export type TradingSubstrateSourceKind =
   | "binance_user_data_stream"
@@ -417,6 +444,55 @@ export type TradingSubstrateLivenessClass =
   | "degraded"
   | "disconnected"
   | "fixture";
+
+export interface TradingSubstrateSurfaceTaxonomyEntry {
+  family: TradingSubstrateSurfaceFamily;
+  canonical_noun: TradingSubstrateCanonicalNoun;
+  data_role: TradingSubstrateTaxonomyDataRole;
+  compatibility_type_prefix: string;
+  persisted_record_kind: string;
+  persisted_latest_key: string;
+  extension_guidance: string;
+}
+
+export const TRADING_SUBSTRATE_SURFACE_TAXONOMY = [
+  {
+    family: "order_fill",
+    canonical_noun: "execution",
+    data_role: "snapshot",
+    compatibility_type_prefix: "OrderFillSurface",
+    persisted_record_kind: "order_fill_surface",
+    persisted_latest_key: "latest_order_fill_surface",
+    extension_guidance: "Prefer execution snapshot vocabulary for new concepts; keep order_fill persisted keys compatible."
+  },
+  {
+    family: "public_market_liveness",
+    canonical_noun: "market",
+    data_role: "snapshot",
+    compatibility_type_prefix: "PublicMarketLivenessSurface",
+    persisted_record_kind: "public_market_liveness_surface",
+    persisted_latest_key: "latest_public_market_liveness_surface",
+    extension_guidance: "Prefer market snapshot vocabulary for new concepts; keep public_market_liveness persisted keys compatible."
+  },
+  {
+    family: "private_readiness_preflight",
+    canonical_noun: "gate",
+    data_role: "gate",
+    compatibility_type_prefix: "PrivateReadinessPreflightSurface",
+    persisted_record_kind: "private_readiness_preflight_surface",
+    persisted_latest_key: "latest_private_readiness_preflight_surface",
+    extension_guidance: "Prefer private access gate vocabulary for new concepts; keep private_readiness_preflight keys compatible."
+  },
+  {
+    family: "account_position_risk_mirror",
+    canonical_noun: "account",
+    data_role: "snapshot",
+    compatibility_type_prefix: "AccountPositionRiskMirrorSurface",
+    persisted_record_kind: "account_position_risk_mirror_surface",
+    persisted_latest_key: "latest_account_position_risk_mirror_surface",
+    extension_guidance: "Prefer account and position snapshot vocabulary for new concepts; keep account_position_risk_mirror keys compatible."
+  }
+] as const satisfies readonly TradingSubstrateSurfaceTaxonomyEntry[];
 
 export type OrderFillPosture =
   | "received"
