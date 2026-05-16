@@ -18,6 +18,7 @@ import {
   fixtureAccountPositionRiskMirrorSurface,
   fixtureOrderFillSurface,
   fixturePrivateReadinessPolicyDecision,
+  fixturePrivateReadinessPosture,
   fixturePrivateReadinessPreflightSurface,
   fixturePublicMarketLivenessSurface
 } from "../../../test/support/binance-no-authority";
@@ -63,6 +64,7 @@ describe("CandidateDetail", () => {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: null,
             latest_private_readiness_preflight_surface: null,
+            latest_private_readiness_posture: null,
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -94,6 +96,7 @@ describe("CandidateDetail", () => {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: null,
+            latest_private_readiness_posture: null,
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -130,6 +133,7 @@ describe("CandidateDetail", () => {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: fixturePrivateReadinessPosture(),
             latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
             latest_account_position_risk_mirror_surface: null
           }
@@ -149,6 +153,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("POST /fapi/v1/listenKey");
     expect(html).toContain("POST /fapi/v1/order");
     expect(html).toContain("configure_private_read_credentials");
+    expect(html).toContain("Private-readiness posture");
+    expect(html).toContain("Binance BTCUSDT private_readiness_posture");
+    expect(html).toContain("live_binding_profile_not_configured");
+    expect(html).toContain("secret_handling_profile_not_configured");
+    expect(html).toContain("operator_stop_behavior_not_recorded");
+    expect(html).toContain("Raw secret material");
+    expect(html).toContain("false");
     expect(html).toContain("Private-readiness policy");
     expect(html).toContain("private_readiness_policy_decision");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
@@ -172,6 +183,7 @@ describe("CandidateDetail", () => {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: fixturePrivateReadinessPosture(),
             latest_account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface()
           }
         }}

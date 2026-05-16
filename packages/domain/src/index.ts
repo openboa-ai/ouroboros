@@ -1,4 +1,7 @@
-import type { PrivateReadinessPolicyDecision } from "./private-readiness-policy";
+import type {
+  PrivateReadinessPolicyDecision,
+  PrivateReadinessPolicyGateInput
+} from "./private-readiness-policy";
 
 export * from "./private-readiness-policy";
 
@@ -496,6 +499,7 @@ export const TRADING_SUBSTRATE_CANONICAL_NOUNS = [
   "order",
   "execution",
   "risk",
+  "posture",
   "gate",
   "connector",
   "authority",
@@ -513,6 +517,7 @@ export type TradingSubstrateSourceKind =
   | "binance_user_data_stream"
   | "binance_market_data_rest"
   | "binance_rest_query"
+  | "local_config"
   | "fixture";
 
 export type TradingSubstrateFreshnessClass =
@@ -598,6 +603,8 @@ export type PublicMarketLivenessSurfaceAuthorityStatus = "not_live" | "read_only
 
 export type PrivateReadinessPreflightSurfaceAuthorityStatus = "not_live";
 
+export type PrivateReadinessPostureAuthorityStatus = "not_live";
+
 export type AccountPositionRiskMirrorSurfaceAuthorityStatus = "not_live";
 
 export type PrivateReadinessPreflightGateStatus =
@@ -612,6 +619,53 @@ export interface PrivateReadinessPreflightGate {
   status: PrivateReadinessPreflightGateStatus;
   enabled: boolean;
   reason: string;
+}
+
+export interface PrivateReadinessPostureRecord extends BaseRecord {
+  record_kind: "private_readiness_posture";
+  private_readiness_posture_id: string;
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  live_binding_gate: PrivateReadinessPolicyGateInput;
+  secret_handling_gate: PrivateReadinessPolicyGateInput;
+  stop_behavior_gate: PrivateReadinessPolicyGateInput;
+  secret_reference_configured: boolean;
+  secret_reference_ref?: Ref;
+  raw_secret_material_present: false;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  authority_status: PrivateReadinessPostureAuthorityStatus;
+}
+
+export interface PrivateReadinessPostureReadModel {
+  posture_id: string;
+  posture_label: string;
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  live_binding_gate: PrivateReadinessPolicyGateInput;
+  secret_handling_gate: PrivateReadinessPolicyGateInput;
+  stop_behavior_gate: PrivateReadinessPolicyGateInput;
+  secret_reference_configured: boolean;
+  secret_reference_ref?: Ref;
+  raw_secret_material_present: false;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  no_authority_label: string;
+  authority_status: PrivateReadinessPostureAuthorityStatus;
 }
 
 export interface TradingSubstrateNoAuthority {
@@ -1001,6 +1055,7 @@ export interface TradingSubstrateReadModel {
   latest_order_fill_surface: OrderFillSurfaceReadModel | null;
   latest_public_market_liveness_surface: PublicMarketLivenessSurfaceReadModel | null;
   latest_private_readiness_preflight_surface: PrivateReadinessPreflightSurfaceReadModel | null;
+  latest_private_readiness_posture: PrivateReadinessPostureReadModel | null;
   latest_private_readiness_policy_decision?: PrivateReadinessPolicyDecision | null;
   latest_account_position_risk_mirror_surface: AccountPositionRiskMirrorSurfaceReadModel | null;
 }
@@ -2001,6 +2056,7 @@ export type FixtureRecord =
   | OrderFillSurfaceRecord
   | PublicMarketLivenessSurfaceRecord
   | PrivateReadinessPreflightSurfaceRecord
+  | PrivateReadinessPostureRecord
   | AccountPositionRiskMirrorSurfaceRecord
   | CandidateMaterializationAttemptRecord;
 

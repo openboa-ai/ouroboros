@@ -7,7 +7,9 @@ import {
   BINANCE_BTCUSDT_QUERY,
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
   binanceBtcusdtNoAuthoritySurfaceExpectation,
-  binancePrivateReadinessPolicyDecisionNoAuthorityExpectation
+  binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
+  binancePrivateReadinessPostureNoAuthorityExpectation,
+  privateReadinessPolicyGate
 } from "../../../test/support/binance-no-authority";
 import type {
   AccountPositionRiskMirrorSurfaceRecord,
@@ -28,6 +30,7 @@ import type {
   GatewayDecisionRecord,
   OrderFillSurfaceRecord,
   OrderIntentDraftRecord,
+  PrivateReadinessPostureRecord,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceRecord,
   RunnableArtifactRecord,
@@ -237,6 +240,102 @@ describe("LocalStore", () => {
         "listen_key_not_ready",
         "user_data_stream_not_ready",
         "no_private_read_performed"
+      ])
+    });
+  });
+
+  it("seeds a Binance BTCUSDT private-readiness posture into candidate inspect read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const latest = await store.getLatestPrivateReadinessPosture({
+      ...BINANCE_BTCUSDT_QUERY
+    });
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    const item = await readStoreJson<PrivateReadinessPostureRecord>(
+      "private-readiness-postures",
+      "items",
+      "fixture-binance-btcusdt-private-readiness-posture-001.json"
+    );
+
+    expect(item.record_kind).toBe("private_readiness_posture");
+    expect(latest).toMatchObject(binancePrivateReadinessPostureNoAuthorityExpectation({
+      posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+      live_binding_gate: {
+        status: "not_ready",
+        reason: "live_binding_profile_not_configured"
+      },
+      secret_handling_gate: {
+        status: "not_ready",
+        reason: "secret_handling_profile_not_configured"
+      },
+      stop_behavior_gate: {
+        status: "not_ready",
+        reason: "operator_stop_behavior_not_recorded"
+      },
+      secret_reference_configured: false,
+      raw_secret_material_present: false,
+      source_kind: "fixture"
+    }));
+    expect(candidate?.trading_substrate?.latest_private_readiness_posture).toEqual(latest);
+    expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision?.checked_gates)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          dimension: "live_binding",
+          reason: "live_binding_profile_not_configured"
+        }),
+        expect.objectContaining({
+          dimension: "secret_handling",
+          reason: "secret_handling_profile_not_configured"
+        }),
+        expect.objectContaining({
+          dimension: "stop_behavior",
+          reason: "operator_stop_behavior_not_recorded"
+        })
+      ]));
+  });
+
+  it("feeds private-readiness policy decisions from the latest stored posture", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const seeded = await readStoreJson<PrivateReadinessPostureRecord>(
+      "private-readiness-postures",
+      "items",
+      "fixture-binance-btcusdt-private-readiness-posture-001.json"
+    );
+    const liveBindingGate = privateReadinessPolicyGate(
+      "blocked",
+      "operator_live_binding_blocked_for_test"
+    );
+
+    await store.recordPrivateReadinessPosture({
+      ...seeded,
+      private_readiness_posture_id: "local-binance-btcusdt-private-readiness-posture-002",
+      live_binding_gate: liveBindingGate,
+      source_kind: "local_config",
+      source_ref: {
+        record_kind: "local_private_readiness_posture",
+        id: "local-binance-btcusdt-private-readiness-posture-002"
+      },
+      fixture_backed: false,
+      observed_at: "2026-05-16T00:00:05.000Z",
+      updated_at: "2026-05-16T00:00:05.000Z"
+    });
+
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+
+    expect(candidate?.trading_substrate?.latest_private_readiness_posture).toMatchObject({
+      posture_id: "local-binance-btcusdt-private-readiness-posture-002",
+      live_binding_gate: liveBindingGate,
+      source_kind: "local_config",
+      fixture_backed: false
+    });
+    expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision).toMatchObject({
+      status: "blocked",
+      evaluated_at: "2026-05-16T00:00:05.000Z",
+      reason_codes: expect.arrayContaining(["live_binding_blocked"]),
+      blocking_conditions: expect.arrayContaining([
+        "live_binding: operator_live_binding_blocked_for_test"
       ])
     });
   });

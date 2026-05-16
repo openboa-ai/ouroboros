@@ -12,6 +12,7 @@ import type {
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../../runtime/src/server";
+import { expectNoOperatorActionControls } from "../../../test/support/binance-no-authority";
 import { CandidateDetail } from "./App";
 
 let tmpDir: string;
@@ -171,8 +172,8 @@ describe("Slice 3 runtime authority MLP flow", () => {
       expect(html).toContain(`order_intent_draft:${orderIntent.order_intent_draft_id}`);
       expect(html).toContain(`gateway_decision:${gatewayDecision.gateway_decision_id}`);
       expect(html).toContain("Record dry-run intent");
-      expect(html).not.toMatch(/\b(Start|Resume|Stop|Promote)\b|Run provider|Run evaluator|Live order/i);
-      expect(html).not.toMatch(/broker|api key|secret key|raw secret|runtime stack launch/i);
+      expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+      expect(html).not.toMatch(/runtime stack launch/i);
     } finally {
       await server.close();
     }

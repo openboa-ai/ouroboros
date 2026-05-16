@@ -3,6 +3,8 @@ import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   BinanceUsdsFuturesConnectorTransport,
   PrivateReadinessPolicyDecision,
+  PrivateReadinessPolicyGateInput,
+  PrivateReadinessPostureReadModel,
   PrivateReadinessPreflightGate,
   PrivateReadinessPreflightGateStatus,
   PrivateReadinessPreflightSurfaceReadModel,
@@ -77,6 +79,13 @@ export function privateReadinessGate(
   return { status, enabled, reason };
 }
 
+export function privateReadinessPolicyGate(
+  status: PrivateReadinessPolicyGateInput["status"],
+  reason: string
+): PrivateReadinessPolicyGateInput {
+  return { status, reason };
+}
+
 export function binanceBtcusdtNoAuthoritySurfaceExpectation(
   overrides: Record<string, unknown> = {}
 ): Record<string, unknown> {
@@ -113,6 +122,23 @@ export function binancePrivateReadinessPolicyDecisionNoAuthorityExpectation(
     order_submission_authority: false,
     authority_status: "not_live",
     ...(reasonCodes ? { reason_codes: expect.arrayContaining([...reasonCodes]) } : {})
+  };
+}
+
+export function binancePrivateReadinessPostureNoAuthorityExpectation(
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    posture_label: "Binance BTCUSDT private_readiness_posture",
+    venue: BINANCE_USDM_FUTURES_VENUE,
+    instrument: BINANCE_BTCUSDT_INSTRUMENT,
+    product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: BINANCE_NO_AUTHORITY,
+    no_authority_label: BINANCE_NO_AUTHORITY_LABEL,
+    authority_status: "not_live",
+    ...overrides
   };
 }
 
@@ -267,6 +293,43 @@ export function fixturePrivateReadinessPreflightSurface(
     source_kind: "fixture",
     source_ref: ref("fixture", "binance-btcusdt-private-readiness-preflight"),
     transport: BINANCE_USDM_CONNECTOR_TRANSPORT,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: BINANCE_NO_AUTHORITY,
+    no_authority_label: BINANCE_NO_AUTHORITY_LABEL,
+    authority_status: "not_live",
+    ...overrides
+  };
+}
+
+export function fixturePrivateReadinessPosture(
+  overrides: Partial<PrivateReadinessPostureReadModel> = {}
+): PrivateReadinessPostureReadModel {
+  return {
+    posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+    posture_label: "Binance BTCUSDT private_readiness_posture",
+    venue: BINANCE_USDM_FUTURES_VENUE,
+    instrument: BINANCE_BTCUSDT_INSTRUMENT,
+    product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+    live_binding_gate: privateReadinessPolicyGate(
+      "not_ready",
+      "live_binding_profile_not_configured"
+    ),
+    secret_handling_gate: privateReadinessPolicyGate(
+      "not_ready",
+      "secret_handling_profile_not_configured"
+    ),
+    stop_behavior_gate: privateReadinessPolicyGate(
+      "not_ready",
+      "operator_stop_behavior_not_recorded"
+    ),
+    secret_reference_configured: false,
+    raw_secret_material_present: false,
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:04.000Z",
+    updated_at: "2026-05-16T00:00:04.000Z",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "binance-btcusdt-private-readiness-posture"),
     fixture_backed: true,
     simulated: true,
     no_authority: BINANCE_NO_AUTHORITY,

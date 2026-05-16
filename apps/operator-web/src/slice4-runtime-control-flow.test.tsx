@@ -12,6 +12,7 @@ import type {
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../../runtime/src/server";
+import { expectNoOperatorActionControls } from "../../../test/support/binance-no-authority";
 import { CandidateDetail } from "./App";
 import { runtimeControlPausePayload } from "./api";
 
@@ -178,8 +179,8 @@ describe("Slice 4 runtime control MLP flow", () => {
       expect(html).toContain(`runtime_control_decision:${decision.runtime_control_decision_id}`);
       expect(html).toContain("Record pause control");
       expect(html).toContain("control_only / audit_only / not_live");
-      expect(html).not.toMatch(/\b(Start|Resume|Stop|Promote)\b|Run provider|Run evaluator|Live order/i);
-      expect(html).not.toMatch(/broker|provider_api_key|direct_exchange_order|gateway_signing_material/i);
+      expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+      expect(html).not.toMatch(/direct_exchange_order|gateway_signing_material/i);
       expect(html).not.toMatch(/\/runtime-control\/(pause|kill|start)/i);
     } finally {
       await server.close();
