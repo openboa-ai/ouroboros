@@ -64,6 +64,8 @@ import type {
   HandsEnvironmentRecord,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
+  PublicMarketLivenessSurfaceReadModel,
+  PublicMarketLivenessSurfaceRecord,
   TradingSubstrateInstrument,
   TradingSubstrateVenue,
   OrderIntentDraftRecord,
@@ -130,6 +132,7 @@ export type LocalStoreErrorCode =
   | "invalid_runtime_control_input"
   | "invalid_runtime_instance_input"
   | "invalid_order_fill_surface_input"
+  | "invalid_public_market_liveness_surface_input"
   | "invalid_runnable_artifact_input"
   | "runtime_not_found"
   | "runtime_mismatch"
@@ -245,6 +248,11 @@ export interface OrderFillSurfaceQueryInput {
   instrument?: TradingSubstrateInstrument;
 }
 
+export interface PublicMarketLivenessSurfaceQueryInput {
+  venue?: TradingSubstrateVenue;
+  instrument?: TradingSubstrateInstrument;
+}
+
 const fixtureNotice: FixtureNotice = {
   mode: "fixture_convenience_mode",
   label: "Fixture / convenience mode",
@@ -292,7 +300,8 @@ const ids = {
   evidenceClassificationCandidate: "fixture-evidence-classification-candidate-001",
   evidenceClassificationNonCounted: "fixture-evidence-classification-non-counted-001",
   evidenceClassificationSealedDecision: "fixture-evidence-classification-sealed-decision-001",
-  orderFillSurface: "fixture-binance-btcusdt-order-fill-surface-001"
+  orderFillSurface: "fixture-binance-btcusdt-order-fill-surface-001",
+  publicMarketLivenessSurface: "fixture-binance-btcusdt-public-market-liveness-surface-001"
 };
 
 const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
@@ -603,6 +612,45 @@ export function createFixtureRecords(): FixtureItem[] {
     },
     authority_status: "not_live"
   };
+  const publicMarketLivenessSurface: PublicMarketLivenessSurfaceRecord = {
+    record_kind: "public_market_liveness_surface",
+    version: 1,
+    public_market_liveness_surface_id: ids.publicMarketLivenessSurface,
+    surface_family: "public_market_liveness",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    symbol_status: "TRADING",
+    contract_type: "PERPETUAL",
+    price_tick_size: "0.10",
+    quantity_step_size: "0.001",
+    min_quantity: "0.001",
+    min_notional: "100",
+    mark_price: "65000.12340000",
+    index_price: "64995.00000000",
+    estimated_settle_price: "64990.00000000",
+    funding_rate: "0.00010000",
+    interest_rate: "0.00010000",
+    next_funding_time: "2026-05-16T08:00:00.000Z",
+    server_time: "2026-05-16T00:00:01.000Z",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:03.000Z",
+    updated_at: "2026-05-16T00:00:03.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_live_connector",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "binance-btcusdt-public-market-liveness"),
+    transport: binanceUsdsFuturesConnectorTransport,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    authority_status: "not_live"
+  };
   const comparisonSet: EvaluationComparisonSetRecord = {
     record_kind: "evaluation_comparison_set",
     version: 1,
@@ -716,6 +764,11 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "stage-bindings", id: ids.stageBinding, record: stageBinding },
     { collection: "evaluation-runs", id: ids.evaluationRun, record: evaluationRun },
     { collection: "substrate-state-surfaces", id: ids.orderFillSurface, record: orderFillSurface },
+    {
+      collection: "substrate-state-surfaces",
+      id: ids.publicMarketLivenessSurface,
+      record: publicMarketLivenessSurface
+    },
     { collection: "evaluation-comparison-sets", id: ids.evaluationComparisonSet, record: comparisonSet },
     { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision },
     ...evidenceClassifications.map((classification) => ({
@@ -857,7 +910,8 @@ export class LocalStore {
   async listOrderFillSurfaces(
     query: OrderFillSurfaceQueryInput = {}
   ): Promise<OrderFillSurfaceReadModel[]> {
-    return (await this.readCollection<OrderFillSurfaceRecord>("substrate-state-surfaces"))
+    return (await this.readCollection<FixtureRecord>("substrate-state-surfaces"))
+      .filter(isOrderFillSurfaceRecord)
       .filter((surface) => matchesOrderFillSurfaceQuery(surface, query))
       .sort(compareOrderFillSurfaces)
       .map(toOrderFillSurfaceReadModel);
@@ -867,6 +921,44 @@ export class LocalStore {
     query: OrderFillSurfaceQueryInput = {}
   ): Promise<OrderFillSurfaceReadModel | undefined> {
     return (await this.listOrderFillSurfaces(query)).at(-1);
+  }
+
+  async recordPublicMarketLivenessSurface(
+    surface: PublicMarketLivenessSurfaceRecord
+  ): Promise<PublicMarketLivenessSurfaceReadModel> {
+    if (!isPublicMarketLivenessSurfaceRecord(surface)) {
+      throw new LocalStoreError(
+        "invalid_public_market_liveness_surface_input",
+        "invalid public market liveness substrate surface input",
+        {
+          public_market_liveness_surface_id:
+            (surface as Partial<PublicMarketLivenessSurfaceRecord> | undefined)
+              ?.public_market_liveness_surface_id
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath("substrate-state-surfaces", surface.public_market_liveness_surface_id),
+      surface
+    );
+    await this.rebuildProjections();
+    return toPublicMarketLivenessSurfaceReadModel(surface);
+  }
+
+  async listPublicMarketLivenessSurfaces(
+    query: PublicMarketLivenessSurfaceQueryInput = {}
+  ): Promise<PublicMarketLivenessSurfaceReadModel[]> {
+    return (await this.readCollection<FixtureRecord>("substrate-state-surfaces"))
+      .filter(isPublicMarketLivenessSurfaceRecord)
+      .filter((surface) => matchesPublicMarketLivenessSurfaceQuery(surface, query))
+      .sort(comparePublicMarketLivenessSurfaces)
+      .map(toPublicMarketLivenessSurfaceReadModel);
+  }
+
+  async getLatestPublicMarketLivenessSurface(
+    query: PublicMarketLivenessSurfaceQueryInput = {}
+  ): Promise<PublicMarketLivenessSurfaceReadModel | undefined> {
+    return (await this.listPublicMarketLivenessSurfaces(query)).at(-1);
   }
 
   async getCandidateEvaluationRun(
@@ -3017,6 +3109,10 @@ export class LocalStore {
         latest_order_fill_surface: await this.getLatestOrderFillSurface({
           venue: "binance_usd_m_futures",
           instrument: "BTCUSDT"
+        }) ?? null,
+        latest_public_market_liveness_surface: await this.getLatestPublicMarketLivenessSurface({
+          venue: "binance_usd_m_futures",
+          instrument: "BTCUSDT"
         }) ?? null
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
@@ -3835,7 +3931,52 @@ function toOrderFillSurfaceReadModel(surface: OrderFillSurfaceRecord): OrderFill
   };
 }
 
+function toPublicMarketLivenessSurfaceReadModel(
+  surface: PublicMarketLivenessSurfaceRecord
+): PublicMarketLivenessSurfaceReadModel {
+  return {
+    surface_id: surface.public_market_liveness_surface_id,
+    surface_family: surface.surface_family,
+    surface_label: publicMarketLivenessSurfaceLabel(surface),
+    venue: surface.venue,
+    instrument: surface.instrument,
+    product_category: surface.product_category,
+    symbol_status: surface.symbol_status,
+    contract_type: surface.contract_type,
+    price_tick_size: surface.price_tick_size,
+    quantity_step_size: surface.quantity_step_size,
+    min_quantity: surface.min_quantity,
+    min_notional: surface.min_notional,
+    mark_price: surface.mark_price,
+    index_price: surface.index_price,
+    estimated_settle_price: surface.estimated_settle_price,
+    funding_rate: surface.funding_rate,
+    interest_rate: surface.interest_rate,
+    next_funding_time: surface.next_funding_time,
+    server_time: surface.server_time,
+    source_timestamp: surface.source_timestamp,
+    observed_at: surface.observed_at,
+    updated_at: surface.updated_at,
+    freshness: surface.freshness,
+    liveness: surface.liveness,
+    degraded_reason: surface.degraded_reason,
+    source_kind: surface.source_kind,
+    source_ref: surface.source_ref,
+    transport: surface.transport,
+    fixture_backed: surface.fixture_backed,
+    simulated: surface.simulated,
+    no_authority: surface.no_authority,
+    no_authority_label: formatSubstrateNoAuthority(surface.no_authority),
+    authority_status: surface.authority_status
+  };
+}
+
 function orderFillSurfaceLabel(surface: OrderFillSurfaceRecord): string {
+  const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
+  return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
+}
+
+function publicMarketLivenessSurfaceLabel(surface: PublicMarketLivenessSurfaceRecord): string {
   const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
   return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
 }
@@ -4102,6 +4243,17 @@ function compareOrderFillSurfaces(a: OrderFillSurfaceRecord, b: OrderFillSurface
     return timeCompare;
   }
   return a.order_fill_surface_id.localeCompare(b.order_fill_surface_id);
+}
+
+function comparePublicMarketLivenessSurfaces(
+  a: PublicMarketLivenessSurfaceRecord,
+  b: PublicMarketLivenessSurfaceRecord
+): number {
+  const timeCompare = a.updated_at.localeCompare(b.updated_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.public_market_liveness_surface_id.localeCompare(b.public_market_liveness_surface_id);
 }
 
 function compareRuntimeControlCommands(
@@ -4823,6 +4975,16 @@ function matchesOrderFillSurfaceQuery(
   );
 }
 
+function matchesPublicMarketLivenessSurfaceQuery(
+  surface: PublicMarketLivenessSurfaceRecord,
+  query: PublicMarketLivenessSurfaceQueryInput
+): boolean {
+  return (
+    (query.venue === undefined || surface.venue === query.venue) &&
+    (query.instrument === undefined || surface.instrument === query.instrument)
+  );
+}
+
 function isOrderFillSurfaceRecord(value: unknown): value is OrderFillSurfaceRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -4858,6 +5020,49 @@ function isOrderFillSurfaceRecord(value: unknown): value is OrderFillSurfaceReco
     (raw.runtime_ref === undefined || isRef(raw.runtime_ref, "trading_system_runtime")) &&
     (raw.candidate_ref === undefined || isRef(raw.candidate_ref, "trading_system_candidate")) &&
     (raw.stage_binding_ref === undefined || isRef(raw.stage_binding_ref, "stage_binding")) &&
+    (raw.source_ref === undefined || isRef(raw.source_ref))
+  );
+}
+
+function isPublicMarketLivenessSurfaceRecord(
+  value: unknown
+): value is PublicMarketLivenessSurfaceRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<PublicMarketLivenessSurfaceRecord>;
+  return (
+    raw.record_kind === "public_market_liveness_surface" &&
+    raw.version === 1 &&
+    nonEmpty(raw.public_market_liveness_surface_id) &&
+    raw.surface_family === "public_market_liveness" &&
+    raw.venue === "binance_usd_m_futures" &&
+    raw.instrument === "BTCUSDT" &&
+    raw.product_category === "perpetual_futures" &&
+    nonEmpty(raw.symbol_status) &&
+    nonEmpty(raw.contract_type) &&
+    nonEmpty(raw.price_tick_size) &&
+    nonEmpty(raw.quantity_step_size) &&
+    nonEmpty(raw.min_quantity) &&
+    nonEmpty(raw.mark_price) &&
+    nonEmpty(raw.index_price) &&
+    nonEmpty(raw.funding_rate) &&
+    nonEmpty(raw.next_funding_time) &&
+    nonEmpty(raw.server_time) &&
+    nonEmpty(raw.source_timestamp) &&
+    nonEmpty(raw.observed_at) &&
+    nonEmpty(raw.updated_at) &&
+    isTradingSubstrateFreshness(raw.freshness) &&
+    isTradingSubstrateLiveness(raw.liveness) &&
+    isTradingSubstrateSourceKind(raw.source_kind) &&
+    isBinanceUsdsFuturesConnectorTransport(raw.transport) &&
+    typeof raw.fixture_backed === "boolean" &&
+    typeof raw.simulated === "boolean" &&
+    raw.no_authority !== undefined &&
+    raw.no_authority.live_exchange === false &&
+    raw.no_authority.order_submission === false &&
+    raw.no_authority.credentials === false &&
+    (raw.authority_status === "not_live" || raw.authority_status === "read_only") &&
     (raw.source_ref === undefined || isRef(raw.source_ref))
   );
 }
@@ -4923,6 +5128,7 @@ function isTradingSubstrateLiveness(value: unknown): boolean {
 function isTradingSubstrateSourceKind(value: unknown): boolean {
   return (
     value === "binance_user_data_stream" ||
+    value === "binance_market_data_rest" ||
     value === "binance_rest_query" ||
     value === "fixture"
   );

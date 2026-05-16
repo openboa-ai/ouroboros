@@ -14,6 +14,7 @@ import type {
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
+  PublicMarketLivenessSurfaceReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 import {
@@ -589,7 +590,10 @@ export function CandidateDetail({
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
         </InfoSection>
 
-        <TradingSubstrateSection surface={candidate.trading_substrate?.latest_order_fill_surface} />
+        <TradingSubstrateSection
+          orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
+          publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
+        />
 
         <RuntimeControlSection
           control={candidate.runtime.runtime_control}
@@ -940,59 +944,119 @@ function formatSignedNumber(value: number): string {
 }
 
 function TradingSubstrateSection({
-  surface
+  orderFillSurface,
+  publicMarketSurface
 }: {
-  surface?: OrderFillSurfaceReadModel | null;
+  orderFillSurface?: OrderFillSurfaceReadModel | null;
+  publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
 }) {
   return (
     <InfoSection title="Trading Substrate">
-      {surface ? (
+      {publicMarketSurface ? (
         <>
-          <div className={`evaluation-status ${substrateStatusTone(surface)}`}>
-            <span>Order-fill posture</span>
-            <strong>{surface.posture}</strong>
-            <span>{surface.authority_status}</span>
+          <div className={`evaluation-status ${publicMarketStatusTone(publicMarketSurface)}`}>
+            <span>Public market posture</span>
+            <strong>{publicMarketSurface.symbol_status}</strong>
+            <span>{publicMarketSurface.authority_status}</span>
           </div>
-          <Field label="Surface" value={surface.surface_label} />
-          <Field label="Venue" value={`${surface.venue} / ${surface.product_category}`} />
-          <Field label="Instrument" value={surface.instrument} />
+          <Field label="Public surface" value={publicMarketSurface.surface_label} />
+          <Field label="Venue" value={`${publicMarketSurface.venue} / ${publicMarketSurface.product_category}`} />
+          <Field label="Instrument" value={publicMarketSurface.instrument} />
+          <Field label="Contract" value={publicMarketSurface.contract_type} />
+          <Field label="Symbol status" value={publicMarketSurface.symbol_status} />
+          <Field label="Price tick" value={publicMarketSurface.price_tick_size} />
+          <Field label="Quantity step / min" value={[
+            publicMarketSurface.quantity_step_size,
+            publicMarketSurface.min_quantity
+          ].join(" / ")} />
+          <Field label="Min notional" value={publicMarketSurface.min_notional ?? "none"} />
+          <Field label="Mark / index" value={[
+            publicMarketSurface.mark_price,
+            publicMarketSurface.index_price
+          ].join(" / ")} />
+          <Field label="Estimated settle" value={publicMarketSurface.estimated_settle_price ?? "none"} />
+          <Field label="Funding / interest" value={[
+            publicMarketSurface.funding_rate,
+            publicMarketSurface.interest_rate ?? "none"
+          ].join(" / ")} />
+          <Field label="Next funding" value={publicMarketSurface.next_funding_time} />
+          <Field label="Server time" value={publicMarketSurface.server_time} />
+          <Field label="Public freshness" value={`${publicMarketSurface.freshness} / ${publicMarketSurface.liveness}`} />
+          <Field label="Public source" value={formatSubstrateSource(publicMarketSurface)} />
+          <Field label="Public connector package" value={publicMarketSurface.transport.package_name} />
+          <Field label="Public connector repository" value={publicMarketSurface.transport.repository} />
+          <Field
+            label="Public connector endpoints"
+            value={publicMarketSurface.transport.supported_endpoints.join(", ")}
+          />
+          <Field label="Public connector role" value={publicMarketSurface.transport.integration_role} />
+          <Field label="Public connector URLs" value={[
+            publicMarketSurface.transport.production_base_url,
+            publicMarketSurface.transport.testnet_base_url
+          ].join(" / ")} />
+          <Field label="Public source timestamp" value={publicMarketSurface.source_timestamp} />
+          <Field label="Public observed" value={publicMarketSurface.observed_at} />
+          <Field label="Public updated" value={publicMarketSurface.updated_at} />
+          {publicMarketSurface.degraded_reason && (
+            <Field label="Public reason" value={publicMarketSurface.degraded_reason} />
+          )}
+          <Field label="Public no authority" value={publicMarketSurface.no_authority_label} />
+          <Field label="Public authority" value={publicMarketSurface.authority_status} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No public market surface</strong>
+          <span>BTCUSDT market posture has not been recorded</span>
+          <span>not_live</span>
+        </div>
+      )}
+      {orderFillSurface ? (
+        <>
+          <div className={`evaluation-status ${orderFillStatusTone(orderFillSurface)}`}>
+            <span>Order-fill posture</span>
+            <strong>{orderFillSurface.posture}</strong>
+            <span>{orderFillSurface.authority_status}</span>
+          </div>
+          <Field label="Order-fill surface" value={orderFillSurface.surface_label} />
+          <Field label="Order venue" value={`${orderFillSurface.venue} / ${orderFillSurface.product_category}`} />
+          <Field label="Order instrument" value={orderFillSurface.instrument} />
           <Field label="Raw upstream" value={[
-            surface.raw_upstream_status,
-            surface.raw_upstream_execution_type ?? "none"
+            orderFillSurface.raw_upstream_status,
+            orderFillSurface.raw_upstream_execution_type ?? "none"
           ].join(" / ")} />
-          <Field label="Order scope" value={surface.order_scope_ref} />
-          <Field label="Client order" value={surface.local_client_order_id ?? "none"} />
-          <Field label="Upstream order" value={surface.upstream_order_id ?? "none"} />
+          <Field label="Order scope" value={orderFillSurface.order_scope_ref} />
+          <Field label="Client order" value={orderFillSurface.local_client_order_id ?? "none"} />
+          <Field label="Upstream order" value={orderFillSurface.upstream_order_id ?? "none"} />
           <Field label="Side / type" value={[
-            surface.side ?? "none",
-            surface.order_type ?? "none",
-            surface.time_in_force ?? "none"
+            orderFillSurface.side ?? "none",
+            orderFillSurface.order_type ?? "none",
+            orderFillSurface.time_in_force ?? "none"
           ].join(" / ")} />
-          <Field label="Requested" value={surface.requested_quantity ?? "none"} />
+          <Field label="Requested" value={orderFillSurface.requested_quantity ?? "none"} />
           <Field label="Filled / remaining" value={[
-            surface.cumulative_filled_quantity,
-            surface.remaining_quantity
+            orderFillSurface.cumulative_filled_quantity,
+            orderFillSurface.remaining_quantity
           ].join(" / ")} />
           <Field label="Average / last price" value={[
-            surface.average_fill_price ?? "none",
-            surface.last_fill_price ?? "none"
+            orderFillSurface.average_fill_price ?? "none",
+            orderFillSurface.last_fill_price ?? "none"
           ].join(" / ")} />
-          <Field label="Freshness" value={`${surface.freshness} / ${surface.liveness}`} />
-          <Field label="Source" value={formatSubstrateSource(surface)} />
-          <Field label="Connector package" value={surface.transport.package_name} />
-          <Field label="Connector repository" value={surface.transport.repository} />
-          <Field label="Connector endpoints" value={surface.transport.supported_endpoints.join(", ")} />
-          <Field label="Connector role" value={surface.transport.integration_role} />
+          <Field label="Order freshness" value={`${orderFillSurface.freshness} / ${orderFillSurface.liveness}`} />
+          <Field label="Order source" value={formatSubstrateSource(orderFillSurface)} />
+          <Field label="Order connector package" value={orderFillSurface.transport.package_name} />
+          <Field label="Order connector repository" value={orderFillSurface.transport.repository} />
+          <Field label="Order connector endpoints" value={orderFillSurface.transport.supported_endpoints.join(", ")} />
+          <Field label="Order connector role" value={orderFillSurface.transport.integration_role} />
           <Field label="Connector URLs" value={[
-            surface.transport.production_base_url,
-            surface.transport.testnet_base_url
+            orderFillSurface.transport.production_base_url,
+            orderFillSurface.transport.testnet_base_url
           ].join(" / ")} />
-          <Field label="Source timestamp" value={surface.source_timestamp} />
-          <Field label="Observed" value={surface.observed_at} />
-          <Field label="Updated" value={surface.updated_at} />
-          {surface.degraded_reason && <Field label="Reason" value={surface.degraded_reason} />}
-          <Field label="No authority" value={surface.no_authority_label} />
-          <Field label="Authority" value={surface.authority_status} />
+          <Field label="Order source timestamp" value={orderFillSurface.source_timestamp} />
+          <Field label="Order observed" value={orderFillSurface.observed_at} />
+          <Field label="Order updated" value={orderFillSurface.updated_at} />
+          {orderFillSurface.degraded_reason && <Field label="Order reason" value={orderFillSurface.degraded_reason} />}
+          <Field label="Order no authority" value={orderFillSurface.no_authority_label} />
+          <Field label="Order authority" value={orderFillSurface.authority_status} />
         </>
       ) : (
         <div className="placeholder">
@@ -1005,7 +1069,7 @@ function TradingSubstrateSection({
   );
 }
 
-function substrateStatusTone(surface: OrderFillSurfaceReadModel): "counted" | "failed" | "neutral" {
+function orderFillStatusTone(surface: OrderFillSurfaceReadModel): "counted" | "failed" | "neutral" {
   if (surface.posture === "rejected" || surface.posture === "expired" || surface.liveness === "disconnected") {
     return "failed";
   }
@@ -1015,7 +1079,19 @@ function substrateStatusTone(surface: OrderFillSurfaceReadModel): "counted" | "f
   return "neutral";
 }
 
-function formatSubstrateSource(surface: OrderFillSurfaceReadModel): string {
+function publicMarketStatusTone(surface: PublicMarketLivenessSurfaceReadModel): "counted" | "failed" | "neutral" {
+  if (surface.symbol_status !== "TRADING" || surface.liveness === "disconnected") {
+    return "failed";
+  }
+  if (surface.freshness === "fresh" && surface.liveness === "connected") {
+    return "counted";
+  }
+  return "neutral";
+}
+
+function formatSubstrateSource(
+  surface: OrderFillSurfaceReadModel | PublicMarketLivenessSurfaceReadModel
+): string {
   return [
     surface.source_kind,
     surface.fixture_backed ? "fixture-backed" : "external",

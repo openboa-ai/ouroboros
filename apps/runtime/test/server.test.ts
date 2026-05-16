@@ -218,6 +218,74 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("serves the latest Binance BTCUSDT public market and liveness surface without authority", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+    });
+
+    const surface = await server.inject({
+      method: "GET",
+      url: "/api/trading-substrate/public-market/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+    });
+    expect(surface.statusCode).toBe(200);
+    expect(surface.json()).toMatchObject({
+      surface: {
+        surface_family: "public_market_liveness",
+        surface_label: "Binance BTCUSDT public_market_liveness",
+        venue: "binance_usd_m_futures",
+        instrument: "BTCUSDT",
+        product_category: "perpetual_futures",
+        symbol_status: "TRADING",
+        contract_type: "PERPETUAL",
+        price_tick_size: "0.10",
+        quantity_step_size: "0.001",
+        min_quantity: "0.001",
+        min_notional: "100",
+        mark_price: "65000.12340000",
+        index_price: "64995.00000000",
+        funding_rate: "0.00010000",
+        next_funding_time: "2026-05-16T08:00:00.000Z",
+        server_time: "2026-05-16T00:00:01.000Z",
+        freshness: "stale",
+        liveness: "degraded",
+        transport: {
+          repository: "binance/binance-connector-js",
+          package_name: "@binance/derivatives-trading-usds-futures",
+          integration_role: "transport_only",
+          authority_status: "not_live"
+        },
+        fixture_backed: true,
+        simulated: true,
+        no_authority: {
+          live_exchange: false,
+          order_submission: false,
+          credentials: false
+        },
+        authority_status: "not_live"
+      }
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_public_market_liveness_surface: {
+          surface_label: "Binance BTCUSDT public_market_liveness",
+          symbol_status: "TRADING",
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    await server.close();
+  });
+
   it("adds latest replay-run validation state summaries to candidate list and detail", async () => {
     const runRoot = path.join(tmpDir, "replay-runs");
     await writeReplayRunRecord(runRoot, {

@@ -390,7 +390,7 @@ export interface Ref {
   id: string;
 }
 
-export type TradingSubstrateSurfaceFamily = "order_fill";
+export type TradingSubstrateSurfaceFamily = "order_fill" | "public_market_liveness";
 
 export type TradingSubstrateVenue = "binance_usd_m_futures";
 
@@ -400,6 +400,7 @@ export type TradingSubstrateProductCategory = "perpetual_futures";
 
 export type TradingSubstrateSourceKind =
   | "binance_user_data_stream"
+  | "binance_market_data_rest"
   | "binance_rest_query"
   | "fixture";
 
@@ -432,6 +433,8 @@ export type OrderFillPosture =
   | "unknown";
 
 export type OrderFillSurfaceAuthorityStatus = "not_live" | "read_only";
+
+export type PublicMarketLivenessSurfaceAuthorityStatus = "not_live" | "read_only";
 
 export interface TradingSubstrateNoAuthority {
   live_exchange: false;
@@ -529,8 +532,80 @@ export interface OrderFillSurfaceReadModel {
   authority_status: OrderFillSurfaceAuthorityStatus;
 }
 
+export interface PublicMarketLivenessSurfaceRecord extends BaseRecord {
+  record_kind: "public_market_liveness_surface";
+  public_market_liveness_surface_id: string;
+  surface_family: "public_market_liveness";
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  symbol_status: string;
+  contract_type: string;
+  price_tick_size: string;
+  quantity_step_size: string;
+  min_quantity: string;
+  min_notional?: string;
+  mark_price: string;
+  index_price: string;
+  estimated_settle_price?: string;
+  funding_rate: string;
+  interest_rate?: string;
+  next_funding_time: string;
+  server_time: string;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  authority_status: PublicMarketLivenessSurfaceAuthorityStatus;
+}
+
+export interface PublicMarketLivenessSurfaceReadModel {
+  surface_id: string;
+  surface_family: "public_market_liveness";
+  surface_label: string;
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  symbol_status: string;
+  contract_type: string;
+  price_tick_size: string;
+  quantity_step_size: string;
+  min_quantity: string;
+  min_notional?: string;
+  mark_price: string;
+  index_price: string;
+  estimated_settle_price?: string;
+  funding_rate: string;
+  interest_rate?: string;
+  next_funding_time: string;
+  server_time: string;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  no_authority_label: string;
+  authority_status: PublicMarketLivenessSurfaceAuthorityStatus;
+}
+
 export interface TradingSubstrateReadModel {
   latest_order_fill_surface: OrderFillSurfaceReadModel | null;
+  latest_public_market_liveness_surface: PublicMarketLivenessSurfaceReadModel | null;
 }
 
 export interface TradingSystemCandidateRecord extends BaseRecord {
@@ -1527,6 +1602,7 @@ export type FixtureRecord =
   | GatewayDecisionRecord
   | ExecutionAttemptRecord
   | OrderFillSurfaceRecord
+  | PublicMarketLivenessSurfaceRecord
   | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {

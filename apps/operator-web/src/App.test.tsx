@@ -9,6 +9,7 @@ import type {
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
   OrderFillSurfaceReadModel,
+  PublicMarketLivenessSurfaceReadModel,
   ReplayRuntimeAuthorityReadModel,
   ReplayRuntimeControlReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -52,7 +53,8 @@ describe("CandidateDetail", () => {
         candidate={{
           ...fixtureCandidate,
           trading_substrate: {
-            latest_order_fill_surface: fixtureOrderFillSurface()
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: null
           }
         }}
       />
@@ -67,6 +69,40 @@ describe("CandidateDetail", () => {
     expect(html).toContain("simulated");
     expect(html).toContain("@binance/derivatives-trading-usds-futures");
     expect(html).toContain("binance/binance-connector-js");
+    expect(html).toContain("transport_only");
+    expect(html).toContain("fixture_seed_no_live_connector");
+    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
+  });
+
+  it("renders Binance BTCUSDT public market and liveness posture without action controls", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface()
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Public market posture");
+    expect(html).toContain("Binance BTCUSDT public_market_liveness");
+    expect(html).toContain("TRADING");
+    expect(html).toContain("PERPETUAL");
+    expect(html).toContain("0.10");
+    expect(html).toContain("0.001");
+    expect(html).toContain("100");
+    expect(html).toContain("65000.12340000");
+    expect(html).toContain("64995.00000000");
+    expect(html).toContain("0.00010000");
+    expect(html).toContain("2026-05-16T08:00:00.000Z");
+    expect(html).toContain("2026-05-16T00:00:01.000Z");
+    expect(html).toContain("fixture-backed");
+    expect(html).toContain("@binance/derivatives-trading-usds-futures");
     expect(html).toContain("transport_only");
     expect(html).toContain("fixture_seed_no_live_connector");
     expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
@@ -1330,6 +1366,58 @@ function fixtureOrderFillSurface(): OrderFillSurfaceReadModel {
     degraded_reason: "fixture_seed_no_live_connector",
     source_kind: "fixture",
     source_ref: { record_kind: "fixture", id: "binance-btcusdt-order-fill" },
+    transport: {
+      transport_kind: "official_binance_connector",
+      repository: "binance/binance-connector-js",
+      package_name: "@binance/derivatives-trading-usds-futures",
+      api_family: "derivatives_trading_usds_futures",
+      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+      production_base_url: "https://fapi.binance.com",
+      testnet_base_url: "https://testnet.binancefuture.com",
+      integration_role: "transport_only",
+      authority_status: "not_live"
+    },
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+    authority_status: "not_live"
+  };
+}
+
+function fixturePublicMarketLivenessSurface(): PublicMarketLivenessSurfaceReadModel {
+  return {
+    surface_id: "fixture-binance-btcusdt-public-market-liveness-surface-001",
+    surface_family: "public_market_liveness",
+    surface_label: "Binance BTCUSDT public_market_liveness",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    symbol_status: "TRADING",
+    contract_type: "PERPETUAL",
+    price_tick_size: "0.10",
+    quantity_step_size: "0.001",
+    min_quantity: "0.001",
+    min_notional: "100",
+    mark_price: "65000.12340000",
+    index_price: "64995.00000000",
+    estimated_settle_price: "64990.00000000",
+    funding_rate: "0.00010000",
+    interest_rate: "0.00010000",
+    next_funding_time: "2026-05-16T08:00:00.000Z",
+    server_time: "2026-05-16T00:00:01.000Z",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:03.000Z",
+    updated_at: "2026-05-16T00:00:03.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_live_connector",
+    source_kind: "fixture",
+    source_ref: { record_kind: "fixture", id: "binance-btcusdt-public-market-liveness" },
     transport: {
       transport_kind: "official_binance_connector",
       repository: "binance/binance-connector-js",
