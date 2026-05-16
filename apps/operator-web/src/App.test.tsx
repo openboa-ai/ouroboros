@@ -67,6 +67,7 @@ describe("CandidateDetail", () => {
             latest_public_market_liveness_surface: null,
             latest_private_readiness_preflight_surface: null,
             latest_private_readiness_posture: null,
+            private_readiness_posture_history: [],
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -99,6 +100,7 @@ describe("CandidateDetail", () => {
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: null,
             latest_private_readiness_posture: null,
+            private_readiness_posture_history: [],
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -127,6 +129,16 @@ describe("CandidateDetail", () => {
   });
 
   it("renders Binance BTCUSDT private-readiness preflight gates without action controls", () => {
+    const localPosture = fixturePrivateReadinessPosture({
+      posture_id: "local-binance-btcusdt-private-readiness-posture-history-002",
+      source_kind: "local_config",
+      fixture_backed: false,
+      updated_at: "2026-05-16T00:00:08.000Z",
+      operator_approval_gate: {
+        status: "ready",
+        reason: "operator_approval_recorded_in_local_history"
+      }
+    });
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={{
@@ -135,7 +147,11 @@ describe("CandidateDetail", () => {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
-            latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+            latest_private_readiness_posture: localPosture,
+            private_readiness_posture_history: [
+              localPosture,
+              fixturePrivateReadinessPosture()
+            ],
             latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
             latest_account_position_risk_mirror_surface: null
           }
@@ -157,6 +173,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("configure_private_read_credentials");
     expect(html).toContain("Private-readiness posture");
     expect(html).toContain("Binance BTCUSDT private_readiness_posture");
+    expect(html).toContain("Recent posture history");
+    expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
+    expect(html).toContain("local_config / 2026-05-16T00:00:08.000Z");
+    expect(html).toContain("operator=ready, jurisdiction=review_required");
     expect(html).toContain("Operator approval gate");
     expect(html).toContain("Jurisdiction / risk gate");
     expect(html).toContain("operator_live_private_read_approval_missing");
@@ -190,6 +210,7 @@ describe("CandidateDetail", () => {
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
             latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+            private_readiness_posture_history: [fixturePrivateReadinessPosture()],
             latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
             latest_account_position_risk_mirror_surface: null
           }
@@ -221,6 +242,7 @@ describe("CandidateDetail", () => {
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
             latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+            private_readiness_posture_history: [fixturePrivateReadinessPosture()],
             latest_account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface()
           }
         }}
@@ -601,6 +623,7 @@ describe("CandidateDetail", () => {
         latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
         latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
         latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+        private_readiness_posture_history: [fixturePrivateReadinessPosture()],
         latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
         latest_account_position_risk_mirror_surface: null
       }

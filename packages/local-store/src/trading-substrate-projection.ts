@@ -25,9 +25,9 @@ export interface TradingSubstrateProjectionReader {
   getLatestPrivateReadinessPreflightSurface(
     query?: PrivateReadinessPreflightSurfaceQueryInput
   ): Promise<PrivateReadinessPreflightSurfaceReadModel | undefined>;
-  getLatestPrivateReadinessPosture(
+  listPrivateReadinessPostures(
     query?: PrivateReadinessPostureQueryInput
-  ): Promise<PrivateReadinessPostureReadModel | undefined>;
+  ): Promise<PrivateReadinessPostureReadModel[]>;
   getLatestAccountPositionRiskMirrorSurface(
     query?: AccountPositionRiskMirrorSurfaceQueryInput
   ): Promise<AccountPositionRiskMirrorSurfaceReadModel | undefined>;
@@ -46,8 +46,10 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
     await reader.getLatestPublicMarketLivenessSurface(BINANCE_BTCUSDT_QUERY);
   const latestPrivateReadinessPreflightSurface =
     await reader.getLatestPrivateReadinessPreflightSurface(BINANCE_BTCUSDT_QUERY);
-  const latestPrivateReadinessPosture =
-    await reader.getLatestPrivateReadinessPosture(BINANCE_BTCUSDT_QUERY);
+  const privateReadinessPostures =
+    await reader.listPrivateReadinessPostures(BINANCE_BTCUSDT_QUERY);
+  const privateReadinessPostureHistory = privateReadinessPostures.slice(-5).reverse();
+  const latestPrivateReadinessPosture = privateReadinessPostures.at(-1);
   const latestAccountPositionRiskMirrorSurface =
     await reader.getLatestAccountPositionRiskMirrorSurface(BINANCE_BTCUSDT_QUERY);
   const latestPrivateReadinessPolicyDecision =
@@ -73,6 +75,7 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
     latest_public_market_liveness_surface: latestPublicMarketLivenessSurface ?? null,
     latest_private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface ?? null,
     latest_private_readiness_posture: latestPrivateReadinessPosture ?? null,
+    private_readiness_posture_history: privateReadinessPostureHistory,
     latest_private_readiness_policy_decision: latestPrivateReadinessPolicyDecision,
     latest_account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null
   };
