@@ -396,6 +396,97 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("serves the latest Binance BTCUSDT account-position-risk mirror surface without private authority", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+    });
+
+    const surface = await server.inject({
+      method: "GET",
+      url: "/api/trading-substrate/account-position-risk/latest?venue=binance_usd_m_futures&instrument=BTCUSDT"
+    });
+    expect(surface.statusCode).toBe(200);
+    expect(surface.json()).toMatchObject({
+      surface: {
+        surface_family: "account_position_risk_mirror",
+        surface_label: "Binance BTCUSDT account_position_risk_mirror",
+        venue: "binance_usd_m_futures",
+        instrument: "BTCUSDT",
+        product_category: "perpetual_futures",
+        account_scope_ref: "fixture-binance-usdt-account-mirror",
+        asset: "USDT",
+        account_mode: "single_asset",
+        total_wallet_balance: "1250.00000000",
+        total_unrealized_profit: "12.50000000",
+        total_margin_balance: "1262.50000000",
+        available_balance: "1100.00000000",
+        position_side: "BOTH",
+        position_amount: "0.015",
+        entry_price: "65000.00000000",
+        break_even_price: "65010.00000000",
+        mark_price: "65833.33333333",
+        unrealized_profit: "12.50000000",
+        liquidation_price: "42000.00000000",
+        notional: "987.50000000",
+        margin_asset: "USDT",
+        margin_type: "cross",
+        leverage: 5,
+        risk_status: "watch",
+        kill_switch_status: "inactive",
+        runtime_pause_status: "not_paused",
+        account_information_endpoint: "GET /fapi/v3/account",
+        position_information_endpoint: "GET /fapi/v3/positionRisk",
+        leverage_endpoint: "POST /fapi/v1/leverage",
+        margin_type_endpoint: "POST /fapi/v1/marginType",
+        next_blocked_action: "configure_private_read_credentials",
+        next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
+        freshness: "stale",
+        liveness: "degraded",
+        transport: {
+          repository: "binance/binance-connector-js",
+          package_name: "@binance/derivatives-trading-usds-futures",
+          integration_role: "transport_only",
+          authority_status: "not_live"
+        },
+        fixture_backed: true,
+        simulated: true,
+        no_authority: {
+          live_exchange: false,
+          order_submission: false,
+          credentials: false
+        },
+        authority_status: "not_live"
+      }
+    });
+
+    const body = JSON.stringify(surface.json());
+    expect(body).not.toContain("apiKey");
+    expect(body).not.toContain("secretKey");
+    expect(body).not.toContain("signature");
+    expect(body).not.toContain("listenKey\":\"");
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_account_position_risk_mirror_surface: {
+          surface_label: "Binance BTCUSDT account_position_risk_mirror",
+          risk_status: "watch",
+          kill_switch_status: "inactive",
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    await server.close();
+  });
+
   it("adds latest replay-run validation state summaries to candidate list and detail", async () => {
     const runRoot = path.join(tmpDir, "replay-runs");
     await writeReplayRunRecord(runRoot, {

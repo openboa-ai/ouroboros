@@ -2,6 +2,8 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type {
+  AccountPositionRiskMirrorSurfaceReadModel,
+  AccountPositionRiskMirrorSurfaceRecord,
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
@@ -136,6 +138,7 @@ export type LocalStoreErrorCode =
   | "invalid_order_fill_surface_input"
   | "invalid_public_market_liveness_surface_input"
   | "invalid_private_readiness_preflight_surface_input"
+  | "invalid_account_position_risk_mirror_surface_input"
   | "invalid_runnable_artifact_input"
   | "runtime_not_found"
   | "runtime_mismatch"
@@ -261,6 +264,11 @@ export interface PrivateReadinessPreflightSurfaceQueryInput {
   instrument?: TradingSubstrateInstrument;
 }
 
+export interface AccountPositionRiskMirrorSurfaceQueryInput {
+  venue?: TradingSubstrateVenue;
+  instrument?: TradingSubstrateInstrument;
+}
+
 const fixtureNotice: FixtureNotice = {
   mode: "fixture_convenience_mode",
   label: "Fixture / convenience mode",
@@ -310,7 +318,8 @@ const ids = {
   evidenceClassificationSealedDecision: "fixture-evidence-classification-sealed-decision-001",
   orderFillSurface: "fixture-binance-btcusdt-order-fill-surface-001",
   publicMarketLivenessSurface: "fixture-binance-btcusdt-public-market-liveness-surface-001",
-  privateReadinessPreflightSurface: "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
+  privateReadinessPreflightSurface: "fixture-binance-btcusdt-private-readiness-preflight-surface-001",
+  accountPositionRiskMirrorSurface: "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
 };
 
 const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
@@ -736,6 +745,75 @@ export function createFixtureRecords(): FixtureItem[] {
     },
     authority_status: "not_live"
   };
+  const accountPositionRiskMirrorSurface: AccountPositionRiskMirrorSurfaceRecord = {
+    record_kind: "account_position_risk_mirror_surface",
+    version: 1,
+    account_position_risk_mirror_surface_id: ids.accountPositionRiskMirrorSurface,
+    surface_family: "account_position_risk_mirror",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    account_scope_ref: "fixture-binance-usdt-account-mirror",
+    asset: "USDT",
+    account_mode: "single_asset",
+    total_wallet_balance: "1250.00000000",
+    total_unrealized_profit: "12.50000000",
+    total_margin_balance: "1262.50000000",
+    available_balance: "1100.00000000",
+    max_withdraw_amount: "1100.00000000",
+    total_initial_margin: "162.50000000",
+    total_maint_margin: "35.00000000",
+    total_position_initial_margin: "150.00000000",
+    total_open_order_initial_margin: "12.50000000",
+    total_cross_wallet_balance: "1250.00000000",
+    total_cross_un_pnl: "12.50000000",
+    position_side: "BOTH",
+    position_amount: "0.015",
+    entry_price: "65000.00000000",
+    break_even_price: "65010.00000000",
+    mark_price: "65833.33333333",
+    unrealized_profit: "12.50000000",
+    liquidation_price: "42000.00000000",
+    notional: "987.50000000",
+    margin_asset: "USDT",
+    margin_type: "cross",
+    leverage: 5,
+    isolated_margin: "0.00000000",
+    isolated_wallet: "0.00000000",
+    initial_margin: "150.00000000",
+    maint_margin: "35.00000000",
+    position_initial_margin: "150.00000000",
+    open_order_initial_margin: "12.50000000",
+    adl_quantile: 2,
+    risk_status: "watch",
+    risk_limit_profile_ref: "fixture-btcusdt-risk-limit-profile-001",
+    max_notional_value: "1000000",
+    kill_switch_status: "inactive",
+    runtime_pause_status: "not_paused",
+    account_information_endpoint: "GET /fapi/v3/account",
+    position_information_endpoint: "GET /fapi/v3/positionRisk",
+    leverage_endpoint: "POST /fapi/v1/leverage",
+    margin_type_endpoint: "POST /fapi/v1/marginType",
+    next_blocked_action: "configure_private_read_credentials",
+    next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:04.000Z",
+    updated_at: "2026-05-16T00:00:04.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_private_account_or_position_read",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "binance-btcusdt-account-position-risk-mirror"),
+    transport: binanceUsdsFuturesConnectorTransport,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    authority_status: "not_live"
+  };
   const comparisonSet: EvaluationComparisonSetRecord = {
     record_kind: "evaluation_comparison_set",
     version: 1,
@@ -858,6 +936,11 @@ export function createFixtureRecords(): FixtureItem[] {
       collection: "substrate-state-surfaces",
       id: ids.privateReadinessPreflightSurface,
       record: privateReadinessPreflightSurface
+    },
+    {
+      collection: "substrate-state-surfaces",
+      id: ids.accountPositionRiskMirrorSurface,
+      record: accountPositionRiskMirrorSurface
     },
     { collection: "evaluation-comparison-sets", id: ids.evaluationComparisonSet, record: comparisonSet },
     { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision },
@@ -1090,6 +1173,47 @@ export class LocalStore {
     query: PrivateReadinessPreflightSurfaceQueryInput = {}
   ): Promise<PrivateReadinessPreflightSurfaceReadModel | undefined> {
     return (await this.listPrivateReadinessPreflightSurfaces(query)).at(-1);
+  }
+
+  async recordAccountPositionRiskMirrorSurface(
+    surface: AccountPositionRiskMirrorSurfaceRecord
+  ): Promise<AccountPositionRiskMirrorSurfaceReadModel> {
+    if (!isAccountPositionRiskMirrorSurfaceRecord(surface)) {
+      throw new LocalStoreError(
+        "invalid_account_position_risk_mirror_surface_input",
+        "invalid account-position-risk mirror substrate surface input",
+        {
+          account_position_risk_mirror_surface_id:
+            (surface as Partial<AccountPositionRiskMirrorSurfaceRecord> | undefined)
+              ?.account_position_risk_mirror_surface_id
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath(
+        "substrate-state-surfaces",
+        surface.account_position_risk_mirror_surface_id
+      ),
+      surface
+    );
+    await this.rebuildProjections();
+    return toAccountPositionRiskMirrorSurfaceReadModel(surface);
+  }
+
+  async listAccountPositionRiskMirrorSurfaces(
+    query: AccountPositionRiskMirrorSurfaceQueryInput = {}
+  ): Promise<AccountPositionRiskMirrorSurfaceReadModel[]> {
+    return (await this.readCollection<FixtureRecord>("substrate-state-surfaces"))
+      .filter(isAccountPositionRiskMirrorSurfaceRecord)
+      .filter((surface) => matchesAccountPositionRiskMirrorSurfaceQuery(surface, query))
+      .sort(compareAccountPositionRiskMirrorSurfaces)
+      .map(toAccountPositionRiskMirrorSurfaceReadModel);
+  }
+
+  async getLatestAccountPositionRiskMirrorSurface(
+    query: AccountPositionRiskMirrorSurfaceQueryInput = {}
+  ): Promise<AccountPositionRiskMirrorSurfaceReadModel | undefined> {
+    return (await this.listAccountPositionRiskMirrorSurfaces(query)).at(-1);
   }
 
   async getCandidateEvaluationRun(
@@ -3248,6 +3372,10 @@ export class LocalStore {
         latest_private_readiness_preflight_surface: await this.getLatestPrivateReadinessPreflightSurface({
           venue: "binance_usd_m_futures",
           instrument: "BTCUSDT"
+        }) ?? null,
+        latest_account_position_risk_mirror_surface: await this.getLatestAccountPositionRiskMirrorSurface({
+          venue: "binance_usd_m_futures",
+          instrument: "BTCUSDT"
         }) ?? null
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
@@ -4147,6 +4275,76 @@ function toPrivateReadinessPreflightSurfaceReadModel(
   };
 }
 
+function toAccountPositionRiskMirrorSurfaceReadModel(
+  surface: AccountPositionRiskMirrorSurfaceRecord
+): AccountPositionRiskMirrorSurfaceReadModel {
+  return {
+    surface_id: surface.account_position_risk_mirror_surface_id,
+    surface_family: surface.surface_family,
+    surface_label: accountPositionRiskMirrorSurfaceLabel(surface),
+    venue: surface.venue,
+    instrument: surface.instrument,
+    product_category: surface.product_category,
+    account_scope_ref: surface.account_scope_ref,
+    asset: surface.asset,
+    account_mode: surface.account_mode,
+    total_wallet_balance: surface.total_wallet_balance,
+    total_unrealized_profit: surface.total_unrealized_profit,
+    total_margin_balance: surface.total_margin_balance,
+    available_balance: surface.available_balance,
+    max_withdraw_amount: surface.max_withdraw_amount,
+    total_initial_margin: surface.total_initial_margin,
+    total_maint_margin: surface.total_maint_margin,
+    total_position_initial_margin: surface.total_position_initial_margin,
+    total_open_order_initial_margin: surface.total_open_order_initial_margin,
+    total_cross_wallet_balance: surface.total_cross_wallet_balance,
+    total_cross_un_pnl: surface.total_cross_un_pnl,
+    position_side: surface.position_side,
+    position_amount: surface.position_amount,
+    entry_price: surface.entry_price,
+    break_even_price: surface.break_even_price,
+    mark_price: surface.mark_price,
+    unrealized_profit: surface.unrealized_profit,
+    liquidation_price: surface.liquidation_price,
+    notional: surface.notional,
+    margin_asset: surface.margin_asset,
+    margin_type: surface.margin_type,
+    leverage: surface.leverage,
+    isolated_margin: surface.isolated_margin,
+    isolated_wallet: surface.isolated_wallet,
+    initial_margin: surface.initial_margin,
+    maint_margin: surface.maint_margin,
+    position_initial_margin: surface.position_initial_margin,
+    open_order_initial_margin: surface.open_order_initial_margin,
+    adl_quantile: surface.adl_quantile,
+    risk_status: surface.risk_status,
+    risk_limit_profile_ref: surface.risk_limit_profile_ref,
+    max_notional_value: surface.max_notional_value,
+    kill_switch_status: surface.kill_switch_status,
+    runtime_pause_status: surface.runtime_pause_status,
+    account_information_endpoint: surface.account_information_endpoint,
+    position_information_endpoint: surface.position_information_endpoint,
+    leverage_endpoint: surface.leverage_endpoint,
+    margin_type_endpoint: surface.margin_type_endpoint,
+    next_blocked_action: surface.next_blocked_action,
+    next_blocked_reason: surface.next_blocked_reason,
+    source_timestamp: surface.source_timestamp,
+    observed_at: surface.observed_at,
+    updated_at: surface.updated_at,
+    freshness: surface.freshness,
+    liveness: surface.liveness,
+    degraded_reason: surface.degraded_reason,
+    source_kind: surface.source_kind,
+    source_ref: surface.source_ref,
+    transport: surface.transport,
+    fixture_backed: surface.fixture_backed,
+    simulated: surface.simulated,
+    no_authority: surface.no_authority,
+    no_authority_label: formatSubstrateNoAuthority(surface.no_authority),
+    authority_status: surface.authority_status
+  };
+}
+
 function orderFillSurfaceLabel(surface: OrderFillSurfaceRecord): string {
   const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
   return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
@@ -4158,6 +4356,11 @@ function publicMarketLivenessSurfaceLabel(surface: PublicMarketLivenessSurfaceRe
 }
 
 function privateReadinessPreflightSurfaceLabel(surface: PrivateReadinessPreflightSurfaceRecord): string {
+  const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
+  return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
+}
+
+function accountPositionRiskMirrorSurfaceLabel(surface: AccountPositionRiskMirrorSurfaceRecord): string {
   const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
   return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
 }
@@ -4447,6 +4650,19 @@ function comparePrivateReadinessPreflightSurfaces(
   }
   return a.private_readiness_preflight_surface_id.localeCompare(
     b.private_readiness_preflight_surface_id
+  );
+}
+
+function compareAccountPositionRiskMirrorSurfaces(
+  a: AccountPositionRiskMirrorSurfaceRecord,
+  b: AccountPositionRiskMirrorSurfaceRecord
+): number {
+  const timeCompare = a.updated_at.localeCompare(b.updated_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.account_position_risk_mirror_surface_id.localeCompare(
+    b.account_position_risk_mirror_surface_id
   );
 }
 
@@ -5189,6 +5405,16 @@ function matchesPrivateReadinessPreflightSurfaceQuery(
   );
 }
 
+function matchesAccountPositionRiskMirrorSurfaceQuery(
+  surface: AccountPositionRiskMirrorSurfaceRecord,
+  query: AccountPositionRiskMirrorSurfaceQueryInput
+): boolean {
+  return (
+    (query.venue === undefined || surface.venue === query.venue) &&
+    (query.instrument === undefined || surface.instrument === query.instrument)
+  );
+}
+
 function isOrderFillSurfaceRecord(value: unknown): value is OrderFillSurfaceRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -5330,6 +5556,84 @@ function isPrivateReadinessPreflightGate(value: unknown): boolean {
       raw.status === "disabled") &&
     raw.enabled === false &&
     nonEmpty(raw.reason)
+  );
+}
+
+function isAccountPositionRiskMirrorSurfaceRecord(
+  value: unknown
+): value is AccountPositionRiskMirrorSurfaceRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<AccountPositionRiskMirrorSurfaceRecord>;
+  return (
+    raw.record_kind === "account_position_risk_mirror_surface" &&
+    raw.version === 1 &&
+    nonEmpty(raw.account_position_risk_mirror_surface_id) &&
+    raw.surface_family === "account_position_risk_mirror" &&
+    raw.venue === "binance_usd_m_futures" &&
+    raw.instrument === "BTCUSDT" &&
+    raw.product_category === "perpetual_futures" &&
+    nonEmpty(raw.account_scope_ref) &&
+    raw.asset === "USDT" &&
+    (raw.account_mode === "single_asset" || raw.account_mode === "multi_assets") &&
+    nonEmpty(raw.total_wallet_balance) &&
+    nonEmpty(raw.total_unrealized_profit) &&
+    nonEmpty(raw.total_margin_balance) &&
+    nonEmpty(raw.available_balance) &&
+    nonEmpty(raw.max_withdraw_amount) &&
+    nonEmpty(raw.total_initial_margin) &&
+    nonEmpty(raw.total_maint_margin) &&
+    nonEmpty(raw.total_position_initial_margin) &&
+    nonEmpty(raw.total_open_order_initial_margin) &&
+    nonEmpty(raw.total_cross_wallet_balance) &&
+    nonEmpty(raw.total_cross_un_pnl) &&
+    (raw.position_side === "BOTH" || raw.position_side === "LONG" || raw.position_side === "SHORT") &&
+    nonEmpty(raw.position_amount) &&
+    nonEmpty(raw.entry_price) &&
+    nonEmpty(raw.break_even_price) &&
+    nonEmpty(raw.mark_price) &&
+    nonEmpty(raw.unrealized_profit) &&
+    nonEmpty(raw.liquidation_price) &&
+    nonEmpty(raw.notional) &&
+    raw.margin_asset === "USDT" &&
+    (raw.margin_type === "cross" || raw.margin_type === "isolated") &&
+    typeof raw.leverage === "number" &&
+    Number.isFinite(raw.leverage) &&
+    raw.leverage > 0 &&
+    nonEmpty(raw.isolated_margin) &&
+    nonEmpty(raw.isolated_wallet) &&
+    nonEmpty(raw.initial_margin) &&
+    nonEmpty(raw.maint_margin) &&
+    nonEmpty(raw.position_initial_margin) &&
+    nonEmpty(raw.open_order_initial_margin) &&
+    (raw.adl_quantile === undefined || (Number.isInteger(raw.adl_quantile) && raw.adl_quantile >= 0)) &&
+    (raw.risk_status === "nominal" || raw.risk_status === "watch" || raw.risk_status === "breach") &&
+    nonEmpty(raw.risk_limit_profile_ref) &&
+    nonEmpty(raw.max_notional_value) &&
+    (raw.kill_switch_status === "inactive" || raw.kill_switch_status === "active") &&
+    (raw.runtime_pause_status === "not_paused" || raw.runtime_pause_status === "paused") &&
+    raw.account_information_endpoint === "GET /fapi/v3/account" &&
+    raw.position_information_endpoint === "GET /fapi/v3/positionRisk" &&
+    raw.leverage_endpoint === "POST /fapi/v1/leverage" &&
+    raw.margin_type_endpoint === "POST /fapi/v1/marginType" &&
+    nonEmpty(raw.next_blocked_action) &&
+    nonEmpty(raw.next_blocked_reason) &&
+    nonEmpty(raw.source_timestamp) &&
+    nonEmpty(raw.observed_at) &&
+    nonEmpty(raw.updated_at) &&
+    isTradingSubstrateFreshness(raw.freshness) &&
+    isTradingSubstrateLiveness(raw.liveness) &&
+    isTradingSubstrateSourceKind(raw.source_kind) &&
+    isBinanceUsdsFuturesConnectorTransport(raw.transport) &&
+    typeof raw.fixture_backed === "boolean" &&
+    typeof raw.simulated === "boolean" &&
+    raw.no_authority !== undefined &&
+    raw.no_authority.live_exchange === false &&
+    raw.no_authority.order_submission === false &&
+    raw.no_authority.credentials === false &&
+    raw.authority_status === "not_live" &&
+    (raw.source_ref === undefined || isRef(raw.source_ref))
   );
 }
 

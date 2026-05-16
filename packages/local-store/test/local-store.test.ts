@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
 import type {
+  AccountPositionRiskMirrorSurfaceRecord,
   ArtifactLineageRecord,
   ArtifactChangeProposalRecord,
   ResearchFindingRecord,
@@ -260,6 +261,82 @@ describe("LocalStore", () => {
       authority_status: "not_live"
     });
     expect(candidate?.trading_substrate?.latest_private_readiness_preflight_surface).toEqual(latest);
+  });
+
+  it("seeds a Binance BTCUSDT account-position-risk mirror surface into candidate inspect read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const latest = await store.getLatestAccountPositionRiskMirrorSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    const item = await readStoreJson<AccountPositionRiskMirrorSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-account-position-risk-mirror-surface-001.json"
+    );
+
+    expect(item.record_kind).toBe("account_position_risk_mirror_surface");
+    expect(latest).toMatchObject({
+      surface_family: "account_position_risk_mirror",
+      surface_label: "Binance BTCUSDT account_position_risk_mirror",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      account_scope_ref: "fixture-binance-usdt-account-mirror",
+      asset: "USDT",
+      account_mode: "single_asset",
+      total_wallet_balance: "1250.00000000",
+      total_unrealized_profit: "12.50000000",
+      total_margin_balance: "1262.50000000",
+      available_balance: "1100.00000000",
+      max_withdraw_amount: "1100.00000000",
+      total_initial_margin: "162.50000000",
+      total_maint_margin: "35.00000000",
+      position_side: "BOTH",
+      position_amount: "0.015",
+      entry_price: "65000.00000000",
+      break_even_price: "65010.00000000",
+      mark_price: "65833.33333333",
+      unrealized_profit: "12.50000000",
+      liquidation_price: "42000.00000000",
+      notional: "987.50000000",
+      margin_asset: "USDT",
+      margin_type: "cross",
+      leverage: 5,
+      initial_margin: "150.00000000",
+      maint_margin: "35.00000000",
+      adl_quantile: 2,
+      risk_status: "watch",
+      kill_switch_status: "inactive",
+      runtime_pause_status: "not_paused",
+      account_information_endpoint: "GET /fapi/v3/account",
+      position_information_endpoint: "GET /fapi/v3/positionRisk",
+      leverage_endpoint: "POST /fapi/v1/leverage",
+      margin_type_endpoint: "POST /fapi/v1/marginType",
+      next_blocked_action: "configure_private_read_credentials",
+      next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_private_account_or_position_read",
+      transport: {
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    });
+    expect(candidate?.trading_substrate?.latest_account_position_risk_mirror_surface).toEqual(latest);
   });
 
   it("seeds a durable stage binding for fixture evaluation records", async () => {

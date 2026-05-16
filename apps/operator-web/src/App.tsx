@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type {
+  AccountPositionRiskMirrorSurfaceReadModel,
   CandidateEvaluationReadModel,
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
@@ -595,6 +596,7 @@ export function CandidateDetail({
           orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
           publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
           privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
+          accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
         />
 
         <RuntimeControlSection
@@ -948,11 +950,13 @@ function formatSignedNumber(value: number): string {
 function TradingSubstrateSection({
   orderFillSurface,
   publicMarketSurface,
-  privateReadinessSurface
+  privateReadinessSurface,
+  accountPositionRiskSurface
 }: {
   orderFillSurface?: OrderFillSurfaceReadModel | null;
   publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
   privateReadinessSurface?: PrivateReadinessPreflightSurfaceReadModel | null;
+  accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
 }) {
   return (
     <InfoSection title="Trading Substrate">
@@ -1091,6 +1095,112 @@ function TradingSubstrateSection({
           <span>not_live</span>
         </div>
       )}
+      {accountPositionRiskSurface ? (
+        <>
+          <div className={`evaluation-status ${accountPositionRiskStatusTone(accountPositionRiskSurface)}`}>
+            <span>Account position risk mirror</span>
+            <strong>{accountPositionRiskSurface.risk_status}</strong>
+            <span>{accountPositionRiskSurface.authority_status}</span>
+          </div>
+          <Field label="Account risk surface" value={accountPositionRiskSurface.surface_label} />
+          <Field
+            label="Account risk venue"
+            value={`${accountPositionRiskSurface.venue} / ${accountPositionRiskSurface.product_category}`}
+          />
+          <Field label="Account risk instrument" value={accountPositionRiskSurface.instrument} />
+          <Field label="Account scope" value={accountPositionRiskSurface.account_scope_ref} />
+          <Field label="Asset / mode" value={[
+            accountPositionRiskSurface.asset,
+            accountPositionRiskSurface.account_mode
+          ].join(" / ")} />
+          <Field label="Wallet / margin balance" value={[
+            accountPositionRiskSurface.total_wallet_balance,
+            accountPositionRiskSurface.total_margin_balance
+          ].join(" / ")} />
+          <Field label="Available / max withdraw" value={[
+            accountPositionRiskSurface.available_balance,
+            accountPositionRiskSurface.max_withdraw_amount
+          ].join(" / ")} />
+          <Field label="Initial / maintenance margin" value={[
+            accountPositionRiskSurface.total_initial_margin,
+            accountPositionRiskSurface.total_maint_margin
+          ].join(" / ")} />
+          <Field label="Position / open-order margin" value={[
+            accountPositionRiskSurface.total_position_initial_margin,
+            accountPositionRiskSurface.total_open_order_initial_margin
+          ].join(" / ")} />
+          <Field label="Cross wallet / PnL" value={[
+            accountPositionRiskSurface.total_cross_wallet_balance,
+            accountPositionRiskSurface.total_cross_un_pnl
+          ].join(" / ")} />
+          <Field label="Position side / amount" value={[
+            accountPositionRiskSurface.position_side,
+            accountPositionRiskSurface.position_amount
+          ].join(" / ")} />
+          <Field label="Entry / breakeven" value={[
+            accountPositionRiskSurface.entry_price,
+            accountPositionRiskSurface.break_even_price
+          ].join(" / ")} />
+          <Field label="Mark / liquidation" value={[
+            accountPositionRiskSurface.mark_price,
+            accountPositionRiskSurface.liquidation_price
+          ].join(" / ")} />
+          <Field label="Notional / unrealized PnL" value={[
+            accountPositionRiskSurface.notional,
+            accountPositionRiskSurface.unrealized_profit
+          ].join(" / ")} />
+          <Field label="Margin asset / type" value={[
+            accountPositionRiskSurface.margin_asset,
+            accountPositionRiskSurface.margin_type
+          ].join(" / ")} />
+          <Field label="Leverage / ADL" value={[
+            String(accountPositionRiskSurface.leverage),
+            accountPositionRiskSurface.adl_quantile === undefined
+              ? "none"
+              : String(accountPositionRiskSurface.adl_quantile)
+          ].join(" / ")} />
+          <Field label="Risk status" value={accountPositionRiskSurface.risk_status} />
+          <Field label="Risk profile" value={accountPositionRiskSurface.risk_limit_profile_ref} />
+          <Field label="Max notional" value={accountPositionRiskSurface.max_notional_value} />
+          <Field label="Kill switch / pause" value={[
+            accountPositionRiskSurface.kill_switch_status,
+            accountPositionRiskSurface.runtime_pause_status
+          ].join(" / ")} />
+          <Field
+            label="Account risk endpoints"
+            value={[
+              accountPositionRiskSurface.account_information_endpoint,
+              accountPositionRiskSurface.position_information_endpoint,
+              accountPositionRiskSurface.leverage_endpoint,
+              accountPositionRiskSurface.margin_type_endpoint
+            ].join(" / ")}
+          />
+          <Field label="Account risk next action" value={accountPositionRiskSurface.next_blocked_action} />
+          <Field label="Account risk blocked reason" value={accountPositionRiskSurface.next_blocked_reason} />
+          <Field
+            label="Account risk freshness"
+            value={`${accountPositionRiskSurface.freshness} / ${accountPositionRiskSurface.liveness}`}
+          />
+          <Field label="Account risk source" value={formatSubstrateSource(accountPositionRiskSurface)} />
+          <Field label="Account risk connector package" value={accountPositionRiskSurface.transport.package_name} />
+          <Field label="Account risk connector repository" value={accountPositionRiskSurface.transport.repository} />
+          <Field label="Account risk connector role" value={accountPositionRiskSurface.transport.integration_role} />
+          <Field label="Account risk source timestamp" value={accountPositionRiskSurface.source_timestamp} />
+          <Field label="Account risk observed" value={accountPositionRiskSurface.observed_at} />
+          <Field label="Account risk updated" value={accountPositionRiskSurface.updated_at} />
+          {accountPositionRiskSurface.degraded_reason && (
+            <Field label="Account risk reason" value={accountPositionRiskSurface.degraded_reason} />
+          )}
+          <Field label="Account risk no authority" value={accountPositionRiskSurface.no_authority_label} />
+          <Field label="Account risk authority" value={accountPositionRiskSurface.authority_status} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No account position risk mirror</strong>
+          <span>BTCUSDT account, position, and risk posture has not been recorded</span>
+          <span>not_live</span>
+        </div>
+      )}
       {orderFillSurface ? (
         <>
           <div className={`evaluation-status ${orderFillStatusTone(orderFillSurface)}`}>
@@ -1179,6 +1289,18 @@ function privateReadinessStatusTone(
   return "neutral";
 }
 
+function accountPositionRiskStatusTone(
+  surface: AccountPositionRiskMirrorSurfaceReadModel
+): "counted" | "failed" | "neutral" {
+  if (surface.risk_status === "breach" || surface.kill_switch_status === "active") {
+    return "failed";
+  }
+  if (surface.risk_status === "nominal" && surface.liveness === "connected") {
+    return "counted";
+  }
+  return "neutral";
+}
+
 function formatPrivateReadinessGate(
   gate: PrivateReadinessPreflightSurfaceReadModel["credential_gate"]
 ): string {
@@ -1187,6 +1309,7 @@ function formatPrivateReadinessGate(
 
 function formatSubstrateSource(
   surface:
+    | AccountPositionRiskMirrorSurfaceReadModel
     | OrderFillSurfaceReadModel
     | PublicMarketLivenessSurfaceReadModel
     | PrivateReadinessPreflightSurfaceReadModel
