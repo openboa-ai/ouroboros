@@ -3,6 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
+import {
+  BINANCE_BTCUSDT_QUERY,
+  BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
+  binanceBtcusdtNoAuthoritySurfaceExpectation,
+  binancePrivateReadinessPolicyDecisionNoAuthorityExpectation
+} from "../../../test/support/binance-no-authority";
 import type {
   AccountPositionRiskMirrorSurfaceRecord,
   ArtifactLineageRecord,
@@ -83,8 +89,7 @@ describe("LocalStore", () => {
     await store.initialize();
 
     const latest = await store.getLatestOrderFillSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
+      ...BINANCE_BTCUSDT_QUERY
     });
     const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
     const item = await readStoreJson<OrderFillSurfaceRecord>(
@@ -94,33 +99,16 @@ describe("LocalStore", () => {
     );
 
     expect(item.record_kind).toBe("order_fill_surface");
-    expect(latest).toMatchObject({
+    expect(latest).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation({
       surface_family: "order_fill",
       surface_label: "Binance BTCUSDT order_fill",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
       posture: "partially_filled",
       raw_upstream_status: "PARTIALLY_FILLED",
       raw_upstream_execution_type: "TRADE",
       freshness: "stale",
       liveness: "degraded",
-      degraded_reason: "fixture_seed_no_live_connector",
-      transport: {
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
-      fixture_backed: true,
-      simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
-      authority_status: "not_live"
-    });
+      degraded_reason: "fixture_seed_no_live_connector"
+    }));
     expect(candidate?.trading_substrate?.latest_order_fill_surface).toEqual(latest);
   });
 
@@ -129,8 +117,7 @@ describe("LocalStore", () => {
     await store.initialize();
 
     const latest = await store.getLatestPublicMarketLivenessSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
+      ...BINANCE_BTCUSDT_QUERY
     });
     const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
     const item = await readStoreJson<PublicMarketLivenessSurfaceRecord>(
@@ -140,12 +127,9 @@ describe("LocalStore", () => {
     );
 
     expect(item.record_kind).toBe("public_market_liveness_surface");
-    expect(latest).toMatchObject({
+    expect(latest).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation({
       surface_family: "public_market_liveness",
       surface_label: "Binance BTCUSDT public_market_liveness",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
       symbol_status: "TRADING",
       contract_type: "PERPETUAL",
       price_tick_size: "0.10",
@@ -159,22 +143,8 @@ describe("LocalStore", () => {
       server_time: "2026-05-16T00:00:01.000Z",
       freshness: "stale",
       liveness: "degraded",
-      degraded_reason: "fixture_seed_no_live_connector",
-      transport: {
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
-      fixture_backed: true,
-      simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
-      authority_status: "not_live"
-    });
+      degraded_reason: "fixture_seed_no_live_connector"
+    }));
     expect(candidate?.trading_substrate?.latest_public_market_liveness_surface).toEqual(latest);
   });
 
@@ -183,8 +153,7 @@ describe("LocalStore", () => {
     await store.initialize();
 
     const latest = await store.getLatestPrivateReadinessPreflightSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
+      ...BINANCE_BTCUSDT_QUERY
     });
     const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
     const item = await readStoreJson<PrivateReadinessPreflightSurfaceRecord>(
@@ -194,12 +163,9 @@ describe("LocalStore", () => {
     );
 
     expect(item.record_kind).toBe("private_readiness_preflight_surface");
-    expect(latest).toMatchObject({
+    expect(latest).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation({
       surface_family: "private_readiness_preflight",
       surface_label: "Binance BTCUSDT private_readiness_preflight",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
       credential_gate: {
         status: "not_configured",
         enabled: false,
@@ -244,31 +210,11 @@ describe("LocalStore", () => {
       next_blocked_reason: "credential_and_operator_gates_not_ready",
       freshness: "stale",
       liveness: "degraded",
-      degraded_reason: "fixture_seed_no_private_authority",
-      transport: {
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
-      fixture_backed: true,
-      simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
-      authority_status: "not_live"
-    });
+      degraded_reason: "fixture_seed_no_private_authority"
+    }));
     expect(candidate?.trading_substrate?.latest_private_readiness_preflight_surface).toEqual(latest);
     expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision).toMatchObject({
-      decision_kind: "private_readiness_policy_decision",
-      status: "not_ready",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
-      binance_security_types: ["USER_DATA", "USER_STREAM", "TRADE"],
-      reason_codes: expect.arrayContaining([
+      ...binancePrivateReadinessPolicyDecisionNoAuthorityExpectation([
         "configuration_not_ready",
         "operator_approval_missing",
         "jurisdiction_review_required",
@@ -279,11 +225,19 @@ describe("LocalStore", () => {
         "user_data_stream_not_ready",
         "no_private_read_performed"
       ]),
-      no_private_read_performed: true,
-      signed_request_authority: false,
-      live_exchange_authority: false,
-      order_submission_authority: false,
-      authority_status: "not_live"
+      status: "not_ready",
+      binance_security_types: [...BINANCE_PRIVATE_READINESS_SECURITY_TYPES],
+      reason_codes: expect.arrayContaining([
+        "configuration_not_ready",
+        "operator_approval_missing",
+        "jurisdiction_review_required",
+        "live_binding_not_ready",
+        "secret_handling_not_ready",
+        "account_position_freshness_not_ready",
+        "listen_key_not_ready",
+        "user_data_stream_not_ready",
+        "no_private_read_performed"
+      ])
     });
   });
 
@@ -292,8 +246,7 @@ describe("LocalStore", () => {
     await store.initialize();
 
     const latest = await store.getLatestAccountPositionRiskMirrorSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
+      ...BINANCE_BTCUSDT_QUERY
     });
     const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
     const item = await readStoreJson<AccountPositionRiskMirrorSurfaceRecord>(
@@ -303,12 +256,9 @@ describe("LocalStore", () => {
     );
 
     expect(item.record_kind).toBe("account_position_risk_mirror_surface");
-    expect(latest).toMatchObject({
+    expect(latest).toMatchObject(binanceBtcusdtNoAuthoritySurfaceExpectation({
       surface_family: "account_position_risk_mirror",
       surface_label: "Binance BTCUSDT account_position_risk_mirror",
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT",
-      product_category: "perpetual_futures",
       account_scope_ref: "fixture-binance-usdt-account-mirror",
       asset: "USDT",
       account_mode: "single_asset",
@@ -344,22 +294,8 @@ describe("LocalStore", () => {
       next_blocked_reason: "mirror_is_fixture_backed_no_signed_user_data_read",
       freshness: "stale",
       liveness: "degraded",
-      degraded_reason: "fixture_seed_no_private_account_or_position_read",
-      transport: {
-        repository: "binance/binance-connector-js",
-        package_name: "@binance/derivatives-trading-usds-futures",
-        integration_role: "transport_only",
-        authority_status: "not_live"
-      },
-      fixture_backed: true,
-      simulated: true,
-      no_authority: {
-        live_exchange: false,
-        order_submission: false,
-        credentials: false
-      },
-      authority_status: "not_live"
-    });
+      degraded_reason: "fixture_seed_no_private_account_or_position_read"
+    }));
     expect(candidate?.trading_substrate?.latest_account_position_risk_mirror_surface).toEqual(latest);
   });
 
