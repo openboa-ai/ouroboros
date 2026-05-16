@@ -389,6 +389,24 @@ describe("runtime read-only API", () => {
             enabled: false
           },
           authority_status: "not_live"
+        },
+        latest_private_readiness_policy_decision: {
+          decision_kind: "private_readiness_policy_decision",
+          status: "not_ready",
+          binance_security_types: ["USER_DATA", "USER_STREAM", "TRADE"],
+          reason_codes: expect.arrayContaining([
+            "configuration_not_ready",
+            "operator_approval_missing",
+            "jurisdiction_review_required",
+            "live_binding_not_ready",
+            "secret_handling_not_ready",
+            "no_private_read_performed"
+          ]),
+          no_private_read_performed: true,
+          signed_request_authority: false,
+          live_exchange_authority: false,
+          order_submission_authority: false,
+          authority_status: "not_live"
         }
       }
     });

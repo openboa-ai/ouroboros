@@ -3,7 +3,8 @@ import {
   TRADING_SUBSTRATE_BINANCE_USDM_TERMS,
   TRADING_SUBSTRATE_CANONICAL_NOUNS,
   TRADING_SUBSTRATE_SURFACE_FAMILIES,
-  TRADING_SUBSTRATE_SURFACE_TAXONOMY
+  TRADING_SUBSTRATE_SURFACE_TAXONOMY,
+  evaluatePrivateReadinessPolicyDecision
 } from "./index";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
@@ -19,6 +20,142 @@ import type {
 } from "./index";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
+
+const substrateTransport = {
+  transport_kind: "official_binance_connector",
+  repository: "binance/binance-connector-js",
+  package_name: "@binance/derivatives-trading-usds-futures",
+  api_family: "derivatives_trading_usds_futures",
+  supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+  production_base_url: "https://fapi.binance.com",
+  testnet_base_url: "https://testnet.binancefuture.com",
+  integration_role: "transport_only",
+  authority_status: "not_live"
+} as const;
+
+const substrateNoAuthority = {
+  live_exchange: false,
+  order_submission: false,
+  credentials: false
+} as const;
+
+function privateReadinessGate(
+  status: PrivateReadinessPreflightSurfaceReadModel["credential_gate"]["status"],
+  enabled: PrivateReadinessPreflightSurfaceReadModel["credential_gate"]["enabled"],
+  reason: string
+): PrivateReadinessPreflightSurfaceReadModel["credential_gate"] {
+  return { status, enabled, reason };
+}
+
+function privateReadinessPolicySurface(
+  overrides: Partial<PrivateReadinessPreflightSurfaceReadModel> = {}
+): PrivateReadinessPreflightSurfaceReadModel {
+  return {
+    surface_id: "policy-ready-private-readiness-preflight-surface-001",
+    surface_family: "private_readiness_preflight",
+    surface_label: "Binance BTCUSDT private_readiness_preflight",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    credential_gate: privateReadinessGate("ready", true, "USER_DATA_secret_reference_configured"),
+    jurisdiction_gate: privateReadinessGate("ready", true, "operator_jurisdiction_and_risk_policy_recorded"),
+    operator_approval_gate: privateReadinessGate("ready", true, "operator_private_read_approval_recorded"),
+    private_account_read_gate: privateReadinessGate("ready", true, "GET_/fapi/v3/account_preflight_ready"),
+    private_position_read_gate: privateReadinessGate("ready", true, "GET_/fapi/v3/positionRisk_preflight_ready"),
+    user_data_stream_gate: privateReadinessGate("ready", true, "USER_STREAM_lifecycle_policy_ready"),
+    listen_key_gate: privateReadinessGate("ready", true, "listenKey_lifecycle_policy_ready"),
+    order_submission_gate: privateReadinessGate("disabled", false, "TRADE_endpoint_out_of_private_readiness_scope"),
+    leverage_or_margin_mutation_gate: privateReadinessGate("disabled", false, "account_mutation_out_of_scope"),
+    account_information_endpoint: "GET /fapi/v3/account",
+    user_data_stream_endpoint: "POST /fapi/v1/listenKey",
+    order_endpoint: "POST /fapi/v1/order",
+    next_blocked_action: "none",
+    next_blocked_reason: "private_readiness_policy_ready",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:01.000Z",
+    updated_at: "2026-05-16T00:00:01.000Z",
+    freshness: "fresh",
+    liveness: "connected",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "policy-ready-private-readiness-preflight"),
+    transport: substrateTransport,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: substrateNoAuthority,
+    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+    authority_status: "not_live",
+    ...overrides
+  };
+}
+
+function accountPositionRiskPolicySurface(
+  overrides: Partial<AccountPositionRiskMirrorSurfaceReadModel> = {}
+): AccountPositionRiskMirrorSurfaceReadModel {
+  return {
+    surface_id: "policy-ready-account-position-risk-mirror-surface-001",
+    surface_family: "account_position_risk_mirror",
+    surface_label: "Binance BTCUSDT account_position_risk_mirror",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    account_scope_ref: "policy-ready-binance-usdt-account-mirror",
+    asset: "USDT",
+    account_mode: "single_asset",
+    total_wallet_balance: "1250.00000000",
+    total_unrealized_profit: "0.00000000",
+    total_margin_balance: "1250.00000000",
+    available_balance: "1250.00000000",
+    max_withdraw_amount: "1250.00000000",
+    total_initial_margin: "0.00000000",
+    total_maint_margin: "0.00000000",
+    total_position_initial_margin: "0.00000000",
+    total_open_order_initial_margin: "0.00000000",
+    total_cross_wallet_balance: "1250.00000000",
+    total_cross_un_pnl: "0.00000000",
+    position_side: "BOTH",
+    position_amount: "0.000",
+    entry_price: "0.00000000",
+    break_even_price: "0.00000000",
+    mark_price: "65000.00000000",
+    unrealized_profit: "0.00000000",
+    liquidation_price: "0.00000000",
+    notional: "0.00000000",
+    margin_asset: "USDT",
+    margin_type: "cross",
+    leverage: 5,
+    isolated_margin: "0.00000000",
+    isolated_wallet: "0.00000000",
+    initial_margin: "0.00000000",
+    maint_margin: "0.00000000",
+    position_initial_margin: "0.00000000",
+    open_order_initial_margin: "0.00000000",
+    risk_status: "nominal",
+    risk_limit_profile_ref: "policy-ready-btcusdt-risk-limit-profile-001",
+    max_notional_value: "1000000",
+    kill_switch_status: "inactive",
+    runtime_pause_status: "not_paused",
+    account_information_endpoint: "GET /fapi/v3/account",
+    position_information_endpoint: "GET /fapi/v3/positionRisk",
+    leverage_endpoint: "POST /fapi/v1/leverage",
+    margin_type_endpoint: "POST /fapi/v1/marginType",
+    next_blocked_action: "none",
+    next_blocked_reason: "account_position_policy_ready",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:01.000Z",
+    updated_at: "2026-05-16T00:00:01.000Z",
+    freshness: "fresh",
+    liveness: "connected",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "policy-ready-account-position-risk-mirror"),
+    transport: substrateTransport,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: substrateNoAuthority,
+    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+    authority_status: "not_live",
+    ...overrides
+  };
+}
 
 describe("Trading substrate taxonomy contract", () => {
   it("keeps every landed substrate family in the canonical family list", () => {
@@ -578,6 +715,172 @@ describe("Trading substrate private-readiness preflight surface records", () => 
     });
     expect(readModel.no_authority_label).toBe("live_exchange=false, order_submission=false, credentials=false");
     expect(readModel.authority_status).toBe("not_live");
+  });
+});
+
+describe("Trading substrate private-readiness policy decisions", () => {
+  it("returns ready from explicit Binance USER_DATA and USER_STREAM posture without private reads", () => {
+    const decision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: privateReadinessPolicySurface(),
+      account_position_risk_mirror_surface: accountPositionRiskPolicySurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+
+    expect(decision).toMatchObject({
+      decision_kind: "private_readiness_policy_decision",
+      status: "ready",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      order_submission_authority: false,
+      authority_status: "not_live"
+    });
+    expect(decision.binance_security_types).toEqual(["USER_DATA", "USER_STREAM", "TRADE"]);
+    expect(decision.reason_codes).toEqual(["no_private_read_performed"]);
+    expect(decision.blocking_conditions).toEqual([]);
+    expect(decision.checked_gates.map((gate) => gate.dimension)).toEqual([
+      "configuration",
+      "operator_approval",
+      "jurisdiction_risk",
+      "live_binding",
+      "secret_handling",
+      "account_position_freshness",
+      "kill_switch",
+      "stop_behavior",
+      "listen_key",
+      "user_data_stream",
+      "trade_authority"
+    ]);
+  });
+
+  it("returns not_ready with explicit reason codes for fixture-backed no-authority posture", () => {
+    const decision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: privateReadinessPolicySurface({
+        credential_gate: privateReadinessGate("not_configured", false, "no_binance_api_key_configured"),
+        jurisdiction_gate: privateReadinessGate("not_evaluated", false, "operator_jurisdiction_not_recorded"),
+        operator_approval_gate: privateReadinessGate(
+          "not_approved",
+          false,
+          "operator_live_private_read_approval_missing"
+        ),
+        private_account_read_gate: privateReadinessGate(
+          "disabled",
+          false,
+          "signed_user_data_account_read_deferred"
+        ),
+        private_position_read_gate: privateReadinessGate(
+          "disabled",
+          false,
+          "signed_user_data_position_read_deferred"
+        ),
+        user_data_stream_gate: privateReadinessGate("disabled", false, "listen_key_lifecycle_not_enabled"),
+        listen_key_gate: privateReadinessGate(
+          "disabled",
+          false,
+          "listen_key_creation_forbidden_in_preflight"
+        ),
+        freshness: "stale",
+        liveness: "degraded",
+        degraded_reason: "fixture_seed_no_private_authority"
+      }),
+      account_position_risk_mirror_surface: accountPositionRiskPolicySurface({
+        risk_status: "watch",
+        freshness: "stale",
+        liveness: "degraded",
+        degraded_reason: "fixture_seed_no_private_account_or_position_read"
+      }),
+      live_binding_gate: {
+        status: "not_ready",
+        reason: "live_binding_profile_not_configured"
+      },
+      secret_handling_gate: {
+        status: "not_ready",
+        reason: "secret_handling_profile_not_configured"
+      },
+      stop_behavior_gate: {
+        status: "not_ready",
+        reason: "operator_stop_behavior_not_recorded"
+      }
+    });
+
+    expect(decision.status).toBe("not_ready");
+    expect(decision.reason_codes).toEqual(expect.arrayContaining([
+      "configuration_not_ready",
+      "operator_approval_missing",
+      "jurisdiction_review_required",
+      "live_binding_not_ready",
+      "secret_handling_not_ready",
+      "account_position_freshness_not_ready",
+      "stop_behavior_not_ready",
+      "listen_key_not_ready",
+      "user_data_stream_not_ready",
+      "private_account_read_not_ready",
+      "private_position_read_not_ready",
+      "no_private_read_performed"
+    ]));
+    expect(decision.blocking_conditions).toEqual(expect.arrayContaining([
+      "configuration: no_binance_api_key_configured",
+      "operator_approval: operator_live_private_read_approval_missing",
+      "secret_handling: secret_handling_profile_not_configured"
+    ]));
+    expect(decision.no_private_read_performed).toBe(true);
+    expect(decision.signed_request_authority).toBe(false);
+    expect(decision.live_exchange_authority).toBe(false);
+  });
+
+  it("returns blocked when stop controls or Binance TRADE authority expand beyond private-read scope", () => {
+    const decision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: privateReadinessPolicySurface({
+        order_submission_gate: privateReadinessGate("ready", true, "TRADE_endpoint_enabled")
+      }),
+      account_position_risk_mirror_surface: accountPositionRiskPolicySurface({
+        kill_switch_status: "active"
+      }),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "blocked",
+        reason: "runtime_stop_semantics_conflict_with_active_kill_switch"
+      }
+    });
+
+    expect(decision.status).toBe("blocked");
+    expect(decision.reason_codes).toEqual(expect.arrayContaining([
+      "kill_switch_active",
+      "stop_behavior_blocked",
+      "trade_authority_scope_expanded",
+      "no_private_read_performed"
+    ]));
+    expect(decision.blocking_conditions).toEqual(expect.arrayContaining([
+      "kill_switch: active",
+      "stop_behavior: runtime_stop_semantics_conflict_with_active_kill_switch",
+      "trade_authority: TRADE_endpoint_enabled"
+    ]));
+    expect(decision.order_submission_authority).toBe(false);
+    expect(decision.no_private_read_performed).toBe(true);
   });
 });
 

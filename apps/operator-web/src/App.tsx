@@ -15,6 +15,7 @@ import type {
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
+  PrivateReadinessPolicyDecision,
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -596,6 +597,7 @@ export function CandidateDetail({
           orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
           publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
           privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
+          privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
         />
 
@@ -951,11 +953,13 @@ function TradingSubstrateSection({
   orderFillSurface,
   publicMarketSurface,
   privateReadinessSurface,
+  privateReadinessPolicyDecision,
   accountPositionRiskSurface
 }: {
   orderFillSurface?: OrderFillSurfaceReadModel | null;
   publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
   privateReadinessSurface?: PrivateReadinessPreflightSurfaceReadModel | null;
+  privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
 }) {
   return (
@@ -1092,6 +1096,60 @@ function TradingSubstrateSection({
         <div className="placeholder">
           <strong>No private readiness preflight</strong>
           <span>BTCUSDT private-read gates have not been recorded</span>
+          <span>not_live</span>
+        </div>
+      )}
+      {privateReadinessPolicyDecision ? (
+        <>
+          <div className={`evaluation-status ${privateReadinessPolicyStatusTone(privateReadinessPolicyDecision)}`}>
+            <span>Private-readiness policy</span>
+            <strong>{privateReadinessPolicyDecision.status}</strong>
+            <span>{privateReadinessPolicyDecision.authority_status}</span>
+          </div>
+          <Field label="Policy decision" value={privateReadinessPolicyDecision.decision_kind} />
+          <Field label="Policy venue" value={[
+            privateReadinessPolicyDecision.venue,
+            privateReadinessPolicyDecision.instrument,
+            privateReadinessPolicyDecision.product_category
+          ].join(" / ")} />
+          <Field
+            label="Policy Binance security types"
+            value={privateReadinessPolicyDecision.binance_security_types.join(", ")}
+          />
+          <Field label="Policy reason codes" value={privateReadinessPolicyDecision.reason_codes.join(", ")} />
+          <Field
+            label="Policy blocking conditions"
+            value={
+              privateReadinessPolicyDecision.blocking_conditions.length > 0
+                ? privateReadinessPolicyDecision.blocking_conditions.join(" / ")
+                : "none"
+            }
+          />
+          <Field
+            label="Policy checked gates"
+            value={privateReadinessPolicyDecision.checked_gates
+              .map((gate) => `${gate.dimension}=${gate.status}`)
+              .join(", ")}
+          />
+          <Field
+            label="Policy source surfaces"
+            value={privateReadinessPolicyDecision.source_surface_refs.map(formatRef).join(" / ")}
+          />
+          <Field label="Policy evaluated" value={privateReadinessPolicyDecision.evaluated_at} />
+          <Field
+            label="Policy no private read"
+            value={[
+              `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
+              `signed_request_authority=${String(privateReadinessPolicyDecision.signed_request_authority)}`,
+              `live_exchange_authority=${String(privateReadinessPolicyDecision.live_exchange_authority)}`,
+              `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
+            ].join(", ")}
+          />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No private-readiness policy</strong>
+          <span>BTCUSDT private-readiness decision has not been projected</span>
           <span>not_live</span>
         </div>
       )}
@@ -1296,6 +1354,18 @@ function accountPositionRiskStatusTone(
     return "failed";
   }
   if (surface.risk_status === "nominal" && surface.liveness === "connected") {
+    return "counted";
+  }
+  return "neutral";
+}
+
+function privateReadinessPolicyStatusTone(
+  decision: PrivateReadinessPolicyDecision
+): "counted" | "failed" | "neutral" {
+  if (decision.status === "blocked") {
+    return "failed";
+  }
+  if (decision.status === "ready") {
     return "counted";
   }
   return "neutral";

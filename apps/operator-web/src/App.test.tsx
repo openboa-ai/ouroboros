@@ -10,6 +10,7 @@ import type {
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
   OrderFillSurfaceReadModel,
+  PrivateReadinessPolicyDecision,
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
   ReplayRuntimeAuthorityReadModel,
@@ -125,6 +126,7 @@ describe("CandidateDetail", () => {
             latest_order_fill_surface: fixtureOrderFillSurface(),
             latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
             latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -143,11 +145,18 @@ describe("CandidateDetail", () => {
     expect(html).toContain("POST /fapi/v1/listenKey");
     expect(html).toContain("POST /fapi/v1/order");
     expect(html).toContain("configure_private_read_credentials");
+    expect(html).toContain("Private-readiness policy");
+    expect(html).toContain("private_readiness_policy_decision");
+    expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
+    expect(html).toContain("configuration_not_ready");
+    expect(html).toContain("secret_handling_not_ready");
+    expect(html).toContain("no_private_read_performed=true");
+    expect(html).toContain("signed_request_authority=false");
     expect(html).toContain("transport_only");
     expect(html).toContain("fixture_seed_no_private_authority");
     expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
     expect(html).toContain("not_live");
-    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key|apiKey|secretKey/i);
+    expect(html).not.toMatch(/\b(Start|Pause|Resume|Stop|Promote)\b|Run provider|Run evaluator|Live order|broker|provider_api_key|apiKey|secretKey/i);
   });
 
   it("renders Binance BTCUSDT account-position-risk mirror posture without action controls", () => {
@@ -1608,6 +1617,130 @@ function fixturePrivateReadinessPreflightSurface(): PrivateReadinessPreflightSur
       credentials: false
     },
     no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+    authority_status: "not_live"
+  };
+}
+
+function fixturePrivateReadinessPolicyDecision(): PrivateReadinessPolicyDecision {
+  return {
+    decision_kind: "private_readiness_policy_decision",
+    status: "not_ready",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    evaluated_at: "2026-05-16T00:00:04.000Z",
+    source_surface_refs: [
+      {
+        record_kind: "private_readiness_preflight_surface",
+        id: "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
+      },
+      {
+        record_kind: "account_position_risk_mirror_surface",
+        id: "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
+      }
+    ],
+    checked_gates: [
+      {
+        dimension: "configuration",
+        status: "not_ready",
+        reason_code: "configuration_not_ready",
+        reason: "no_binance_api_key_configured"
+      },
+      {
+        dimension: "operator_approval",
+        status: "not_ready",
+        reason_code: "operator_approval_missing",
+        reason: "operator_live_private_read_approval_missing"
+      },
+      {
+        dimension: "jurisdiction_risk",
+        status: "review_required",
+        reason_code: "jurisdiction_review_required",
+        reason: "operator_jurisdiction_not_recorded"
+      },
+      {
+        dimension: "live_binding",
+        status: "not_ready",
+        reason_code: "live_binding_not_ready",
+        reason: "live_binding_profile_not_configured"
+      },
+      {
+        dimension: "secret_handling",
+        status: "not_ready",
+        reason_code: "secret_handling_not_ready",
+        reason: "secret_handling_profile_not_configured"
+      },
+      {
+        dimension: "account_position_freshness",
+        status: "not_ready",
+        reason_code: "account_position_freshness_not_ready",
+        reason: "fixture_seed_no_private_account_or_position_read"
+      },
+      {
+        dimension: "kill_switch",
+        status: "ready",
+        reason_code: "ready",
+        reason: "inactive"
+      },
+      {
+        dimension: "stop_behavior",
+        status: "not_ready",
+        reason_code: "stop_behavior_not_ready",
+        reason: "operator_stop_behavior_not_recorded"
+      },
+      {
+        dimension: "listen_key",
+        status: "not_ready",
+        reason_code: "listen_key_not_ready",
+        reason: "listen_key_creation_forbidden_in_preflight"
+      },
+      {
+        dimension: "user_data_stream",
+        status: "not_ready",
+        reason_code: "user_data_stream_not_ready",
+        reason: "listen_key_lifecycle_not_enabled"
+      },
+      {
+        dimension: "trade_authority",
+        status: "ready",
+        reason_code: "ready",
+        reason: "TRADE authority disabled for private-read readiness"
+      }
+    ],
+    reason_codes: [
+      "configuration_not_ready",
+      "operator_approval_missing",
+      "jurisdiction_review_required",
+      "live_binding_not_ready",
+      "secret_handling_not_ready",
+      "account_position_freshness_not_ready",
+      "stop_behavior_not_ready",
+      "listen_key_not_ready",
+      "user_data_stream_not_ready",
+      "private_account_read_not_ready",
+      "private_position_read_not_ready",
+      "no_private_read_performed"
+    ],
+    blocking_conditions: [
+      "configuration: no_binance_api_key_configured",
+      "operator_approval: operator_live_private_read_approval_missing",
+      "jurisdiction_risk: operator_jurisdiction_not_recorded",
+      "live_binding: live_binding_profile_not_configured",
+      "secret_handling: secret_handling_profile_not_configured"
+    ],
+    required_next_actions: [
+      "configure_private_read_credentials",
+      "configuration",
+      "operator_approval",
+      "jurisdiction_risk",
+      "live_binding",
+      "secret_handling"
+    ],
+    binance_security_types: ["USER_DATA", "USER_STREAM", "TRADE"],
+    no_private_read_performed: true,
+    signed_request_authority: false,
+    live_exchange_authority: false,
+    order_submission_authority: false,
     authority_status: "not_live"
   };
 }

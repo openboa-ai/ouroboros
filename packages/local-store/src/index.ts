@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { evaluatePrivateReadinessPolicyDecision } from "@ouroboros/domain";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   AccountPositionRiskMirrorSurfaceRecord,
@@ -3294,6 +3295,44 @@ export class LocalStore {
           version.materialization_attempt_ref.id
         )
       : undefined;
+    const latestOrderFillSurface = await this.getLatestOrderFillSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const latestPublicMarketLivenessSurface = await this.getLatestPublicMarketLivenessSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const latestPrivateReadinessPreflightSurface = await this.getLatestPrivateReadinessPreflightSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const latestAccountPositionRiskMirrorSurface = await this.getLatestAccountPositionRiskMirrorSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const latestPrivateReadinessPolicyDecision = latestPrivateReadinessPreflightSurface
+      ? evaluatePrivateReadinessPolicyDecision({
+          evaluated_at: latestAccountPositionRiskMirrorSurface &&
+            latestAccountPositionRiskMirrorSurface.updated_at > latestPrivateReadinessPreflightSurface.updated_at
+            ? latestAccountPositionRiskMirrorSurface.updated_at
+            : latestPrivateReadinessPreflightSurface.updated_at,
+          private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface,
+          account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null,
+          live_binding_gate: {
+            status: "not_ready",
+            reason: "live_binding_profile_not_configured"
+          },
+          secret_handling_gate: {
+            status: "not_ready",
+            reason: "secret_handling_profile_not_configured"
+          },
+          stop_behavior_gate: {
+            status: "not_ready",
+            reason: "operator_stop_behavior_not_recorded"
+          }
+        })
+      : null;
 
     return {
       ...this.toCandidateSummary(candidate),
@@ -3361,22 +3400,11 @@ export class LocalStore {
         runtime_control: await this.buildReplayRuntimeControlReadModel(runtime)
       },
       trading_substrate: {
-        latest_order_fill_surface: await this.getLatestOrderFillSurface({
-          venue: "binance_usd_m_futures",
-          instrument: "BTCUSDT"
-        }) ?? null,
-        latest_public_market_liveness_surface: await this.getLatestPublicMarketLivenessSurface({
-          venue: "binance_usd_m_futures",
-          instrument: "BTCUSDT"
-        }) ?? null,
-        latest_private_readiness_preflight_surface: await this.getLatestPrivateReadinessPreflightSurface({
-          venue: "binance_usd_m_futures",
-          instrument: "BTCUSDT"
-        }) ?? null,
-        latest_account_position_risk_mirror_surface: await this.getLatestAccountPositionRiskMirrorSurface({
-          venue: "binance_usd_m_futures",
-          instrument: "BTCUSDT"
-        }) ?? null
+        latest_order_fill_surface: latestOrderFillSurface ?? null,
+        latest_public_market_liveness_surface: latestPublicMarketLivenessSurface ?? null,
+        latest_private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface ?? null,
+        latest_private_readiness_policy_decision: latestPrivateReadinessPolicyDecision,
+        latest_account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
@@ -5553,8 +5581,10 @@ function isPrivateReadinessPreflightGate(value: unknown): boolean {
     (raw.status === "not_configured" ||
       raw.status === "not_evaluated" ||
       raw.status === "not_approved" ||
-      raw.status === "disabled") &&
-    raw.enabled === false &&
+      raw.status === "disabled" ||
+      raw.status === "blocked" ||
+      raw.status === "ready") &&
+    typeof raw.enabled === "boolean" &&
     nonEmpty(raw.reason)
   );
 }
