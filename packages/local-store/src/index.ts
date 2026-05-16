@@ -64,6 +64,8 @@ import type {
   HandsEnvironmentRecord,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
+  PrivateReadinessPreflightSurfaceReadModel,
+  PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
   TradingSubstrateInstrument,
@@ -133,6 +135,7 @@ export type LocalStoreErrorCode =
   | "invalid_runtime_instance_input"
   | "invalid_order_fill_surface_input"
   | "invalid_public_market_liveness_surface_input"
+  | "invalid_private_readiness_preflight_surface_input"
   | "invalid_runnable_artifact_input"
   | "runtime_not_found"
   | "runtime_mismatch"
@@ -253,6 +256,11 @@ export interface PublicMarketLivenessSurfaceQueryInput {
   instrument?: TradingSubstrateInstrument;
 }
 
+export interface PrivateReadinessPreflightSurfaceQueryInput {
+  venue?: TradingSubstrateVenue;
+  instrument?: TradingSubstrateInstrument;
+}
+
 const fixtureNotice: FixtureNotice = {
   mode: "fixture_convenience_mode",
   label: "Fixture / convenience mode",
@@ -301,7 +309,8 @@ const ids = {
   evidenceClassificationNonCounted: "fixture-evidence-classification-non-counted-001",
   evidenceClassificationSealedDecision: "fixture-evidence-classification-sealed-decision-001",
   orderFillSurface: "fixture-binance-btcusdt-order-fill-surface-001",
-  publicMarketLivenessSurface: "fixture-binance-btcusdt-public-market-liveness-surface-001"
+  publicMarketLivenessSurface: "fixture-binance-btcusdt-public-market-liveness-surface-001",
+  privateReadinessPreflightSurface: "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
 };
 
 const fixtureEvaluationCreatedAt = "2026-05-05T00:00:00.000Z";
@@ -651,6 +660,82 @@ export function createFixtureRecords(): FixtureItem[] {
     },
     authority_status: "not_live"
   };
+  const privateReadinessPreflightSurface: PrivateReadinessPreflightSurfaceRecord = {
+    record_kind: "private_readiness_preflight_surface",
+    version: 1,
+    private_readiness_preflight_surface_id: ids.privateReadinessPreflightSurface,
+    surface_family: "private_readiness_preflight",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    credential_gate: {
+      status: "not_configured",
+      enabled: false,
+      reason: "no_binance_api_key_configured"
+    },
+    jurisdiction_gate: {
+      status: "not_evaluated",
+      enabled: false,
+      reason: "operator_jurisdiction_not_recorded"
+    },
+    operator_approval_gate: {
+      status: "not_approved",
+      enabled: false,
+      reason: "operator_live_private_read_approval_missing"
+    },
+    private_account_read_gate: {
+      status: "disabled",
+      enabled: false,
+      reason: "signed_user_data_account_read_deferred"
+    },
+    private_position_read_gate: {
+      status: "disabled",
+      enabled: false,
+      reason: "signed_user_data_position_read_deferred"
+    },
+    user_data_stream_gate: {
+      status: "disabled",
+      enabled: false,
+      reason: "listen_key_lifecycle_not_enabled"
+    },
+    listen_key_gate: {
+      status: "disabled",
+      enabled: false,
+      reason: "listen_key_creation_forbidden_in_preflight"
+    },
+    order_submission_gate: {
+      status: "disabled",
+      enabled: false,
+      reason: "trade_endpoint_forbidden"
+    },
+    leverage_or_margin_mutation_gate: {
+      status: "disabled",
+      enabled: false,
+      reason: "account_mutation_forbidden"
+    },
+    account_information_endpoint: "GET /fapi/v3/account",
+    user_data_stream_endpoint: "POST /fapi/v1/listenKey",
+    order_endpoint: "POST /fapi/v1/order",
+    next_blocked_action: "configure_private_read_credentials",
+    next_blocked_reason: "credential_and_operator_gates_not_ready",
+    source_timestamp: "2026-05-16T00:00:00.000Z",
+    observed_at: "2026-05-16T00:00:03.000Z",
+    updated_at: "2026-05-16T00:00:03.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_private_authority",
+    source_kind: "fixture",
+    source_ref: ref("fixture", "binance-btcusdt-private-readiness-preflight"),
+    transport: binanceUsdsFuturesConnectorTransport,
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    authority_status: "not_live"
+  };
   const comparisonSet: EvaluationComparisonSetRecord = {
     record_kind: "evaluation_comparison_set",
     version: 1,
@@ -768,6 +853,11 @@ export function createFixtureRecords(): FixtureItem[] {
       collection: "substrate-state-surfaces",
       id: ids.publicMarketLivenessSurface,
       record: publicMarketLivenessSurface
+    },
+    {
+      collection: "substrate-state-surfaces",
+      id: ids.privateReadinessPreflightSurface,
+      record: privateReadinessPreflightSurface
     },
     { collection: "evaluation-comparison-sets", id: ids.evaluationComparisonSet, record: comparisonSet },
     { collection: "evidence-sealing-decisions", id: ids.evidenceSealingDecision, record: sealingDecision },
@@ -959,6 +1049,47 @@ export class LocalStore {
     query: PublicMarketLivenessSurfaceQueryInput = {}
   ): Promise<PublicMarketLivenessSurfaceReadModel | undefined> {
     return (await this.listPublicMarketLivenessSurfaces(query)).at(-1);
+  }
+
+  async recordPrivateReadinessPreflightSurface(
+    surface: PrivateReadinessPreflightSurfaceRecord
+  ): Promise<PrivateReadinessPreflightSurfaceReadModel> {
+    if (!isPrivateReadinessPreflightSurfaceRecord(surface)) {
+      throw new LocalStoreError(
+        "invalid_private_readiness_preflight_surface_input",
+        "invalid private-readiness preflight substrate surface input",
+        {
+          private_readiness_preflight_surface_id:
+            (surface as Partial<PrivateReadinessPreflightSurfaceRecord> | undefined)
+              ?.private_readiness_preflight_surface_id
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath(
+        "substrate-state-surfaces",
+        surface.private_readiness_preflight_surface_id
+      ),
+      surface
+    );
+    await this.rebuildProjections();
+    return toPrivateReadinessPreflightSurfaceReadModel(surface);
+  }
+
+  async listPrivateReadinessPreflightSurfaces(
+    query: PrivateReadinessPreflightSurfaceQueryInput = {}
+  ): Promise<PrivateReadinessPreflightSurfaceReadModel[]> {
+    return (await this.readCollection<FixtureRecord>("substrate-state-surfaces"))
+      .filter(isPrivateReadinessPreflightSurfaceRecord)
+      .filter((surface) => matchesPrivateReadinessPreflightSurfaceQuery(surface, query))
+      .sort(comparePrivateReadinessPreflightSurfaces)
+      .map(toPrivateReadinessPreflightSurfaceReadModel);
+  }
+
+  async getLatestPrivateReadinessPreflightSurface(
+    query: PrivateReadinessPreflightSurfaceQueryInput = {}
+  ): Promise<PrivateReadinessPreflightSurfaceReadModel | undefined> {
+    return (await this.listPrivateReadinessPreflightSurfaces(query)).at(-1);
   }
 
   async getCandidateEvaluationRun(
@@ -3113,6 +3244,10 @@ export class LocalStore {
         latest_public_market_liveness_surface: await this.getLatestPublicMarketLivenessSurface({
           venue: "binance_usd_m_futures",
           instrument: "BTCUSDT"
+        }) ?? null,
+        latest_private_readiness_preflight_surface: await this.getLatestPrivateReadinessPreflightSurface({
+          venue: "binance_usd_m_futures",
+          instrument: "BTCUSDT"
         }) ?? null
       },
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
@@ -3971,12 +4106,58 @@ function toPublicMarketLivenessSurfaceReadModel(
   };
 }
 
+function toPrivateReadinessPreflightSurfaceReadModel(
+  surface: PrivateReadinessPreflightSurfaceRecord
+): PrivateReadinessPreflightSurfaceReadModel {
+  return {
+    surface_id: surface.private_readiness_preflight_surface_id,
+    surface_family: surface.surface_family,
+    surface_label: privateReadinessPreflightSurfaceLabel(surface),
+    venue: surface.venue,
+    instrument: surface.instrument,
+    product_category: surface.product_category,
+    credential_gate: surface.credential_gate,
+    jurisdiction_gate: surface.jurisdiction_gate,
+    operator_approval_gate: surface.operator_approval_gate,
+    private_account_read_gate: surface.private_account_read_gate,
+    private_position_read_gate: surface.private_position_read_gate,
+    user_data_stream_gate: surface.user_data_stream_gate,
+    listen_key_gate: surface.listen_key_gate,
+    order_submission_gate: surface.order_submission_gate,
+    leverage_or_margin_mutation_gate: surface.leverage_or_margin_mutation_gate,
+    account_information_endpoint: surface.account_information_endpoint,
+    user_data_stream_endpoint: surface.user_data_stream_endpoint,
+    order_endpoint: surface.order_endpoint,
+    next_blocked_action: surface.next_blocked_action,
+    next_blocked_reason: surface.next_blocked_reason,
+    source_timestamp: surface.source_timestamp,
+    observed_at: surface.observed_at,
+    updated_at: surface.updated_at,
+    freshness: surface.freshness,
+    liveness: surface.liveness,
+    degraded_reason: surface.degraded_reason,
+    source_kind: surface.source_kind,
+    source_ref: surface.source_ref,
+    transport: surface.transport,
+    fixture_backed: surface.fixture_backed,
+    simulated: surface.simulated,
+    no_authority: surface.no_authority,
+    no_authority_label: formatSubstrateNoAuthority(surface.no_authority),
+    authority_status: surface.authority_status
+  };
+}
+
 function orderFillSurfaceLabel(surface: OrderFillSurfaceRecord): string {
   const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
   return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
 }
 
 function publicMarketLivenessSurfaceLabel(surface: PublicMarketLivenessSurfaceRecord): string {
+  const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
+  return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
+}
+
+function privateReadinessPreflightSurfaceLabel(surface: PrivateReadinessPreflightSurfaceRecord): string {
   const venueLabel = surface.venue === "binance_usd_m_futures" ? "Binance" : surface.venue;
   return `${venueLabel} ${surface.instrument} ${surface.surface_family}`;
 }
@@ -4254,6 +4435,19 @@ function comparePublicMarketLivenessSurfaces(
     return timeCompare;
   }
   return a.public_market_liveness_surface_id.localeCompare(b.public_market_liveness_surface_id);
+}
+
+function comparePrivateReadinessPreflightSurfaces(
+  a: PrivateReadinessPreflightSurfaceRecord,
+  b: PrivateReadinessPreflightSurfaceRecord
+): number {
+  const timeCompare = a.updated_at.localeCompare(b.updated_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.private_readiness_preflight_surface_id.localeCompare(
+    b.private_readiness_preflight_surface_id
+  );
 }
 
 function compareRuntimeControlCommands(
@@ -4985,6 +5179,16 @@ function matchesPublicMarketLivenessSurfaceQuery(
   );
 }
 
+function matchesPrivateReadinessPreflightSurfaceQuery(
+  surface: PrivateReadinessPreflightSurfaceRecord,
+  query: PrivateReadinessPreflightSurfaceQueryInput
+): boolean {
+  return (
+    (query.venue === undefined || surface.venue === query.venue) &&
+    (query.instrument === undefined || surface.instrument === query.instrument)
+  );
+}
+
 function isOrderFillSurfaceRecord(value: unknown): value is OrderFillSurfaceRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -5064,6 +5268,68 @@ function isPublicMarketLivenessSurfaceRecord(
     raw.no_authority.credentials === false &&
     (raw.authority_status === "not_live" || raw.authority_status === "read_only") &&
     (raw.source_ref === undefined || isRef(raw.source_ref))
+  );
+}
+
+function isPrivateReadinessPreflightSurfaceRecord(
+  value: unknown
+): value is PrivateReadinessPreflightSurfaceRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<PrivateReadinessPreflightSurfaceRecord>;
+  return (
+    raw.record_kind === "private_readiness_preflight_surface" &&
+    raw.version === 1 &&
+    nonEmpty(raw.private_readiness_preflight_surface_id) &&
+    raw.surface_family === "private_readiness_preflight" &&
+    raw.venue === "binance_usd_m_futures" &&
+    raw.instrument === "BTCUSDT" &&
+    raw.product_category === "perpetual_futures" &&
+    isPrivateReadinessPreflightGate(raw.credential_gate) &&
+    isPrivateReadinessPreflightGate(raw.jurisdiction_gate) &&
+    isPrivateReadinessPreflightGate(raw.operator_approval_gate) &&
+    isPrivateReadinessPreflightGate(raw.private_account_read_gate) &&
+    isPrivateReadinessPreflightGate(raw.private_position_read_gate) &&
+    isPrivateReadinessPreflightGate(raw.user_data_stream_gate) &&
+    isPrivateReadinessPreflightGate(raw.listen_key_gate) &&
+    isPrivateReadinessPreflightGate(raw.order_submission_gate) &&
+    isPrivateReadinessPreflightGate(raw.leverage_or_margin_mutation_gate) &&
+    raw.account_information_endpoint === "GET /fapi/v3/account" &&
+    raw.user_data_stream_endpoint === "POST /fapi/v1/listenKey" &&
+    raw.order_endpoint === "POST /fapi/v1/order" &&
+    nonEmpty(raw.next_blocked_action) &&
+    nonEmpty(raw.next_blocked_reason) &&
+    nonEmpty(raw.source_timestamp) &&
+    nonEmpty(raw.observed_at) &&
+    nonEmpty(raw.updated_at) &&
+    isTradingSubstrateFreshness(raw.freshness) &&
+    isTradingSubstrateLiveness(raw.liveness) &&
+    isTradingSubstrateSourceKind(raw.source_kind) &&
+    isBinanceUsdsFuturesConnectorTransport(raw.transport) &&
+    typeof raw.fixture_backed === "boolean" &&
+    typeof raw.simulated === "boolean" &&
+    raw.no_authority !== undefined &&
+    raw.no_authority.live_exchange === false &&
+    raw.no_authority.order_submission === false &&
+    raw.no_authority.credentials === false &&
+    raw.authority_status === "not_live" &&
+    (raw.source_ref === undefined || isRef(raw.source_ref))
+  );
+}
+
+function isPrivateReadinessPreflightGate(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<PrivateReadinessPreflightSurfaceRecord["credential_gate"]>;
+  return (
+    (raw.status === "not_configured" ||
+      raw.status === "not_evaluated" ||
+      raw.status === "not_approved" ||
+      raw.status === "disabled") &&
+    raw.enabled === false &&
+    nonEmpty(raw.reason)
   );
 }
 

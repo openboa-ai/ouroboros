@@ -3,6 +3,8 @@ import type {
   OrderFillPosture,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
+  PrivateReadinessPreflightSurfaceReadModel,
+  PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
   Ref
@@ -259,6 +261,170 @@ describe("Trading substrate public market and liveness surface records", () => {
       credentials: false
     });
     expect(readModel.surface_label).toBe("Binance BTCUSDT public_market_liveness");
+    expect(readModel.authority_status).toBe("not_live");
+  });
+});
+
+describe("Trading substrate private-readiness preflight surface records", () => {
+  it("models Binance BTCUSDT private-read and live-binding gates without activating private authority", () => {
+    const surfaceRef = ref(
+      "private_readiness_preflight_surface",
+      "binance-btcusdt-private-readiness-preflight-surface-001"
+    );
+
+    const surface = {
+      record_kind: "private_readiness_preflight_surface",
+      version: 1,
+      private_readiness_preflight_surface_id: surfaceRef.id,
+      surface_family: "private_readiness_preflight",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      credential_gate: {
+        status: "not_configured",
+        enabled: false,
+        reason: "no_binance_api_key_configured"
+      },
+      jurisdiction_gate: {
+        status: "not_evaluated",
+        enabled: false,
+        reason: "operator_jurisdiction_not_recorded"
+      },
+      operator_approval_gate: {
+        status: "not_approved",
+        enabled: false,
+        reason: "operator_live_private_read_approval_missing"
+      },
+      private_account_read_gate: {
+        status: "disabled",
+        enabled: false,
+        reason: "signed_user_data_account_read_deferred"
+      },
+      private_position_read_gate: {
+        status: "disabled",
+        enabled: false,
+        reason: "signed_user_data_position_read_deferred"
+      },
+      user_data_stream_gate: {
+        status: "disabled",
+        enabled: false,
+        reason: "listen_key_lifecycle_not_enabled"
+      },
+      listen_key_gate: {
+        status: "disabled",
+        enabled: false,
+        reason: "listen_key_creation_forbidden_in_preflight"
+      },
+      order_submission_gate: {
+        status: "disabled",
+        enabled: false,
+        reason: "trade_endpoint_forbidden"
+      },
+      leverage_or_margin_mutation_gate: {
+        status: "disabled",
+        enabled: false,
+        reason: "account_mutation_forbidden"
+      },
+      account_information_endpoint: "GET /fapi/v3/account",
+      user_data_stream_endpoint: "POST /fapi/v1/listenKey",
+      order_endpoint: "POST /fapi/v1/order",
+      next_blocked_action: "configure_private_read_credentials",
+      next_blocked_reason: "credential_and_operator_gates_not_ready",
+      source_timestamp: "2026-05-16T00:00:00.000Z",
+      observed_at: "2026-05-16T00:00:03.000Z",
+      updated_at: "2026-05-16T00:00:03.000Z",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_private_authority",
+      source_kind: "fixture",
+      source_ref: ref("fixture", "binance-btcusdt-private-readiness-preflight"),
+      transport: {
+        transport_kind: "official_binance_connector",
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        api_family: "derivatives_trading_usds_futures",
+        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+        production_base_url: "https://fapi.binance.com",
+        testnet_base_url: "https://testnet.binancefuture.com",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    } satisfies PrivateReadinessPreflightSurfaceRecord;
+
+    const readModel = {
+      surface_id: surface.private_readiness_preflight_surface_id,
+      surface_family: surface.surface_family,
+      surface_label: "Binance BTCUSDT private_readiness_preflight",
+      venue: surface.venue,
+      instrument: surface.instrument,
+      product_category: surface.product_category,
+      credential_gate: surface.credential_gate,
+      jurisdiction_gate: surface.jurisdiction_gate,
+      operator_approval_gate: surface.operator_approval_gate,
+      private_account_read_gate: surface.private_account_read_gate,
+      private_position_read_gate: surface.private_position_read_gate,
+      user_data_stream_gate: surface.user_data_stream_gate,
+      listen_key_gate: surface.listen_key_gate,
+      order_submission_gate: surface.order_submission_gate,
+      leverage_or_margin_mutation_gate: surface.leverage_or_margin_mutation_gate,
+      account_information_endpoint: surface.account_information_endpoint,
+      user_data_stream_endpoint: surface.user_data_stream_endpoint,
+      order_endpoint: surface.order_endpoint,
+      next_blocked_action: surface.next_blocked_action,
+      next_blocked_reason: surface.next_blocked_reason,
+      source_timestamp: surface.source_timestamp,
+      observed_at: surface.observed_at,
+      updated_at: surface.updated_at,
+      freshness: surface.freshness,
+      liveness: surface.liveness,
+      degraded_reason: surface.degraded_reason,
+      source_kind: surface.source_kind,
+      source_ref: surface.source_ref,
+      transport: surface.transport,
+      fixture_backed: surface.fixture_backed,
+      simulated: surface.simulated,
+      no_authority: surface.no_authority,
+      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      authority_status: surface.authority_status
+    } satisfies PrivateReadinessPreflightSurfaceReadModel;
+
+    expect(surface.surface_family).toBe("private_readiness_preflight");
+    expect(surface.venue).toBe("binance_usd_m_futures");
+    expect(surface.instrument).toBe("BTCUSDT");
+    expect(surface.credential_gate).toEqual({
+      status: "not_configured",
+      enabled: false,
+      reason: "no_binance_api_key_configured"
+    });
+    expect(surface.listen_key_gate.enabled).toBe(false);
+    expect(surface.user_data_stream_gate.enabled).toBe(false);
+    expect(surface.private_account_read_gate.enabled).toBe(false);
+    expect(surface.private_position_read_gate.enabled).toBe(false);
+    expect(surface.order_submission_gate.enabled).toBe(false);
+    expect(surface.leverage_or_margin_mutation_gate.enabled).toBe(false);
+    expect(surface.account_information_endpoint).toBe("GET /fapi/v3/account");
+    expect(surface.user_data_stream_endpoint).toBe("POST /fapi/v1/listenKey");
+    expect(surface.order_endpoint).toBe("POST /fapi/v1/order");
+    expect(surface.transport).toMatchObject({
+      repository: "binance/binance-connector-js",
+      package_name: "@binance/derivatives-trading-usds-futures",
+      integration_role: "transport_only",
+      authority_status: "not_live"
+    });
+    expect(surface.no_authority).toEqual({
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    });
+    expect(readModel.no_authority_label).toBe("live_exchange=false, order_submission=false, credentials=false");
     expect(readModel.authority_status).toBe("not_live");
   });
 });

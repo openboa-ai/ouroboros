@@ -436,6 +436,20 @@ export type OrderFillSurfaceAuthorityStatus = "not_live" | "read_only";
 
 export type PublicMarketLivenessSurfaceAuthorityStatus = "not_live" | "read_only";
 
+export type PrivateReadinessPreflightSurfaceAuthorityStatus = "not_live";
+
+export type PrivateReadinessPreflightGateStatus =
+  | "not_configured"
+  | "not_evaluated"
+  | "not_approved"
+  | "disabled";
+
+export interface PrivateReadinessPreflightGate {
+  status: PrivateReadinessPreflightGateStatus;
+  enabled: false;
+  reason: string;
+}
+
 export interface TradingSubstrateNoAuthority {
   live_exchange: false;
   order_submission: false;
@@ -603,9 +617,83 @@ export interface PublicMarketLivenessSurfaceReadModel {
   authority_status: PublicMarketLivenessSurfaceAuthorityStatus;
 }
 
+export interface PrivateReadinessPreflightSurfaceRecord extends BaseRecord {
+  record_kind: "private_readiness_preflight_surface";
+  private_readiness_preflight_surface_id: string;
+  surface_family: "private_readiness_preflight";
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  credential_gate: PrivateReadinessPreflightGate;
+  jurisdiction_gate: PrivateReadinessPreflightGate;
+  operator_approval_gate: PrivateReadinessPreflightGate;
+  private_account_read_gate: PrivateReadinessPreflightGate;
+  private_position_read_gate: PrivateReadinessPreflightGate;
+  user_data_stream_gate: PrivateReadinessPreflightGate;
+  listen_key_gate: PrivateReadinessPreflightGate;
+  order_submission_gate: PrivateReadinessPreflightGate;
+  leverage_or_margin_mutation_gate: PrivateReadinessPreflightGate;
+  account_information_endpoint: "GET /fapi/v3/account";
+  user_data_stream_endpoint: "POST /fapi/v1/listenKey";
+  order_endpoint: "POST /fapi/v1/order";
+  next_blocked_action: string;
+  next_blocked_reason: string;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  authority_status: PrivateReadinessPreflightSurfaceAuthorityStatus;
+}
+
+export interface PrivateReadinessPreflightSurfaceReadModel {
+  surface_id: string;
+  surface_family: "private_readiness_preflight";
+  surface_label: string;
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  credential_gate: PrivateReadinessPreflightGate;
+  jurisdiction_gate: PrivateReadinessPreflightGate;
+  operator_approval_gate: PrivateReadinessPreflightGate;
+  private_account_read_gate: PrivateReadinessPreflightGate;
+  private_position_read_gate: PrivateReadinessPreflightGate;
+  user_data_stream_gate: PrivateReadinessPreflightGate;
+  listen_key_gate: PrivateReadinessPreflightGate;
+  order_submission_gate: PrivateReadinessPreflightGate;
+  leverage_or_margin_mutation_gate: PrivateReadinessPreflightGate;
+  account_information_endpoint: PrivateReadinessPreflightSurfaceRecord["account_information_endpoint"];
+  user_data_stream_endpoint: PrivateReadinessPreflightSurfaceRecord["user_data_stream_endpoint"];
+  order_endpoint: PrivateReadinessPreflightSurfaceRecord["order_endpoint"];
+  next_blocked_action: string;
+  next_blocked_reason: string;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  no_authority_label: string;
+  authority_status: PrivateReadinessPreflightSurfaceAuthorityStatus;
+}
+
 export interface TradingSubstrateReadModel {
   latest_order_fill_surface: OrderFillSurfaceReadModel | null;
   latest_public_market_liveness_surface: PublicMarketLivenessSurfaceReadModel | null;
+  latest_private_readiness_preflight_surface: PrivateReadinessPreflightSurfaceReadModel | null;
 }
 
 export interface TradingSystemCandidateRecord extends BaseRecord {
@@ -1603,6 +1691,7 @@ export type FixtureRecord =
   | ExecutionAttemptRecord
   | OrderFillSurfaceRecord
   | PublicMarketLivenessSurfaceRecord
+  | PrivateReadinessPreflightSurfaceRecord
   | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {

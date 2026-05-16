@@ -21,6 +21,7 @@ import type {
   GatewayDecisionRecord,
   OrderFillSurfaceRecord,
   OrderIntentDraftRecord,
+  PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceRecord,
   RunnableArtifactRecord,
   RuntimeAuditEventRecord,
@@ -174,6 +175,91 @@ describe("LocalStore", () => {
       authority_status: "not_live"
     });
     expect(candidate?.trading_substrate?.latest_public_market_liveness_surface).toEqual(latest);
+  });
+
+  it("seeds a Binance BTCUSDT private-readiness preflight surface into candidate inspect read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const latest = await store.getLatestPrivateReadinessPreflightSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    const item = await readStoreJson<PrivateReadinessPreflightSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-private-readiness-preflight-surface-001.json"
+    );
+
+    expect(item.record_kind).toBe("private_readiness_preflight_surface");
+    expect(latest).toMatchObject({
+      surface_family: "private_readiness_preflight",
+      surface_label: "Binance BTCUSDT private_readiness_preflight",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      credential_gate: {
+        status: "not_configured",
+        enabled: false,
+        reason: "no_binance_api_key_configured"
+      },
+      jurisdiction_gate: {
+        status: "not_evaluated",
+        enabled: false
+      },
+      operator_approval_gate: {
+        status: "not_approved",
+        enabled: false
+      },
+      private_account_read_gate: {
+        status: "disabled",
+        enabled: false
+      },
+      private_position_read_gate: {
+        status: "disabled",
+        enabled: false
+      },
+      user_data_stream_gate: {
+        status: "disabled",
+        enabled: false
+      },
+      listen_key_gate: {
+        status: "disabled",
+        enabled: false
+      },
+      order_submission_gate: {
+        status: "disabled",
+        enabled: false
+      },
+      leverage_or_margin_mutation_gate: {
+        status: "disabled",
+        enabled: false
+      },
+      account_information_endpoint: "GET /fapi/v3/account",
+      user_data_stream_endpoint: "POST /fapi/v1/listenKey",
+      order_endpoint: "POST /fapi/v1/order",
+      next_blocked_action: "configure_private_read_credentials",
+      next_blocked_reason: "credential_and_operator_gates_not_ready",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_private_authority",
+      transport: {
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    });
+    expect(candidate?.trading_substrate?.latest_private_readiness_preflight_surface).toEqual(latest);
   });
 
   it("seeds a durable stage binding for fixture evaluation records", async () => {

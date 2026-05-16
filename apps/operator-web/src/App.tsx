@@ -14,6 +14,7 @@ import type {
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
+  PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
@@ -593,6 +594,7 @@ export function CandidateDetail({
         <TradingSubstrateSection
           orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
           publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
+          privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
         />
 
         <RuntimeControlSection
@@ -945,10 +947,12 @@ function formatSignedNumber(value: number): string {
 
 function TradingSubstrateSection({
   orderFillSurface,
-  publicMarketSurface
+  publicMarketSurface,
+  privateReadinessSurface
 }: {
   orderFillSurface?: OrderFillSurfaceReadModel | null;
   publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
+  privateReadinessSurface?: PrivateReadinessPreflightSurfaceReadModel | null;
 }) {
   return (
     <InfoSection title="Trading Substrate">
@@ -1007,6 +1011,83 @@ function TradingSubstrateSection({
         <div className="placeholder">
           <strong>No public market surface</strong>
           <span>BTCUSDT market posture has not been recorded</span>
+          <span>not_live</span>
+        </div>
+      )}
+      {privateReadinessSurface ? (
+        <>
+          <div className={`evaluation-status ${privateReadinessStatusTone(privateReadinessSurface)}`}>
+            <span>Private readiness preflight</span>
+            <strong>{privateReadinessSurface.credential_gate.status}</strong>
+            <span>{privateReadinessSurface.authority_status}</span>
+          </div>
+          <Field label="Private surface" value={privateReadinessSurface.surface_label} />
+          <Field
+            label="Private venue"
+            value={`${privateReadinessSurface.venue} / ${privateReadinessSurface.product_category}`}
+          />
+          <Field label="Private instrument" value={privateReadinessSurface.instrument} />
+          <Field label="Credential gate" value={formatPrivateReadinessGate(privateReadinessSurface.credential_gate)} />
+          <Field
+            label="Jurisdiction gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.jurisdiction_gate)}
+          />
+          <Field
+            label="Operator approval gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.operator_approval_gate)}
+          />
+          <Field
+            label="Account read gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.private_account_read_gate)}
+          />
+          <Field
+            label="Position read gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.private_position_read_gate)}
+          />
+          <Field
+            label="User stream gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.user_data_stream_gate)}
+          />
+          <Field label="Listen key gate" value={formatPrivateReadinessGate(privateReadinessSurface.listen_key_gate)} />
+          <Field
+            label="Order submission gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.order_submission_gate)}
+          />
+          <Field
+            label="Leverage / margin gate"
+            value={formatPrivateReadinessGate(privateReadinessSurface.leverage_or_margin_mutation_gate)}
+          />
+          <Field
+            label="Private endpoints"
+            value={[
+              privateReadinessSurface.account_information_endpoint,
+              privateReadinessSurface.user_data_stream_endpoint,
+              privateReadinessSurface.order_endpoint
+            ].join(" / ")}
+          />
+          <Field label="Next blocked action" value={privateReadinessSurface.next_blocked_action} />
+          <Field label="Next blocked reason" value={privateReadinessSurface.next_blocked_reason} />
+          <Field
+            label="Private freshness"
+            value={`${privateReadinessSurface.freshness} / ${privateReadinessSurface.liveness}`}
+          />
+          <Field label="Private source" value={formatSubstrateSource(privateReadinessSurface)} />
+          <Field label="Private connector package" value={privateReadinessSurface.transport.package_name} />
+          <Field label="Private connector repository" value={privateReadinessSurface.transport.repository} />
+          <Field label="Private connector role" value={privateReadinessSurface.transport.integration_role} />
+          <Field label="Private source timestamp" value={privateReadinessSurface.source_timestamp} />
+          <Field label="Private observed" value={privateReadinessSurface.observed_at} />
+          <Field label="Private updated" value={privateReadinessSurface.updated_at} />
+          {privateReadinessSurface.degraded_reason && (
+            <Field label="Private reason" value={privateReadinessSurface.degraded_reason} />
+          )}
+          <Field label="Private no authority" value={privateReadinessSurface.no_authority_label} />
+          <Field label="Private authority" value={privateReadinessSurface.authority_status} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No private readiness preflight</strong>
+          <span>BTCUSDT private-read gates have not been recorded</span>
           <span>not_live</span>
         </div>
       )}
@@ -1089,8 +1170,26 @@ function publicMarketStatusTone(surface: PublicMarketLivenessSurfaceReadModel): 
   return "neutral";
 }
 
+function privateReadinessStatusTone(
+  surface: PrivateReadinessPreflightSurfaceReadModel
+): "counted" | "failed" | "neutral" {
+  if (surface.liveness === "disconnected") {
+    return "failed";
+  }
+  return "neutral";
+}
+
+function formatPrivateReadinessGate(
+  gate: PrivateReadinessPreflightSurfaceReadModel["credential_gate"]
+): string {
+  return `${gate.status}, enabled=${String(gate.enabled)}, reason=${gate.reason}`;
+}
+
 function formatSubstrateSource(
-  surface: OrderFillSurfaceReadModel | PublicMarketLivenessSurfaceReadModel
+  surface:
+    | OrderFillSurfaceReadModel
+    | PublicMarketLivenessSurfaceReadModel
+    | PrivateReadinessPreflightSurfaceReadModel
 ): string {
   return [
     surface.source_kind,
