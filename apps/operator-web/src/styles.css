@@ -434,6 +434,43 @@ button {
   color: #344054;
 }
 
+.posture-history {
+  border-top: 1px solid #eaecf0;
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.posture-history h4 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.posture-history-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(170px, 0.8fr);
+  gap: 6px 12px;
+  padding: 8px 0;
+  border-top: 1px solid #f2f4f7;
+}
+
+.posture-history-row strong,
+.posture-history-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.posture-history-row strong {
+  color: #344054;
+  font-size: 12px;
+}
+
+.posture-history-row span {
+  color: #667085;
+  font-size: 12px;
+}
+
 .inline-status {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
@@ -467,6 +504,10 @@ button {
   }
 
   .posture-edit-row {
+    grid-template-columns: 1fr;
+  }
+
+  .posture-history-row {
     grid-template-columns: 1fr;
   }
 }

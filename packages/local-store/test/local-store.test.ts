@@ -286,6 +286,7 @@ describe("LocalStore", () => {
       source_kind: "fixture"
     }));
     expect(candidate?.trading_substrate?.latest_private_readiness_posture).toEqual(latest);
+    expect(candidate?.trading_substrate?.private_readiness_posture_history).toEqual([latest]);
     expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision?.checked_gates)
       .toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -412,6 +413,12 @@ describe("LocalStore", () => {
       authority_status: "not_live"
     }));
     expect(candidate?.trading_substrate?.latest_private_readiness_posture).toEqual(first);
+    expect(candidate?.trading_substrate?.private_readiness_posture_history?.at(0)).toEqual(first);
+    expect(candidate?.trading_substrate?.private_readiness_posture_history?.at(1)).toMatchObject({
+      posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+      source_kind: "fixture",
+      authority_status: "not_live"
+    });
     expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision)
       .toMatchObject({
         status: "not_ready",
@@ -427,6 +434,67 @@ describe("LocalStore", () => {
         authority_status: "not_live"
       });
     expect(JSON.stringify(first)).not.toMatch(
+      /exchange_credentials|provider_api_key|apiKey|secretKey|signature|direct_exchange_order/
+    );
+  });
+
+  it("projects private-readiness posture history newest first without private authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const baseInput = {
+      operator_approval_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_approval_recorded_without_live_private_read"
+      ),
+      jurisdiction_risk_gate: privateReadinessPolicyGate(
+        "review_required",
+        "jurisdiction_risk_review_recorded_without_live_private_read"
+      ),
+      live_binding_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "live_binding_profile_not_configured"
+      ),
+      secret_handling_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "secret_reference_recorded_without_secret_material"
+      ),
+      stop_behavior_gate: privateReadinessPolicyGate(
+        "not_ready",
+        "operator_stop_behavior_not_recorded"
+      ),
+      secret_reference_configured: false
+    };
+
+    const first = await store.recordLocalPrivateReadinessPosture({
+      ...baseInput,
+      idempotency_key: "local-posture-history-test-001",
+      observed_at: "2026-05-16T00:00:07.000Z"
+    });
+    const second = await store.recordLocalPrivateReadinessPosture({
+      ...baseInput,
+      idempotency_key: "local-posture-history-test-002",
+      operator_approval_gate: privateReadinessPolicyGate(
+        "ready",
+        "operator_approval_recorded_in_local_history_test"
+      ),
+      observed_at: "2026-05-16T00:00:08.000Z"
+    });
+
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    const history = candidate?.trading_substrate?.private_readiness_posture_history ?? [];
+
+    expect(history.map((posture) => posture.posture_id)).toEqual([
+      second.posture_id,
+      first.posture_id,
+      "fixture-binance-btcusdt-private-readiness-posture-001"
+    ]);
+    expect(history.map((posture) => posture.source_kind)).toEqual([
+      "local_config",
+      "local_config",
+      "fixture"
+    ]);
+    expect(history.every((posture) => posture.authority_status === "not_live")).toBe(true);
+    expect(JSON.stringify(history)).not.toMatch(
       /exchange_credentials|provider_api_key|apiKey|secretKey|signature|direct_exchange_order/
     );
   });

@@ -1076,6 +1076,7 @@ export interface TradingSubstrateReadModel {
   latest_public_market_liveness_surface: PublicMarketLivenessSurfaceReadModel | null;
   latest_private_readiness_preflight_surface: PrivateReadinessPreflightSurfaceReadModel | null;
   latest_private_readiness_posture: PrivateReadinessPostureReadModel | null;
+  private_readiness_posture_history: PrivateReadinessPostureReadModel[];
   latest_private_readiness_policy_decision?: PrivateReadinessPolicyDecision | null;
   latest_account_position_risk_mirror_surface: AccountPositionRiskMirrorSurfaceReadModel | null;
 }

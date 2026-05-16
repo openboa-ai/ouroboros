@@ -488,6 +488,19 @@ describe("runtime read-only API", () => {
           raw_secret_material_present: false,
           authority_status: "not_live"
         },
+        private_readiness_posture_history: [
+          {
+            posture_id: first.json().posture.posture_id,
+            source_kind: "local_config",
+            raw_secret_material_present: false,
+            authority_status: "not_live"
+          },
+          {
+            posture_id: "fixture-binance-btcusdt-private-readiness-posture-001",
+            source_kind: "fixture",
+            authority_status: "not_live"
+          }
+        ],
         latest_private_readiness_policy_decision: {
           status: "not_ready",
           reason_codes: expect.arrayContaining([

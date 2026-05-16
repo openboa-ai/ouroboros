@@ -666,6 +666,7 @@ export function CandidateDetail({
           publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
           privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
           privateReadinessPosture={candidate.trading_substrate?.latest_private_readiness_posture}
+          privateReadinessPostureHistory={candidate.trading_substrate?.private_readiness_posture_history ?? []}
           privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
           onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
@@ -1047,6 +1048,7 @@ function TradingSubstrateSection({
   publicMarketSurface,
   privateReadinessSurface,
   privateReadinessPosture,
+  privateReadinessPostureHistory,
   privateReadinessPolicyDecision,
   accountPositionRiskSurface,
   onRecordPrivateReadinessPosture,
@@ -1058,6 +1060,7 @@ function TradingSubstrateSection({
   publicMarketSurface?: PublicMarketLivenessSurfaceReadModel | null;
   privateReadinessSurface?: PrivateReadinessPreflightSurfaceReadModel | null;
   privateReadinessPosture?: PrivateReadinessPostureReadModel | null;
+  privateReadinessPostureHistory?: PrivateReadinessPostureReadModel[];
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
@@ -1269,6 +1272,19 @@ function TradingSubstrateSection({
           <Field label="Posture updated" value={privateReadinessPosture.updated_at} />
           <Field label="Posture no authority" value={privateReadinessPosture.no_authority_label} />
           <Field label="Posture authority" value={privateReadinessPosture.authority_status} />
+          {privateReadinessPostureHistory && privateReadinessPostureHistory.length > 0 && (
+            <div className="posture-history" aria-label="Private-readiness posture history">
+              <h4>Recent posture history</h4>
+              {privateReadinessPostureHistory.map((posture) => (
+                <div className="posture-history-row" key={posture.posture_id}>
+                  <strong>{posture.posture_id}</strong>
+                  <span>{posture.source_kind} / {posture.updated_at}</span>
+                  <span>{formatPrivateReadinessPostureGateSummary(posture)}</span>
+                  <span>{posture.no_authority_label} / {posture.authority_status}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       ) : (
         <div className="placeholder">
@@ -1671,6 +1687,18 @@ function formatPrivateReadinessPolicyGate(
   gate: PrivateReadinessPostureReadModel["live_binding_gate"]
 ): string {
   return `${gate.status}, reason=${gate.reason}`;
+}
+
+function formatPrivateReadinessPostureGateSummary(
+  posture: PrivateReadinessPostureReadModel
+): string {
+  return [
+    `operator=${posture.operator_approval_gate.status}`,
+    `jurisdiction=${posture.jurisdiction_risk_gate.status}`,
+    `live_binding=${posture.live_binding_gate.status}`,
+    `secret_handling=${posture.secret_handling_gate.status}`,
+    `stop_behavior=${posture.stop_behavior_gate.status}`
+  ].join(", ");
 }
 
 function formatSubstrateSource(
