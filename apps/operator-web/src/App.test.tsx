@@ -256,6 +256,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("read_only_remediation_guidance");
     expect(html).toContain("remediation_action_map_guidance_only");
+    expect(html).toContain("Private-readiness remediation progress summary");
+    expect(html).toContain("required_actions=6, mapped_actions=6, unmapped_actions=0");
+    expect(html).toContain("blocking_review_focus=6");
+    expect(html).toContain("next_review_focus=configure_private_read_credentials -&gt; checked_gate: configuration");
+    expect(html).toContain("remediation_progress_summary_guidance_only");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("secret_handling_not_ready");
@@ -295,6 +300,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");
+    expect(html).toContain("Private-readiness remediation progress summary");
+    expect(html).toContain("required_actions=0, mapped_actions=0, unmapped_actions=0");
+    expect(html).toContain("blocking_review_focus=0");
+    expect(html).toContain("next_review_focus=no_required_next_actions");
+    expect(html).toContain("no_remediation_progress_actions");
     expect(html).toContain("remediation_action_map_guidance_only");
     expect(html).toContain("checked_gate_matrix_inspection_only");
     expect(html).toContain("not_counted_evidence_or_promotion");
@@ -328,7 +338,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("unmapped_action");
     expect(html).toContain("no_matching_gate_or_blocker");
     expect(html).toContain("read_only_remediation_guidance");
+    expect(html).toContain("Private-readiness remediation progress summary");
+    expect(html).toContain("required_actions=1, mapped_actions=0, unmapped_actions=1");
+    expect(html).toContain("blocking_review_focus=0");
+    expect(html).toContain("next_review_focus=manual_tax_review -&gt; unmapped_action");
     expect(html).toContain("remediation_action_map_guidance_only");
+    expect(html).toContain("remediation_progress_summary_guidance_only");
     expect(html).toContain("not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
