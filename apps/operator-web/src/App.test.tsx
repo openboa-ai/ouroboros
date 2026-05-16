@@ -249,6 +249,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("kill_switch");
     expect(html).toContain("ready_gate");
     expect(html).toContain("checked_gate_matrix_inspection_only");
+    expect(html).toContain("Private-readiness remediation/action map");
+    expect(html).toContain("configure_private_read_credentials");
+    expect(html).toContain("checked_gate: configuration");
+    expect(html).toContain("not_ready / blocking_gate");
+    expect(html).toContain("configuration_not_ready");
+    expect(html).toContain("read_only_remediation_guidance");
+    expect(html).toContain("remediation_action_map_guidance_only");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("secret_handling_not_ready");
@@ -286,7 +293,42 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Private-readiness checked-gate matrix");
     expect(html).toContain("no_checked_gates");
+    expect(html).toContain("Private-readiness remediation/action map");
+    expect(html).toContain("no_required_next_actions");
+    expect(html).toContain("remediation_action_map_guidance_only");
     expect(html).toContain("checked_gate_matrix_inspection_only");
+    expect(html).toContain("not_counted_evidence_or_promotion");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders unmatched private-readiness remediation actions without authority controls", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: null,
+            private_readiness_posture_history: [],
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision({
+              blocking_conditions: ["configuration: no_binance_api_key_configured"],
+              required_next_actions: ["manual_tax_review"]
+            }),
+            latest_account_position_risk_mirror_surface: null
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Private-readiness remediation/action map");
+    expect(html).toContain("manual_tax_review");
+    expect(html).toContain("unmapped_action");
+    expect(html).toContain("no_matching_gate_or_blocker");
+    expect(html).toContain("read_only_remediation_guidance");
+    expect(html).toContain("remediation_action_map_guidance_only");
     expect(html).toContain("not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
