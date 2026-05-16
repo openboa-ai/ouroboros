@@ -475,7 +475,8 @@ button {
 .policy-impact,
 .review-handoff,
 .authority-preview,
-.checked-gate-matrix {
+.checked-gate-matrix,
+.remediation-action-map {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
   display: grid;
@@ -486,13 +487,15 @@ button {
 .policy-impact h4,
 .review-handoff h4,
 .authority-preview h4,
-.checked-gate-matrix h4 {
+.checked-gate-matrix h4,
+.remediation-action-map h4 {
   margin: 0;
   font-size: 13px;
   line-height: 1.3;
 }
 
-.checked-gate-row {
+.checked-gate-row,
+.remediation-action-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 6px 12px;
@@ -501,17 +504,21 @@ button {
 }
 
 .checked-gate-row strong,
-.checked-gate-row span {
+.checked-gate-row span,
+.remediation-action-row strong,
+.remediation-action-row span {
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12px;
 }
 
-.checked-gate-row strong {
+.checked-gate-row strong,
+.remediation-action-row strong {
   color: #344054;
 }
 
-.checked-gate-row span {
+.checked-gate-row span,
+.remediation-action-row span {
   color: #667085;
 }
 

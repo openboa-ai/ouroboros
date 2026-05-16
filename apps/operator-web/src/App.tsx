@@ -1038,6 +1038,18 @@ interface PrivateReadinessPostureGateChange {
   toReason: string;
 }
 
+interface PrivateReadinessRemediationActionRow {
+  action: string;
+  target: string;
+  posture: string;
+  detail: string;
+  guidanceBoundary: string;
+}
+
+const PRIVATE_READINESS_ACTION_DIMENSION_ALIASES: Record<string, string> = {
+  configure_private_read_credentials: "configuration"
+};
+
 const PRIVATE_READINESS_GATE_STATUS_OPTIONS: Array<PrivateReadinessPolicyGateInput["status"]> = [
   "not_ready",
   "review_required",
@@ -1092,6 +1104,9 @@ function TradingSubstrateSection({
     : undefined;
   const postureGateChanges = privateReadinessPosture && previousPosture
     ? privateReadinessPostureGateChanges(privateReadinessPosture, previousPosture)
+    : [];
+  const remediationActionRows = privateReadinessPolicyDecision
+    ? privateReadinessRemediationActionRows(privateReadinessPolicyDecision)
     : [];
 
   function updatePostureDraftGate(
@@ -1455,6 +1470,34 @@ function TradingSubstrateSection({
               </div>
             )}
             <Field label="Matrix boundary" value="checked_gate_matrix_inspection_only" />
+            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <Field
+              label="Authority boundary"
+              value="not_private_read_permission_or_execution_authority"
+            />
+          </div>
+          <div className="remediation-action-map" aria-label="Private-readiness remediation/action map">
+            <h4>Private-readiness remediation/action map</h4>
+            {remediationActionRows.length > 0 ? (
+              remediationActionRows.map((row) => (
+                <div className="remediation-action-row" key={row.action}>
+                  <strong>{row.action}</strong>
+                  <span>{row.target}</span>
+                  <span>{row.posture}</span>
+                  <span>{row.detail}</span>
+                  <span>{row.guidanceBoundary}</span>
+                </div>
+              ))
+            ) : (
+              <div className="remediation-action-row">
+                <strong>no_required_next_actions</strong>
+                <span>none</span>
+                <span>none</span>
+                <span>policy_decision_contains_no_required_next_actions</span>
+                <span>read_only_remediation_guidance</span>
+              </div>
+            )}
+            <Field label="Map boundary" value="remediation_action_map_guidance_only" />
             <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
             <Field
               label="Authority boundary"
@@ -2031,6 +2074,85 @@ function formatPrivateReadinessCheckedGatePosture(
     return "review_required_gate";
   }
   return "blocking_gate";
+}
+
+function privateReadinessRemediationActionRows(
+  decision: PrivateReadinessPolicyDecision
+): PrivateReadinessRemediationActionRow[] {
+  return decision.required_next_actions.map((action) => {
+    const gate = findPrivateReadinessRemediationGate(action, decision);
+    if (gate) {
+      return {
+        action,
+        target: `checked_gate: ${gate.dimension}`,
+        posture: `${gate.status} / ${formatPrivateReadinessCheckedGatePosture(gate.status)}`,
+        detail: gate.reason_code,
+        guidanceBoundary: "read_only_remediation_guidance"
+      };
+    }
+
+    const blocker = findPrivateReadinessRemediationBlocker(action, decision);
+    if (blocker) {
+      return {
+        action,
+        target: `blocking_condition: ${blocker.dimension}`,
+        posture: "blocking_condition",
+        detail: blocker.condition,
+        guidanceBoundary: "read_only_remediation_guidance"
+      };
+    }
+
+    return {
+      action,
+      target: "unmapped_action",
+      posture: "unmapped_action",
+      detail: "no_matching_gate_or_blocker",
+      guidanceBoundary: "read_only_remediation_guidance"
+    };
+  });
+}
+
+function findPrivateReadinessRemediationGate(
+  action: string,
+  decision: PrivateReadinessPolicyDecision
+): PrivateReadinessPolicyDecision["checked_gates"][number] | undefined {
+  const dimension = privateReadinessRemediationActionDimension(action);
+  return decision.checked_gates.find((gate) =>
+    gate.dimension === dimension ||
+    gate.dimension === action ||
+    gate.reason_code === action ||
+    gate.reason === action
+  );
+}
+
+function findPrivateReadinessRemediationBlocker(
+  action: string,
+  decision: PrivateReadinessPolicyDecision
+): { dimension: string; condition: string } | undefined {
+  const dimension = privateReadinessRemediationActionDimension(action);
+  for (const condition of decision.blocking_conditions) {
+    const conditionDimension = privateReadinessBlockingConditionDimension(condition);
+    if (
+      conditionDimension &&
+      (conditionDimension === dimension || conditionDimension === action || condition.includes(action))
+    ) {
+      return { dimension: conditionDimension, condition };
+    }
+  }
+  return undefined;
+}
+
+function privateReadinessRemediationActionDimension(action: string): string {
+  return PRIVATE_READINESS_ACTION_DIMENSION_ALIASES[action] ?? action;
+}
+
+function privateReadinessBlockingConditionDimension(condition: string): string | undefined {
+  const separator = condition.indexOf(":");
+  if (separator === -1) {
+    return undefined;
+  }
+  const dimension = condition.slice(0, separator).trim();
+  return dimension.length > 0 ? dimension : undefined;
 }
 
 function formatPolicyListSummary(items: string[]): string {
