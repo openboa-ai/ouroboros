@@ -390,6 +390,149 @@ export interface Ref {
   id: string;
 }
 
+export type TradingSubstrateSurfaceFamily = "order_fill";
+
+export type TradingSubstrateVenue = "binance_usd_m_futures";
+
+export type TradingSubstrateInstrument = "BTCUSDT";
+
+export type TradingSubstrateProductCategory = "perpetual_futures";
+
+export type TradingSubstrateSourceKind =
+  | "binance_user_data_stream"
+  | "binance_rest_query"
+  | "fixture";
+
+export type TradingSubstrateFreshnessClass =
+  | "fresh"
+  | "delayed"
+  | "stale"
+  | "degraded"
+  | "disconnected";
+
+export type TradingSubstrateLivenessClass =
+  | "connected"
+  | "stale"
+  | "degraded"
+  | "disconnected"
+  | "fixture";
+
+export type OrderFillPosture =
+  | "received"
+  | "working"
+  | "partially_filled"
+  | "filled"
+  | "cancel_pending"
+  | "canceled"
+  | "replace_pending"
+  | "replaced"
+  | "rejected"
+  | "expired"
+  | "suspended_or_blocked"
+  | "unknown";
+
+export type OrderFillSurfaceAuthorityStatus = "not_live" | "read_only";
+
+export interface TradingSubstrateNoAuthority {
+  live_exchange: false;
+  order_submission: false;
+  credentials: false;
+}
+
+export interface BinanceUsdsFuturesConnectorTransport {
+  transport_kind: "official_binance_connector";
+  repository: "binance/binance-connector-js";
+  package_name: "@binance/derivatives-trading-usds-futures";
+  api_family: "derivatives_trading_usds_futures";
+  supported_endpoints: ReadonlyArray<"rest_api" | "websocket_api" | "websocket_streams">;
+  production_base_url: "https://fapi.binance.com";
+  testnet_base_url: "https://testnet.binancefuture.com";
+  integration_role: "transport_only";
+  authority_status: "not_live";
+}
+
+export interface OrderFillSurfaceRecord extends BaseRecord {
+  record_kind: "order_fill_surface";
+  order_fill_surface_id: string;
+  surface_family: "order_fill";
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  runtime_ref?: Ref;
+  candidate_ref?: Ref;
+  stage_binding_ref?: Ref;
+  order_scope_ref: string;
+  local_client_order_id?: string;
+  upstream_order_id?: string;
+  side?: "buy" | "sell";
+  order_type?: "market" | "limit" | "stop" | "take_profit" | "trailing_stop_market";
+  time_in_force?: string;
+  requested_quantity?: string;
+  cumulative_filled_quantity: string;
+  remaining_quantity: string;
+  average_fill_price?: string;
+  last_fill_price?: string;
+  last_fill_quantity?: string;
+  raw_upstream_status: string;
+  raw_upstream_execution_type?: string;
+  posture: OrderFillPosture;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  authority_status: OrderFillSurfaceAuthorityStatus;
+}
+
+export interface OrderFillSurfaceReadModel {
+  surface_id: string;
+  surface_family: "order_fill";
+  surface_label: string;
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  order_scope_ref: string;
+  local_client_order_id?: string;
+  upstream_order_id?: string;
+  side?: "buy" | "sell";
+  order_type?: OrderFillSurfaceRecord["order_type"];
+  time_in_force?: string;
+  requested_quantity?: string;
+  cumulative_filled_quantity: string;
+  remaining_quantity: string;
+  average_fill_price?: string;
+  last_fill_price?: string;
+  last_fill_quantity?: string;
+  raw_upstream_status: string;
+  raw_upstream_execution_type?: string;
+  posture: OrderFillPosture;
+  source_timestamp: string;
+  observed_at: string;
+  updated_at: string;
+  freshness: TradingSubstrateFreshnessClass;
+  liveness: TradingSubstrateLivenessClass;
+  degraded_reason?: string;
+  source_kind: TradingSubstrateSourceKind;
+  source_ref?: Ref;
+  transport: BinanceUsdsFuturesConnectorTransport;
+  fixture_backed: boolean;
+  simulated: boolean;
+  no_authority: TradingSubstrateNoAuthority;
+  no_authority_label: string;
+  authority_status: OrderFillSurfaceAuthorityStatus;
+}
+
+export interface TradingSubstrateReadModel {
+  latest_order_fill_surface: OrderFillSurfaceReadModel | null;
+}
+
 export interface TradingSystemCandidateRecord extends BaseRecord {
   record_kind: "trading_system_candidate";
   candidate_id: string;
@@ -1383,6 +1526,7 @@ export type FixtureRecord =
   | OrderIntentDraftRecord
   | GatewayDecisionRecord
   | ExecutionAttemptRecord
+  | OrderFillSurfaceRecord
   | CandidateMaterializationAttemptRecord;
 
 export interface CandidateSummaryReadModel {
@@ -1809,6 +1953,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     bounded_authority?: ReplayRuntimeAuthorityReadModel;
     runtime_control?: ReplayRuntimeControlReadModel;
   };
+  trading_substrate?: TradingSubstrateReadModel;
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;
   materialization_attempt?: CandidateMaterializationAttemptReadModel;

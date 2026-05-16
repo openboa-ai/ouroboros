@@ -19,6 +19,7 @@ import type {
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
   GatewayDecisionRecord,
+  OrderFillSurfaceRecord,
   OrderIntentDraftRecord,
   RunnableArtifactRecord,
   RuntimeAuditEventRecord,
@@ -72,6 +73,52 @@ describe("LocalStore", () => {
     expect(after?.evaluation.run.status).toEqual("created");
     expect(after?.evaluation.run.authority_status).toEqual("not_counted");
     expect(after?.evaluation.sealing_decision.authority_status).toEqual("not_counted");
+  });
+
+  it("seeds a Binance BTCUSDT order-fill substrate surface into candidate inspect read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const latest = await store.getLatestOrderFillSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    const item = await readStoreJson<OrderFillSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-order-fill-surface-001.json"
+    );
+
+    expect(item.record_kind).toBe("order_fill_surface");
+    expect(latest).toMatchObject({
+      surface_family: "order_fill",
+      surface_label: "Binance BTCUSDT order_fill",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      posture: "partially_filled",
+      raw_upstream_status: "PARTIALLY_FILLED",
+      raw_upstream_execution_type: "TRADE",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_live_connector",
+      transport: {
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    });
+    expect(candidate?.trading_substrate?.latest_order_fill_surface).toEqual(latest);
   });
 
   it("seeds a durable stage binding for fixture evaluation records", async () => {

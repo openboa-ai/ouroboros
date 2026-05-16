@@ -8,6 +8,7 @@ import type {
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
+  OrderFillSurfaceReadModel,
   ReplayRuntimeAuthorityReadModel,
   ReplayRuntimeControlReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -43,6 +44,34 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
     expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order/);
+  });
+
+  it("renders Binance BTCUSDT order-fill substrate posture without action controls", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface()
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Trading Substrate");
+    expect(html).toContain("Binance BTCUSDT order_fill");
+    expect(html).toContain("partially_filled");
+    expect(html).toContain("PARTIALLY_FILLED");
+    expect(html).toContain("TRADE");
+    expect(html).toContain("fixture-backed");
+    expect(html).toContain("simulated");
+    expect(html).toContain("@binance/derivatives-trading-usds-futures");
+    expect(html).toContain("binance/binance-connector-js");
+    expect(html).toContain("transport_only");
+    expect(html).toContain("fixture_seed_no_live_connector");
+    expect(html).toContain("live_exchange=false, order_submission=false, credentials=false");
+    expect(html).toContain("not_live");
+    expect(html).not.toMatch(/Start|Pause|Resume|Stop|Promote|Run provider|Run evaluator|Live order|broker|provider_api_key/i);
   });
 
   it("renders candidate-level latest validation state in the sidebar row and detail header", () => {
@@ -1267,5 +1296,59 @@ function placeholder(record_kind: string, id: string, label: string) {
     label,
     status: "fixture_placeholder",
     authority_status: "not_executed"
+  };
+}
+
+function fixtureOrderFillSurface(): OrderFillSurfaceReadModel {
+  return {
+    surface_id: "fixture-binance-btcusdt-order-fill-surface-001",
+    surface_family: "order_fill",
+    surface_label: "Binance BTCUSDT order_fill",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    order_scope_ref: "fixture-btcusdt-paper-order-001",
+    local_client_order_id: "fixture-btcusdt-paper-order-001",
+    upstream_order_id: "fixture-upstream-order-001",
+    side: "buy",
+    order_type: "limit",
+    time_in_force: "GTC",
+    requested_quantity: "0.001",
+    cumulative_filled_quantity: "0.0004",
+    remaining_quantity: "0.0006",
+    average_fill_price: "65000",
+    last_fill_price: "65010",
+    last_fill_quantity: "0.0004",
+    raw_upstream_status: "PARTIALLY_FILLED",
+    raw_upstream_execution_type: "TRADE",
+    posture: "partially_filled",
+    source_timestamp: "2026-05-16T00:00:02.000Z",
+    observed_at: "2026-05-16T00:00:03.000Z",
+    updated_at: "2026-05-16T00:00:03.000Z",
+    freshness: "stale",
+    liveness: "degraded",
+    degraded_reason: "fixture_seed_no_live_connector",
+    source_kind: "fixture",
+    source_ref: { record_kind: "fixture", id: "binance-btcusdt-order-fill" },
+    transport: {
+      transport_kind: "official_binance_connector",
+      repository: "binance/binance-connector-js",
+      package_name: "@binance/derivatives-trading-usds-futures",
+      api_family: "derivatives_trading_usds_futures",
+      supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+      production_base_url: "https://fapi.binance.com",
+      testnet_base_url: "https://testnet.binancefuture.com",
+      integration_role: "transport_only",
+      authority_status: "not_live"
+    },
+    fixture_backed: true,
+    simulated: true,
+    no_authority: {
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    },
+    no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+    authority_status: "not_live"
   };
 }

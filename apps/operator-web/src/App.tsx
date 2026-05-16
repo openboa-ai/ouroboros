@@ -12,6 +12,7 @@ import type {
   ReplayRuntimeAuthorityReadModel,
   ReplayRuntimeControlReadModel,
   CandidateSummaryReadModel,
+  OrderFillSurfaceReadModel,
   PlaceholderSummary,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
@@ -588,6 +589,8 @@ export function CandidateDetail({
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
         </InfoSection>
 
+        <TradingSubstrateSection surface={candidate.trading_substrate?.latest_order_fill_surface} />
+
         <RuntimeControlSection
           control={candidate.runtime.runtime_control}
           onRecordRuntimeControl={onRecordRuntimeControl}
@@ -934,6 +937,91 @@ function formatNoAuthority(noAuthority: ReplayRunDetailReadModel["no_authority"]
 
 function formatSignedNumber(value: number): string {
   return value > 0 ? `+${value}` : String(value);
+}
+
+function TradingSubstrateSection({
+  surface
+}: {
+  surface?: OrderFillSurfaceReadModel | null;
+}) {
+  return (
+    <InfoSection title="Trading Substrate">
+      {surface ? (
+        <>
+          <div className={`evaluation-status ${substrateStatusTone(surface)}`}>
+            <span>Order-fill posture</span>
+            <strong>{surface.posture}</strong>
+            <span>{surface.authority_status}</span>
+          </div>
+          <Field label="Surface" value={surface.surface_label} />
+          <Field label="Venue" value={`${surface.venue} / ${surface.product_category}`} />
+          <Field label="Instrument" value={surface.instrument} />
+          <Field label="Raw upstream" value={[
+            surface.raw_upstream_status,
+            surface.raw_upstream_execution_type ?? "none"
+          ].join(" / ")} />
+          <Field label="Order scope" value={surface.order_scope_ref} />
+          <Field label="Client order" value={surface.local_client_order_id ?? "none"} />
+          <Field label="Upstream order" value={surface.upstream_order_id ?? "none"} />
+          <Field label="Side / type" value={[
+            surface.side ?? "none",
+            surface.order_type ?? "none",
+            surface.time_in_force ?? "none"
+          ].join(" / ")} />
+          <Field label="Requested" value={surface.requested_quantity ?? "none"} />
+          <Field label="Filled / remaining" value={[
+            surface.cumulative_filled_quantity,
+            surface.remaining_quantity
+          ].join(" / ")} />
+          <Field label="Average / last price" value={[
+            surface.average_fill_price ?? "none",
+            surface.last_fill_price ?? "none"
+          ].join(" / ")} />
+          <Field label="Freshness" value={`${surface.freshness} / ${surface.liveness}`} />
+          <Field label="Source" value={formatSubstrateSource(surface)} />
+          <Field label="Connector package" value={surface.transport.package_name} />
+          <Field label="Connector repository" value={surface.transport.repository} />
+          <Field label="Connector endpoints" value={surface.transport.supported_endpoints.join(", ")} />
+          <Field label="Connector role" value={surface.transport.integration_role} />
+          <Field label="Connector URLs" value={[
+            surface.transport.production_base_url,
+            surface.transport.testnet_base_url
+          ].join(" / ")} />
+          <Field label="Source timestamp" value={surface.source_timestamp} />
+          <Field label="Observed" value={surface.observed_at} />
+          <Field label="Updated" value={surface.updated_at} />
+          {surface.degraded_reason && <Field label="Reason" value={surface.degraded_reason} />}
+          <Field label="No authority" value={surface.no_authority_label} />
+          <Field label="Authority" value={surface.authority_status} />
+        </>
+      ) : (
+        <div className="placeholder">
+          <strong>No order-fill surface</strong>
+          <span>BTCUSDT posture has not been recorded</span>
+          <span>not_live</span>
+        </div>
+      )}
+    </InfoSection>
+  );
+}
+
+function substrateStatusTone(surface: OrderFillSurfaceReadModel): "counted" | "failed" | "neutral" {
+  if (surface.posture === "rejected" || surface.posture === "expired" || surface.liveness === "disconnected") {
+    return "failed";
+  }
+  if (surface.posture === "filled" || surface.posture === "partially_filled") {
+    return "counted";
+  }
+  return "neutral";
+}
+
+function formatSubstrateSource(surface: OrderFillSurfaceReadModel): string {
+  return [
+    surface.source_kind,
+    surface.fixture_backed ? "fixture-backed" : "external",
+    surface.simulated ? "simulated" : "observed",
+    surface.source_ref ? formatRef(surface.source_ref) : "none"
+  ].join(" / ");
 }
 
 function RuntimeControlSection({
