@@ -3,6 +3,8 @@ import type {
   OrderFillPosture,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
+  PublicMarketLivenessSurfaceReadModel,
+  PublicMarketLivenessSurfaceRecord,
   Ref
 } from "./index";
 
@@ -136,6 +138,127 @@ describe("Trading substrate order-fill surface records", () => {
       credentials: false
     });
     expect(readModel.surface_label).toBe("Binance BTCUSDT order_fill");
+    expect(readModel.authority_status).toBe("not_live");
+  });
+});
+
+describe("Trading substrate public market and liveness surface records", () => {
+  it("models Binance BTCUSDT public market posture without credentials or order authority", () => {
+    const surfaceRef = ref(
+      "public_market_liveness_surface",
+      "binance-btcusdt-public-market-liveness-surface-001"
+    );
+
+    const surface = {
+      record_kind: "public_market_liveness_surface",
+      version: 1,
+      public_market_liveness_surface_id: surfaceRef.id,
+      surface_family: "public_market_liveness",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      symbol_status: "TRADING",
+      contract_type: "PERPETUAL",
+      price_tick_size: "0.10",
+      quantity_step_size: "0.001",
+      min_quantity: "0.001",
+      min_notional: "100",
+      mark_price: "65000.12340000",
+      index_price: "64995.00000000",
+      estimated_settle_price: "64990.00000000",
+      funding_rate: "0.00010000",
+      interest_rate: "0.00010000",
+      next_funding_time: "2026-05-16T08:00:00.000Z",
+      server_time: "2026-05-16T00:00:01.000Z",
+      source_timestamp: "2026-05-16T00:00:00.000Z",
+      observed_at: "2026-05-16T00:00:03.000Z",
+      updated_at: "2026-05-16T00:00:03.000Z",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_live_connector",
+      source_kind: "fixture",
+      source_ref: ref("fixture", "binance-btcusdt-public-market-liveness"),
+      transport: {
+        transport_kind: "official_binance_connector",
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        api_family: "derivatives_trading_usds_futures",
+        supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+        production_base_url: "https://fapi.binance.com",
+        testnet_base_url: "https://testnet.binancefuture.com",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    } satisfies PublicMarketLivenessSurfaceRecord;
+
+    const readModel = {
+      surface_id: surface.public_market_liveness_surface_id,
+      surface_family: surface.surface_family,
+      surface_label: "Binance BTCUSDT public_market_liveness",
+      venue: surface.venue,
+      instrument: surface.instrument,
+      product_category: surface.product_category,
+      symbol_status: surface.symbol_status,
+      contract_type: surface.contract_type,
+      price_tick_size: surface.price_tick_size,
+      quantity_step_size: surface.quantity_step_size,
+      min_quantity: surface.min_quantity,
+      min_notional: surface.min_notional,
+      mark_price: surface.mark_price,
+      index_price: surface.index_price,
+      estimated_settle_price: surface.estimated_settle_price,
+      funding_rate: surface.funding_rate,
+      interest_rate: surface.interest_rate,
+      next_funding_time: surface.next_funding_time,
+      server_time: surface.server_time,
+      source_timestamp: surface.source_timestamp,
+      observed_at: surface.observed_at,
+      updated_at: surface.updated_at,
+      freshness: surface.freshness,
+      liveness: surface.liveness,
+      degraded_reason: surface.degraded_reason,
+      source_kind: surface.source_kind,
+      source_ref: surface.source_ref,
+      transport: surface.transport,
+      fixture_backed: surface.fixture_backed,
+      simulated: surface.simulated,
+      no_authority: surface.no_authority,
+      no_authority_label: "live_exchange=false, order_submission=false, credentials=false",
+      authority_status: surface.authority_status
+    } satisfies PublicMarketLivenessSurfaceReadModel;
+
+    expect(surface.surface_family).toBe("public_market_liveness");
+    expect(surface.venue).toBe("binance_usd_m_futures");
+    expect(surface.instrument).toBe("BTCUSDT");
+    expect(surface.symbol_status).toBe("TRADING");
+    expect(surface.price_tick_size).toBe("0.10");
+    expect(surface.quantity_step_size).toBe("0.001");
+    expect(surface.min_quantity).toBe("0.001");
+    expect(surface.mark_price).toBe("65000.12340000");
+    expect(surface.index_price).toBe("64995.00000000");
+    expect(surface.funding_rate).toBe("0.00010000");
+    expect(surface.next_funding_time).toBe("2026-05-16T08:00:00.000Z");
+    expect(surface.server_time).toBe("2026-05-16T00:00:01.000Z");
+    expect(surface.transport).toMatchObject({
+      repository: "binance/binance-connector-js",
+      package_name: "@binance/derivatives-trading-usds-futures",
+      integration_role: "transport_only",
+      authority_status: "not_live"
+    });
+    expect(surface.no_authority).toEqual({
+      live_exchange: false,
+      order_submission: false,
+      credentials: false
+    });
+    expect(readModel.surface_label).toBe("Binance BTCUSDT public_market_liveness");
     expect(readModel.authority_status).toBe("not_live");
   });
 });

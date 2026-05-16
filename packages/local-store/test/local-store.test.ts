@@ -21,6 +21,7 @@ import type {
   GatewayDecisionRecord,
   OrderFillSurfaceRecord,
   OrderIntentDraftRecord,
+  PublicMarketLivenessSurfaceRecord,
   RunnableArtifactRecord,
   RuntimeAuditEventRecord,
   RuntimeControlAuditInput,
@@ -119,6 +120,60 @@ describe("LocalStore", () => {
       authority_status: "not_live"
     });
     expect(candidate?.trading_substrate?.latest_order_fill_surface).toEqual(latest);
+  });
+
+  it("seeds a Binance BTCUSDT public market and liveness surface into candidate inspect read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const latest = await store.getLatestPublicMarketLivenessSurface({
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT"
+    });
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    const item = await readStoreJson<PublicMarketLivenessSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-public-market-liveness-surface-001.json"
+    );
+
+    expect(item.record_kind).toBe("public_market_liveness_surface");
+    expect(latest).toMatchObject({
+      surface_family: "public_market_liveness",
+      surface_label: "Binance BTCUSDT public_market_liveness",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      symbol_status: "TRADING",
+      contract_type: "PERPETUAL",
+      price_tick_size: "0.10",
+      quantity_step_size: "0.001",
+      min_quantity: "0.001",
+      min_notional: "100",
+      mark_price: "65000.12340000",
+      index_price: "64995.00000000",
+      funding_rate: "0.00010000",
+      next_funding_time: "2026-05-16T08:00:00.000Z",
+      server_time: "2026-05-16T00:00:01.000Z",
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_live_connector",
+      transport: {
+        repository: "binance/binance-connector-js",
+        package_name: "@binance/derivatives-trading-usds-futures",
+        integration_role: "transport_only",
+        authority_status: "not_live"
+      },
+      fixture_backed: true,
+      simulated: true,
+      no_authority: {
+        live_exchange: false,
+        order_submission: false,
+        credentials: false
+      },
+      authority_status: "not_live"
+    });
+    expect(candidate?.trading_substrate?.latest_public_market_liveness_surface).toEqual(latest);
   });
 
   it("seeds a durable stage binding for fixture evaluation records", async () => {

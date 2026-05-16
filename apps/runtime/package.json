@@ -13,9 +13,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@binance/derivatives-trading-usds-futures": "^29.0.0",
+    "@fastify/cors": "^11.1.0",
     "@ouroboros/domain": "0.0.0",
     "@ouroboros/local-store": "0.0.0",
-    "@fastify/cors": "^11.1.0",
     "fastify": "^5.6.2",
     "tsx": "^4.21.0"
   }
