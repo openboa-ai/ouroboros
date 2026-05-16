@@ -1060,6 +1060,25 @@ interface PrivateReadinessReviewPacketIndexEntry {
   boundary: string;
 }
 
+type PrivateReadinessReviewPacketAvailabilityState =
+  | "available_for_review"
+  | "needs_posture_context"
+  | "no_current_items"
+  | "policy_context_available";
+
+interface PrivateReadinessReviewPacketAvailabilityRow {
+  step: string;
+  surface: string;
+  availability: PrivateReadinessReviewPacketAvailabilityState;
+  detail: string;
+  boundary: string;
+}
+
+interface PrivateReadinessReviewPacketAvailabilitySummary {
+  countSummary: string;
+  rows: PrivateReadinessReviewPacketAvailabilityRow[];
+}
+
 const PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES: PrivateReadinessReviewPacketIndexEntry[] = [
   {
     step: "01 policy_impact_interpretation",
@@ -1169,6 +1188,15 @@ function TradingSubstrateSection({
     : [];
   const remediationProgressSummary =
     privateReadinessRemediationProgressSummary(remediationActionRows);
+  const reviewPacketAvailabilitySummary = privateReadinessPolicyDecision
+    ? privateReadinessReviewPacketAvailabilitySummary({
+        decision: privateReadinessPolicyDecision,
+        posture: privateReadinessPosture,
+        previousPosture,
+        remediationActionRows,
+        remediationProgressSummary
+      })
+    : undefined;
 
   function updatePostureDraftGate(
     key: PrivateReadinessPostureGateKey,
@@ -1534,6 +1562,35 @@ function TradingSubstrateSection({
               value="not_private_read_permission_or_execution_authority"
             />
           </div>
+          {reviewPacketAvailabilitySummary && (
+            <div
+              className="review-packet-availability-summary"
+              aria-label="Private-readiness review packet availability summary"
+            >
+              <h4>Private-readiness review packet availability summary</h4>
+              {reviewPacketAvailabilitySummary.rows.map((row) => (
+                <div className="review-packet-availability-row" key={row.step}>
+                  <strong>{row.step}</strong>
+                  <span>{row.availability}</span>
+                  <span>{row.detail}</span>
+                  <span>{row.boundary}</span>
+                </div>
+              ))}
+              <Field
+                label="Availability summary"
+                value={reviewPacketAvailabilitySummary.countSummary}
+              />
+              <Field
+                label="Availability boundary"
+                value="review_packet_availability_summary_navigation_only"
+              />
+              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
+            </div>
+          )}
           <div className="checked-gate-matrix" aria-label="Private-readiness checked-gate matrix">
             <h4>Private-readiness checked-gate matrix</h4>
             {privateReadinessPolicyDecision.checked_gates.length > 0 ? (
@@ -2242,6 +2299,167 @@ function privateReadinessRemediationProgressSummary(
       ? "remediation_progress_actions_present"
       : "no_remediation_progress_actions"
   };
+}
+
+function privateReadinessReviewPacketAvailabilitySummary({
+  decision,
+  posture,
+  previousPosture,
+  remediationActionRows,
+  remediationProgressSummary
+}: {
+  decision: PrivateReadinessPolicyDecision;
+  posture?: PrivateReadinessPostureReadModel | null;
+  previousPosture?: PrivateReadinessPostureReadModel;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+  remediationProgressSummary: PrivateReadinessRemediationProgressSummary;
+}): PrivateReadinessReviewPacketAvailabilitySummary {
+  const rows = PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES.map((entry) =>
+    privateReadinessReviewPacketAvailabilityRow({
+      entry,
+      decision,
+      posture,
+      previousPosture,
+      remediationActionRows,
+      remediationProgressSummary
+    })
+  );
+  const countFor = (state: PrivateReadinessReviewPacketAvailabilityState) =>
+    rows.filter((row) => row.availability === state).length;
+  return {
+    countSummary: [
+      `availability_summary=available_for_review=${countFor("available_for_review")}`,
+      `needs_posture_context=${countFor("needs_posture_context")}`,
+      `no_current_items=${countFor("no_current_items")}`,
+      `policy_context_available=${countFor("policy_context_available")}`
+    ].join(", "),
+    rows
+  };
+}
+
+function privateReadinessReviewPacketAvailabilityRow({
+  entry,
+  decision,
+  posture,
+  previousPosture,
+  remediationActionRows,
+  remediationProgressSummary
+}: {
+  entry: PrivateReadinessReviewPacketIndexEntry;
+  decision: PrivateReadinessPolicyDecision;
+  posture?: PrivateReadinessPostureReadModel | null;
+  previousPosture?: PrivateReadinessPostureReadModel;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+  remediationProgressSummary: PrivateReadinessRemediationProgressSummary;
+}): PrivateReadinessReviewPacketAvailabilityRow {
+  const base = {
+    step: entry.step,
+    surface: entry.surface,
+    boundary: "read_only_availability_context"
+  };
+
+  if (entry.step === "01 policy_impact_interpretation") {
+    return posture
+      ? {
+          ...base,
+          availability: "available_for_review",
+          detail: "policy_input_posture_available"
+        }
+      : {
+          ...base,
+          availability: "policy_context_available",
+          detail: "policy_decision_available_posture_input_missing"
+        };
+  }
+
+  if (entry.step === "02 posture_delta_summary") {
+    if (!posture) {
+      return {
+        ...base,
+        availability: "needs_posture_context",
+        detail: "latest_posture_required_for_delta"
+      };
+    }
+    return previousPosture
+      ? {
+          ...base,
+          availability: "available_for_review",
+          detail: "posture_delta_current_and_previous_available"
+        }
+      : {
+          ...base,
+          availability: "no_current_items",
+          detail: "previous_posture_not_available"
+        };
+  }
+
+  if (entry.step === "03 review_handoff") {
+    return posture
+      ? {
+          ...base,
+          availability: "available_for_review",
+          detail: "review_handoff_context_available"
+        }
+      : {
+          ...base,
+          availability: "needs_posture_context",
+          detail: "latest_posture_required_for_review_handoff"
+        };
+  }
+
+  if (entry.step === "04 authority_gate_preview") {
+    return posture
+      ? {
+          ...base,
+          availability: "available_for_review",
+          detail: "authority_gate_preview_context_available"
+        }
+      : {
+          ...base,
+          availability: "needs_posture_context",
+          detail: "latest_posture_required_for_authority_preview"
+        };
+  }
+
+  if (entry.step === "05 checked_gate_matrix") {
+    return decision.checked_gates.length > 0
+      ? {
+          ...base,
+          availability: "available_for_review",
+          detail: `checked_gates=${decision.checked_gates.length}`
+        }
+      : {
+          ...base,
+          availability: "no_current_items",
+          detail: "checked_gates_empty"
+        };
+  }
+
+  if (entry.step === "06 remediation_action_map") {
+    return remediationActionRows.length > 0
+      ? {
+          ...base,
+          availability: "available_for_review",
+          detail: `required_next_actions=${remediationActionRows.length}`
+        }
+      : {
+          ...base,
+          availability: "no_current_items",
+          detail: "required_next_actions_empty"
+        };
+  }
+
+  return remediationActionRows.length > 0
+    ? {
+        ...base,
+        availability: "available_for_review",
+        detail: remediationProgressSummary.progressState
+      }
+    : {
+        ...base,
+        availability: "no_current_items",
+        detail: "no_required_next_actions"
+      };
 }
 
 function findPrivateReadinessRemediationGate(
