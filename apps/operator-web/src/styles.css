@@ -474,7 +474,8 @@ button {
 .posture-delta,
 .policy-impact,
 .review-handoff,
-.authority-preview {
+.authority-preview,
+.checked-gate-matrix {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
   display: grid;
@@ -484,10 +485,34 @@ button {
 .posture-delta h4,
 .policy-impact h4,
 .review-handoff h4,
-.authority-preview h4 {
+.authority-preview h4,
+.checked-gate-matrix h4 {
   margin: 0;
   font-size: 13px;
   line-height: 1.3;
+}
+
+.checked-gate-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 12px;
+  padding: 8px 0;
+  border-top: 1px solid #f2f4f7;
+}
+
+.checked-gate-row strong,
+.checked-gate-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.checked-gate-row strong {
+  color: #344054;
+}
+
+.checked-gate-row span {
+  color: #667085;
 }
 
 .inline-status {

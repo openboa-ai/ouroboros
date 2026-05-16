@@ -1433,6 +1433,34 @@ function TradingSubstrateSection({
               `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
             ].join(", ")}
           />
+          <div className="checked-gate-matrix" aria-label="Private-readiness checked-gate matrix">
+            <h4>Private-readiness checked-gate matrix</h4>
+            {privateReadinessPolicyDecision.checked_gates.length > 0 ? (
+              privateReadinessPolicyDecision.checked_gates.map((gate) => (
+                <div className="checked-gate-row" key={gate.dimension}>
+                  <strong>{gate.dimension}</strong>
+                  <span>{gate.status}</span>
+                  <span>{gate.reason_code}</span>
+                  <span>{gate.reason}</span>
+                  <span>{formatPrivateReadinessCheckedGatePosture(gate.status)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="checked-gate-row">
+                <strong>no_checked_gates</strong>
+                <span>none</span>
+                <span>none</span>
+                <span>policy_decision_contains_no_checked_gates</span>
+                <span>inspection_only</span>
+              </div>
+            )}
+            <Field label="Matrix boundary" value="checked_gate_matrix_inspection_only" />
+            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <Field
+              label="Authority boundary"
+              value="not_private_read_permission_or_execution_authority"
+            />
+          </div>
           {privateReadinessPosture && (
             <>
               <div className="policy-impact" aria-label="Private-readiness policy impact interpretation">
@@ -1991,6 +2019,18 @@ function formatPrivateReadinessAuthorityGateNextStep(
     decision.required_next_actions.length > 0 ? "complete_required_next_actions" : "no_required_next_actions",
     "keep_authority_status_not_live"
   ].join(", ");
+}
+
+function formatPrivateReadinessCheckedGatePosture(
+  status: PrivateReadinessPolicyDecision["status"]
+): string {
+  if (status === "ready") {
+    return "ready_gate";
+  }
+  if (status === "review_required") {
+    return "review_required_gate";
+  }
+  return "blocking_gate";
 }
 
 function formatPolicyListSummary(items: string[]): string {

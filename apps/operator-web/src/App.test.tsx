@@ -237,6 +237,18 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Preview next step");
     expect(html).toContain("resolve_blocking_conditions, complete_required_next_actions, keep_authority_status_not_live");
     expect(html).toContain("authority_gate_preview_only_not_private_read_permission_or_execution_authority");
+    expect(html).toContain("Private-readiness checked-gate matrix");
+    expect(html).toContain("configuration");
+    expect(html).toContain("not_ready");
+    expect(html).toContain("configuration_not_ready");
+    expect(html).toContain("no_binance_api_key_configured");
+    expect(html).toContain("blocking_gate");
+    expect(html).toContain("jurisdiction_risk");
+    expect(html).toContain("jurisdiction_review_required");
+    expect(html).toContain("review_required_gate");
+    expect(html).toContain("kill_switch");
+    expect(html).toContain("ready_gate");
+    expect(html).toContain("checked_gate_matrix_inspection_only");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("secret_handling_not_ready");
@@ -246,6 +258,37 @@ describe("CandidateDetail", () => {
     expect(html).toContain("fixture_seed_no_private_authority");
     expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders an empty checked-gate matrix from a policy decision without posture context", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: null,
+            private_readiness_posture_history: [],
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision({
+              checked_gates: [],
+              reason_codes: ["no_private_read_performed"],
+              blocking_conditions: [],
+              required_next_actions: []
+            }),
+            latest_account_position_risk_mirror_surface: null
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Private-readiness checked-gate matrix");
+    expect(html).toContain("no_checked_gates");
+    expect(html).toContain("checked_gate_matrix_inspection_only");
+    expect(html).toContain("not_counted_evidence_or_promotion");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
