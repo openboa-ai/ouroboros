@@ -225,6 +225,18 @@ describe("CandidateDetail", () => {
       "inspect_latest_posture, review_posture_delta, review_policy_impact, resolve_required_next_actions, keep_no_authority_boundary"
     );
     expect(html).toContain("review_handoff_only_not_counted_evidence_or_promotion");
+    expect(html).toContain("Private-readiness authority gate preview");
+    expect(html).toContain("Private-read authority");
+    expect(html).toContain("private_read_authority=not_granted, policy_status=not_ready, authority_status=not_live");
+    expect(html).toContain("Gate readiness");
+    expect(html).toContain("ready=2, not_ready=8, review_required=1, blocked=0");
+    expect(html).toContain("Blocking conditions");
+    expect(html).toContain(
+      "configuration: no_binance_api_key_configured, operator_approval: operator_live_private_read_approval_missing, jurisdiction_risk: operator_jurisdiction_not_recorded, +2 more"
+    );
+    expect(html).toContain("Preview next step");
+    expect(html).toContain("resolve_blocking_conditions, complete_required_next_actions, keep_authority_status_not_live");
+    expect(html).toContain("authority_gate_preview_only_not_private_read_permission_or_execution_authority");
     expect(html).toContain("USER_DATA, USER_STREAM, TRADE");
     expect(html).toContain("configuration_not_ready");
     expect(html).toContain("secret_handling_not_ready");
@@ -312,6 +324,53 @@ describe("CandidateDetail", () => {
     expect(html).toContain("record_previous_posture_before_delta_review");
     expect(html).toContain("review_handoff_only_not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders an authority gate preview with no blocking conditions or next actions", () => {
+    const localPosture = fixturePrivateReadinessPosture({
+      posture_id: "local-binance-btcusdt-private-readiness-posture-history-005",
+      source_kind: "local_config",
+      fixture_backed: false,
+      updated_at: "2026-05-16T00:00:14.000Z"
+    });
+    const basePolicyDecision = fixturePrivateReadinessPolicyDecision();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: localPosture,
+            private_readiness_posture_history: [localPosture],
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision({
+              status: "ready",
+              checked_gates: basePolicyDecision.checked_gates.map((gate) => ({
+                ...gate,
+                status: "ready" as const,
+                reason_code: "ready" as const,
+                reason: "ready_for_preview"
+              })),
+              reason_codes: ["ready", "no_private_read_performed"],
+              blocking_conditions: [],
+              required_next_actions: []
+            }),
+            latest_account_position_risk_mirror_surface: null
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Private-readiness authority gate preview");
+    expect(html).toContain("private_read_authority=not_granted, policy_status=ready, authority_status=not_live");
+    expect(html).toContain("ready=11, not_ready=0, review_required=0, blocked=0");
+    expect(html).toContain("No blocking conditions");
+    expect(html).toContain("none");
+    expect(html).toContain("Required next actions");
+    expect(html).toContain("no_blocking_conditions, no_required_next_actions, keep_authority_status_not_live");
+    expect(html).toContain("authority_gate_preview_only_not_private_read_permission_or_execution_authority");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 

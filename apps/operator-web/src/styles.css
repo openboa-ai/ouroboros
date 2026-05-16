@@ -473,7 +473,8 @@ button {
 
 .posture-delta,
 .policy-impact,
-.review-handoff {
+.review-handoff,
+.authority-preview {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
   display: grid;
@@ -482,7 +483,8 @@ button {
 
 .posture-delta h4,
 .policy-impact h4,
-.review-handoff h4 {
+.review-handoff h4,
+.authority-preview h4 {
   margin: 0;
   font-size: 13px;
   line-height: 1.3;
