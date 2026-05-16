@@ -199,6 +199,26 @@ describe("CandidateDetail", () => {
     expect(html).toContain("false");
     expect(html).toContain("Private-readiness policy");
     expect(html).toContain("private_readiness_policy_decision");
+    expect(html).toContain("Private-readiness review packet index");
+    expect(html).toContain("review_packet_index_ready_for_operator_scan");
+    expect(html).toContain("01 policy_impact_interpretation");
+    expect(html).toContain("02 posture_delta_summary");
+    expect(html).toContain("03 review_handoff");
+    expect(html).toContain("04 authority_gate_preview");
+    expect(html).toContain("05 checked_gate_matrix");
+    expect(html).toContain("06 remediation_action_map");
+    expect(html).toContain("07 remediation_progress_summary");
+    expect(html.indexOf("01 policy_impact_interpretation")).toBeLessThan(
+      html.indexOf("02 posture_delta_summary")
+    );
+    expect(html.indexOf("02 posture_delta_summary")).toBeLessThan(html.indexOf("03 review_handoff"));
+    expect(html.indexOf("03 review_handoff")).toBeLessThan(html.indexOf("04 authority_gate_preview"));
+    expect(html.indexOf("04 authority_gate_preview")).toBeLessThan(html.indexOf("05 checked_gate_matrix"));
+    expect(html.indexOf("05 checked_gate_matrix")).toBeLessThan(html.indexOf("06 remediation_action_map"));
+    expect(html.indexOf("06 remediation_action_map")).toBeLessThan(
+      html.indexOf("07 remediation_progress_summary")
+    );
+    expect(html).toContain("review_packet_index_navigation_only");
     expect(html).toContain("Policy impact interpretation");
     expect(html).toContain("Policy input posture");
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
@@ -297,6 +317,11 @@ describe("CandidateDetail", () => {
     );
 
     expect(html).toContain("Private-readiness checked-gate matrix");
+    expect(html).toContain("Private-readiness review packet index");
+    expect(html).toContain("review_packet_index_policy_only_posture_context_missing");
+    expect(html).toContain("01 policy_impact_interpretation");
+    expect(html).toContain("07 remediation_progress_summary");
+    expect(html).toContain("review_packet_index_navigation_only");
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");
