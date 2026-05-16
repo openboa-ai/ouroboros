@@ -1046,6 +1046,13 @@ interface PrivateReadinessRemediationActionRow {
   guidanceBoundary: string;
 }
 
+interface PrivateReadinessRemediationProgressSummary {
+  coverage: string;
+  blockingReviewFocus: string;
+  nextReviewFocus: string;
+  progressState: string;
+}
+
 const PRIVATE_READINESS_ACTION_DIMENSION_ALIASES: Record<string, string> = {
   configure_private_read_credentials: "configuration"
 };
@@ -1108,6 +1115,8 @@ function TradingSubstrateSection({
   const remediationActionRows = privateReadinessPolicyDecision
     ? privateReadinessRemediationActionRows(privateReadinessPolicyDecision)
     : [];
+  const remediationProgressSummary =
+    privateReadinessRemediationProgressSummary(remediationActionRows);
 
   function updatePostureDraftGate(
     key: PrivateReadinessPostureGateKey,
@@ -1498,6 +1507,22 @@ function TradingSubstrateSection({
               </div>
             )}
             <Field label="Map boundary" value="remediation_action_map_guidance_only" />
+            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <Field
+              label="Authority boundary"
+              value="not_private_read_permission_or_execution_authority"
+            />
+          </div>
+          <div
+            className="remediation-progress-summary"
+            aria-label="Private-readiness remediation progress summary"
+          >
+            <h4>Private-readiness remediation progress summary</h4>
+            <Field label="Action coverage" value={remediationProgressSummary.coverage} />
+            <Field label="Blocking / review focus" value={remediationProgressSummary.blockingReviewFocus} />
+            <Field label="Next review focus" value={remediationProgressSummary.nextReviewFocus} />
+            <Field label="Progress state" value={remediationProgressSummary.progressState} />
+            <Field label="Summary boundary" value="remediation_progress_summary_guidance_only" />
             <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
             <Field
               label="Authority boundary"
@@ -2110,6 +2135,36 @@ function privateReadinessRemediationActionRows(
       guidanceBoundary: "read_only_remediation_guidance"
     };
   });
+}
+
+function privateReadinessRemediationProgressSummary(
+  rows: PrivateReadinessRemediationActionRow[]
+): PrivateReadinessRemediationProgressSummary {
+  const mappedCount = rows.filter((row) => row.target !== "unmapped_action").length;
+  const unmappedCount = rows.length - mappedCount;
+  const blockingReviewRows = rows.filter((row) =>
+    row.posture.includes("blocking_gate") ||
+    row.posture.includes("review_required_gate") ||
+    row.posture === "blocking_condition"
+  );
+  const nextFocus =
+    rows.find((row) => row.target === "unmapped_action") ??
+    blockingReviewRows[0] ??
+    rows[0];
+  return {
+    coverage: [
+      `required_actions=${rows.length}`,
+      `mapped_actions=${mappedCount}`,
+      `unmapped_actions=${unmappedCount}`
+    ].join(", "),
+    blockingReviewFocus: `blocking_review_focus=${blockingReviewRows.length}`,
+    nextReviewFocus: nextFocus
+      ? `next_review_focus=${nextFocus.action} -> ${nextFocus.target}`
+      : "next_review_focus=no_required_next_actions",
+    progressState: rows.length > 0
+      ? "remediation_progress_actions_present"
+      : "no_remediation_progress_actions"
+  };
 }
 
 function findPrivateReadinessRemediationGate(

@@ -476,7 +476,8 @@ button {
 .review-handoff,
 .authority-preview,
 .checked-gate-matrix,
-.remediation-action-map {
+.remediation-action-map,
+.remediation-progress-summary {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
   display: grid;
@@ -488,7 +489,8 @@ button {
 .review-handoff h4,
 .authority-preview h4,
 .checked-gate-matrix h4,
-.remediation-action-map h4 {
+.remediation-action-map h4,
+.remediation-progress-summary h4 {
   margin: 0;
   font-size: 13px;
   line-height: 1.3;
