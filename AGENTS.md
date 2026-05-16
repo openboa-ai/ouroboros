@@ -43,6 +43,16 @@ For durable domain names, schema families, public/persisted keys, or naming clea
 
 Ouroboros taxonomy should be maintained as vocabulary guidance, not as a mechanical blocklist. Prefer compact canonical nouns plus explicit fields for product scope, authority, source/provenance, lifecycle, audience, and compatibility. Do not add naming/audit blockers unless an active Linear issue explicitly asks for enforcement.
 
+Use the most authoritative vocabulary source for each domain before inventing project-local terms:
+
+1. Agent, harness, AI, model, tool, MCP, guardrail, eval, trace, workflow, and memory terms should follow OpenAI and Claude/Anthropic terminology when those products have established names. Treat frontier product language as de facto standard vocabulary before coining local synonyms.
+2. Bitcoin perpetual futures and trading substrate terms should follow Binance USD-M Futures terminology for `BTCUSDT`, including account, asset, balance, position, position side, order, trade, user data stream, listenKey, margin, leverage, mark price, liquidation price, notional, `USER_DATA`, and `TRADE`.
+3. Planning and execution-state terms should follow Linear when the concept is a Linear issue, project, initiative, milestone, cycle, document, comment, status update, or project update.
+4. Other concepts should use conventional engineering, product, finance, and trading terms where they exist.
+5. Coin an Ouroboros-specific term only when the project introduces a genuinely new concept or no standard term fits. Record that decision in Linear.
+
+At external API, persisted-schema, fixture, or connector boundaries, preserve official spelling and casing unless a compatibility layer explicitly maps it. Internal aliases can be clearer, but they must name the source term they represent.
+
 Project-specific taxonomy truth currently starts from the Linear document `37 Source Addendum - Trading Taxonomy References` and the active Linear issue that owns the change.
 
 ## Validation
