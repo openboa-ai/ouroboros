@@ -1053,6 +1053,58 @@ interface PrivateReadinessRemediationProgressSummary {
   progressState: string;
 }
 
+interface PrivateReadinessReviewPacketIndexEntry {
+  step: string;
+  surface: string;
+  role: string;
+  boundary: string;
+}
+
+const PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES: PrivateReadinessReviewPacketIndexEntry[] = [
+  {
+    step: "01 policy_impact_interpretation",
+    surface: "Policy impact interpretation",
+    role: "review_policy_status_and_required_actions",
+    boundary: "read_only_review_context"
+  },
+  {
+    step: "02 posture_delta_summary",
+    surface: "Posture delta summary",
+    role: "compare_current_and_previous_local_posture",
+    boundary: "read_only_review_context"
+  },
+  {
+    step: "03 review_handoff",
+    surface: "Private-readiness review handoff",
+    role: "collect_operator_review_context",
+    boundary: "read_only_review_context"
+  },
+  {
+    step: "04 authority_gate_preview",
+    surface: "Private-readiness authority gate preview",
+    role: "confirm_private_read_authority_not_granted",
+    boundary: "read_only_review_context"
+  },
+  {
+    step: "05 checked_gate_matrix",
+    surface: "Private-readiness checked-gate matrix",
+    role: "inspect_checked_gate_statuses",
+    boundary: "read_only_review_context"
+  },
+  {
+    step: "06 remediation_action_map",
+    surface: "Private-readiness remediation/action map",
+    role: "map_required_actions_to_gates_or_blockers",
+    boundary: "read_only_review_context"
+  },
+  {
+    step: "07 remediation_progress_summary",
+    surface: "Private-readiness remediation progress summary",
+    role: "scan_action_coverage_and_next_focus",
+    boundary: "read_only_review_context"
+  }
+];
+
 const PRIVATE_READINESS_ACTION_DIMENSION_ALIASES: Record<string, string> = {
   configure_private_read_credentials: "configuration"
 };
@@ -1457,6 +1509,31 @@ function TradingSubstrateSection({
               `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
             ].join(", ")}
           />
+          <div className="review-packet-index" aria-label="Private-readiness review packet index">
+            <h4>Private-readiness review packet index</h4>
+            {PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES.map((entry) => (
+              <div className="review-packet-index-row" key={entry.step}>
+                <strong>{entry.step}</strong>
+                <span>{entry.surface}</span>
+                <span>{entry.role}</span>
+                <span>{entry.boundary}</span>
+              </div>
+            ))}
+            <Field
+              label="Index state"
+              value={
+                privateReadinessPosture
+                  ? "review_packet_index_ready_for_operator_scan"
+                  : "review_packet_index_policy_only_posture_context_missing"
+              }
+            />
+            <Field label="Index boundary" value="review_packet_index_navigation_only" />
+            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <Field
+              label="Authority boundary"
+              value="not_private_read_permission_or_execution_authority"
+            />
+          </div>
           <div className="checked-gate-matrix" aria-label="Private-readiness checked-gate matrix">
             <h4>Private-readiness checked-gate matrix</h4>
             {privateReadinessPolicyDecision.checked_gates.length > 0 ? (
