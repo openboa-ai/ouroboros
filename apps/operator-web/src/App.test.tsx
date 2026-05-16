@@ -24,6 +24,7 @@ import {
 } from "../../../test/support/binance-no-authority";
 import { CandidateDetail, CandidateSummaryRow, TradingExecutionModesSection } from "./App";
 import {
+  privateReadinessPostureDraftFromCandidate,
   privateReadinessPosturePayload,
   replayRunPayload,
   runtimeAuthorityCommandPayload,
@@ -179,7 +180,7 @@ describe("CandidateDetail", () => {
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
-  it("renders a local private-readiness posture write action without live authority language", () => {
+  it("renders a local private-readiness posture edit form without live authority language", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={{
@@ -198,7 +199,13 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("Record local posture");
+    expect(html).toContain("Local posture edit");
+    expect(html).toContain("Operator approval");
+    expect(html).toContain("Jurisdiction / risk");
+    expect(html).toContain("Live binding");
+    expect(html).toContain("Secret handling");
+    expect(html).toContain("Stop behavior");
+    expect(html).toContain("Save local posture");
     expect(html).toContain("local_config / no_secret / not_live");
     expect(html).toContain("local_config recorded: local-binance-btcusdt-private-readiness-posture-001");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
@@ -599,7 +606,19 @@ describe("CandidateDetail", () => {
       }
     };
 
-    const payload = privateReadinessPosturePayload(candidate);
+    const draft = privateReadinessPostureDraftFromCandidate(candidate);
+    const payload = privateReadinessPosturePayload(candidate, draft);
+    const editedPayload = privateReadinessPosturePayload(candidate, {
+      ...draft,
+      operator_approval_gate: {
+        status: "ready",
+        reason: "operator_approval_recorded_in_local_posture_form"
+      },
+      secret_handling_gate: {
+        status: "review_required",
+        reason: "secret_handling_review_recorded_without_secret_material"
+      }
+    });
 
     expect(payload).toMatchObject({
       idempotency_key: expect.stringContaining("operator-web-private-readiness-posture"),
@@ -620,7 +639,24 @@ describe("CandidateDetail", () => {
         id: "operator-web"
       }
     });
+    expect(payload.idempotency_key).toContain("draft-");
+    expect(editedPayload.idempotency_key).toContain("draft-");
+    expect(editedPayload.idempotency_key).not.toEqual(payload.idempotency_key);
+    expect(editedPayload).toMatchObject({
+      operator_approval_gate: {
+        status: "ready",
+        reason: "operator_approval_recorded_in_local_posture_form"
+      },
+      secret_handling_gate: {
+        status: "review_required",
+        reason: "secret_handling_review_recorded_without_secret_material"
+      },
+      secret_reference_configured: false
+    });
     expect(JSON.stringify(payload)).not.toMatch(
+      /exchange_credentials|provider_api_key|apiKey|secretKey|signature|direct_exchange_order/
+    );
+    expect(JSON.stringify(editedPayload)).not.toMatch(
       /exchange_credentials|provider_api_key|apiKey|secretKey|signature|direct_exchange_order/
     );
   });

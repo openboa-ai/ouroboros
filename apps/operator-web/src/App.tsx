@@ -15,6 +15,7 @@ import type {
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
+  PrivateReadinessPolicyGateInput,
   PrivateReadinessPolicyDecision,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPreflightSurfaceReadModel,
@@ -32,7 +33,8 @@ import {
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordReplayRuntimeAuthority,
   recordReplayRuntimeControl,
-  runReplay as submitReplayRun
+  runReplay as submitReplayRun,
+  type PrivateReadinessPostureDraft
 } from "./api";
 import "./styles.css";
 
@@ -337,7 +339,7 @@ export function App() {
     }
   }
 
-  async function recordPrivateReadinessPosture() {
+  async function recordPrivateReadinessPosture(draft: PrivateReadinessPostureDraft) {
     const candidate = state.selected;
     if (!candidate || state.recordingPrivateReadinessPosture) {
       return;
@@ -350,7 +352,7 @@ export function App() {
       privateReadinessPostureMessage: undefined
     }));
     try {
-      const outcome = await submitPrivateReadinessPosture(candidate);
+      const outcome = await submitPrivateReadinessPosture(candidate, draft);
       const selected = await fetchCandidate(candidate.candidate_id);
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
@@ -423,7 +425,7 @@ export function App() {
             onRecordRuntimeControl={state.selected.runtime.runtime_control
               ? () => void recordRuntimeControl()
               : undefined}
-            onRecordPrivateReadinessPosture={() => void recordPrivateReadinessPosture()}
+            onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
             recordingRuntimeAuthority={state.recordingRuntimeAuthority}
             recordingRuntimeControl={state.recordingRuntimeControl}
             recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
@@ -543,7 +545,7 @@ export function CandidateDetail({
   onRunCandidateReplay?: () => void;
   onRecordRuntimeAuthority?: () => void;
   onRecordRuntimeControl?: () => void;
-  onRecordPrivateReadinessPosture?: () => void;
+  onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   runningCandidateReplay?: boolean;
   recordingRuntimeAuthority?: boolean;
   recordingRuntimeControl?: boolean;
@@ -659,6 +661,7 @@ export function CandidateDetail({
         </InfoSection>
 
         <TradingSubstrateSection
+          key={candidate.candidate_id}
           orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
           publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
           privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
@@ -1019,6 +1022,26 @@ function formatSignedNumber(value: number): string {
   return value > 0 ? `+${value}` : String(value);
 }
 
+type PrivateReadinessPostureGateKey = keyof PrivateReadinessPostureDraft;
+
+const PRIVATE_READINESS_GATE_STATUS_OPTIONS: Array<PrivateReadinessPolicyGateInput["status"]> = [
+  "not_ready",
+  "review_required",
+  "blocked",
+  "ready"
+];
+
+const PRIVATE_READINESS_POSTURE_GATE_FIELDS: Array<{
+  key: PrivateReadinessPostureGateKey;
+  label: string;
+}> = [
+  { key: "operator_approval_gate", label: "Operator approval" },
+  { key: "jurisdiction_risk_gate", label: "Jurisdiction / risk" },
+  { key: "live_binding_gate", label: "Live binding" },
+  { key: "secret_handling_gate", label: "Secret handling" },
+  { key: "stop_behavior_gate", label: "Stop behavior" }
+];
+
 function TradingSubstrateSection({
   orderFillSurface,
   publicMarketSurface,
@@ -1037,11 +1060,31 @@ function TradingSubstrateSection({
   privateReadinessPosture?: PrivateReadinessPostureReadModel | null;
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
-  onRecordPrivateReadinessPosture?: () => void;
+  onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   recordingPrivateReadinessPosture?: boolean;
   privateReadinessPostureError?: string;
   privateReadinessPostureMessage?: string;
 }) {
+  const [postureDraft, setPostureDraft] = useState<PrivateReadinessPostureDraft>(
+    () => privateReadinessPostureDraftFromReadModel(privateReadinessPosture)
+  );
+  useEffect(() => {
+    setPostureDraft(privateReadinessPostureDraftFromReadModel(privateReadinessPosture));
+  }, [privateReadinessPosture?.posture_id]);
+
+  function updatePostureDraftGate(
+    key: PrivateReadinessPostureGateKey,
+    patch: Partial<PrivateReadinessPolicyGateInput>
+  ) {
+    setPostureDraft((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        ...patch
+      }
+    }));
+  }
+
   return (
     <InfoSection title="Trading Substrate">
       {publicMarketSurface ? (
@@ -1235,17 +1278,52 @@ function TradingSubstrateSection({
         </div>
       )}
       {onRecordPrivateReadinessPosture && (
-        <div className="runtime-command">
-          <button
-            className="runtime-command-button"
-            type="button"
-            onClick={onRecordPrivateReadinessPosture}
-            disabled={recordingPrivateReadinessPosture}
-          >
-            {recordingPrivateReadinessPosture ? "Recording posture" : "Record local posture"}
-          </button>
-          <span>local_config / no_secret / not_live</span>
-        </div>
+        <form
+          aria-label="Local private-readiness posture edit form"
+          className="posture-edit-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onRecordPrivateReadinessPosture(postureDraft);
+          }}
+        >
+          <h4>Local posture edit</h4>
+          <div className="posture-edit-grid">
+            {PRIVATE_READINESS_POSTURE_GATE_FIELDS.map((field) => (
+              <label className="posture-edit-row" key={field.key}>
+                <span>{field.label}</span>
+                <select
+                  value={postureDraft[field.key].status}
+                  onChange={(event) =>
+                    updatePostureDraftGate(field.key, {
+                      status: event.currentTarget.value as PrivateReadinessPolicyGateInput["status"]
+                    })}
+                >
+                  {PRIVATE_READINESS_GATE_STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <input
+                  aria-label={`${field.label} reason`}
+                  value={postureDraft[field.key].reason}
+                  onChange={(event) =>
+                    updatePostureDraftGate(field.key, {
+                      reason: event.currentTarget.value
+                    })}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="runtime-command">
+            <button
+              className="runtime-command-button"
+              type="submit"
+              disabled={recordingPrivateReadinessPosture}
+            >
+              {recordingPrivateReadinessPosture ? "Saving posture" : "Save local posture"}
+            </button>
+            <span>local_config / no_secret / not_live</span>
+          </div>
+        </form>
       )}
       {privateReadinessPostureMessage && (
         <div className="inline-status">{privateReadinessPostureMessage}</div>
@@ -1470,6 +1548,40 @@ function TradingSubstrateSection({
       )}
     </InfoSection>
   );
+}
+
+function privateReadinessPostureDraftFromReadModel(
+  posture?: PrivateReadinessPostureReadModel | null
+): PrivateReadinessPostureDraft {
+  return {
+    operator_approval_gate: posture?.operator_approval_gate ?? privateReadinessPolicyGate(
+      "not_ready",
+      "operator_live_private_read_approval_missing"
+    ),
+    jurisdiction_risk_gate: posture?.jurisdiction_risk_gate ?? privateReadinessPolicyGate(
+      "review_required",
+      "operator_jurisdiction_not_recorded"
+    ),
+    live_binding_gate: posture?.live_binding_gate ?? privateReadinessPolicyGate(
+      "not_ready",
+      "live_binding_profile_not_configured"
+    ),
+    secret_handling_gate: posture?.secret_handling_gate ?? privateReadinessPolicyGate(
+      "not_ready",
+      "secret_handling_profile_not_configured"
+    ),
+    stop_behavior_gate: posture?.stop_behavior_gate ?? privateReadinessPolicyGate(
+      "not_ready",
+      "operator_stop_behavior_not_recorded"
+    )
+  };
+}
+
+function privateReadinessPolicyGate(
+  status: PrivateReadinessPolicyGateInput["status"],
+  reason: string
+): PrivateReadinessPolicyGateInput {
+  return { status, reason };
 }
 
 function orderFillStatusTone(surface: OrderFillSurfaceReadModel): "counted" | "failed" | "neutral" {
