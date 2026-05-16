@@ -177,6 +177,17 @@ describe("CandidateDetail", () => {
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
     expect(html).toContain("local_config / 2026-05-16T00:00:08.000Z");
     expect(html).toContain("operator=ready, jurisdiction=review_required");
+    expect(html).toContain("Posture delta summary");
+    expect(html).toContain("Current posture");
+    expect(html).toContain("Previous posture");
+    expect(html).toContain("fixture-binance-btcusdt-private-readiness-posture-001");
+    expect(html).toContain("1 changed gate");
+    expect(html).toContain("Operator approval: not_ready -&gt; ready");
+    expect(html).toContain(
+      "reason operator_live_private_read_approval_missing -&gt; operator_approval_recorded_in_local_history"
+    );
+    expect(html).toContain("local_config_delta_inspection_only");
+    expect(html).toContain("not_counted_evidence_or_promotion");
     expect(html).toContain("Operator approval gate");
     expect(html).toContain("Jurisdiction / risk gate");
     expect(html).toContain("operator_live_private_read_approval_missing");
@@ -208,6 +219,51 @@ describe("CandidateDetail", () => {
     expect(html).toContain("fixture_seed_no_private_authority");
     expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders an unchanged posture delta summary without action controls", () => {
+    const currentPosture = fixturePrivateReadinessPosture({
+      posture_id: "local-binance-btcusdt-private-readiness-posture-history-003",
+      source_kind: "local_config",
+      fixture_backed: false,
+      updated_at: "2026-05-16T00:00:10.000Z"
+    });
+    const previousPosture = fixturePrivateReadinessPosture({
+      posture_id: "local-binance-btcusdt-private-readiness-posture-history-002",
+      source_kind: "local_config",
+      fixture_backed: false,
+      updated_at: "2026-05-16T00:00:08.000Z"
+    });
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: currentPosture,
+            private_readiness_posture_history: [
+              currentPosture,
+              previousPosture
+            ],
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
+            latest_account_position_risk_mirror_surface: null
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Posture delta summary");
+    expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-003");
+    expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
+    expect(html).toContain("0 changed gates");
+    expect(html).toContain("Gate changes");
+    expect(html).toContain("none");
+    expect(html).toContain("local_config_delta_inspection_only");
+    expect(html).toContain("not_counted_evidence_or_promotion");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 

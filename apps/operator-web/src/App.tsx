@@ -1023,7 +1023,20 @@ function formatSignedNumber(value: number): string {
   return value > 0 ? `+${value}` : String(value);
 }
 
-type PrivateReadinessPostureGateKey = keyof PrivateReadinessPostureDraft;
+type PrivateReadinessPostureGateKey =
+  | "operator_approval_gate"
+  | "jurisdiction_risk_gate"
+  | "live_binding_gate"
+  | "secret_handling_gate"
+  | "stop_behavior_gate";
+
+interface PrivateReadinessPostureGateChange {
+  label: string;
+  fromStatus: PrivateReadinessPolicyGateInput["status"];
+  toStatus: PrivateReadinessPolicyGateInput["status"];
+  fromReason: string;
+  toReason: string;
+}
 
 const PRIVATE_READINESS_GATE_STATUS_OPTIONS: Array<PrivateReadinessPolicyGateInput["status"]> = [
   "not_ready",
@@ -1074,6 +1087,12 @@ function TradingSubstrateSection({
   useEffect(() => {
     setPostureDraft(privateReadinessPostureDraftFromReadModel(privateReadinessPosture));
   }, [privateReadinessPosture?.posture_id]);
+  const previousPosture = privateReadinessPosture
+    ? previousPrivateReadinessPosture(privateReadinessPosture, privateReadinessPostureHistory ?? [])
+    : undefined;
+  const postureGateChanges = privateReadinessPosture && previousPosture
+    ? privateReadinessPostureGateChanges(privateReadinessPosture, previousPosture)
+    : [];
 
   function updatePostureDraftGate(
     key: PrivateReadinessPostureGateKey,
@@ -1283,6 +1302,27 @@ function TradingSubstrateSection({
                   <span>{posture.no_authority_label} / {posture.authority_status}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {previousPosture && (
+            <div className="posture-delta" aria-label="Private-readiness posture delta summary">
+              <h4>Posture delta summary</h4>
+              <Field label="Current posture" value={privateReadinessPosture.posture_id} />
+              <Field label="Previous posture" value={previousPosture.posture_id} />
+              <Field
+                label="Changed gates"
+                value={formatPrivateReadinessPostureGateChangeCount(postureGateChanges)}
+              />
+              <Field
+                label="Gate changes"
+                value={formatPrivateReadinessPostureGateChanges(postureGateChanges)}
+              />
+              <Field label="Delta boundary" value="local_config_delta_inspection_only" />
+              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
             </div>
           )}
         </>
@@ -1733,6 +1773,62 @@ function formatPrivateReadinessPostureGateSummary(
     `secret_handling=${posture.secret_handling_gate.status}`,
     `stop_behavior=${posture.stop_behavior_gate.status}`
   ].join(", ");
+}
+
+function previousPrivateReadinessPosture(
+  current: PrivateReadinessPostureReadModel,
+  history: PrivateReadinessPostureReadModel[]
+): PrivateReadinessPostureReadModel | undefined {
+  return history.find((posture) => posture.posture_id !== current.posture_id);
+}
+
+function privateReadinessPostureGateChanges(
+  current: PrivateReadinessPostureReadModel,
+  previous: PrivateReadinessPostureReadModel
+): PrivateReadinessPostureGateChange[] {
+  return PRIVATE_READINESS_POSTURE_GATE_FIELDS.flatMap((field) => {
+    const currentGate = current[field.key];
+    const previousGate = previous[field.key];
+    if (currentGate.status === previousGate.status && currentGate.reason === previousGate.reason) {
+      return [];
+    }
+    return [{
+      label: field.label,
+      fromStatus: previousGate.status,
+      toStatus: currentGate.status,
+      fromReason: previousGate.reason,
+      toReason: currentGate.reason
+    }];
+  });
+}
+
+function formatPrivateReadinessPostureGateChangeCount(
+  changes: PrivateReadinessPostureGateChange[]
+): string {
+  if (changes.length === 0) {
+    return "0 changed gates";
+  }
+  return `${changes.length} changed gate${changes.length === 1 ? "" : "s"}`;
+}
+
+function formatPrivateReadinessPostureGateChanges(
+  changes: PrivateReadinessPostureGateChange[]
+): string {
+  if (changes.length === 0) {
+    return "none";
+  }
+  return changes
+    .map((change) =>
+      [
+        `${change.label}: ${change.fromStatus} -> ${change.toStatus}`,
+        change.fromReason === change.toReason
+          ? undefined
+          : `reason ${change.fromReason} -> ${change.toReason}`
+      ]
+        .filter(Boolean)
+        .join(", ")
+    )
+    .join("; ");
 }
 
 function formatPolicyListSummary(items: string[]): string {

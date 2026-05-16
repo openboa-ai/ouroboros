@@ -471,6 +471,7 @@ button {
   font-size: 12px;
 }
 
+.posture-delta,
 .policy-impact {
   border-top: 1px solid #eaecf0;
   padding-top: 10px;
@@ -478,6 +479,7 @@ button {
   gap: 8px;
 }
 
+.posture-delta h4,
 .policy-impact h4 {
   margin: 0;
   font-size: 13px;
