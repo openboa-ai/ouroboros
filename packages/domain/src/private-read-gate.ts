@@ -20,9 +20,16 @@ export type PrivateReadGateAuthorityStatus = "not_granted";
 
 export type PrivateReadGateEvidenceStatus = "not_counted";
 
+export type PrivateReadGateSignedReadPermissionPreflightStatus =
+  | "not_requested"
+  | "preflight_only";
+
+export type PrivateReadGateSignedReadPermissionPreflightSource = "policy_decision";
+
 export type PrivateReadGateReasonCode =
   | PrivateReadinessPolicyDecision["reason_codes"][number]
   | "credential_reference_only"
+  | "signed_read_permission_preflight_only"
   | "private_read_gate_not_ready"
   | "private_read_gate_review_required"
   | "private_read_gate_blocked"
@@ -47,6 +54,8 @@ export interface PrivateReadGateDecision {
   credential_reference_status: PrivateReadGateCredentialReferenceStatus;
   credential_reference_source: PrivateReadGateCredentialReferenceSource;
   credential_reference_ref?: PrivateReadinessPolicyDecision["source_surface_refs"][number];
+  signed_read_permission_preflight_status: PrivateReadGateSignedReadPermissionPreflightStatus;
+  signed_read_permission_preflight_source: PrivateReadGateSignedReadPermissionPreflightSource;
   signed_read_permission: PrivateReadGateAuthorityStatus;
   account_balance_position_read_authority: PrivateReadGateAuthorityStatus;
   listen_key_user_data_stream_authority: PrivateReadGateAuthorityStatus;
@@ -82,6 +91,10 @@ export function evaluatePrivateReadGateDecision(
     policyDecision,
     input.credential_reference
   );
+  const signedReadPermissionPreflight = signedReadPermissionPreflightSnapshot(
+    status,
+    credentialReference.status
+  );
   const requiredNextActions = new Set(policyDecision.required_next_actions);
 
   if (status === "ready_but_disabled") {
@@ -100,6 +113,8 @@ export function evaluatePrivateReadGateDecision(
     credential_reference_status: credentialReference.status,
     credential_reference_source: credentialReference.source,
     ...(credentialReference.ref ? { credential_reference_ref: credentialReference.ref } : {}),
+    signed_read_permission_preflight_status: signedReadPermissionPreflight.status,
+    signed_read_permission_preflight_source: signedReadPermissionPreflight.source,
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",
@@ -111,6 +126,9 @@ export function evaluatePrivateReadGateDecision(
     reason_codes: uniqueReasonCodes([
       ...policyDecision.reason_codes,
       ...(credentialReference.status === "reference_only" ? ["credential_reference_only" as const] : []),
+      ...(signedReadPermissionPreflight.status === "preflight_only"
+        ? ["signed_read_permission_preflight_only" as const]
+        : []),
       gateReasonCode,
       "no_private_read_performed"
     ]),
@@ -185,6 +203,26 @@ function credentialReferenceSnapshot(
   return {
     status: "reference_only",
     source: "policy_configuration_gate"
+  };
+}
+
+function signedReadPermissionPreflightSnapshot(
+  status: PrivateReadGateDecisionStatus,
+  credentialReferenceStatus: PrivateReadGateCredentialReferenceStatus
+): {
+  status: PrivateReadGateSignedReadPermissionPreflightStatus;
+  source: PrivateReadGateSignedReadPermissionPreflightSource;
+} {
+  if (status === "ready_but_disabled" && credentialReferenceStatus === "reference_only") {
+    return {
+      status: "preflight_only",
+      source: "policy_decision"
+    };
+  }
+
+  return {
+    status: "not_requested",
+    source: "policy_decision"
   };
 }
 

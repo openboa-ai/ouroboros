@@ -969,6 +969,69 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       "no_private_read_performed"
     ]));
   });
+
+  it("surfaces USER_DATA signed-read permission preflight without granting private reads", () => {
+    const credentialReference = ref(
+      "secret_reference",
+      "local-binance-btcusdt-user-data-read-reference"
+    );
+    const policyDecision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface(),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_reference_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+
+    const gateDecision = evaluatePrivateReadGateDecision({
+      evaluated_at: "2026-05-16T00:00:03.000Z",
+      policy_decision: policyDecision,
+      credential_reference: {
+        configured: true,
+        ref: credentialReference,
+        raw_secret_material_present: false,
+        source: "private_readiness_posture"
+      }
+    });
+
+    expect(gateDecision).toMatchObject({
+      status: "ready_but_disabled",
+      credential_reference_status: "reference_only",
+      signed_read_permission_preflight_status: "preflight_only",
+      signed_read_permission_preflight_source: "policy_decision",
+      signed_read_permission: "not_granted",
+      account_balance_position_read_authority: "not_granted",
+      listen_key_user_data_stream_authority: "not_granted",
+      leverage_margin_mutation_authority: "not_granted",
+      order_submission_authority: "not_granted",
+      gateway_decision_authority: "not_granted",
+      evidence_sealing_authority: "not_counted",
+      promotion_authority: "not_granted",
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    });
+    expect(gateDecision.reason_codes).toEqual(expect.arrayContaining([
+      "signed_read_permission_preflight_only",
+      "private_read_gate_ready_but_disabled",
+      "no_private_read_performed"
+    ]));
+    expect(gateDecision.required_next_actions).toContain(
+      "grant_signed_read_authority_before_private_user_data_reads"
+    );
+  });
 });
 
 describe("Trading substrate account-position-risk mirror surface records", () => {
