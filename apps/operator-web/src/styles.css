@@ -478,6 +478,7 @@ button {
 .review-packet-index,
 .review-packet-availability-summary,
 .review-packet-gap-summary,
+.review-packet-resolution-checklist,
 .checked-gate-matrix,
 .remediation-action-map,
 .remediation-progress-summary {
@@ -494,6 +495,7 @@ button {
 .review-packet-index h4,
 .review-packet-availability-summary h4,
 .review-packet-gap-summary h4,
+.review-packet-resolution-checklist h4,
 .checked-gate-matrix h4,
 .remediation-action-map h4,
 .remediation-progress-summary h4 {
@@ -504,6 +506,7 @@ button {
 
 .review-packet-index-row,
 .review-packet-availability-row,
+.review-packet-resolution-row,
 .checked-gate-row,
 .remediation-action-row {
   display: grid;
@@ -517,6 +520,8 @@ button {
 .review-packet-index-row span,
 .review-packet-availability-row strong,
 .review-packet-availability-row span,
+.review-packet-resolution-row strong,
+.review-packet-resolution-row span,
 .checked-gate-row strong,
 .checked-gate-row span,
 .remediation-action-row strong,
@@ -528,6 +533,7 @@ button {
 
 .review-packet-index-row strong,
 .review-packet-availability-row strong,
+.review-packet-resolution-row strong,
 .checked-gate-row strong,
 .remediation-action-row strong {
   color: #344054;
@@ -535,6 +541,7 @@ button {
 
 .review-packet-index-row span,
 .review-packet-availability-row span,
+.review-packet-resolution-row span,
 .checked-gate-row span,
 .remediation-action-row span {
   color: #667085;

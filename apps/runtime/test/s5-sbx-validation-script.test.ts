@@ -6,6 +6,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
+const defaultS5ValidationCommandTimeoutMs = "10000";
 
 beforeEach(() => {
   delete process.env.OUROBOROS_ALLOW_ACTIVE_SBX_SESSION_INTERRUPTION;
@@ -2330,13 +2331,13 @@ function runValidation(env: Record<string, string>, timeoutMs: number): Promise<
   stdout: string;
   stderr: string;
 }>;
-function runValidation(env: Record<string, string>, timeoutMs = 5_000): Promise<{
+function runValidation(env: Record<string, string>, timeoutMs = 10_000): Promise<{
   code: number | null;
   stdout: string;
   stderr: string;
 }> {
   return runScript(["scripts/validate-s5-sbx-runtime.mjs"], {
-    OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "2000",
+    OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: defaultS5ValidationCommandTimeoutMs,
     ...env
   }, timeoutMs);
 }

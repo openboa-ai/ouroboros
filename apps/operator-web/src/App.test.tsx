@@ -240,6 +240,17 @@ describe("CandidateDetail", () => {
     );
     expect(html).toContain("review_packet_remediation_focus_present");
     expect(html).toContain("review_packet_gap_summary_navigation_only");
+    expect(html).toContain("Private-readiness review packet resolution checklist");
+    expect(html).toContain(
+      "resolution_checklist=availability_gaps=0, remediation_actions=6, policy_context_available=0, total_items=6"
+    );
+    expect(html).toContain(
+      "next_resolution_focus=configure_private_read_credentials -&gt; checked_gate: configuration"
+    );
+    expect(html).toContain("resolution_checklist_remediation_actions_present");
+    expect(html).toContain("resolve_required_next_action");
+    expect(html).toContain("read_only_resolution_guidance");
+    expect(html).toContain("review_packet_resolution_checklist_navigation_only");
     expect(html).toContain("Policy impact interpretation");
     expect(html).toContain("Policy input posture");
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
@@ -363,6 +374,17 @@ describe("CandidateDetail", () => {
     );
     expect(html).toContain("review_packet_availability_gaps_present");
     expect(html).toContain("review_packet_gap_summary_navigation_only");
+    expect(html).toContain("Private-readiness review packet resolution checklist");
+    expect(html).toContain(
+      "resolution_checklist=availability_gaps=6, remediation_actions=0, policy_context_available=1, total_items=6"
+    );
+    expect(html).toContain(
+      "next_resolution_focus=02 posture_delta_summary -&gt; latest_posture_required_for_delta"
+    );
+    expect(html).toContain("resolution_checklist_availability_gaps_present");
+    expect(html).toContain("requires_posture_context");
+    expect(html).toContain("confirm_empty_review_state");
+    expect(html).toContain("review_packet_resolution_checklist_navigation_only");
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");

@@ -1085,6 +1085,21 @@ interface PrivateReadinessReviewPacketGapSummary {
   gapState: string;
 }
 
+interface PrivateReadinessReviewPacketResolutionChecklistItem {
+  item: string;
+  source: string;
+  status: string;
+  detail: string;
+  boundary: string;
+}
+
+interface PrivateReadinessReviewPacketResolutionChecklist {
+  countSummary: string;
+  nextResolutionFocus: string;
+  checklistState: string;
+  items: PrivateReadinessReviewPacketResolutionChecklistItem[];
+}
+
 const PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES: PrivateReadinessReviewPacketIndexEntry[] = [
   {
     step: "01 policy_impact_interpretation",
@@ -1207,6 +1222,13 @@ function TradingSubstrateSection({
     ? privateReadinessReviewPacketGapSummary({
         availabilitySummary: reviewPacketAvailabilitySummary,
         remediationProgressSummary
+      })
+    : undefined;
+  const reviewPacketResolutionChecklist = reviewPacketAvailabilitySummary && reviewPacketGapSummary
+    ? privateReadinessReviewPacketResolutionChecklist({
+        availabilitySummary: reviewPacketAvailabilitySummary,
+        gapSummary: reviewPacketGapSummary,
+        remediationActionRows
       })
     : undefined;
 
@@ -1615,6 +1637,44 @@ function TradingSubstrateSection({
               <Field
                 label="Gap boundary"
                 value="review_packet_gap_summary_navigation_only"
+              />
+              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
+            </div>
+          )}
+          {reviewPacketResolutionChecklist && (
+            <div
+              className="review-packet-resolution-checklist"
+              aria-label="Private-readiness review packet resolution checklist"
+            >
+              <h4>Private-readiness review packet resolution checklist</h4>
+              {reviewPacketResolutionChecklist.items.map((item) => (
+                <div className="review-packet-resolution-row" key={`${item.item}-${item.source}`}>
+                  <strong>{item.item}</strong>
+                  <span>{item.source}</span>
+                  <span>{item.status}</span>
+                  <span>{item.detail}</span>
+                  <span>{item.boundary}</span>
+                </div>
+              ))}
+              <Field
+                label="Resolution checklist"
+                value={reviewPacketResolutionChecklist.countSummary}
+              />
+              <Field
+                label="Next resolution focus"
+                value={reviewPacketResolutionChecklist.nextResolutionFocus}
+              />
+              <Field
+                label="Checklist state"
+                value={reviewPacketResolutionChecklist.checklistState}
+              />
+              <Field
+                label="Checklist boundary"
+                value="review_packet_resolution_checklist_navigation_only"
               />
               <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
               <Field
@@ -2397,6 +2457,54 @@ function privateReadinessReviewPacketGapSummary({
       : remediationProgressSummary.progressState === "remediation_progress_actions_present"
         ? "review_packet_remediation_focus_present"
         : "review_packet_no_current_gaps"
+  };
+}
+
+function privateReadinessReviewPacketResolutionChecklist({
+  availabilitySummary,
+  gapSummary,
+  remediationActionRows
+}: {
+  availabilitySummary: PrivateReadinessReviewPacketAvailabilitySummary;
+  gapSummary: PrivateReadinessReviewPacketGapSummary;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+}): PrivateReadinessReviewPacketResolutionChecklist {
+  const availabilityGapItems = availabilitySummary.rows
+    .filter((row) => row.availability === "needs_posture_context" || row.availability === "no_current_items")
+    .map((row) => ({
+      item: row.step,
+      source: row.availability,
+      status: row.availability === "needs_posture_context"
+        ? "requires_posture_context"
+        : "confirm_empty_review_state",
+      detail: row.detail,
+      boundary: "read_only_resolution_guidance"
+    }));
+  const remediationItems = remediationActionRows.map((row) => ({
+    item: row.action,
+    source: row.target,
+    status: "resolve_required_next_action",
+    detail: `${row.posture} / ${row.detail}`,
+    boundary: "read_only_resolution_guidance"
+  }));
+  const policyContextCount = availabilitySummary.rows
+    .filter((row) => row.availability === "policy_context_available").length;
+  const items = [...availabilityGapItems, ...remediationItems];
+
+  return {
+    countSummary: [
+      `resolution_checklist=availability_gaps=${availabilityGapItems.length}`,
+      `remediation_actions=${remediationActionRows.length}`,
+      `policy_context_available=${policyContextCount}`,
+      `total_items=${items.length}`
+    ].join(", "),
+    nextResolutionFocus: gapSummary.nextGapFocus.replace("next_gap_focus=", "next_resolution_focus="),
+    checklistState: availabilityGapItems.length > 0
+      ? "resolution_checklist_availability_gaps_present"
+      : remediationActionRows.length > 0
+        ? "resolution_checklist_remediation_actions_present"
+        : "resolution_checklist_no_current_items",
+    items
   };
 }
 
