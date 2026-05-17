@@ -40,6 +40,7 @@ import {
   buildPrivateReadinessReviewPacketProjection,
   formatPrivateReadinessCheckedGatePosture
 } from "./private-readiness-review-packet";
+import type { PrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 import "./styles.css";
 
 interface AppState {
@@ -1104,7 +1105,6 @@ function TradingSubstrateSection({
         previousPosture
       })
     : undefined;
-  const reviewPacketIndexEntries = reviewPacketProjection?.indexEntries ?? [];
   const remediationActionRows = reviewPacketProjection?.remediationActionRows ?? [];
   const remediationProgressSummary = reviewPacketProjection?.remediationProgressSummary ?? {
     coverage: "required_actions=0, mapped_actions=0, unmapped_actions=0",
@@ -1112,12 +1112,6 @@ function TradingSubstrateSection({
     nextReviewFocus: "next_review_focus=no_required_next_actions",
     progressState: "no_remediation_progress_actions"
   };
-  const reviewPacketAvailabilitySummary = reviewPacketProjection?.availabilitySummary;
-  const reviewPacketGapSummary = reviewPacketProjection?.gapSummary;
-  const reviewPacketResolutionChecklist = reviewPacketProjection?.resolutionChecklist;
-  const reviewPacketSourceProvenanceSummary = reviewPacketProjection?.sourceProvenanceSummary;
-  const reviewPacketCompletionReadinessSummary =
-    reviewPacketProjection?.completionReadinessSummary;
 
   function updatePostureDraftGate(
     key: PrivateReadinessPostureGateKey,
@@ -1458,192 +1452,11 @@ function TradingSubstrateSection({
               `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
             ].join(", ")}
           />
-          {reviewPacketCompletionReadinessSummary && (
-            <div
-              className="review-packet-completion-readiness-summary"
-              aria-label="Private-readiness review packet completion/readiness summary"
-            >
-              <h4>Private-readiness review packet completion/readiness summary</h4>
-              <Field
-                label="Completion/readiness summary"
-                value={reviewPacketCompletionReadinessSummary.countSummary}
-              />
-              <Field
-                label="Next review focus"
-                value={reviewPacketCompletionReadinessSummary.nextReviewFocus}
-              />
-              <Field
-                label="Next completion focus"
-                value={reviewPacketCompletionReadinessSummary.nextCompletionFocus}
-              />
-              <Field
-                label="Readiness state"
-                value={reviewPacketCompletionReadinessSummary.readinessState}
-              />
-              <Field
-                label="Completion/readiness context"
-                value={reviewPacketCompletionReadinessSummary.boundary}
-              />
-              <Field
-                label="Completion/readiness boundary"
-                value="review_packet_completion_readiness_navigation_only"
-              />
-              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-              <Field
-                label="Authority boundary"
-                value="not_private_read_permission_or_execution_authority"
-              />
-            </div>
-          )}
-          <div className="review-packet-index" aria-label="Private-readiness review packet index">
-            <h4>Private-readiness review packet index</h4>
-            {reviewPacketIndexEntries.map((entry) => (
-              <div className="review-packet-index-row" key={entry.step}>
-                <strong>{entry.step}</strong>
-                <span>{entry.surface}</span>
-                <span>{entry.role}</span>
-                <span>{entry.boundary}</span>
-              </div>
-            ))}
-            <Field
-              label="Index state"
-              value={
-                privateReadinessPosture
-                  ? "review_packet_index_ready_for_operator_scan"
-                  : "review_packet_index_policy_only_posture_context_missing"
-              }
+          {reviewPacketProjection && (
+            <PrivateReadinessReviewPacketSections
+              postureContextAvailable={Boolean(privateReadinessPosture)}
+              projection={reviewPacketProjection}
             />
-            <Field label="Index boundary" value="review_packet_index_navigation_only" />
-            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-            <Field
-              label="Authority boundary"
-              value="not_private_read_permission_or_execution_authority"
-            />
-          </div>
-          {reviewPacketAvailabilitySummary && (
-            <div
-              className="review-packet-availability-summary"
-              aria-label="Private-readiness review packet availability summary"
-            >
-              <h4>Private-readiness review packet availability summary</h4>
-              {reviewPacketAvailabilitySummary.rows.map((row) => (
-                <div className="review-packet-availability-row" key={row.step}>
-                  <strong>{row.step}</strong>
-                  <span>{row.availability}</span>
-                  <span>{row.detail}</span>
-                  <span>{row.boundary}</span>
-                </div>
-              ))}
-              <Field
-                label="Availability summary"
-                value={reviewPacketAvailabilitySummary.countSummary}
-              />
-              <Field
-                label="Availability boundary"
-                value="review_packet_availability_summary_navigation_only"
-              />
-              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-              <Field
-                label="Authority boundary"
-                value="not_private_read_permission_or_execution_authority"
-              />
-            </div>
-          )}
-          {reviewPacketGapSummary && (
-            <div
-              className="review-packet-gap-summary"
-              aria-label="Private-readiness review packet gap summary"
-            >
-              <h4>Private-readiness review packet gap summary</h4>
-              <Field label="Gap summary" value={reviewPacketGapSummary.countSummary} />
-              <Field label="Next gap focus" value={reviewPacketGapSummary.nextGapFocus} />
-              <Field label="Gap state" value={reviewPacketGapSummary.gapState} />
-              <Field
-                label="Gap boundary"
-                value="review_packet_gap_summary_navigation_only"
-              />
-              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-              <Field
-                label="Authority boundary"
-                value="not_private_read_permission_or_execution_authority"
-              />
-            </div>
-          )}
-          {reviewPacketResolutionChecklist && (
-            <div
-              className="review-packet-resolution-checklist"
-              aria-label="Private-readiness review packet resolution checklist"
-            >
-              <h4>Private-readiness review packet resolution checklist</h4>
-              {reviewPacketResolutionChecklist.items.map((item) => (
-                <div className="review-packet-resolution-row" key={`${item.item}-${item.source}`}>
-                  <strong>{item.item}</strong>
-                  <span>{item.source}</span>
-                  <span>{item.status}</span>
-                  <span>{item.detail}</span>
-                  <span>{item.boundary}</span>
-                </div>
-              ))}
-              <Field
-                label="Resolution checklist"
-                value={reviewPacketResolutionChecklist.countSummary}
-              />
-              <Field
-                label="Next resolution focus"
-                value={reviewPacketResolutionChecklist.nextResolutionFocus}
-              />
-              <Field
-                label="Checklist state"
-                value={reviewPacketResolutionChecklist.checklistState}
-              />
-              <Field
-                label="Checklist boundary"
-                value="review_packet_resolution_checklist_navigation_only"
-              />
-              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-              <Field
-                label="Authority boundary"
-                value="not_private_read_permission_or_execution_authority"
-              />
-            </div>
-          )}
-          {reviewPacketSourceProvenanceSummary && (
-            <div
-              className="review-packet-source-provenance-summary"
-              aria-label="Private-readiness review packet source/provenance summary"
-            >
-              <h4>Private-readiness review packet source/provenance summary</h4>
-              {reviewPacketSourceProvenanceSummary.rows.map((row) => (
-                <div className="review-packet-source-provenance-row" key={`${row.item}-${row.source}`}>
-                  <strong>{row.item}</strong>
-                  <span>{row.source}</span>
-                  <span>{row.provenance}</span>
-                  <span>{row.detail}</span>
-                  <span>{row.boundary}</span>
-                </div>
-              ))}
-              <Field
-                label="Source/provenance summary"
-                value={reviewPacketSourceProvenanceSummary.countSummary}
-              />
-              <Field
-                label="Next source focus"
-                value={reviewPacketSourceProvenanceSummary.nextSourceFocus}
-              />
-              <Field
-                label="Source state"
-                value={reviewPacketSourceProvenanceSummary.sourceState}
-              />
-              <Field
-                label="Source/provenance boundary"
-                value="review_packet_source_provenance_navigation_only"
-              />
-              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-              <Field
-                label="Authority boundary"
-                value="not_private_read_permission_or_execution_authority"
-              />
-            </div>
           )}
           <div className="checked-gate-matrix" aria-label="Private-readiness checked-gate matrix">
             <h4>Private-readiness checked-gate matrix</h4>
@@ -2011,6 +1824,201 @@ function TradingSubstrateSection({
         </div>
       )}
     </InfoSection>
+  );
+}
+
+export function PrivateReadinessReviewPacketSections({
+  projection,
+  postureContextAvailable
+}: {
+  projection: PrivateReadinessReviewPacketProjection;
+  postureContextAvailable: boolean;
+}) {
+  return (
+    <>
+      <ReviewPacketPanel
+        className="review-packet-completion-readiness-summary"
+        label="Private-readiness review packet completion/readiness summary"
+      >
+        <Field
+          label="Completion/readiness summary"
+          value={projection.completionReadinessSummary.countSummary}
+        />
+        <Field
+          label="Next review focus"
+          value={projection.completionReadinessSummary.nextReviewFocus}
+        />
+        <Field
+          label="Next completion focus"
+          value={projection.completionReadinessSummary.nextCompletionFocus}
+        />
+        <Field
+          label="Readiness state"
+          value={projection.completionReadinessSummary.readinessState}
+        />
+        <Field
+          label="Completion/readiness context"
+          value={projection.completionReadinessSummary.boundary}
+        />
+        <ReviewPacketBoundaryFields
+          label="Completion/readiness boundary"
+          value="review_packet_completion_readiness_navigation_only"
+        />
+      </ReviewPacketPanel>
+
+      <ReviewPacketPanel
+        className="review-packet-index"
+        label="Private-readiness review packet index"
+      >
+        {projection.indexEntries.map((entry) => (
+          <div className="review-packet-index-row" key={entry.step}>
+            <strong>{entry.step}</strong>
+            <span>{entry.surface}</span>
+            <span>{entry.role}</span>
+            <span>{entry.boundary}</span>
+          </div>
+        ))}
+        <Field
+          label="Index state"
+          value={
+            postureContextAvailable
+              ? "review_packet_index_ready_for_operator_scan"
+              : "review_packet_index_policy_only_posture_context_missing"
+          }
+        />
+        <ReviewPacketBoundaryFields
+          label="Index boundary"
+          value="review_packet_index_navigation_only"
+        />
+      </ReviewPacketPanel>
+
+      <ReviewPacketPanel
+        className="review-packet-availability-summary"
+        label="Private-readiness review packet availability summary"
+      >
+        {projection.availabilitySummary.rows.map((row) => (
+          <div className="review-packet-availability-row" key={row.step}>
+            <strong>{row.step}</strong>
+            <span>{row.availability}</span>
+            <span>{row.detail}</span>
+            <span>{row.boundary}</span>
+          </div>
+        ))}
+        <Field
+          label="Availability summary"
+          value={projection.availabilitySummary.countSummary}
+        />
+        <ReviewPacketBoundaryFields
+          label="Availability boundary"
+          value="review_packet_availability_summary_navigation_only"
+        />
+      </ReviewPacketPanel>
+
+      <ReviewPacketPanel
+        className="review-packet-gap-summary"
+        label="Private-readiness review packet gap summary"
+      >
+        <Field label="Gap summary" value={projection.gapSummary.countSummary} />
+        <Field label="Next gap focus" value={projection.gapSummary.nextGapFocus} />
+        <Field label="Gap state" value={projection.gapSummary.gapState} />
+        <ReviewPacketBoundaryFields
+          label="Gap boundary"
+          value="review_packet_gap_summary_navigation_only"
+        />
+      </ReviewPacketPanel>
+
+      <ReviewPacketPanel
+        className="review-packet-resolution-checklist"
+        label="Private-readiness review packet resolution checklist"
+      >
+        {projection.resolutionChecklist.items.map((item) => (
+          <div className="review-packet-resolution-row" key={`${item.item}-${item.source}`}>
+            <strong>{item.item}</strong>
+            <span>{item.source}</span>
+            <span>{item.status}</span>
+            <span>{item.detail}</span>
+            <span>{item.boundary}</span>
+          </div>
+        ))}
+        <Field
+          label="Resolution checklist"
+          value={projection.resolutionChecklist.countSummary}
+        />
+        <Field
+          label="Next resolution focus"
+          value={projection.resolutionChecklist.nextResolutionFocus}
+        />
+        <Field
+          label="Checklist state"
+          value={projection.resolutionChecklist.checklistState}
+        />
+        <ReviewPacketBoundaryFields
+          label="Checklist boundary"
+          value="review_packet_resolution_checklist_navigation_only"
+        />
+      </ReviewPacketPanel>
+
+      <ReviewPacketPanel
+        className="review-packet-source-provenance-summary"
+        label="Private-readiness review packet source/provenance summary"
+      >
+        {projection.sourceProvenanceSummary.rows.map((row) => (
+          <div className="review-packet-source-provenance-row" key={`${row.item}-${row.source}`}>
+            <strong>{row.item}</strong>
+            <span>{row.source}</span>
+            <span>{row.provenance}</span>
+            <span>{row.detail}</span>
+            <span>{row.boundary}</span>
+          </div>
+        ))}
+        <Field
+          label="Source/provenance summary"
+          value={projection.sourceProvenanceSummary.countSummary}
+        />
+        <Field
+          label="Next source focus"
+          value={projection.sourceProvenanceSummary.nextSourceFocus}
+        />
+        <Field
+          label="Source state"
+          value={projection.sourceProvenanceSummary.sourceState}
+        />
+        <ReviewPacketBoundaryFields
+          label="Source/provenance boundary"
+          value="review_packet_source_provenance_navigation_only"
+        />
+      </ReviewPacketPanel>
+    </>
+  );
+}
+
+function ReviewPacketPanel({
+  children,
+  className,
+  label
+}: {
+  children: React.ReactNode;
+  className: string;
+  label: string;
+}) {
+  return (
+    <div className={className} aria-label={label}>
+      <h4>{label}</h4>
+      {children}
+    </div>
+  );
+}
+
+function ReviewPacketBoundaryFields({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <Field label={label} value={value} />
+      <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+      <Field
+        label="Authority boundary"
+        value="not_private_read_permission_or_execution_authority"
+      />
+    </>
   );
 }
 
