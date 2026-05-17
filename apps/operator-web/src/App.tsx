@@ -1495,6 +1495,18 @@ function TradingSubstrateSection({
                 ].join(", ")}
               />
               <Field
+                label="Signed request construction"
+                value={[
+                  `USER_DATA=${privateReadGateDecision.signed_request_construction_boundary_status}`,
+                  `source=${privateReadGateDecision.signed_request_construction_boundary_source}`,
+                  `components=${
+                    privateReadGateDecision.signed_request_construction_required_components.length > 0
+                      ? privateReadGateDecision.signed_request_construction_required_components.join(", ")
+                      : "not_requested"
+                  }`
+                ].join(", ")}
+              />
+              <Field
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />

@@ -26,10 +26,25 @@ export type PrivateReadGateSignedReadPermissionPreflightStatus =
 
 export type PrivateReadGateSignedReadPermissionPreflightSource = "policy_decision";
 
+export type PrivateReadGateSignedRequestConstructionBoundaryStatus =
+  | "not_requested"
+  | "dry_run_only";
+
+export type PrivateReadGateSignedRequestConstructionBoundarySource = "policy_decision";
+
+export type PrivateReadGateSignedRequestConstructionRequiredComponent =
+  | "API key"
+  | "timestamp"
+  | "recvWindow"
+  | "query string"
+  | "signature"
+  | "signed endpoint";
+
 export type PrivateReadGateReasonCode =
   | PrivateReadinessPolicyDecision["reason_codes"][number]
   | "credential_reference_only"
   | "signed_read_permission_preflight_only"
+  | "signed_request_construction_boundary_only"
   | "private_read_gate_not_ready"
   | "private_read_gate_review_required"
   | "private_read_gate_blocked"
@@ -56,6 +71,9 @@ export interface PrivateReadGateDecision {
   credential_reference_ref?: PrivateReadinessPolicyDecision["source_surface_refs"][number];
   signed_read_permission_preflight_status: PrivateReadGateSignedReadPermissionPreflightStatus;
   signed_read_permission_preflight_source: PrivateReadGateSignedReadPermissionPreflightSource;
+  signed_request_construction_boundary_status: PrivateReadGateSignedRequestConstructionBoundaryStatus;
+  signed_request_construction_boundary_source: PrivateReadGateSignedRequestConstructionBoundarySource;
+  signed_request_construction_required_components: PrivateReadGateSignedRequestConstructionRequiredComponent[];
   signed_read_permission: PrivateReadGateAuthorityStatus;
   account_balance_position_read_authority: PrivateReadGateAuthorityStatus;
   listen_key_user_data_stream_authority: PrivateReadGateAuthorityStatus;
@@ -95,10 +113,16 @@ export function evaluatePrivateReadGateDecision(
     status,
     credentialReference.status
   );
+  const signedRequestConstructionBoundary = signedRequestConstructionBoundarySnapshot(
+    signedReadPermissionPreflight.status
+  );
   const requiredNextActions = new Set(policyDecision.required_next_actions);
 
   if (status === "ready_but_disabled") {
     requiredNextActions.add("grant_signed_read_authority_before_private_user_data_reads");
+  }
+  if (signedRequestConstructionBoundary.status === "dry_run_only") {
+    requiredNextActions.add("grant_signed_request_authority_before_private_user_data_reads");
   }
 
   return {
@@ -115,6 +139,9 @@ export function evaluatePrivateReadGateDecision(
     ...(credentialReference.ref ? { credential_reference_ref: credentialReference.ref } : {}),
     signed_read_permission_preflight_status: signedReadPermissionPreflight.status,
     signed_read_permission_preflight_source: signedReadPermissionPreflight.source,
+    signed_request_construction_boundary_status: signedRequestConstructionBoundary.status,
+    signed_request_construction_boundary_source: signedRequestConstructionBoundary.source,
+    signed_request_construction_required_components: signedRequestConstructionBoundary.requiredComponents,
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",
@@ -128,6 +155,9 @@ export function evaluatePrivateReadGateDecision(
       ...(credentialReference.status === "reference_only" ? ["credential_reference_only" as const] : []),
       ...(signedReadPermissionPreflight.status === "preflight_only"
         ? ["signed_read_permission_preflight_only" as const]
+        : []),
+      ...(signedRequestConstructionBoundary.status === "dry_run_only"
+        ? ["signed_request_construction_boundary_only" as const]
         : []),
       gateReasonCode,
       "no_private_read_performed"
@@ -206,6 +236,15 @@ function credentialReferenceSnapshot(
   };
 }
 
+const SIGNED_REQUEST_CONSTRUCTION_REQUIRED_COMPONENTS: PrivateReadGateSignedRequestConstructionRequiredComponent[] = [
+  "API key",
+  "timestamp",
+  "recvWindow",
+  "query string",
+  "signature",
+  "signed endpoint"
+];
+
 function signedReadPermissionPreflightSnapshot(
   status: PrivateReadGateDecisionStatus,
   credentialReferenceStatus: PrivateReadGateCredentialReferenceStatus
@@ -223,6 +262,28 @@ function signedReadPermissionPreflightSnapshot(
   return {
     status: "not_requested",
     source: "policy_decision"
+  };
+}
+
+function signedRequestConstructionBoundarySnapshot(
+  preflightStatus: PrivateReadGateSignedReadPermissionPreflightStatus
+): {
+  status: PrivateReadGateSignedRequestConstructionBoundaryStatus;
+  source: PrivateReadGateSignedRequestConstructionBoundarySource;
+  requiredComponents: PrivateReadGateSignedRequestConstructionRequiredComponent[];
+} {
+  if (preflightStatus === "preflight_only") {
+    return {
+      status: "dry_run_only",
+      source: "policy_decision",
+      requiredComponents: [...SIGNED_REQUEST_CONSTRUCTION_REQUIRED_COMPONENTS]
+    };
+  }
+
+  return {
+    status: "not_requested",
+    source: "policy_decision",
+    requiredComponents: []
   };
 }
 
