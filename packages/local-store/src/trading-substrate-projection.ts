@@ -75,7 +75,13 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
   const latestPrivateReadGateDecision = latestPrivateReadinessPolicyDecision
     ? evaluatePrivateReadGateDecision({
         evaluated_at: latestPrivateReadinessPolicyDecision.evaluated_at,
-        policy_decision: latestPrivateReadinessPolicyDecision
+        policy_decision: latestPrivateReadinessPolicyDecision,
+        credential_reference: {
+          configured: latestPrivateReadinessPosture?.secret_reference_configured ?? false,
+          ref: latestPrivateReadinessPosture?.secret_reference_ref,
+          raw_secret_material_present: false,
+          source: "private_readiness_posture"
+        }
       })
     : null;
 

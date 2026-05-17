@@ -1478,6 +1478,16 @@ function TradingSubstrateSection({
                 value={privateReadGateDecision.credential_reference_status}
               />
               <Field
+                label="Credential reference source"
+                value={privateReadGateDecision.credential_reference_source}
+              />
+              {privateReadGateDecision.credential_reference_ref && (
+                <Field
+                  label="Credential reference ref"
+                  value={formatRef(privateReadGateDecision.credential_reference_ref)}
+                />
+              )}
+              <Field
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />

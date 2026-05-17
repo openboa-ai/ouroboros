@@ -12,16 +12,28 @@ export type PrivateReadGateCredentialReferenceStatus =
   | "blocked"
   | "reference_only";
 
+export type PrivateReadGateCredentialReferenceSource =
+  | "policy_configuration_gate"
+  | "private_readiness_posture";
+
 export type PrivateReadGateAuthorityStatus = "not_granted";
 
 export type PrivateReadGateEvidenceStatus = "not_counted";
 
 export type PrivateReadGateReasonCode =
   | PrivateReadinessPolicyDecision["reason_codes"][number]
+  | "credential_reference_only"
   | "private_read_gate_not_ready"
   | "private_read_gate_review_required"
   | "private_read_gate_blocked"
   | "private_read_gate_ready_but_disabled";
+
+export interface PrivateReadGateCredentialReferenceInput {
+  configured: boolean;
+  ref?: PrivateReadinessPolicyDecision["source_surface_refs"][number];
+  raw_secret_material_present: false;
+  source: PrivateReadGateCredentialReferenceSource;
+}
 
 export interface PrivateReadGateDecision {
   decision_kind: "private_read_gate_decision";
@@ -33,6 +45,8 @@ export interface PrivateReadGateDecision {
   evaluated_at: string;
   source_surface_refs: PrivateReadinessPolicyDecision["source_surface_refs"];
   credential_reference_status: PrivateReadGateCredentialReferenceStatus;
+  credential_reference_source: PrivateReadGateCredentialReferenceSource;
+  credential_reference_ref?: PrivateReadinessPolicyDecision["source_surface_refs"][number];
   signed_read_permission: PrivateReadGateAuthorityStatus;
   account_balance_position_read_authority: PrivateReadGateAuthorityStatus;
   listen_key_user_data_stream_authority: PrivateReadGateAuthorityStatus;
@@ -55,6 +69,7 @@ export interface PrivateReadGateDecision {
 export interface PrivateReadGateEvaluationInput {
   evaluated_at: string;
   policy_decision: PrivateReadinessPolicyDecision;
+  credential_reference?: PrivateReadGateCredentialReferenceInput;
 }
 
 export function evaluatePrivateReadGateDecision(
@@ -63,6 +78,10 @@ export function evaluatePrivateReadGateDecision(
   const policyDecision = input.policy_decision;
   const status = mapPolicyStatus(policyDecision.status);
   const gateReasonCode = mapGateReasonCode(status);
+  const credentialReference = credentialReferenceSnapshot(
+    policyDecision,
+    input.credential_reference
+  );
   const requiredNextActions = new Set(policyDecision.required_next_actions);
 
   if (status === "ready_but_disabled") {
@@ -78,7 +97,9 @@ export function evaluatePrivateReadGateDecision(
     product_category: policyDecision.product_category,
     evaluated_at: input.evaluated_at,
     source_surface_refs: policyDecision.source_surface_refs,
-    credential_reference_status: credentialReferenceStatus(policyDecision),
+    credential_reference_status: credentialReference.status,
+    credential_reference_source: credentialReference.source,
+    ...(credentialReference.ref ? { credential_reference_ref: credentialReference.ref } : {}),
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",
@@ -87,7 +108,12 @@ export function evaluatePrivateReadGateDecision(
     gateway_decision_authority: "not_granted",
     evidence_sealing_authority: "not_counted",
     promotion_authority: "not_granted",
-    reason_codes: uniqueReasonCodes([...policyDecision.reason_codes, gateReasonCode, "no_private_read_performed"]),
+    reason_codes: uniqueReasonCodes([
+      ...policyDecision.reason_codes,
+      ...(credentialReference.status === "reference_only" ? ["credential_reference_only" as const] : []),
+      gateReasonCode,
+      "no_private_read_performed"
+    ]),
     blocking_conditions: policyDecision.blocking_conditions,
     required_next_actions: [...requiredNextActions],
     binance_security_types: policyDecision.binance_security_types,
@@ -121,20 +147,45 @@ function mapGateReasonCode(status: PrivateReadGateDecisionStatus): PrivateReadGa
   return "private_read_gate_not_ready";
 }
 
-function credentialReferenceStatus(
-  decision: PrivateReadinessPolicyDecision
-): PrivateReadGateCredentialReferenceStatus {
+function credentialReferenceSnapshot(
+  decision: PrivateReadinessPolicyDecision,
+  reference: PrivateReadGateCredentialReferenceInput | undefined
+): {
+  status: PrivateReadGateCredentialReferenceStatus;
+  source: PrivateReadGateCredentialReferenceSource;
+  ref?: PrivateReadinessPolicyDecision["source_surface_refs"][number];
+} {
+  if (reference) {
+    return {
+      status: reference.configured ? "reference_only" : "not_configured",
+      source: reference.source,
+      ...(reference.ref ? { ref: reference.ref } : {})
+    };
+  }
+
   const configurationGate = decision.checked_gates.find((gate) => gate.dimension === "configuration");
   if (configurationGate?.status === "blocked") {
-    return "blocked";
+    return {
+      status: "blocked",
+      source: "policy_configuration_gate"
+    };
   }
   if (configurationGate?.status === "review_required") {
-    return "review_required";
+    return {
+      status: "review_required",
+      source: "policy_configuration_gate"
+    };
   }
   if (configurationGate?.status === "not_ready") {
-    return "not_configured";
+    return {
+      status: "not_configured",
+      source: "policy_configuration_gate"
+    };
   }
-  return "reference_only";
+  return {
+    status: "reference_only",
+    source: "policy_configuration_gate"
+  };
 }
 
 function uniqueReasonCodes(reasonCodes: PrivateReadGateReasonCode[]): PrivateReadGateReasonCode[] {
