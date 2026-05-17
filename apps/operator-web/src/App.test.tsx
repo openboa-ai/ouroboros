@@ -1030,13 +1030,20 @@ describe("CandidateDetail", () => {
   it("renders runtime control state and bounded pause command without implying live authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
-        candidate={candidateWithRuntimeControl(runtimeControl())}
+        candidate={candidateWithRuntimeControl(
+          runtimeControl(),
+          fixturePrivateReadinessPolicyDecision()
+        )}
         onRecordRuntimeControl={() => undefined}
         runtimeControlMessage="control_only recorded: runtime-control-command-001"
       />
     );
 
     expect(html).toContain("Runtime Control");
+    expect(html).toContain("Private-readiness policy alignment");
+    expect(html).toContain("policy_not_ready");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expect(html).toContain("not_order_intent_gateway_decision_evidence_or_promotion");
     expect(html).toContain("chain complete");
     expect(html).toContain("Latest control command");
     expect(html).toContain("pause");
@@ -1051,6 +1058,48 @@ describe("CandidateDetail", () => {
     expect(html).toContain("audit_only");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
     expect(html).not.toMatch(/\bKill\b/i);
+  });
+
+  it("distinguishes runtime control policy alignment states without granting authority", () => {
+    const reviewRequiredHtml = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={candidateWithRuntimeControl(
+          runtimeControl(),
+          fixturePrivateReadinessPolicyDecision({
+            status: "review_required",
+            reason_codes: ["jurisdiction_review_required", "no_private_read_performed"],
+            blocking_conditions: ["jurisdiction: operator_jurisdiction_requires_review"],
+            required_next_actions: ["review_operator_jurisdiction"]
+          })
+        )}
+        onRecordRuntimeControl={() => undefined}
+      />
+    );
+
+    const readyHtml = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={candidateWithRuntimeControl(
+          runtimeControl(),
+          fixturePrivateReadinessPolicyDecision({
+            status: "ready",
+            reason_codes: ["ready", "no_private_read_performed"],
+            blocking_conditions: [],
+            required_next_actions: []
+          })
+        )}
+        onRecordRuntimeControl={() => undefined}
+      />
+    );
+
+    expect(reviewRequiredHtml).toContain("policy_review_required");
+    expect(reviewRequiredHtml).toContain("not_private_read_permission_or_execution_authority");
+    expect(reviewRequiredHtml).toContain("control_only / audit_only / not_live");
+    expectNoOperatorActionControls(reviewRequiredHtml, { includePrivateAuthorityTerms: true });
+
+    expect(readyHtml).toContain("policy_ready_but_not_live_authority");
+    expect(readyHtml).toContain("not_private_read_permission_or_execution_authority");
+    expect(readyHtml).toContain("control_only / audit_only / not_live");
+    expectNoOperatorActionControls(readyHtml, { includePrivateAuthorityTerms: true });
   });
 
   it("builds fixture-safe runtime authority command payloads", () => {
@@ -1264,13 +1313,25 @@ function candidateWithRuntimeAuthority(
 }
 
 function candidateWithRuntimeControl(
-  runtimeControl: ReplayRuntimeControlReadModel
+  runtimeControl: ReplayRuntimeControlReadModel,
+  privateReadinessPolicyDecision?: NonNullable<
+    CandidateInspectReadModel["trading_substrate"]
+  >["latest_private_readiness_policy_decision"]
 ): CandidateInspectReadModel {
   return {
     ...fixtureCandidate,
     runtime: {
       ...fixtureCandidate.runtime,
       runtime_control: runtimeControl
+    },
+    trading_substrate: {
+      latest_order_fill_surface: fixtureOrderFillSurface(),
+      latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+      latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+      latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+      private_readiness_posture_history: [fixturePrivateReadinessPosture()],
+      latest_private_readiness_policy_decision: privateReadinessPolicyDecision ?? null,
+      latest_account_position_risk_mirror_surface: null
     }
   };
 }

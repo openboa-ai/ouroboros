@@ -682,6 +682,9 @@ export function CandidateDetail({
 
         <RuntimeControlSection
           control={candidate.runtime.runtime_control}
+          privateReadinessPolicyDecision={
+            candidate.trading_substrate?.latest_private_readiness_policy_decision
+          }
           onRecordRuntimeControl={onRecordRuntimeControl}
           recordingRuntimeControl={recordingRuntimeControl}
           runtimeControlError={runtimeControlError}
@@ -2312,12 +2315,14 @@ function formatSubstrateSource(
 
 function RuntimeControlSection({
   control,
+  privateReadinessPolicyDecision,
   onRecordRuntimeControl,
   recordingRuntimeControl,
   runtimeControlError,
   runtimeControlMessage
 }: {
   control?: ReplayRuntimeControlReadModel;
+  privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   onRecordRuntimeControl?: () => void;
   recordingRuntimeControl: boolean;
   runtimeControlError?: string;
@@ -2342,6 +2347,31 @@ function RuntimeControlSection({
       <Field label="Command" value={control?.command.status ?? "pending_decision"} />
       <Field label="Decision" value={control?.decision.status ?? "not_evaluated"} />
       <Field label="Audit event" value={control?.audit_event.status ?? "not_recorded"} />
+
+      {privateReadinessPolicyDecision && (
+        <div className="evaluation-block" aria-label="Runtime-control private-readiness policy alignment">
+          <h4>Private-readiness policy alignment</h4>
+          <Field
+            label="Policy alignment"
+            value={runtimeControlPolicyAlignment(privateReadinessPolicyDecision)}
+          />
+          <Field label="Policy status" value={privateReadinessPolicyDecision.status} />
+          <Field
+            label="Policy reason codes"
+            value={formatPolicyListSummary(privateReadinessPolicyDecision.reason_codes)}
+          />
+          <Field
+            label="Required next actions"
+            value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
+          />
+          <Field label="Control boundary" value="control_only / audit_only / not_live" />
+          <Field label="Authority boundary" value="not_private_read_permission_or_execution_authority" />
+          <Field
+            label="Execution boundary"
+            value="not_order_intent_gateway_decision_evidence_or_promotion"
+          />
+        </div>
+      )}
 
       {control?.latest_command ? (
         <div className="evaluation-block">
@@ -2411,6 +2441,25 @@ function RuntimeControlSection({
       {runtimeControlError && <div className="inline-status error">{runtimeControlError}</div>}
     </InfoSection>
   );
+}
+
+function runtimeControlPolicyAlignment(
+  decision: PrivateReadinessPolicyDecision
+):
+  | "policy_not_ready"
+  | "policy_blocked"
+  | "policy_review_required"
+  | "policy_ready_but_not_live_authority" {
+  if (decision.status === "ready") {
+    return "policy_ready_but_not_live_authority";
+  }
+  if (decision.status === "review_required") {
+    return "policy_review_required";
+  }
+  if (decision.status === "blocked") {
+    return "policy_blocked";
+  }
+  return "policy_not_ready";
 }
 
 function RuntimeAuthoritySection({
