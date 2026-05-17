@@ -15,6 +15,7 @@ import type {
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
+  PrivateReadGateDecision,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPolicyDecision,
   PrivateReadinessPostureReadModel,
@@ -673,6 +674,7 @@ export function CandidateDetail({
           privateReadinessPosture={candidate.trading_substrate?.latest_private_readiness_posture}
           privateReadinessPostureHistory={candidate.trading_substrate?.private_readiness_posture_history ?? []}
           privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
+          privateReadGateDecision={candidate.trading_substrate?.latest_private_read_gate_decision}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
           onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
           recordingPrivateReadinessPosture={recordingPrivateReadinessPosture}
@@ -1071,6 +1073,7 @@ function TradingSubstrateSection({
   privateReadinessPosture,
   privateReadinessPostureHistory,
   privateReadinessPolicyDecision,
+  privateReadGateDecision,
   accountPositionRiskSurface,
   onRecordPrivateReadinessPosture,
   recordingPrivateReadinessPosture = false,
@@ -1083,6 +1086,7 @@ function TradingSubstrateSection({
   privateReadinessPosture?: PrivateReadinessPostureReadModel | null;
   privateReadinessPostureHistory?: PrivateReadinessPostureReadModel[];
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
+  privateReadGateDecision?: PrivateReadGateDecision | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   recordingPrivateReadinessPosture?: boolean;
@@ -1455,6 +1459,68 @@ function TradingSubstrateSection({
               `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
             ].join(", ")}
           />
+          {privateReadGateDecision && (
+            <div className="authority-preview" aria-label="Private-read gate">
+              <h4>Private-read gate</h4>
+              <Field label="Gate decision" value={privateReadGateDecision.decision_kind} />
+              <Field label="Gate status" value={privateReadGateDecision.status} />
+              <Field label="Policy status" value={privateReadGateDecision.policy_status} />
+              <Field
+                label="Gate scope"
+                value={[
+                  privateReadGateDecision.venue,
+                  privateReadGateDecision.instrument,
+                  privateReadGateDecision.product_category
+                ].join(" / ")}
+              />
+              <Field
+                label="Credential reference"
+                value={privateReadGateDecision.credential_reference_status}
+              />
+              <Field
+                label="Signed read permission"
+                value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
+              />
+              <Field
+                label="Account / balance / position"
+                value={privateReadGateDecision.account_balance_position_read_authority}
+              />
+              <Field
+                label="ListenKey / user data stream"
+                value={`USER_STREAM=${privateReadGateDecision.listen_key_user_data_stream_authority}`}
+              />
+              <Field
+                label="Leverage / margin mutation"
+                value={privateReadGateDecision.leverage_margin_mutation_authority}
+              />
+              <Field
+                label="Order submission"
+                value={`TRADE=${privateReadGateDecision.order_submission_authority}`}
+              />
+              <Field
+                label="Gateway / evidence / promotion"
+                value={[
+                  `gateway=${privateReadGateDecision.gateway_decision_authority}`,
+                  `evidence=${privateReadGateDecision.evidence_sealing_authority}`,
+                  `promotion=${privateReadGateDecision.promotion_authority}`
+                ].join(", ")}
+              />
+              <Field
+                label="Gate no-authority proof"
+                value={[
+                  `raw_secret_material_present=${String(privateReadGateDecision.raw_secret_material_present)}`,
+                  `no_private_read_performed=${String(privateReadGateDecision.no_private_read_performed)}`,
+                  `signed_request_authority=${String(privateReadGateDecision.signed_request_authority)}`,
+                  `live_exchange_authority=${String(privateReadGateDecision.live_exchange_authority)}`,
+                  `authority_status=${privateReadGateDecision.authority_status}`
+                ].join(", ")}
+              />
+              <Field
+                label="Gate boundary"
+                value="private_read_gate_no_secret_not_live"
+              />
+            </div>
+          )}
           {reviewPacketProjection && (
             <PrivateReadinessReviewPacketSections
               postureContextAvailable={Boolean(privateReadinessPosture)}

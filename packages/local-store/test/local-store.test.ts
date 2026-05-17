@@ -242,6 +242,30 @@ describe("LocalStore", () => {
         "no_private_read_performed"
       ])
     });
+    expect(candidate?.trading_substrate?.latest_private_read_gate_decision).toMatchObject({
+      decision_kind: "private_read_gate_decision",
+      status: "not_ready",
+      policy_status: "not_ready",
+      credential_reference_status: "not_configured",
+      signed_read_permission: "not_granted",
+      account_balance_position_read_authority: "not_granted",
+      listen_key_user_data_stream_authority: "not_granted",
+      leverage_margin_mutation_authority: "not_granted",
+      order_submission_authority: "not_granted",
+      gateway_decision_authority: "not_granted",
+      evidence_sealing_authority: "not_counted",
+      promotion_authority: "not_granted",
+      binance_security_types: [...BINANCE_PRIVATE_READINESS_SECURITY_TYPES],
+      reason_codes: expect.arrayContaining([
+        "private_read_gate_not_ready",
+        "no_private_read_performed"
+      ]),
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    });
   });
 
   it("seeds a Binance BTCUSDT private-readiness posture into candidate inspect read models", async () => {

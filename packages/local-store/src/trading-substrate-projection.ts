@@ -1,4 +1,7 @@
-import { evaluatePrivateReadinessPolicyDecision } from "@ouroboros/domain";
+import {
+  evaluatePrivateReadGateDecision,
+  evaluatePrivateReadinessPolicyDecision
+} from "@ouroboros/domain";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   CandidateInspectReadModel,
@@ -69,6 +72,12 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
         stop_behavior_gate: latestPrivateReadinessPosture.stop_behavior_gate
       })
     : null;
+  const latestPrivateReadGateDecision = latestPrivateReadinessPolicyDecision
+    ? evaluatePrivateReadGateDecision({
+        evaluated_at: latestPrivateReadinessPolicyDecision.evaluated_at,
+        policy_decision: latestPrivateReadinessPolicyDecision
+      })
+    : null;
 
   return {
     latest_order_fill_surface: latestOrderFillSurface ?? null,
@@ -77,6 +86,7 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
     latest_private_readiness_posture: latestPrivateReadinessPosture ?? null,
     private_readiness_posture_history: privateReadinessPostureHistory,
     latest_private_readiness_policy_decision: latestPrivateReadinessPolicyDecision,
+    latest_private_read_gate_decision: latestPrivateReadGateDecision,
     latest_account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null
   };
 }

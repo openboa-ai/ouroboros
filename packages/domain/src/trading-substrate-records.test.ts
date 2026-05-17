@@ -4,6 +4,7 @@ import {
   TRADING_SUBSTRATE_CANONICAL_NOUNS,
   TRADING_SUBSTRATE_SURFACE_FAMILIES,
   TRADING_SUBSTRATE_SURFACE_TAXONOMY,
+  evaluatePrivateReadGateDecision,
   evaluatePrivateReadinessPolicyDecision
 } from "./index";
 import {
@@ -770,6 +771,147 @@ describe("Trading substrate private-readiness policy decisions", () => {
       "stop_behavior: runtime_stop_semantics_conflict_with_active_kill_switch",
       "trade_authority: TRADE_endpoint_enabled"
     ]));
+  });
+});
+
+describe("Trading substrate PrivateReadGate decisions", () => {
+  it("keeps a ready Binance USER_DATA policy disabled until signed-read authority is granted", () => {
+    const policyDecision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface(),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+
+    const gateDecision = evaluatePrivateReadGateDecision({
+      evaluated_at: "2026-05-16T00:00:03.000Z",
+      policy_decision: policyDecision
+    });
+
+    expect(gateDecision).toMatchObject({
+      decision_kind: "private_read_gate_decision",
+      status: "ready_but_disabled",
+      policy_status: "ready",
+      venue: BINANCE_USDM_FUTURES_VENUE,
+      instrument: BINANCE_BTCUSDT_INSTRUMENT,
+      product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+      credential_reference_status: "reference_only",
+      signed_read_permission: "not_granted",
+      account_balance_position_read_authority: "not_granted",
+      listen_key_user_data_stream_authority: "not_granted",
+      leverage_margin_mutation_authority: "not_granted",
+      order_submission_authority: "not_granted",
+      gateway_decision_authority: "not_granted",
+      evidence_sealing_authority: "not_counted",
+      promotion_authority: "not_granted",
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    });
+    expect(gateDecision.binance_security_types).toEqual([...BINANCE_PRIVATE_READINESS_SECURITY_TYPES]);
+    expect(gateDecision.reason_codes).toEqual(expect.arrayContaining([
+      "no_private_read_performed",
+      "private_read_gate_ready_but_disabled"
+    ]));
+    expect(gateDecision.required_next_actions).toContain(
+      "grant_signed_read_authority_before_private_user_data_reads"
+    );
+  });
+
+  it("maps policy states into gate states without granting account, stream, order, or promotion authority", () => {
+    const notReadyPolicyDecision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface({
+        credential_gate: privateReadinessGate("not_configured", false, "no_binance_api_key_configured")
+      }),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+    const reviewRequiredPolicyDecision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface({
+        jurisdiction_gate: privateReadinessGate("not_evaluated", false, "operator_jurisdiction_not_recorded")
+      }),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+    const blockedPolicyDecision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface({
+        order_submission_gate: privateReadinessGate("ready", true, "TRADE_endpoint_enabled")
+      }),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_references_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+
+    const expectedGateStatuses = [
+      [notReadyPolicyDecision, "not_ready"],
+      [reviewRequiredPolicyDecision, "review_required"],
+      [blockedPolicyDecision, "blocked"]
+    ] as const;
+
+    for (const [policyDecision, expectedStatus] of expectedGateStatuses) {
+      const gateDecision = evaluatePrivateReadGateDecision({
+        evaluated_at: "2026-05-16T00:00:03.000Z",
+        policy_decision: policyDecision
+      });
+
+      expect(gateDecision.status).toBe(expectedStatus);
+      expect(gateDecision.signed_read_permission).toBe("not_granted");
+      expect(gateDecision.account_balance_position_read_authority).toBe("not_granted");
+      expect(gateDecision.listen_key_user_data_stream_authority).toBe("not_granted");
+      expect(gateDecision.leverage_margin_mutation_authority).toBe("not_granted");
+      expect(gateDecision.order_submission_authority).toBe("not_granted");
+      expect(gateDecision.gateway_decision_authority).toBe("not_granted");
+      expect(gateDecision.evidence_sealing_authority).toBe("not_counted");
+      expect(gateDecision.promotion_authority).toBe("not_granted");
+    }
   });
 });
 

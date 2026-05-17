@@ -2,6 +2,7 @@ import { expect } from "vitest";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   BinanceUsdsFuturesConnectorTransport,
+  PrivateReadGateDecision,
   PrivateReadinessPolicyDecision,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureReadModel,
@@ -477,6 +478,76 @@ export function fixturePrivateReadinessPolicyDecision(
     signed_request_authority: false,
     live_exchange_authority: false,
     order_submission_authority: false,
+    authority_status: "not_live",
+    ...overrides
+  };
+}
+
+export function fixturePrivateReadGateDecision(
+  overrides: Partial<PrivateReadGateDecision> = {}
+): PrivateReadGateDecision {
+  return {
+    decision_kind: "private_read_gate_decision",
+    status: "not_ready",
+    policy_status: "not_ready",
+    venue: BINANCE_USDM_FUTURES_VENUE,
+    instrument: BINANCE_BTCUSDT_INSTRUMENT,
+    product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+    evaluated_at: "2026-05-16T00:00:04.000Z",
+    source_surface_refs: [
+      ref(
+        "private_readiness_preflight_surface",
+        "fixture-binance-btcusdt-private-readiness-preflight-surface-001"
+      ),
+      ref(
+        "account_position_risk_mirror_surface",
+        "fixture-binance-btcusdt-account-position-risk-mirror-surface-001"
+      )
+    ],
+    credential_reference_status: "not_configured",
+    signed_read_permission: "not_granted",
+    account_balance_position_read_authority: "not_granted",
+    listen_key_user_data_stream_authority: "not_granted",
+    leverage_margin_mutation_authority: "not_granted",
+    order_submission_authority: "not_granted",
+    gateway_decision_authority: "not_granted",
+    evidence_sealing_authority: "not_counted",
+    promotion_authority: "not_granted",
+    reason_codes: [
+      "configuration_not_ready",
+      "operator_approval_missing",
+      "jurisdiction_review_required",
+      "live_binding_not_ready",
+      "secret_handling_not_ready",
+      "account_position_freshness_not_ready",
+      "stop_behavior_not_ready",
+      "listen_key_not_ready",
+      "user_data_stream_not_ready",
+      "private_account_read_not_ready",
+      "private_position_read_not_ready",
+      "no_private_read_performed",
+      "private_read_gate_not_ready"
+    ],
+    blocking_conditions: [
+      "configuration: no_binance_api_key_configured",
+      "operator_approval: operator_live_private_read_approval_missing",
+      "jurisdiction_risk: operator_jurisdiction_not_recorded",
+      "live_binding: live_binding_profile_not_configured",
+      "secret_handling: secret_handling_profile_not_configured"
+    ],
+    required_next_actions: [
+      "configure_private_read_credentials",
+      "configuration",
+      "operator_approval",
+      "jurisdiction_risk",
+      "live_binding",
+      "secret_handling"
+    ],
+    binance_security_types: [...BINANCE_PRIVATE_READINESS_SECURITY_TYPES],
+    raw_secret_material_present: false,
+    no_private_read_performed: true,
+    signed_request_authority: false,
+    live_exchange_authority: false,
     authority_status: "not_live",
     ...overrides
   };
