@@ -17,6 +17,7 @@ import {
   expectNoOperatorActionControls,
   fixtureAccountPositionRiskMirrorSurface,
   fixtureOrderFillSurface,
+  fixturePrivateReadGateDecision,
   fixturePrivateReadinessPolicyDecision,
   fixturePrivateReadinessPosture,
   fixturePrivateReadinessPreflightSurface,
@@ -159,6 +160,7 @@ describe("CandidateDetail", () => {
               fixturePrivateReadinessPosture()
             ],
             latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
+            latest_private_read_gate_decision: fixturePrivateReadGateDecision(),
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -205,6 +207,17 @@ describe("CandidateDetail", () => {
     expect(html).toContain("false");
     expect(html).toContain("Private-readiness policy");
     expect(html).toContain("private_readiness_policy_decision");
+    expect(html).toContain("Private-read gate");
+    expect(html).toContain("private_read_gate_decision");
+    expect(html).toContain("Gate status");
+    expect(html).toContain("not_ready");
+    expect(html).toContain("Credential reference");
+    expect(html).toContain("not_configured");
+    expect(html).toContain("USER_DATA=not_granted");
+    expect(html).toContain("USER_STREAM=not_granted");
+    expect(html).toContain("TRADE=not_granted");
+    expect(html).toContain("gateway=not_granted, evidence=not_counted, promotion=not_granted");
+    expect(html).toContain("private_read_gate_no_secret_not_live");
     expect(html).toContain("Private-readiness review packet index");
     expect(html).toContain("review_packet_index_ready_for_operator_scan");
     expect(html).toContain("01 policy_impact_interpretation");

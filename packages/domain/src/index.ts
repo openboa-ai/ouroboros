@@ -2,7 +2,9 @@ import type {
   PrivateReadinessPolicyDecision,
   PrivateReadinessPolicyGateInput
 } from "./private-readiness-policy";
+import type { PrivateReadGateDecision } from "./private-read-gate";
 
+export * from "./private-read-gate";
 export * from "./private-readiness-policy";
 
 export type FixtureMode = "fixture_convenience_mode" | "local_promoted_candidate_bundle";
@@ -1078,6 +1080,7 @@ export interface TradingSubstrateReadModel {
   latest_private_readiness_posture: PrivateReadinessPostureReadModel | null;
   private_readiness_posture_history: PrivateReadinessPostureReadModel[];
   latest_private_readiness_policy_decision?: PrivateReadinessPolicyDecision | null;
+  latest_private_read_gate_decision?: PrivateReadGateDecision | null;
   latest_account_position_risk_mirror_surface: AccountPositionRiskMirrorSurfaceReadModel | null;
 }
 
