@@ -506,6 +506,8 @@ export function fixturePrivateReadGateDecision(
     ],
     credential_reference_status: "not_configured",
     credential_reference_source: "policy_configuration_gate",
+    signed_read_permission_preflight_status: "not_requested",
+    signed_read_permission_preflight_source: "policy_decision",
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",

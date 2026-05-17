@@ -1488,6 +1488,13 @@ function TradingSubstrateSection({
                 />
               )}
               <Field
+                label="Signed-read preflight"
+                value={[
+                  `USER_DATA=${privateReadGateDecision.signed_read_permission_preflight_status}`,
+                  `source=${privateReadGateDecision.signed_read_permission_preflight_source}`
+                ].join(", ")}
+              />
+              <Field
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />

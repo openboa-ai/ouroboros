@@ -9,6 +9,7 @@ import {
   binanceBtcusdtNoAuthoritySurfaceExpectation,
   binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
   binancePrivateReadinessPostureNoAuthorityExpectation,
+  privateReadinessGate,
   privateReadinessPolicyGate,
   ref
 } from "../../../test/support/binance-no-authority";
@@ -407,6 +408,169 @@ describe("LocalStore", () => {
       signed_read_permission: "not_granted",
       account_balance_position_read_authority: "not_granted",
       listen_key_user_data_stream_authority: "not_granted",
+      order_submission_authority: "not_granted",
+      gateway_decision_authority: "not_granted",
+      evidence_sealing_authority: "not_counted",
+      promotion_authority: "not_granted",
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    });
+  });
+
+  it("projects USER_DATA signed-read permission preflight without granting private authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const seededPreflight = await readStoreJson<PrivateReadinessPreflightSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-private-readiness-preflight-surface-001.json"
+    );
+    const seededAccount = await readStoreJson<AccountPositionRiskMirrorSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-account-position-risk-mirror-surface-001.json"
+    );
+    const seededPosture = await readStoreJson<PrivateReadinessPostureRecord>(
+      "private-readiness-postures",
+      "items",
+      "fixture-binance-btcusdt-private-readiness-posture-001.json"
+    );
+    const secretReference = ref(
+      "secret_reference",
+      "local-binance-btcusdt-user-data-read-reference"
+    );
+    const { degraded_reason: _accountDegradedReason, ...accountWithoutDegradedReason } =
+      seededAccount;
+
+    await store.recordPrivateReadinessPreflightSurface({
+      ...seededPreflight,
+      private_readiness_preflight_surface_id:
+        "local-binance-btcusdt-private-readiness-preflight-signed-read-preflight",
+      credential_gate: privateReadinessGate(
+        "ready",
+        true,
+        "secret_reference_configured_without_values"
+      ),
+      jurisdiction_gate: privateReadinessGate(
+        "ready",
+        true,
+        "operator_jurisdiction_recorded"
+      ),
+      operator_approval_gate: privateReadinessGate(
+        "ready",
+        true,
+        "operator_signed_read_preflight_recorded"
+      ),
+      private_account_read_gate: privateReadinessGate(
+        "ready",
+        true,
+        "USER_DATA_account_read_preflight_only"
+      ),
+      private_position_read_gate: privateReadinessGate(
+        "ready",
+        true,
+        "USER_DATA_position_read_preflight_only"
+      ),
+      user_data_stream_gate: privateReadinessGate(
+        "ready",
+        true,
+        "USER_STREAM_preflight_only_no_connection"
+      ),
+      listen_key_gate: privateReadinessGate(
+        "ready",
+        true,
+        "listen_key_preflight_only_no_creation"
+      ),
+      next_blocked_action: "grant_signed_read_authority_before_private_user_data_reads",
+      next_blocked_reason: "signed_read_permission_preflight_only",
+      source_kind: "local_config",
+      source_ref: ref(
+        "local_private_readiness_preflight",
+        "local-binance-btcusdt-private-readiness-preflight-signed-read-preflight"
+      ),
+      fixture_backed: false,
+      source_timestamp: "2026-05-16T00:00:06.000Z",
+      observed_at: "2026-05-16T00:00:06.000Z",
+      updated_at: "2026-05-16T00:00:06.000Z"
+    });
+    await store.recordAccountPositionRiskMirrorSurface({
+      ...accountWithoutDegradedReason,
+      account_position_risk_mirror_surface_id:
+        "local-binance-btcusdt-account-position-risk-mirror-signed-read-preflight",
+      risk_status: "nominal",
+      freshness: "fresh",
+      liveness: "connected",
+      next_blocked_action: "none",
+      next_blocked_reason: "account_position_snapshot_preflight_only",
+      source_kind: "local_config",
+      source_ref: ref(
+        "local_account_position_snapshot",
+        "local-binance-btcusdt-account-position-risk-mirror-signed-read-preflight"
+      ),
+      fixture_backed: false,
+      source_timestamp: "2026-05-16T00:00:07.000Z",
+      observed_at: "2026-05-16T00:00:07.000Z",
+      updated_at: "2026-05-16T00:00:07.000Z"
+    });
+    await store.recordPrivateReadinessPosture({
+      ...seededPosture,
+      private_readiness_posture_id:
+        "local-binance-btcusdt-private-readiness-posture-signed-read-preflight",
+      operator_approval_gate: privateReadinessPolicyGate(
+        "ready",
+        "operator_signed_read_preflight_recorded"
+      ),
+      jurisdiction_risk_gate: privateReadinessPolicyGate(
+        "ready",
+        "operator_jurisdiction_recorded"
+      ),
+      live_binding_gate: privateReadinessPolicyGate(
+        "ready",
+        "operator_bound_private_read_profile_recorded"
+      ),
+      secret_handling_gate: privateReadinessPolicyGate(
+        "ready",
+        "secret_reference_recorded_without_values"
+      ),
+      stop_behavior_gate: privateReadinessPolicyGate(
+        "ready",
+        "kill_switch_and_runtime_pause_semantics_recorded"
+      ),
+      secret_reference_configured: true,
+      secret_reference_ref: secretReference,
+      raw_secret_material_present: false,
+      source_kind: "local_config",
+      source_ref: ref(
+        "local_private_readiness_posture",
+        "local-binance-btcusdt-private-readiness-posture-signed-read-preflight"
+      ),
+      fixture_backed: false,
+      source_timestamp: "2026-05-16T00:00:08.000Z",
+      observed_at: "2026-05-16T00:00:08.000Z",
+      updated_at: "2026-05-16T00:00:08.000Z"
+    });
+
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+
+    expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision)
+      .toMatchObject({
+        status: "ready",
+        evaluated_at: "2026-05-16T00:00:08.000Z"
+      });
+    expect(candidate?.trading_substrate?.latest_private_read_gate_decision).toMatchObject({
+      status: "ready_but_disabled",
+      credential_reference_status: "reference_only",
+      credential_reference_source: "private_readiness_posture",
+      credential_reference_ref: secretReference,
+      signed_read_permission_preflight_status: "preflight_only",
+      signed_read_permission_preflight_source: "policy_decision",
+      signed_read_permission: "not_granted",
+      account_balance_position_read_authority: "not_granted",
+      listen_key_user_data_stream_authority: "not_granted",
+      leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
       gateway_decision_authority: "not_granted",
       evidence_sealing_authority: "not_counted",

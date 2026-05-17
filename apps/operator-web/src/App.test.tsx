@@ -168,7 +168,9 @@ describe("CandidateDetail", () => {
             latest_private_read_gate_decision: fixturePrivateReadGateDecision({
               credential_reference_status: "reference_only",
               credential_reference_source: "private_readiness_posture",
-              credential_reference_ref: secretReference
+              credential_reference_ref: secretReference,
+              signed_read_permission_preflight_status: "preflight_only",
+              signed_read_permission_preflight_source: "policy_decision"
             }),
             latest_account_position_risk_mirror_surface: null
           }
@@ -226,6 +228,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("private_readiness_posture");
     expect(html).toContain("Credential reference ref");
     expect(html).toContain("secret_reference:local-binance-btcusdt-user-data-read-reference");
+    expect(html).toContain("Signed-read preflight");
+    expect(html).toContain("USER_DATA=preflight_only");
+    expect(html).toContain("policy_decision");
     expect(html).toContain("USER_DATA=not_granted");
     expect(html).toContain("USER_STREAM=not_granted");
     expect(html).toContain("TRADE=not_granted");
