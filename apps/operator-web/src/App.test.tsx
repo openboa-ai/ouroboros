@@ -231,6 +231,15 @@ describe("CandidateDetail", () => {
     expect(html).toContain("required_next_actions=6");
     expect(html).toContain("remediation_progress_actions_present");
     expect(html).toContain("review_packet_availability_summary_navigation_only");
+    expect(html).toContain("Private-readiness review packet gap summary");
+    expect(html).toContain(
+      "gap_summary=needs_posture_context=0, no_current_items=0, policy_context_available=0"
+    );
+    expect(html).toContain(
+      "next_gap_focus=configure_private_read_credentials -&gt; checked_gate: configuration"
+    );
+    expect(html).toContain("review_packet_remediation_focus_present");
+    expect(html).toContain("review_packet_gap_summary_navigation_only");
     expect(html).toContain("Policy impact interpretation");
     expect(html).toContain("Policy input posture");
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
@@ -345,6 +354,15 @@ describe("CandidateDetail", () => {
     expect(html).toContain("checked_gates_empty");
     expect(html).toContain("required_next_actions_empty");
     expect(html).toContain("review_packet_availability_summary_navigation_only");
+    expect(html).toContain("Private-readiness review packet gap summary");
+    expect(html).toContain(
+      "gap_summary=needs_posture_context=3, no_current_items=3, policy_context_available=1"
+    );
+    expect(html).toContain(
+      "next_gap_focus=02 posture_delta_summary -&gt; latest_posture_required_for_delta"
+    );
+    expect(html).toContain("review_packet_availability_gaps_present");
+    expect(html).toContain("review_packet_gap_summary_navigation_only");
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");

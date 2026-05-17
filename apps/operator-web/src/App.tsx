@@ -1079,6 +1079,12 @@ interface PrivateReadinessReviewPacketAvailabilitySummary {
   rows: PrivateReadinessReviewPacketAvailabilityRow[];
 }
 
+interface PrivateReadinessReviewPacketGapSummary {
+  countSummary: string;
+  nextGapFocus: string;
+  gapState: string;
+}
+
 const PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES: PrivateReadinessReviewPacketIndexEntry[] = [
   {
     step: "01 policy_impact_interpretation",
@@ -1194,6 +1200,12 @@ function TradingSubstrateSection({
         posture: privateReadinessPosture,
         previousPosture,
         remediationActionRows,
+        remediationProgressSummary
+      })
+    : undefined;
+  const reviewPacketGapSummary = reviewPacketAvailabilitySummary
+    ? privateReadinessReviewPacketGapSummary({
+        availabilitySummary: reviewPacketAvailabilitySummary,
         remediationProgressSummary
       })
     : undefined;
@@ -1583,6 +1595,26 @@ function TradingSubstrateSection({
               <Field
                 label="Availability boundary"
                 value="review_packet_availability_summary_navigation_only"
+              />
+              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
+            </div>
+          )}
+          {reviewPacketGapSummary && (
+            <div
+              className="review-packet-gap-summary"
+              aria-label="Private-readiness review packet gap summary"
+            >
+              <h4>Private-readiness review packet gap summary</h4>
+              <Field label="Gap summary" value={reviewPacketGapSummary.countSummary} />
+              <Field label="Next gap focus" value={reviewPacketGapSummary.nextGapFocus} />
+              <Field label="Gap state" value={reviewPacketGapSummary.gapState} />
+              <Field
+                label="Gap boundary"
+                value="review_packet_gap_summary_navigation_only"
               />
               <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
               <Field
@@ -2334,6 +2366,37 @@ function privateReadinessReviewPacketAvailabilitySummary({
       `policy_context_available=${countFor("policy_context_available")}`
     ].join(", "),
     rows
+  };
+}
+
+function privateReadinessReviewPacketGapSummary({
+  availabilitySummary,
+  remediationProgressSummary
+}: {
+  availabilitySummary: PrivateReadinessReviewPacketAvailabilitySummary;
+  remediationProgressSummary: PrivateReadinessRemediationProgressSummary;
+}): PrivateReadinessReviewPacketGapSummary {
+  const rows = availabilitySummary.rows;
+  const needsPostureContextRows = rows.filter((row) => row.availability === "needs_posture_context");
+  const noCurrentItemRows = rows.filter((row) => row.availability === "no_current_items");
+  const policyContextRows = rows.filter((row) => row.availability === "policy_context_available");
+  const nextAvailabilityGap = needsPostureContextRows[0] ?? noCurrentItemRows[0];
+  const hasAvailabilityGaps = needsPostureContextRows.length > 0 || noCurrentItemRows.length > 0;
+
+  return {
+    countSummary: [
+      `gap_summary=needs_posture_context=${needsPostureContextRows.length}`,
+      `no_current_items=${noCurrentItemRows.length}`,
+      `policy_context_available=${policyContextRows.length}`
+    ].join(", "),
+    nextGapFocus: nextAvailabilityGap
+      ? `next_gap_focus=${nextAvailabilityGap.step} -> ${nextAvailabilityGap.detail}`
+      : remediationProgressSummary.nextReviewFocus.replace("next_review_focus=", "next_gap_focus="),
+    gapState: hasAvailabilityGaps
+      ? "review_packet_availability_gaps_present"
+      : remediationProgressSummary.progressState === "remediation_progress_actions_present"
+        ? "review_packet_remediation_focus_present"
+        : "review_packet_no_current_gaps"
   };
 }
 

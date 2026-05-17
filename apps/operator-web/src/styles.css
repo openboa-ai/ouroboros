@@ -477,6 +477,7 @@ button {
 .authority-preview,
 .review-packet-index,
 .review-packet-availability-summary,
+.review-packet-gap-summary,
 .checked-gate-matrix,
 .remediation-action-map,
 .remediation-progress-summary {
@@ -492,6 +493,7 @@ button {
 .authority-preview h4,
 .review-packet-index h4,
 .review-packet-availability-summary h4,
+.review-packet-gap-summary h4,
 .checked-gate-matrix h4,
 .remediation-action-map h4,
 .remediation-progress-summary h4 {
