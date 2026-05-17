@@ -21,7 +21,8 @@ import {
   fixturePrivateReadinessPolicyDecision,
   fixturePrivateReadinessPosture,
   fixturePrivateReadinessPreflightSurface,
-  fixturePublicMarketLivenessSurface
+  fixturePublicMarketLivenessSurface,
+  ref
 } from "../../../test/support/binance-no-authority";
 import {
   CandidateDetail,
@@ -146,6 +147,10 @@ describe("CandidateDetail", () => {
         reason: "operator_approval_recorded_in_local_history"
       }
     });
+    const secretReference = ref(
+      "secret_reference",
+      "local-binance-btcusdt-user-data-read-reference"
+    );
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={{
@@ -160,7 +165,11 @@ describe("CandidateDetail", () => {
               fixturePrivateReadinessPosture()
             ],
             latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
-            latest_private_read_gate_decision: fixturePrivateReadGateDecision(),
+            latest_private_read_gate_decision: fixturePrivateReadGateDecision({
+              credential_reference_status: "reference_only",
+              credential_reference_source: "private_readiness_posture",
+              credential_reference_ref: secretReference
+            }),
             latest_account_position_risk_mirror_surface: null
           }
         }}
@@ -212,7 +221,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Gate status");
     expect(html).toContain("not_ready");
     expect(html).toContain("Credential reference");
-    expect(html).toContain("not_configured");
+    expect(html).toContain("reference_only");
+    expect(html).toContain("Credential reference source");
+    expect(html).toContain("private_readiness_posture");
+    expect(html).toContain("Credential reference ref");
+    expect(html).toContain("secret_reference:local-binance-btcusdt-user-data-read-reference");
     expect(html).toContain("USER_DATA=not_granted");
     expect(html).toContain("USER_STREAM=not_granted");
     expect(html).toContain("TRADE=not_granted");

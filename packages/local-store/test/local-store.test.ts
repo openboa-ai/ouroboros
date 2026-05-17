@@ -9,7 +9,8 @@ import {
   binanceBtcusdtNoAuthoritySurfaceExpectation,
   binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
   binancePrivateReadinessPostureNoAuthorityExpectation,
-  privateReadinessPolicyGate
+  privateReadinessPolicyGate,
+  ref
 } from "../../../test/support/binance-no-authority";
 import type {
   AccountPositionRiskMirrorSurfaceRecord,
@@ -348,6 +349,10 @@ describe("LocalStore", () => {
       "review_required",
       "jurisdiction_risk_posture_review_for_test"
     );
+    const secretReference = ref(
+      "secret_reference",
+      "local-binance-btcusdt-user-data-read-reference"
+    );
 
     await store.recordPrivateReadinessPosture({
       ...seeded,
@@ -360,6 +365,9 @@ describe("LocalStore", () => {
         record_kind: "local_private_readiness_posture",
         id: "local-binance-btcusdt-private-readiness-posture-002"
       },
+      secret_reference_configured: true,
+      secret_reference_ref: secretReference,
+      raw_secret_material_present: false,
       fixture_backed: false,
       observed_at: "2026-05-16T00:00:05.000Z",
       updated_at: "2026-05-16T00:00:05.000Z"
@@ -373,6 +381,9 @@ describe("LocalStore", () => {
       jurisdiction_risk_gate: jurisdictionRiskGate,
       live_binding_gate: liveBindingGate,
       source_kind: "local_config",
+      secret_reference_configured: true,
+      secret_reference_ref: secretReference,
+      raw_secret_material_present: false,
       fixture_backed: false
     });
     expect(candidate?.trading_substrate?.latest_private_readiness_policy_decision).toMatchObject({
@@ -388,6 +399,23 @@ describe("LocalStore", () => {
         "jurisdiction_risk: jurisdiction_risk_posture_review_for_test",
         "live_binding: operator_live_binding_blocked_for_test"
       ])
+    });
+    expect(candidate?.trading_substrate?.latest_private_read_gate_decision).toMatchObject({
+      credential_reference_status: "reference_only",
+      credential_reference_source: "private_readiness_posture",
+      credential_reference_ref: secretReference,
+      signed_read_permission: "not_granted",
+      account_balance_position_read_authority: "not_granted",
+      listen_key_user_data_stream_authority: "not_granted",
+      order_submission_authority: "not_granted",
+      gateway_decision_authority: "not_granted",
+      evidence_sealing_authority: "not_counted",
+      promotion_authority: "not_granted",
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
     });
   });
 
