@@ -1116,6 +1116,8 @@ function TradingSubstrateSection({
   const reviewPacketGapSummary = reviewPacketProjection?.gapSummary;
   const reviewPacketResolutionChecklist = reviewPacketProjection?.resolutionChecklist;
   const reviewPacketSourceProvenanceSummary = reviewPacketProjection?.sourceProvenanceSummary;
+  const reviewPacketCompletionReadinessSummary =
+    reviewPacketProjection?.completionReadinessSummary;
 
   function updatePostureDraftGate(
     key: PrivateReadinessPostureGateKey,
@@ -1598,6 +1600,43 @@ function TradingSubstrateSection({
               <Field
                 label="Source/provenance boundary"
                 value="review_packet_source_provenance_navigation_only"
+              />
+              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
+            </div>
+          )}
+          {reviewPacketCompletionReadinessSummary && (
+            <div
+              className="review-packet-completion-readiness-summary"
+              aria-label="Private-readiness review packet completion/readiness summary"
+            >
+              <h4>Private-readiness review packet completion/readiness summary</h4>
+              <Field
+                label="Completion/readiness summary"
+                value={reviewPacketCompletionReadinessSummary.countSummary}
+              />
+              <Field
+                label="Next review focus"
+                value={reviewPacketCompletionReadinessSummary.nextReviewFocus}
+              />
+              <Field
+                label="Next completion focus"
+                value={reviewPacketCompletionReadinessSummary.nextCompletionFocus}
+              />
+              <Field
+                label="Readiness state"
+                value={reviewPacketCompletionReadinessSummary.readinessState}
+              />
+              <Field
+                label="Completion/readiness context"
+                value={reviewPacketCompletionReadinessSummary.boundary}
+              />
+              <Field
+                label="Completion/readiness boundary"
+                value="review_packet_completion_readiness_navigation_only"
               />
               <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
               <Field

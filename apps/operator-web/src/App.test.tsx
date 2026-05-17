@@ -261,6 +261,16 @@ describe("CandidateDetail", () => {
     expect(html).toContain("source_provenance_posture_context_available");
     expect(html).toContain("read_only_source_provenance_context");
     expect(html).toContain("review_packet_source_provenance_navigation_only");
+    expect(html).toContain("Private-readiness review packet completion/readiness summary");
+    expect(html).toContain(
+      "completion_readiness=review_surfaces=7, availability_gaps=0, source_gaps=0, resolution_items=6, remediation_actions=6"
+    );
+    expect(html).toContain(
+      "next_completion_focus=configure_private_read_credentials -&gt; checked_gate: configuration"
+    );
+    expect(html).toContain("completion_readiness_remediation_actions_present");
+    expect(html).toContain("read_only_completion_readiness_context");
+    expect(html).toContain("review_packet_completion_readiness_navigation_only");
     expect(html).toContain("Policy impact interpretation");
     expect(html).toContain("Policy input posture");
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
@@ -405,6 +415,16 @@ describe("CandidateDetail", () => {
     expect(html).toContain("source_provenance_policy_only_posture_context_missing");
     expect(html).toContain("latest_posture_not_available");
     expect(html).toContain("review_packet_source_provenance_navigation_only");
+    expect(html).toContain("Private-readiness review packet completion/readiness summary");
+    expect(html).toContain(
+      "completion_readiness=review_surfaces=7, availability_gaps=6, source_gaps=2, resolution_items=6, remediation_actions=0"
+    );
+    expect(html).toContain(
+      "next_completion_focus=02 posture_delta_summary -&gt; latest_posture_required_for_delta"
+    );
+    expect(html).toContain("completion_readiness_policy_only_posture_context_missing");
+    expect(html).toContain("read_only_completion_readiness_context");
+    expect(html).toContain("review_packet_completion_readiness_navigation_only");
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");

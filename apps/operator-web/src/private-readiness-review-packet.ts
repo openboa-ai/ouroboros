@@ -80,6 +80,14 @@ export interface PrivateReadinessReviewPacketSourceProvenanceSummary {
   rows: PrivateReadinessReviewPacketSourceProvenanceRow[];
 }
 
+export interface PrivateReadinessReviewPacketCompletionReadinessSummary {
+  countSummary: string;
+  nextReviewFocus: string;
+  nextCompletionFocus: string;
+  readinessState: string;
+  boundary: string;
+}
+
 export interface PrivateReadinessReviewPacketProjection {
   indexEntries: PrivateReadinessReviewPacketIndexEntry[];
   remediationActionRows: PrivateReadinessRemediationActionRow[];
@@ -88,6 +96,7 @@ export interface PrivateReadinessReviewPacketProjection {
   gapSummary: PrivateReadinessReviewPacketGapSummary;
   resolutionChecklist: PrivateReadinessReviewPacketResolutionChecklist;
   sourceProvenanceSummary: PrivateReadinessReviewPacketSourceProvenanceSummary;
+  completionReadinessSummary: PrivateReadinessReviewPacketCompletionReadinessSummary;
 }
 
 export const PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES: PrivateReadinessReviewPacketIndexEntry[] = [
@@ -167,6 +176,15 @@ export function buildPrivateReadinessReviewPacketProjection({
     gapSummary,
     remediationActionRows
   });
+  const sourceProvenanceSummary = privateReadinessReviewPacketSourceProvenanceSummary({
+    decision,
+    posture,
+    previousPosture,
+    availabilitySummary,
+    remediationActionRows,
+    remediationProgressSummary,
+    resolutionChecklist
+  });
 
   return {
     indexEntries: PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES,
@@ -175,14 +193,14 @@ export function buildPrivateReadinessReviewPacketProjection({
     availabilitySummary,
     gapSummary,
     resolutionChecklist,
-    sourceProvenanceSummary: privateReadinessReviewPacketSourceProvenanceSummary({
-      decision,
-      posture,
-      previousPosture,
+    sourceProvenanceSummary,
+    completionReadinessSummary: privateReadinessReviewPacketCompletionReadinessSummary({
       availabilitySummary,
+      gapSummary,
       remediationActionRows,
       remediationProgressSummary,
-      resolutionChecklist
+      resolutionChecklist,
+      sourceProvenanceSummary
     })
   };
 }
@@ -431,6 +449,84 @@ function privateReadinessReviewPacketSourceProvenanceSummary({
         : "source_provenance_previous_posture_missing",
     rows
   };
+}
+
+function privateReadinessReviewPacketCompletionReadinessSummary({
+  availabilitySummary,
+  gapSummary,
+  remediationActionRows,
+  remediationProgressSummary,
+  resolutionChecklist,
+  sourceProvenanceSummary
+}: {
+  availabilitySummary: PrivateReadinessReviewPacketAvailabilitySummary;
+  gapSummary: PrivateReadinessReviewPacketGapSummary;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+  remediationProgressSummary: PrivateReadinessRemediationProgressSummary;
+  resolutionChecklist: PrivateReadinessReviewPacketResolutionChecklist;
+  sourceProvenanceSummary: PrivateReadinessReviewPacketSourceProvenanceSummary;
+}): PrivateReadinessReviewPacketCompletionReadinessSummary {
+  const availabilityGapCount = availabilitySummary.rows.filter((row) =>
+    row.availability === "needs_posture_context" || row.availability === "no_current_items"
+  ).length;
+  const sourceGapCount = sourceProvenanceSummary.rows.filter((row) =>
+    row.provenance.includes("not_available")
+  ).length;
+  const nextCompletionFocus = availabilityGapCount > 0
+    ? gapSummary.nextGapFocus.replace("next_gap_focus=", "next_completion_focus=")
+    : sourceGapCount > 0
+      ? sourceProvenanceSummary.nextSourceFocus.replace("next_source_focus=", "next_completion_focus=")
+      : resolutionChecklist.items.length > 0
+        ? resolutionChecklist.nextResolutionFocus.replace(
+            "next_resolution_focus=",
+            "next_completion_focus="
+          )
+        : "next_completion_focus=review_packet_ready_for_operator_scan";
+
+  return {
+    countSummary: [
+      `completion_readiness=review_surfaces=${availabilitySummary.rows.length}`,
+      `availability_gaps=${availabilityGapCount}`,
+      `source_gaps=${sourceGapCount}`,
+      `resolution_items=${resolutionChecklist.items.length}`,
+      `remediation_actions=${remediationActionRows.length}`
+    ].join(", "),
+    nextReviewFocus: remediationProgressSummary.nextReviewFocus,
+    nextCompletionFocus,
+    readinessState: privateReadinessReviewPacketCompletionReadinessState({
+      availabilityGapCount,
+      sourceGapCount,
+      remediationActionRows,
+      sourceProvenanceSummary
+    }),
+    boundary: "read_only_completion_readiness_context"
+  };
+}
+
+function privateReadinessReviewPacketCompletionReadinessState({
+  availabilityGapCount,
+  sourceGapCount,
+  remediationActionRows,
+  sourceProvenanceSummary
+}: {
+  availabilityGapCount: number;
+  sourceGapCount: number;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+  sourceProvenanceSummary: PrivateReadinessReviewPacketSourceProvenanceSummary;
+}): string {
+  if (sourceProvenanceSummary.sourceState === "source_provenance_policy_only_posture_context_missing") {
+    return "completion_readiness_policy_only_posture_context_missing";
+  }
+  if (availabilityGapCount > 0) {
+    return "completion_readiness_availability_gaps_present";
+  }
+  if (sourceGapCount > 0) {
+    return "completion_readiness_source_gaps_present";
+  }
+  if (remediationActionRows.length > 0) {
+    return "completion_readiness_remediation_actions_present";
+  }
+  return "completion_readiness_ready_for_operator_scan";
 }
 
 function privateReadinessReviewPacketSourceProvenanceRow({
