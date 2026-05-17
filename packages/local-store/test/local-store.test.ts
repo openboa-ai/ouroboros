@@ -567,6 +567,16 @@ describe("LocalStore", () => {
       credential_reference_ref: secretReference,
       signed_read_permission_preflight_status: "preflight_only",
       signed_read_permission_preflight_source: "policy_decision",
+      signed_request_construction_boundary_status: "dry_run_only",
+      signed_request_construction_boundary_source: "policy_decision",
+      signed_request_construction_required_components: [
+        "API key",
+        "timestamp",
+        "recvWindow",
+        "query string",
+        "signature",
+        "signed endpoint"
+      ],
       signed_read_permission: "not_granted",
       account_balance_position_read_authority: "not_granted",
       listen_key_user_data_stream_authority: "not_granted",

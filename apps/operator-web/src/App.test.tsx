@@ -170,7 +170,17 @@ describe("CandidateDetail", () => {
               credential_reference_source: "private_readiness_posture",
               credential_reference_ref: secretReference,
               signed_read_permission_preflight_status: "preflight_only",
-              signed_read_permission_preflight_source: "policy_decision"
+              signed_read_permission_preflight_source: "policy_decision",
+              signed_request_construction_boundary_status: "dry_run_only",
+              signed_request_construction_boundary_source: "policy_decision",
+              signed_request_construction_required_components: [
+                "API key",
+                "timestamp",
+                "recvWindow",
+                "query string",
+                "signature",
+                "signed endpoint"
+              ]
             }),
             latest_account_position_risk_mirror_surface: null
           }
@@ -231,6 +241,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Signed-read preflight");
     expect(html).toContain("USER_DATA=preflight_only");
     expect(html).toContain("policy_decision");
+    expect(html).toContain("Signed request construction");
+    expect(html).toContain("USER_DATA=dry_run_only");
+    expect(html).toContain("API key, timestamp, recvWindow, query string, signature, signed endpoint");
     expect(html).toContain("USER_DATA=not_granted");
     expect(html).toContain("USER_STREAM=not_granted");
     expect(html).toContain("TRADE=not_granted");

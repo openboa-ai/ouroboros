@@ -66,7 +66,7 @@ export const OPERATOR_SIDE_EFFECT_COMMAND_PATTERN =
   /Run provider|Run evaluator|Live order/i;
 
 export const PRIVATE_AUTHORITY_TEXT_PATTERN =
-  /broker|provider_api_key|apiKey|secretKey|signature/i;
+  /broker|provider_api_key|apiKey|secretKey|signature=/i;
 
 export function ref(record_kind: string, id: string): Ref {
   return { record_kind, id };
@@ -166,7 +166,9 @@ export function expectNoPrivateReadSecrets(serialized: string): void {
   expect(serialized).not.toContain("apiKey");
   expect(serialized).not.toContain("secretKey");
   expect(serialized).not.toContain("listenKey\":\"");
-  expect(serialized).not.toContain("signature");
+  expect(serialized).not.toMatch(/"signature"\s*:\s*"[^"]+"/i);
+  expect(serialized).not.toMatch(/signature=[^"&\s]+/i);
+  expect(serialized).not.toMatch(/hmac/i);
 }
 
 export function fixtureOrderFillSurface(
@@ -508,6 +510,9 @@ export function fixturePrivateReadGateDecision(
     credential_reference_source: "policy_configuration_gate",
     signed_read_permission_preflight_status: "not_requested",
     signed_read_permission_preflight_source: "policy_decision",
+    signed_request_construction_boundary_status: "not_requested",
+    signed_request_construction_boundary_source: "policy_decision",
+    signed_request_construction_required_components: [],
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",
