@@ -1115,6 +1115,7 @@ function TradingSubstrateSection({
   const reviewPacketAvailabilitySummary = reviewPacketProjection?.availabilitySummary;
   const reviewPacketGapSummary = reviewPacketProjection?.gapSummary;
   const reviewPacketResolutionChecklist = reviewPacketProjection?.resolutionChecklist;
+  const reviewPacketSourceProvenanceSummary = reviewPacketProjection?.sourceProvenanceSummary;
 
   function updatePostureDraftGate(
     key: PrivateReadinessPostureGateKey,
@@ -1559,6 +1560,44 @@ function TradingSubstrateSection({
               <Field
                 label="Checklist boundary"
                 value="review_packet_resolution_checklist_navigation_only"
+              />
+              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <Field
+                label="Authority boundary"
+                value="not_private_read_permission_or_execution_authority"
+              />
+            </div>
+          )}
+          {reviewPacketSourceProvenanceSummary && (
+            <div
+              className="review-packet-source-provenance-summary"
+              aria-label="Private-readiness review packet source/provenance summary"
+            >
+              <h4>Private-readiness review packet source/provenance summary</h4>
+              {reviewPacketSourceProvenanceSummary.rows.map((row) => (
+                <div className="review-packet-source-provenance-row" key={`${row.item}-${row.source}`}>
+                  <strong>{row.item}</strong>
+                  <span>{row.source}</span>
+                  <span>{row.provenance}</span>
+                  <span>{row.detail}</span>
+                  <span>{row.boundary}</span>
+                </div>
+              ))}
+              <Field
+                label="Source/provenance summary"
+                value={reviewPacketSourceProvenanceSummary.countSummary}
+              />
+              <Field
+                label="Next source focus"
+                value={reviewPacketSourceProvenanceSummary.nextSourceFocus}
+              />
+              <Field
+                label="Source state"
+                value={reviewPacketSourceProvenanceSummary.sourceState}
+              />
+              <Field
+                label="Source/provenance boundary"
+                value="review_packet_source_provenance_navigation_only"
               />
               <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
               <Field

@@ -65,6 +65,21 @@ export interface PrivateReadinessReviewPacketResolutionChecklist {
   items: PrivateReadinessReviewPacketResolutionChecklistItem[];
 }
 
+export interface PrivateReadinessReviewPacketSourceProvenanceRow {
+  item: string;
+  source: string;
+  provenance: string;
+  detail: string;
+  boundary: string;
+}
+
+export interface PrivateReadinessReviewPacketSourceProvenanceSummary {
+  countSummary: string;
+  nextSourceFocus: string;
+  sourceState: string;
+  rows: PrivateReadinessReviewPacketSourceProvenanceRow[];
+}
+
 export interface PrivateReadinessReviewPacketProjection {
   indexEntries: PrivateReadinessReviewPacketIndexEntry[];
   remediationActionRows: PrivateReadinessRemediationActionRow[];
@@ -72,6 +87,7 @@ export interface PrivateReadinessReviewPacketProjection {
   availabilitySummary: PrivateReadinessReviewPacketAvailabilitySummary;
   gapSummary: PrivateReadinessReviewPacketGapSummary;
   resolutionChecklist: PrivateReadinessReviewPacketResolutionChecklist;
+  sourceProvenanceSummary: PrivateReadinessReviewPacketSourceProvenanceSummary;
 }
 
 export const PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES: PrivateReadinessReviewPacketIndexEntry[] = [
@@ -146,6 +162,11 @@ export function buildPrivateReadinessReviewPacketProjection({
     availabilitySummary,
     remediationProgressSummary
   });
+  const resolutionChecklist = privateReadinessReviewPacketResolutionChecklist({
+    availabilitySummary,
+    gapSummary,
+    remediationActionRows
+  });
 
   return {
     indexEntries: PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES,
@@ -153,10 +174,15 @@ export function buildPrivateReadinessReviewPacketProjection({
     remediationProgressSummary,
     availabilitySummary,
     gapSummary,
-    resolutionChecklist: privateReadinessReviewPacketResolutionChecklist({
+    resolutionChecklist,
+    sourceProvenanceSummary: privateReadinessReviewPacketSourceProvenanceSummary({
+      decision,
+      posture,
+      previousPosture,
       availabilitySummary,
-      gapSummary,
-      remediationActionRows
+      remediationActionRows,
+      remediationProgressSummary,
+      resolutionChecklist
     })
   };
 }
@@ -354,6 +380,154 @@ function privateReadinessReviewPacketResolutionChecklist({
   };
 }
 
+function privateReadinessReviewPacketSourceProvenanceSummary({
+  decision,
+  posture,
+  previousPosture,
+  availabilitySummary,
+  remediationActionRows,
+  remediationProgressSummary,
+  resolutionChecklist
+}: {
+  decision: PrivateReadinessPolicyDecision;
+  posture?: PrivateReadinessPostureReadModel | null;
+  previousPosture?: PrivateReadinessPostureReadModel;
+  availabilitySummary: PrivateReadinessReviewPacketAvailabilitySummary;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+  remediationProgressSummary: PrivateReadinessRemediationProgressSummary;
+  resolutionChecklist: PrivateReadinessReviewPacketResolutionChecklist;
+}): PrivateReadinessReviewPacketSourceProvenanceSummary {
+  const rows = PRIVATE_READINESS_REVIEW_PACKET_INDEX_ENTRIES.map((entry) => {
+    const availabilityRow = availabilitySummary.rows.find((row) => row.step === entry.step);
+    return privateReadinessReviewPacketSourceProvenanceRow({
+      entry,
+      decision,
+      posture,
+      previousPosture,
+      availabilityRow,
+      remediationActionRows,
+      remediationProgressSummary,
+      resolutionChecklist
+    });
+  });
+  const nextSourceRow =
+    rows.find((row) => row.provenance.includes("not_available")) ??
+    rows[0];
+
+  return {
+    countSummary: [
+      `source_provenance=policy_refs=${decision.source_surface_refs.length}`,
+      `posture_refs=${posture ? 1 : 0}`,
+      `previous_posture_refs=${previousPosture ? 1 : 0}`,
+      `projection_rows=${rows.length}`
+    ].join(", "),
+    nextSourceFocus: nextSourceRow
+      ? `next_source_focus=${nextSourceRow.item} -> ${nextSourceRow.source}`
+      : "next_source_focus=no_review_packet_sources",
+    sourceState: !posture
+      ? "source_provenance_policy_only_posture_context_missing"
+      : previousPosture
+        ? "source_provenance_posture_context_available"
+        : "source_provenance_previous_posture_missing",
+    rows
+  };
+}
+
+function privateReadinessReviewPacketSourceProvenanceRow({
+  entry,
+  decision,
+  posture,
+  previousPosture,
+  availabilityRow,
+  remediationActionRows,
+  remediationProgressSummary,
+  resolutionChecklist
+}: {
+  entry: PrivateReadinessReviewPacketIndexEntry;
+  decision: PrivateReadinessPolicyDecision;
+  posture?: PrivateReadinessPostureReadModel | null;
+  previousPosture?: PrivateReadinessPostureReadModel;
+  availabilityRow?: PrivateReadinessReviewPacketAvailabilityRow;
+  remediationActionRows: PrivateReadinessRemediationActionRow[];
+  remediationProgressSummary: PrivateReadinessRemediationProgressSummary;
+  resolutionChecklist: PrivateReadinessReviewPacketResolutionChecklist;
+}): PrivateReadinessReviewPacketSourceProvenanceRow {
+  const detail = `availability=${availabilityRow?.availability ?? "unknown"} / ${
+    availabilityRow?.detail ?? "availability_not_projected"
+  }`;
+  const boundary = "read_only_source_provenance_context";
+
+  if (entry.step === "01 policy_impact_interpretation") {
+    return {
+      item: entry.step,
+      source: "PrivateReadinessPolicyDecision.source_surface_refs",
+      provenance: formatPrivateReadinessReviewPacketRefs(decision.source_surface_refs),
+      detail,
+      boundary
+    };
+  }
+
+  if (entry.step === "02 posture_delta_summary") {
+    return {
+      item: entry.step,
+      source: "private_readiness_posture_history",
+      provenance: posture
+        ? `${posture.posture_id} -> ${previousPosture?.posture_id ?? "previous_posture_not_available"}`
+        : "latest_posture_not_available",
+      detail,
+      boundary
+    };
+  }
+
+  if (entry.step === "03 review_handoff") {
+    return {
+      item: entry.step,
+      source: "review_packet_projection",
+      provenance: posture ? `latest_posture=${posture.posture_id}` : "latest_posture_not_available",
+      detail: `${detail} / policy_status=${decision.status}`,
+      boundary
+    };
+  }
+
+  if (entry.step === "04 authority_gate_preview") {
+    return {
+      item: entry.step,
+      source: "PrivateReadinessPolicyDecision.authority_status",
+      provenance: `authority_status=${decision.authority_status}`,
+      detail: `${detail} / private_read_authority=not_granted`,
+      boundary
+    };
+  }
+
+  if (entry.step === "05 checked_gate_matrix") {
+    return {
+      item: entry.step,
+      source: "PrivateReadinessPolicyDecision.checked_gates",
+      provenance: `checked_gates=${decision.checked_gates.length}`,
+      detail: `${detail} / ${privateReadinessGateStatusSummary(decision)}`,
+      boundary
+    };
+  }
+
+  if (entry.step === "06 remediation_action_map") {
+    return {
+      item: entry.step,
+      source: "PrivateReadinessPolicyDecision.required_next_actions",
+      provenance: `required_next_actions=${decision.required_next_actions.length}`,
+      detail: `${detail} / ${remediationProgressSummary.coverage}`,
+      boundary
+    };
+  }
+
+  return {
+    item: entry.step,
+    source: "review_packet_projection.remediationProgressSummary",
+    provenance: `remediation_rows=${remediationActionRows.length}`,
+    detail: `${detail} / ${resolutionChecklist.checklistState}`,
+    boundary
+  };
+}
+
 function privateReadinessReviewPacketAvailabilityRow({
   entry,
   decision,
@@ -520,4 +694,30 @@ function privateReadinessBlockingConditionDimension(condition: string): string |
   }
   const dimension = condition.slice(0, separator).trim();
   return dimension.length > 0 ? dimension : undefined;
+}
+
+function privateReadinessGateStatusSummary(decision: PrivateReadinessPolicyDecision): string {
+  const gateCounts: Record<PrivateReadinessPolicyDecision["status"], number> = {
+    ready: 0,
+    not_ready: 0,
+    review_required: 0,
+    blocked: 0
+  };
+  for (const gate of decision.checked_gates) {
+    gateCounts[gate.status] += 1;
+  }
+  return [
+    `ready=${gateCounts.ready}`,
+    `not_ready=${gateCounts.not_ready}`,
+    `review_required=${gateCounts.review_required}`,
+    `blocked=${gateCounts.blocked}`
+  ].join(", ");
+}
+
+function formatPrivateReadinessReviewPacketRefs(
+  refs: Array<{ record_kind: string; id: string }>
+): string {
+  return refs.length > 0
+    ? refs.map((ref) => `${ref.record_kind}:${ref.id}`).join(" / ")
+    : "no_source_surface_refs";
 }
