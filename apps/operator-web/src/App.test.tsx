@@ -22,7 +22,12 @@ import {
   fixturePrivateReadinessPreflightSurface,
   fixturePublicMarketLivenessSurface
 } from "../../../test/support/binance-no-authority";
-import { CandidateDetail, CandidateSummaryRow, TradingExecutionModesSection } from "./App";
+import {
+  CandidateDetail,
+  CandidateSummaryRow,
+  PrivateReadinessReviewPacketSections,
+  TradingExecutionModesSection
+} from "./App";
 import {
   privateReadinessPostureDraftFromCandidate,
   privateReadinessPosturePayload,
@@ -30,6 +35,7 @@ import {
   runtimeAuthorityCommandPayload,
   runtimeControlPausePayload
 } from "./api";
+import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
 describe("CandidateDetail", () => {
   it("renders fixture labels and inspect sections without action controls", () => {
@@ -504,6 +510,50 @@ describe("CandidateDetail", () => {
     expect(html).toContain("remediation_progress_summary_guidance_only");
     expect(html).toContain("not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders the review packet section stack from its projection without the full candidate detail", () => {
+    const projection = buildPrivateReadinessReviewPacketProjection({
+      decision: fixturePrivateReadinessPolicyDecision(),
+      posture: fixturePrivateReadinessPosture({
+        posture_id: "local-binance-btcusdt-private-readiness-posture-history-002"
+      }),
+      previousPosture: fixturePrivateReadinessPosture()
+    });
+    const html = renderToStaticMarkup(
+      <PrivateReadinessReviewPacketSections
+        postureContextAvailable
+        projection={projection}
+      />
+    );
+
+    expect(html).toContain("Private-readiness review packet completion/readiness summary");
+    expect(html).toContain("Private-readiness review packet index");
+    expect(html).toContain("Private-readiness review packet availability summary");
+    expect(html).toContain("Private-readiness review packet gap summary");
+    expect(html).toContain("Private-readiness review packet resolution checklist");
+    expect(html).toContain("Private-readiness review packet source/provenance summary");
+    expect(html).toContain("completion_readiness_remediation_actions_present");
+    expect(html).toContain("review_packet_index_ready_for_operator_scan");
+    expect(html).toContain("review_packet_source_provenance_navigation_only");
+    expect(html).toContain("not_counted_evidence_or_promotion");
+    expect(html).toContain("not_private_read_permission_or_execution_authority");
+    expect(html.indexOf("Private-readiness review packet completion/readiness summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet index")
+    );
+    expect(html.indexOf("Private-readiness review packet index")).toBeLessThan(
+      html.indexOf("Private-readiness review packet availability summary")
+    );
+    expect(html.indexOf("Private-readiness review packet availability summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet gap summary")
+    );
+    expect(html.indexOf("Private-readiness review packet gap summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet resolution checklist")
+    );
+    expect(html.indexOf("Private-readiness review packet resolution checklist")).toBeLessThan(
+      html.indexOf("Private-readiness review packet source/provenance summary")
+    );
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
