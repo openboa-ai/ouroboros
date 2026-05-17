@@ -46,12 +46,19 @@ export type PrivateReadGateSignedReadPermissionGrantBoundaryStatus =
 
 export type PrivateReadGateSignedReadPermissionGrantBoundarySource = "policy_decision";
 
+export type PrivateReadGateSignedRequestExecutionBoundaryStatus =
+  | "not_requested"
+  | "decision_only";
+
+export type PrivateReadGateSignedRequestExecutionBoundarySource = "policy_decision";
+
 export type PrivateReadGateReasonCode =
   | PrivateReadinessPolicyDecision["reason_codes"][number]
   | "credential_reference_only"
   | "signed_read_permission_preflight_only"
   | "signed_request_construction_boundary_only"
   | "signed_read_permission_grant_boundary_only"
+  | "signed_request_execution_boundary_only"
   | "private_read_gate_not_ready"
   | "private_read_gate_review_required"
   | "private_read_gate_blocked"
@@ -83,6 +90,8 @@ export interface PrivateReadGateDecision {
   signed_request_construction_required_components: PrivateReadGateSignedRequestConstructionRequiredComponent[];
   signed_read_permission_grant_boundary_status: PrivateReadGateSignedReadPermissionGrantBoundaryStatus;
   signed_read_permission_grant_boundary_source: PrivateReadGateSignedReadPermissionGrantBoundarySource;
+  signed_request_execution_boundary_status: PrivateReadGateSignedRequestExecutionBoundaryStatus;
+  signed_request_execution_boundary_source: PrivateReadGateSignedRequestExecutionBoundarySource;
   signed_read_permission: PrivateReadGateAuthorityStatus;
   account_balance_position_read_authority: PrivateReadGateAuthorityStatus;
   listen_key_user_data_stream_authority: PrivateReadGateAuthorityStatus;
@@ -128,6 +137,9 @@ export function evaluatePrivateReadGateDecision(
   const signedReadPermissionGrantBoundary = signedReadPermissionGrantBoundarySnapshot(
     signedRequestConstructionBoundary.status
   );
+  const signedRequestExecutionBoundary = signedRequestExecutionBoundarySnapshot(
+    signedReadPermissionGrantBoundary.status
+  );
   const requiredNextActions = new Set(policyDecision.required_next_actions);
 
   if (status === "ready_but_disabled") {
@@ -156,6 +168,8 @@ export function evaluatePrivateReadGateDecision(
     signed_request_construction_required_components: signedRequestConstructionBoundary.requiredComponents,
     signed_read_permission_grant_boundary_status: signedReadPermissionGrantBoundary.status,
     signed_read_permission_grant_boundary_source: signedReadPermissionGrantBoundary.source,
+    signed_request_execution_boundary_status: signedRequestExecutionBoundary.status,
+    signed_request_execution_boundary_source: signedRequestExecutionBoundary.source,
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",
@@ -175,6 +189,9 @@ export function evaluatePrivateReadGateDecision(
         : []),
       ...(signedReadPermissionGrantBoundary.status === "decision_only"
         ? ["signed_read_permission_grant_boundary_only" as const]
+        : []),
+      ...(signedRequestExecutionBoundary.status === "decision_only"
+        ? ["signed_request_execution_boundary_only" as const]
         : []),
       gateReasonCode,
       "no_private_read_performed"
@@ -311,6 +328,25 @@ function signedReadPermissionGrantBoundarySnapshot(
   source: PrivateReadGateSignedReadPermissionGrantBoundarySource;
 } {
   if (constructionBoundaryStatus === "dry_run_only") {
+    return {
+      status: "decision_only",
+      source: "policy_decision"
+    };
+  }
+
+  return {
+    status: "not_requested",
+    source: "policy_decision"
+  };
+}
+
+function signedRequestExecutionBoundarySnapshot(
+  grantBoundaryStatus: PrivateReadGateSignedReadPermissionGrantBoundaryStatus
+): {
+  status: PrivateReadGateSignedRequestExecutionBoundaryStatus;
+  source: PrivateReadGateSignedRequestExecutionBoundarySource;
+} {
+  if (grantBoundaryStatus === "decision_only") {
     return {
       status: "decision_only",
       source: "policy_decision"
