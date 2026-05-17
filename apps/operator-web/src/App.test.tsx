@@ -251,6 +251,16 @@ describe("CandidateDetail", () => {
     expect(html).toContain("resolve_required_next_action");
     expect(html).toContain("read_only_resolution_guidance");
     expect(html).toContain("review_packet_resolution_checklist_navigation_only");
+    expect(html).toContain("Private-readiness review packet source/provenance summary");
+    expect(html).toContain(
+      "source_provenance=policy_refs=2, posture_refs=1, previous_posture_refs=1, projection_rows=7"
+    );
+    expect(html).toContain(
+      "next_source_focus=01 policy_impact_interpretation -&gt; PrivateReadinessPolicyDecision.source_surface_refs"
+    );
+    expect(html).toContain("source_provenance_posture_context_available");
+    expect(html).toContain("read_only_source_provenance_context");
+    expect(html).toContain("review_packet_source_provenance_navigation_only");
     expect(html).toContain("Policy impact interpretation");
     expect(html).toContain("Policy input posture");
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
@@ -385,6 +395,16 @@ describe("CandidateDetail", () => {
     expect(html).toContain("requires_posture_context");
     expect(html).toContain("confirm_empty_review_state");
     expect(html).toContain("review_packet_resolution_checklist_navigation_only");
+    expect(html).toContain("Private-readiness review packet source/provenance summary");
+    expect(html).toContain(
+      "source_provenance=policy_refs=2, posture_refs=0, previous_posture_refs=0, projection_rows=7"
+    );
+    expect(html).toContain(
+      "next_source_focus=02 posture_delta_summary -&gt; private_readiness_posture_history"
+    );
+    expect(html).toContain("source_provenance_policy_only_posture_context_missing");
+    expect(html).toContain("latest_posture_not_available");
+    expect(html).toContain("review_packet_source_provenance_navigation_only");
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");

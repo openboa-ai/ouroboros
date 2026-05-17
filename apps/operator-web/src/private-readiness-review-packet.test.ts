@@ -39,6 +39,23 @@ describe("buildPrivateReadinessReviewPacketProjection", () => {
     expect(projection.resolutionChecklist.checklistState).toBe(
       "resolution_checklist_remediation_actions_present"
     );
+    expect(projection.sourceProvenanceSummary.countSummary).toBe(
+      "source_provenance=policy_refs=2, posture_refs=1, previous_posture_refs=1, projection_rows=7"
+    );
+    expect(projection.sourceProvenanceSummary.nextSourceFocus).toBe(
+      "next_source_focus=01 policy_impact_interpretation -> PrivateReadinessPolicyDecision.source_surface_refs"
+    );
+    expect(projection.sourceProvenanceSummary.sourceState).toBe(
+      "source_provenance_posture_context_available"
+    );
+    expect(projection.sourceProvenanceSummary.rows).toContainEqual({
+      item: "02 posture_delta_summary",
+      source: "private_readiness_posture_history",
+      provenance:
+        "local-binance-btcusdt-private-readiness-posture-history-002 -> fixture-binance-btcusdt-private-readiness-posture-001",
+      detail: "availability=available_for_review / posture_delta_current_and_previous_available",
+      boundary: "read_only_source_provenance_context"
+    });
   });
 
   it("projects sparse policy-only state without adding authority", () => {
@@ -79,5 +96,21 @@ describe("buildPrivateReadinessReviewPacketProjection", () => {
     expect(projection.resolutionChecklist.checklistState).toBe(
       "resolution_checklist_availability_gaps_present"
     );
+    expect(projection.sourceProvenanceSummary.countSummary).toBe(
+      "source_provenance=policy_refs=2, posture_refs=0, previous_posture_refs=0, projection_rows=7"
+    );
+    expect(projection.sourceProvenanceSummary.nextSourceFocus).toBe(
+      "next_source_focus=02 posture_delta_summary -> private_readiness_posture_history"
+    );
+    expect(projection.sourceProvenanceSummary.sourceState).toBe(
+      "source_provenance_policy_only_posture_context_missing"
+    );
+    expect(projection.sourceProvenanceSummary.rows).toContainEqual({
+      item: "02 posture_delta_summary",
+      source: "private_readiness_posture_history",
+      provenance: "latest_posture_not_available",
+      detail: "availability=needs_posture_context / latest_posture_required_for_delta",
+      boundary: "read_only_source_provenance_context"
+    });
   });
 });
