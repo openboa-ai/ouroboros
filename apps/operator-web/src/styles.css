@@ -480,6 +480,7 @@ button {
 .review-packet-gap-summary,
 .review-packet-resolution-checklist,
 .review-packet-source-provenance-summary,
+.review-packet-completion-readiness-summary,
 .checked-gate-matrix,
 .remediation-action-map,
 .remediation-progress-summary {
@@ -498,6 +499,7 @@ button {
 .review-packet-gap-summary h4,
 .review-packet-resolution-checklist h4,
 .review-packet-source-provenance-summary h4,
+.review-packet-completion-readiness-summary h4,
 .checked-gate-matrix h4,
 .remediation-action-map h4,
 .remediation-progress-summary h4 {

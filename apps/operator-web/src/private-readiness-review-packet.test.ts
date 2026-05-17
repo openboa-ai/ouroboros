@@ -56,6 +56,21 @@ describe("buildPrivateReadinessReviewPacketProjection", () => {
       detail: "availability=available_for_review / posture_delta_current_and_previous_available",
       boundary: "read_only_source_provenance_context"
     });
+    expect(projection.completionReadinessSummary.countSummary).toBe(
+      "completion_readiness=review_surfaces=7, availability_gaps=0, source_gaps=0, resolution_items=6, remediation_actions=6"
+    );
+    expect(projection.completionReadinessSummary.nextReviewFocus).toBe(
+      "next_review_focus=configure_private_read_credentials -> checked_gate: configuration"
+    );
+    expect(projection.completionReadinessSummary.nextCompletionFocus).toBe(
+      "next_completion_focus=configure_private_read_credentials -> checked_gate: configuration"
+    );
+    expect(projection.completionReadinessSummary.readinessState).toBe(
+      "completion_readiness_remediation_actions_present"
+    );
+    expect(projection.completionReadinessSummary.boundary).toBe(
+      "read_only_completion_readiness_context"
+    );
   });
 
   it("projects sparse policy-only state without adding authority", () => {
@@ -112,5 +127,20 @@ describe("buildPrivateReadinessReviewPacketProjection", () => {
       detail: "availability=needs_posture_context / latest_posture_required_for_delta",
       boundary: "read_only_source_provenance_context"
     });
+    expect(projection.completionReadinessSummary.countSummary).toBe(
+      "completion_readiness=review_surfaces=7, availability_gaps=6, source_gaps=2, resolution_items=6, remediation_actions=0"
+    );
+    expect(projection.completionReadinessSummary.nextReviewFocus).toBe(
+      "next_review_focus=no_required_next_actions"
+    );
+    expect(projection.completionReadinessSummary.nextCompletionFocus).toBe(
+      "next_completion_focus=02 posture_delta_summary -> latest_posture_required_for_delta"
+    );
+    expect(projection.completionReadinessSummary.readinessState).toBe(
+      "completion_readiness_policy_only_posture_context_missing"
+    );
+    expect(projection.completionReadinessSummary.boundary).toBe(
+      "read_only_completion_readiness_context"
+    );
   });
 });
