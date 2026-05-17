@@ -182,7 +182,9 @@ describe("CandidateDetail", () => {
                 "signed endpoint"
               ],
               signed_read_permission_grant_boundary_status: "decision_only",
-              signed_read_permission_grant_boundary_source: "policy_decision"
+              signed_read_permission_grant_boundary_source: "policy_decision",
+              signed_request_execution_boundary_status: "decision_only",
+              signed_request_execution_boundary_source: "policy_decision"
             }),
             latest_account_position_risk_mirror_surface: null
           }
@@ -248,6 +250,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("API key, timestamp, recvWindow, query string, signature, signed endpoint");
     expect(html).toContain("Signed-read grant boundary");
     expect(html).toContain("USER_DATA=decision_only");
+    expect(html).toContain("Signed request execution boundary");
     expect(html).toContain("USER_DATA=not_granted");
     expect(html).toContain("USER_STREAM=not_granted");
     expect(html).toContain("TRADE=not_granted");

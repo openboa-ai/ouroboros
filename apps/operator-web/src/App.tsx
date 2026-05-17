@@ -1514,6 +1514,13 @@ function TradingSubstrateSection({
                 ].join(", ")}
               />
               <Field
+                label="Signed request execution boundary"
+                value={[
+                  `USER_DATA=${privateReadGateDecision.signed_request_execution_boundary_status}`,
+                  `source=${privateReadGateDecision.signed_request_execution_boundary_source}`
+                ].join(", ")}
+              />
+              <Field
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />

@@ -1177,6 +1177,78 @@ describe("Trading substrate PrivateReadGate decisions", () => {
     expect(JSON.stringify(gateDecision)).not.toContain("secretKey");
     expect(JSON.stringify(gateDecision)).not.toContain("apiKey");
   });
+
+  it("surfaces USER_DATA signed request execution boundary without executing signed requests", () => {
+    const credentialReference = ref(
+      "secret_reference",
+      "local-binance-btcusdt-user-data-read-reference"
+    );
+    const policyDecision = evaluatePrivateReadinessPolicyDecision({
+      evaluated_at: "2026-05-16T00:00:02.000Z",
+      private_readiness_preflight_surface: fixturePrivateReadinessPolicyReadyPreflightSurface(),
+      account_position_risk_mirror_surface: fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface(),
+      live_binding_gate: {
+        status: "ready",
+        reason: "operator_bound_private_read_profile_recorded"
+      },
+      secret_handling_gate: {
+        status: "ready",
+        reason: "secret_reference_recorded_without_values"
+      },
+      stop_behavior_gate: {
+        status: "ready",
+        reason: "kill_switch_and_runtime_pause_semantics_recorded"
+      }
+    });
+
+    const gateDecision = evaluatePrivateReadGateDecision({
+      evaluated_at: "2026-05-16T00:00:03.000Z",
+      policy_decision: policyDecision,
+      credential_reference: {
+        configured: true,
+        ref: credentialReference,
+        raw_secret_material_present: false,
+        source: "private_readiness_posture"
+      }
+    });
+
+    expect(gateDecision).toMatchObject({
+      status: "ready_but_disabled",
+      credential_reference_status: "reference_only",
+      signed_read_permission_preflight_status: "preflight_only",
+      signed_request_construction_boundary_status: "dry_run_only",
+      signed_read_permission_grant_boundary_status: "decision_only",
+      signed_request_execution_boundary_status: "decision_only",
+      signed_request_execution_boundary_source: "policy_decision",
+      signed_read_permission: "not_granted",
+      account_balance_position_read_authority: "not_granted",
+      listen_key_user_data_stream_authority: "not_granted",
+      leverage_margin_mutation_authority: "not_granted",
+      order_submission_authority: "not_granted",
+      gateway_decision_authority: "not_granted",
+      evidence_sealing_authority: "not_counted",
+      promotion_authority: "not_granted",
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false,
+      authority_status: "not_live"
+    });
+    expect(gateDecision.reason_codes).toEqual(expect.arrayContaining([
+      "signed_request_execution_boundary_only",
+      "private_read_gate_ready_but_disabled",
+      "no_private_read_performed"
+    ]));
+    expect(gateDecision.required_next_actions).toEqual(expect.arrayContaining([
+      "grant_signed_read_authority_before_private_user_data_reads",
+      "grant_signed_request_authority_before_private_user_data_reads"
+    ]));
+    expect(JSON.stringify(gateDecision)).not.toMatch(/\"signature\"\\s*:\\s*\"/i);
+    expect(JSON.stringify(gateDecision)).not.toContain("secretKey");
+    expect(JSON.stringify(gateDecision)).not.toContain("apiKey");
+    expect(JSON.stringify(gateDecision)).not.toContain("listenKey");
+    expect(JSON.stringify(gateDecision)).not.toContain("GET /fapi/v3/account");
+  });
 });
 
 describe("Trading substrate account-position-risk mirror surface records", () => {
