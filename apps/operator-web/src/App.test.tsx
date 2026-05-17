@@ -271,6 +271,21 @@ describe("CandidateDetail", () => {
     expect(html).toContain("completion_readiness_remediation_actions_present");
     expect(html).toContain("read_only_completion_readiness_context");
     expect(html).toContain("review_packet_completion_readiness_navigation_only");
+    expect(html.indexOf("Private-readiness review packet completion/readiness summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet index")
+    );
+    expect(html.indexOf("Private-readiness review packet index")).toBeLessThan(
+      html.indexOf("Private-readiness review packet availability summary")
+    );
+    expect(html.indexOf("Private-readiness review packet availability summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet gap summary")
+    );
+    expect(html.indexOf("Private-readiness review packet gap summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet resolution checklist")
+    );
+    expect(html.indexOf("Private-readiness review packet resolution checklist")).toBeLessThan(
+      html.indexOf("Private-readiness review packet source/provenance summary")
+    );
     expect(html).toContain("Policy impact interpretation");
     expect(html).toContain("Policy input posture");
     expect(html).toContain("local-binance-btcusdt-private-readiness-posture-history-002");
@@ -425,6 +440,21 @@ describe("CandidateDetail", () => {
     expect(html).toContain("completion_readiness_policy_only_posture_context_missing");
     expect(html).toContain("read_only_completion_readiness_context");
     expect(html).toContain("review_packet_completion_readiness_navigation_only");
+    expect(html.indexOf("Private-readiness review packet completion/readiness summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet index")
+    );
+    expect(html.indexOf("Private-readiness review packet index")).toBeLessThan(
+      html.indexOf("Private-readiness review packet availability summary")
+    );
+    expect(html.indexOf("Private-readiness review packet availability summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet gap summary")
+    );
+    expect(html.indexOf("Private-readiness review packet gap summary")).toBeLessThan(
+      html.indexOf("Private-readiness review packet resolution checklist")
+    );
+    expect(html.indexOf("Private-readiness review packet resolution checklist")).toBeLessThan(
+      html.indexOf("Private-readiness review packet source/provenance summary")
+    );
     expect(html).toContain("no_checked_gates");
     expect(html).toContain("Private-readiness remediation/action map");
     expect(html).toContain("no_required_next_actions");
