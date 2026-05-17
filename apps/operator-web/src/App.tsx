@@ -1507,6 +1507,13 @@ function TradingSubstrateSection({
                 ].join(", ")}
               />
               <Field
+                label="Signed-read grant boundary"
+                value={[
+                  `USER_DATA=${privateReadGateDecision.signed_read_permission_grant_boundary_status}`,
+                  `source=${privateReadGateDecision.signed_read_permission_grant_boundary_source}`
+                ].join(", ")}
+              />
+              <Field
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />

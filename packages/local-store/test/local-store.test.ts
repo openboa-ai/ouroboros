@@ -577,6 +577,8 @@ describe("LocalStore", () => {
         "signature",
         "signed endpoint"
       ],
+      signed_read_permission_grant_boundary_status: "decision_only",
+      signed_read_permission_grant_boundary_source: "policy_decision",
       signed_read_permission: "not_granted",
       account_balance_position_read_authority: "not_granted",
       listen_key_user_data_stream_authority: "not_granted",
