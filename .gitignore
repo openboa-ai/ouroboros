@@ -5,10 +5,16 @@ Thumbs.db
 .idea/
 
 # Environment / secrets
+# Commit templates only. Loaded profiles such as .env.test and .env.prod stay local.
 .env
 .env.*
-!.env.example
 .envrc
+!.env.example
+!.env.*.example
+*.pem
+*.p12
+*.pfx
+*.key
 
 # Logs / temp / caches
 *.log

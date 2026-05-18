@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+bash scripts/check-env-files.sh --staged
 bash scripts/check-docs.sh --staged
-bash scripts/check-secrets.sh
+bash scripts/check-secrets.sh --staged

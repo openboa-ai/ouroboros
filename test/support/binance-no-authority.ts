@@ -49,7 +49,7 @@ export const BINANCE_USDM_CONNECTOR_TRANSPORT = {
   api_family: "derivatives_trading_usds_futures",
   supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
   production_base_url: "https://fapi.binance.com",
-  testnet_base_url: "https://testnet.binancefuture.com",
+  testnet_base_url: "https://demo-fapi.binance.com",
   integration_role: "transport_only",
   authority_status: "not_live"
 } satisfies BinanceUsdsFuturesConnectorTransport;

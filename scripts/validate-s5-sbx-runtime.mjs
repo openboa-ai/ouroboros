@@ -163,7 +163,7 @@ try {
     }
   }
   if (server) {
-    server.kill("SIGTERM");
+    await stopRuntimeServer(server);
   }
   if (runtimeStoreRoot) {
     await rm(runtimeStoreRoot, { recursive: true, force: true });
@@ -212,6 +212,25 @@ function startRuntimeServer() {
   child.stdout.on("data", (chunk) => process.stdout.write(`[runtime] ${chunk}`));
   child.stderr.on("data", (chunk) => process.stderr.write(`[runtime] ${chunk}`));
   return child;
+}
+
+async function stopRuntimeServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  let closed = false;
+  const closePromise = new Promise((resolve) => {
+    child.once("close", () => {
+      closed = true;
+      resolve();
+    });
+  });
+  child.kill("SIGTERM");
+  await Promise.race([closePromise, delay(5_000)]);
+  if (!closed) {
+    child.kill("SIGKILL");
+    await Promise.race([closePromise, delay(2_000)]);
+  }
 }
 
 async function waitForRuntime() {

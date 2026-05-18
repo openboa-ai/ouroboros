@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - "codex/**"
       - "feat/**"
   schedule:
     - cron: "23 4 * * 1"
@@ -20,10 +21,16 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  analyze-actions:
-    name: analyze-actions
+  analyze:
+    name: analyze-${{ matrix.language }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - actions
+          - javascript-typescript
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -31,7 +38,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: actions
+          languages: ${{ matrix.language }}
           queries: security-and-quality
 
       - name: Perform CodeQL Analysis

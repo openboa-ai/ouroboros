@@ -22,6 +22,7 @@ import type {
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
   TradingGatewayContractReadModel,
+  TradingGatewayEnvironmentReadModel,
   TradingLedgerReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
@@ -32,6 +33,7 @@ import {
   fetchReplayRunEvidence,
   fetchReplayRunValidationState,
   fetchCandidateSummaries,
+  fetchTradingGatewayEnvironment,
   fetchTradingExecutionModeContracts,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordReplayRuntimeControl,
@@ -49,6 +51,7 @@ import "./styles.css";
 interface AppState {
   candidates: CandidateSummaryReadModel[];
   executionModes: TradingSystemExecutionModeContractReadModel[];
+  tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   selected?: CandidateInspectReadModel;
   replayRuns: ReplayRunEvidenceReadModel[];
   selectedReplayRunId?: string;
@@ -88,9 +91,10 @@ export function App() {
     let cancelled = false;
     async function load() {
       try {
-        const [candidates, executionModes] = await Promise.all([
+        const [candidates, executionModes, tradingGatewayEnvironment] = await Promise.all([
           fetchCandidateSummaries(),
-          fetchTradingExecutionModeContracts()
+          fetchTradingExecutionModeContracts(),
+          fetchTradingGatewayEnvironment()
         ]);
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
@@ -102,6 +106,7 @@ export function App() {
           setState({
             candidates,
             executionModes,
+            tradingGatewayEnvironment,
             selected,
             replayRuns,
             selectedReplayRunId: replayRunSelection.selectedReplayRunId,
@@ -416,6 +421,7 @@ export function App() {
         {!state.loading && !state.error && state.selected && (
           <CandidateDetail
             candidate={state.selected}
+            tradingGatewayEnvironment={state.tradingGatewayEnvironment}
             replayRuns={state.replayRuns}
             selectedReplayRunId={state.selectedReplayRunId}
             replayRunDetail={state.replayRunDetail}
@@ -516,6 +522,7 @@ function baselineRunIdForSelection(
 
 export function CandidateDetail({
   candidate,
+  tradingGatewayEnvironment,
   replayRuns = [],
   selectedReplayRunId,
   replayRunDetail,
@@ -542,6 +549,7 @@ export function CandidateDetail({
   privateReadinessPostureMessage
 }: {
   candidate: CandidateInspectReadModel;
+  tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   replayRuns?: ReplayRunEvidenceReadModel[];
   selectedReplayRunId?: string;
   replayRunDetail?: ReplayRunDetailReadModel;
@@ -678,6 +686,8 @@ export function CandidateDetail({
         <TradingGatewayContractSection
           contract={candidate.trading_substrate?.latest_trading_gateway_contract}
         />
+
+        <TradingGatewayEnvironmentSection environment={tradingGatewayEnvironment} />
 
         <TradingLedgerSection
           ledger={tradingLedger}
@@ -1149,6 +1159,54 @@ function TradingGatewayContractSection({
           `authority_status=${contract.authority_status}`
         ].join(", ")}
       />
+    </InfoSection>
+  );
+}
+
+export function TradingGatewayEnvironmentSection({
+  environment
+}: {
+  environment?: TradingGatewayEnvironmentReadModel;
+}) {
+  if (!environment) {
+    return null;
+  }
+
+  return (
+    <InfoSection title="Trading gateway environment">
+      <Field
+        label="Exchange binding"
+        value={`${environment.exchange_environment} / ${environment.exchange_environment_source}`}
+      />
+      <Field
+        label="Configuration"
+        value={`${environment.configuration_status} / ${environment.configuration_reason}`}
+      />
+      <Field label="REST base URL" value={environment.rest_base_url ?? "not_configured"} />
+      <Field label="Credential scope" value={environment.credential_scope} />
+      <Field
+        label="Credentials configured"
+        value={[
+          `api_key=${String(environment.api_key_configured)}`,
+          `api_secret=${String(environment.api_secret_configured)}`,
+          environment.credential_source
+        ].join(", ")}
+      />
+      <Field
+        label="Authority"
+        value={[
+          `live_exchange=${String(environment.live_exchange_authority)}`,
+          `order_submission=${String(environment.order_submission_authority)}`,
+          environment.authority_status
+        ].join(", ")}
+      />
+      <Field
+        label="Env vars"
+        value={Object.values(environment.env_var_names).join(", ")}
+      />
+      {environment.warnings.length > 0 && (
+        <Field label="Warnings" value={environment.warnings.join(", ")} />
+      )}
     </InfoSection>
   );
 }

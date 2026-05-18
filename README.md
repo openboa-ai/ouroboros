@@ -43,7 +43,9 @@ Long-form product, architecture, source, service, and project-memory material li
 
 ```bash
 npm install
+npm run hooks:install
 bash scripts/check-docs.sh
+bash scripts/check-env-files.sh --tracked
 bash scripts/check-secrets.sh
 git diff --check
 npm test
@@ -79,6 +81,17 @@ Defaults:
 - Runtime persisted volume: `ouroboros-local_ouroboros-store`
 - Compose network: `ouroboros-local_ouroboros-local`
 
+Trading gateway environment variables bind the loaded Binance USD-M Futures profile, not the
+runtime behavior mode. Ouroboros has two deployment profiles: `test` for ongoing development and
+gateway validation, and `prod` for the real running system. Keep endpoint and key values separate
+by file: `.env.test` from [.env.test.example](.env.test.example) uses
+`OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL=https://demo-fapi.binance.com`, while `.env.prod`
+from [.env.prod.example](.env.prod.example) uses
+`OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL=https://fapi.binance.com`. Both profiles use the same
+credential variable names: `OUROBOROS_BINANCE_API_KEY` and `OUROBOROS_BINANCE_API_SECRET`.
+Backtest, paper, and live behavior are gateway/runtime policy branches in code, not environment
+mode variables. The current app still reports `not_live` and performs no live exchange calls.
+
 Compose validation covers package-level checks in a clean container image:
 
 ```bash
@@ -87,8 +100,28 @@ docker compose --profile validation run --rm validation npm run typecheck
 docker compose --profile validation run --rm validation npm run build
 ```
 
-Run `bash scripts/check-docs.sh`, `bash scripts/check-secrets.sh`, and `git diff --check` on the
-host or inside a Docker Sandbox workspace with repository metadata available.
+Run `bash scripts/check-docs.sh`, `bash scripts/check-env-files.sh --tracked`,
+`bash scripts/check-secrets.sh`, and `git diff --check` on the host or inside a Docker Sandbox
+workspace with repository metadata available.
+
+## Local Safety Hooks
+
+Git hooks live in [.githooks](.githooks) and are enabled with `npm run hooks:install`. They block
+staged or tracked real environment files and run `gitleaks` before commit and push.
+
+Codex hooks live in [.codex/hooks.json](.codex/hooks.json). Review and trust them from Codex with
+`/hooks` when prompted. They add a lighter pre-tool guard around `Bash` and `apply_patch` so agent
+work cannot directly edit or stage real `.env`, `.env.*`, `.envrc`, or key/certificate files. The
+post-tool hook reruns the repository environment-file guard against staged and tracked paths. These
+hooks are a workflow guardrail; Git hooks plus `gitleaks` remain the final commit and push gate.
+
+GitHub Actions mirrors the local gate: `ci` runs docs checks, environment-file guards, gitleaks,
+whitespace checks, typecheck, tests, and build. GitHub-hosted runners keep the S5 unit and audit
+coverage but skip the three host-lifecycle S5 `sbx` transcript tests that create long-running fake
+runtime child processes; run `npm test -- apps/runtime/test/s5-sbx-validation-script.test.ts` on a
+host to execute those lifecycle cases. Separate scheduled workflows keep full-history gitleaks
+scanning and CodeQL code scanning active; CodeQL scans both GitHub Actions workflows and
+JavaScript/TypeScript with the `security-and-quality` query suite.
 
 Docker Sandboxes validation runs from the repository root with the host checks above, then the
 same Compose commands when the sandbox has Compose available. The only durable result to record is

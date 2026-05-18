@@ -11,6 +11,7 @@ import type {
   ReplayRunValidationStateReadModel,
   ReplayRuntimeAuthorityReadModel,
   ReplayRuntimeControlReadModel,
+  TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 import {
@@ -30,6 +31,7 @@ import {
   CandidateDetail,
   CandidateSummaryRow,
   PrivateReadinessReviewPacketSections,
+  TradingGatewayEnvironmentSection,
   TradingExecutionModesSection
 } from "./App";
 import {
@@ -1074,11 +1076,19 @@ describe("CandidateDetail", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={candidateWithRuntimeAuthority(runtimeAuthority())}
+        tradingGatewayEnvironment={tradingGatewayEnvironment()}
         onRunTradingLoop={() => undefined}
         tradingLoopMessage="dry_run_only recorded: execution-attempt-001"
       />
     );
 
+    expect(html).toContain("Trading gateway environment");
+    expect(html).toContain("testnet / environment_variables");
+    expect(html).toContain("testnet");
+    expect(html).toContain("https://demo-fapi.binance.com");
+    expect(html).toContain("api_key=true");
+    expect(html).toContain("api_secret=true");
+    expect(html).toContain("live_exchange=false");
     expect(html).toContain("Trading ledger");
     expect(html).not.toContain("Runtime Authority");
     expect(html).toContain("chain complete");
@@ -1096,6 +1106,20 @@ describe("CandidateDetail", () => {
     expect(html).toContain("runtime.bounded_authority");
     expect(html).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
+  it("renders trading gateway environment without exposing secret values", () => {
+    const html = renderToStaticMarkup(
+      <TradingGatewayEnvironmentSection environment={tradingGatewayEnvironment()} />
+    );
+
+    expect(html).toContain("Trading gateway environment");
+    expect(html).toContain("OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL");
+    expect(html).toContain("OUROBOROS_BINANCE_API_KEY");
+    expect(html).not.toContain("OUROBOROS_TRADING_GATEWAY_MODE");
+    expect(html).toContain("api_secret=true");
+    expect(html).not.toContain("secretKey");
+    expect(html).not.toContain("signature=");
   });
 
   it("renders runtime control state and bounded pause command without implying live authority", () => {
@@ -1772,6 +1796,33 @@ function runtimeAuthority(): ReplayRuntimeAuthorityReadModel {
       status: "dry_run_recorded",
       authority_status: "dry_run_only"
     }
+  };
+}
+
+function tradingGatewayEnvironment(): TradingGatewayEnvironmentReadModel {
+  return {
+    environment_kind: "trading_gateway_environment",
+    venue: "binance_usd_m_futures",
+    instrument: "BTCUSDT",
+    product_category: "perpetual_futures",
+    exchange_environment: "testnet",
+    exchange_environment_source: "environment_variables",
+    rest_base_url: "https://demo-fapi.binance.com",
+    credential_scope: "runtime_selected",
+    credential_source: "environment_variables",
+    api_key_configured: true,
+    api_secret_configured: true,
+    configuration_status: "configured",
+    configuration_reason: "testnet_credentials_configured_without_live_authority",
+    authority_status: "not_live",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    env_var_names: {
+      rest_base_url: "OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL",
+      api_key: "OUROBOROS_BINANCE_API_KEY",
+      api_secret: "OUROBOROS_BINANCE_API_SECRET"
+    },
+    warnings: []
   };
 }
 
