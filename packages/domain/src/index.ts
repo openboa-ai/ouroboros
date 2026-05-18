@@ -2561,6 +2561,374 @@ export interface ReplayRuntimeAuthorityReadModel {
   execution_attempt: PlaceholderSummary;
 }
 
+export interface ArtifactImprovementSourceFindingReadModel {
+  finding_id: string;
+  finding_kind: ResearchFindingKind;
+  summary: string;
+  research_worker_ref: Ref;
+  research_direction_ref: Ref;
+  created_at: string;
+  authority_status: "research_trace_only";
+}
+
+export interface ArtifactImprovementProposalReadModel {
+  proposal_id: string;
+  proposed_runnable_artifact_ref: Ref;
+  parent_runnable_artifact_ref?: Ref;
+  proposal_summary: string;
+  requested_change_summary: string;
+  expected_improvement_summary?: string;
+  source_finding_refs: Ref[];
+  anti_hacking_finding_refs: Ref[];
+  status: ArtifactChangeProposalStatus;
+  created_at: string;
+  authority_status: "proposal_only";
+}
+
+export interface ArtifactImprovementMaterializationAttemptReadModel {
+  attempt_id: string;
+  provider: ArtifactChangeProposalProviderAttribution;
+  status: ArtifactChangeProposalMaterializationStatus;
+  validation_status: MaterializationValidationStatus;
+  failure_reason?: ArtifactChangeProposalMaterializationFailureReason;
+  output_artifact_proposal_ref?: Ref;
+  output_runnable_artifact_ref?: Ref;
+  output_lineage_ref?: Ref;
+  created_at: string;
+  authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
+}
+
+export interface ArtifactImprovementOrchestrationRunReadModel {
+  run_id: string;
+  input_finding_refs: Ref[];
+  input_lineage_refs: Ref[];
+  output_artifact_proposal_ref?: Ref;
+  output_runnable_artifact_ref?: Ref;
+  output_lineage_ref?: Ref;
+  trace_ref?: Ref;
+  status: ResearchOrchestrationRunStatus;
+  started_at: string;
+  completed_at?: string;
+  authority_status: "research_only";
+}
+
+export interface ArtifactImprovementExperimentReadModel {
+  experiment_id: string;
+  runnable_artifact_ref: Ref;
+  sandbox_runtime_instance_ref?: Ref;
+  runtime_trace_refs: Ref[];
+  trace_ref?: Ref;
+  status: ExperimentRunStatus;
+  submitted_at: string;
+  authority_status: "not_live";
+}
+
+export interface ArtifactImprovementEvaluationResultReadModel {
+  result_id: string;
+  experiment_run_ref: Ref;
+  result_status: TradingEvaluationResultStatus;
+  evidence_disposition: EvidenceDisposition;
+  total_score: number;
+  evaluator_trace_ref: Ref;
+  completed_at: string;
+  authority_status: "not_counted" | "counted";
+}
+
+export interface ArtifactImprovementLoopReadModel {
+  loop_kind: "artifact_improvement_loop";
+  source_model: "automated_alignment_researcher";
+  has_activity: boolean;
+  proposal_chain_complete: boolean;
+  evaluation_chain_complete: boolean;
+  chain_complete: boolean;
+  latest_source_finding: ArtifactImprovementSourceFindingReadModel | null;
+  latest_artifact_change_proposal: ArtifactImprovementProposalReadModel | null;
+  latest_materialization_attempt: ArtifactImprovementMaterializationAttemptReadModel | null;
+  latest_orchestration_run: ArtifactImprovementOrchestrationRunReadModel | null;
+  latest_experiment: ArtifactImprovementExperimentReadModel | null;
+  latest_trading_evaluation_result: ArtifactImprovementEvaluationResultReadModel | null;
+  evidence: {
+    status: "missing" | "not_sealed";
+    reason: "evaluation_required" | "evidence_sealing_not_run";
+    authority_status: "not_counted";
+  };
+  promotion: {
+    status: "not_promoted";
+    reason: "promotion_requires_sealed_evidence";
+    authority_status: "not_live";
+  };
+  no_authority: {
+    live_exchange: false;
+    order_authority: false;
+    credentials: false;
+    promotion: false;
+  };
+}
+
+export interface ArtifactImprovementLoopReadModelInput {
+  research_findings?: ResearchFindingRecord[];
+  artifact_change_proposals?: ArtifactChangeProposalRecord[];
+  materialization_attempts?: ArtifactChangeProposalMaterializationAttemptRecord[];
+  research_orchestration_runs?: ResearchOrchestrationRunRecord[];
+  experiment_runs?: ExperimentRunRecord[];
+  trading_evaluation_results?: TradingEvaluationResultRecord[];
+}
+
+export function buildArtifactImprovementLoopReadModel(
+  input: ArtifactImprovementLoopReadModelInput = {}
+): ArtifactImprovementLoopReadModel {
+  const findings = input.research_findings ?? [];
+  const proposals = input.artifact_change_proposals ?? [];
+  const materializationAttempts = input.materialization_attempts ?? [];
+  const orchestrationRuns = input.research_orchestration_runs ?? [];
+  const experiments = input.experiment_runs ?? [];
+  const evaluationResults = input.trading_evaluation_results ?? [];
+
+  const latestProposal = latestByTime(
+    proposals,
+    (proposal) => proposal.created_at,
+    (proposal) => proposal.artifact_change_proposal_id
+  );
+  const sourceFinding = latestProposal
+    ? findingForProposal(findings, latestProposal)
+    : latestByTime(
+        findings.filter((finding) =>
+          finding.finding_kind === "next_artifact_hint" || finding.finding_kind === "positive_result"
+        ),
+        (finding) => finding.created_at,
+        (finding) => finding.research_finding_id
+      );
+  const materializationAttempt = latestProposal
+    ? latestByTime(
+        materializationAttempts.filter((attempt) =>
+          attempt.output_artifact_proposal_ref?.id === latestProposal.artifact_change_proposal_id
+        ),
+        (attempt) => attempt.created_at,
+        (attempt) => attempt.artifact_change_proposal_materialization_attempt_id
+      )
+    : latestByTime(
+        materializationAttempts,
+        (attempt) => attempt.created_at,
+        (attempt) => attempt.artifact_change_proposal_materialization_attempt_id
+      );
+  const orchestrationRun = latestProposal
+    ? latestByTime(
+        orchestrationRuns.filter((run) =>
+          run.output_artifact_proposal_ref?.id === latestProposal.artifact_change_proposal_id
+        ),
+        (run) => run.completed_at ?? run.started_at,
+        (run) => run.research_orchestration_run_id
+      )
+    : latestByTime(
+        orchestrationRuns,
+        (run) => run.completed_at ?? run.started_at,
+        (run) => run.research_orchestration_run_id
+      );
+  const experiment = latestProposal
+    ? latestByTime(
+        experiments.filter((item) =>
+          item.runnable_artifact_ref.id === latestProposal.proposed_runnable_artifact_ref.id
+        ),
+        (item) => item.submitted_at,
+        (item) => item.experiment_run_id
+      )
+    : latestByTime(
+        experiments,
+        (item) => item.submitted_at,
+        (item) => item.experiment_run_id
+      );
+  const evaluationResult = experiment
+    ? latestByTime(
+        evaluationResults.filter((result) =>
+          result.experiment_run_ref.id === experiment.experiment_run_id
+        ),
+        (result) => result.completed_at,
+        (result) => result.trading_evaluation_result_id
+      )
+    : latestByTime(
+        evaluationResults,
+        (result) => result.completed_at,
+        (result) => result.trading_evaluation_result_id
+      );
+  const hasActivity = Boolean(
+    findings.length ||
+    proposals.length ||
+    materializationAttempts.length ||
+    orchestrationRuns.length ||
+    experiments.length ||
+    evaluationResults.length
+  );
+  const evaluationChainComplete = Boolean(latestProposal && experiment && evaluationResult);
+
+  return {
+    loop_kind: "artifact_improvement_loop",
+    source_model: "automated_alignment_researcher",
+    has_activity: hasActivity,
+    proposal_chain_complete: Boolean(latestProposal && materializationAttempt && orchestrationRun),
+    evaluation_chain_complete: evaluationChainComplete,
+    chain_complete: evaluationChainComplete,
+    latest_source_finding: sourceFinding ? toArtifactImprovementSourceFindingReadModel(sourceFinding) : null,
+    latest_artifact_change_proposal: latestProposal
+      ? toArtifactImprovementProposalReadModel(latestProposal)
+      : null,
+    latest_materialization_attempt: materializationAttempt
+      ? toArtifactImprovementMaterializationAttemptReadModel(materializationAttempt)
+      : null,
+    latest_orchestration_run: orchestrationRun
+      ? toArtifactImprovementOrchestrationRunReadModel(orchestrationRun)
+      : null,
+    latest_experiment: experiment ? toArtifactImprovementExperimentReadModel(experiment) : null,
+    latest_trading_evaluation_result: evaluationResult
+      ? toArtifactImprovementEvaluationResultReadModel(evaluationResult)
+      : null,
+    evidence: evaluationResult
+      ? {
+          status: "not_sealed",
+          reason: "evidence_sealing_not_run",
+          authority_status: "not_counted"
+        }
+      : {
+          status: "missing",
+          reason: "evaluation_required",
+          authority_status: "not_counted"
+        },
+    promotion: {
+      status: "not_promoted",
+      reason: "promotion_requires_sealed_evidence",
+      authority_status: "not_live"
+    },
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      promotion: false
+    }
+  };
+}
+
+function findingForProposal(
+  findings: ResearchFindingRecord[],
+  proposal: ArtifactChangeProposalRecord
+): ResearchFindingRecord | undefined {
+  const sourceIds = new Set(proposal.source_finding_refs.map((findingRef) => findingRef.id));
+  return latestByTime(
+    findings.filter((finding) => sourceIds.has(finding.research_finding_id)),
+    (finding) => finding.created_at,
+    (finding) => finding.research_finding_id
+  );
+}
+
+function toArtifactImprovementSourceFindingReadModel(
+  finding: ResearchFindingRecord
+): ArtifactImprovementSourceFindingReadModel {
+  return {
+    finding_id: finding.research_finding_id,
+    finding_kind: finding.finding_kind,
+    summary: finding.summary,
+    research_worker_ref: finding.research_worker_ref,
+    research_direction_ref: finding.research_direction_ref,
+    created_at: finding.created_at,
+    authority_status: finding.authority_status
+  };
+}
+
+function toArtifactImprovementProposalReadModel(
+  proposal: ArtifactChangeProposalRecord
+): ArtifactImprovementProposalReadModel {
+  return {
+    proposal_id: proposal.artifact_change_proposal_id,
+    proposed_runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    parent_runnable_artifact_ref: proposal.parent_runnable_artifact_ref,
+    proposal_summary: proposal.proposal_summary,
+    requested_change_summary: proposal.requested_change_summary,
+    expected_improvement_summary: proposal.expected_improvement_summary,
+    source_finding_refs: proposal.source_finding_refs,
+    anti_hacking_finding_refs: proposal.anti_hacking_finding_refs ?? [],
+    status: proposal.status,
+    created_at: proposal.created_at,
+    authority_status: proposal.authority_status
+  };
+}
+
+function toArtifactImprovementMaterializationAttemptReadModel(
+  attempt: ArtifactChangeProposalMaterializationAttemptRecord
+): ArtifactImprovementMaterializationAttemptReadModel {
+  return {
+    attempt_id: attempt.artifact_change_proposal_materialization_attempt_id,
+    provider: attempt.provider,
+    status: attempt.status,
+    validation_status: attempt.validation_status,
+    failure_reason: attempt.failure_reason,
+    output_artifact_proposal_ref: attempt.output_artifact_proposal_ref,
+    output_runnable_artifact_ref: attempt.output_runnable_artifact_ref,
+    output_lineage_ref: attempt.output_lineage_ref,
+    created_at: attempt.created_at,
+    authority_status: attempt.authority_status
+  };
+}
+
+function toArtifactImprovementOrchestrationRunReadModel(
+  run: ResearchOrchestrationRunRecord
+): ArtifactImprovementOrchestrationRunReadModel {
+  return {
+    run_id: run.research_orchestration_run_id,
+    input_finding_refs: run.input_finding_refs,
+    input_lineage_refs: run.input_lineage_refs ?? [],
+    output_artifact_proposal_ref: run.output_artifact_proposal_ref,
+    output_runnable_artifact_ref: run.output_runnable_artifact_ref,
+    output_lineage_ref: run.output_lineage_ref,
+    trace_ref: run.trace_ref,
+    status: run.status,
+    started_at: run.started_at,
+    completed_at: run.completed_at,
+    authority_status: run.authority_status
+  };
+}
+
+function toArtifactImprovementExperimentReadModel(
+  experiment: ExperimentRunRecord
+): ArtifactImprovementExperimentReadModel {
+  return {
+    experiment_id: experiment.experiment_run_id,
+    runnable_artifact_ref: experiment.runnable_artifact_ref,
+    sandbox_runtime_instance_ref: experiment.sandbox_runtime_instance_ref,
+    runtime_trace_refs: experiment.runtime_trace_refs ?? [],
+    trace_ref: experiment.trace_ref,
+    status: experiment.status,
+    submitted_at: experiment.submitted_at,
+    authority_status: experiment.authority_status
+  };
+}
+
+function toArtifactImprovementEvaluationResultReadModel(
+  result: TradingEvaluationResultRecord
+): ArtifactImprovementEvaluationResultReadModel {
+  return {
+    result_id: result.trading_evaluation_result_id,
+    experiment_run_ref: result.experiment_run_ref,
+    result_status: result.result_status,
+    evidence_disposition: result.evidence_disposition,
+    total_score: result.score_summary.total_score,
+    evaluator_trace_ref: result.evaluator_trace_ref,
+    completed_at: result.completed_at,
+    authority_status: result.authority_status
+  };
+}
+
+function latestByTime<T>(
+  values: T[],
+  timeOf: (value: T) => string,
+  idOf: (value: T) => string
+): T | undefined {
+  return [...values].sort((a, b) => {
+    const timeCompare = timeOf(a).localeCompare(timeOf(b));
+    if (timeCompare !== 0) {
+      return timeCompare;
+    }
+    return idOf(a).localeCompare(idOf(b));
+  }).at(-1);
+}
+
 export interface TradingLedgerReadModel {
   ledger_kind: "trading_ledger";
   has_activity: boolean;
@@ -2731,6 +3099,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     trading_ledger?: TradingLedgerReadModel;
     runtime_control?: ReplayRuntimeControlReadModel;
   };
+  improvement_loop?: ArtifactImprovementLoopReadModel;
   trading_substrate?: TradingSubstrateReadModel;
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;

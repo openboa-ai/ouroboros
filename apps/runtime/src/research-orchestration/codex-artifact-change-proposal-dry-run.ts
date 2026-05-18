@@ -24,6 +24,7 @@ export interface CodexArtifactChangeProposalDryRunInput {
   store_root?: string;
   store?: LocalStore;
   provider_adapter?: ArtifactChangeProposalProviderAdapter;
+  parent_runnable_artifact_ref?: Ref;
   idempotency_key?: string;
   created_at?: string;
   initialize_store?: boolean;
@@ -76,6 +77,7 @@ export async function runCodexArtifactChangeProposalDryRun(
       store,
       task: codexArtifactChangeProposalDryRunTask(input.created_at),
       provider_adapter: providerAdapter,
+      parent_runnable_artifact_ref: input.parent_runnable_artifact_ref,
       idempotency_key: idempotencyKey,
       created_at: input.created_at
     });

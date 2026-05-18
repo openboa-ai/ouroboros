@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { buildArtifactImprovementLoopReadModel } from "./index";
 import type {
   ArtifactLineageRecord,
   ArtifactChangeProposalRecord,
+  ArtifactChangeProposalMaterializationAttemptRecord,
+  ExperimentRunRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
   Ref,
   RunnableArtifactRecord,
+  TradingEvaluationResultRecord,
   TradingEvaluationTaskRecord
 } from "./index";
 
@@ -60,6 +64,79 @@ describe("automated research orchestration proposal contracts", () => {
     expect(JSON.stringify({ proposal, run, artifact, lineage })).not.toMatch(
       /strategy_internals|venue_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/
     );
+  });
+
+  it("projects an AAR-inspired improvement loop without promoting or opening trading authority", () => {
+    const task = fixtureTradingEvaluationTask();
+    const sourceFinding = researchFinding("research-finding-market-trend-cost-survival-001", "next_artifact_hint");
+    const antiHackingFinding = researchFinding("research-finding-market-lookahead-leakage-001", "anti_hacking_case");
+    const proposal = artifactProposal({
+      sourceFinding,
+      antiHackingFinding,
+      task
+    });
+    const materializationAttempt = artifactChangeProposalMaterializationAttempt(proposal);
+    const run = orchestrationRun({
+      sourceFinding,
+      antiHackingFinding,
+      proposal,
+      task
+    });
+    const experiment = experimentRun(proposal, task);
+    const evaluationResult = tradingEvaluationResult(experiment, task);
+
+    const loop = buildArtifactImprovementLoopReadModel({
+      research_findings: [sourceFinding, antiHackingFinding],
+      artifact_change_proposals: [proposal],
+      materialization_attempts: [materializationAttempt],
+      research_orchestration_runs: [run],
+      experiment_runs: [experiment],
+      trading_evaluation_results: [evaluationResult]
+    });
+
+    expect(loop).toMatchObject({
+      loop_kind: "artifact_improvement_loop",
+      source_model: "automated_alignment_researcher",
+      has_activity: true,
+      proposal_chain_complete: true,
+      evaluation_chain_complete: true,
+      chain_complete: true,
+      latest_source_finding: {
+        finding_id: sourceFinding.research_finding_id,
+        finding_kind: "next_artifact_hint",
+        authority_status: "research_trace_only"
+      },
+      latest_artifact_change_proposal: {
+        proposal_id: proposal.artifact_change_proposal_id,
+        status: "proposed",
+        authority_status: "proposal_only"
+      },
+      latest_experiment: {
+        experiment_id: experiment.experiment_run_id,
+        status: "evaluated",
+        authority_status: "not_live"
+      },
+      latest_trading_evaluation_result: {
+        result_id: evaluationResult.trading_evaluation_result_id,
+        result_status: "accepted",
+        evidence_disposition: "not_counted",
+        authority_status: "not_counted"
+      },
+      evidence: {
+        status: "not_sealed",
+        authority_status: "not_counted"
+      },
+      promotion: {
+        status: "not_promoted",
+        authority_status: "not_live"
+      },
+      no_authority: {
+        live_exchange: false,
+        order_authority: false,
+        credentials: false,
+        promotion: false
+      }
+    });
   });
 });
 
@@ -202,6 +279,86 @@ function artifactLineage(
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: "2026-05-11T14:02:00.000Z",
     authority_status: "lineage_only"
+  };
+}
+
+function artifactChangeProposalMaterializationAttempt(
+  proposal: ArtifactChangeProposalRecord
+): ArtifactChangeProposalMaterializationAttemptRecord {
+  return {
+    record_kind: "artifact_change_proposal_materialization_attempt",
+    version: 1,
+    artifact_change_proposal_materialization_attempt_id: "artifact-change-proposal-materialization-attempt-market-trend-v2",
+    idempotency_key: "artifact-change-proposal-market-trend-v2",
+    provider: {
+      provider_kind: "fixture_only",
+      model: "deterministic-artifact-change-proposal-planner-fixture",
+      invocation_surface: "fixture"
+    },
+    agent_run_ref: ref("agent_run", "agent-run-market-trend-v2"),
+    agent_event_refs: [ref("agent_event", "agent-event-market-trend-v2")],
+    trace_ref: ref("trace_placeholder", "trace-research-orchestration-market-trend-v2"),
+    provider_output_artifact_refs: [
+      ref("artifact_change_proposal_provider_output_artifact", "provider-output-market-trend-v2")
+    ],
+    debug_artifact_refs: [ref("debug_artifact", "debug-market-trend-v2")],
+    status: "materialized",
+    validation_status: "accepted",
+    output_artifact_proposal_ref: ref("artifact_change_proposal", proposal.artifact_change_proposal_id),
+    output_runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    output_lineage_ref: ref("artifact_lineage", "artifact-lineage-market-trend-001-to-002"),
+    created_at: "2026-05-11T14:02:00.000Z",
+    authority_status: "proposal_input_only"
+  };
+}
+
+function experimentRun(
+  proposal: ArtifactChangeProposalRecord,
+  task: TradingEvaluationTaskRecord
+): ExperimentRunRecord {
+  return {
+    record_kind: "experiment_run",
+    version: 1,
+    experiment_run_id: "experiment-run-market-trend-v2",
+    research_worker_ref: proposal.research_worker_ref,
+    research_direction_ref: proposal.research_direction_ref,
+    runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    trading_evaluation_task_ref: ref("trading_evaluation_task", task.trading_evaluation_task_id),
+    sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", "sandbox-runtime-instance-market-trend-v2"),
+    runtime_trace_refs: [ref("trace_placeholder", "trace-runtime-market-trend-v2")],
+    trace_ref: ref("trace_placeholder", "trace-runtime-market-trend-v2"),
+    submitted_at: "2026-05-11T14:03:00.000Z",
+    status: "evaluated",
+    authority_status: "not_live"
+  };
+}
+
+function tradingEvaluationResult(
+  experiment: ExperimentRunRecord,
+  task: TradingEvaluationTaskRecord
+): TradingEvaluationResultRecord {
+  return {
+    record_kind: "trading_evaluation_result",
+    version: 1,
+    trading_evaluation_result_id: "trading-evaluation-result-market-trend-v2",
+    experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
+    trading_evaluation_task_ref: ref("trading_evaluation_task", task.trading_evaluation_task_id),
+    evaluator_ref: ref("external_evaluator", "sealed-replay-fixture-evaluator-v1"),
+    result_status: "accepted",
+    evidence_disposition: "not_counted",
+    score_summary: {
+      total_score: 0.72,
+      oos_score: 0.7,
+      drawdown_score: 0.8,
+      turnover_score: 0.6,
+      cost_survival_score: 0.75,
+      reproducibility_score: 0.78,
+      complexity_penalty: 0.01
+    },
+    metric_refs: [ref("metric_snapshot", "metric-market-trend-v2")],
+    evaluator_trace_ref: ref("trace_placeholder", "trace-evaluator-market-trend-v2"),
+    completed_at: "2026-05-11T14:04:00.000Z",
+    authority_status: "not_counted"
   };
 }
 

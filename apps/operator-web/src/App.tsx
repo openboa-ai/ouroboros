@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { buildTradingLedgerReadModel } from "@ouroboros/domain";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
+  ArtifactImprovementLoopReadModel,
   CandidateEvaluationReadModel,
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
@@ -37,6 +38,7 @@ import {
   fetchTradingExecutionModeContracts,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordReplayRuntimeControl,
+  runImprovementLoop as submitImprovementLoop,
   runReplay as submitReplayRun,
   runTradingLoop as submitTradingLoop,
   type PrivateReadinessPostureDraft
@@ -62,6 +64,7 @@ interface AppState {
   error?: string;
   loading: boolean;
   runningTradingLoop: boolean;
+  runningImprovementLoop: boolean;
   recordingRuntimeControl: boolean;
   recordingPrivateReadinessPosture: boolean;
   runningCandidateReplay: boolean;
@@ -69,6 +72,8 @@ interface AppState {
   replayRunMessage?: string;
   tradingLoopError?: string;
   tradingLoopMessage?: string;
+  improvementLoopError?: string;
+  improvementLoopMessage?: string;
   runtimeControlError?: string;
   runtimeControlMessage?: string;
   privateReadinessPostureError?: string;
@@ -82,6 +87,7 @@ export function App() {
     replayRuns: [],
     loading: true,
     runningTradingLoop: false,
+    runningImprovementLoop: false,
     recordingRuntimeControl: false,
     recordingPrivateReadinessPosture: false,
     runningCandidateReplay: false
@@ -116,6 +122,7 @@ export function App() {
             replayRunValidationState: replayRunSelection.replayRunValidationState,
             loading: false,
             runningTradingLoop: false,
+            runningImprovementLoop: false,
             recordingRuntimeControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false
@@ -129,6 +136,7 @@ export function App() {
             replayRuns: [],
             loading: false,
             runningTradingLoop: false,
+            runningImprovementLoop: false,
             recordingRuntimeControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false,
@@ -149,6 +157,8 @@ export function App() {
       loading: true,
       tradingLoopError: undefined,
       tradingLoopMessage: undefined,
+      improvementLoopError: undefined,
+      improvementLoopMessage: undefined,
       runtimeControlError: undefined,
       runtimeControlMessage: undefined,
       privateReadinessPostureError: undefined,
@@ -310,6 +320,48 @@ export function App() {
     }
   }
 
+  async function runImprovementLoop() {
+    const candidate = state.selected;
+    if (!candidate || state.runningImprovementLoop) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      runningImprovementLoop: true,
+      improvementLoopError: undefined,
+      improvementLoopMessage: undefined
+    }));
+    try {
+      const outcome = await submitImprovementLoop(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(
+        candidate.candidate_id,
+        replayRuns,
+        state.selectedReplayRunId
+      );
+      setState((current) => ({
+        ...current,
+        selected,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
+        runningImprovementLoop: false,
+        improvementLoopMessage: `evaluation recorded: ${outcome.trading_evaluation_result.result_id}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningImprovementLoop: false,
+        improvementLoopError: error instanceof Error ? error.message : "Unknown improvement loop error"
+      }));
+    }
+  }
+
   async function recordRuntimeControl() {
     const candidate = state.selected;
     if (!candidate || state.recordingRuntimeControl) {
@@ -436,11 +488,13 @@ export function App() {
             onRunTradingLoop={(state.selected.runtime.trading_ledger ?? state.selected.runtime.bounded_authority)
               ? () => void runTradingLoop()
               : undefined}
+            onRunImprovementLoop={() => void runImprovementLoop()}
             onRecordRuntimeControl={state.selected.runtime.runtime_control
               ? () => void recordRuntimeControl()
               : undefined}
             onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
             runningTradingLoop={state.runningTradingLoop}
+            runningImprovementLoop={state.runningImprovementLoop}
             recordingRuntimeControl={state.recordingRuntimeControl}
             recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
             runningCandidateReplay={state.runningCandidateReplay}
@@ -448,6 +502,8 @@ export function App() {
             replayRunMessage={state.replayRunMessage}
             tradingLoopError={state.tradingLoopError}
             tradingLoopMessage={state.tradingLoopMessage}
+            improvementLoopError={state.improvementLoopError}
+            improvementLoopMessage={state.improvementLoopMessage}
             runtimeControlError={state.runtimeControlError}
             runtimeControlMessage={state.runtimeControlMessage}
             privateReadinessPostureError={state.privateReadinessPostureError}
@@ -533,16 +589,20 @@ export function CandidateDetail({
   onSelectReplayRun,
   onRunCandidateReplay,
   onRunTradingLoop,
+  onRunImprovementLoop,
   onRecordRuntimeControl,
   onRecordPrivateReadinessPosture,
   runningCandidateReplay = false,
   runningTradingLoop = false,
+  runningImprovementLoop = false,
   recordingRuntimeControl = false,
   recordingPrivateReadinessPosture = false,
   replayRunError,
   replayRunMessage,
   tradingLoopError,
   tradingLoopMessage,
+  improvementLoopError,
+  improvementLoopMessage,
   runtimeControlError,
   runtimeControlMessage,
   privateReadinessPostureError,
@@ -560,16 +620,20 @@ export function CandidateDetail({
   onSelectReplayRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onRunTradingLoop?: () => void;
+  onRunImprovementLoop?: () => void;
   onRecordRuntimeControl?: () => void;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   runningCandidateReplay?: boolean;
   runningTradingLoop?: boolean;
+  runningImprovementLoop?: boolean;
   recordingRuntimeControl?: boolean;
   recordingPrivateReadinessPosture?: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
   tradingLoopError?: string;
   tradingLoopMessage?: string;
+  improvementLoopError?: string;
+  improvementLoopMessage?: string;
   runtimeControlError?: string;
   runtimeControlMessage?: string;
   privateReadinessPostureError?: string;
@@ -668,6 +732,14 @@ export function CandidateDetail({
         </InfoSection>
 
         <MaterializationAttemptSection attempt={candidate.materialization_attempt} />
+
+        <ImprovementLoopSection
+          loop={candidate.improvement_loop}
+          onRunImprovementLoop={onRunImprovementLoop}
+          runningImprovementLoop={runningImprovementLoop}
+          improvementLoopError={improvementLoopError}
+          improvementLoopMessage={improvementLoopMessage}
+        />
 
         <InfoSection title="Runtime">
           <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
@@ -2721,6 +2793,148 @@ function runtimeControlPolicyAlignment(
     return "policy_blocked";
   }
   return "policy_not_ready";
+}
+
+function ImprovementLoopSection({
+  loop,
+  onRunImprovementLoop,
+  runningImprovementLoop,
+  improvementLoopError,
+  improvementLoopMessage
+}: {
+  loop?: ArtifactImprovementLoopReadModel;
+  onRunImprovementLoop?: () => void;
+  runningImprovementLoop: boolean;
+  improvementLoopError?: string;
+  improvementLoopMessage?: string;
+}) {
+  const statusLabel = loop?.chain_complete
+    ? "chain complete"
+    : loop?.has_activity
+      ? "incomplete"
+      : "none";
+
+  return (
+    <InfoSection title="Improvement loop">
+      <div className={`evaluation-status ${loop?.chain_complete ? "counted" : "neutral"}`}>
+        <span>Proposal / experiment / evaluation</span>
+        <strong>{statusLabel}</strong>
+        <span>{loop?.promotion.authority_status ?? "not_live"}</span>
+      </div>
+
+      <Field label="Source model" value={loop?.source_model ?? "automated_alignment_researcher"} />
+      <Field label="Proposal chain" value={loop?.proposal_chain_complete ? "complete" : "incomplete"} />
+      <Field label="Evaluation chain" value={loop?.evaluation_chain_complete ? "complete" : "incomplete"} />
+      <Field label="No-authority boundary" value={`live_exchange=${String(loop?.no_authority.live_exchange ?? false)}, order_authority=${String(loop?.no_authority.order_authority ?? false)}, credentials=${String(loop?.no_authority.credentials ?? false)}`} />
+
+      {loop?.latest_source_finding ? (
+        <div className="evaluation-block">
+          <h4>Source finding</h4>
+          <Field label="Finding" value={loop.latest_source_finding.finding_id} />
+          <Field label="Kind" value={loop.latest_source_finding.finding_kind} />
+          <Field label="Summary" value={loop.latest_source_finding.summary} />
+          <Field label="Authority" value={loop.latest_source_finding.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Source finding</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="research_trace_only" />
+        </div>
+      )}
+
+      {loop?.latest_artifact_change_proposal ? (
+        <div className="evaluation-block">
+          <h4>ArtifactChangeProposal</h4>
+          <Field label="Proposal" value={loop.latest_artifact_change_proposal.proposal_id} />
+          <Field label="Status" value={loop.latest_artifact_change_proposal.status} />
+          <Field label="Proposed artifact" value={formatRef(loop.latest_artifact_change_proposal.proposed_runnable_artifact_ref)} />
+          <Field label="Parent artifact" value={loop.latest_artifact_change_proposal.parent_runnable_artifact_ref ? formatRef(loop.latest_artifact_change_proposal.parent_runnable_artifact_ref) : "none"} />
+          <Field label="Summary" value={loop.latest_artifact_change_proposal.proposal_summary} />
+          <Field label="Authority" value={loop.latest_artifact_change_proposal.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>ArtifactChangeProposal</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="proposal_only" />
+        </div>
+      )}
+
+      {loop?.latest_materialization_attempt && (
+        <div className="evaluation-block">
+          <h4>Materialization</h4>
+          <Field label="Attempt" value={loop.latest_materialization_attempt.attempt_id} />
+          <Field label="Status" value={loop.latest_materialization_attempt.status} />
+          <Field label="Validation" value={loop.latest_materialization_attempt.validation_status} />
+          <Field label="Authority" value={loop.latest_materialization_attempt.authority_status} />
+        </div>
+      )}
+
+      {loop?.latest_experiment ? (
+        <div className="evaluation-block">
+          <h4>Experiment</h4>
+          <Field label="Experiment" value={loop.latest_experiment.experiment_id} />
+          <Field label="Status" value={loop.latest_experiment.status} />
+          <Field label="Artifact" value={formatRef(loop.latest_experiment.runnable_artifact_ref)} />
+          <Field label="Authority" value={loop.latest_experiment.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Experiment</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_live" />
+        </div>
+      )}
+
+      {loop?.latest_trading_evaluation_result ? (
+        <div className="evaluation-block">
+          <h4>Evaluation result</h4>
+          <Field label="Result" value={loop.latest_trading_evaluation_result.result_id} />
+          <Field label="Status" value={loop.latest_trading_evaluation_result.result_status} />
+          <Field label="Disposition" value={loop.latest_trading_evaluation_result.evidence_disposition} />
+          <Field label="Score" value={String(loop.latest_trading_evaluation_result.total_score)} />
+          <Field label="Authority" value={loop.latest_trading_evaluation_result.authority_status} />
+        </div>
+      ) : (
+        <div className="evaluation-block">
+          <h4>Evaluation result</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_counted" />
+        </div>
+      )}
+
+      <div className="evaluation-block">
+        <h4>Evidence</h4>
+        <Field label="Status" value={loop?.evidence.status ?? "missing"} />
+        <Field label="Reason" value={loop?.evidence.reason ?? "evaluation_required"} />
+        <Field label="Authority" value={loop?.evidence.authority_status ?? "not_counted"} />
+      </div>
+
+      <div className="evaluation-block">
+        <h4>Promotion</h4>
+        <Field label="Status" value={loop?.promotion.status ?? "not_promoted"} />
+        <Field label="Reason" value={loop?.promotion.reason ?? "promotion_requires_sealed_evidence"} />
+        <Field label="Authority" value={loop?.promotion.authority_status ?? "not_live"} />
+      </div>
+
+      {onRunImprovementLoop && (
+        <div className="runtime-command">
+          <button
+            className="runtime-command-button"
+            type="button"
+            onClick={onRunImprovementLoop}
+            disabled={runningImprovementLoop}
+          >
+            {runningImprovementLoop ? "Running improvement loop" : "Run improvement loop"}
+          </button>
+          <span>proposal_only / sandbox_evaluation / not_live</span>
+        </div>
+      )}
+      {improvementLoopMessage && <div className="inline-status">{improvementLoopMessage}</div>}
+      {improvementLoopError && <div className="inline-status error">{improvementLoopError}</div>}
+    </InfoSection>
+  );
 }
 
 function TradingLedgerSection({

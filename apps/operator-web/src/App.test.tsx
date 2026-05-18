@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { buildTradingLedgerReadModel } from "@ouroboros/domain";
 import type {
+  ArtifactImprovementLoopReadModel,
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
   CandidateLatestValidationStateReadModel,
@@ -1108,6 +1109,35 @@ describe("CandidateDetail", () => {
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
+  it("renders the artifact improvement loop without promotion or trading authority", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={candidateWithImprovementLoop(artifactImprovementLoop())}
+        onRunImprovementLoop={() => undefined}
+        improvementLoopMessage="evaluation recorded: trading-evaluation-result-001"
+      />
+    );
+
+    expect(html).toContain("Improvement loop");
+    expect(html).toContain("automated_alignment_researcher");
+    expect(html).toContain("chain complete");
+    expect(html).toContain("Source finding");
+    expect(html).toContain("ArtifactChangeProposal");
+    expect(html).toContain("artifact-change-proposal-001");
+    expect(html).toContain("Experiment");
+    expect(html).toContain("experiment-run-001");
+    expect(html).toContain("Evaluation result");
+    expect(html).toContain("accepted");
+    expect(html).toContain("not_counted");
+    expect(html).toContain("Evidence");
+    expect(html).toContain("not_sealed");
+    expect(html).toContain("Promotion");
+    expect(html).toContain("not_promoted");
+    expect(html).toContain("Run improvement loop");
+    expect(html).not.toContain("Run provider");
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+  });
+
   it("renders trading gateway environment without exposing secret values", () => {
     const html = renderToStaticMarkup(
       <TradingGatewayEnvironmentSection environment={tradingGatewayEnvironment()} />
@@ -1405,6 +1435,15 @@ function candidateWithRuntimeAuthority(
       bounded_authority: boundedAuthority,
       trading_ledger: buildTradingLedgerReadModel(boundedAuthority)
     }
+  };
+}
+
+function candidateWithImprovementLoop(
+  improvementLoop: ArtifactImprovementLoopReadModel
+): CandidateInspectReadModel {
+  return {
+    ...fixtureCandidate,
+    improvement_loop: improvementLoop
   };
 }
 
@@ -1795,6 +1834,103 @@ function runtimeAuthority(): ReplayRuntimeAuthorityReadModel {
       label: "Execution attempt",
       status: "dry_run_recorded",
       authority_status: "dry_run_only"
+    }
+  };
+}
+
+function artifactImprovementLoop(): ArtifactImprovementLoopReadModel {
+  return {
+    loop_kind: "artifact_improvement_loop",
+    source_model: "automated_alignment_researcher",
+    has_activity: true,
+    proposal_chain_complete: true,
+    evaluation_chain_complete: true,
+    chain_complete: true,
+    latest_source_finding: {
+      finding_id: "research-finding-001",
+      finding_kind: "failure_analysis",
+      summary: "Limit-order sizing is too brittle in a flat market fixture.",
+      research_worker_ref: { record_kind: "research_worker", id: "research-worker-001" },
+      research_direction_ref: { record_kind: "research_direction", id: "research-direction-001" },
+      created_at: "2026-05-18T00:00:00.000Z",
+      authority_status: "research_trace_only"
+    },
+    latest_artifact_change_proposal: {
+      proposal_id: "artifact-change-proposal-001",
+      proposed_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
+      parent_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-001" },
+      proposal_summary: "Adjust the fixture trading artifact to emit a valid dry-run order intent.",
+      requested_change_summary: "Keep the change limited to the generated artifact.",
+      expected_improvement_summary: "The next sandbox experiment should produce an accepted evaluation result.",
+      source_finding_refs: [{ record_kind: "research_finding", id: "research-finding-001" }],
+      anti_hacking_finding_refs: [],
+      status: "proposed",
+      created_at: "2026-05-18T00:01:00.000Z",
+      authority_status: "proposal_only"
+    },
+    latest_materialization_attempt: {
+      attempt_id: "materialization-attempt-001",
+      provider: {
+        provider_kind: "codex_cli",
+        model: "fixture-model",
+        invocation_surface: "local_fixture"
+      },
+      status: "materialized",
+      validation_status: "accepted",
+      output_artifact_proposal_ref: { record_kind: "artifact_change_proposal", id: "artifact-change-proposal-001" },
+      output_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
+      output_lineage_ref: { record_kind: "artifact_lineage", id: "artifact-lineage-001" },
+      created_at: "2026-05-18T00:02:00.000Z",
+      authority_status: "proposal_input_only"
+    },
+    latest_orchestration_run: {
+      run_id: "research-orchestration-run-001",
+      input_finding_refs: [{ record_kind: "research_finding", id: "research-finding-001" }],
+      input_lineage_refs: [{ record_kind: "artifact_lineage", id: "artifact-lineage-000" }],
+      output_artifact_proposal_ref: { record_kind: "artifact_change_proposal", id: "artifact-change-proposal-001" },
+      output_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
+      output_lineage_ref: { record_kind: "artifact_lineage", id: "artifact-lineage-001" },
+      trace_ref: { record_kind: "trace", id: "trace-001" },
+      status: "proposed",
+      started_at: "2026-05-18T00:00:30.000Z",
+      completed_at: "2026-05-18T00:02:30.000Z",
+      authority_status: "research_only"
+    },
+    latest_experiment: {
+      experiment_id: "experiment-run-001",
+      runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
+      sandbox_runtime_instance_ref: { record_kind: "sandbox_runtime_instance", id: "sandbox-runtime-001" },
+      runtime_trace_refs: [{ record_kind: "trace", id: "runtime-trace-001" }],
+      trace_ref: { record_kind: "trace", id: "experiment-trace-001" },
+      status: "evaluated",
+      submitted_at: "2026-05-18T00:03:00.000Z",
+      authority_status: "not_live"
+    },
+    latest_trading_evaluation_result: {
+      result_id: "trading-evaluation-result-001",
+      experiment_run_ref: { record_kind: "experiment_run", id: "experiment-run-001" },
+      result_status: "accepted",
+      evidence_disposition: "not_counted",
+      total_score: 1,
+      evaluator_trace_ref: { record_kind: "trace", id: "evaluator-trace-001" },
+      completed_at: "2026-05-18T00:04:00.000Z",
+      authority_status: "not_counted"
+    },
+    evidence: {
+      status: "not_sealed",
+      reason: "evidence_sealing_not_run",
+      authority_status: "not_counted"
+    },
+    promotion: {
+      status: "not_promoted",
+      reason: "promotion_requires_sealed_evidence",
+      authority_status: "not_live"
+    },
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      promotion: false
     }
   };
 }

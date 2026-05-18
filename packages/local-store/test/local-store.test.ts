@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FIXTURE_CANDIDATE_ID, LocalStore } from "../src/index";
+import { FIXTURE_CANDIDATE_ID, FIXTURE_RUNNABLE_ARTIFACT_ID, LocalStore } from "../src/index";
 import {
   BINANCE_BTCUSDT_QUERY,
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
@@ -27,6 +27,7 @@ import type {
   EvidenceClassificationRecord,
   EvaluationComparisonSetRecord,
   ExecutionAttemptRecord,
+  ExperimentRunRecord,
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
   GatewayDecisionRecord,
@@ -42,6 +43,7 @@ import type {
   RuntimeControlDecisionRecord,
   StageBindingRecord,
   TracePlaceholderRecord,
+  TradingEvaluationResultRecord,
   TradingSystemRuntimeRecord
 } from "@ouroboros/domain";
 
@@ -1974,6 +1976,74 @@ describe("LocalStore", () => {
     );
   });
 
+  it("projects the AAR-inspired artifact improvement loop into candidate inspect", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const finding = validResearchFindingRecord();
+    const lineage = validArtifactLineageRecord();
+    const proposal = {
+      ...validArtifactChangeProposalRecord(),
+      parent_runnable_artifact_ref: {
+        record_kind: "runnable_artifact",
+        id: FIXTURE_RUNNABLE_ARTIFACT_ID
+      }
+    } satisfies ArtifactChangeProposalRecord;
+    const artifact = validProposedRunnableArtifactRecord();
+    const run = validResearchOrchestrationRunRecord();
+    const experiment = validExperimentRunRecord(proposal);
+    const evaluationResult = validTradingEvaluationResultRecord(experiment);
+
+    await store.recordResearchFinding(finding);
+    await store.recordArtifactLineage(lineage);
+    await store.recordArtifactChangeProposal(proposal);
+    await store.recordRunnableArtifact(artifact);
+    await store.recordResearchOrchestrationRun(run);
+    await store.recordExperimentRun(experiment);
+    await store.recordTradingEvaluationResult(evaluationResult);
+    await store.rebuildProjections();
+
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+
+    expect(candidate?.improvement_loop).toMatchObject({
+      loop_kind: "artifact_improvement_loop",
+      source_model: "automated_alignment_researcher",
+      proposal_chain_complete: false,
+      evaluation_chain_complete: true,
+      chain_complete: true,
+      latest_source_finding: {
+        finding_id: finding.research_finding_id,
+        authority_status: "research_trace_only"
+      },
+      latest_artifact_change_proposal: {
+        proposal_id: proposal.artifact_change_proposal_id,
+        parent_runnable_artifact_ref: {
+          record_kind: "runnable_artifact",
+          id: FIXTURE_RUNNABLE_ARTIFACT_ID
+        },
+        authority_status: "proposal_only"
+      },
+      latest_experiment: {
+        experiment_id: experiment.experiment_run_id,
+        authority_status: "not_live"
+      },
+      latest_trading_evaluation_result: {
+        result_id: evaluationResult.trading_evaluation_result_id,
+        evidence_disposition: "not_counted",
+        authority_status: "not_counted"
+      },
+      promotion: {
+        status: "not_promoted",
+        authority_status: "not_live"
+      },
+      no_authority: {
+        live_exchange: false,
+        order_authority: false,
+        credentials: false,
+        promotion: false
+      }
+    });
+  });
+
   it("materializes accepted provider proposal output into owned automated research records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -2742,6 +2812,62 @@ function validResearchOrchestrationRunRecord(): ResearchOrchestrationRunRecord {
     completed_at: "2026-05-11T00:06:01.000Z",
     status: "proposed",
     authority_status: "research_only"
+  };
+}
+
+function validExperimentRunRecord(proposal: ArtifactChangeProposalRecord): ExperimentRunRecord {
+  return {
+    record_kind: "experiment_run",
+    version: 1,
+    experiment_run_id: "experiment-run-market-breakout-v2",
+    research_worker_ref: proposal.research_worker_ref,
+    research_direction_ref: proposal.research_direction_ref,
+    runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    trading_evaluation_task_ref: proposal.trading_evaluation_task_ref,
+    sandbox_runtime_instance_ref: {
+      record_kind: "sandbox_runtime_instance",
+      id: "sandbox-runtime-instance-market-breakout-v2"
+    },
+    runtime_trace_refs: [
+      { record_kind: "trace_placeholder", id: "trace-runtime-market-breakout-v2" }
+    ],
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-market-breakout-v2" },
+    submitted_at: "2026-05-11T00:07:00.000Z",
+    status: "evaluated",
+    authority_status: "not_live"
+  };
+}
+
+function validTradingEvaluationResultRecord(
+  experiment: ExperimentRunRecord
+): TradingEvaluationResultRecord {
+  return {
+    record_kind: "trading_evaluation_result",
+    version: 1,
+    trading_evaluation_result_id: "trading-evaluation-result-market-breakout-v2",
+    experiment_run_ref: {
+      record_kind: "experiment_run",
+      id: experiment.experiment_run_id
+    },
+    trading_evaluation_task_ref: experiment.trading_evaluation_task_ref,
+    evaluator_ref: { record_kind: "external_evaluator", id: "sealed-replay-fixture-evaluator-v1" },
+    result_status: "accepted",
+    evidence_disposition: "not_counted",
+    score_summary: {
+      total_score: 0.71,
+      oos_score: 0.7,
+      drawdown_score: 0.78,
+      turnover_score: 0.62,
+      cost_survival_score: 0.74,
+      reproducibility_score: 0.77,
+      complexity_penalty: 0.01
+    },
+    metric_refs: [
+      { record_kind: "metric_snapshot", id: "metric-market-breakout-v2" }
+    ],
+    evaluator_trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluator-market-breakout-v2" },
+    completed_at: "2026-05-11T00:08:00.000Z",
+    authority_status: "not_counted"
   };
 }
 

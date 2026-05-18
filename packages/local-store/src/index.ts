@@ -36,7 +36,7 @@ import type {
   PrivateReadinessPreflightSurfaceQueryInput,
   PublicMarketLivenessSurfaceQueryInput
 } from "./trading-substrate-surfaces";
-import { buildTradingLedgerReadModel } from "@ouroboros/domain";
+import { buildArtifactImprovementLoopReadModel, buildTradingLedgerReadModel } from "@ouroboros/domain";
 export type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 export type {
   AccountPositionRiskMirrorSurfaceQueryInput,
@@ -47,6 +47,7 @@ export type {
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   AccountPositionRiskMirrorSurfaceRecord,
+  ArtifactImprovementLoopReadModel,
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
@@ -3175,6 +3176,7 @@ export class LocalStore {
       : undefined;
     const latestTradingSubstrate = await buildLatestBinanceBtcusdtTradingSubstrateProjection(this);
     const boundedAuthority = await this.buildReplayRuntimeAuthorityReadModel(runtime);
+    const improvementLoop = await this.buildArtifactImprovementLoopReadModel(candidate, version);
 
     return {
       ...this.toCandidateSummary(candidate),
@@ -3242,6 +3244,7 @@ export class LocalStore {
         trading_ledger: buildTradingLedgerReadModel(boundedAuthority),
         runtime_control: await this.buildReplayRuntimeControlReadModel(runtime)
       },
+      improvement_loop: improvementLoop,
       trading_substrate: latestTradingSubstrate,
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
@@ -3249,6 +3252,57 @@ export class LocalStore {
         ? toCandidateMaterializationAttemptReadModel(materializationAttempt)
         : undefined
     };
+  }
+
+  private async buildArtifactImprovementLoopReadModel(
+    candidate: TradingSystemCandidateRecord,
+    version: CandidateVersionRecord
+  ): Promise<ArtifactImprovementLoopReadModel> {
+    const activeRunnableArtifactId = version.runnable_artifact_ref?.id ?? candidate.active_runnable_artifact_ref?.id;
+    const allProposals = await this.listArtifactChangeProposals();
+    const proposals = activeRunnableArtifactId
+      ? allProposals.filter((proposal) =>
+          proposal.parent_runnable_artifact_ref?.id === activeRunnableArtifactId ||
+          proposal.proposed_runnable_artifact_ref.id === activeRunnableArtifactId
+        )
+      : allProposals;
+    const proposalIds = new Set(proposals.map((proposal) => proposal.artifact_change_proposal_id));
+    const proposedArtifactIds = new Set(proposals.map((proposal) => proposal.proposed_runnable_artifact_ref.id));
+    const sourceFindingIds = new Set(
+      proposals.flatMap((proposal) => [
+        ...proposal.source_finding_refs,
+        ...(proposal.anti_hacking_finding_refs ?? [])
+      ]).map((findingRef) => findingRef.id)
+    );
+    const findings = (await this.listResearchFindings()).filter((finding) =>
+      sourceFindingIds.has(finding.research_finding_id)
+    );
+    const materializationAttempts = (await this.listArtifactChangeProposalMaterializationAttempts())
+      .filter((attempt) =>
+        attempt.output_artifact_proposal_ref !== undefined &&
+        proposalIds.has(attempt.output_artifact_proposal_ref.id)
+      );
+    const orchestrationRuns = (await this.listResearchOrchestrationRuns())
+      .filter((run) =>
+        run.output_artifact_proposal_ref !== undefined &&
+        proposalIds.has(run.output_artifact_proposal_ref.id)
+      );
+    const experiments = (await this.listExperimentRuns()).filter((experiment) =>
+      proposedArtifactIds.has(experiment.runnable_artifact_ref.id)
+    );
+    const experimentIds = new Set(experiments.map((experiment) => experiment.experiment_run_id));
+    const tradingEvaluationResults = (await this.listTradingEvaluationResults()).filter((result) =>
+      experimentIds.has(result.experiment_run_ref.id)
+    );
+
+    return buildArtifactImprovementLoopReadModel({
+      research_findings: findings,
+      artifact_change_proposals: proposals,
+      materialization_attempts: materializationAttempts,
+      research_orchestration_runs: orchestrationRuns,
+      experiment_runs: experiments,
+      trading_evaluation_results: tradingEvaluationResults
+    });
   }
 
   private async buildReplayRuntimeAuthorityReadModel(

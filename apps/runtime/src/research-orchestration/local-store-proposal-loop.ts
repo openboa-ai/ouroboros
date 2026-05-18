@@ -16,6 +16,7 @@ export interface PlanArtifactChangeProposalFromLocalStoreInput {
   store: LocalStore;
   task: TradingEvaluationTaskRecord;
   provider_adapter?: ArtifactChangeProposalProviderAdapter;
+  parent_runnable_artifact_ref?: Ref;
   idempotency_key?: string;
   created_at?: string;
 }
@@ -48,6 +49,7 @@ export async function planArtifactChangeProposalFromLocalStore(
     existing_lineage_refs: existingLineages.map((lineage) =>
       ref("artifact_lineage", lineage.artifact_lineage_id)
     ),
+    parent_runnable_artifact_ref: input.parent_runnable_artifact_ref,
     input_artifact_refs: findings.map((finding) => ref("research_finding", finding.research_finding_id)),
     agent_run_ref: ref("agent_run", `agent-run-artifact-change-proposal-provider-${suffix}`),
     trace_ref: ref("trace_placeholder", `trace-research-orchestration-${suffix}`),
