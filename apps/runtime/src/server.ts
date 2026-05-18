@@ -10,7 +10,8 @@ import type {
   PrivateReadinessPostureWriteInput,
   Ref,
   RuntimeControlAuditInput,
-  SandboxRuntimeAdapterKind
+  SandboxRuntimeAdapterKind,
+  TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import { FIXTURE_RUNNABLE_ARTIFACT_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "./candidate-evaluation";
@@ -48,6 +49,7 @@ import {
   getTradingSystemExecutionModeContract,
   listTradingSystemExecutionModeContracts
 } from "./trading-execution-mode-contracts";
+import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
 
 export interface BuildServerOptions {
@@ -57,6 +59,8 @@ export interface BuildServerOptions {
   runtimeInstanceAdapters?: Partial<Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter>>;
   replayRunRoot?: string;
   promotedCandidateRoot?: string;
+  tradingGatewayEnv?: Record<string, string | undefined>;
+  tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
 }
 
 interface CreateEvaluationRunBody {
@@ -178,6 +182,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const store = options.store ?? new LocalStore();
   const providerAdapter = options.providerAdapter ?? new CodexCliProviderAdapter();
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
+  const tradingGatewayEnvironment = options.tradingGatewayEnvironment
+    ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
   const runtimeInstanceAdapters: Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter> = {
     deterministic_test: options.runtimeInstanceAdapters?.deterministic_test
       ?? new DeterministicSandboxRuntimeAdapter(),
@@ -200,7 +206,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     service: "ouroboros-runtime",
     mode: "fixture_convenience_mode",
     store_root: store.root(),
+    trading_gateway_environment: tradingGatewayEnvironment,
     projections: "rebuilt_from_authoritative_item_files"
+  }));
+
+  server.get("/api/trading-gateway/environment", async () => ({
+    trading_gateway_environment: tradingGatewayEnvironment
   }));
 
   server.get("/api/trading-execution-modes", async () => ({
@@ -846,7 +857,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           order_intent: outcome.order_intent_draft,
           gateway_decision: outcome.gateway_decision,
           execution_attempt: outcome.execution_attempt,
-          trading_ledger: updatedCandidate.runtime.trading_ledger
+          trading_ledger: updatedCandidate.runtime.trading_ledger,
+          trading_gateway_environment: tradingGatewayEnvironment
         });
       } catch (error) {
         if (error instanceof LocalStoreError) {

@@ -575,7 +575,7 @@ function isBinanceUsdsFuturesConnectorTransport(value: unknown): boolean {
     raw.supported_endpoints.includes("websocket_api") &&
     raw.supported_endpoints.includes("websocket_streams") &&
     raw.production_base_url === "https://fapi.binance.com" &&
-    raw.testnet_base_url === "https://testnet.binancefuture.com" &&
+    raw.testnet_base_url === "https://demo-fapi.binance.com" &&
     raw.integration_role === "transport_only" &&
     raw.authority_status === "not_live"
   );
