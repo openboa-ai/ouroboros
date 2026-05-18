@@ -1,4 +1,5 @@
 import type {
+  ArtifactImprovementLoopReadModel,
   BoundedRuntimeAuthorityInput,
   BoundedRuntimeAuthorityOutcome,
   ReplayRunComparisonReadModel,
@@ -129,6 +130,20 @@ export interface TradingLoopRunOutcome {
   execution_attempt: BoundedRuntimeAuthorityOutcome["execution_attempt"];
   trading_ledger: TradingLedgerReadModel;
   trading_gateway_environment: TradingGatewayEnvironmentReadModel;
+}
+
+export interface ImprovementLoopRunOutcome {
+  status: "evaluated";
+  proposal: {
+    proposal_id: string;
+  };
+  experiment: {
+    experiment_id: string;
+  };
+  trading_evaluation_result: {
+    result_id: string;
+  };
+  improvement_loop: ArtifactImprovementLoopReadModel;
 }
 
 export type RuntimeControlCommandPayload = Omit<RuntimeControlAuditInput, "candidate_id">;
@@ -344,6 +359,18 @@ export async function runTradingLoop(
     throw new Error(`Failed to run trading loop for ${candidate.candidate_id}: ${response.status}`);
   }
   return (await response.json()) as TradingLoopRunOutcome;
+}
+
+export async function runImprovementLoop(
+  candidate: CandidateInspectReadModel
+): Promise<ImprovementLoopRunOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/improvement-loop-runs`, {
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to run improvement loop for ${candidate.candidate_id}: ${response.status}`);
+  }
+  return (await response.json()) as ImprovementLoopRunOutcome;
 }
 
 export async function recordReplayRuntimeControl(

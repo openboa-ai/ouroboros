@@ -51,6 +51,8 @@ import {
 } from "./trading-execution-mode-contracts";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
+import { runCodexArtifactChangeProposalEvaluationDryRun } from "./research-orchestration/codex-artifact-change-proposal-evaluation-dry-run";
+import { FixtureArtifactChangeProposalProviderAdapter } from "./research-orchestration/fixture-artifact-change-proposal-provider";
 
 export interface BuildServerOptions {
   store?: LocalStore;
@@ -871,6 +873,70 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         }
         throw error;
       }
+    }
+  );
+
+  server.post<{ Params: { candidate_id: string } }>(
+    "/api/candidates/:candidate_id/improvement-loop-runs",
+    async (request, reply) => {
+      const candidate = await store.getCandidate(request.params.candidate_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      const candidateVersionId = candidate.candidate_version.candidate_version_id;
+      const idempotencyKey = [
+        "runtime-api-improvement-loop",
+        request.params.candidate_id,
+        candidateVersionId
+      ].join("-");
+      const outcome = await runCodexArtifactChangeProposalEvaluationDryRun({
+        store,
+        initialize_store: false,
+        provider_adapter: new FixtureArtifactChangeProposalProviderAdapter(),
+        parent_runnable_artifact_ref: {
+          record_kind: "runnable_artifact",
+          id: FIXTURE_RUNNABLE_ARTIFACT_ID
+        },
+        idempotency_key: idempotencyKey,
+        created_at: "2026-05-18T00:00:00.000Z",
+        submitted_at: "2026-05-18T00:00:00.000Z"
+      });
+      if (outcome.status === "failed") {
+        return reply.code(422).send({
+          error: "improvement_loop_run_failed",
+          reason: outcome.failure_reason,
+          candidate_id: request.params.candidate_id,
+          candidate_version_id: candidateVersionId,
+          idempotency_key: idempotencyKey
+        });
+      }
+
+      await store.rebuildProjections();
+      const updatedCandidate = await store.getCandidate(request.params.candidate_id);
+      if (!updatedCandidate?.improvement_loop) {
+        return reply.code(500).send({
+          error: "improvement_loop_projection_failed",
+          candidate_id: request.params.candidate_id,
+          candidate_version_id: candidateVersionId,
+          idempotency_key: idempotencyKey
+        });
+      }
+
+      return reply.code(201).send({
+        status: "evaluated",
+        idempotency_key: idempotencyKey,
+        proposal: outcome.proposal.proposal,
+        runnable_artifact: outcome.proposal.runnable_artifact,
+        lineage: outcome.proposal.lineage,
+        orchestration_run: outcome.proposal.run,
+        experiment: outcome.experiment,
+        trading_evaluation_result: outcome.evaluation_result,
+        improvement_loop: updatedCandidate.improvement_loop
+      });
     }
   );
 

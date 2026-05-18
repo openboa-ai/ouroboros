@@ -1022,7 +1022,7 @@ describe("runtime read-only API", () => {
         runner_kind: "host_process"
       }
     });
-    expect(created.statusCode).toBe(201);
+    expect(created.statusCode, created.body).toBe(201);
     expect(created.json()).toMatchObject({
       candidate_id: candidateId,
       run: {
@@ -1730,6 +1730,90 @@ describe("runtime read-only API", () => {
       chain_complete: true,
       latest_execution_attempt: {
         execution_attempt_id: first.json().execution_attempt.execution_attempt_id
+      }
+    });
+
+    await server.close();
+  });
+
+  it("runs a fixture AAR improvement loop and reads it through candidate inspect", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/improvement-loop-runs`
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/improvement-loop-runs`
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(201);
+    expect(duplicate.json().improvement_loop).toMatchObject({
+      loop_kind: "artifact_improvement_loop",
+      proposal_chain_complete: true,
+      evaluation_chain_complete: true,
+      chain_complete: true
+    });
+    expect(first.json()).toMatchObject({
+      status: "evaluated",
+      improvement_loop: {
+        loop_kind: "artifact_improvement_loop",
+        source_model: "automated_alignment_researcher",
+        proposal_chain_complete: true,
+        evaluation_chain_complete: true,
+        chain_complete: true,
+        latest_source_finding: {
+          authority_status: "research_trace_only"
+        },
+        latest_artifact_change_proposal: {
+          status: "proposed",
+          authority_status: "proposal_only"
+        },
+        latest_experiment: {
+          status: "evaluated",
+          authority_status: "not_live"
+        },
+        latest_trading_evaluation_result: {
+          result_status: "accepted",
+          evidence_disposition: "not_counted",
+          authority_status: "not_counted"
+        },
+        evidence: {
+          status: "not_sealed",
+          authority_status: "not_counted"
+        },
+        promotion: {
+          status: "not_promoted",
+          authority_status: "not_live"
+        },
+        no_authority: {
+          live_exchange: false,
+          order_authority: false,
+          credentials: false,
+          promotion: false
+        }
+      }
+    });
+
+    const updatedCandidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(updatedCandidate.statusCode).toBe(200);
+    expect(updatedCandidate.json().improvement_loop).toMatchObject({
+      loop_kind: "artifact_improvement_loop",
+      source_model: "automated_alignment_researcher",
+      chain_complete: true,
+      latest_artifact_change_proposal: {
+        proposal_id: first.json().proposal.artifact_change_proposal_id
+      },
+      latest_experiment: {
+        experiment_id: first.json().experiment.experiment_run_id
+      },
+      latest_trading_evaluation_result: {
+        result_id: first.json().trading_evaluation_result.trading_evaluation_result_id
       }
     });
 
