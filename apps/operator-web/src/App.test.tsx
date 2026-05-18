@@ -22,6 +22,7 @@ import {
   fixturePrivateReadinessPosture,
   fixturePrivateReadinessPreflightSurface,
   fixturePublicMarketLivenessSurface,
+  fixtureTradingGatewayContract,
   ref
 } from "../../../test/support/binance-no-authority";
 import {
@@ -164,6 +165,7 @@ describe("CandidateDetail", () => {
               localPosture,
               fixturePrivateReadinessPosture()
             ],
+            latest_trading_gateway_contract: fixtureTradingGatewayContract(),
             latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
             latest_private_read_gate_decision: fixturePrivateReadGateDecision({
               credential_reference_status: "reference_only",
@@ -234,7 +236,18 @@ describe("CandidateDetail", () => {
     expect(html).toContain("false");
     expect(html).toContain("Private-readiness policy");
     expect(html).toContain("private_readiness_policy_decision");
+    expect(html).toContain("Trading gateway contract");
+    expect(html).toContain("TradingGateway");
+    expect(html).toContain("sandbox_direct_exchange_access=false");
+    expect(html).toContain("USER_DATA, TRADE");
+    expect(html).toContain("order_intent_draft -&gt; gateway_decision -&gt; execution_attempt");
+    expect(html).toContain("GET /fapi/v3/account, GET /fapi/v3/positionRisk");
+    expect(html).toContain("POST /fapi/v1/order");
+    expect(html).toContain("gateway_required=true, authority=not_granted");
     expect(html).toContain("Private-read gate");
+    expect(html.indexOf("Trading gateway contract")).toBeLessThan(
+      html.indexOf("Private-read gate")
+    );
     expect(html).toContain("private_read_gate_decision");
     expect(html).toContain("Gate status");
     expect(html).toContain("not_ready");

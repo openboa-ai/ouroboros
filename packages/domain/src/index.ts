@@ -503,6 +503,7 @@ export const TRADING_SUBSTRATE_CANONICAL_NOUNS = [
   "risk",
   "posture",
   "gate",
+  "gateway",
   "connector",
   "authority",
   "snapshot",
@@ -1073,6 +1074,138 @@ export interface AccountPositionRiskMirrorSurfaceReadModel {
   authority_status: AccountPositionRiskMirrorSurfaceAuthorityStatus;
 }
 
+export type TradingGatewayCapabilityStatus = "enabled" | "disabled";
+
+export type TradingGatewaySecurityType = "MARKET_DATA" | "USER_DATA" | "TRADE";
+
+export type TradingGatewayTrackedRecordKind =
+  | "order_intent_draft"
+  | "gateway_decision"
+  | "execution_attempt";
+
+export interface TradingGatewayContractReadModel {
+  contract_kind: "trading_gateway_contract";
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  evaluated_at: string;
+  gateway_name: "TradingGateway";
+  sandbox_direct_exchange_access: false;
+  gateway_required_for: TradingGatewaySecurityType[];
+  tracking_chain: TradingGatewayTrackedRecordKind[];
+  market_data: {
+    security_type: "MARKET_DATA";
+    status: TradingGatewayCapabilityStatus;
+    source: "public_market_liveness_surface";
+    authority_status: PublicMarketLivenessSurfaceAuthorityStatus;
+  };
+  account_read: {
+    security_type: "USER_DATA";
+    status: TradingGatewayCapabilityStatus;
+    endpoint_labels: Array<"GET /fapi/v3/account" | "GET /fapi/v3/positionRisk">;
+    authority_status: PrivateReadGateDecision["account_balance_position_read_authority"];
+    gateway_required: true;
+  };
+  order_submission: {
+    security_type: "TRADE";
+    status: TradingGatewayCapabilityStatus;
+    endpoint_labels: Array<"POST /fapi/v1/order">;
+    authority_status: PrivateReadGateDecision["order_submission_authority"];
+    gateway_required: true;
+  };
+  no_authority: {
+    raw_secret_material_present: false;
+    no_private_read_performed: true;
+    signed_request_authority: false;
+    live_exchange_authority: false;
+  };
+  authority_status: "not_live";
+}
+
+export interface TradingGatewayContractInput {
+  evaluated_at: string;
+  public_market_liveness_surface?: PublicMarketLivenessSurfaceReadModel | null;
+  private_readiness_preflight_surface?: PrivateReadinessPreflightSurfaceReadModel | null;
+  account_position_risk_mirror_surface?: AccountPositionRiskMirrorSurfaceReadModel | null;
+  private_read_gate_decision?: PrivateReadGateDecision | null;
+}
+
+export function buildTradingGatewayContractReadModel(
+  input: TradingGatewayContractInput
+): TradingGatewayContractReadModel {
+  const scope =
+    input.private_read_gate_decision
+    ?? input.private_readiness_preflight_surface
+    ?? input.account_position_risk_mirror_surface
+    ?? input.public_market_liveness_surface;
+
+  return {
+    contract_kind: "trading_gateway_contract",
+    venue: scope?.venue ?? "binance_usd_m_futures",
+    instrument: scope?.instrument ?? "BTCUSDT",
+    product_category: scope?.product_category ?? "perpetual_futures",
+    evaluated_at: input.evaluated_at,
+    gateway_name: "TradingGateway",
+    sandbox_direct_exchange_access: false,
+    gateway_required_for: ["USER_DATA", "TRADE"],
+    tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+    market_data: {
+      security_type: "MARKET_DATA",
+      status: input.public_market_liveness_surface ? "enabled" : "disabled",
+      source: "public_market_liveness_surface",
+      authority_status: input.public_market_liveness_surface?.authority_status ?? "not_live"
+    },
+    account_read: {
+      security_type: "USER_DATA",
+      status: "disabled",
+      endpoint_labels: accountReadEndpointLabels(input),
+      authority_status:
+        input.private_read_gate_decision?.account_balance_position_read_authority ?? "not_granted",
+      gateway_required: true
+    },
+    order_submission: {
+      security_type: "TRADE",
+      status: "disabled",
+      endpoint_labels: orderSubmissionEndpointLabels(input),
+      authority_status: input.private_read_gate_decision?.order_submission_authority ?? "not_granted",
+      gateway_required: true
+    },
+    no_authority: {
+      raw_secret_material_present: false,
+      no_private_read_performed: true,
+      signed_request_authority: false,
+      live_exchange_authority: false
+    },
+    authority_status: "not_live"
+  };
+}
+
+function accountReadEndpointLabels(
+  input: TradingGatewayContractInput
+): Array<"GET /fapi/v3/account" | "GET /fapi/v3/positionRisk"> {
+  const endpoints = [
+    input.private_readiness_preflight_surface?.account_information_endpoint,
+    input.account_position_risk_mirror_surface?.account_information_endpoint,
+    input.account_position_risk_mirror_surface?.position_information_endpoint
+  ];
+
+  return uniqueStrings(endpoints).length > 0
+    ? uniqueStrings(endpoints) as Array<"GET /fapi/v3/account" | "GET /fapi/v3/positionRisk">
+    : ["GET /fapi/v3/account", "GET /fapi/v3/positionRisk"];
+}
+
+function orderSubmissionEndpointLabels(
+  input: TradingGatewayContractInput
+): Array<"POST /fapi/v1/order"> {
+  return input.private_readiness_preflight_surface?.order_endpoint
+    ? [input.private_readiness_preflight_surface.order_endpoint]
+    : ["POST /fapi/v1/order"];
+}
+
+function uniqueStrings<T extends string>(values: ReadonlyArray<T | undefined>): T[] {
+  return [...new Set(values.filter((value): value is T => typeof value === "string"))];
+}
+
 export interface TradingSubstrateReadModel {
   latest_order_fill_surface: OrderFillSurfaceReadModel | null;
   latest_public_market_liveness_surface: PublicMarketLivenessSurfaceReadModel | null;
@@ -1081,6 +1214,7 @@ export interface TradingSubstrateReadModel {
   private_readiness_posture_history: PrivateReadinessPostureReadModel[];
   latest_private_readiness_policy_decision?: PrivateReadinessPolicyDecision | null;
   latest_private_read_gate_decision?: PrivateReadGateDecision | null;
+  latest_trading_gateway_contract?: TradingGatewayContractReadModel | null;
   latest_account_position_risk_mirror_surface: AccountPositionRiskMirrorSurfaceReadModel | null;
 }
 
