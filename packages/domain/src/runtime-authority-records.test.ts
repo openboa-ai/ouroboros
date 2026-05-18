@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { buildTradingLedgerReadModel } from "./index";
 import type {
   ExecutionAttemptRecord,
   GatewayDecisionRecord,
   OrderIntentDraftRecord,
+  ReplayRuntimeAuthorityReadModel,
   Ref,
   TradingSystemRuntimeRecord
 } from "./index";
@@ -155,3 +157,174 @@ describe("bounded TradingSystemRuntime authority records", () => {
     expect(blockedAttempt.authority_status).toBe("not_submitted");
   });
 });
+
+describe("TradingLedger read model", () => {
+  it("wraps an empty bounded authority chain as an empty TradingLedger", () => {
+    const ledger = buildTradingLedgerReadModel(emptyAuthority());
+
+    expect(ledger).toMatchObject({
+      ledger_kind: "trading_ledger",
+      has_activity: false,
+      chain_complete: false,
+      latest_order_intent: null,
+      latest_gateway_decision: null,
+      latest_execution_attempt: null,
+      order_intent: {
+        label: "Order intent",
+        status: "not_submitted"
+      },
+      gateway_decision: {
+        label: "Gateway decision",
+        status: "not_evaluated"
+      },
+      execution_attempt: {
+        label: "Execution attempt",
+        status: "not_submitted"
+      },
+      authority_status: "not_live",
+      no_authority: {
+        live_exchange_authority: false,
+        private_read_authority: false,
+        order_submission_authority: false,
+        credentials: false
+      },
+      compatibility: {
+        source_projection: "runtime.bounded_authority",
+        source_record_kinds: [
+          "order_intent_draft",
+          "gateway_decision",
+          "execution_attempt"
+        ]
+      }
+    });
+  });
+
+  it("wraps a complete order intent, gateway decision, and execution attempt chain", () => {
+    const authority = completeAuthority();
+    const ledger = buildTradingLedgerReadModel(authority);
+
+    expect(ledger).toMatchObject({
+      ledger_kind: "trading_ledger",
+      has_activity: true,
+      chain_complete: true,
+      latest_order_intent: {
+        order_intent_draft_id: "order-intent-draft-paper-buy-v1",
+        intent_kind: "place_order",
+        side: "buy",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: "60000",
+        authority_status: "not_submitted"
+      },
+      latest_gateway_decision: {
+        gateway_decision_id: "gateway-decision-paper-dry-run-v1",
+        decision_outcome: "dry_run_only",
+        decision_reason: "paper_stage_only",
+        authority_status: "dry_run_only"
+      },
+      latest_execution_attempt: {
+        execution_attempt_id: "execution-attempt-paper-dry-run-v1",
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      },
+      order_intent: {
+        label: "Order intent",
+        status: "proposed"
+      },
+      gateway_decision: {
+        label: "Gateway decision",
+        status: "dry_run_only"
+      },
+      execution_attempt: {
+        label: "Execution attempt",
+        status: "dry_run_recorded"
+      },
+      authority_status: "not_live"
+    });
+  });
+});
+
+function emptyAuthority(): ReplayRuntimeAuthorityReadModel {
+  return {
+    has_activity: false,
+    chain_complete: false,
+    latest_order_intent_draft: null,
+    latest_gateway_decision: null,
+    latest_execution_attempt: null,
+    order_intent_draft: {
+      ref: ref("order_intent_draft", "none"),
+      label: "Order intent draft",
+      status: "not_submitted",
+      authority_status: "not_submitted"
+    },
+    gateway_decision: {
+      ref: ref("gateway_decision", "none"),
+      label: "Gateway decision",
+      status: "not_evaluated",
+      authority_status: "not_live"
+    },
+    execution_attempt: {
+      ref: ref("execution_attempt", "none"),
+      label: "Execution attempt",
+      status: "not_submitted",
+      authority_status: "not_submitted"
+    }
+  };
+}
+
+function completeAuthority(): ReplayRuntimeAuthorityReadModel {
+  return {
+    has_activity: true,
+    chain_complete: true,
+    latest_order_intent_draft: {
+      order_intent_draft_id: "order-intent-draft-paper-buy-v1",
+      intent_kind: "place_order",
+      market_scope: "external_trading_api_fixture",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0.001",
+      limit_price: "60000",
+      status: "proposed",
+      created_at: "2026-05-10T00:01:00.000Z",
+      authority_status: "not_submitted"
+    },
+    latest_gateway_decision: {
+      gateway_decision_id: "gateway-decision-paper-dry-run-v1",
+      order_intent_draft_ref: ref("order_intent_draft", "order-intent-draft-paper-buy-v1"),
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only",
+      decided_at: "2026-05-10T00:01:01.000Z",
+      authority_status: "dry_run_only"
+    },
+    latest_execution_attempt: {
+      execution_attempt_id: "execution-attempt-paper-dry-run-v1",
+      order_intent_draft_ref: ref("order_intent_draft", "order-intent-draft-paper-buy-v1"),
+      gateway_decision_ref: ref("gateway_decision", "gateway-decision-paper-dry-run-v1"),
+      stage: "paper",
+      execution_mode: "host_local",
+      venue_scope: "external_trading_api_fixture",
+      status: "dry_run_recorded",
+      result_reason: "paper_stage_only",
+      created_at: "2026-05-10T00:01:02.000Z",
+      authority_status: "dry_run_only"
+    },
+    order_intent_draft: {
+      ref: ref("order_intent_draft", "order-intent-draft-paper-buy-v1"),
+      label: "Order intent draft",
+      status: "proposed",
+      authority_status: "not_submitted"
+    },
+    gateway_decision: {
+      ref: ref("gateway_decision", "gateway-decision-paper-dry-run-v1"),
+      label: "Gateway decision",
+      status: "dry_run_only",
+      authority_status: "dry_run_only"
+    },
+    execution_attempt: {
+      ref: ref("execution_attempt", "execution-attempt-paper-dry-run-v1"),
+      label: "Execution attempt",
+      status: "dry_run_recorded",
+      authority_status: "dry_run_only"
+    }
+  };
+}

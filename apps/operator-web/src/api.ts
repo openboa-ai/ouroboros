@@ -13,6 +13,7 @@ import type {
   PrivateReadinessPostureWriteInput,
   RuntimeControlAuditInput,
   RuntimeControlAuditOutcome,
+  TradingLedgerReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 
@@ -110,6 +111,14 @@ export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, 
 export type RuntimeAuthorityCommandOutcome = BoundedRuntimeAuthorityOutcome & {
   status: "recorded";
 };
+
+export interface TradingLoopRunOutcome {
+  status: "recorded";
+  order_intent: BoundedRuntimeAuthorityOutcome["order_intent_draft"];
+  gateway_decision: BoundedRuntimeAuthorityOutcome["gateway_decision"];
+  execution_attempt: BoundedRuntimeAuthorityOutcome["execution_attempt"];
+  trading_ledger: TradingLedgerReadModel;
+}
 
 export type RuntimeControlCommandPayload = Omit<RuntimeControlAuditInput, "candidate_id">;
 
@@ -312,6 +321,18 @@ export async function recordReplayRuntimeAuthority(
     throw new Error(`Failed to record runtime authority for ${candidate.candidate_id}: ${response.status}`);
   }
   return (await response.json()) as RuntimeAuthorityCommandOutcome;
+}
+
+export async function runTradingLoop(
+  candidate: CandidateInspectReadModel
+): Promise<TradingLoopRunOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/trading-loop-runs`, {
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to run trading loop for ${candidate.candidate_id}: ${response.status}`);
+  }
+  return (await response.json()) as TradingLoopRunOutcome;
 }
 
 export async function recordReplayRuntimeControl(

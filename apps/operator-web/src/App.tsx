@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { buildTradingLedgerReadModel } from "@ouroboros/domain";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   CandidateEvaluationReadModel,
@@ -10,7 +11,6 @@ import type {
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
-  ReplayRuntimeAuthorityReadModel,
   ReplayRuntimeControlReadModel,
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
@@ -22,6 +22,7 @@ import type {
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
   TradingGatewayContractReadModel,
+  TradingLedgerReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 import {
@@ -33,9 +34,9 @@ import {
   fetchCandidateSummaries,
   fetchTradingExecutionModeContracts,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
-  recordReplayRuntimeAuthority,
   recordReplayRuntimeControl,
   runReplay as submitReplayRun,
+  runTradingLoop as submitTradingLoop,
   type PrivateReadinessPostureDraft
 } from "./api";
 import {
@@ -57,14 +58,14 @@ interface AppState {
   replayRunValidationState?: ReplayRunValidationStateReadModel;
   error?: string;
   loading: boolean;
-  recordingRuntimeAuthority: boolean;
+  runningTradingLoop: boolean;
   recordingRuntimeControl: boolean;
   recordingPrivateReadinessPosture: boolean;
   runningCandidateReplay: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
-  runtimeAuthorityError?: string;
-  runtimeAuthorityMessage?: string;
+  tradingLoopError?: string;
+  tradingLoopMessage?: string;
   runtimeControlError?: string;
   runtimeControlMessage?: string;
   privateReadinessPostureError?: string;
@@ -77,7 +78,7 @@ export function App() {
     executionModes: [],
     replayRuns: [],
     loading: true,
-    recordingRuntimeAuthority: false,
+    runningTradingLoop: false,
     recordingRuntimeControl: false,
     recordingPrivateReadinessPosture: false,
     runningCandidateReplay: false
@@ -109,7 +110,7 @@ export function App() {
             replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
             replayRunValidationState: replayRunSelection.replayRunValidationState,
             loading: false,
-            recordingRuntimeAuthority: false,
+            runningTradingLoop: false,
             recordingRuntimeControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false
@@ -122,7 +123,7 @@ export function App() {
             executionModes: [],
             replayRuns: [],
             loading: false,
-            recordingRuntimeAuthority: false,
+            runningTradingLoop: false,
             recordingRuntimeControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false,
@@ -141,8 +142,8 @@ export function App() {
     setState((current) => ({
       ...current,
       loading: true,
-      runtimeAuthorityError: undefined,
-      runtimeAuthorityMessage: undefined,
+      tradingLoopError: undefined,
+      tradingLoopMessage: undefined,
       runtimeControlError: undefined,
       runtimeControlMessage: undefined,
       privateReadinessPostureError: undefined,
@@ -262,20 +263,20 @@ export function App() {
     }
   }
 
-  async function recordRuntimeAuthority() {
+  async function runTradingLoop() {
     const candidate = state.selected;
-    if (!candidate || state.recordingRuntimeAuthority) {
+    if (!candidate || state.runningTradingLoop) {
       return;
     }
 
     setState((current) => ({
       ...current,
-      recordingRuntimeAuthority: true,
-      runtimeAuthorityError: undefined,
-      runtimeAuthorityMessage: undefined
+      runningTradingLoop: true,
+      tradingLoopError: undefined,
+      tradingLoopMessage: undefined
     }));
     try {
-      const outcome = await recordReplayRuntimeAuthority(candidate);
+      const outcome = await submitTradingLoop(candidate);
       const selected = await fetchCandidate(candidate.candidate_id);
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
@@ -292,14 +293,14 @@ export function App() {
         replayRunComparison: replayRunSelection.replayRunComparison,
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
-        recordingRuntimeAuthority: false,
-        runtimeAuthorityMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
+        runningTradingLoop: false,
+        tradingLoopMessage: `dry_run_only recorded: ${outcome.execution_attempt.execution_attempt_id}`
       }));
     } catch (error) {
       setState((current) => ({
         ...current,
-        recordingRuntimeAuthority: false,
-        runtimeAuthorityError: error instanceof Error ? error.message : "Unknown runtime authority error"
+        runningTradingLoop: false,
+        tradingLoopError: error instanceof Error ? error.message : "Unknown trading loop error"
       }));
     }
   }
@@ -426,21 +427,21 @@ export function App() {
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
               ? () => void recordReplayRun()
               : undefined}
-            onRecordRuntimeAuthority={state.selected.runtime.bounded_authority
-              ? () => void recordRuntimeAuthority()
+            onRunTradingLoop={(state.selected.runtime.trading_ledger ?? state.selected.runtime.bounded_authority)
+              ? () => void runTradingLoop()
               : undefined}
             onRecordRuntimeControl={state.selected.runtime.runtime_control
               ? () => void recordRuntimeControl()
               : undefined}
             onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
-            recordingRuntimeAuthority={state.recordingRuntimeAuthority}
+            runningTradingLoop={state.runningTradingLoop}
             recordingRuntimeControl={state.recordingRuntimeControl}
             recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
             runningCandidateReplay={state.runningCandidateReplay}
             replayRunError={state.replayRunError}
             replayRunMessage={state.replayRunMessage}
-            runtimeAuthorityError={state.runtimeAuthorityError}
-            runtimeAuthorityMessage={state.runtimeAuthorityMessage}
+            tradingLoopError={state.tradingLoopError}
+            tradingLoopMessage={state.tradingLoopMessage}
             runtimeControlError={state.runtimeControlError}
             runtimeControlMessage={state.runtimeControlMessage}
             privateReadinessPostureError={state.privateReadinessPostureError}
@@ -524,17 +525,17 @@ export function CandidateDetail({
   executionModes = [],
   onSelectReplayRun,
   onRunCandidateReplay,
-  onRecordRuntimeAuthority,
+  onRunTradingLoop,
   onRecordRuntimeControl,
   onRecordPrivateReadinessPosture,
   runningCandidateReplay = false,
-  recordingRuntimeAuthority = false,
+  runningTradingLoop = false,
   recordingRuntimeControl = false,
   recordingPrivateReadinessPosture = false,
   replayRunError,
   replayRunMessage,
-  runtimeAuthorityError,
-  runtimeAuthorityMessage,
+  tradingLoopError,
+  tradingLoopMessage,
   runtimeControlError,
   runtimeControlMessage,
   privateReadinessPostureError,
@@ -550,22 +551,29 @@ export function CandidateDetail({
   executionModes?: TradingSystemExecutionModeContractReadModel[];
   onSelectReplayRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
-  onRecordRuntimeAuthority?: () => void;
+  onRunTradingLoop?: () => void;
   onRecordRuntimeControl?: () => void;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   runningCandidateReplay?: boolean;
-  recordingRuntimeAuthority?: boolean;
+  runningTradingLoop?: boolean;
   recordingRuntimeControl?: boolean;
   recordingPrivateReadinessPosture?: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
-  runtimeAuthorityError?: string;
-  runtimeAuthorityMessage?: string;
+  tradingLoopError?: string;
+  tradingLoopMessage?: string;
   runtimeControlError?: string;
   runtimeControlMessage?: string;
   privateReadinessPostureError?: string;
   privateReadinessPostureMessage?: string;
 }) {
+  const tradingLedger = candidate.runtime.trading_ledger
+    ?? (
+      candidate.runtime.bounded_authority
+        ? buildTradingLedgerReadModel(candidate.runtime.bounded_authority)
+        : undefined
+    );
+
   return (
     <article className="detail">
       <header className="detail-header">
@@ -667,6 +675,20 @@ export function CandidateDetail({
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
         </InfoSection>
 
+        <TradingGatewayContractSection
+          contract={candidate.trading_substrate?.latest_trading_gateway_contract}
+        />
+
+        <TradingLedgerSection
+          ledger={tradingLedger}
+          onRunTradingLoop={onRunTradingLoop}
+          runningTradingLoop={runningTradingLoop}
+          tradingLoopError={tradingLoopError}
+          tradingLoopMessage={tradingLoopMessage}
+        />
+
+        <TradingLedgerCompatibilitySection ledger={tradingLedger} />
+
         <TradingSubstrateSection
           key={candidate.candidate_id}
           orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
@@ -676,7 +698,6 @@ export function CandidateDetail({
           privateReadinessPostureHistory={candidate.trading_substrate?.private_readiness_posture_history ?? []}
           privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
           privateReadGateDecision={candidate.trading_substrate?.latest_private_read_gate_decision}
-          tradingGatewayContract={candidate.trading_substrate?.latest_trading_gateway_contract}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
           onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
           recordingPrivateReadinessPosture={recordingPrivateReadinessPosture}
@@ -693,14 +714,6 @@ export function CandidateDetail({
           recordingRuntimeControl={recordingRuntimeControl}
           runtimeControlError={runtimeControlError}
           runtimeControlMessage={runtimeControlMessage}
-        />
-
-        <RuntimeAuthoritySection
-          authority={candidate.runtime.bounded_authority}
-          onRecordRuntimeAuthority={onRecordRuntimeAuthority}
-          recordingRuntimeAuthority={recordingRuntimeAuthority}
-          runtimeAuthorityError={runtimeAuthorityError}
-          runtimeAuthorityMessage={runtimeAuthorityMessage}
         />
 
         <InfoSection title="Trace And Evaluation">
@@ -1068,6 +1081,78 @@ const PRIVATE_READINESS_POSTURE_GATE_FIELDS: Array<{
   { key: "stop_behavior_gate", label: "Stop behavior" }
 ];
 
+function TradingGatewayContractSection({
+  contract
+}: {
+  contract?: TradingGatewayContractReadModel | null;
+}) {
+  if (!contract) {
+    return (
+      <InfoSection title="Trading gateway contract">
+        <div className="placeholder">
+          <strong>No trading gateway contract</strong>
+          <span>BTCUSDT gateway contract has not been projected</span>
+          <span>not_live</span>
+        </div>
+      </InfoSection>
+    );
+  }
+
+  return (
+    <InfoSection title="Trading gateway contract">
+      <Field label="Gateway" value={contract.gateway_name} />
+      <Field
+        label="Sandbox exchange access"
+        value={`sandbox_direct_exchange_access=${String(contract.sandbox_direct_exchange_access)}`}
+      />
+      <Field
+        label="Gateway required"
+        value={contract.gateway_required_for.join(", ")}
+      />
+      <Field
+        label="Tracking chain"
+        value={contract.tracking_chain.join(" -> ")}
+      />
+      <Field
+        label="Market data"
+        value={[
+          contract.market_data.security_type,
+          contract.market_data.status,
+          contract.market_data.authority_status
+        ].join(" / ")}
+      />
+      <Field
+        label="Account read"
+        value={[
+          contract.account_read.security_type,
+          contract.account_read.status,
+          contract.account_read.endpoint_labels.join(", "),
+          `gateway_required=${String(contract.account_read.gateway_required)}, authority=${contract.account_read.authority_status}`
+        ].join(" / ")}
+      />
+      <Field
+        label="Order submission"
+        value={[
+          contract.order_submission.security_type,
+          contract.order_submission.status,
+          contract.order_submission.endpoint_labels.join(", "),
+          `gateway_required=${String(contract.order_submission.gateway_required)}, authority=${contract.order_submission.authority_status}`
+        ].join(" / ")}
+      />
+      <Field
+        label="No-authority proof"
+        value={[
+          `raw_secret_material_present=${String(contract.no_authority.raw_secret_material_present)}`,
+          `no_private_read_performed=${String(contract.no_authority.no_private_read_performed)}`,
+          `signed_request_authority=${String(contract.no_authority.signed_request_authority)}`,
+          `live_exchange_authority=${String(contract.no_authority.live_exchange_authority)}`,
+          `authority_status=${contract.authority_status}`
+        ].join(", ")}
+      />
+    </InfoSection>
+  );
+}
+
 function TradingSubstrateSection({
   orderFillSurface,
   publicMarketSurface,
@@ -1076,7 +1161,6 @@ function TradingSubstrateSection({
   privateReadinessPostureHistory,
   privateReadinessPolicyDecision,
   privateReadGateDecision,
-  tradingGatewayContract,
   accountPositionRiskSurface,
   onRecordPrivateReadinessPosture,
   recordingPrivateReadinessPosture = false,
@@ -1090,7 +1174,6 @@ function TradingSubstrateSection({
   privateReadinessPostureHistory?: PrivateReadinessPostureReadModel[];
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   privateReadGateDecision?: PrivateReadGateDecision | null;
-  tradingGatewayContract?: TradingGatewayContractReadModel | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   recordingPrivateReadinessPosture?: boolean;
@@ -1195,60 +1278,6 @@ function TradingSubstrateSection({
           <strong>No public market surface</strong>
           <span>BTCUSDT market posture has not been recorded</span>
           <span>not_live</span>
-        </div>
-      )}
-      {tradingGatewayContract && (
-        <div className="authority-preview" aria-label="Trading gateway contract">
-          <h4>Trading gateway contract</h4>
-          <Field label="Gateway" value={tradingGatewayContract.gateway_name} />
-          <Field
-            label="Sandbox exchange access"
-            value={`sandbox_direct_exchange_access=${String(tradingGatewayContract.sandbox_direct_exchange_access)}`}
-          />
-          <Field
-            label="Gateway required"
-            value={tradingGatewayContract.gateway_required_for.join(", ")}
-          />
-          <Field
-            label="Tracking chain"
-            value={tradingGatewayContract.tracking_chain.join(" -> ")}
-          />
-          <Field
-            label="Market data"
-            value={[
-              tradingGatewayContract.market_data.security_type,
-              tradingGatewayContract.market_data.status,
-              tradingGatewayContract.market_data.authority_status
-            ].join(" / ")}
-          />
-          <Field
-            label="Account read"
-            value={[
-              tradingGatewayContract.account_read.security_type,
-              tradingGatewayContract.account_read.status,
-              tradingGatewayContract.account_read.endpoint_labels.join(", "),
-              `gateway_required=${String(tradingGatewayContract.account_read.gateway_required)}, authority=${tradingGatewayContract.account_read.authority_status}`
-            ].join(" / ")}
-          />
-          <Field
-            label="Order submission"
-            value={[
-              tradingGatewayContract.order_submission.security_type,
-              tradingGatewayContract.order_submission.status,
-              tradingGatewayContract.order_submission.endpoint_labels.join(", "),
-              `gateway_required=${String(tradingGatewayContract.order_submission.gateway_required)}, authority=${tradingGatewayContract.order_submission.authority_status}`
-            ].join(" / ")}
-          />
-          <Field
-            label="No-authority proof"
-            value={[
-              `raw_secret_material_present=${String(tradingGatewayContract.no_authority.raw_secret_material_present)}`,
-              `no_private_read_performed=${String(tradingGatewayContract.no_authority.no_private_read_performed)}`,
-              `signed_request_authority=${String(tradingGatewayContract.no_authority.signed_request_authority)}`,
-              `live_exchange_authority=${String(tradingGatewayContract.no_authority.live_exchange_authority)}`,
-              `authority_status=${tradingGatewayContract.authority_status}`
-            ].join(", ")}
-          />
         </div>
       )}
       {privateReadinessSurface ? (
@@ -2636,106 +2665,134 @@ function runtimeControlPolicyAlignment(
   return "policy_not_ready";
 }
 
-function RuntimeAuthoritySection({
-  authority,
-  onRecordRuntimeAuthority,
-  recordingRuntimeAuthority,
-  runtimeAuthorityError,
-  runtimeAuthorityMessage
+function TradingLedgerSection({
+  ledger,
+  onRunTradingLoop,
+  runningTradingLoop,
+  tradingLoopError,
+  tradingLoopMessage
 }: {
-  authority?: ReplayRuntimeAuthorityReadModel;
-  onRecordRuntimeAuthority?: () => void;
-  recordingRuntimeAuthority: boolean;
-  runtimeAuthorityError?: string;
-  runtimeAuthorityMessage?: string;
+  ledger?: TradingLedgerReadModel;
+  onRunTradingLoop?: () => void;
+  runningTradingLoop: boolean;
+  tradingLoopError?: string;
+  tradingLoopMessage?: string;
 }) {
-  const statusLabel = authority?.chain_complete
+  const statusLabel = ledger?.chain_complete
     ? "chain complete"
-    : authority?.has_activity
+    : ledger?.has_activity
       ? "incomplete"
       : "none";
 
   return (
-    <InfoSection title="Runtime Authority">
-      <div className={`evaluation-status ${authority?.chain_complete ? "counted" : "neutral"}`}>
-        <span>Bounded paper state</span>
+    <InfoSection title="Trading ledger">
+      <div className={`evaluation-status ${ledger?.chain_complete ? "counted" : "neutral"}`}>
+        <span>Request / decision / result</span>
         <strong>{statusLabel}</strong>
-        <span>{authority?.execution_attempt.authority_status ?? "not_submitted"}</span>
+        <span>{ledger?.authority_status ?? "not_live"}</span>
       </div>
 
-      <Field label="Activity" value={authority?.has_activity ? "recorded" : "none"} />
-      <Field label="Complete chain" value={authority?.chain_complete ? "yes" : "no"} />
-      <Field label="Order intent draft" value={authority?.order_intent_draft.status ?? "not_submitted"} />
-      <Field label="Gateway decision" value={authority?.gateway_decision.status ?? "not_evaluated"} />
-      <Field label="Execution attempt" value={authority?.execution_attempt.status ?? "not_submitted"} />
+      <Field label="Complete chain" value={ledger?.chain_complete ? "yes" : "no"} />
+      <Field label="Order intent" value={ledger?.order_intent.status ?? "not_submitted"} />
+      <Field label="Gateway decision" value={ledger?.gateway_decision.status ?? "not_evaluated"} />
+      <Field label="Execution attempt" value={ledger?.execution_attempt.status ?? "not_submitted"} />
 
-      {authority?.latest_order_intent_draft ? (
+      {ledger?.latest_order_intent ? (
         <div className="evaluation-block">
-          <h4>Latest order intent draft</h4>
-          <Field label="Intent" value={authority.latest_order_intent_draft.intent_kind} />
-          <Field label="Status" value={authority.latest_order_intent_draft.status} />
-          <Field label="Side / type" value={`${authority.latest_order_intent_draft.side ?? "none"} / ${authority.latest_order_intent_draft.order_type ?? "none"}`} />
-          <Field label="Quantity" value={authority.latest_order_intent_draft.quantity ?? "none"} />
-          <Field label="Limit" value={authority.latest_order_intent_draft.limit_price ?? "none"} />
-          <Field label="Authority" value={authority.latest_order_intent_draft.authority_status} />
+          <h4>Order intent</h4>
+          <Field label="Intent" value={ledger.latest_order_intent.intent_kind} />
+          <Field label="Status" value={ledger.latest_order_intent.status} />
+          <Field label="Side / type" value={`${ledger.latest_order_intent.side ?? "none"} / ${ledger.latest_order_intent.order_type ?? "none"}`} />
+          <Field label="Quantity" value={ledger.latest_order_intent.quantity ?? "none"} />
+          <Field label="Limit" value={ledger.latest_order_intent.limit_price ?? "none"} />
+          <Field label="Authority" value={ledger.latest_order_intent.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
-          <h4>Latest order intent draft</h4>
+          <h4>Order intent</h4>
           <Field label="Status" value="none" />
           <Field label="Authority" value="not_submitted" />
         </div>
       )}
 
-      {authority?.latest_gateway_decision ? (
+      {ledger?.latest_gateway_decision ? (
         <div className="evaluation-block">
-          <h4>Latest gateway decision</h4>
-          <Field label="Outcome" value={authority.latest_gateway_decision.decision_outcome} />
-          <Field label="Reason" value={authority.latest_gateway_decision.decision_reason} />
-          <Field label="Order intent draft" value={formatRef(authority.latest_gateway_decision.order_intent_draft_ref)} />
-          <Field label="Authority" value={authority.latest_gateway_decision.authority_status} />
+          <h4>Gateway decision</h4>
+          <Field label="Outcome" value={ledger.latest_gateway_decision.decision_outcome} />
+          <Field label="Reason" value={ledger.latest_gateway_decision.decision_reason} />
+          <Field label="Order intent" value={formatRef(ledger.latest_gateway_decision.order_intent_draft_ref)} />
+          <Field label="Authority" value={ledger.latest_gateway_decision.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
-          <h4>Latest gateway decision</h4>
+          <h4>Gateway decision</h4>
           <Field label="Outcome" value="not_evaluated" />
           <Field label="Authority" value="not_live" />
         </div>
       )}
 
-      {authority?.latest_execution_attempt ? (
+      {ledger?.latest_execution_attempt ? (
         <div className="evaluation-block">
-          <h4>Latest execution attempt</h4>
-          <Field label="Stage" value={authority.latest_execution_attempt.stage} />
-          <Field label="Mode" value={authority.latest_execution_attempt.execution_mode} />
-          <Field label="Status" value={authority.latest_execution_attempt.status} />
-          <Field label="Reason" value={authority.latest_execution_attempt.result_reason} />
-          <Field label="Gateway decision" value={formatRef(authority.latest_execution_attempt.gateway_decision_ref)} />
-          <Field label="Authority" value={authority.latest_execution_attempt.authority_status} />
+          <h4>Execution attempt</h4>
+          <Field label="Stage" value={ledger.latest_execution_attempt.stage} />
+          <Field label="Mode" value={ledger.latest_execution_attempt.execution_mode} />
+          <Field label="Status" value={ledger.latest_execution_attempt.status} />
+          <Field label="Reason" value={ledger.latest_execution_attempt.result_reason} />
+          <Field label="Gateway decision" value={formatRef(ledger.latest_execution_attempt.gateway_decision_ref)} />
+          <Field label="Authority" value={ledger.latest_execution_attempt.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
-          <h4>Latest execution attempt</h4>
+          <h4>Execution attempt</h4>
           <Field label="Status" value="none" />
           <Field label="Authority" value="not_submitted" />
         </div>
       )}
 
-      {onRecordRuntimeAuthority && (
+      {onRunTradingLoop && (
         <div className="runtime-command">
           <button
             className="runtime-command-button"
             type="button"
-            onClick={onRecordRuntimeAuthority}
-            disabled={recordingRuntimeAuthority}
+            onClick={onRunTradingLoop}
+            disabled={runningTradingLoop}
           >
-            {recordingRuntimeAuthority ? "Recording dry-run" : "Record dry-run intent"}
+            {runningTradingLoop ? "Running trading loop" : "Run trading loop"}
           </button>
           <span>dry_run_only / paper_stage_only / not_live</span>
         </div>
       )}
-      {runtimeAuthorityMessage && <div className="inline-status">{runtimeAuthorityMessage}</div>}
-      {runtimeAuthorityError && <div className="inline-status error">{runtimeAuthorityError}</div>}
+      {tradingLoopMessage && <div className="inline-status">{tradingLoopMessage}</div>}
+      {tradingLoopError && <div className="inline-status error">{tradingLoopError}</div>}
+    </InfoSection>
+  );
+}
+
+function TradingLedgerCompatibilitySection({
+  ledger
+}: {
+  ledger?: TradingLedgerReadModel;
+}) {
+  return (
+    <InfoSection title="Compatibility detail">
+      <Field
+        label="Source projection"
+        value={ledger?.compatibility.source_projection ?? "runtime.bounded_authority"}
+      />
+      <Field
+        label="Source records"
+        value={ledger?.compatibility.source_record_kinds.join(" -> ") ?? "order_intent_draft -> gateway_decision -> execution_attempt"}
+      />
+      <Field
+        label="No-authority boundary"
+        value={[
+          `live_exchange_authority=${String(ledger?.no_authority.live_exchange_authority ?? false)}`,
+          `private_read_authority=${String(ledger?.no_authority.private_read_authority ?? false)}`,
+          `order_submission_authority=${String(ledger?.no_authority.order_submission_authority ?? false)}`,
+          `credentials=${String(ledger?.no_authority.credentials ?? false)}`
+        ].join(", ")}
+      />
+      <Field label="Compatibility role" value="bounded_authority_projection_retained_for_existing_records" />
     </InfoSection>
   );
 }

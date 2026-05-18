@@ -2530,6 +2530,63 @@ export interface ReplayRuntimeAuthorityReadModel {
   execution_attempt: PlaceholderSummary;
 }
 
+export interface TradingLedgerReadModel {
+  ledger_kind: "trading_ledger";
+  has_activity: boolean;
+  chain_complete: boolean;
+  latest_order_intent: ReplayRuntimeOrderIntentDraftReadModel | null;
+  latest_gateway_decision: ReplayRuntimeGatewayDecisionReadModel | null;
+  latest_execution_attempt: ReplayRuntimeExecutionAttemptReadModel | null;
+  order_intent: PlaceholderSummary;
+  gateway_decision: PlaceholderSummary;
+  execution_attempt: PlaceholderSummary;
+  authority_status: "not_live";
+  no_authority: {
+    live_exchange_authority: false;
+    private_read_authority: false;
+    order_submission_authority: false;
+    credentials: false;
+  };
+  compatibility: {
+    source_projection: "runtime.bounded_authority";
+    source_record_kinds: TradingGatewayTrackedRecordKind[];
+  };
+}
+
+export function buildTradingLedgerReadModel(
+  authority: ReplayRuntimeAuthorityReadModel
+): TradingLedgerReadModel {
+  return {
+    ledger_kind: "trading_ledger",
+    has_activity: authority.has_activity,
+    chain_complete: authority.chain_complete,
+    latest_order_intent: authority.latest_order_intent_draft,
+    latest_gateway_decision: authority.latest_gateway_decision,
+    latest_execution_attempt: authority.latest_execution_attempt,
+    order_intent: {
+      ...authority.order_intent_draft,
+      label: "Order intent"
+    },
+    gateway_decision: authority.gateway_decision,
+    execution_attempt: authority.execution_attempt,
+    authority_status: "not_live",
+    no_authority: {
+      live_exchange_authority: false,
+      private_read_authority: false,
+      order_submission_authority: false,
+      credentials: false
+    },
+    compatibility: {
+      source_projection: "runtime.bounded_authority",
+      source_record_kinds: [
+        "order_intent_draft",
+        "gateway_decision",
+        "execution_attempt"
+      ]
+    }
+  };
+}
+
 export interface ReplayRuntimeControlCommandReadModel {
   command_id: string;
   action: RuntimeControlAction;
@@ -2640,6 +2697,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
       authority_status: string;
     };
     bounded_authority?: ReplayRuntimeAuthorityReadModel;
+    trading_ledger?: TradingLedgerReadModel;
     runtime_control?: ReplayRuntimeControlReadModel;
   };
   trading_substrate?: TradingSubstrateReadModel;
