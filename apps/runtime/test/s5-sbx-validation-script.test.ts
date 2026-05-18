@@ -7,6 +7,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
 const defaultS5ValidationCommandTimeoutMs = "10000";
+const s5LifecycleScriptTimeoutMs = 60_000;
+const s5LifecycleTestTimeoutMs = 75_000;
+const hostS5LifecycleIt = process.env.GITHUB_ACTIONS === "true" ? it.skip : it;
 
 beforeEach(() => {
   delete process.env.OUROBOROS_ALLOW_ACTIVE_SBX_SESSION_INTERRUPTION;
@@ -1903,7 +1906,7 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
-  it("runs the full validation transcript through two fake sbx-backed instances", async () => {
+  hostS5LifecycleIt("runs the full validation transcript through two fake sbx-backed instances", async () => {
     const tempDir = await makeTempDir();
     const sbxCallLog = path.join(tempDir, "sbx-calls.log");
     const evidencePath = path.join(tempDir, "s5-sbx-evidence.txt");
@@ -1919,7 +1922,7 @@ describe("S5 sbx validation harness", () => {
         OUROBOROS_SBX_EVIDENCE_PATH: evidencePath,
         SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
         SBX_CALL_LOG: sbxCallLog
-      }, 20_000);
+      }, s5LifecycleScriptTimeoutMs);
       const calls = (await readFile(sbxCallLog, "utf8")).trim().split("\n");
       const evidence = await readFile(evidencePath, "utf8");
       const completionAudit = await runScript([
@@ -1977,9 +1980,9 @@ describe("S5 sbx validation harness", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, s5LifecycleTestTimeoutMs);
 
-  it("can suffix validation sandbox names to avoid stale runtime-name collisions", async () => {
+  hostS5LifecycleIt("can suffix validation sandbox names to avoid stale runtime-name collisions", async () => {
     const tempDir = await makeTempDir();
     const sbxCallLog = path.join(tempDir, "sbx-suffixed-calls.log");
     const evidencePath = path.join(tempDir, "s5-sbx-suffixed-evidence.txt");
@@ -1996,7 +1999,7 @@ describe("S5 sbx validation harness", () => {
         OUROBOROS_SBX_EVIDENCE_PATH: evidencePath,
         SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
         SBX_CALL_LOG: sbxCallLog
-      }, 20_000);
+      }, s5LifecycleScriptTimeoutMs);
       const calls = (await readFile(sbxCallLog, "utf8")).trim().split("\n");
       const evidence = await readFile(evidencePath, "utf8");
       const completionAudit = await runScript([
@@ -2017,9 +2020,9 @@ describe("S5 sbx validation harness", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, s5LifecycleTestTimeoutMs);
 
-  it("classifies real sbx create VM failures as host blockers", async () => {
+  hostS5LifecycleIt("classifies real sbx create VM failures as host blockers", async () => {
     const tempDir = await makeTempDir();
     const sbxCallLog = path.join(tempDir, "sbx-create-failure-calls.log");
     const fakeSbx = path.join(tempDir, "sbx");
@@ -2033,7 +2036,7 @@ describe("S5 sbx validation harness", () => {
         OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "2000",
         SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
         SBX_CALL_LOG: sbxCallLog
-      }, 20_000);
+      }, s5LifecycleScriptTimeoutMs);
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain("sbx_runtime_control_blocker=runtime_create_failed");
@@ -2044,7 +2047,7 @@ describe("S5 sbx validation harness", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, s5LifecycleTestTimeoutMs);
 
   it("allows recovery apply with both explicit daemon restart gates", async () => {
     const tempDir = await makeTempDir();

@@ -414,6 +414,37 @@ export type TradingSubstrateInstrument = "BTCUSDT";
 
 export type TradingSubstrateProductCategory = "perpetual_futures";
 
+export type TradingGatewayExchangeEnvironment = "unbound" | "testnet" | "mainnet" | "custom";
+
+export type TradingGatewayCredentialScope = "none" | "runtime_selected";
+
+export type TradingGatewayEnvironmentStatus = "configured" | "blocked";
+
+export interface TradingGatewayEnvironmentReadModel {
+  environment_kind: "trading_gateway_environment";
+  venue: TradingSubstrateVenue;
+  instrument: TradingSubstrateInstrument;
+  product_category: TradingSubstrateProductCategory;
+  exchange_environment: TradingGatewayExchangeEnvironment;
+  exchange_environment_source: "environment_variables";
+  rest_base_url: string | null;
+  credential_scope: TradingGatewayCredentialScope;
+  credential_source: "not_required" | "environment_variables";
+  api_key_configured: boolean;
+  api_secret_configured: boolean;
+  configuration_status: TradingGatewayEnvironmentStatus;
+  configuration_reason: string;
+  authority_status: "not_live";
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  env_var_names: {
+    rest_base_url: "OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL";
+    api_key: "OUROBOROS_BINANCE_API_KEY";
+    api_secret: "OUROBOROS_BINANCE_API_SECRET";
+  };
+  warnings: string[];
+}
+
 export const TRADING_SUBSTRATE_BINANCE_USDM_TERMS = [
   "symbol",
   "baseAsset",
@@ -704,7 +735,7 @@ export interface BinanceUsdsFuturesConnectorTransport {
   api_family: "derivatives_trading_usds_futures";
   supported_endpoints: ReadonlyArray<"rest_api" | "websocket_api" | "websocket_streams">;
   production_base_url: "https://fapi.binance.com";
-  testnet_base_url: "https://testnet.binancefuture.com";
+  testnet_base_url: "https://demo-fapi.binance.com";
   integration_role: "transport_only";
   authority_status: "not_live";
 }

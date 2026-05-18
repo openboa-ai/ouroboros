@@ -48,7 +48,30 @@ describe("runtime read-only API", () => {
     expect(health.statusCode).toBe(200);
     expect(health.json()).toMatchObject({
       status: "ok",
-      mode: "fixture_convenience_mode"
+      mode: "fixture_convenience_mode",
+      trading_gateway_environment: {
+        exchange_environment: "unbound",
+        exchange_environment_source: "environment_variables",
+        rest_base_url: null,
+        authority_status: "not_live"
+      }
+    });
+
+    const tradingGatewayEnvironment = await server.inject({
+      method: "GET",
+      url: "/api/trading-gateway/environment"
+    });
+    expect(tradingGatewayEnvironment.statusCode).toBe(200);
+    expect(tradingGatewayEnvironment.json()).toMatchObject({
+      trading_gateway_environment: {
+        environment_kind: "trading_gateway_environment",
+        exchange_environment: "unbound",
+        exchange_environment_source: "environment_variables",
+        credential_scope: "none",
+        configuration_status: "configured",
+        live_exchange_authority: false,
+        order_submission_authority: false
+      }
     });
 
     const executionModes = await server.inject({ method: "GET", url: "/api/trading-execution-modes" });
@@ -1664,6 +1687,15 @@ describe("runtime read-only API", () => {
         execution_mode: "host_local",
         status: "dry_run_recorded",
         authority_status: "dry_run_only"
+      },
+      trading_gateway_environment: {
+        environment_kind: "trading_gateway_environment",
+        exchange_environment: "unbound",
+        exchange_environment_source: "environment_variables",
+        configuration_status: "configured",
+        authority_status: "not_live",
+        live_exchange_authority: false,
+        order_submission_authority: false
       },
       trading_ledger: {
         ledger_kind: "trading_ledger",

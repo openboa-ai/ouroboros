@@ -13,6 +13,7 @@ import type {
   PrivateReadinessPostureWriteInput,
   RuntimeControlAuditInput,
   RuntimeControlAuditOutcome,
+  TradingGatewayEnvironmentReadModel,
   TradingLedgerReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
@@ -52,6 +53,15 @@ export async function fetchTradingExecutionModeContracts(): Promise<TradingSyste
   }
   const body = (await response.json()) as { modes: TradingSystemExecutionModeContractReadModel[] };
   return body.modes;
+}
+
+export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEnvironmentReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-gateway/environment`);
+  if (!response.ok) {
+    throw new Error(`Failed to load trading gateway environment: ${response.status}`);
+  }
+  const body = (await response.json()) as { trading_gateway_environment: TradingGatewayEnvironmentReadModel };
+  return body.trading_gateway_environment;
 }
 
 export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {
@@ -118,6 +128,7 @@ export interface TradingLoopRunOutcome {
   gateway_decision: BoundedRuntimeAuthorityOutcome["gateway_decision"];
   execution_attempt: BoundedRuntimeAuthorityOutcome["execution_attempt"];
   trading_ledger: TradingLedgerReadModel;
+  trading_gateway_environment: TradingGatewayEnvironmentReadModel;
 }
 
 export type RuntimeControlCommandPayload = Omit<RuntimeControlAuditInput, "candidate_id">;
