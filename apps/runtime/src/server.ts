@@ -800,6 +800,68 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   });
 
+  server.post<{ Params: { candidate_id: string } }>(
+    "/api/candidates/:candidate_id/trading-loop-runs",
+    async (request, reply) => {
+      const candidate = await store.getCandidate(request.params.candidate_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "candidate_not_found",
+          candidate_id: request.params.candidate_id
+        });
+      }
+
+      const candidateVersionId = candidate.candidate_version.candidate_version_id;
+      try {
+        const outcome = await store.recordBoundedRuntimeAuthority({
+          idempotency_key: [
+            "trading-loop-run",
+            request.params.candidate_id,
+            candidateVersionId
+          ].join("-"),
+          candidate_id: request.params.candidate_id,
+          candidate_version_id: candidateVersionId,
+          intent: {
+            intent_kind: "place_order",
+            side: "buy",
+            order_type: "limit",
+            quantity: "0.001",
+            limit_price: "60000"
+          },
+          gateway_decision: {
+            decision_outcome: "dry_run_only",
+            decision_reason: "paper_stage_only"
+          },
+          execution_attempt: {
+            execution_mode: "host_local"
+          }
+        } satisfies BoundedRuntimeAuthorityInput);
+        const updatedCandidate = await store.getCandidate(request.params.candidate_id);
+        if (!updatedCandidate?.runtime.trading_ledger) {
+          throw new Error("trading ledger was not projected after trading loop run");
+        }
+
+        return reply.code(201).send({
+          status: "recorded",
+          order_intent: outcome.order_intent_draft,
+          gateway_decision: outcome.gateway_decision,
+          execution_attempt: outcome.execution_attempt,
+          trading_ledger: updatedCandidate.runtime.trading_ledger
+        });
+      } catch (error) {
+        if (error instanceof LocalStoreError) {
+          return reply.code(runtimeAuthorityStatusCode(error.code)).send({
+            error: "trading_loop_run_failed",
+            reason: error.code,
+            candidate_id: request.params.candidate_id,
+            candidate_version_id: candidateVersionId
+          });
+        }
+        throw error;
+      }
+    }
+  );
+
   server.get<{ Params: { candidate_id: string } }>(
     "/api/candidates/:candidate_id/runtime-control",
     async (request, reply) => {

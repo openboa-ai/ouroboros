@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { buildTradingLedgerReadModel } from "@ouroboros/domain";
 import type {
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
@@ -49,12 +50,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No provider has run.");
     expect(html).toContain("Capability Package");
     expect(html).toContain("Agent And Provider");
-    expect(html).toContain("Runtime Authority");
+    expect(html).toContain("Trading ledger");
     expect(html).toContain("Runtime Control");
     expect(html).toContain("Candidate Runs");
     expect(html).toContain("No candidate-id replay runs");
     expect(html).toContain("Logical TradingSystemRuntime state");
-    expect(html).toContain("Bounded paper state");
+    expect(html).toContain("Request / decision / result");
     expect(html).toContain("Trace And Evaluation");
     expect(html).toContain("Evaluation state");
     expect(html).toContain("pending");
@@ -1066,30 +1067,33 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No evaluation runs");
     expect(html).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
-    expect(html).not.toMatch(/Record dry-run intent|Record pause control/i);
+    expect(html).not.toMatch(/Run trading loop|Record pause control/i);
   });
 
-  it("renders bounded runtime authority state without implying live authority", () => {
+  it("renders TradingLedger state without implying live authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={candidateWithRuntimeAuthority(runtimeAuthority())}
-        onRecordRuntimeAuthority={() => undefined}
-        runtimeAuthorityMessage="dry_run_only recorded: execution-attempt-001"
+        onRunTradingLoop={() => undefined}
+        tradingLoopMessage="dry_run_only recorded: execution-attempt-001"
       />
     );
 
-    expect(html).toContain("Runtime Authority");
+    expect(html).toContain("Trading ledger");
+    expect(html).not.toContain("Runtime Authority");
     expect(html).toContain("chain complete");
-    expect(html).toContain("Latest order intent draft");
+    expect(html).toContain("Order intent");
     expect(html).toContain("place_order");
     expect(html).toContain("buy / limit");
-    expect(html).toContain("Latest gateway decision");
+    expect(html).toContain("Gateway decision");
     expect(html).toContain("dry_run_only");
     expect(html).toContain("paper_stage_only");
     expect(html).toContain("order_intent_draft:order-intent-draft-001");
-    expect(html).toContain("Latest execution attempt");
+    expect(html).toContain("Execution attempt");
     expect(html).toContain("gateway_decision:gateway-decision-001");
-    expect(html).toContain("Record dry-run intent");
+    expect(html).toContain("Run trading loop");
+    expect(html).toContain("Compatibility detail");
+    expect(html).toContain("runtime.bounded_authority");
     expect(html).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
@@ -1374,7 +1378,8 @@ function candidateWithRuntimeAuthority(
     ...fixtureCandidate,
     runtime: {
       ...fixtureCandidate.runtime,
-      bounded_authority: boundedAuthority
+      bounded_authority: boundedAuthority,
+      trading_ledger: buildTradingLedgerReadModel(boundedAuthority)
     }
   };
 }

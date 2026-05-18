@@ -1625,6 +1625,85 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("runs a fixture trading loop and reads the TradingLedger through the runtime API", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(201);
+    expect(duplicate.json()).toEqual(first.json());
+    expect(first.json()).toMatchObject({
+      status: "recorded",
+      order_intent: {
+        record_kind: "order_intent_draft",
+        intent_kind: "place_order",
+        side: "buy",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: "60000",
+        status: "proposed",
+        authority_status: "not_submitted"
+      },
+      gateway_decision: {
+        record_kind: "gateway_decision",
+        decision_outcome: "dry_run_only",
+        decision_reason: "paper_stage_only",
+        authority_status: "dry_run_only"
+      },
+      execution_attempt: {
+        record_kind: "execution_attempt",
+        stage: "paper",
+        execution_mode: "host_local",
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      },
+      trading_ledger: {
+        ledger_kind: "trading_ledger",
+        has_activity: true,
+        chain_complete: true,
+        latest_order_intent: {
+          authority_status: "not_submitted"
+        },
+        latest_gateway_decision: {
+          decision_outcome: "dry_run_only",
+          authority_status: "dry_run_only"
+        },
+        latest_execution_attempt: {
+          status: "dry_run_recorded",
+          authority_status: "dry_run_only"
+        }
+      }
+    });
+
+    const updatedCandidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(updatedCandidate.json().runtime.trading_ledger).toMatchObject({
+      ledger_kind: "trading_ledger",
+      chain_complete: true,
+      latest_execution_attempt: {
+        execution_attempt_id: first.json().execution_attempt.execution_attempt_id
+      }
+    });
+    expect(updatedCandidate.json().runtime.bounded_authority).toMatchObject({
+      chain_complete: true,
+      latest_execution_attempt: {
+        execution_attempt_id: first.json().execution_attempt.execution_attempt_id
+      }
+    });
+
+    await server.close();
+  });
+
   it("returns deterministic runtime authority API errors", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({

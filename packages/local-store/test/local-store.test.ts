@@ -1517,6 +1517,46 @@ describe("LocalStore", () => {
     await expect(countJsonFiles("execution-attempts", "items")).resolves.toBe(1);
 
     const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.runtime.trading_ledger).toMatchObject({
+      ledger_kind: "trading_ledger",
+      has_activity: true,
+      chain_complete: true,
+      latest_order_intent: {
+        order_intent_draft_id: first.order_intent_draft.order_intent_draft_id,
+        status: "proposed",
+        authority_status: "not_submitted"
+      },
+      latest_gateway_decision: {
+        gateway_decision_id: first.gateway_decision.gateway_decision_id,
+        decision_outcome: "dry_run_only",
+        authority_status: "dry_run_only"
+      },
+      latest_execution_attempt: {
+        execution_attempt_id: first.execution_attempt.execution_attempt_id,
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      },
+      order_intent: {
+        label: "Order intent",
+        status: "proposed"
+      },
+      gateway_decision: {
+        label: "Gateway decision",
+        status: "dry_run_only"
+      },
+      execution_attempt: {
+        label: "Execution attempt",
+        status: "dry_run_recorded"
+      },
+      compatibility: {
+        source_projection: "runtime.bounded_authority",
+        source_record_kinds: [
+          "order_intent_draft",
+          "gateway_decision",
+          "execution_attempt"
+        ]
+      }
+    });
     expect(projected?.runtime.bounded_authority).toMatchObject({
       has_activity: true,
       chain_complete: true,
@@ -1541,6 +1581,10 @@ describe("LocalStore", () => {
     await store.rebuildProjections();
 
     const reloaded = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(reloaded?.runtime.trading_ledger?.latest_execution_attempt?.execution_attempt_id).toBe(
+      first.execution_attempt.execution_attempt_id
+    );
+    expect(reloaded?.runtime.trading_ledger?.chain_complete).toBe(true);
     expect(reloaded?.runtime.bounded_authority?.latest_execution_attempt?.execution_attempt_id).toBe(
       first.execution_attempt.execution_attempt_id
     );

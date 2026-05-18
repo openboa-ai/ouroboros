@@ -36,6 +36,7 @@ import type {
   PrivateReadinessPreflightSurfaceQueryInput,
   PublicMarketLivenessSurfaceQueryInput
 } from "./trading-substrate-surfaces";
+import { buildTradingLedgerReadModel } from "@ouroboros/domain";
 export type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 export type {
   AccountPositionRiskMirrorSurfaceQueryInput,
@@ -3173,6 +3174,7 @@ export class LocalStore {
         )
       : undefined;
     const latestTradingSubstrate = await buildLatestBinanceBtcusdtTradingSubstrateProjection(this);
+    const boundedAuthority = await this.buildReplayRuntimeAuthorityReadModel(runtime);
 
     return {
       ...this.toCandidateSummary(candidate),
@@ -3236,7 +3238,8 @@ export class LocalStore {
           quarantine_status: memorySurface.quarantine_status,
           authority_status: memorySurface.authority_status
         },
-        bounded_authority: await this.buildReplayRuntimeAuthorityReadModel(runtime),
+        bounded_authority: boundedAuthority,
+        trading_ledger: buildTradingLedgerReadModel(boundedAuthority),
         runtime_control: await this.buildReplayRuntimeControlReadModel(runtime)
       },
       trading_substrate: latestTradingSubstrate,

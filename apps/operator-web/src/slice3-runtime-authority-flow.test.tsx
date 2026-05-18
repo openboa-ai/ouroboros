@@ -25,8 +25,8 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("Slice 3 runtime authority MLP flow", () => {
-  it("records dry-run authority through runtime API and renders bounded operator state", async () => {
+describe("Slice 3 trading loop MLP flow", () => {
+  it("records a dry-run trading loop through runtime API and renders TradingLedger state", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({ store });
 
@@ -37,49 +37,23 @@ describe("Slice 3 runtime authority MLP flow", () => {
       });
       expect(initialRead.statusCode).toBe(200);
       const initialCandidate = initialRead.json() as CandidateInspectReadModel;
+      expect(initialCandidate.runtime.trading_ledger).toMatchObject({
+        ledger_kind: "trading_ledger",
+        has_activity: false,
+        chain_complete: false
+      });
       expect(initialCandidate.runtime.bounded_authority).toMatchObject({
         has_activity: false,
         chain_complete: false
       });
 
-      const payload = {
-        idempotency_key: "slice3-mlp-runtime-authority",
-        candidate_version_id: initialCandidate.candidate_version.candidate_version_id,
-        intent: {
-          intent_kind: "place_order",
-          side: "buy",
-          order_type: "limit",
-          quantity: "0.001",
-          limit_price: "60000"
-        },
-        gateway_decision: {
-          decision_outcome: "dry_run_only",
-          decision_reason: "paper_stage_only",
-          policy_ref: {
-            record_kind: "runtime_operating_policy",
-            id: "runtime-operating-policy-paper-v1"
-          }
-        },
-        execution_attempt: {
-          execution_mode: "host_local",
-          trace_ref: {
-            record_kind: "trace_placeholder",
-            id: "trace-slice3-mlp-runtime-authority"
-          },
-          completed_at: "2026-05-10T00:01:00.000Z"
-        },
-        created_at: "2026-05-10T00:00:00.000Z"
-      };
-
       const recorded = await server.inject({
         method: "POST",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
-        payload
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
       });
       const duplicate = await server.inject({
         method: "POST",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
-        payload
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
       });
       expect(recorded.statusCode).toBe(201);
       expect(duplicate.statusCode).toBe(201);
@@ -88,7 +62,12 @@ describe("Slice 3 runtime authority MLP flow", () => {
       const outcome = recorded.json();
       expect(outcome).toMatchObject({
         status: "recorded",
-        order_intent_draft: {
+        order_intent: {
+          intent_kind: "place_order",
+          side: "buy",
+          order_type: "limit",
+          quantity: "0.001",
+          limit_price: "60000",
           status: "proposed",
           authority_status: "not_submitted"
         },
@@ -102,13 +81,17 @@ describe("Slice 3 runtime authority MLP flow", () => {
           execution_mode: "host_local",
           status: "dry_run_recorded",
           authority_status: "dry_run_only"
+        },
+        trading_ledger: {
+          ledger_kind: "trading_ledger",
+          chain_complete: true
         }
       });
 
       const orderIntent = await readStoreJson<OrderIntentDraftRecord>(
         "order-intent-drafts",
         "items",
-        `${outcome.order_intent_draft.order_intent_draft_id}.json`
+        `${outcome.order_intent.order_intent_draft_id}.json`
       );
       const gatewayDecision = await readStoreJson<GatewayDecisionRecord>(
         "gateway-decisions",
@@ -145,6 +128,23 @@ describe("Slice 3 runtime authority MLP flow", () => {
       });
       expect(readback.statusCode).toBe(200);
       const candidate = readback.json() as CandidateInspectReadModel;
+      expect(candidate.runtime.trading_ledger).toMatchObject({
+        ledger_kind: "trading_ledger",
+        has_activity: true,
+        chain_complete: true,
+        latest_order_intent: {
+          order_intent_draft_id: orderIntent.order_intent_draft_id,
+          authority_status: "not_submitted"
+        },
+        latest_gateway_decision: {
+          gateway_decision_id: gatewayDecision.gateway_decision_id,
+          authority_status: "dry_run_only"
+        },
+        latest_execution_attempt: {
+          execution_attempt_id: executionAttempt.execution_attempt_id,
+          authority_status: "dry_run_only"
+        }
+      });
       expect(candidate.runtime.bounded_authority).toMatchObject({
         has_activity: true,
         chain_complete: true,
@@ -163,15 +163,16 @@ describe("Slice 3 runtime authority MLP flow", () => {
       });
 
       const html = renderToStaticMarkup(
-        <CandidateDetail candidate={candidate} onRecordRuntimeAuthority={() => undefined} />
+        <CandidateDetail candidate={candidate} onRunTradingLoop={() => undefined} />
       );
-      expect(html).toContain("Runtime Authority");
+      expect(html).toContain("Trading ledger");
+      expect(html).not.toContain("Runtime Authority");
       expect(html).toContain("chain complete");
       expect(html).toContain("dry_run_only");
       expect(html).toContain("paper_stage_only");
       expect(html).toContain(`order_intent_draft:${orderIntent.order_intent_draft_id}`);
       expect(html).toContain(`gateway_decision:${gatewayDecision.gateway_decision_id}`);
-      expect(html).toContain("Record dry-run intent");
+      expect(html).toContain("Run trading loop");
       expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
       expect(html).not.toMatch(/runtime stack launch/i);
     } finally {
