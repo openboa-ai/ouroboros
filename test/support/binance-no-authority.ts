@@ -517,6 +517,8 @@ export function fixturePrivateReadGateDecision(
     signed_read_permission_grant_boundary_source: "policy_decision",
     signed_request_execution_boundary_status: "not_requested",
     signed_request_execution_boundary_source: "policy_decision",
+    account_balance_position_read_boundary_status: "not_requested",
+    account_balance_position_read_boundary_source: "policy_decision",
     signed_read_permission: "not_granted",
     account_balance_position_read_authority: "not_granted",
     listen_key_user_data_stream_authority: "not_granted",

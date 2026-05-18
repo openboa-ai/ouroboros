@@ -581,6 +581,8 @@ describe("LocalStore", () => {
       signed_read_permission_grant_boundary_source: "policy_decision",
       signed_request_execution_boundary_status: "decision_only",
       signed_request_execution_boundary_source: "policy_decision",
+      account_balance_position_read_boundary_status: "decision_only",
+      account_balance_position_read_boundary_source: "policy_decision",
       signed_read_permission: "not_granted",
       account_balance_position_read_authority: "not_granted",
       listen_key_user_data_stream_authority: "not_granted",
@@ -595,6 +597,11 @@ describe("LocalStore", () => {
       live_exchange_authority: false,
       authority_status: "not_live"
     });
+    expect(candidate?.trading_substrate?.latest_private_read_gate_decision?.reason_codes)
+      .toEqual(expect.arrayContaining([
+        "account_balance_position_read_boundary_only",
+        "no_private_read_performed"
+      ]));
   });
 
   it("records local private-readiness posture writes idempotently without private authority", async () => {
