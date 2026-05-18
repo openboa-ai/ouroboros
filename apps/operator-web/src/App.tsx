@@ -1521,6 +1521,13 @@ function TradingSubstrateSection({
                 ].join(", ")}
               />
               <Field
+                label="Account / balance / position read boundary"
+                value={[
+                  `USER_DATA=${privateReadGateDecision.account_balance_position_read_boundary_status}`,
+                  `source=${privateReadGateDecision.account_balance_position_read_boundary_source}`
+                ].join(", ")}
+              />
+              <Field
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />
