@@ -1,4 +1,5 @@
 import {
+  buildTradingGatewayContractReadModel,
   evaluatePrivateReadGateDecision,
   evaluatePrivateReadinessPolicyDecision
 } from "@ouroboros/domain";
@@ -84,6 +85,18 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
         }
       })
     : null;
+  const latestTradingGatewayContract = buildTradingGatewayContractReadModel({
+    evaluated_at: latestUpdatedAt([
+      latestPublicMarketLivenessSurface,
+      latestPrivateReadinessPreflightSurface,
+      latestPrivateReadinessPosture,
+      latestAccountPositionRiskMirrorSurface
+    ]),
+    public_market_liveness_surface: latestPublicMarketLivenessSurface ?? null,
+    private_readiness_preflight_surface: latestPrivateReadinessPreflightSurface ?? null,
+    account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null,
+    private_read_gate_decision: latestPrivateReadGateDecision
+  });
 
   return {
     latest_order_fill_surface: latestOrderFillSurface ?? null,
@@ -93,6 +106,7 @@ export async function buildLatestBinanceBtcusdtTradingSubstrateProjection(
     private_readiness_posture_history: privateReadinessPostureHistory,
     latest_private_readiness_policy_decision: latestPrivateReadinessPolicyDecision,
     latest_private_read_gate_decision: latestPrivateReadGateDecision,
+    latest_trading_gateway_contract: latestTradingGatewayContract,
     latest_account_position_risk_mirror_surface: latestAccountPositionRiskMirrorSurface ?? null
   };
 }

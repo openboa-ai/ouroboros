@@ -5,7 +5,8 @@ import {
   TRADING_SUBSTRATE_SURFACE_FAMILIES,
   TRADING_SUBSTRATE_SURFACE_TAXONOMY,
   evaluatePrivateReadGateDecision,
-  evaluatePrivateReadinessPolicyDecision
+  evaluatePrivateReadinessPolicyDecision,
+  buildTradingGatewayContractReadModel
 } from "./index";
 import {
   BINANCE_BTCUSDT_INSTRUMENT,
@@ -17,8 +18,12 @@ import {
   BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
   binanceBtcusdtNoAuthoritySurfaceExpectation,
   binancePrivateReadinessPolicyDecisionNoAuthorityExpectation,
+  fixtureAccountPositionRiskMirrorSurface,
+  fixturePrivateReadGateDecision,
+  fixturePrivateReadinessPreflightSurface,
   fixturePrivateReadinessPolicyReadyAccountPositionRiskSurface,
   fixturePrivateReadinessPolicyReadyPreflightSurface,
+  fixturePublicMarketLivenessSurface,
   privateReadinessGate,
   privateReadinessPolicyGate,
   ref
@@ -55,6 +60,7 @@ describe("Trading substrate taxonomy contract", () => {
       "risk",
       "posture",
       "gate",
+      "gateway",
       "connector",
       "authority",
       "snapshot",
@@ -177,6 +183,66 @@ describe("Trading substrate taxonomy contract", () => {
       "MARKET_DATA",
       "TRADE"
     ]);
+  });
+});
+
+describe("Trading gateway contract read model", () => {
+  it("summarizes the simple sandbox-to-gateway path without adding another private-read gate", () => {
+    const privateReadGateDecision = fixturePrivateReadGateDecision({
+      credential_reference_status: "reference_only",
+      signed_read_permission_preflight_status: "preflight_only",
+      signed_request_construction_boundary_status: "dry_run_only",
+      signed_read_permission_grant_boundary_status: "decision_only",
+      signed_request_execution_boundary_status: "decision_only",
+      account_balance_position_read_boundary_status: "decision_only"
+    });
+
+    const contract = buildTradingGatewayContractReadModel({
+      evaluated_at: "2026-05-16T00:00:08.000Z",
+      public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+      private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+      account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface(),
+      private_read_gate_decision: privateReadGateDecision
+    });
+
+    expect(contract).toEqual({
+      contract_kind: "trading_gateway_contract",
+      venue: BINANCE_USDM_FUTURES_VENUE,
+      instrument: BINANCE_BTCUSDT_INSTRUMENT,
+      product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
+      evaluated_at: "2026-05-16T00:00:08.000Z",
+      gateway_name: "TradingGateway",
+      sandbox_direct_exchange_access: false,
+      gateway_required_for: ["USER_DATA", "TRADE"],
+      tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+      market_data: {
+        security_type: "MARKET_DATA",
+        status: "enabled",
+        source: "public_market_liveness_surface",
+        authority_status: "not_live"
+      },
+      account_read: {
+        security_type: "USER_DATA",
+        status: "disabled",
+        endpoint_labels: ["GET /fapi/v3/account", "GET /fapi/v3/positionRisk"],
+        authority_status: "not_granted",
+        gateway_required: true
+      },
+      order_submission: {
+        security_type: "TRADE",
+        status: "disabled",
+        endpoint_labels: ["POST /fapi/v1/order"],
+        authority_status: "not_granted",
+        gateway_required: true
+      },
+      no_authority: {
+        raw_secret_material_present: false,
+        no_private_read_performed: true,
+        signed_request_authority: false,
+        live_exchange_authority: false
+      },
+      authority_status: "not_live"
+    });
   });
 });
 

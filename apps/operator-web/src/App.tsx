@@ -21,6 +21,7 @@ import type {
   PrivateReadinessPostureReadModel,
   PrivateReadinessPreflightSurfaceReadModel,
   PublicMarketLivenessSurfaceReadModel,
+  TradingGatewayContractReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 import {
@@ -675,6 +676,7 @@ export function CandidateDetail({
           privateReadinessPostureHistory={candidate.trading_substrate?.private_readiness_posture_history ?? []}
           privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
           privateReadGateDecision={candidate.trading_substrate?.latest_private_read_gate_decision}
+          tradingGatewayContract={candidate.trading_substrate?.latest_trading_gateway_contract}
           accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
           onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
           recordingPrivateReadinessPosture={recordingPrivateReadinessPosture}
@@ -1074,6 +1076,7 @@ function TradingSubstrateSection({
   privateReadinessPostureHistory,
   privateReadinessPolicyDecision,
   privateReadGateDecision,
+  tradingGatewayContract,
   accountPositionRiskSurface,
   onRecordPrivateReadinessPosture,
   recordingPrivateReadinessPosture = false,
@@ -1087,6 +1090,7 @@ function TradingSubstrateSection({
   privateReadinessPostureHistory?: PrivateReadinessPostureReadModel[];
   privateReadinessPolicyDecision?: PrivateReadinessPolicyDecision | null;
   privateReadGateDecision?: PrivateReadGateDecision | null;
+  tradingGatewayContract?: TradingGatewayContractReadModel | null;
   accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   recordingPrivateReadinessPosture?: boolean;
@@ -1191,6 +1195,60 @@ function TradingSubstrateSection({
           <strong>No public market surface</strong>
           <span>BTCUSDT market posture has not been recorded</span>
           <span>not_live</span>
+        </div>
+      )}
+      {tradingGatewayContract && (
+        <div className="authority-preview" aria-label="Trading gateway contract">
+          <h4>Trading gateway contract</h4>
+          <Field label="Gateway" value={tradingGatewayContract.gateway_name} />
+          <Field
+            label="Sandbox exchange access"
+            value={`sandbox_direct_exchange_access=${String(tradingGatewayContract.sandbox_direct_exchange_access)}`}
+          />
+          <Field
+            label="Gateway required"
+            value={tradingGatewayContract.gateway_required_for.join(", ")}
+          />
+          <Field
+            label="Tracking chain"
+            value={tradingGatewayContract.tracking_chain.join(" -> ")}
+          />
+          <Field
+            label="Market data"
+            value={[
+              tradingGatewayContract.market_data.security_type,
+              tradingGatewayContract.market_data.status,
+              tradingGatewayContract.market_data.authority_status
+            ].join(" / ")}
+          />
+          <Field
+            label="Account read"
+            value={[
+              tradingGatewayContract.account_read.security_type,
+              tradingGatewayContract.account_read.status,
+              tradingGatewayContract.account_read.endpoint_labels.join(", "),
+              `gateway_required=${String(tradingGatewayContract.account_read.gateway_required)}, authority=${tradingGatewayContract.account_read.authority_status}`
+            ].join(" / ")}
+          />
+          <Field
+            label="Order submission"
+            value={[
+              tradingGatewayContract.order_submission.security_type,
+              tradingGatewayContract.order_submission.status,
+              tradingGatewayContract.order_submission.endpoint_labels.join(", "),
+              `gateway_required=${String(tradingGatewayContract.order_submission.gateway_required)}, authority=${tradingGatewayContract.order_submission.authority_status}`
+            ].join(" / ")}
+          />
+          <Field
+            label="No-authority proof"
+            value={[
+              `raw_secret_material_present=${String(tradingGatewayContract.no_authority.raw_secret_material_present)}`,
+              `no_private_read_performed=${String(tradingGatewayContract.no_authority.no_private_read_performed)}`,
+              `signed_request_authority=${String(tradingGatewayContract.no_authority.signed_request_authority)}`,
+              `live_exchange_authority=${String(tradingGatewayContract.no_authority.live_exchange_authority)}`,
+              `authority_status=${tradingGatewayContract.authority_status}`
+            ].join(", ")}
+          />
         </div>
       )}
       {privateReadinessSurface ? (

@@ -268,6 +268,43 @@ describe("LocalStore", () => {
       live_exchange_authority: false,
       authority_status: "not_live"
     });
+    expect(candidate?.trading_substrate?.latest_trading_gateway_contract).toMatchObject({
+      contract_kind: "trading_gateway_contract",
+      gateway_name: "TradingGateway",
+      venue: "binance_usd_m_futures",
+      instrument: "BTCUSDT",
+      product_category: "perpetual_futures",
+      sandbox_direct_exchange_access: false,
+      gateway_required_for: ["USER_DATA", "TRADE"],
+      tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+      market_data: {
+        security_type: "MARKET_DATA",
+        status: "enabled",
+        source: "public_market_liveness_surface",
+        authority_status: "not_live"
+      },
+      account_read: {
+        security_type: "USER_DATA",
+        status: "disabled",
+        endpoint_labels: ["GET /fapi/v3/account", "GET /fapi/v3/positionRisk"],
+        authority_status: "not_granted",
+        gateway_required: true
+      },
+      order_submission: {
+        security_type: "TRADE",
+        status: "disabled",
+        endpoint_labels: ["POST /fapi/v1/order"],
+        authority_status: "not_granted",
+        gateway_required: true
+      },
+      no_authority: {
+        raw_secret_material_present: false,
+        no_private_read_performed: true,
+        signed_request_authority: false,
+        live_exchange_authority: false
+      },
+      authority_status: "not_live"
+    });
   });
 
   it("seeds a Binance BTCUSDT private-readiness posture into candidate inspect read models", async () => {
