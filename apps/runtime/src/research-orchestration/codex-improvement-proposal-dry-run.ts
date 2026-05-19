@@ -5,26 +5,26 @@ import type {
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { CodexCliArtifactChangeProposalProviderAdapter } from "../providers/codex-cli-artifact-change-proposal-provider";
-import type { ArtifactChangeProposalProviderAdapter } from "../providers/runtime-provider-adapter";
+import { CodexCliImprovementProposalProviderAdapter } from "../providers/codex-cli-improvement-proposal-provider";
+import type { ImprovementProposalProviderAdapter } from "../providers/runtime-provider-adapter";
 import {
-  planArtifactChangeProposalFromLocalStore,
-  type PlanArtifactChangeProposalFromLocalStoreOutcome
+  planImprovementProposalFromLocalStore,
+  type PlanImprovementProposalFromLocalStoreOutcome
 } from "./local-store-proposal-loop";
 
-export const codexArtifactChangeProposalDryRunFixtureIds = {
+export const codexImprovementProposalDryRunFixtureIds = {
   task: "trading-evaluation-task-codex-research-dry-run-001",
   sourceFinding: "research-finding-codex-research-dry-run-next-001",
   antiHackingFinding: "research-finding-codex-research-dry-run-anti-001",
   priorLineage: "artifact-lineage-codex-research-dry-run-v1",
-  priorRunnableArtifact: "research-runnable-artifact-codex-research-dry-run-seed-v1"
+  priorSystemCode: "research-system-code-codex-research-dry-run-seed-v1"
 } as const;
 
-export interface CodexArtifactChangeProposalDryRunInput {
+export interface CodexImprovementProposalDryRunInput {
   store_root?: string;
   store?: LocalStore;
-  provider_adapter?: ArtifactChangeProposalProviderAdapter;
-  parent_runnable_artifact_ref?: Ref;
+  provider_adapter?: ImprovementProposalProviderAdapter;
+  parent_system_code_ref?: Ref;
   idempotency_key?: string;
   created_at?: string;
   initialize_store?: boolean;
@@ -37,12 +37,12 @@ export interface CodexArtifactChangeProposalDryRunInput {
   codex_timeout_ms?: number;
 }
 
-export type CodexArtifactChangeProposalDryRunOutcome =
+export type CodexImprovementProposalDryRunOutcome =
   | {
       status: "materialized";
       store_root: string;
       idempotency_key: string;
-      outcome: PlanArtifactChangeProposalFromLocalStoreOutcome;
+      outcome: PlanImprovementProposalFromLocalStoreOutcome;
     }
   | {
       status: "failed";
@@ -51,19 +51,19 @@ export type CodexArtifactChangeProposalDryRunOutcome =
       failure_reason: string;
     };
 
-export async function runCodexArtifactChangeProposalDryRun(
-  input: CodexArtifactChangeProposalDryRunInput = {}
-): Promise<CodexArtifactChangeProposalDryRunOutcome> {
+export async function runCodexImprovementProposalDryRun(
+  input: CodexImprovementProposalDryRunInput = {}
+): Promise<CodexImprovementProposalDryRunOutcome> {
   const store = input.store ?? new LocalStore(input.store_root);
   if (input.initialize_store ?? true) {
     await store.initialize();
   }
   if (input.seed_fixture_findings ?? true) {
-    await seedCodexArtifactChangeProposalDryRunFindings(store, input.created_at);
+    await seedCodexImprovementProposalDryRunFindings(store, input.created_at);
   }
 
-  const idempotencyKey = input.idempotency_key ?? "codex-artifact-change-proposal-dry-run";
-  const providerAdapter = input.provider_adapter ?? new CodexCliArtifactChangeProposalProviderAdapter({
+  const idempotencyKey = input.idempotency_key ?? "codex-improvement-proposal-dry-run";
+  const providerAdapter = input.provider_adapter ?? new CodexCliImprovementProposalProviderAdapter({
     workingDirectory: input.working_directory,
     outputPath: input.output_path,
     schemaPath: input.schema_path,
@@ -73,11 +73,11 @@ export async function runCodexArtifactChangeProposalDryRun(
   });
 
   try {
-    const outcome = await planArtifactChangeProposalFromLocalStore({
+    const outcome = await planImprovementProposalFromLocalStore({
       store,
-      task: codexArtifactChangeProposalDryRunTask(input.created_at),
+      task: codexImprovementProposalDryRunTask(input.created_at),
       provider_adapter: providerAdapter,
-      parent_runnable_artifact_ref: input.parent_runnable_artifact_ref,
+      parent_system_code_ref: input.parent_system_code_ref,
       idempotency_key: idempotencyKey,
       created_at: input.created_at
     });
@@ -97,18 +97,18 @@ export async function runCodexArtifactChangeProposalDryRun(
   }
 }
 
-export async function seedCodexArtifactChangeProposalDryRunFindings(
+export async function seedCodexImprovementProposalDryRunFindings(
   store: LocalStore,
   createdAt = "2026-05-12T00:00:00.000Z"
 ): Promise<void> {
   const existingFindings = await store.listResearchFindings();
-  const sourceFinding = codexArtifactChangeProposalDryRunFinding(
-    codexArtifactChangeProposalDryRunFixtureIds.sourceFinding,
+  const sourceFinding = codexImprovementProposalDryRunFinding(
+    codexImprovementProposalDryRunFixtureIds.sourceFinding,
     "next_artifact_hint",
     createdAt
   );
-  const antiHackingFinding = codexArtifactChangeProposalDryRunFinding(
-    codexArtifactChangeProposalDryRunFixtureIds.antiHackingFinding,
+  const antiHackingFinding = codexImprovementProposalDryRunFinding(
+    codexImprovementProposalDryRunFixtureIds.antiHackingFinding,
     "anti_hacking_case",
     createdAt
   );
@@ -121,19 +121,19 @@ export async function seedCodexArtifactChangeProposalDryRunFindings(
 
   const existingLineages = await store.listArtifactLineages();
   if (!existingLineages.some((lineage) =>
-    lineage.artifact_lineage_id === codexArtifactChangeProposalDryRunFixtureIds.priorLineage
+    lineage.artifact_lineage_id === codexImprovementProposalDryRunFixtureIds.priorLineage
   )) {
-    await store.recordArtifactLineage(codexArtifactChangeProposalDryRunLineage(sourceFinding, createdAt));
+    await store.recordArtifactLineage(codexImprovementProposalDryRunLineage(sourceFinding, createdAt));
   }
 }
 
-export function codexArtifactChangeProposalDryRunTask(
+export function codexImprovementProposalDryRunTask(
   createdAt = "2026-05-12T00:00:00.000Z"
 ): TradingEvaluationTaskRecord {
   return {
     record_kind: "trading_evaluation_task",
     version: 1,
-    trading_evaluation_task_id: codexArtifactChangeProposalDryRunFixtureIds.task,
+    trading_evaluation_task_id: codexImprovementProposalDryRunFixtureIds.task,
     market_scope: "external_trading_api_fixture",
     stage: "backtest",
     data_window_ref: ref("data_window", "sealed-replay-fixture-window"),
@@ -150,7 +150,7 @@ export function codexArtifactChangeProposalDryRunTask(
   };
 }
 
-function codexArtifactChangeProposalDryRunFinding(
+function codexImprovementProposalDryRunFinding(
   findingId: string,
   findingKind: ResearchFindingRecord["finding_kind"],
   createdAt: string
@@ -174,19 +174,19 @@ function codexArtifactChangeProposalDryRunFinding(
   };
 }
 
-function codexArtifactChangeProposalDryRunLineage(
+function codexImprovementProposalDryRunLineage(
   sourceFinding: ResearchFindingRecord,
   createdAt: string
 ): ArtifactLineageRecord {
   return {
     record_kind: "artifact_lineage",
     version: 1,
-    artifact_lineage_id: codexArtifactChangeProposalDryRunFixtureIds.priorLineage,
-    child_runnable_artifact_ref: ref(
-      "runnable_artifact",
-      codexArtifactChangeProposalDryRunFixtureIds.priorRunnableArtifact
+    artifact_lineage_id: codexImprovementProposalDryRunFixtureIds.priorLineage,
+    child_system_code_ref: ref(
+      "system_code",
+      codexImprovementProposalDryRunFixtureIds.priorSystemCode
     ),
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-codex-research-root-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-codex-research-root-v1"),
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: createdAt,

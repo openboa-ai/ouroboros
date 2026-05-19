@@ -1,10 +1,10 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createFixtureRecords, FIXTURE_RUNNABLE_ARTIFACT_ID } from "@ouroboros/local-store";
-import type { RunnableArtifactRecord } from "@ouroboros/domain";
+import { createFixtureRecords, FIXTURE_SYSTEM_CODE_ID } from "@ouroboros/local-store";
+import type { SystemCodeRecord } from "@ouroboros/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DockerSandboxesSbxRuntimeAdapter } from "../src/runtime-instances/sandbox-runtime-adapter";
+import { DockerSandboxesSbxSandboxAdapter } from "../src/sandboxes/sandbox-adapter";
 
 let tmpDir: string;
 
@@ -28,18 +28,18 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await writeFile(fakeSbx, fakeSbxScript(), "utf8");
     await chmod(fakeSbx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
-    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-runtime-instance-fake-sbx";
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-fake-sbx";
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
       workspacePath: "."
     });
     const artifact = clockArtifactFixture();
     const start = await adapter.startArtifactInstance({
       artifact,
-      instance_id: "sandbox-runtime-instance-fake-sbx",
+      instance_id: "sandbox-fake-sbx",
       sandbox_name: "ouro-s5-clock-fake",
-      runtime_placement_id: "runtime-placement-fake-sbx",
+      sandbox_placement_id: "sandbox-placement-fake-sbx",
       created_at: "2026-05-10T00:00:00.000Z",
       test_ticks: 2,
       interval_ms: 1
@@ -56,7 +56,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(JSON.stringify(start.command_evidence)).not.toMatch(/secret|password|token|api[-_]?key|credential/i);
 
     const logs = await adapter.getArtifactInstanceLogs(start.instance);
-    expect(logs.logs?.[0]?.lines[0]).toContain("sandbox-runtime-instance-fake-sbx");
+    expect(logs.logs?.[0]?.lines[0]).toContain("sandbox-fake-sbx");
     expect(logs.heartbeats?.[0]?.heartbeat_line).toContain("runtime_heartbeat");
     const firstStatus = await adapter.getArtifactInstanceStatus(start.instance);
     const secondStatus = await adapter.getArtifactInstanceStatus(start.instance);
@@ -80,15 +80,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(commands).toEqual([
       "version",
       "create --name ouro-s5-clock-fake shell .",
-      "exec -d -w . ouro-s5-clock-fake python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-fake-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-runtime-instance-fake-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-runtime-instance-fake-sbx.heartbeat.json --ticks 2",
+      "exec -d -w . ouro-s5-clock-fake python3 fixtures/trading-systems/clock.py --instance-id sandbox-fake-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-fake-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json --ticks 2",
       "version",
-      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-runtime-instance-fake-sbx.jsonl",
+      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.jsonl",
       "version",
-      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-runtime-instance-fake-sbx.heartbeat.json",
+      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json",
       "version",
-      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-runtime-instance-fake-sbx.heartbeat.json",
+      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json",
       "version",
-      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-runtime-instance-fake-sbx.jsonl",
+      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.jsonl",
       "version",
       "exec ouro-s5-clock-fake pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-fake"
@@ -102,15 +102,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await chmod(fakeSbx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
       workspacePath: "."
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-failed-sbx",
+      instance_id: "sandbox-failed-sbx",
       sandbox_name: "ouro-s5-clock-failed",
-      runtime_placement_id: "runtime-placement-failed-sbx",
+      sandbox_placement_id: "sandbox-placement-failed-sbx",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -120,11 +120,11 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(start.instance.command_evidence_refs).toEqual([
       {
         record_kind: "sandbox_command_evidence",
-        id: "sandbox-command-evidence-sandbox-runtime-instance-failed-sbx-version"
+        id: "sandbox-command-evidence-sandbox-failed-sbx-version"
       },
       {
         record_kind: "sandbox_command_evidence",
-        id: "sandbox-command-evidence-sandbox-runtime-instance-failed-sbx-create"
+        id: "sandbox-command-evidence-sandbox-failed-sbx-create"
       }
     ]);
     expect(start.command_evidence).toHaveLength(2);
@@ -147,16 +147,16 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     process.env.SBX_EXPECT_HOME = sbxHome;
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
       sbxHome,
       workspacePath: "."
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-home-sbx",
+      instance_id: "sandbox-home-sbx",
       sandbox_name: "ouro-s5-clock-home",
-      runtime_placement_id: "runtime-placement-home-sbx",
+      sandbox_placement_id: "sandbox-placement-home-sbx",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -165,7 +165,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-home shell .",
-      "exec -d -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-runtime-instance-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-runtime-instance-home-sbx.heartbeat.json"
+      "exec -d -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-home-sbx.heartbeat.json"
     ]);
   });
 
@@ -176,15 +176,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await chmod(fakeAliasedSdx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeAliasedSdx,
       workspacePath: "."
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-aliased-sdx",
+      instance_id: "sandbox-aliased-sdx",
       sandbox_name: "ouro-s5-clock-aliased-sdx",
-      runtime_placement_id: "runtime-placement-aliased-sdx",
+      sandbox_placement_id: "sandbox-placement-aliased-sdx",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -197,7 +197,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-aliased-sdx shell .",
-      "exec -d -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-runtime-instance-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-runtime-instance-aliased-sdx.heartbeat.json"
+      "exec -d -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json"
     ]);
   });
 
@@ -209,14 +209,14 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     process.env.OUROBOROS_SDX_BIN = fakeAliasedSdx;
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       workspacePath: "."
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-sdx-env-alias",
+      instance_id: "sandbox-sdx-env-alias",
       sandbox_name: "ouro-s5-clock-sdx-env-alias",
-      runtime_placement_id: "runtime-placement-sdx-env-alias",
+      sandbox_placement_id: "sandbox-placement-sdx-env-alias",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -226,7 +226,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-sdx-env-alias shell .",
-      "exec -d -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-runtime-instance-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-runtime-instance-sdx-env-alias.heartbeat.json"
+      "exec -d -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json"
     ]);
   });
 
@@ -240,14 +240,14 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     process.env.OUROBOROS_SDX_BIN = "./scripts/sdx-docker-sandboxes";
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       workspacePath: tmpDir
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-relative-sdx-env-alias",
+      instance_id: "sandbox-relative-sdx-env-alias",
       sandbox_name: "ouro-s5-clock-relative-sdx-env-alias",
-      runtime_placement_id: "runtime-placement-relative-sdx-env-alias",
+      sandbox_placement_id: "sandbox-placement-relative-sdx-env-alias",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -257,7 +257,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       `create --name ouro-s5-clock-relative-sdx-env-alias shell ${tmpDir}`,
-      `exec -d -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-runtime-instance-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-runtime-instance-relative-sdx-env-alias.heartbeat.json`
+      `exec -d -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json`
     ]);
   });
 
@@ -268,15 +268,15 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await chmod(fakeSdx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSdx,
       workspacePath: "."
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-sdx-rejected",
+      instance_id: "sandbox-sdx-rejected",
       sandbox_name: "ouro-s5-clock-sdx-rejected",
-      runtime_placement_id: "runtime-placement-sdx-rejected",
+      sandbox_placement_id: "sandbox-placement-sdx-rejected",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -302,24 +302,24 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await chmod(fakeSbx, 0o755);
     await chmod(fakeSdx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = validCommandLog;
-    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-runtime-instance-sdx-operations";
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-sdx-operations";
 
-    const startAdapter = new DockerSandboxesSbxRuntimeAdapter({
+    const startAdapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
       workspacePath: "."
     });
     const start = await startAdapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-sdx-operations",
+      instance_id: "sandbox-sdx-operations",
       sandbox_name: "ouro-s5-clock-sdx-operations",
-      runtime_placement_id: "runtime-placement-sdx-operations",
+      sandbox_placement_id: "sandbox-placement-sdx-operations",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
     expect(start.instance.lifecycle_status).toBe("running");
 
     process.env.SBX_FAKE_COMMAND_LOG = sdxCommandLog;
-    const sdxAdapter = new DockerSandboxesSbxRuntimeAdapter({
+    const sdxAdapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSdx,
       workspacePath: "."
     });
@@ -346,17 +346,17 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     await writeFile(fakeSbx, fakeSbxStopFailureScript(), "utf8");
     await chmod(fakeSbx, 0o755);
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
-    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-runtime-instance-stop-failed-sbx";
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-stop-failed-sbx";
 
-    const adapter = new DockerSandboxesSbxRuntimeAdapter({
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
       sbxPath: fakeSbx,
       workspacePath: "."
     });
     const start = await adapter.startArtifactInstance({
       artifact: clockArtifactFixture(),
-      instance_id: "sandbox-runtime-instance-stop-failed-sbx",
+      instance_id: "sandbox-stop-failed-sbx",
       sandbox_name: "ouro-s5-clock-stop-failed",
-      runtime_placement_id: "runtime-placement-stop-failed-sbx",
+      sandbox_placement_id: "sandbox-placement-stop-failed-sbx",
       created_at: "2026-05-10T00:00:00.000Z",
       interval_ms: 1
     });
@@ -369,7 +369,7 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-stop-failed shell .",
-      "exec -d -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-runtime-instance-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-runtime-instance-stop-failed-sbx.heartbeat.json",
+      "exec -d -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json",
       "version",
       "exec ouro-s5-clock-stop-failed pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-stop-failed"
@@ -377,12 +377,12 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
   });
 });
 
-function clockArtifactFixture(): RunnableArtifactRecord {
+function clockArtifactFixture(): SystemCodeRecord {
   const artifact = createFixtureRecords()
     .map((item) => item.record)
-    .find((record): record is RunnableArtifactRecord => (
-      record.record_kind === "runnable_artifact" &&
-      record.runnable_artifact_id === FIXTURE_RUNNABLE_ARTIFACT_ID
+    .find((record): record is SystemCodeRecord => (
+      record.record_kind === "system_code" &&
+      record.system_code_id === FIXTURE_SYSTEM_CODE_ID
     ));
   if (!artifact) {
     throw new Error("clock artifact fixture missing");

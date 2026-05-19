@@ -2,13 +2,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ArtifactChangeProposalProviderOutput, Ref } from "@ouroboros/domain";
+import type { ImprovementProposalProviderOutput, Ref } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
-  codexArtifactChangeProposalDryRunFixtureIds,
-  runCodexArtifactChangeProposalDryRun
-} from "../src/research-orchestration/codex-artifact-change-proposal-dry-run";
-import { CodexCliArtifactChangeProposalProviderAdapter } from "../src/providers/codex-cli-artifact-change-proposal-provider";
+  codexImprovementProposalDryRunFixtureIds,
+  runCodexImprovementProposalDryRun
+} from "../src/research-orchestration/codex-improvement-proposal-dry-run";
+import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -26,7 +26,7 @@ describe("Codex research proposal dry-run command runner", () => {
   it("runs Codex CLI through the adapter and materializes proposal records", async () => {
     const outputPath = path.join(tmpDir, "provider-output.json");
     const calls: string[][] = [];
-    const providerAdapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const providerAdapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
       execFile: async (_file, args) => {
@@ -39,7 +39,7 @@ describe("Codex research proposal dry-run command runner", () => {
       }
     });
 
-    const outcome = await runCodexArtifactChangeProposalDryRun({
+    const outcome = await runCodexImprovementProposalDryRun({
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-dry-run-command-success",
@@ -52,11 +52,11 @@ describe("Codex research proposal dry-run command runner", () => {
       throw new Error("expected materialized dry-run outcome");
     }
     expect(outcome.outcome.proposal.authority_status).toBe("proposal_only");
-    expect(outcome.outcome.runnable_artifact.authority_status).toBe("not_live");
+    expect(outcome.outcome.system_code.authority_status).toBe("not_live");
     expect(outcome.outcome.lineage.authority_status).toBe("lineage_only");
 
     const store = new LocalStore(tmpDir);
-    const attempts = await store.listArtifactChangeProposalMaterializationAttempts();
+    const attempts = await store.listImprovementProposalMaterializationAttempts();
     expect(attempts).toHaveLength(1);
     expect(attempts[0]).toMatchObject({
       provider: {
@@ -64,7 +64,7 @@ describe("Codex research proposal dry-run command runner", () => {
       },
       provider_output_artifact_refs: [
         {
-          record_kind: "artifact_change_proposal_provider_output_artifact",
+          record_kind: "improvement_proposal_provider_output_artifact",
           id: outputPath
         }
       ],
@@ -76,7 +76,7 @@ describe("Codex research proposal dry-run command runner", () => {
       "codex_cli_prompt_artifact",
       "codex_cli_command_artifact"
     ]);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([outcome.outcome.proposal]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([outcome.outcome.proposal]);
     expect(JSON.stringify({ outcome, attempts })).not.toMatch(
       /strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence|venue_adapter/i
     );
@@ -84,7 +84,7 @@ describe("Codex research proposal dry-run command runner", () => {
 
   it("records failed provider output without proposal records when Codex is unavailable", async () => {
     const outputPath = path.join(tmpDir, "missing-provider-output.json");
-    const providerAdapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const providerAdapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
       execFile: async () => {
@@ -92,7 +92,7 @@ describe("Codex research proposal dry-run command runner", () => {
       }
     });
 
-    const outcome = await runCodexArtifactChangeProposalDryRun({
+    const outcome = await runCodexImprovementProposalDryRun({
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-dry-run-command-missing",
@@ -101,10 +101,10 @@ describe("Codex research proposal dry-run command runner", () => {
 
     expect(outcome).toMatchObject({
       status: "failed",
-      failure_reason: "artifact_change_proposal_provider_unavailable"
+      failure_reason: "improvement_proposal_provider_unavailable"
     });
     const store = new LocalStore(tmpDir);
-    const attempts = await store.listArtifactChangeProposalMaterializationAttempts();
+    const attempts = await store.listImprovementProposalMaterializationAttempts();
     expect(attempts).toHaveLength(1);
     expect(attempts[0]).toMatchObject({
       provider: {
@@ -112,27 +112,27 @@ describe("Codex research proposal dry-run command runner", () => {
       },
       status: "failed",
       validation_status: "rejected",
-      failure_reason: "artifact_change_proposal_provider_unavailable",
+      failure_reason: "improvement_proposal_provider_unavailable",
       authority_status: "proposal_input_only"
     });
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([]);
     await expect(store.listArtifactLineages()).resolves.toMatchObject([
       {
-        artifact_lineage_id: codexArtifactChangeProposalDryRunFixtureIds.priorLineage
+        artifact_lineage_id: codexImprovementProposalDryRunFixtureIds.priorLineage
       }
     ]);
   });
 });
 
-function providerOutput(): ArtifactChangeProposalProviderOutput {
+function providerOutput(): ImprovementProposalProviderOutput {
   return {
-    output_kind: "artifact_change_proposal_input",
-    trading_evaluation_task_ref: ref("trading_evaluation_task", codexArtifactChangeProposalDryRunFixtureIds.task),
-    source_finding_refs: [ref("research_finding", codexArtifactChangeProposalDryRunFixtureIds.sourceFinding)],
-    anti_hacking_finding_refs: [ref("research_finding", codexArtifactChangeProposalDryRunFixtureIds.antiHackingFinding)],
-    parent_runnable_artifact_ref: ref(
-      "runnable_artifact",
-      codexArtifactChangeProposalDryRunFixtureIds.priorRunnableArtifact
+    output_kind: "improvement_proposal_input",
+    trading_evaluation_task_ref: ref("trading_evaluation_task", codexImprovementProposalDryRunFixtureIds.task),
+    source_finding_refs: [ref("research_finding", codexImprovementProposalDryRunFixtureIds.sourceFinding)],
+    anti_hacking_finding_refs: [ref("research_finding", codexImprovementProposalDryRunFixtureIds.antiHackingFinding)],
+    parent_system_code_ref: ref(
+      "system_code",
+      codexImprovementProposalDryRunFixtureIds.priorSystemCode
     ),
     proposal_summary: "Codex dry-run proposes the next opaque generic trading artifact input.",
     requested_change_summary: "Preserve sealed evaluator constraints while improving robustness.",

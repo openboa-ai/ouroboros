@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FIXTURE_CANDIDATE_ID, FIXTURE_RUNNABLE_ARTIFACT_ID, LocalStore } from "../src/index";
+import { FIXTURE_CANDIDATE_ID, FIXTURE_SYSTEM_CODE_ID, LocalStore } from "../src/index";
 import {
   BINANCE_BTCUSDT_QUERY,
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
@@ -16,35 +16,35 @@ import {
 import type {
   AccountPositionRiskMirrorSurfaceRecord,
   ArtifactLineageRecord,
-  ArtifactChangeProposalRecord,
+  ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
-  ArtifactChangeProposalMaterializationInput,
-  ArtifactChangeProposalProviderFailureInput,
-  ArtifactChangeProposalProviderResult,
-  BoundedRuntimeAuthorityInput,
+  ImprovementProposalMaterializationInput,
+  ImprovementProposalProviderFailureInput,
+  ImprovementProposalProviderResult,
+  LedgerInput,
   CandidateMaterializationInput,
   EvidenceClassificationRecord,
   EvaluationComparisonSetRecord,
-  ExecutionAttemptRecord,
+  ExecutionResultRecord,
   ExperimentRunRecord,
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
-  GatewayDecisionRecord,
+  GatewayResultRecord,
   OrderFillSurfaceRecord,
-  OrderIntentDraftRecord,
+  OrderRequestRecord,
   PrivateReadinessPostureRecord,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceRecord,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   RuntimeAuditEventRecord,
-  RuntimeControlAuditInput,
-  RuntimeControlCommandRecord,
-  RuntimeControlDecisionRecord,
+  RunControlAuditInput,
+  RunControlCommandRecord,
+  RunControlDecisionRecord,
   StageBindingRecord,
   TracePlaceholderRecord,
   TradingEvaluationResultRecord,
-  TradingSystemRuntimeRecord
+  TradingRunRecord
 } from "@ouroboros/domain";
 
 let tmpDir: string;
@@ -256,7 +256,7 @@ describe("LocalStore", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       binance_security_types: [...BINANCE_PRIVATE_READINESS_SECURITY_TYPES],
@@ -278,7 +278,7 @@ describe("LocalStore", () => {
       product_category: "perpetual_futures",
       sandbox_direct_exchange_access: false,
       gateway_required_for: ["USER_DATA", "TRADE"],
-      tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+      tracking_chain: ["order_request", "gateway_result", "execution_result"],
       market_data: {
         security_type: "MARKET_DATA",
         status: "enabled",
@@ -448,7 +448,7 @@ describe("LocalStore", () => {
       account_balance_position_read_authority: "not_granted",
       listen_key_user_data_stream_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -627,7 +627,7 @@ describe("LocalStore", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -1440,7 +1440,7 @@ describe("LocalStore", () => {
     });
   });
 
-  it("records, deduplicates, and projects bounded runtime authority records", async () => {
+  it("records, deduplicates, and projects Ledger records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
@@ -1448,60 +1448,60 @@ describe("LocalStore", () => {
       throw new Error("expected fixture candidate");
     }
 
-    const input = validBoundedRuntimeAuthorityInput(candidate.candidate_version.candidate_version_id);
-    const first = await store.recordBoundedRuntimeAuthority(input);
-    const second = await store.recordBoundedRuntimeAuthority(input);
+    const input = validLedgerInput(candidate.candidate_version.candidate_version_id);
+    const first = await store.recordLedger(input);
+    const second = await store.recordLedger(input);
 
     expect(second).toEqual(first);
     expect(first).toMatchObject({
       candidate_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: candidate.candidate_version.candidate_version_id,
       runtime_id: candidate.runtime.ref.id,
-      order_intent_draft: {
-        record_kind: "order_intent_draft",
+      order_request: {
+        record_kind: "order_request",
         status: "proposed",
         authority_status: "not_submitted"
       },
-      gateway_decision: {
-        record_kind: "gateway_decision",
+      gateway_result: {
+        record_kind: "gateway_result",
         decision_outcome: "dry_run_only",
         decision_reason: "paper_stage_only",
         authority_status: "dry_run_only"
       },
-      execution_attempt: {
-        record_kind: "execution_attempt",
+      execution_result: {
+        record_kind: "execution_result",
         status: "dry_run_recorded",
         authority_status: "dry_run_only"
       }
     });
-    expect(first.gateway_decision.order_intent_draft_ref).toEqual({
-      record_kind: "order_intent_draft",
-      id: first.order_intent_draft.order_intent_draft_id
+    expect(first.gateway_result.order_request_ref).toEqual({
+      record_kind: "order_request",
+      id: first.order_request.order_request_id
     });
-    expect(first.execution_attempt.gateway_decision_ref).toEqual({
-      record_kind: "gateway_decision",
-      id: first.gateway_decision.gateway_decision_id
+    expect(first.execution_result.gateway_result_ref).toEqual({
+      record_kind: "gateway_result",
+      id: first.gateway_result.gateway_result_id
     });
 
-    const orderIntent = await readStoreJson<OrderIntentDraftRecord>(
-      "order-intent-drafts",
+    const orderIntent = await readStoreJson<OrderRequestRecord>(
+      "order-requests",
       "items",
-      `${first.order_intent_draft.order_intent_draft_id}.json`
+      `${first.order_request.order_request_id}.json`
     );
-    const gatewayDecision = await readStoreJson<GatewayDecisionRecord>(
-      "gateway-decisions",
+    const gatewayDecision = await readStoreJson<GatewayResultRecord>(
+      "gateway-results",
       "items",
-      `${first.gateway_decision.gateway_decision_id}.json`
+      `${first.gateway_result.gateway_result_id}.json`
     );
-    const executionAttempt = await readStoreJson<ExecutionAttemptRecord>(
-      "execution-attempts",
+    const executionAttempt = await readStoreJson<ExecutionResultRecord>(
+      "execution-results",
       "items",
-      `${first.execution_attempt.execution_attempt_id}.json`
+      `${first.execution_result.execution_result_id}.json`
     );
     const stageBinding = await readStoreJson<StageBindingRecord>(
       "stage-bindings",
       "items",
-      `${first.order_intent_draft.stage_binding_ref.id}.json`
+      `${first.order_request.stage_binding_ref.id}.json`
     );
     expect(orderIntent.runtime_ref.id).toBe(candidate.runtime.ref.id);
     expect(stageBinding).toMatchObject({
@@ -1511,131 +1511,101 @@ describe("LocalStore", () => {
       candidate_ref: { id: FIXTURE_CANDIDATE_ID },
       candidate_version_ref: { id: candidate.candidate_version.candidate_version_id }
     });
-    expect(gatewayDecision.order_intent_draft_ref.id).toBe(orderIntent.order_intent_draft_id);
-    expect(executionAttempt.gateway_decision_ref.id).toBe(gatewayDecision.gateway_decision_id);
+    expect(gatewayDecision.order_request_ref.id).toBe(orderIntent.order_request_id);
+    expect(executionAttempt.gateway_result_ref.id).toBe(gatewayDecision.gateway_result_id);
     await expect(countJsonFiles("stage-bindings", "items")).resolves.toBe(2);
-    await expect(countJsonFiles("order-intent-drafts", "items")).resolves.toBe(1);
-    await expect(countJsonFiles("gateway-decisions", "items")).resolves.toBe(1);
-    await expect(countJsonFiles("execution-attempts", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("order-requests", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("gateway-results", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("execution-results", "items")).resolves.toBe(1);
 
     const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
-    expect(projected?.runtime.trading_ledger).toMatchObject({
-      ledger_kind: "trading_ledger",
+    expect(projected?.ledger).toMatchObject({
+      ledger_kind: "ledger",
       has_activity: true,
       chain_complete: true,
-      latest_order_intent: {
-        order_intent_draft_id: first.order_intent_draft.order_intent_draft_id,
+      latest_order_request: {
+        order_request_id: first.order_request.order_request_id,
         status: "proposed",
         authority_status: "not_submitted"
       },
-      latest_gateway_decision: {
-        gateway_decision_id: first.gateway_decision.gateway_decision_id,
+      latest_gateway_result: {
+        gateway_result_id: first.gateway_result.gateway_result_id,
         decision_outcome: "dry_run_only",
         authority_status: "dry_run_only"
       },
-      latest_execution_attempt: {
-        execution_attempt_id: first.execution_attempt.execution_attempt_id,
+      latest_execution_result: {
+        execution_result_id: first.execution_result.execution_result_id,
         status: "dry_run_recorded",
         authority_status: "dry_run_only"
       },
-      order_intent: {
-        label: "Order intent",
+      order_request: {
+        label: "Order request",
         status: "proposed"
       },
-      gateway_decision: {
-        label: "Gateway decision",
+      gateway_result: {
+        label: "Gateway result",
         status: "dry_run_only"
       },
-      execution_attempt: {
-        label: "Execution attempt",
+      execution_result: {
+        label: "Execution result",
         status: "dry_run_recorded"
       },
-      compatibility: {
-        source_projection: "runtime.bounded_authority",
-        source_record_kinds: [
-          "order_intent_draft",
-          "gateway_decision",
-          "execution_attempt"
-        ]
-      }
-    });
-    expect(projected?.runtime.bounded_authority).toMatchObject({
-      has_activity: true,
-      chain_complete: true,
-      latest_order_intent_draft: {
-        order_intent_draft_id: first.order_intent_draft.order_intent_draft_id,
-        status: "proposed",
-        authority_status: "not_submitted"
-      },
-      latest_gateway_decision: {
-        gateway_decision_id: first.gateway_decision.gateway_decision_id,
-        decision_outcome: "dry_run_only",
-        authority_status: "dry_run_only"
-      },
-      latest_execution_attempt: {
-        execution_attempt_id: first.execution_attempt.execution_attempt_id,
-        status: "dry_run_recorded",
-        authority_status: "dry_run_only"
-      }
+      source_record_kinds: ["order_request", "gateway_result", "execution_result"]
     });
 
     await rm(path.join(tmpDir, "read-models"), { recursive: true, force: true });
     await store.rebuildProjections();
 
     const reloaded = await store.getCandidate(FIXTURE_CANDIDATE_ID);
-    expect(reloaded?.runtime.trading_ledger?.latest_execution_attempt?.execution_attempt_id).toBe(
-      first.execution_attempt.execution_attempt_id
+    expect(reloaded?.ledger?.latest_execution_result?.execution_result_id).toBe(
+      first.execution_result.execution_result_id
     );
-    expect(reloaded?.runtime.trading_ledger?.chain_complete).toBe(true);
-    expect(reloaded?.runtime.bounded_authority?.latest_execution_attempt?.execution_attempt_id).toBe(
-      first.execution_attempt.execution_attempt_id
-    );
-    expect(reloaded?.runtime.bounded_authority?.chain_complete).toBe(true);
+    expect(reloaded?.ledger?.chain_complete).toBe(true);
   });
 
-  it("rejects invalid bounded runtime authority commands without creating records", async () => {
+  it("rejects invalid Ledger writes without creating records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
 
     await expectStoreError(
-      store.recordBoundedRuntimeAuthority({
-        ...validBoundedRuntimeAuthorityInput("fixture-candidate-version-001"),
+      store.recordLedger({
+        ...validLedgerInput("fixture-candidate-version-001"),
         candidate_id: ""
       }),
-      "invalid_runtime_authority_input"
+      "invalid_ledger_input"
     );
     await expectStoreError(
-      store.recordBoundedRuntimeAuthority({
-        ...validBoundedRuntimeAuthorityInput("missing-version"),
+      store.recordLedger({
+        ...validLedgerInput("missing-version"),
         candidate_version_id: "missing-version"
       }),
       "candidate_version_not_found"
     );
     await writeStoreJson(
       {
-        record_kind: "trading_system_runtime",
+        record_kind: "trading_run",
         version: 1,
-        trading_system_runtime_id: "foreign-runtime-001",
+        trading_run_id: "foreign-runtime-001",
         stage_binding_profile: "paper",
-        placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
+        placement_ref: { record_kind: "sandbox_placement", id: "fixture-sandbox-placement-001" },
         hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
         memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
         authority_status: "not_live"
-      } satisfies TradingSystemRuntimeRecord,
-      "trading-system-runtimes",
+      } satisfies TradingRunRecord,
+      "trading-runs",
       "items",
       "foreign-runtime-001.json"
     );
     await expectStoreError(
-      store.recordBoundedRuntimeAuthority({
-        ...validBoundedRuntimeAuthorityInput("fixture-candidate-version-001"),
+      store.recordLedger({
+        ...validLedgerInput("fixture-candidate-version-001"),
         runtime_id: "foreign-runtime-001"
       }),
       "runtime_mismatch"
     );
-    await expect(countJsonFiles("order-intent-drafts", "items")).resolves.toBe(0);
-    await expect(countJsonFiles("gateway-decisions", "items")).resolves.toBe(0);
-    await expect(countJsonFiles("execution-attempts", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("order-requests", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("gateway-results", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("execution-results", "items")).resolves.toBe(0);
   });
 
   it("records, deduplicates, and projects runtime control audit records", async () => {
@@ -1646,9 +1616,9 @@ describe("LocalStore", () => {
       throw new Error("expected fixture candidate");
     }
 
-    const input = validRuntimeControlAuditInput(candidate.candidate_version.candidate_version_id);
-    const first = await store.recordRuntimeControlAudit(input);
-    const second = await store.recordRuntimeControlAudit(input);
+    const input = validRunControlAuditInput(candidate.candidate_version.candidate_version_id);
+    const first = await store.recordRunControlAudit(input);
+    const second = await store.recordRunControlAudit(input);
 
     expect(second).toEqual(first);
     expect(first).toMatchObject({
@@ -1656,13 +1626,13 @@ describe("LocalStore", () => {
       candidate_version_id: candidate.candidate_version.candidate_version_id,
       runtime_id: candidate.runtime.ref.id,
       command: {
-        record_kind: "runtime_control_command",
+        record_kind: "run_control_command",
         action: "pause",
         status: "decided",
         authority_status: "control_only"
       },
       decision: {
-        record_kind: "runtime_control_decision",
+        record_kind: "run_control_decision",
         decision_outcome: "allowed",
         decision_reason: "policy_allows_control",
         resulting_lifecycle_status: "paused",
@@ -1676,23 +1646,23 @@ describe("LocalStore", () => {
       }
     });
 
-    const command = await readStoreJson<RuntimeControlCommandRecord>(
-      "runtime-control-commands",
+    const command = await readStoreJson<RunControlCommandRecord>(
+      "run-control-commands",
       "items",
-      `${first.command.runtime_control_command_id}.json`
+      `${first.command.run_control_command_id}.json`
     );
-    const decision = await readStoreJson<RuntimeControlDecisionRecord>(
-      "runtime-control-decisions",
+    const decision = await readStoreJson<RunControlDecisionRecord>(
+      "run-control-decisions",
       "items",
-      `${first.decision.runtime_control_decision_id}.json`
+      `${first.decision.run_control_decision_id}.json`
     );
     const auditEvent = await readStoreJson<RuntimeAuditEventRecord>(
       "runtime-audit-events",
       "items",
       `${first.audit_event.runtime_audit_event_id}.json`
     );
-    const runtime = await readStoreJson<TradingSystemRuntimeRecord>(
-      "trading-system-runtimes",
+    const runtime = await readStoreJson<TradingRunRecord>(
+      "trading-runs",
       "items",
       `${candidate.runtime.ref.id}.json`
     );
@@ -1700,39 +1670,39 @@ describe("LocalStore", () => {
     expect(command.runtime_ref).toEqual(candidate.runtime.ref);
     expect(command.runtime_ref.id).not.toBe(candidate.runtime.placement.ref.id);
     expect(decision.command_ref).toEqual({
-      record_kind: "runtime_control_command",
-      id: command.runtime_control_command_id
+      record_kind: "run_control_command",
+      id: command.run_control_command_id
     });
     expect(auditEvent.supporting_record_refs).toEqual([
-      { record_kind: "runtime_control_command", id: command.runtime_control_command_id },
-      { record_kind: "runtime_control_decision", id: decision.runtime_control_decision_id }
+      { record_kind: "run_control_command", id: command.run_control_command_id },
+      { record_kind: "run_control_decision", id: decision.run_control_decision_id }
     ]);
     expect(runtime.runtime_lifecycle_status).toBe("paused");
-    expect(runtime.runtime_control_command_refs).toEqual([
-      { record_kind: "runtime_control_command", id: command.runtime_control_command_id }
+    expect(runtime.run_control_command_refs).toEqual([
+      { record_kind: "run_control_command", id: command.run_control_command_id }
     ]);
-    expect(runtime.runtime_control_decision_refs).toEqual([
-      { record_kind: "runtime_control_decision", id: decision.runtime_control_decision_id }
+    expect(runtime.run_control_decision_refs).toEqual([
+      { record_kind: "run_control_decision", id: decision.run_control_decision_id }
     ]);
     expect(runtime.runtime_audit_event_refs).toEqual([
       { record_kind: "runtime_audit_event", id: auditEvent.runtime_audit_event_id }
     ]);
-    await expect(countJsonFiles("runtime-control-commands", "items")).resolves.toBe(1);
-    await expect(countJsonFiles("runtime-control-decisions", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("run-control-commands", "items")).resolves.toBe(1);
+    await expect(countJsonFiles("run-control-decisions", "items")).resolves.toBe(1);
     await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(1);
 
     const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
-    expect(projected?.runtime.runtime_control).toMatchObject({
+    expect(projected?.runtime.run_control).toMatchObject({
       has_activity: true,
       chain_complete: true,
       latest_command: {
-        command_id: command.runtime_control_command_id,
+        command_id: command.run_control_command_id,
         action: "pause",
         status: "decided",
         authority_status: "control_only"
       },
       latest_decision: {
-        decision_id: decision.runtime_control_decision_id,
+        decision_id: decision.run_control_decision_id,
         decision_outcome: "allowed",
         resulting_lifecycle_status: "paused",
         authority_status: "control_only"
@@ -1745,7 +1715,7 @@ describe("LocalStore", () => {
       }
     });
     expect(projected?.runtime.placement.authority_status).toBe("not_launched");
-    expect(JSON.stringify(projected?.runtime.runtime_control)).not.toMatch(
+    expect(JSON.stringify(projected?.runtime.run_control)).not.toMatch(
       /exchange_credentials|provider_api_key|direct_exchange_order|gateway_signing_material/
     );
 
@@ -1753,10 +1723,10 @@ describe("LocalStore", () => {
     await store.rebuildProjections();
 
     const reloaded = await store.getCandidate(FIXTURE_CANDIDATE_ID);
-    expect(reloaded?.runtime.runtime_control?.latest_command?.command_id).toBe(
-      command.runtime_control_command_id
+    expect(reloaded?.runtime.run_control?.latest_command?.command_id).toBe(
+      command.run_control_command_id
     );
-    expect(reloaded?.runtime.runtime_control?.chain_complete).toBe(true);
+    expect(reloaded?.runtime.run_control?.chain_complete).toBe(true);
   });
 
   it("rejects invalid runtime control audit commands without creating records", async () => {
@@ -1764,67 +1734,67 @@ describe("LocalStore", () => {
     await store.initialize();
 
     await expectStoreError(
-      store.recordRuntimeControlAudit({
-        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+      store.recordRunControlAudit({
+        ...validRunControlAuditInput("fixture-candidate-version-001"),
         idempotency_key: ""
       }),
-      "invalid_runtime_control_input"
+      "invalid_run_control_input"
     );
     await expectStoreError(
-      store.recordRuntimeControlAudit({
-        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+      store.recordRunControlAudit({
+        ...validRunControlAuditInput("fixture-candidate-version-001"),
         candidate_id: "missing-candidate"
       }),
       "candidate_not_found"
     );
     await expectStoreError(
-      store.recordRuntimeControlAudit({
-        ...validRuntimeControlAuditInput("missing-version"),
+      store.recordRunControlAudit({
+        ...validRunControlAuditInput("missing-version"),
         candidate_version_id: "missing-version"
       }),
       "candidate_version_not_found"
     );
     await expectStoreError(
-      store.recordRuntimeControlAudit({
-        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+      store.recordRunControlAudit({
+        ...validRunControlAuditInput("fixture-candidate-version-001"),
         runtime_id: "missing-runtime"
       }),
       "runtime_not_found"
     );
     await writeStoreJson(
       {
-        record_kind: "trading_system_runtime",
+        record_kind: "trading_run",
         version: 1,
-        trading_system_runtime_id: "foreign-runtime-001",
+        trading_run_id: "foreign-runtime-001",
         stage_binding_profile: "paper",
-        placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
+        placement_ref: { record_kind: "sandbox_placement", id: "fixture-sandbox-placement-001" },
         hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
         memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
         authority_status: "not_live"
-      } satisfies TradingSystemRuntimeRecord,
-      "trading-system-runtimes",
+      } satisfies TradingRunRecord,
+      "trading-runs",
       "items",
       "foreign-runtime-001.json"
     );
     await expectStoreError(
-      store.recordRuntimeControlAudit({
-        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+      store.recordRunControlAudit({
+        ...validRunControlAuditInput("fixture-candidate-version-001"),
         runtime_id: "foreign-runtime-001"
       }),
       "runtime_mismatch"
     );
     await expectStoreError(
-      store.recordRuntimeControlAudit({
-        ...validRuntimeControlAuditInput("fixture-candidate-version-001"),
+      store.recordRunControlAudit({
+        ...validRunControlAuditInput("fixture-candidate-version-001"),
         command: {
-          ...validRuntimeControlAuditInput("fixture-candidate-version-001").command,
+          ...validRunControlAuditInput("fixture-candidate-version-001").command,
           action: "launch_live" as "pause"
         }
       }),
-      "invalid_runtime_control_input"
+      "invalid_run_control_input"
     );
-    await expect(countJsonFiles("runtime-control-commands", "items")).resolves.toBe(0);
-    await expect(countJsonFiles("runtime-control-decisions", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("run-control-commands", "items")).resolves.toBe(0);
+    await expect(countJsonFiles("run-control-decisions", "items")).resolves.toBe(0);
     await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(0);
   });
 
@@ -1872,22 +1842,22 @@ describe("LocalStore", () => {
     expect(repeated).toEqual(recorded);
     expect(recorded).toMatchObject({
       record_kind: "artifact_lineage",
-      child_runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: "runnable-artifact-market-breakout-v2"
+      child_system_code_ref: {
+        record_kind: "system_code",
+        id: "system-code-market-breakout-v2"
       },
-      parent_runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: "runnable-artifact-market-breakout-v1"
+      parent_system_code_ref: {
+        record_kind: "system_code",
+        id: "system-code-market-breakout-v1"
       },
       source_finding_refs: [
         { record_kind: "research_finding", id: finding.research_finding_id }
       ],
       authority_status: "lineage_only"
     });
-    await expect(store.listArtifactLineagesForArtifact("runnable-artifact-market-breakout-v2"))
+    await expect(store.listArtifactLineagesForArtifact("system-code-market-breakout-v2"))
       .resolves.toEqual([lineage]);
-    await expect(store.listArtifactLineagesForArtifact("runnable-artifact-market-breakout-v1"))
+    await expect(store.listArtifactLineagesForArtifact("system-code-market-breakout-v1"))
       .resolves.toEqual([lineage]);
 
     const persisted = await readStoreJson<ArtifactLineageRecord>(
@@ -1920,9 +1890,9 @@ describe("LocalStore", () => {
     await expectStoreError(
       store.recordArtifactLineage({
         ...validArtifactLineageRecord(),
-        child_runnable_artifact_ref: {
+        child_system_code_ref: {
           record_kind: "provider_output_artifact",
-          id: "not-runnable"
+          id: "not-executable"
         }
       } as unknown as ArtifactLineageRecord),
       "invalid_artifact_lineage_input"
@@ -1931,42 +1901,42 @@ describe("LocalStore", () => {
     await expect(countJsonFiles("artifact-lineages", "items")).resolves.toBe(0);
   });
 
-  it("records artifact change proposals, proposed runnable artifacts, and orchestration runs", async () => {
+  it("records improvement proposals, proposed system codes, and orchestration runs", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const finding = validResearchFindingRecord();
     const lineage = validArtifactLineageRecord();
-    const proposal = validArtifactChangeProposalRecord();
-    const artifact = validProposedRunnableArtifactRecord();
+    const proposal = validImprovementProposalRecord();
+    const artifact = validProposedSystemCodeRecord();
     const run = validResearchOrchestrationRunRecord();
 
     await store.recordResearchFinding(finding);
     await store.recordArtifactLineage(lineage);
-    await store.recordArtifactChangeProposal(proposal);
-    await store.recordRunnableArtifact(artifact);
+    await store.recordImprovementProposal(proposal);
+    await store.recordSystemCode(artifact);
     await store.recordResearchOrchestrationRun(run);
 
-    await expect(store.getRunnableArtifact(artifact.runnable_artifact_id)).resolves.toEqual(artifact);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([proposal]);
-    await expect(store.listArtifactChangeProposalsForFinding(finding.research_finding_id)).resolves.toEqual([
+    await expect(store.getSystemCode(artifact.system_code_id)).resolves.toEqual(artifact);
+    await expect(store.listImprovementProposals()).resolves.toEqual([proposal]);
+    await expect(store.listImprovementProposalsForFinding(finding.research_finding_id)).resolves.toEqual([
       proposal
     ]);
     await expect(store.listResearchOrchestrationRuns()).resolves.toEqual([run]);
 
-    const persistedProposal = await readStoreJson<ArtifactChangeProposalRecord>(
-      "artifact-change-proposals",
+    const persistedProposal = await readStoreJson<ImprovementProposalRecord>(
+      "improvement-proposals",
       "items",
-      `${proposal.artifact_change_proposal_id}.json`
+      `${proposal.improvement_proposal_id}.json`
     );
     const persistedRun = await readStoreJson<ResearchOrchestrationRunRecord>(
       "research-orchestration-runs",
       "items",
       `${run.research_orchestration_run_id}.json`
     );
-    const persistedArtifact = await readStoreJson<RunnableArtifactRecord>(
-      "runnable-artifacts",
+    const persistedArtifact = await readStoreJson<SystemCodeRecord>(
+      "system-codes",
       "items",
-      `${artifact.runnable_artifact_id}.json`
+      `${artifact.system_code_id}.json`
     );
     expect(persistedProposal.authority_status).toBe("proposal_only");
     expect(persistedRun.authority_status).toBe("research_only");
@@ -1976,27 +1946,27 @@ describe("LocalStore", () => {
     );
   });
 
-  it("projects the AAR-inspired artifact improvement loop into candidate inspect", async () => {
+  it("projects the AAR-inspired improvement loop into candidate inspect", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const finding = validResearchFindingRecord();
     const lineage = validArtifactLineageRecord();
     const proposal = {
-      ...validArtifactChangeProposalRecord(),
-      parent_runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: FIXTURE_RUNNABLE_ARTIFACT_ID
+      ...validImprovementProposalRecord(),
+      parent_system_code_ref: {
+        record_kind: "system_code",
+        id: FIXTURE_SYSTEM_CODE_ID
       }
-    } satisfies ArtifactChangeProposalRecord;
-    const artifact = validProposedRunnableArtifactRecord();
+    } satisfies ImprovementProposalRecord;
+    const artifact = validProposedSystemCodeRecord();
     const run = validResearchOrchestrationRunRecord();
     const experiment = validExperimentRunRecord(proposal);
     const evaluationResult = validTradingEvaluationResultRecord(experiment);
 
     await store.recordResearchFinding(finding);
     await store.recordArtifactLineage(lineage);
-    await store.recordArtifactChangeProposal(proposal);
-    await store.recordRunnableArtifact(artifact);
+    await store.recordImprovementProposal(proposal);
+    await store.recordSystemCode(artifact);
     await store.recordResearchOrchestrationRun(run);
     await store.recordExperimentRun(experiment);
     await store.recordTradingEvaluationResult(evaluationResult);
@@ -2004,8 +1974,8 @@ describe("LocalStore", () => {
 
     const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
 
-    expect(candidate?.improvement_loop).toMatchObject({
-      loop_kind: "artifact_improvement_loop",
+    expect(candidate?.improvement).toMatchObject({
+      improvement_kind: "improvement",
       source_model: "automated_alignment_researcher",
       proposal_chain_complete: false,
       evaluation_chain_complete: true,
@@ -2014,11 +1984,11 @@ describe("LocalStore", () => {
         finding_id: finding.research_finding_id,
         authority_status: "research_trace_only"
       },
-      latest_artifact_change_proposal: {
-        proposal_id: proposal.artifact_change_proposal_id,
-        parent_runnable_artifact_ref: {
-          record_kind: "runnable_artifact",
-          id: FIXTURE_RUNNABLE_ARTIFACT_ID
+      latest_change_proposal: {
+        proposal_id: proposal.improvement_proposal_id,
+        parent_system_code_ref: {
+          record_kind: "system_code",
+          id: FIXTURE_SYSTEM_CODE_ID
         },
         authority_status: "proposal_only"
       },
@@ -2026,7 +1996,7 @@ describe("LocalStore", () => {
         experiment_id: experiment.experiment_run_id,
         authority_status: "not_live"
       },
-      latest_trading_evaluation_result: {
+      latest_evaluation_result: {
         result_id: evaluationResult.trading_evaluation_result_id,
         evidence_disposition: "not_counted",
         authority_status: "not_counted"
@@ -2052,14 +2022,14 @@ describe("LocalStore", () => {
     await store.recordResearchFinding(finding);
     await store.recordResearchFinding(antiHackingFinding);
 
-    const input = validArtifactChangeProposalMaterializationInput();
-    const outcome = await store.materializeArtifactChangeProposal(input);
-    const repeated = await store.materializeArtifactChangeProposal(input);
+    const input = validImprovementProposalMaterializationInput();
+    const outcome = await store.materializeImprovementProposal(input);
+    const repeated = await store.materializeImprovementProposal(input);
 
     expect(outcome.status).toBe("materialized");
     expect(repeated).toEqual(outcome);
     if (outcome.status !== "materialized") {
-      throw new Error("expected materialized artifact change proposal outcome");
+      throw new Error("expected materialized improvement proposal outcome");
     }
     expect(outcome.attempt).toMatchObject({
       provider: input.provider_result.provider,
@@ -2078,36 +2048,36 @@ describe("LocalStore", () => {
       ],
       authority_status: "proposal_only"
     });
-    expect(outcome.runnable_artifact).toMatchObject({
+    expect(outcome.system_code).toMatchObject({
       artifact_kind: "python_file",
       artifact_path: "fixtures/trading-systems/clock.py",
       status: "registered",
       authority_status: "not_live"
     });
-    expect(outcome.runnable_artifact.provenance_refs).toEqual([
-      { record_kind: "artifact_change_proposal", id: outcome.proposal.artifact_change_proposal_id },
+    expect(outcome.system_code.provenance_refs).toEqual([
+      { record_kind: "improvement_proposal", id: outcome.proposal.improvement_proposal_id },
       input.provider_result.agent_run_ref,
       input.provider_result.trace_ref,
       { record_kind: "research_finding", id: finding.research_finding_id }
     ]);
-    await expect(store.listArtifactChangeProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([outcome.proposal]);
-    await expect(store.getRunnableArtifact(outcome.runnable_artifact.runnable_artifact_id))
-      .resolves.toEqual(outcome.runnable_artifact);
-    await expect(store.listArtifactLineagesForArtifact(outcome.runnable_artifact.runnable_artifact_id))
+    await expect(store.listImprovementProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([outcome.proposal]);
+    await expect(store.getSystemCode(outcome.system_code.system_code_id))
+      .resolves.toEqual(outcome.system_code);
+    await expect(store.listArtifactLineagesForArtifact(outcome.system_code.system_code_id))
       .resolves.toEqual([outcome.lineage]);
     expect(JSON.stringify(outcome)).not.toMatch(
       /strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
     );
   });
 
-  it("records rejected provider proposal output without durable artifact change proposal records", async () => {
+  it("records rejected provider proposal output without durable improvement proposal records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     await store.recordResearchFinding(validResearchFindingRecord());
     await store.recordResearchFinding(validAntiHackingResearchFindingRecord());
 
-    const acceptedInput = validArtifactChangeProposalMaterializationInput();
+    const acceptedInput = validImprovementProposalMaterializationInput();
     const rejectedInput = {
       ...acceptedInput,
       provider_result: {
@@ -2117,9 +2087,9 @@ describe("LocalStore", () => {
           strategy_internals: { lookback: 14 }
         }
       }
-    } as unknown as ArtifactChangeProposalMaterializationInput;
+    } as unknown as ImprovementProposalMaterializationInput;
 
-    const outcome = await store.materializeArtifactChangeProposal(rejectedInput);
+    const outcome = await store.materializeImprovementProposal(rejectedInput);
 
     expect(outcome).toMatchObject({
       status: "failed",
@@ -2133,8 +2103,8 @@ describe("LocalStore", () => {
         authority_status: "proposal_input_only"
       }
     });
-    await expect(store.listArtifactChangeProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([]);
+    await expect(store.listImprovementProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([]);
     await expect(store.listArtifactLineages()).resolves.toEqual([]);
   });
 
@@ -2144,16 +2114,16 @@ describe("LocalStore", () => {
     await store.recordResearchFinding(validResearchFindingRecord());
     await store.recordResearchFinding(validAntiHackingResearchFindingRecord());
 
-    const acceptedInput = validArtifactChangeProposalMaterializationInput();
+    const acceptedInput = validImprovementProposalMaterializationInput();
     const malformedInput = {
       ...acceptedInput,
       provider_result: {
         ...acceptedInput.provider_result,
         provider_output_artifact_refs: undefined
       }
-    } as unknown as ArtifactChangeProposalMaterializationInput;
+    } as unknown as ImprovementProposalMaterializationInput;
 
-    const outcome = await store.materializeArtifactChangeProposal(malformedInput);
+    const outcome = await store.materializeImprovementProposal(malformedInput);
 
     expect(outcome).toMatchObject({
       status: "failed",
@@ -2163,17 +2133,17 @@ describe("LocalStore", () => {
         authority_status: "proposal_input_only"
       }
     });
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([]);
     await expect(store.listArtifactLineages()).resolves.toEqual([]);
   });
 
-  it("records failed artifact change proposal provider output without partial durable writes", async () => {
+  it("records failed improvement proposal provider output without partial durable writes", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
-    const input = validArtifactChangeProposalProviderFailureInput();
+    const input = validImprovementProposalProviderFailureInput();
 
-    const outcome = await store.recordArtifactChangeProposalProviderFailure(input);
-    const repeated = await store.recordArtifactChangeProposalProviderFailure(input);
+    const outcome = await store.recordImprovementProposalProviderFailure(input);
+    const repeated = await store.recordImprovementProposalProviderFailure(input);
 
     expect(outcome).toEqual(repeated);
     expect(outcome).toMatchObject({
@@ -2184,12 +2154,12 @@ describe("LocalStore", () => {
         trace_ref: input.provider_result.trace_ref,
         status: "failed",
         validation_status: "rejected",
-        failure_reason: "artifact_change_proposal_provider_failed",
+        failure_reason: "improvement_proposal_provider_failed",
         authority_status: "proposal_input_only"
       }
     });
-    await expect(store.listArtifactChangeProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([]);
+    await expect(store.listImprovementProposalMaterializationAttempts()).resolves.toEqual([outcome.attempt]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([]);
     await expect(store.listArtifactLineages()).resolves.toEqual([]);
   });
 
@@ -2197,48 +2167,48 @@ describe("LocalStore", () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
 
-    const outcome = await store.materializeArtifactChangeProposal(validArtifactChangeProposalMaterializationInput());
+    const outcome = await store.materializeImprovementProposal(validImprovementProposalMaterializationInput());
 
     expect(outcome).toMatchObject({
       status: "failed",
       attempt: {
-        failure_reason: "artifact_change_proposal_source_finding_not_found",
+        failure_reason: "improvement_proposal_source_finding_not_found",
         validation_status: "rejected",
         authority_status: "proposal_input_only"
       }
     });
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([]);
     await expect(store.listArtifactLineages()).resolves.toEqual([]);
   });
 
-  it("rejects invalid artifact change proposal and orchestration inputs without creating records", async () => {
+  it("rejects invalid improvement proposal and orchestration inputs without creating records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
 
     await expectStoreError(
-      store.recordArtifactChangeProposal(validArtifactChangeProposalRecord()),
+      store.recordImprovementProposal(validImprovementProposalRecord()),
       "research_finding_not_found"
     );
 
     const finding = validResearchFindingRecord();
     await store.recordResearchFinding(finding);
     await expectStoreError(
-      store.recordArtifactChangeProposal({
-        ...validArtifactChangeProposalRecord(),
+      store.recordImprovementProposal({
+        ...validImprovementProposalRecord(),
         authority_status: "counted" as "proposal_only"
       }),
-      "invalid_artifact_change_proposal_input"
+      "invalid_improvement_proposal_input"
     );
-    await store.recordArtifactChangeProposal(validArtifactChangeProposalRecord());
+    await store.recordImprovementProposal(validImprovementProposalRecord());
     await expectStoreError(
       store.recordResearchOrchestrationRun({
         ...validResearchOrchestrationRunRecord(),
         output_artifact_proposal_ref: {
-          record_kind: "artifact_change_proposal",
+          record_kind: "improvement_proposal",
           id: "missing-proposal"
         }
       }),
-      "artifact_change_proposal_not_found"
+      "improvement_proposal_not_found"
     );
     await expectStoreError(
       store.recordResearchOrchestrationRun({
@@ -2443,9 +2413,9 @@ function validMaterializationInput(): CandidateMaterializationInput {
       supported_stage_binding_profiles: ["backtest", "paper", "live"]
     },
     program: {
-      summary: "Generated behavior bundle that emits order intent drafts only after validation.",
+      summary: "Generated behavior bundle that emits order requests only after validation.",
       declared_runtime: "python-sandbox-placeholder",
-      declared_outputs: ["OrderIntentDraft", "ProgramEvent", "Trace"]
+      declared_outputs: ["OrderRequest", "ProgramEvent", "Trace"]
     },
     capability_package: {
       summary: "generic trading market context and indicator package request.",
@@ -2485,9 +2455,9 @@ function baseEvaluationRunInput(candidateVersionId: string) {
   };
 }
 
-function validBoundedRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeAuthorityInput {
+function validLedgerInput(candidateVersionId: string): LedgerInput {
   return {
-    idempotency_key: "runtime-authority-dry-run-001",
+    idempotency_key: "ledger-dry-run-001",
     candidate_id: FIXTURE_CANDIDATE_ID,
     candidate_version_id: candidateVersionId,
     intent: {
@@ -2497,23 +2467,23 @@ function validBoundedRuntimeAuthorityInput(candidateVersionId: string): BoundedR
       quantity: "0.001",
       limit_price: "60000"
     },
-    gateway_decision: {
+    gateway_result: {
       decision_outcome: "dry_run_only",
       decision_reason: "paper_stage_only",
       policy_ref: { record_kind: "runtime_operating_policy", id: "runtime-operating-policy-paper-v1" }
     },
-    execution_attempt: {
+    execution_result: {
       execution_mode: "host_local",
-      trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-authority-dry-run-001" },
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-ledger-dry-run-001" },
       completed_at: "2026-05-10T00:01:00.000Z"
     },
     created_at: "2026-05-10T00:00:00.000Z"
   };
 }
 
-function validRuntimeControlAuditInput(candidateVersionId: string): RuntimeControlAuditInput {
+function validRunControlAuditInput(candidateVersionId: string): RunControlAuditInput {
   return {
-    idempotency_key: "runtime-control-pause-001",
+    idempotency_key: "run-control-pause-001",
     candidate_id: FIXTURE_CANDIDATE_ID,
     candidate_version_id: candidateVersionId,
     command: {
@@ -2527,7 +2497,7 @@ function validRuntimeControlAuditInput(candidateVersionId: string): RuntimeContr
       },
       reason: "operator_request",
       reason_summary: "Pause paper runtime for operator review.",
-      trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-control-pause-001" }
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-run-control-pause-001" }
     },
     decision: {
       decision_outcome: "allowed",
@@ -2548,7 +2518,7 @@ function validRuntimeControlAuditInput(candidateVersionId: string): RuntimeContr
       actor_kind: "human_operator",
       actor_ref: { record_kind: "operator", id: "operator-sjson" },
       runtime_lifecycle_status: "paused",
-      message: "Paper runtime paused through runtime-control audit chain."
+      message: "Paper runtime paused through run-control audit chain."
     },
     created_at: "2026-05-10T00:10:00.000Z"
   };
@@ -2598,13 +2568,13 @@ function validArtifactLineageRecord(): ArtifactLineageRecord {
     record_kind: "artifact_lineage",
     version: 1,
     artifact_lineage_id: "artifact-lineage-market-breakout-v2",
-    child_runnable_artifact_ref: {
-      record_kind: "runnable_artifact",
-      id: "runnable-artifact-market-breakout-v2"
+    child_system_code_ref: {
+      record_kind: "system_code",
+      id: "system-code-market-breakout-v2"
     },
-    parent_runnable_artifact_ref: {
-      record_kind: "runnable_artifact",
-      id: "runnable-artifact-market-breakout-v1"
+    parent_system_code_ref: {
+      record_kind: "system_code",
+      id: "system-code-market-breakout-v1"
     },
     source_finding_refs: [
       { record_kind: "research_finding", id: "research-finding-market-breakout-oos-001" }
@@ -2615,13 +2585,13 @@ function validArtifactLineageRecord(): ArtifactLineageRecord {
   };
 }
 
-function validArtifactChangeProposalMaterializationInput(): ArtifactChangeProposalMaterializationInput {
-  const providerResult = validArtifactChangeProposalProviderResult();
+function validImprovementProposalMaterializationInput(): ImprovementProposalMaterializationInput {
+  const providerResult = validImprovementProposalProviderResult();
   if (providerResult.status !== "succeeded") {
     throw new Error("expected provider success");
   }
   return {
-    idempotency_key: "artifact-change-proposal-materialization-provider-output-001",
+    idempotency_key: "improvement-proposal-materialization-provider-output-001",
     provider_result: providerResult,
     artifact_path: "fixtures/trading-systems/clock.py",
     artifact_runtime_contract_ref: {
@@ -2629,12 +2599,12 @@ function validArtifactChangeProposalMaterializationInput(): ArtifactChangePropos
       id: "artifact-runtime-contract-python-clock-v1"
     },
     secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
-    capability_policy_ref: { record_kind: "capability_policy", id: "provider-artifact-change-proposal" },
+    capability_policy_ref: { record_kind: "capability_policy", id: "provider-improvement-proposal" },
     created_at: "2026-05-11T00:07:00.000Z"
   };
 }
 
-function validArtifactChangeProposalProviderFailureInput(): ArtifactChangeProposalProviderFailureInput {
+function validImprovementProposalProviderFailureInput(): ImprovementProposalProviderFailureInput {
   const providerResult = {
     status: "failed",
     provider: {
@@ -2642,32 +2612,32 @@ function validArtifactChangeProposalProviderFailureInput(): ArtifactChangePropos
       model: "gpt-5.4",
       invocation_surface: "codex exec --json --output-schema"
     },
-    failure_reason: "artifact_change_proposal_provider_failed",
-    agent_run_ref: { record_kind: "agent_run", id: "agent-run-artifact-change-proposal-provider-failed-001" },
+    failure_reason: "improvement_proposal_provider_failed",
+    agent_run_ref: { record_kind: "agent_run", id: "agent-run-improvement-proposal-provider-failed-001" },
     agent_event_refs: [
-      { record_kind: "agent_event", id: "agent-event-artifact-change-proposal-provider-failed-001" }
+      { record_kind: "agent_event", id: "agent-event-improvement-proposal-provider-failed-001" }
     ],
-    trace_ref: { record_kind: "trace_placeholder", id: "trace-artifact-change-proposal-provider-failed-001" },
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-improvement-proposal-provider-failed-001" },
     provider_output_artifact_refs: [
-      { record_kind: "artifact_change_proposal_provider_output_artifact", id: "provider-output-json-failed-001" }
+      { record_kind: "improvement_proposal_provider_output_artifact", id: "provider-output-json-failed-001" }
     ],
     debug_artifact_refs: [
-      { record_kind: "debug_artifact", id: "provider-debug-artifact-change-proposal-failed-001" }
+      { record_kind: "debug_artifact", id: "provider-debug-improvement-proposal-failed-001" }
     ],
-    idempotency_key: "artifact-change-proposal-provider-output-failed-001",
+    idempotency_key: "improvement-proposal-provider-output-failed-001",
     authority_status: "proposal_input_only"
-  } satisfies ArtifactChangeProposalProviderResult;
+  } satisfies ImprovementProposalProviderResult;
   if (providerResult.status !== "failed") {
     throw new Error("expected provider failure");
   }
   return {
-    idempotency_key: "artifact-change-proposal-materialization-provider-output-failed-001",
+    idempotency_key: "improvement-proposal-materialization-provider-output-failed-001",
     provider_result: providerResult,
     created_at: "2026-05-11T00:08:00.000Z"
   };
 }
 
-function validArtifactChangeProposalProviderResult(): ArtifactChangeProposalProviderResult {
+function validImprovementProposalProviderResult(): ImprovementProposalProviderResult {
   return {
     status: "succeeded",
     provider: {
@@ -2676,7 +2646,7 @@ function validArtifactChangeProposalProviderResult(): ArtifactChangeProposalProv
       invocation_surface: "codex exec --json --output-schema"
     },
     output: {
-      output_kind: "artifact_change_proposal_input",
+      output_kind: "improvement_proposal_input",
       trading_evaluation_task_ref: {
         record_kind: "trading_evaluation_task",
         id: "trading-evaluation-task-market-breakout-001"
@@ -2687,9 +2657,9 @@ function validArtifactChangeProposalProviderResult(): ArtifactChangeProposalProv
       anti_hacking_finding_refs: [
         { record_kind: "research_finding", id: "research-finding-market-breakout-lookahead-001" }
       ],
-      parent_runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: "runnable-artifact-market-breakout-v1"
+      parent_system_code_ref: {
+        record_kind: "system_code",
+        id: "system-code-market-breakout-v1"
       },
       proposal_summary: "Provider output proposes the next opaque generic market breakout artifact input.",
       requested_change_summary: "Reduce drawdown while preserving sealed evaluator constraints.",
@@ -2699,27 +2669,27 @@ function validArtifactChangeProposalProviderResult(): ArtifactChangeProposalProv
       ],
       output_authority_status: "proposal_input_only"
     },
-    agent_run_ref: { record_kind: "agent_run", id: "agent-run-artifact-change-proposal-provider-001" },
+    agent_run_ref: { record_kind: "agent_run", id: "agent-run-improvement-proposal-provider-001" },
     agent_event_refs: [
-      { record_kind: "agent_event", id: "agent-event-artifact-change-proposal-provider-001" }
+      { record_kind: "agent_event", id: "agent-event-improvement-proposal-provider-001" }
     ],
-    trace_ref: { record_kind: "trace_placeholder", id: "trace-artifact-change-proposal-provider-001" },
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-improvement-proposal-provider-001" },
     provider_output_artifact_refs: [
-      { record_kind: "artifact_change_proposal_provider_output_artifact", id: "provider-output-json-001" }
+      { record_kind: "improvement_proposal_provider_output_artifact", id: "provider-output-json-001" }
     ],
     debug_artifact_refs: [
-      { record_kind: "debug_artifact", id: "provider-debug-artifact-change-proposal-001" }
+      { record_kind: "debug_artifact", id: "provider-debug-improvement-proposal-001" }
     ],
-    idempotency_key: "artifact-change-proposal-provider-output-001",
+    idempotency_key: "improvement-proposal-provider-output-001",
     authority_status: "proposal_input_only"
   };
 }
 
-function validArtifactChangeProposalRecord(): ArtifactChangeProposalRecord {
+function validImprovementProposalRecord(): ImprovementProposalRecord {
   return {
-    record_kind: "artifact_change_proposal",
+    record_kind: "improvement_proposal",
     version: 1,
-    artifact_change_proposal_id: "artifact-change-proposal-market-breakout-v2",
+    improvement_proposal_id: "improvement-proposal-market-breakout-v2",
     research_worker_ref: { record_kind: "research_worker", id: "research-worker-breakout-001" },
     research_direction_ref: {
       record_kind: "research_direction",
@@ -2729,13 +2699,13 @@ function validArtifactChangeProposalRecord(): ArtifactChangeProposalRecord {
       record_kind: "trading_evaluation_task",
       id: "trading-evaluation-task-market-breakout-001"
     },
-    proposed_runnable_artifact_ref: {
-      record_kind: "runnable_artifact",
-      id: "runnable-artifact-market-breakout-v2"
+    proposed_system_code_ref: {
+      record_kind: "system_code",
+      id: "system-code-market-breakout-v2"
     },
-    parent_runnable_artifact_ref: {
-      record_kind: "runnable_artifact",
-      id: "runnable-artifact-market-breakout-v1"
+    parent_system_code_ref: {
+      record_kind: "system_code",
+      id: "system-code-market-breakout-v1"
     },
     source_finding_refs: [
       { record_kind: "research_finding", id: "research-finding-market-breakout-oos-001" }
@@ -2749,11 +2719,11 @@ function validArtifactChangeProposalRecord(): ArtifactChangeProposalRecord {
   };
 }
 
-function validProposedRunnableArtifactRecord(): RunnableArtifactRecord {
+function validProposedSystemCodeRecord(): SystemCodeRecord {
   return {
-    record_kind: "runnable_artifact",
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: "runnable-artifact-market-breakout-v2",
+    system_code_id: "system-code-market-breakout-v2",
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:proposal-market-breakout-v2",
@@ -2764,9 +2734,9 @@ function validProposedRunnableArtifactRecord(): RunnableArtifactRecord {
       declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat", "metric_snapshot"]
     },
     secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
-    capability_policy_ref: { record_kind: "capability_policy", id: "fixture-artifact-change-proposal" },
+    capability_policy_ref: { record_kind: "capability_policy", id: "fixture-improvement-proposal" },
     provenance_refs: [
-      { record_kind: "artifact_change_proposal", id: "artifact-change-proposal-market-breakout-v2" },
+      { record_kind: "improvement_proposal", id: "improvement-proposal-market-breakout-v2" },
       { record_kind: "research_finding", id: "research-finding-market-breakout-oos-001" }
     ],
     status: "registered",
@@ -2796,12 +2766,12 @@ function validResearchOrchestrationRunRecord(): ResearchOrchestrationRunRecord {
       { record_kind: "artifact_lineage", id: "artifact-lineage-market-breakout-v2" }
     ],
     output_artifact_proposal_ref: {
-      record_kind: "artifact_change_proposal",
-      id: "artifact-change-proposal-market-breakout-v2"
+      record_kind: "improvement_proposal",
+      id: "improvement-proposal-market-breakout-v2"
     },
-    output_runnable_artifact_ref: {
-      record_kind: "runnable_artifact",
-      id: "runnable-artifact-market-breakout-v2"
+    output_system_code_ref: {
+      record_kind: "system_code",
+      id: "system-code-market-breakout-v2"
     },
     output_lineage_ref: {
       record_kind: "artifact_lineage",
@@ -2815,18 +2785,18 @@ function validResearchOrchestrationRunRecord(): ResearchOrchestrationRunRecord {
   };
 }
 
-function validExperimentRunRecord(proposal: ArtifactChangeProposalRecord): ExperimentRunRecord {
+function validExperimentRunRecord(proposal: ImprovementProposalRecord): ExperimentRunRecord {
   return {
     record_kind: "experiment_run",
     version: 1,
     experiment_run_id: "experiment-run-market-breakout-v2",
     research_worker_ref: proposal.research_worker_ref,
     research_direction_ref: proposal.research_direction_ref,
-    runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    system_code_ref: proposal.proposed_system_code_ref,
     trading_evaluation_task_ref: proposal.trading_evaluation_task_ref,
-    sandbox_runtime_instance_ref: {
-      record_kind: "sandbox_runtime_instance",
-      id: "sandbox-runtime-instance-market-breakout-v2"
+    sandbox_ref: {
+      record_kind: "sandbox",
+      id: "sandbox-market-breakout-v2"
     },
     runtime_trace_refs: [
       { record_kind: "trace_placeholder", id: "trace-runtime-market-breakout-v2" }

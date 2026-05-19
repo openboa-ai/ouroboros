@@ -1,58 +1,58 @@
 import type {
-  ArtifactChangeProposalProviderAttribution,
-  ArtifactChangeProposalProviderProbeResult,
-  ArtifactChangeProposalProviderRequest,
-  ArtifactChangeProposalProviderResult,
+  ImprovementProposalProviderAttribution,
+  ImprovementProposalProviderProbeResult,
+  ImprovementProposalProviderRequest,
+  ImprovementProposalProviderResult,
   Ref
 } from "@ouroboros/domain";
-import type { ArtifactChangeProposalProviderAdapter } from "../providers/runtime-provider-adapter";
-import { DeterministicArtifactChangeProposalPlanner } from "./deterministic-proposal-planner";
+import type { ImprovementProposalProviderAdapter } from "../providers/runtime-provider-adapter";
+import { DeterministicImprovementProposalPlanner } from "./deterministic-proposal-planner";
 
-export interface FixtureArtifactChangeProposalProviderAdapterOptions {
+export interface FixtureImprovementProposalProviderAdapterOptions {
   model?: string;
-  planner?: DeterministicArtifactChangeProposalPlanner;
+  planner?: DeterministicImprovementProposalPlanner;
   failureReason?: Extract<
-    ArtifactChangeProposalProviderResult,
+    ImprovementProposalProviderResult,
     { status: "failed" }
   >["failure_reason"];
 }
 
-export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProposalProviderAdapter {
-  private readonly provider: ArtifactChangeProposalProviderAttribution;
-  private readonly planner: DeterministicArtifactChangeProposalPlanner;
+export class FixtureImprovementProposalProviderAdapter implements ImprovementProposalProviderAdapter {
+  private readonly provider: ImprovementProposalProviderAttribution;
+  private readonly planner: DeterministicImprovementProposalPlanner;
   private readonly failureReason?: Extract<
-    ArtifactChangeProposalProviderResult,
+    ImprovementProposalProviderResult,
     { status: "failed" }
   >["failure_reason"];
 
-  constructor(options: FixtureArtifactChangeProposalProviderAdapterOptions = {}) {
+  constructor(options: FixtureImprovementProposalProviderAdapterOptions = {}) {
     this.provider = {
       provider_kind: "fixture_only",
-      model: options.model ?? "deterministic-artifact-change-proposal-planner-fixture",
-      invocation_surface: "deterministic-artifact-change-proposal-planner-fixture-adapter"
+      model: options.model ?? "deterministic-improvement-proposal-planner-fixture",
+      invocation_surface: "deterministic-improvement-proposal-planner-fixture-adapter"
     };
-    this.planner = options.planner ?? new DeterministicArtifactChangeProposalPlanner();
+    this.planner = options.planner ?? new DeterministicImprovementProposalPlanner();
     this.failureReason = options.failureReason;
   }
 
-  async probeArtifactChangeProposal(): Promise<ArtifactChangeProposalProviderProbeResult> {
+  async probeImprovementProposal(): Promise<ImprovementProposalProviderProbeResult> {
     return {
       ...this.provider,
       readiness_status: this.failureReason ? "candidate_unverified" : "active_verified",
-      supported_purposes: ["artifact_change_proposal_generation"],
+      supported_purposes: ["improvement_proposal_generation"],
       failure_reason: this.failureReason
     };
   }
 
-  async runArtifactChangeProposalGeneration(
-    request: ArtifactChangeProposalProviderRequest
-  ): Promise<ArtifactChangeProposalProviderResult> {
+  async runImprovementProposalGeneration(
+    request: ImprovementProposalProviderRequest
+  ): Promise<ImprovementProposalProviderResult> {
     if (this.failureReason) {
       return this.failureResult(request, this.failureReason);
     }
 
     if (!isValidRequest(request)) {
-      return this.failureResult(request, "invalid_artifact_change_proposal_request");
+      return this.failureResult(request, "invalid_improvement_proposal_request");
     }
 
     try {
@@ -60,7 +60,7 @@ export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactCha
         task: request.task,
         findings: request.findings,
         existing_lineages: request.existing_lineages,
-        parent_runnable_artifact_ref: request.parent_runnable_artifact_ref,
+        parent_system_code_ref: request.parent_system_code_ref,
         idempotency_key: request.idempotency_key,
         created_at: request.created_at
       });
@@ -69,16 +69,16 @@ export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactCha
         status: "succeeded",
         provider: this.provider,
         output: {
-          output_kind: "artifact_change_proposal_input",
+          output_kind: "improvement_proposal_input",
           trading_evaluation_task_ref: outcome.proposal.trading_evaluation_task_ref,
           source_finding_refs: outcome.proposal.source_finding_refs,
           anti_hacking_finding_refs: outcome.proposal.anti_hacking_finding_refs,
-          parent_runnable_artifact_ref: outcome.proposal.parent_runnable_artifact_ref,
+          parent_system_code_ref: outcome.proposal.parent_system_code_ref,
           proposal_summary: outcome.proposal.proposal_summary,
           requested_change_summary: outcome.proposal.requested_change_summary,
           expected_improvement_summary: outcome.proposal.expected_improvement_summary,
           proposed_artifact_refs: [
-            ref("fixture_provider_artifact_hint", outcome.runnable_artifact.runnable_artifact_id)
+            ref("fixture_provider_artifact_hint", outcome.system_code.system_code_id)
           ],
           output_authority_status: "proposal_input_only"
         },
@@ -87,7 +87,7 @@ export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactCha
         trace_ref: request.trace_ref,
         provider_output_artifact_refs: [providerOutputArtifactRef(request)],
         debug_artifact_refs: [
-          ref("debug_artifact", `fixture-artifact-change-proposal-planner-debug-${safeId(request.idempotency_key)}`)
+          ref("debug_artifact", `fixture-improvement-proposal-planner-debug-${safeId(request.idempotency_key)}`)
         ],
         idempotency_key: request.idempotency_key,
         authority_status: "proposal_input_only"
@@ -98,16 +98,16 @@ export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactCha
         error instanceof Error && error.message === "no_eligible_research_finding"
           ? "no_eligible_research_finding"
           : error instanceof Error && error.message.startsWith("unsupported_")
-          ? "unsupported_artifact_change_proposal_task"
-          : "artifact_change_proposal_provider_failed"
+          ? "unsupported_improvement_proposal_task"
+          : "improvement_proposal_provider_failed"
       );
     }
   }
 
   private failureResult(
-    request: ArtifactChangeProposalProviderRequest,
-    failureReason: Extract<ArtifactChangeProposalProviderResult, { status: "failed" }>["failure_reason"]
-  ): ArtifactChangeProposalProviderResult {
+    request: ImprovementProposalProviderRequest,
+    failureReason: Extract<ImprovementProposalProviderResult, { status: "failed" }>["failure_reason"]
+  ): ImprovementProposalProviderResult {
     return {
       status: "failed",
       provider: this.provider,
@@ -117,7 +117,7 @@ export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactCha
       trace_ref: request.trace_ref,
       provider_output_artifact_refs: [providerOutputArtifactRef(request)],
       debug_artifact_refs: [
-        ref("debug_artifact", `fixture-artifact-change-proposal-planner-debug-${safeId(request.idempotency_key)}`)
+        ref("debug_artifact", `fixture-improvement-proposal-planner-debug-${safeId(request.idempotency_key)}`)
       ],
       idempotency_key: request.idempotency_key,
       authority_status: "proposal_input_only"
@@ -125,7 +125,7 @@ export class FixtureArtifactChangeProposalProviderAdapter implements ArtifactCha
   }
 }
 
-function isValidRequest(request: ArtifactChangeProposalProviderRequest): boolean {
+function isValidRequest(request: ImprovementProposalProviderRequest): boolean {
   return (
     Boolean(request.idempotency_key) &&
     request.agent_run_ref.record_kind === "agent_run" &&
@@ -135,14 +135,14 @@ function isValidRequest(request: ArtifactChangeProposalProviderRequest): boolean
   );
 }
 
-function agentEventRef(request: ArtifactChangeProposalProviderRequest): Ref {
-  return ref("agent_event", `agent-event-fixture-artifact-change-proposal-${safeId(request.idempotency_key)}`);
+function agentEventRef(request: ImprovementProposalProviderRequest): Ref {
+  return ref("agent_event", `agent-event-fixture-improvement-proposal-${safeId(request.idempotency_key)}`);
 }
 
-function providerOutputArtifactRef(request: ArtifactChangeProposalProviderRequest): Ref {
+function providerOutputArtifactRef(request: ImprovementProposalProviderRequest): Ref {
   return ref(
-    "artifact_change_proposal_provider_output_artifact",
-    `fixture-artifact-change-proposal-provider-output-${safeId(request.idempotency_key)}`
+    "improvement_proposal_provider_output_artifact",
+    `fixture-improvement-proposal-provider-output-${safeId(request.idempotency_key)}`
   );
 }
 

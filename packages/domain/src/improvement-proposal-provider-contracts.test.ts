@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type {
   ResearchFindingRecord,
-  ArtifactChangeProposalMaterializationAttemptRecord,
-  ArtifactChangeProposalMaterializationInput,
-  ArtifactChangeProposalProviderAttribution,
-  ArtifactChangeProposalProviderOutput,
-  ArtifactChangeProposalProviderProbeResult,
-  ArtifactChangeProposalProviderRequest,
-  ArtifactChangeProposalProviderResult,
+  ImprovementProposalMaterializationAttemptRecord,
+  ImprovementProposalMaterializationInput,
+  ImprovementProposalProviderAttribution,
+  ImprovementProposalProviderOutput,
+  ImprovementProposalProviderProbeResult,
+  ImprovementProposalProviderRequest,
+  ImprovementProposalProviderResult,
   AgentEventRecord,
   AgentRunRecord,
   AgentSpecRecord,
@@ -18,7 +18,7 @@ import type {
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("artifact change proposal provider contracts", () => {
+describe("improvement proposal provider contracts", () => {
   it("models Codex-first provider proposal output as proposal input trace material", () => {
     const provider = codexProvider();
     const sourceFinding = researchFinding("research-finding-market-trend-next-provider-001", "next_artifact_hint");
@@ -43,15 +43,15 @@ describe("artifact change proposal provider contracts", () => {
       trace
     });
 
-    expect(agentRun.purpose).toBe("artifact_change_proposal_generation");
+    expect(agentRun.purpose).toBe("improvement_proposal_generation");
     expect(probe).toMatchObject({
       provider_kind: "codex_cli",
       model: "gpt-5.4",
       readiness_status: "active_verified",
-      supported_purposes: ["artifact_change_proposal_generation"]
+      supported_purposes: ["improvement_proposal_generation"]
     });
     expect(request).toMatchObject({
-      idempotency_key: "artifact-change-proposal-provider-contract-001",
+      idempotency_key: "improvement-proposal-provider-contract-001",
       agent_run_ref: ref("agent_run", agentRun.agent_run_id),
       trace_ref: ref("trace_placeholder", trace.trace_id)
     });
@@ -59,7 +59,7 @@ describe("artifact change proposal provider contracts", () => {
       status: "succeeded",
       provider,
       output: {
-        output_kind: "artifact_change_proposal_input",
+        output_kind: "improvement_proposal_input",
         trading_evaluation_task_ref: ref(
           "trading_evaluation_task",
           "trading-evaluation-task-sealed-replay-provider-contract-001"
@@ -74,7 +74,7 @@ describe("artifact change proposal provider contracts", () => {
       authority_status: "proposal_input_only"
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /artifact_change_proposal_id|strategy_internals|strategy_schema|venue_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/i
+      /improvement_proposal_id|strategy_internals|strategy_schema|venue_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/i
     );
   });
 
@@ -84,7 +84,7 @@ describe("artifact change proposal provider contracts", () => {
       provider_kind: "claude_code",
       model: "claude-compatible-boundary",
       invocation_surface: "claude code adapter boundary"
-    } satisfies ArtifactChangeProposalProviderAttribution;
+    } satisfies ImprovementProposalProviderAttribution;
 
     expect([codex.provider_kind, claude.provider_kind]).toEqual(["codex_cli", "claude_code"]);
   });
@@ -98,21 +98,21 @@ describe("artifact change proposal provider contracts", () => {
     const result = {
       status: "failed",
       provider,
-      failure_reason: "artifact_change_proposal_provider_failed",
+      failure_reason: "improvement_proposal_provider_failed",
       agent_run_ref: ref("agent_run", agentRun.agent_run_id),
       agent_event_refs: [ref("agent_event", event.agent_event_id)],
       trace_ref: ref("trace_placeholder", trace.trace_id),
       provider_output_artifact_refs: [
-        ref("artifact_change_proposal_provider_output_artifact", "failed-provider-output")
+        ref("improvement_proposal_provider_output_artifact", "failed-provider-output")
       ],
       debug_artifact_refs: [ref("debug_artifact", "failed-provider-debug")],
-      idempotency_key: "artifact-change-proposal-provider-contract-failed",
+      idempotency_key: "improvement-proposal-provider-contract-failed",
       authority_status: "proposal_input_only"
-    } satisfies ArtifactChangeProposalProviderResult;
+    } satisfies ImprovementProposalProviderResult;
 
     expect(result).toMatchObject({
       status: "failed",
-      failure_reason: "artifact_change_proposal_provider_failed",
+      failure_reason: "improvement_proposal_provider_failed",
       authority_status: "proposal_input_only"
     });
     expect(result).not.toHaveProperty("output");
@@ -147,13 +147,13 @@ describe("artifact change proposal provider contracts", () => {
         "artifact-runtime-contract-python-clock-v1"
       ),
       secret_policy_ref: ref("secret_policy", "no-raw-secrets"),
-      capability_policy_ref: ref("capability_policy", "provider-artifact-change-proposal"),
+      capability_policy_ref: ref("capability_policy", "provider-improvement-proposal"),
       created_at: "2026-05-11T17:01:00.000Z"
-    } satisfies ArtifactChangeProposalMaterializationInput;
+    } satisfies ImprovementProposalMaterializationInput;
     const attempt = {
-      record_kind: "artifact_change_proposal_materialization_attempt",
+      record_kind: "improvement_proposal_materialization_attempt",
       version: 1,
-      artifact_change_proposal_materialization_attempt_id: "artifact-change-proposal-materialization-attempt-001",
+      improvement_proposal_materialization_attempt_id: "improvement-proposal-materialization-attempt-001",
       idempotency_key: input.idempotency_key,
       provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -163,14 +163,14 @@ describe("artifact change proposal provider contracts", () => {
       debug_artifact_refs: providerResult.debug_artifact_refs,
       status: "materialized",
       validation_status: "accepted",
-      output_artifact_proposal_ref: ref("artifact_change_proposal", "owned-proposal"),
-      output_runnable_artifact_ref: ref("runnable_artifact", "owned-artifact"),
+      output_artifact_proposal_ref: ref("improvement_proposal", "owned-proposal"),
+      output_system_code_ref: ref("system_code", "owned-artifact"),
       output_lineage_ref: ref("artifact_lineage", "owned-lineage"),
       created_at: input.created_at,
       authority_status: "proposal_input_only"
-    } satisfies ArtifactChangeProposalMaterializationAttemptRecord;
+    } satisfies ImprovementProposalMaterializationAttemptRecord;
 
-    expect(input.provider_result.output).not.toHaveProperty("artifact_change_proposal_id");
+    expect(input.provider_result.output).not.toHaveProperty("improvement_proposal_id");
     expect(attempt).toMatchObject({
       provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -182,7 +182,7 @@ describe("artifact change proposal provider contracts", () => {
   });
 });
 
-function codexProvider(): ArtifactChangeProposalProviderAttribution {
+function codexProvider(): ImprovementProposalProviderAttribution {
   return {
     provider_kind: "codex_cli",
     model: "gpt-5.4",
@@ -190,29 +190,29 @@ function codexProvider(): ArtifactChangeProposalProviderAttribution {
   };
 }
 
-function probeResult(provider: ArtifactChangeProposalProviderAttribution): ArtifactChangeProposalProviderProbeResult {
+function probeResult(provider: ImprovementProposalProviderAttribution): ImprovementProposalProviderProbeResult {
   return {
     ...provider,
     readiness_status: "active_verified",
-    supported_purposes: ["artifact_change_proposal_generation"],
-    provider_readiness_ref: ref("provider_readiness_record", "provider-readiness-artifact-change-proposal-001"),
-    provider_probe_attempt_ref: ref("provider_probe_attempt", "provider-probe-artifact-change-proposal-001")
+    supported_purposes: ["improvement_proposal_generation"],
+    provider_readiness_ref: ref("provider_readiness_record", "provider-readiness-improvement-proposal-001"),
+    provider_probe_attempt_ref: ref("provider_probe_attempt", "provider-probe-improvement-proposal-001")
   };
 }
 
 function providerRequest(input: {
-  provider: ArtifactChangeProposalProviderAttribution;
+  provider: ImprovementProposalProviderAttribution;
   sourceFinding: ResearchFindingRecord;
   antiHackingFinding: ResearchFindingRecord;
   agentRun: AgentRunRecord;
   trace: TracePlaceholderRecord;
-}): ArtifactChangeProposalProviderRequest {
+}): ImprovementProposalProviderRequest {
   return {
-    idempotency_key: "artifact-change-proposal-provider-contract-001",
+    idempotency_key: "improvement-proposal-provider-contract-001",
     task: fixtureTradingEvaluationTask(),
     findings: [input.sourceFinding, input.antiHackingFinding],
     existing_lineage_refs: [ref("artifact_lineage", "artifact-lineage-market-provider-contract-v1")],
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-provider-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-market-provider-v1"),
     input_artifact_refs: [ref("research_finding", input.sourceFinding.research_finding_id)],
     requested_output_contract_ref: ref("artifact_runtime_contract", "artifact-runtime-contract-python-clock-v1"),
     agent_run_ref: ref("agent_run", input.agentRun.agent_run_id),
@@ -221,13 +221,13 @@ function providerRequest(input: {
 }
 
 function successResult(input: {
-  provider: ArtifactChangeProposalProviderAttribution;
+  provider: ImprovementProposalProviderAttribution;
   sourceFinding: ResearchFindingRecord;
   antiHackingFinding: ResearchFindingRecord;
   event: AgentEventRecord;
   agentRun: AgentRunRecord;
   trace: TracePlaceholderRecord;
-}): ArtifactChangeProposalProviderResult {
+}): ImprovementProposalProviderResult {
   return {
     status: "succeeded",
     provider: input.provider,
@@ -236,10 +236,10 @@ function successResult(input: {
     agent_event_refs: [ref("agent_event", input.event.agent_event_id)],
     trace_ref: ref("trace_placeholder", input.trace.trace_id),
     provider_output_artifact_refs: [
-      ref("artifact_change_proposal_provider_output_artifact", "provider-output-artifact-change-proposal-001")
+      ref("improvement_proposal_provider_output_artifact", "provider-output-improvement-proposal-001")
     ],
-    debug_artifact_refs: [ref("debug_artifact", "provider-debug-artifact-change-proposal-001")],
-    idempotency_key: "artifact-change-proposal-provider-contract-001",
+    debug_artifact_refs: [ref("debug_artifact", "provider-debug-improvement-proposal-001")],
+    idempotency_key: "improvement-proposal-provider-contract-001",
     authority_status: "proposal_input_only"
   };
 }
@@ -247,16 +247,16 @@ function successResult(input: {
 function providerOutput(
   sourceFinding: ResearchFindingRecord,
   antiHackingFinding: ResearchFindingRecord
-): ArtifactChangeProposalProviderOutput {
+): ImprovementProposalProviderOutput {
   return {
-    output_kind: "artifact_change_proposal_input",
+    output_kind: "improvement_proposal_input",
     trading_evaluation_task_ref: ref(
       "trading_evaluation_task",
       "trading-evaluation-task-sealed-replay-provider-contract-001"
     ),
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     anti_hacking_finding_refs: [ref("research_finding", antiHackingFinding.research_finding_id)],
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-provider-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-market-provider-v1"),
     proposal_summary: "Provider-authored proposal input for the next opaque generic trading artifact.",
     requested_change_summary: "Improve held-out drawdown robustness without exposing strategy internals.",
     expected_improvement_summary: "Better sealed evaluator stability after materialization and evaluation.",
@@ -268,19 +268,19 @@ function providerOutput(
 }
 
 function agentRunRecord(
-  provider: ArtifactChangeProposalProviderAttribution,
+  provider: ImprovementProposalProviderAttribution,
   status: AgentRunRecord["status"] = "succeeded"
 ): AgentRunRecord {
   return {
     record_kind: "agent_run",
     version: 1,
-    agent_run_id: "agent-run-artifact-change-proposal-provider-contract-001",
-    agent_session_ref: ref("agent_session", "agent-session-artifact-change-proposal-provider-contract-001"),
-    purpose: "artifact_change_proposal_generation",
+    agent_run_id: "agent-run-improvement-proposal-provider-contract-001",
+    agent_session_ref: ref("agent_session", "agent-session-improvement-proposal-provider-contract-001"),
+    purpose: "improvement_proposal_generation",
     status,
     provider_kind: provider.provider_kind,
     model: provider.model,
-    trace_ref: ref("trace_placeholder", "trace-artifact-change-proposal-provider-contract-001"),
+    trace_ref: ref("trace_placeholder", "trace-improvement-proposal-provider-contract-001"),
     authority_status: "trace_only"
   };
 }
@@ -289,7 +289,7 @@ function agentEventRecord(agentRun: AgentRunRecord): AgentEventRecord {
   return {
     record_kind: "agent_event",
     version: 1,
-    agent_event_id: "agent-event-artifact-change-proposal-provider-contract-001",
+    agent_event_id: "agent-event-improvement-proposal-provider-contract-001",
     agent_run_ref: ref("agent_run", agentRun.agent_run_id),
     status: "provider_output_captured"
   };
@@ -299,12 +299,12 @@ function tracePlaceholder(): TracePlaceholderRecord {
   return {
     record_kind: "trace_placeholder",
     version: 1,
-    trace_id: "trace-artifact-change-proposal-provider-contract-001",
+    trace_id: "trace-improvement-proposal-provider-contract-001",
     input_artifact_refs: [ref("research_finding", "research-finding-market-trend-next-provider-001")],
     provider_output_artifact_refs: [
-      ref("artifact_change_proposal_provider_output_artifact", "provider-output-artifact-change-proposal-001")
+      ref("improvement_proposal_provider_output_artifact", "provider-output-improvement-proposal-001")
     ],
-    debug_artifact_refs: [ref("debug_artifact", "provider-debug-artifact-change-proposal-001")],
+    debug_artifact_refs: [ref("debug_artifact", "provider-debug-improvement-proposal-001")],
     authority_label: "provider_output_not_evidence",
     authority_status: "not_counted"
   };
@@ -355,11 +355,11 @@ if (false) {
   const _agentSpec: AgentSpecRecord = {
     record_kind: "agent_spec",
     version: 1,
-    agent_spec_id: "agent-spec-artifact-change-proposal-provider-contract-001",
-    purpose: "artifact_change_proposal_generation",
+    agent_spec_id: "agent-spec-improvement-proposal-provider-contract-001",
+    purpose: "improvement_proposal_generation",
     provider_kind: "codex_cli",
     model: "gpt-5.4",
-    output_contract_ref: ref("output_contract", "artifact-change-proposal-provider-output-v1")
+    output_contract_ref: ref("output_contract", "improvement-proposal-provider-output-v1")
   };
 
   const _providerOutputWithDurableProposalTruth = {
@@ -368,8 +368,8 @@ if (false) {
       researchFinding("anti-hacking", "anti_hacking_case")
     ),
     // @ts-expect-error Provider output is proposal input, not a durable proposal record.
-    artifact_change_proposal_id: "artifact-change-proposal-direct-provider-output"
-  } satisfies ArtifactChangeProposalProviderOutput;
+    improvement_proposal_id: "improvement-proposal-direct-provider-output"
+  } satisfies ImprovementProposalProviderOutput;
 
   void _agentSpec;
   void _providerOutputWithDurableProposalTruth;

@@ -2,53 +2,53 @@ import { describe, expect, it } from "vitest";
 import type {
   ArtifactLineageRecord,
   ResearchFindingRecord,
-  ArtifactChangeProposalProviderRequest,
+  ImprovementProposalProviderRequest,
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { FixtureArtifactChangeProposalProviderAdapter } from "../src/research-orchestration/fixture-artifact-change-proposal-provider";
+import { FixtureImprovementProposalProviderAdapter } from "../src/research-orchestration/fixture-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("FixtureArtifactChangeProposalProviderAdapter", () => {
-  it("wraps the deterministic planner behind the artifact change proposal provider adapter", async () => {
-    const adapter = new FixtureArtifactChangeProposalProviderAdapter();
+describe("FixtureImprovementProposalProviderAdapter", () => {
+  it("wraps the deterministic planner behind the improvement proposal provider adapter", async () => {
+    const adapter = new FixtureImprovementProposalProviderAdapter();
     const request = validRequest();
 
-    await expect(adapter.probeArtifactChangeProposal()).resolves.toMatchObject({
+    await expect(adapter.probeImprovementProposal()).resolves.toMatchObject({
       provider_kind: "fixture_only",
       readiness_status: "active_verified",
-      supported_purposes: ["artifact_change_proposal_generation"]
+      supported_purposes: ["improvement_proposal_generation"]
     });
 
-    const result = await adapter.runArtifactChangeProposalGeneration(request);
+    const result = await adapter.runImprovementProposalGeneration(request);
 
     expect(result).toMatchObject({
       status: "succeeded",
       provider: {
         provider_kind: "fixture_only",
-        model: "deterministic-artifact-change-proposal-planner-fixture"
+        model: "deterministic-improvement-proposal-planner-fixture"
       },
       output: {
-        output_kind: "artifact_change_proposal_input",
+        output_kind: "improvement_proposal_input",
         source_finding_refs: [ref("research_finding", "research-finding-fixture-provider-next-001")],
         anti_hacking_finding_refs: [
           ref("research_finding", "research-finding-fixture-provider-anti-001")
         ],
-        parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-fixture-provider-v1"),
+        parent_system_code_ref: ref("system_code", "research-system-code-fixture-provider-v1"),
         output_authority_status: "proposal_input_only"
       },
       trace_ref: request.trace_ref,
       authority_status: "proposal_input_only"
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /artifact_change_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
+      /improvement_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
     );
   });
 
   it("maps deterministic planner failures to adapter failures", async () => {
-    const adapter = new FixtureArtifactChangeProposalProviderAdapter();
-    const result = await adapter.runArtifactChangeProposalGeneration({
+    const adapter = new FixtureImprovementProposalProviderAdapter();
+    const result = await adapter.runImprovementProposalGeneration({
       ...validRequest(),
       findings: [researchFinding("research-finding-fixture-provider-anti-only", "anti_hacking_case")]
     });
@@ -62,18 +62,18 @@ describe("FixtureArtifactChangeProposalProviderAdapter", () => {
   });
 });
 
-function validRequest(): ArtifactChangeProposalProviderRequest {
+function validRequest(): ImprovementProposalProviderRequest {
   const sourceFinding = researchFinding("research-finding-fixture-provider-next-001", "next_artifact_hint");
   const antiHackingFinding = researchFinding("research-finding-fixture-provider-anti-001", "anti_hacking_case");
   return {
-    idempotency_key: "fixture-artifact-change-proposal-provider",
+    idempotency_key: "fixture-improvement-proposal-provider",
     task: fixtureTradingEvaluationTask(),
     findings: [sourceFinding, antiHackingFinding],
     existing_lineages: [artifactLineage(sourceFinding)],
     existing_lineage_refs: [ref("artifact_lineage", "artifact-lineage-fixture-provider-v1")],
     input_artifact_refs: [ref("research_finding", sourceFinding.research_finding_id)],
-    agent_run_ref: ref("agent_run", "agent-run-fixture-artifact-change-proposal-provider"),
-    trace_ref: ref("trace_placeholder", "trace-fixture-artifact-change-proposal-provider"),
+    agent_run_ref: ref("agent_run", "agent-run-fixture-improvement-proposal-provider"),
+    trace_ref: ref("trace_placeholder", "trace-fixture-improvement-proposal-provider"),
     created_at: "2026-05-11T19:00:00.000Z"
   };
 }
@@ -103,8 +103,8 @@ function artifactLineage(sourceFinding: ResearchFindingRecord): ArtifactLineageR
     record_kind: "artifact_lineage",
     version: 1,
     artifact_lineage_id: "artifact-lineage-fixture-provider-v1",
-    child_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-fixture-provider-v1"),
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-fixture-provider-seed"),
+    child_system_code_ref: ref("system_code", "research-system-code-fixture-provider-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-fixture-provider-seed"),
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: "2026-05-11T19:00:30.000Z",

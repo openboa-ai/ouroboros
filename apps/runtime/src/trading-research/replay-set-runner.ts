@@ -135,13 +135,13 @@ function aggregateScenarioResults(
 function aggregateRiskDecision(
   scenarioResults: TradingScenarioEvaluationResult[]
 ): TradingEvaluationResult["risk_decision"] {
-  if (scenarioResults.every((result) => result.risk_decision === "valid_order_intent_draft")) {
-    return "valid_order_intent_draft";
+  if (scenarioResults.every((result) => result.risk_decision === "valid_order_request")) {
+    return "valid_order_request";
   }
-  if (scenarioResults.every((result) => result.risk_decision === "no_order_intent_draft")) {
-    return "no_order_intent_draft";
+  if (scenarioResults.every((result) => result.risk_decision === "no_order_request")) {
+    return "no_order_request";
   }
-  return "invalid_order_intent_draft";
+  return "invalid_order_request";
 }
 
 function sanitizePathSegment(value: string): string {

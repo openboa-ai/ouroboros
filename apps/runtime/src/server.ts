@@ -2,18 +2,18 @@ import { createHash } from "node:crypto";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
-  BoundedRuntimeAuthorityInput,
   CandidateSummaryReadModel,
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
+  LedgerInput,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
-  RuntimeControlAuditInput,
-  SandboxRuntimeAdapterKind,
+  RunControlAuditInput,
+  SandboxAdapterKind,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
-import { FIXTURE_RUNNABLE_ARTIFACT_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
+import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "./candidate-evaluation";
 import { runCandidateGeneration } from "./candidate-materialization";
 import { CodexCliProviderAdapter } from "./providers/codex-cli-provider";
@@ -23,10 +23,10 @@ import type {
   RuntimeProviderAdapter
 } from "./providers/runtime-provider-adapter";
 import {
-  DeterministicSandboxRuntimeAdapter,
-  DockerSandboxesSbxRuntimeAdapter,
-  type SandboxRuntimeAdapter
-} from "./runtime-instances/sandbox-runtime-adapter";
+  DeterministicSandboxAdapter,
+  DockerSandboxesSbxSandboxAdapter,
+  type SandboxAdapter
+} from "./sandboxes/sandbox-adapter";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
   getCandidateLatestValidationState,
@@ -51,14 +51,14 @@ import {
 } from "./trading-execution-mode-contracts";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
-import { runCodexArtifactChangeProposalEvaluationDryRun } from "./research-orchestration/codex-artifact-change-proposal-evaluation-dry-run";
-import { FixtureArtifactChangeProposalProviderAdapter } from "./research-orchestration/fixture-artifact-change-proposal-provider";
+import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
+import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
 
 export interface BuildServerOptions {
   store?: LocalStore;
   providerAdapter?: RuntimeProviderAdapter;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
-  runtimeInstanceAdapters?: Partial<Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter>>;
+  sandboxAdapters?: Partial<Record<SandboxAdapterKind, SandboxAdapter>>;
   replayRunRoot?: string;
   promotedCandidateRoot?: string;
   tradingGatewayEnv?: Record<string, string | undefined>;
@@ -72,7 +72,7 @@ interface CreateEvaluationRunBody {
   execution_mode?: EvaluationExecutionMode;
 }
 
-interface RecordRuntimeAuthorityBody {
+interface RecordLedgerBody {
   candidate_version_id?: string;
   runtime_id?: string;
   idempotency_key?: string;
@@ -83,12 +83,12 @@ interface RecordRuntimeAuthorityBody {
     quantity?: string;
     limit_price?: string;
   };
-  gateway_decision?: {
+  gateway_result?: {
     decision_outcome?: string;
     decision_reason?: string;
     policy_ref?: Ref;
   };
-  execution_attempt?: {
+  execution_result?: {
     execution_mode?: string;
     status?: string;
     result_reason?: string;
@@ -98,7 +98,7 @@ interface RecordRuntimeAuthorityBody {
   created_at?: string;
 }
 
-interface RecordRuntimeControlBody {
+interface RecordRunControlBody {
   candidate_version_id?: string;
   runtime_id?: string;
   idempotency_key?: string;
@@ -111,9 +111,9 @@ interface RecordRuntimeControlBody {
     reason?: string;
     reason_summary?: string;
     trace_ref?: Ref;
-    related_order_intent_draft_refs?: Ref[];
-    related_gateway_decision_refs?: Ref[];
-    related_execution_attempt_refs?: Ref[];
+    related_order_request_refs?: Ref[];
+    related_gateway_result_refs?: Ref[];
+    related_execution_result_refs?: Ref[];
   };
   decision?: {
     decision_outcome?: string;
@@ -123,9 +123,9 @@ interface RecordRuntimeControlBody {
     runtime_operating_policy_ref?: Ref;
     resulting_lifecycle_status?: string;
     trace_ref?: Ref;
-    related_order_intent_draft_refs?: Ref[];
-    related_gateway_decision_refs?: Ref[];
-    related_execution_attempt_refs?: Ref[];
+    related_order_request_refs?: Ref[];
+    related_gateway_result_refs?: Ref[];
+    related_execution_result_refs?: Ref[];
   };
   audit_event?: {
     event_kind?: string;
@@ -135,9 +135,9 @@ interface RecordRuntimeControlBody {
     message?: string;
     trace_ref?: Ref;
     supporting_record_refs?: Ref[];
-    related_order_intent_draft_refs?: Ref[];
-    related_gateway_decision_refs?: Ref[];
-    related_execution_attempt_refs?: Ref[];
+    related_order_request_refs?: Ref[];
+    related_gateway_result_refs?: Ref[];
+    related_execution_result_refs?: Ref[];
   };
   created_at?: string;
 }
@@ -168,12 +168,12 @@ interface CreateReplayRunBody {
   workspace_path?: string;
 }
 
-interface StartRuntimeInstanceBody {
+interface StartSandboxBody {
   idempotency_key?: string;
   adapter_kind?: string;
-  runnable_artifact_id?: string;
-  runtime_id?: string;
-  instance_id?: string;
+  system_code_id?: string;
+  trading_run_id?: string;
+  sandbox_id?: string;
   sandbox_name?: string;
   test_ticks?: number;
   interval_ms?: number;
@@ -186,11 +186,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
-  const runtimeInstanceAdapters: Record<SandboxRuntimeAdapterKind, SandboxRuntimeAdapter> = {
-    deterministic_test: options.runtimeInstanceAdapters?.deterministic_test
-      ?? new DeterministicSandboxRuntimeAdapter(),
-    docker_sandboxes_sbx: options.runtimeInstanceAdapters?.docker_sandboxes_sbx
-      ?? new DockerSandboxesSbxRuntimeAdapter()
+  const providedSandboxAdapters = options.sandboxAdapters;
+  const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
+    deterministic_test: providedSandboxAdapters?.deterministic_test
+      ?? new DeterministicSandboxAdapter(),
+    docker_sandboxes_sbx: providedSandboxAdapters?.docker_sandboxes_sbx
+      ?? new DockerSandboxesSbxSandboxAdapter()
   };
   await store.initialize();
 
@@ -743,68 +744,77 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     })
   );
 
-  server.get<{ Params: { candidate_id: string } }>(
-    "/api/candidates/:candidate_id/runtime-authority",
+  server.get<{ Params: { system_id: string } }>(
+    "/api/trading-systems/:system_id/ledger",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const candidate = await store.getCandidate(request.params.system_id);
       if (!candidate) {
         return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
+          error: "trading_system_not_found",
+          system_id: request.params.system_id
         });
       }
 
       return {
-        candidate_id: request.params.candidate_id,
-        runtime_id: candidate.runtime.ref.id,
-        bounded_authority: candidate.runtime.bounded_authority
+        system_id: request.params.system_id,
+        trading_run_id: candidate.runtime.ref.id,
+        ledger: candidate.ledger
       };
     }
   );
 
   server.post<{
-    Params: { candidate_id: string };
-    Body: RecordRuntimeAuthorityBody;
-  }>("/api/candidates/:candidate_id/runtime-authority", async (request, reply) => {
-    const candidate = await store.getCandidate(request.params.candidate_id);
+    Params: { system_id: string };
+    Body: RecordLedgerBody;
+  }>("/api/trading-systems/:system_id/ledger", async (request, reply) => {
+    const candidate = await store.getCandidate(request.params.system_id);
     if (!candidate) {
       return reply.code(404).send({
-        error: "candidate_not_found",
-        candidate_id: request.params.candidate_id
+        error: "trading_system_not_found",
+        system_id: request.params.system_id
       });
     }
 
     const body = request.body ?? {};
-    if (!isRuntimeAuthorityRequestComplete(body)) {
-      return reply.code(422).send(runtimeAuthorityError({
-        reason: "invalid_runtime_authority_request",
-        candidateId: request.params.candidate_id,
+    if (!isLedgerRequestComplete(body)) {
+      return reply.code(422).send(ledgerError({
+        reason: "invalid_ledger_request",
+        candidateId: request.params.system_id,
         candidateVersionId: body.candidate_version_id,
         idempotencyKey: body.idempotency_key
       }));
     }
 
     try {
-      const outcome = await store.recordBoundedRuntimeAuthority({
+      await store.recordLedger({
         idempotency_key: body.idempotency_key,
-        candidate_id: request.params.candidate_id,
+        candidate_id: request.params.system_id,
         candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
         runtime_id: body.runtime_id,
         intent: body.intent,
-        gateway_decision: body.gateway_decision,
-        execution_attempt: body.execution_attempt,
+        gateway_result: body.gateway_result,
+        execution_result: body.execution_result,
         created_at: body.created_at
-      } as BoundedRuntimeAuthorityInput);
+      } as LedgerInput);
+      const updatedCandidate = await store.getCandidate(request.params.system_id);
+      if (!updatedCandidate?.ledger) {
+        throw new Error("ledger was not projected after ledger write");
+      }
 
       return reply.code(201).send({
         status: "recorded",
-        ...outcome
+        system_id: request.params.system_id,
+        trading_run_id: updatedCandidate.runtime.ref.id,
+        order_request: updatedCandidate.ledger.latest_order_request,
+        gateway_result: updatedCandidate.ledger.latest_gateway_result,
+        execution_result: updatedCandidate.ledger.latest_execution_result,
+        ledger: updatedCandidate.ledger
       });
     } catch (error) {
       if (error instanceof LocalStoreError) {
-        return reply.code(runtimeAuthorityStatusCode(error.code)).send(runtimeAuthorityError({
+        return reply.code(ledgerStatusCode(error.code)).send(ledgerError({
           reason: error.code,
-          candidateId: request.params.candidate_id,
+          candidateId: request.params.system_id,
           candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
           idempotencyKey: body.idempotency_key
         }));
@@ -813,26 +823,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   });
 
-  server.post<{ Params: { candidate_id: string } }>(
-    "/api/candidates/:candidate_id/trading-loop-runs",
+  server.post<{ Params: { system_id: string } }>(
+    "/api/trading-systems/:system_id/trading-runs",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const candidate = await store.getCandidate(request.params.system_id);
       if (!candidate) {
         return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
+          error: "trading_system_not_found",
+          system_id: request.params.system_id
         });
       }
 
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
       try {
-        const outcome = await store.recordBoundedRuntimeAuthority({
+        await store.recordLedger({
           idempotency_key: [
-            "trading-loop-run",
-            request.params.candidate_id,
+            "trading-run",
+            request.params.system_id,
             candidateVersionId
           ].join("-"),
-          candidate_id: request.params.candidate_id,
+          candidate_id: request.params.system_id,
           candidate_version_id: candidateVersionId,
           intent: {
             intent_kind: "place_order",
@@ -841,33 +851,33 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             quantity: "0.001",
             limit_price: "60000"
           },
-          gateway_decision: {
+          gateway_result: {
             decision_outcome: "dry_run_only",
             decision_reason: "paper_stage_only"
           },
-          execution_attempt: {
+          execution_result: {
             execution_mode: "host_local"
           }
-        } satisfies BoundedRuntimeAuthorityInput);
-        const updatedCandidate = await store.getCandidate(request.params.candidate_id);
-        if (!updatedCandidate?.runtime.trading_ledger) {
-          throw new Error("trading ledger was not projected after trading loop run");
+        } satisfies LedgerInput);
+        const updatedCandidate = await store.getCandidate(request.params.system_id);
+        if (!updatedCandidate?.ledger) {
+          throw new Error("ledger was not projected after trading run");
         }
 
         return reply.code(201).send({
           status: "recorded",
-          order_intent: outcome.order_intent_draft,
-          gateway_decision: outcome.gateway_decision,
-          execution_attempt: outcome.execution_attempt,
-          trading_ledger: updatedCandidate.runtime.trading_ledger,
+          order_request: updatedCandidate.ledger.latest_order_request,
+          gateway_result: updatedCandidate.ledger.latest_gateway_result,
+          execution_result: updatedCandidate.ledger.latest_execution_result,
+          ledger: updatedCandidate.ledger,
           trading_gateway_environment: tradingGatewayEnvironment
         });
       } catch (error) {
         if (error instanceof LocalStoreError) {
-          return reply.code(runtimeAuthorityStatusCode(error.code)).send({
-            error: "trading_loop_run_failed",
+          return reply.code(ledgerStatusCode(error.code)).send({
+            error: "trading_run_failed",
             reason: error.code,
-            candidate_id: request.params.candidate_id,
+            system_id: request.params.system_id,
             candidate_version_id: candidateVersionId
           });
         }
@@ -876,30 +886,125 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   );
 
-  server.post<{ Params: { candidate_id: string } }>(
-    "/api/candidates/:candidate_id/improvement-loop-runs",
+  server.get<{ Params: { run_id: string } }>(
+    "/api/trading-runs/:run_id",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const response = await tradingRunResponse(store, request.params.run_id);
+      if (!response) {
+        return reply.code(404).send({
+          error: "trading_run_not_found",
+          trading_run_id: request.params.run_id
+        });
+      }
+      return response;
+    }
+  );
+
+  server.post<{ Params: { run_id: string } }>(
+    "/api/trading-runs/:run_id/observe",
+    async (request, reply) => {
+      const response = await tradingRunResponse(store, request.params.run_id);
+      if (!response) {
+        return reply.code(404).send({
+          error: "trading_run_not_found",
+          trading_run_id: request.params.run_id
+        });
+      }
+      return {
+        status: "observed",
+        ...response
+      };
+    }
+  );
+
+  server.post<{ Params: { run_id: string } }>(
+    "/api/trading-runs/:run_id/stop",
+    async (request, reply) => {
+      const candidate = await store.getCandidateForTradingRun(request.params.run_id);
       if (!candidate) {
         return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
+          error: "trading_run_not_found",
+          trading_run_id: request.params.run_id
+        });
+      }
+      const candidateVersionId = candidate.candidate_version.candidate_version_id;
+      const idempotencyKey = [
+        "trading-run-stop",
+        request.params.run_id,
+        candidateVersionId
+      ].join("-");
+      const now = new Date().toISOString();
+
+      await store.recordRunControlAudit({
+        idempotency_key: idempotencyKey,
+        candidate_id: candidate.candidate_id,
+        candidate_version_id: candidateVersionId,
+        runtime_id: request.params.run_id,
+        command: {
+          action: "stop",
+          requested_lifecycle_status: "stopped",
+          actor_kind: "human_operator",
+          actor_ref: { record_kind: "operator", id: "runtime-api" },
+          reason: "operator_request",
+          reason_summary: "Operator requested trading run stop.",
+          runtime_operating_policy_ref: {
+            record_kind: "runtime_operating_policy",
+            id: "runtime-operating-policy-paper-v1"
+          }
+        },
+        decision: {
+          decision_outcome: "allowed",
+          decision_reason: "policy_allows_control",
+          decided_by_actor_kind: "policy_engine",
+          decided_by_actor_ref: { record_kind: "runtime_policy_engine", id: "runtime-policy-engine-fixture" },
+          resulting_lifecycle_status: "stopped",
+          runtime_operating_policy_ref: {
+            record_kind: "runtime_operating_policy",
+            id: "runtime-operating-policy-paper-v1"
+          }
+        },
+        audit_event: {
+          event_kind: "runtime_lifecycle_transitioned",
+          runtime_lifecycle_status: "stopped",
+          actor_kind: "human_operator",
+          actor_ref: { record_kind: "operator", id: "runtime-api" },
+          message: "Trading run stop recorded."
+        },
+        created_at: now
+      } satisfies RunControlAuditInput);
+
+      const response = await tradingRunResponse(store, request.params.run_id);
+      return reply.code(201).send({
+        status: "stop_recorded",
+        ...response
+      });
+    }
+  );
+
+  server.post<{ Params: { system_id: string } }>(
+    "/api/trading-systems/:system_id/improvements",
+    async (request, reply) => {
+      const candidate = await store.getCandidate(request.params.system_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "trading_system_not_found",
+          system_id: request.params.system_id
         });
       }
 
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
       const idempotencyKey = [
-        "runtime-api-improvement-loop",
-        request.params.candidate_id,
+        "runtime-api-improvement",
+        request.params.system_id,
         candidateVersionId
       ].join("-");
-      const outcome = await runCodexArtifactChangeProposalEvaluationDryRun({
+      const outcome = await runCodexImprovementProposalEvaluationDryRun({
         store,
         initialize_store: false,
-        provider_adapter: new FixtureArtifactChangeProposalProviderAdapter(),
-        parent_runnable_artifact_ref: {
-          record_kind: "runnable_artifact",
-          id: FIXTURE_RUNNABLE_ARTIFACT_ID
+        provider_adapter: new FixtureImprovementProposalProviderAdapter(),
+        parent_system_code_ref: {
+          record_kind: "system_code",
+          id: FIXTURE_SYSTEM_CODE_ID
         },
         idempotency_key: idempotencyKey,
         created_at: "2026-05-18T00:00:00.000Z",
@@ -907,20 +1012,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
       if (outcome.status === "failed") {
         return reply.code(422).send({
-          error: "improvement_loop_run_failed",
+          error: "improvement_failed",
           reason: outcome.failure_reason,
-          candidate_id: request.params.candidate_id,
+          system_id: request.params.system_id,
           candidate_version_id: candidateVersionId,
           idempotency_key: idempotencyKey
         });
       }
 
       await store.rebuildProjections();
-      const updatedCandidate = await store.getCandidate(request.params.candidate_id);
-      if (!updatedCandidate?.improvement_loop) {
+      const updatedCandidate = await store.getCandidate(request.params.system_id);
+      if (!updatedCandidate?.improvement) {
         return reply.code(500).send({
-          error: "improvement_loop_projection_failed",
-          candidate_id: request.params.candidate_id,
+          error: "improvement_projection_failed",
+          system_id: request.params.system_id,
           candidate_version_id: candidateVersionId,
           idempotency_key: idempotencyKey
         });
@@ -930,68 +1035,68 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         status: "evaluated",
         idempotency_key: idempotencyKey,
         proposal: outcome.proposal.proposal,
-        runnable_artifact: outcome.proposal.runnable_artifact,
+        system_code: outcome.proposal.system_code,
         lineage: outcome.proposal.lineage,
         orchestration_run: outcome.proposal.run,
         experiment: outcome.experiment,
         trading_evaluation_result: outcome.evaluation_result,
-        improvement_loop: updatedCandidate.improvement_loop
+        improvement: updatedCandidate.improvement
       });
     }
   );
 
-  server.get<{ Params: { candidate_id: string } }>(
-    "/api/candidates/:candidate_id/runtime-control",
+  server.get<{ Params: { system_id: string } }>(
+    "/api/trading-systems/:system_id/run-control",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.candidate_id);
+      const candidate = await store.getCandidate(request.params.system_id);
       if (!candidate) {
         return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
+          error: "trading_system_not_found",
+          system_id: request.params.system_id
         });
       }
 
       return {
-        candidate_id: request.params.candidate_id,
+        system_id: request.params.system_id,
         runtime_id: candidate.runtime.ref.id,
-        runtime_control: candidate.runtime.runtime_control
+        run_control: candidate.runtime.run_control
       };
     }
   );
 
   server.post<{
-    Params: { candidate_id: string };
-    Body: RecordRuntimeControlBody;
-  }>("/api/candidates/:candidate_id/runtime-control", async (request, reply) => {
-    const candidate = await store.getCandidate(request.params.candidate_id);
+    Params: { system_id: string };
+    Body: RecordRunControlBody;
+  }>("/api/trading-systems/:system_id/run-control", async (request, reply) => {
+    const candidate = await store.getCandidate(request.params.system_id);
     if (!candidate) {
       return reply.code(404).send({
-        error: "candidate_not_found",
-        candidate_id: request.params.candidate_id
+        error: "trading_system_not_found",
+        system_id: request.params.system_id
       });
     }
 
     const body = request.body ?? {};
-    if (!isRuntimeControlRequestComplete(body)) {
+    if (!isRunControlRequestComplete(body)) {
       return reply.code(422).send(runtimeControlError({
-        reason: "invalid_runtime_control_request",
-        candidateId: request.params.candidate_id,
+        reason: "invalid_run_control_request",
+        candidateId: request.params.system_id,
         candidateVersionId: body.candidate_version_id,
         idempotencyKey: body.idempotency_key
       }));
     }
 
     try {
-      const outcome = await store.recordRuntimeControlAudit({
+      const outcome = await store.recordRunControlAudit({
         idempotency_key: body.idempotency_key,
-        candidate_id: request.params.candidate_id,
+        candidate_id: request.params.system_id,
         candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
         runtime_id: body.runtime_id,
         command: body.command,
         decision: body.decision,
         audit_event: body.audit_event,
         created_at: body.created_at
-      } as RuntimeControlAuditInput);
+      } as RunControlAuditInput);
 
       return reply.code(201).send({
         status: "recorded",
@@ -1001,7 +1106,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       if (error instanceof LocalStoreError) {
         return reply.code(runtimeControlStatusCode(error.code)).send(runtimeControlError({
           reason: error.code,
-          candidateId: request.params.candidate_id,
+          candidateId: request.params.system_id,
           candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
           idempotencyKey: body.idempotency_key
         }));
@@ -1105,26 +1210,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return reply.code(201).send(outcome);
   });
 
-  server.post<{ Body: StartRuntimeInstanceBody }>("/api/runtime-instances", async (request, reply) => {
+  server.post<{ Body: StartSandboxBody }>("/api/sandboxes", async (request, reply) => {
     const body = request.body ?? {};
     const rawSecretPath = rawSecretMaterialPath(body);
     if (rawSecretPath) {
-      return reply.code(422).send(runtimeInstanceError({
+      return reply.code(422).send(sandboxError({
         reason: "raw_secret_material_rejected",
         idempotencyKey: body.idempotency_key,
         detail: rawSecretPath
       }));
     }
 
-    const adapterKind = parseRuntimeInstanceAdapterKind(body.adapter_kind);
+    const adapterKind = parseSandboxAdapterKind(body.adapter_kind);
     if (!adapterKind) {
-      return reply.code(422).send(runtimeInstanceError({
-        reason: "invalid_runtime_instance_adapter",
+      return reply.code(422).send(sandboxError({
+        reason: "invalid_sandbox_adapter",
         idempotencyKey: body.idempotency_key
       }));
     }
     if (adapterKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
-      return reply.code(422).send(runtimeInstanceError({
+      return reply.code(422).send(sandboxError({
         reason: "docker_sandboxes_sbx_runtime_disabled",
         idempotencyKey: body.idempotency_key
       }));
@@ -1133,154 +1238,174 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       (body.test_ticks !== undefined && !isNonNegativeInteger(body.test_ticks)) ||
       (body.interval_ms !== undefined && !isPositiveInteger(body.interval_ms))
     ) {
-      return reply.code(422).send(runtimeInstanceError({
-        reason: "invalid_runtime_instance_input",
+      return reply.code(422).send(sandboxError({
+        reason: "invalid_sandbox_input",
         idempotencyKey: body.idempotency_key
       }));
     }
 
-    const runnableArtifactId = body.runnable_artifact_id ?? FIXTURE_RUNNABLE_ARTIFACT_ID;
-    const artifact = await store.getRunnableArtifact(runnableArtifactId);
+    const systemCodeId = body.system_code_id ?? FIXTURE_SYSTEM_CODE_ID;
+    const artifact = await store.getSystemCode(systemCodeId);
     if (!artifact) {
-      return reply.code(404).send(runtimeInstanceError({
-        reason: "runnable_artifact_not_found",
+      return reply.code(404).send(sandboxError({
+        reason: "system_code_not_found",
         idempotencyKey: body.idempotency_key,
-        runnableArtifactId
+        systemCodeId
       }));
     }
 
     const createdAt = body.created_at ?? new Date().toISOString();
     const idempotencyKey = body.idempotency_key
-      ?? `${adapterKind}:${runnableArtifactId}:${body.runtime_id ?? "standalone"}`;
-    const instanceId = body.instance_id ?? `sandbox-runtime-instance-${safeRouteId(idempotencyKey)}`;
-    const sandboxName = body.sandbox_name ?? `ouro-s5-${safeRouteId(instanceId).slice(0, 48)}`;
+      ?? `${adapterKind}:${systemCodeId}:${body.trading_run_id ?? "standalone"}`;
+    const sandboxId = body.sandbox_id ?? `sandbox-${safeRouteId(idempotencyKey)}`;
+    const sandboxName = body.sandbox_name ?? `ouro-sandbox-${safeRouteId(sandboxId).slice(0, 44)}`;
 
     try {
-      const adapterResult = await runtimeInstanceAdapters[adapterKind].startArtifactInstance({
+      const adapterResult = await sandboxAdapters[adapterKind].startArtifactInstance({
         artifact,
-        instance_id: instanceId,
+        instance_id: sandboxId,
         sandbox_name: sandboxName,
-        runtime_ref: body.runtime_id
-          ? { record_kind: "trading_system_runtime", id: body.runtime_id }
+        runtime_ref: body.trading_run_id
+          ? { record_kind: "trading_run", id: body.trading_run_id }
           : undefined,
-        runtime_placement_id: `runtime-placement-${safeRouteId(instanceId)}`,
+        sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
         created_at: createdAt,
         test_ticks: body.test_ticks,
         interval_ms: body.interval_ms
       });
-      const outcome = await store.recordRuntimeInstanceStart(adapterResult);
-      const lifecycleStatus = outcome.runtime_instance.lifecycle_status;
+      const outcome = await store.recordSandboxStart(adapterResult);
+      const lifecycleStatus = outcome.sandbox.lifecycle_status;
       return reply.code(201).send({
         status: lifecycleStatus === "running" ? "started" : lifecycleStatus,
         ...outcome
       });
     } catch (error) {
       if (error instanceof LocalStoreError) {
-        return reply.code(runtimeInstanceStatusCode(error.code)).send(runtimeInstanceError({
+        return reply.code(sandboxStatusCode(error.code)).send(sandboxError({
           reason: error.code,
           idempotencyKey,
-          runnableArtifactId
+          systemCodeId
         }));
       }
       throw error;
     }
   });
 
-  server.get("/api/runtime-instances", async () => ({
-    runtime_instances: await store.listRuntimeInstances()
+  server.get("/api/sandboxes", async () => ({
+    sandboxes: await store.listSandboxes()
   }));
 
-  server.get<{ Params: { instance_id: string } }>(
-    "/api/runtime-instances/:instance_id",
+  server.get<{ Params: { sandbox_id: string } }>(
+    "/api/sandboxes/:sandbox_id",
     async (request, reply) => {
-      const runtimeInstance = await store.getRuntimeInstance(request.params.instance_id);
-      if (!runtimeInstance) {
-        return reply.code(404).send(runtimeInstanceError({
-          reason: "runtime_instance_not_found",
-          instanceId: request.params.instance_id
+      const sandbox = await store.getSandbox(request.params.sandbox_id);
+      if (!sandbox) {
+        return reply.code(404).send(sandboxError({
+          reason: "sandbox_not_found",
+          sandboxId: request.params.sandbox_id
         }));
       }
-      if (shouldRefreshRuntimeInstanceStatus(runtimeInstance.lifecycle_status)) {
-        const observations = await runtimeInstanceAdapters[runtimeInstance.adapter_kind]
-          .getArtifactInstanceStatus(runtimeInstance);
+      if (shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+        const observations = await sandboxAdapters[sandbox.adapter_kind]
+          .getArtifactInstanceStatus(sandbox);
         if (
           observations.lifecycle_status ||
           observations.logs?.length ||
           observations.heartbeats?.length ||
           observations.command_evidence?.length
         ) {
-          await store.recordRuntimeInstanceObservations(runtimeInstance.instance_id, observations);
-          return await store.getRuntimeInstance(runtimeInstance.instance_id);
+          await store.recordSandboxObservations(sandbox.sandbox_id, observations);
+          return await store.getSandbox(sandbox.sandbox_id);
         }
       }
-      return runtimeInstance;
+      return sandbox;
     }
   );
 
-  server.get<{ Params: { instance_id: string } }>(
-    "/api/runtime-instances/:instance_id/logs",
+  server.get<{ Params: { sandbox_id: string } }>(
+    "/api/sandboxes/:sandbox_id/logs",
     async (request, reply) => {
-      const runtimeInstance = await store.getRuntimeInstance(request.params.instance_id);
-      if (!runtimeInstance) {
-        return reply.code(404).send(runtimeInstanceError({
-          reason: "runtime_instance_not_found",
-          instanceId: request.params.instance_id
+      const sandbox = await store.getSandbox(request.params.sandbox_id);
+      if (!sandbox) {
+        return reply.code(404).send(sandboxError({
+          reason: "sandbox_not_found",
+          sandboxId: request.params.sandbox_id
         }));
       }
-      if (!shouldRefreshRuntimeInstanceStatus(runtimeInstance.lifecycle_status)) {
+      if (!shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
         return {
-          runtime_instance: runtimeInstance,
-          logs: runtimeInstance.logs,
-          heartbeats: runtimeInstance.heartbeats,
-          command_evidence: runtimeInstance.command_evidence
+          sandbox,
+          logs: sandbox.logs,
+          heartbeats: sandbox.heartbeats,
+          command_evidence: sandbox.command_evidence
         };
       }
 
-      const observations = await runtimeInstanceAdapters[runtimeInstance.adapter_kind]
-        .getArtifactInstanceLogs(runtimeInstance);
-      const outcome = await store.recordRuntimeInstanceObservations(
-        runtimeInstance.instance_id,
+      const observations = await sandboxAdapters[sandbox.adapter_kind]
+        .getArtifactInstanceLogs(sandbox);
+      const outcome = await store.recordSandboxObservations(
+        sandbox.sandbox_id,
         observations
       );
       return outcome;
     }
   );
 
-  server.post<{ Params: { instance_id: string } }>(
-    "/api/runtime-instances/:instance_id/stop",
+  server.post<{ Params: { sandbox_id: string } }>(
+    "/api/sandboxes/:sandbox_id/stop",
     async (request, reply) => {
-      const runtimeInstance = await store.getRuntimeInstance(request.params.instance_id);
-      if (!runtimeInstance) {
-        return reply.code(404).send(runtimeInstanceError({
-          reason: "runtime_instance_not_found",
-          instanceId: request.params.instance_id
+      const sandbox = await store.getSandbox(request.params.sandbox_id);
+      if (!sandbox) {
+        return reply.code(404).send(sandboxError({
+          reason: "sandbox_not_found",
+          sandboxId: request.params.sandbox_id
         }));
       }
-      if (!shouldRefreshRuntimeInstanceStatus(runtimeInstance.lifecycle_status)) {
+      if (!shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
         return {
-          status: runtimeInstance.lifecycle_status,
-          runtime_instance: runtimeInstance
+          status: sandbox.lifecycle_status,
+          sandbox
         };
       }
 
-      const observations = await runtimeInstanceAdapters[runtimeInstance.adapter_kind]
-        .stopArtifactInstance(runtimeInstance);
-      const outcome = await store.stopRuntimeInstance(
+      const observations = await sandboxAdapters[sandbox.adapter_kind]
+        .stopArtifactInstance(sandbox);
+      const outcome = await store.stopSandbox(
         {
-          instance_id: runtimeInstance.instance_id,
+          sandbox_id: sandbox.sandbox_id,
           stopped_at: observations.stopped_at,
           removed_at: observations.removed_at
         },
         observations
       );
       return {
-        status: outcome.runtime_instance.lifecycle_status,
+        status: outcome.sandbox.lifecycle_status,
         ...outcome
       };
     }
   );
 
   return server;
+}
+
+async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
+  const tradingRun = await store.getTradingRun(tradingRunId);
+  if (!tradingRun) {
+    return undefined;
+  }
+  const candidate = await store.getCandidateForTradingRun(tradingRunId);
+  return {
+    trading_run_id: tradingRunId,
+    trading_run: {
+      ref: { record_kind: "trading_run", id: tradingRunId },
+      stage: tradingRun.stage_binding_profile,
+      lifecycle_status: tradingRun.runtime_lifecycle_status,
+      authority_status: tradingRun.authority_status
+    },
+    trading_system: candidate?.trading_system,
+    ledger: candidate?.ledger,
+    run_control: candidate?.runtime.run_control
+  };
 }
 
 function safeRouteId(value: string): string {
@@ -1290,42 +1415,42 @@ function safeRouteId(value: string): string {
   return `${prefix}-${digest}`;
 }
 
-function isRuntimeAuthorityRequestComplete(
-  body: RecordRuntimeAuthorityBody
-): body is RecordRuntimeAuthorityBody & {
+function isLedgerRequestComplete(
+  body: RecordLedgerBody
+): body is RecordLedgerBody & {
   idempotency_key: string;
-  intent: BoundedRuntimeAuthorityInput["intent"];
-  gateway_decision: BoundedRuntimeAuthorityInput["gateway_decision"];
+  intent: LedgerInput["intent"];
+  gateway_result: LedgerInput["gateway_result"];
 } {
-  return Boolean(body.idempotency_key && body.intent && body.gateway_decision);
+  return Boolean(body.idempotency_key && body.intent && body.gateway_result);
 }
 
-function runtimeAuthorityStatusCode(reason: string): 404 | 422 {
+function ledgerStatusCode(reason: string): 404 | 422 {
   return reason === "candidate_not_found" ? 404 : 422;
 }
 
-function runtimeAuthorityError(input: {
+function ledgerError(input: {
   reason: string;
   candidateId: string;
   candidateVersionId?: string;
   idempotencyKey?: string;
 }) {
   return {
-    error: "runtime_authority_record_failed",
+    error: "ledger_record_failed",
     reason: input.reason,
-    candidate_id: input.candidateId,
+    system_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,
     idempotency_key: input.idempotencyKey
   };
 }
 
-function isRuntimeControlRequestComplete(
-  body: RecordRuntimeControlBody
-): body is RecordRuntimeControlBody & {
+function isRunControlRequestComplete(
+  body: RecordRunControlBody
+): body is RecordRunControlBody & {
   idempotency_key: string;
-  command: RuntimeControlAuditInput["command"];
-  decision: RuntimeControlAuditInput["decision"];
-  audit_event: RuntimeControlAuditInput["audit_event"];
+  command: RunControlAuditInput["command"];
+  decision: RunControlAuditInput["decision"];
+  audit_event: RunControlAuditInput["audit_event"];
 } {
   return Boolean(body.idempotency_key && body.command && body.decision && body.audit_event);
 }
@@ -1341,7 +1466,7 @@ function runtimeControlError(input: {
   idempotencyKey?: string;
 }) {
   return {
-    error: "runtime_control_record_failed",
+    error: "run_control_record_failed",
     reason: input.reason,
     candidate_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,
@@ -1421,9 +1546,9 @@ function isForbiddenPrivateReadinessPostureMaterialKey(key: string, value: unkno
   );
 }
 
-function parseRuntimeInstanceAdapterKind(value: string | undefined): SandboxRuntimeAdapterKind | undefined {
+function parseSandboxAdapterKind(value: string | undefined): SandboxAdapterKind | undefined {
   if (value === undefined) {
-    return process.env.OUROBOROS_RUNTIME_INSTANCE_ADAPTER === "docker_sandboxes_sbx"
+    return process.env.OUROBOROS_SANDBOX_ADAPTER === "docker_sandboxes_sbx"
       ? "docker_sandboxes_sbx"
       : "deterministic_test";
   }
@@ -1431,8 +1556,8 @@ function parseRuntimeInstanceAdapterKind(value: string | undefined): SandboxRunt
 }
 
 function isSbxRuntimeEnabled(): boolean {
-  return process.env.OUROBOROS_ENABLE_SBX_RUNTIME === "1" ||
-    process.env.OUROBOROS_RUNTIME_INSTANCE_ADAPTER === "docker_sandboxes_sbx";
+  return process.env.OUROBOROS_ENABLE_SBX_SANDBOX === "1" ||
+    process.env.OUROBOROS_SANDBOX_ADAPTER === "docker_sandboxes_sbx";
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
@@ -1549,32 +1674,34 @@ function replayRunErrorStatus(error: ReplayRunError): 404 | 422 {
   return error.reason === "candidate_not_found" ? 404 : 422;
 }
 
-function runtimeInstanceStatusCode(reason: string): 404 | 422 {
+function sandboxStatusCode(reason: string): 404 | 422 {
   return (
-    reason === "runnable_artifact_not_found" ||
-    reason === "runtime_instance_not_found" ||
+    reason === "system_code_not_found" ||
+    reason === "system_code_not_found" ||
+    reason === "sandbox_not_found" ||
+    reason === "sandbox_not_found" ||
     reason === "runtime_not_found"
   ) ? 404 : 422;
 }
 
-function runtimeInstanceError(input: {
+function sandboxError(input: {
   reason: string;
   idempotencyKey?: string;
-  runnableArtifactId?: string;
-  instanceId?: string;
+  systemCodeId?: string;
+  sandboxId?: string;
   detail?: string;
 }) {
   return {
-    error: "runtime_instance_request_failed",
+    error: "sandbox_request_failed",
     reason: input.reason,
     idempotency_key: input.idempotencyKey,
-    runnable_artifact_id: input.runnableArtifactId,
-    instance_id: input.instanceId,
+    system_code_id: input.systemCodeId,
+    sandbox_id: input.sandboxId,
     detail: input.detail
   };
 }
 
-function shouldRefreshRuntimeInstanceStatus(lifecycleStatus: string): boolean {
+function shouldRefreshSandboxStatus(lifecycleStatus: string): boolean {
   return lifecycleStatus !== "stopped" && lifecycleStatus !== "removed" && lifecycleStatus !== "failed";
 }
 

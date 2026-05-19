@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import type {
   ArtifactRuntimeContractRecord,
   Ref,
-  RunnableArtifactOutputContract,
-  RunnableArtifactRecord,
-  RuntimePlacementRecord,
-  SandboxRuntimeInstanceRecord,
+  SystemCodeOutputContract,
+  SystemCodeRecord,
+  SandboxPlacementRecord,
+  SandboxRecord,
   TradingSystemCandidateRecord,
-  TradingSystemRuntimeRecord
+  TradingRunRecord
 } from "./index";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
@@ -18,10 +18,10 @@ const clockOutputContract = {
   event_envelope_ref: ref("program_event_contract", "opaque-clock-program-event-v1"),
   log_contract_ref: ref("runtime_log_contract", "opaque-clock-log-v1"),
   heartbeat_contract_ref: ref("runtime_heartbeat_contract", "opaque-clock-heartbeat-v1")
-} satisfies RunnableArtifactOutputContract;
+} satisfies SystemCodeOutputContract;
 
-describe("opaque runnable artifact and sandbox instance contracts", () => {
-  it("models a Python file runnable artifact without normalizing strategy internals", () => {
+describe("opaque system code and sandbox instance contracts", () => {
+  it("models a Python file system code without normalizing strategy internals", () => {
     const runtimeContract = {
       record_kind: "artifact_runtime_contract",
       version: 1,
@@ -36,9 +36,9 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
     } satisfies ArtifactRuntimeContractRecord;
 
     const artifact = {
-      record_kind: "runnable_artifact",
+      record_kind: "system_code",
       version: 1,
-      runnable_artifact_id: "runnable-artifact-python-clock-v1",
+      system_code_id: "system-code-python-clock-v1",
       artifact_kind: "python_file",
       artifact_path: "fixtures/trading-systems/clock.py",
       artifact_digest: "sha256:fixture-clock-python-artifact-v1",
@@ -55,9 +55,9 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       status: "registered",
       created_at: "2026-05-10T12:00:01.000Z",
       authority_status: "not_live"
-    } satisfies RunnableArtifactRecord;
+    } satisfies SystemCodeRecord;
 
-    expect(artifact.runnable_artifact_id).toBe("runnable-artifact-python-clock-v1");
+    expect(artifact.system_code_id).toBe("system-code-python-clock-v1");
     expect(artifact.artifact_digest).toMatch(/^sha256:/);
     expect(artifact.artifact_path).toBe("fixtures/trading-systems/clock.py");
     expect(artifact.entrypoint).toEqual(["python", "/workspace/clock.py"]);
@@ -71,11 +71,11 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
     expect(Object.keys(artifact)).not.toContain("strategy_internals");
   });
 
-  it("models an image-backed artifact and one sandbox runtime instance around it", () => {
+  it("models an image-backed artifact and one sandbox sandbox around it", () => {
     const imageArtifact = {
-      record_kind: "runnable_artifact",
+      record_kind: "system_code",
       version: 1,
-      runnable_artifact_id: "runnable-artifact-image-clock-v1",
+      system_code_id: "system-code-image-clock-v1",
       artifact_kind: "container_image",
       image_ref: "registry.example.invalid/ouroboros/clock@sha256:fixture-clock-image-v1",
       artifact_digest: "sha256:fixture-clock-image-v1",
@@ -88,26 +88,26 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       status: "registered",
       created_at: "2026-05-10T12:05:00.000Z",
       authority_status: "not_live"
-    } satisfies RunnableArtifactRecord;
+    } satisfies SystemCodeRecord;
 
     const placement = {
-      record_kind: "runtime_placement",
+      record_kind: "sandbox_placement",
       version: 1,
-      runtime_placement_id: "runtime-placement-docker-sandboxes-clock-v1",
+      sandbox_placement_id: "sandbox-placement-docker-sandboxes-clock-v1",
       placement_kind: "containerized_remote",
       tooling_kind: "docker_sandbox",
       sandbox_template_ref: ref("sandbox_template", "docker-sandboxes-clock-template-v1"),
       authority_status: "not_launched"
-    } satisfies RuntimePlacementRecord;
+    } satisfies SandboxPlacementRecord;
 
     const instance = {
-      record_kind: "sandbox_runtime_instance",
+      record_kind: "sandbox",
       version: 1,
-      sandbox_runtime_instance_id: "sandbox-runtime-instance-clock-alpha-v1",
+      sandbox_id: "sandbox-clock-alpha-v1",
       adapter_kind: "docker_sandboxes_sbx",
-      runnable_artifact_ref: ref("runnable_artifact", imageArtifact.runnable_artifact_id),
-      runtime_ref: ref("trading_system_runtime", "runtime-clock-paper-v1"),
-      runtime_placement_ref: ref("runtime_placement", placement.runtime_placement_id),
+      system_code_ref: ref("system_code", imageArtifact.system_code_id),
+      runtime_ref: ref("trading_run", "runtime-clock-paper-v1"),
+      sandbox_placement_ref: ref("sandbox_placement", placement.sandbox_placement_id),
       lifecycle_status: "running",
       sandbox_name: "sbx-clock-alpha",
       sandbox_ref: ref("docker_sandbox", "sbx-clock-alpha"),
@@ -118,23 +118,23 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       heartbeat_refs: [ref("runtime_heartbeat", "runtime-heartbeat-clock-alpha-v1")],
       trace_ref: ref("trace_placeholder", "trace-clock-alpha-v1"),
       authority_status: "not_live"
-    } satisfies SandboxRuntimeInstanceRecord;
+    } satisfies SandboxRecord;
 
     expect(imageArtifact.image_ref).toContain("@sha256:");
-    expect(instance.runnable_artifact_ref).toEqual(
-      ref("runnable_artifact", imageArtifact.runnable_artifact_id)
+    expect(instance.system_code_ref).toEqual(
+      ref("system_code", imageArtifact.system_code_id)
     );
-    expect(instance.runtime_placement_ref).toEqual(
-      ref("runtime_placement", placement.runtime_placement_id)
+    expect(instance.sandbox_placement_ref).toEqual(
+      ref("sandbox_placement", placement.sandbox_placement_id)
     );
     expect(instance.log_refs).toHaveLength(1);
     expect(instance.heartbeat_refs).toHaveLength(1);
-    expect(instance.sandbox_name).not.toBe(imageArtifact.runnable_artifact_id);
+    expect(instance.sandbox_name).not.toBe(imageArtifact.system_code_id);
   });
 
   it("lets candidate and logical runtime records reference artifact boundaries without making sandbox ids identity", () => {
-    const artifactRef = ref("runnable_artifact", "runnable-artifact-python-clock-v1");
-    const instanceRef = ref("sandbox_runtime_instance", "sandbox-runtime-instance-clock-alpha-v1");
+    const artifactRef = ref("system_code", "system-code-python-clock-v1");
+    const instanceRef = ref("sandbox", "sandbox-clock-alpha-v1");
 
     const candidate = {
       record_kind: "trading_system_candidate",
@@ -144,42 +144,42 @@ describe("opaque runnable artifact and sandbox instance contracts", () => {
       status: "materialized",
       active_version_id: "candidate-version-opaque-clock-v1",
       provenance_refs: [ref("agent_run", "agent-run-authored-clock-v1")],
-      active_runnable_artifact_ref: artifactRef
+      active_system_code_ref: artifactRef
     } satisfies TradingSystemCandidateRecord;
 
     const runtime = {
-      record_kind: "trading_system_runtime",
+      record_kind: "trading_run",
       version: 1,
-      trading_system_runtime_id: "runtime-clock-paper-v1",
+      trading_run_id: "runtime-clock-paper-v1",
       stage_binding_profile: "paper",
       runtime_lifecycle_status: "running",
       candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
       candidate_version_ref: ref("candidate_version", candidate.active_version_id),
       stage_binding_ref: ref("stage_binding", "stage-binding-clock-paper-v1"),
-      placement_ref: ref("runtime_placement", "runtime-placement-docker-sandboxes-clock-v1"),
+      placement_ref: ref("sandbox_placement", "sandbox-placement-docker-sandboxes-clock-v1"),
       hands_environment_ref: ref("hands_environment", "hands-environment-clock-v1"),
       memory_surface_ref: ref("runtime_memory_surface", "runtime-memory-clock-v1"),
       runtime_operating_policy_ref: ref("runtime_operating_policy", "runtime-policy-clock-v1"),
       trace_ref: ref("trace_placeholder", "trace-clock-alpha-v1"),
-      runnable_artifact_ref: artifactRef,
-      sandbox_runtime_instance_ref: instanceRef,
+      system_code_ref: artifactRef,
+      sandbox_ref: instanceRef,
       created_at: "2026-05-10T12:07:00.000Z",
       authority_status: "not_live"
-    } satisfies TradingSystemRuntimeRecord;
+    } satisfies TradingRunRecord;
 
     expect(candidate.candidate_id).not.toBe(artifactRef.id);
-    expect(runtime.trading_system_runtime_id).not.toBe(instanceRef.id);
-    expect(runtime.trading_system_runtime_id).not.toBe(runtime.placement_ref.id);
-    expect(runtime.runnable_artifact_ref).toEqual(artifactRef);
-    expect(runtime.sandbox_runtime_instance_ref).toEqual(instanceRef);
+    expect(runtime.trading_run_id).not.toBe(instanceRef.id);
+    expect(runtime.trading_run_id).not.toBe(runtime.placement_ref.id);
+    expect(runtime.system_code_ref).toEqual(artifactRef);
+    expect(runtime.sandbox_ref).toEqual(instanceRef);
   });
 });
 
 if (false) {
   const _artifactWithRawSecrets = {
-    record_kind: "runnable_artifact",
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: "runnable-artifact-invalid-secret",
+    system_code_id: "system-code-invalid-secret",
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture-clock-python-artifact-v1",
@@ -194,12 +194,12 @@ if (false) {
     authority_status: "not_live",
     // @ts-expect-error raw secret material must stay outside artifact boundary records.
     raw_secret_values: { example_value: "redacted" }
-  } satisfies RunnableArtifactRecord;
+  } satisfies SystemCodeRecord;
 
   const _artifactWithStrategyInternals = {
-    record_kind: "runnable_artifact",
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: "runnable-artifact-invalid-strategy",
+    system_code_id: "system-code-invalid-strategy",
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture-clock-python-artifact-v1",
@@ -214,7 +214,7 @@ if (false) {
     authority_status: "not_live",
     // @ts-expect-error strategy internals are opaque to Ouroboros artifact records.
     strategy_internals: { lookback_window: 14, signal_family: "clock_tick" }
-  } satisfies RunnableArtifactRecord;
+  } satisfies SystemCodeRecord;
 
   void _artifactWithRawSecrets;
   void _artifactWithStrategyInternals;

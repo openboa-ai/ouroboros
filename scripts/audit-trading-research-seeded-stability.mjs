@@ -169,7 +169,7 @@ function auditEntry(entry) {
   requireValue(stringValue(entry?.events_path), `${label} events_path`);
   requireEqual(stringValue(entry?.evaluation?.status), "accepted", `${label} evaluation.status`);
   requireAtLeast(finiteNumber(entry?.evaluation?.score), minScore, `${label} evaluation.score`);
-  requireEqual(stringValue(entry?.evaluation?.risk_decision), "valid_order_intent_draft", `${label} evaluation.risk_decision`);
+  requireEqual(stringValue(entry?.evaluation?.risk_decision), "valid_order_request", `${label} evaluation.risk_decision`);
 
   const scenarioResults = asArray(entry?.evaluation?.scenario_results);
   if (scenarioResults.length === 0) {
@@ -192,7 +192,7 @@ function auditScenario(entryLabelText, scenario) {
   requireEqual(stringValue(scenario?.run_status), "completed", `${label} run_status`);
   requireEqual(stringValue(scenario?.status), "accepted", `${label} status`);
   requireAtLeast(finiteNumber(scenario?.score), minScore, `${label} score`);
-  requireEqual(stringValue(scenario?.risk_decision), "valid_order_intent_draft", `${label} risk_decision`);
+  requireEqual(stringValue(scenario?.risk_decision), "valid_order_request", `${label} risk_decision`);
   requireValue(stringValue(scenario?.events_path), `${label} events_path`);
   requireAtLeast(finiteNumber(scenario?.provider_request_count), DEFAULT_MIN_PROVIDER_REQUESTS, `${label} provider_request_count`);
   requireAtLeast(finiteNumber(scenario?.runner_command_count), DEFAULT_MIN_RUNNER_COMMANDS, `${label} runner_command_count`);

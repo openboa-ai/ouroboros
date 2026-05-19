@@ -24,7 +24,7 @@ export type ProviderKind = "codex_cli" | "claude_code" | "local_process" | "fixt
 export type AgentRunPurpose =
   | "candidate_generation"
   | "candidate_generation_placeholder"
-  | "artifact_change_proposal_generation";
+  | "improvement_proposal_generation";
 
 export type AgentRunStatus = "succeeded" | "failed" | "rejected" | "fixture_placeholder";
 
@@ -92,13 +92,13 @@ export type EvaluationExecutionMode =
   | "containerized_local"
   | "containerized_remote";
 
-export type RuntimePlacementKind =
+export type SandboxPlacementKind =
   | EvaluationExecutionMode
   | "provider_managed"
   | "endpoint_backed"
   | "fixture_local_placeholder";
 
-export type RuntimePlacementToolingKind =
+export type SandboxPlacementToolingKind =
   | "host_process"
   | "docker_compose"
   | "docker_sandbox"
@@ -107,21 +107,21 @@ export type RuntimePlacementToolingKind =
   | "http_endpoint"
   | "fixture_only";
 
-export type RunnableArtifactKind = "python_file" | "container_image";
+export type SystemCodeKind = "python_file" | "container_image";
 
-export type RunnableArtifactRuntimeKind = "python" | "container_image";
+export type SystemCodeRuntimeKind = "python" | "container_image";
 
-export type RunnableArtifactOutputKind =
+export type SystemCodeOutputKind =
   | "program_event"
   | "runtime_log"
   | "runtime_heartbeat"
   | "metric_snapshot"
   | "diagnostic_artifact"
-  | "order_intent_draft";
+  | "order_request";
 
-export type RunnableArtifactStatus = "registered";
+export type SystemCodeStatus = "registered";
 
-export type SandboxRuntimeInstanceLifecycleStatus =
+export type SandboxLifecycleStatus =
   | "requested"
   | "created"
   | "starting"
@@ -131,7 +131,7 @@ export type SandboxRuntimeInstanceLifecycleStatus =
   | "failed"
   | "removed";
 
-export type SandboxRuntimeAdapterKind = "deterministic_test" | "docker_sandboxes_sbx";
+export type SandboxAdapterKind = "deterministic_test" | "docker_sandboxes_sbx";
 
 export type ResearchDirectionKind =
   | "trend_following"
@@ -185,7 +185,7 @@ export type ResearchFindingKind =
   | "anti_hacking_case"
   | "next_artifact_hint";
 
-export type ArtifactChangeProposalStatus =
+export type ImprovementProposalStatus =
   | "proposed"
   | "materialized"
   | "discarded";
@@ -196,7 +196,7 @@ export type ResearchOrchestrationRunStatus =
   | "failed"
   | "discarded";
 
-export type TradingSystemRuntimeLifecycleStatus =
+export type TradingRunLifecycleStatus =
   | "registered"
   | "deployed"
   | "starting"
@@ -211,7 +211,7 @@ export type TradingSystemRuntimeLifecycleStatus =
 
 export type RuntimeExecutionStage = "paper" | "live";
 
-export type RuntimeControlAction =
+export type RunControlAction =
   | "inspect"
   | "pause"
   | "resume"
@@ -221,13 +221,13 @@ export type RuntimeControlAction =
   | "handoff"
   | "audit";
 
-export type RuntimeControlCommandStatus =
+export type RunControlCommandStatus =
   | "pending_decision"
   | "decided"
   | "canceled"
   | "superseded";
 
-export type RuntimeControlCommandReason =
+export type RunControlCommandReason =
   | "operator_request"
   | "inspection_request"
   | "manual_override"
@@ -236,13 +236,13 @@ export type RuntimeControlCommandReason =
   | "audit_request"
   | "fixture_only";
 
-export type RuntimeControlDecisionOutcome =
+export type RunControlDecisionOutcome =
   | "allowed"
   | "rejected"
   | "dry_run_only"
   | "no_live_authority";
 
-export type RuntimeControlDecisionReason =
+export type RunControlDecisionReason =
   | "policy_allows_control"
   | "policy_rejected_control"
   | "no_live_authority"
@@ -252,13 +252,13 @@ export type RuntimeControlDecisionReason =
   | "safety_kill_allowed"
   | "fixture_only";
 
-export type RuntimeControlActorKind =
+export type RunControlActorKind =
   | "human_operator"
   | "policy_engine"
   | "external_handoff"
   | "fixture_operator";
 
-export type RuntimeControlAuthorityStatus =
+export type RunControlAuthorityStatus =
   | "not_live"
   | "control_only"
   | "dry_run_only"
@@ -274,22 +274,22 @@ export type RuntimeAuditEventKind =
   | "operator_handoff_recorded"
   | "audit_snapshot_recorded";
 
-export type OrderIntentDraftKind =
+export type OrderRequestKind =
   | "place_order"
   | "cancel_order"
   | "adjust_position";
 
-export type OrderIntentDraftStatus = "proposed" | "withdrawn" | "expired" | "rejected";
+export type OrderRequestStatus = "proposed" | "withdrawn" | "expired" | "rejected";
 
-export type OrderIntentDraftAuthorityStatus = "not_submitted" | "trace_only";
+export type OrderRequestAuthorityStatus = "not_submitted" | "trace_only";
 
-export type GatewayDecisionOutcome =
+export type GatewayResultOutcome =
   | "allowed"
   | "rejected"
   | "clipped"
   | "dry_run_only";
 
-export type GatewayDecisionReason =
+export type GatewayResultReason =
   | "paper_stage_only"
   | "dry_run_allowed"
   | "no_live_authority"
@@ -297,16 +297,16 @@ export type GatewayDecisionReason =
   | "operator_hold"
   | "fixture_only";
 
-export type GatewayDecisionAuthorityStatus = "not_live" | "dry_run_only";
+export type GatewayResultAuthorityStatus = "not_live" | "dry_run_only";
 
-export type ExecutionAttemptStatus =
+export type ExecutionResultStatus =
   | "not_submitted"
   | "dry_run_recorded"
   | "blocked"
   | "canceled"
   | "failed";
 
-export type ExecutionAttemptAuthorityStatus =
+export type ExecutionResultAuthorityStatus =
   | "not_live"
   | "not_submitted"
   | "dry_run_only";
@@ -359,29 +359,29 @@ export type CandidateMaterializationFailureReason =
 
 export type MaterializationValidationStatus = "accepted" | "rejected";
 
-export type ArtifactChangeProposalProviderFailureReason =
-  | "artifact_change_proposal_provider_unavailable"
-  | "artifact_change_proposal_provider_failed"
-  | "artifact_change_proposal_provider_timeout"
-  | "invalid_artifact_change_proposal_request"
+export type ImprovementProposalProviderFailureReason =
+  | "improvement_proposal_provider_unavailable"
+  | "improvement_proposal_provider_failed"
+  | "improvement_proposal_provider_timeout"
+  | "invalid_improvement_proposal_request"
   | "no_eligible_research_finding"
-  | "unsupported_artifact_change_proposal_task"
-  | "unsupported_artifact_change_proposal_provider";
+  | "unsupported_improvement_proposal_task"
+  | "unsupported_improvement_proposal_provider";
 
-export type ArtifactChangeProposalProviderOutputAuthorityStatus = "proposal_input_only";
+export type ImprovementProposalProviderOutputAuthorityStatus = "proposal_input_only";
 
-export type ArtifactChangeProposalProviderReadinessStatus =
+export type ImprovementProposalProviderReadinessStatus =
   | "active_verified"
   | "blocked_or_not_installed"
   | "candidate_unverified";
 
-export type ArtifactChangeProposalMaterializationStatus = "materialized" | "failed";
+export type ImprovementProposalMaterializationStatus = "materialized" | "failed";
 
-export type ArtifactChangeProposalMaterializationFailureReason =
+export type ImprovementProposalMaterializationFailureReason =
   | "provider_output_schema_invalid"
   | "provider_output_rejected"
-  | "artifact_change_proposal_source_finding_not_found"
-  | ArtifactChangeProposalProviderFailureReason;
+  | "improvement_proposal_source_finding_not_found"
+  | ImprovementProposalProviderFailureReason;
 
 export interface FixtureNotice {
   mode: FixtureMode;
@@ -1110,9 +1110,9 @@ export type TradingGatewayCapabilityStatus = "enabled" | "disabled";
 export type TradingGatewaySecurityType = "MARKET_DATA" | "USER_DATA" | "TRADE";
 
 export type TradingGatewayTrackedRecordKind =
-  | "order_intent_draft"
-  | "gateway_decision"
-  | "execution_attempt";
+  | "order_request"
+  | "gateway_result"
+  | "execution_result";
 
 export interface TradingGatewayContractReadModel {
   contract_kind: "trading_gateway_contract";
@@ -1179,7 +1179,7 @@ export function buildTradingGatewayContractReadModel(
     gateway_name: "TradingGateway",
     sandbox_direct_exchange_access: false,
     gateway_required_for: ["USER_DATA", "TRADE"],
-    tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+    tracking_chain: ["order_request", "gateway_result", "execution_result"],
     market_data: {
       security_type: "MARKET_DATA",
       status: input.public_market_liveness_surface ? "enabled" : "disabled",
@@ -1262,7 +1262,7 @@ export interface TradingSystemCandidateRecord extends BaseRecord {
   candidate_status?: "materialized" | "handoff_ready" | "archived";
   evaluation_handoff_ready?: boolean;
   materialized_from_attempt_ref?: Ref;
-  active_runnable_artifact_ref?: Ref;
+  active_system_code_ref?: Ref;
   authority_status?: "not_live";
 }
 
@@ -1284,7 +1284,7 @@ export interface CandidateVersionRecord extends BaseRecord {
   agent_event_ref?: Ref;
   provider_readiness_ref?: Ref;
   provider_probe_attempt_ref?: Ref;
-  runnable_artifact_ref?: Ref;
+  system_code_ref?: Ref;
 }
 
 export interface TradingSystemSpecRecord extends BaseRecord {
@@ -1315,55 +1315,55 @@ export interface ProgramValidationRecord extends BaseRecord {
   record_kind: "program_validation_record";
   program_validation_record_id: string;
   status: "fixture_placeholder";
-  authority_status: "not_runnable";
+  authority_status: "not_executable";
 }
 
-export interface RunnableArtifactOutputContract {
+export interface SystemCodeOutputContract {
   contract_kind: "opaque_runtime_boundary";
-  declared_output_kinds: RunnableArtifactOutputKind[];
+  declared_output_kinds: SystemCodeOutputKind[];
   event_envelope_ref?: Ref;
   log_contract_ref?: Ref;
   heartbeat_contract_ref?: Ref;
 }
 
-export interface RunnableArtifactRuntimeContract {
-  runtime_kind: RunnableArtifactRuntimeKind;
+export interface SystemCodeRuntimeContract {
+  runtime_kind: SystemCodeRuntimeKind;
   entrypoint: string[];
-  declared_output_contract: RunnableArtifactOutputContract;
+  declared_output_contract: SystemCodeOutputContract;
   secret_policy_ref: Ref;
   capability_policy_ref: Ref;
 }
 
 export interface ArtifactRuntimeContractRecord
   extends BaseRecord,
-    RunnableArtifactRuntimeContract {
+    SystemCodeRuntimeContract {
   record_kind: "artifact_runtime_contract";
   artifact_runtime_contract_id: string;
   created_at: string;
   authority_status: "contract_only";
 }
 
-interface RunnableArtifactBaseRecord
+interface SystemCodeBaseRecord
   extends BaseRecord,
-    RunnableArtifactRuntimeContract {
-  record_kind: "runnable_artifact";
-  runnable_artifact_id: string;
-  artifact_kind: RunnableArtifactKind;
+    SystemCodeRuntimeContract {
+  record_kind: "system_code";
+  system_code_id: string;
+  artifact_kind: SystemCodeKind;
   artifact_digest: string;
   artifact_ref?: Ref;
   artifact_runtime_contract_ref?: Ref;
   provenance_refs: Ref[];
-  status: RunnableArtifactStatus;
+  status: SystemCodeStatus;
   created_at: string;
   authority_status: "not_live";
 }
 
-export type RunnableArtifactRecord =
-  | (RunnableArtifactBaseRecord & {
+export type SystemCodeRecord =
+  | (SystemCodeBaseRecord & {
       artifact_kind: "python_file";
       artifact_path: string;
     })
-  | (RunnableArtifactBaseRecord & {
+  | (SystemCodeBaseRecord & {
       artifact_kind: "container_image";
       image_ref: string;
     });
@@ -1416,9 +1416,9 @@ export interface ExperimentRunRecord extends BaseRecord {
   experiment_run_id: string;
   research_worker_ref: Ref;
   research_direction_ref: Ref;
-  runnable_artifact_ref: Ref;
+  system_code_ref: Ref;
   trading_evaluation_task_ref: Ref;
-  sandbox_runtime_instance_ref?: Ref;
+  sandbox_ref?: Ref;
   runtime_trace_refs?: Ref[];
   trace_ref?: Ref;
   submitted_at: string;
@@ -1470,29 +1470,29 @@ export interface ResearchFindingRecord extends BaseRecord {
 export interface ArtifactLineageRecord extends BaseRecord {
   record_kind: "artifact_lineage";
   artifact_lineage_id: string;
-  child_runnable_artifact_ref: Ref;
-  parent_runnable_artifact_ref?: Ref;
+  child_system_code_ref: Ref;
+  parent_system_code_ref?: Ref;
   source_finding_refs: Ref[];
   created_by_research_worker_ref?: Ref;
   created_at: string;
   authority_status: "lineage_only";
 }
 
-export interface ArtifactChangeProposalRecord extends BaseRecord {
-  record_kind: "artifact_change_proposal";
-  artifact_change_proposal_id: string;
+export interface ImprovementProposalRecord extends BaseRecord {
+  record_kind: "improvement_proposal";
+  improvement_proposal_id: string;
   research_worker_ref: Ref;
   research_direction_ref: Ref;
   trading_evaluation_task_ref: Ref;
-  proposed_runnable_artifact_ref: Ref;
-  parent_runnable_artifact_ref?: Ref;
+  proposed_system_code_ref: Ref;
+  parent_system_code_ref?: Ref;
   source_finding_refs: Ref[];
   anti_hacking_finding_refs?: Ref[];
   proposal_summary: string;
   requested_change_summary: string;
   expected_improvement_summary?: string;
   created_at: string;
-  status: ArtifactChangeProposalStatus;
+  status: ImprovementProposalStatus;
   authority_status: "proposal_only";
 }
 
@@ -1505,7 +1505,7 @@ export interface ResearchOrchestrationRunRecord extends BaseRecord {
   input_finding_refs: Ref[];
   input_lineage_refs?: Ref[];
   output_artifact_proposal_ref?: Ref;
-  output_runnable_artifact_ref?: Ref;
+  output_system_code_ref?: Ref;
   output_lineage_ref?: Ref;
   trace_ref?: Ref;
   started_at: string;
@@ -1514,28 +1514,28 @@ export interface ResearchOrchestrationRunRecord extends BaseRecord {
   authority_status: "research_only";
 }
 
-export interface ArtifactChangeProposalProviderAttribution {
+export interface ImprovementProposalProviderAttribution {
   provider_kind: ProviderKind;
   model: string;
   invocation_surface: string;
 }
 
-export interface ArtifactChangeProposalProviderProbeResult extends ArtifactChangeProposalProviderAttribution {
-  readiness_status: ArtifactChangeProposalProviderReadinessStatus;
-  supported_purposes: Array<Extract<AgentRunPurpose, "artifact_change_proposal_generation">>;
+export interface ImprovementProposalProviderProbeResult extends ImprovementProposalProviderAttribution {
+  readiness_status: ImprovementProposalProviderReadinessStatus;
+  supported_purposes: Array<Extract<AgentRunPurpose, "improvement_proposal_generation">>;
   version?: string;
   provider_readiness_ref?: Ref;
   provider_probe_attempt_ref?: Ref;
-  failure_reason?: ArtifactChangeProposalProviderFailureReason;
+  failure_reason?: ImprovementProposalProviderFailureReason;
 }
 
-export interface ArtifactChangeProposalProviderRequest {
+export interface ImprovementProposalProviderRequest {
   idempotency_key: string;
   task: TradingEvaluationTaskRecord;
   findings: ResearchFindingRecord[];
   existing_lineages?: ArtifactLineageRecord[];
   existing_lineage_refs?: Ref[];
-  parent_runnable_artifact_ref?: Ref;
+  parent_system_code_ref?: Ref;
   input_artifact_refs?: Ref[];
   requested_output_contract_ref?: Ref;
   agent_run_ref: Ref;
@@ -1543,48 +1543,48 @@ export interface ArtifactChangeProposalProviderRequest {
   created_at?: string;
 }
 
-export interface ArtifactChangeProposalProviderOutput {
-  output_kind: "artifact_change_proposal_input";
+export interface ImprovementProposalProviderOutput {
+  output_kind: "improvement_proposal_input";
   trading_evaluation_task_ref: Ref;
   source_finding_refs: Ref[];
   anti_hacking_finding_refs?: Ref[];
-  parent_runnable_artifact_ref?: Ref;
+  parent_system_code_ref?: Ref;
   proposal_summary: string;
   requested_change_summary: string;
   expected_improvement_summary?: string;
   proposed_artifact_refs: Ref[];
-  output_authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
+  output_authority_status: ImprovementProposalProviderOutputAuthorityStatus;
 }
 
-export type ArtifactChangeProposalProviderResult =
+export type ImprovementProposalProviderResult =
   | {
       status: "succeeded";
-      provider: ArtifactChangeProposalProviderAttribution;
-      output: ArtifactChangeProposalProviderOutput;
+      provider: ImprovementProposalProviderAttribution;
+      output: ImprovementProposalProviderOutput;
       agent_run_ref: Ref;
       agent_event_refs: Ref[];
       trace_ref: Ref;
       provider_output_artifact_refs: Ref[];
       debug_artifact_refs: Ref[];
       idempotency_key: string;
-      authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
+      authority_status: ImprovementProposalProviderOutputAuthorityStatus;
     }
   | {
       status: "failed";
-      provider: ArtifactChangeProposalProviderAttribution;
-      failure_reason: ArtifactChangeProposalProviderFailureReason;
+      provider: ImprovementProposalProviderAttribution;
+      failure_reason: ImprovementProposalProviderFailureReason;
       agent_run_ref: Ref;
       agent_event_refs: Ref[];
       trace_ref: Ref;
       provider_output_artifact_refs: Ref[];
       debug_artifact_refs: Ref[];
       idempotency_key: string;
-      authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
+      authority_status: ImprovementProposalProviderOutputAuthorityStatus;
     };
 
-export interface ArtifactChangeProposalMaterializationInput {
+export interface ImprovementProposalMaterializationInput {
   idempotency_key: string;
-  provider_result: Extract<ArtifactChangeProposalProviderResult, { status: "succeeded" }>;
+  provider_result: Extract<ImprovementProposalProviderResult, { status: "succeeded" }>;
   artifact_path?: string;
   artifact_runtime_contract_ref?: Ref;
   secret_policy_ref?: Ref;
@@ -1592,43 +1592,43 @@ export interface ArtifactChangeProposalMaterializationInput {
   created_at?: string;
 }
 
-export interface ArtifactChangeProposalProviderFailureInput {
+export interface ImprovementProposalProviderFailureInput {
   idempotency_key: string;
-  provider_result: Extract<ArtifactChangeProposalProviderResult, { status: "failed" }>;
+  provider_result: Extract<ImprovementProposalProviderResult, { status: "failed" }>;
   created_at?: string;
 }
 
-export interface ArtifactChangeProposalMaterializationAttemptRecord extends BaseRecord {
-  record_kind: "artifact_change_proposal_materialization_attempt";
-  artifact_change_proposal_materialization_attempt_id: string;
+export interface ImprovementProposalMaterializationAttemptRecord extends BaseRecord {
+  record_kind: "improvement_proposal_materialization_attempt";
+  improvement_proposal_materialization_attempt_id: string;
   idempotency_key: string;
-  provider: ArtifactChangeProposalProviderAttribution;
+  provider: ImprovementProposalProviderAttribution;
   agent_run_ref: Ref;
   agent_event_refs: Ref[];
   trace_ref: Ref;
   provider_output_artifact_refs: Ref[];
   debug_artifact_refs: Ref[];
-  status: ArtifactChangeProposalMaterializationStatus;
+  status: ImprovementProposalMaterializationStatus;
   validation_status: MaterializationValidationStatus;
-  failure_reason?: ArtifactChangeProposalMaterializationFailureReason;
+  failure_reason?: ImprovementProposalMaterializationFailureReason;
   output_artifact_proposal_ref?: Ref;
-  output_runnable_artifact_ref?: Ref;
+  output_system_code_ref?: Ref;
   output_lineage_ref?: Ref;
   created_at: string;
-  authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
+  authority_status: ImprovementProposalProviderOutputAuthorityStatus;
 }
 
-export type ArtifactChangeProposalMaterializationOutcome =
+export type ImprovementProposalMaterializationOutcome =
   | {
       status: "materialized";
-      attempt: ArtifactChangeProposalMaterializationAttemptRecord;
-      proposal: ArtifactChangeProposalRecord;
-      runnable_artifact: RunnableArtifactRecord;
+      attempt: ImprovementProposalMaterializationAttemptRecord;
+      proposal: ImprovementProposalRecord;
+      system_code: SystemCodeRecord;
       lineage: ArtifactLineageRecord;
     }
   | {
       status: "failed";
-      attempt: ArtifactChangeProposalMaterializationAttemptRecord;
+      attempt: ImprovementProposalMaterializationAttemptRecord;
     };
 
 export interface CapabilityPackageRecord extends BaseRecord {
@@ -1729,11 +1729,11 @@ export interface ProviderProbeAttemptRecord extends BaseRecord {
   authority_status: "not_probed" | "probe_trace_only";
 }
 
-export interface TradingSystemRuntimeRecord extends BaseRecord {
-  record_kind: "trading_system_runtime";
-  trading_system_runtime_id: string;
+export interface TradingRunRecord extends BaseRecord {
+  record_kind: "trading_run";
+  trading_run_id: string;
   stage_binding_profile: "paper";
-  runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+  runtime_lifecycle_status?: TradingRunLifecycleStatus;
   candidate_ref?: Ref;
   candidate_version_ref?: Ref;
   stage_binding_ref?: Ref;
@@ -1742,23 +1742,23 @@ export interface TradingSystemRuntimeRecord extends BaseRecord {
   memory_surface_ref: Ref;
   runtime_operating_policy_ref?: Ref;
   trace_ref?: Ref;
-  order_intent_draft_refs?: Ref[];
-  gateway_decision_refs?: Ref[];
-  execution_attempt_refs?: Ref[];
-  runtime_control_command_refs?: Ref[];
-  runtime_control_decision_refs?: Ref[];
+  order_request_refs?: Ref[];
+  gateway_result_refs?: Ref[];
+  execution_result_refs?: Ref[];
+  run_control_command_refs?: Ref[];
+  run_control_decision_refs?: Ref[];
   runtime_audit_event_refs?: Ref[];
-  runnable_artifact_ref?: Ref;
-  sandbox_runtime_instance_ref?: Ref;
+  system_code_ref?: Ref;
+  sandbox_ref?: Ref;
   created_at?: string;
   authority_status: "not_live";
 }
 
-export interface RuntimePlacementRecord extends BaseRecord {
-  record_kind: "runtime_placement";
-  runtime_placement_id: string;
-  placement_kind: RuntimePlacementKind;
-  tooling_kind?: RuntimePlacementToolingKind;
+export interface SandboxPlacementRecord extends BaseRecord {
+  record_kind: "sandbox_placement";
+  sandbox_placement_id: string;
+  placement_kind: SandboxPlacementKind;
+  tooling_kind?: SandboxPlacementToolingKind;
   service_name?: string;
   image_ref?: Ref;
   compose_project?: string;
@@ -1770,14 +1770,14 @@ export interface RuntimePlacementRecord extends BaseRecord {
   authority_status: "not_launched";
 }
 
-export interface SandboxRuntimeInstanceRecord extends BaseRecord {
-  record_kind: "sandbox_runtime_instance";
-  sandbox_runtime_instance_id: string;
-  adapter_kind: SandboxRuntimeAdapterKind;
-  runnable_artifact_ref: Ref;
+export interface SandboxRecord extends BaseRecord {
+  record_kind: "sandbox";
+  sandbox_id: string;
+  adapter_kind: SandboxAdapterKind;
+  system_code_ref: Ref;
   runtime_ref?: Ref;
-  runtime_placement_ref: Ref;
-  lifecycle_status: SandboxRuntimeInstanceLifecycleStatus;
+  sandbox_placement_ref: Ref;
+  lifecycle_status: SandboxLifecycleStatus;
   sandbox_name: string;
   sandbox_ref?: Ref;
   created_at: string;
@@ -1792,10 +1792,10 @@ export interface SandboxRuntimeInstanceRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
-export interface RuntimeInstanceLogRecord extends BaseRecord {
-  record_kind: "runtime_instance_log";
-  runtime_instance_log_id: string;
-  sandbox_runtime_instance_ref: Ref;
+export interface SandboxLogRecord extends BaseRecord {
+  record_kind: "sandbox_log";
+  sandbox_log_id: string;
+  sandbox_ref: Ref;
   lines: string[];
   captured_at: string;
   authority_status: "trace_only";
@@ -1804,7 +1804,7 @@ export interface RuntimeInstanceLogRecord extends BaseRecord {
 export interface RuntimeHeartbeatRecord extends BaseRecord {
   record_kind: "runtime_heartbeat";
   runtime_heartbeat_id: string;
-  sandbox_runtime_instance_ref: Ref;
+  sandbox_ref: Ref;
   heartbeat_line: string;
   observed_at: string;
   authority_status: "trace_only";
@@ -1813,7 +1813,7 @@ export interface RuntimeHeartbeatRecord extends BaseRecord {
 export interface SandboxCommandEvidenceRecord extends BaseRecord {
   record_kind: "sandbox_command_evidence";
   sandbox_command_evidence_id: string;
-  sandbox_runtime_instance_ref?: Ref;
+  sandbox_ref?: Ref;
   command: string[];
   exit_code: number | null;
   stdout: string;
@@ -1860,7 +1860,7 @@ export interface StageBindingRecord extends BaseRecord {
   stage: StageBindingStage;
   profile: StageBindingProfile;
   execution_mode?: EvaluationExecutionMode;
-  runtime_placement_ref?: Ref;
+  sandbox_placement_ref?: Ref;
   hands_environment_ref?: Ref;
   data_window_ref?: Ref;
   simulator_ref?: Ref;
@@ -1931,44 +1931,44 @@ export interface EvidenceClassificationRecord extends BaseRecord {
   authority_status: EvidenceClassificationAuthorityStatus;
 }
 
-export interface RuntimeControlCommandRecord extends BaseRecord {
-  record_kind: "runtime_control_command";
-  runtime_control_command_id: string;
+export interface RunControlCommandRecord extends BaseRecord {
+  record_kind: "run_control_command";
+  run_control_command_id: string;
   runtime_ref: Ref;
-  action: RuntimeControlAction;
-  requested_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
-  actor_kind: RuntimeControlActorKind;
+  action: RunControlAction;
+  requested_lifecycle_status?: TradingRunLifecycleStatus;
+  actor_kind: RunControlActorKind;
   actor_ref?: Ref;
   runtime_operating_policy_ref?: Ref;
   idempotency_key: string;
-  reason: RuntimeControlCommandReason;
+  reason: RunControlCommandReason;
   reason_summary?: string;
   trace_ref?: Ref;
-  related_order_intent_draft_refs?: Ref[];
-  related_gateway_decision_refs?: Ref[];
-  related_execution_attempt_refs?: Ref[];
+  related_order_request_refs?: Ref[];
+  related_gateway_result_refs?: Ref[];
+  related_execution_result_refs?: Ref[];
   requested_at: string;
-  status: RuntimeControlCommandStatus;
-  authority_status: RuntimeControlAuthorityStatus;
+  status: RunControlCommandStatus;
+  authority_status: RunControlAuthorityStatus;
 }
 
-export interface RuntimeControlDecisionRecord extends BaseRecord {
-  record_kind: "runtime_control_decision";
-  runtime_control_decision_id: string;
+export interface RunControlDecisionRecord extends BaseRecord {
+  record_kind: "run_control_decision";
+  run_control_decision_id: string;
   runtime_ref: Ref;
   command_ref: Ref;
-  decision_outcome: RuntimeControlDecisionOutcome;
-  decision_reason: RuntimeControlDecisionReason;
-  decided_by_actor_kind: RuntimeControlActorKind;
+  decision_outcome: RunControlDecisionOutcome;
+  decision_reason: RunControlDecisionReason;
+  decided_by_actor_kind: RunControlActorKind;
   decided_by_actor_ref?: Ref;
   runtime_operating_policy_ref?: Ref;
-  resulting_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+  resulting_lifecycle_status?: TradingRunLifecycleStatus;
   trace_ref?: Ref;
-  related_order_intent_draft_refs?: Ref[];
-  related_gateway_decision_refs?: Ref[];
-  related_execution_attempt_refs?: Ref[];
+  related_order_request_refs?: Ref[];
+  related_gateway_result_refs?: Ref[];
+  related_execution_result_refs?: Ref[];
   decided_at: string;
-  authority_status: RuntimeControlAuthorityStatus;
+  authority_status: RunControlAuthorityStatus;
 }
 
 export interface RuntimeAuditEventRecord extends BaseRecord {
@@ -1978,156 +1978,156 @@ export interface RuntimeAuditEventRecord extends BaseRecord {
   event_kind: RuntimeAuditEventKind;
   command_ref?: Ref;
   decision_ref?: Ref;
-  actor_kind?: RuntimeControlActorKind;
+  actor_kind?: RunControlActorKind;
   actor_ref?: Ref;
-  runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+  runtime_lifecycle_status?: TradingRunLifecycleStatus;
   message?: string;
   trace_ref?: Ref;
   supporting_record_refs?: Ref[];
-  related_order_intent_draft_refs?: Ref[];
-  related_gateway_decision_refs?: Ref[];
-  related_execution_attempt_refs?: Ref[];
+  related_order_request_refs?: Ref[];
+  related_gateway_result_refs?: Ref[];
+  related_execution_result_refs?: Ref[];
   created_at: string;
   authority_status: "not_live" | "audit_only";
 }
 
-export interface RuntimeControlAuditInput {
+export interface RunControlAuditInput {
   idempotency_key: string;
   candidate_id: string;
   candidate_version_id?: string;
   runtime_id?: string;
   command: {
-    action: RuntimeControlAction;
-    requested_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
-    actor_kind: RuntimeControlActorKind;
+    action: RunControlAction;
+    requested_lifecycle_status?: TradingRunLifecycleStatus;
+    actor_kind: RunControlActorKind;
     actor_ref?: Ref;
     runtime_operating_policy_ref?: Ref;
-    reason: RuntimeControlCommandReason;
+    reason: RunControlCommandReason;
     reason_summary?: string;
     trace_ref?: Ref;
-    related_order_intent_draft_refs?: Ref[];
-    related_gateway_decision_refs?: Ref[];
-    related_execution_attempt_refs?: Ref[];
+    related_order_request_refs?: Ref[];
+    related_gateway_result_refs?: Ref[];
+    related_execution_result_refs?: Ref[];
   };
   decision: {
-    decision_outcome: RuntimeControlDecisionOutcome;
-    decision_reason: RuntimeControlDecisionReason;
-    decided_by_actor_kind: RuntimeControlActorKind;
+    decision_outcome: RunControlDecisionOutcome;
+    decision_reason: RunControlDecisionReason;
+    decided_by_actor_kind: RunControlActorKind;
     decided_by_actor_ref?: Ref;
     runtime_operating_policy_ref?: Ref;
-    resulting_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+    resulting_lifecycle_status?: TradingRunLifecycleStatus;
     trace_ref?: Ref;
-    related_order_intent_draft_refs?: Ref[];
-    related_gateway_decision_refs?: Ref[];
-    related_execution_attempt_refs?: Ref[];
+    related_order_request_refs?: Ref[];
+    related_gateway_result_refs?: Ref[];
+    related_execution_result_refs?: Ref[];
   };
   audit_event: {
     event_kind: RuntimeAuditEventKind;
-    actor_kind?: RuntimeControlActorKind;
+    actor_kind?: RunControlActorKind;
     actor_ref?: Ref;
-    runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+    runtime_lifecycle_status?: TradingRunLifecycleStatus;
     message?: string;
     trace_ref?: Ref;
     supporting_record_refs?: Ref[];
-    related_order_intent_draft_refs?: Ref[];
-    related_gateway_decision_refs?: Ref[];
-    related_execution_attempt_refs?: Ref[];
+    related_order_request_refs?: Ref[];
+    related_gateway_result_refs?: Ref[];
+    related_execution_result_refs?: Ref[];
   };
   created_at?: string;
 }
 
-export interface RuntimeControlAuditOutcome {
+export interface RunControlAuditOutcome {
   candidate_id: string;
   candidate_version_id: string;
   runtime_id: string;
-  command: RuntimeControlCommandRecord;
-  decision: RuntimeControlDecisionRecord;
+  command: RunControlCommandRecord;
+  decision: RunControlDecisionRecord;
   audit_event: RuntimeAuditEventRecord;
 }
 
-export interface BoundedRuntimeAuthorityInput {
+export interface LedgerInput {
   idempotency_key: string;
   candidate_id: string;
   candidate_version_id?: string;
   runtime_id?: string;
   intent: {
-    intent_kind: OrderIntentDraftKind;
+    intent_kind: OrderRequestKind;
     side?: "buy" | "sell";
     order_type?: "market" | "limit";
     quantity?: string;
     limit_price?: string;
   };
-  gateway_decision: {
-    decision_outcome: GatewayDecisionOutcome;
-    decision_reason: GatewayDecisionReason;
+  gateway_result: {
+    decision_outcome: GatewayResultOutcome;
+    decision_reason: GatewayResultReason;
     policy_ref?: Ref;
   };
-  execution_attempt?: {
+  execution_result?: {
     execution_mode?: EvaluationExecutionMode;
-    status?: ExecutionAttemptStatus;
-    result_reason?: GatewayDecisionReason;
+    status?: ExecutionResultStatus;
+    result_reason?: GatewayResultReason;
     trace_ref?: Ref;
     completed_at?: string;
   };
   created_at?: string;
 }
 
-export interface OrderIntentDraftRecord extends BaseRecord {
-  record_kind: "order_intent_draft";
-  order_intent_draft_id: string;
+export interface OrderRequestRecord extends BaseRecord {
+  record_kind: "order_request";
+  order_request_id: string;
   runtime_ref: Ref;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   stage_binding_ref: Ref;
   trace_ref?: Ref;
-  intent_kind: OrderIntentDraftKind;
+  intent_kind: OrderRequestKind;
   market_scope: "external_trading_api_fixture";
   side?: "buy" | "sell";
   order_type?: "market" | "limit";
   quantity?: string;
   limit_price?: string;
-  status: OrderIntentDraftStatus;
+  status: OrderRequestStatus;
   created_at: string;
-  authority_status: OrderIntentDraftAuthorityStatus;
+  authority_status: OrderRequestAuthorityStatus;
 }
 
-export interface GatewayDecisionRecord extends BaseRecord {
-  record_kind: "gateway_decision";
-  gateway_decision_id: string;
+export interface GatewayResultRecord extends BaseRecord {
+  record_kind: "gateway_result";
+  gateway_result_id: string;
   runtime_ref: Ref;
-  order_intent_draft_ref: Ref;
-  decision_outcome: GatewayDecisionOutcome;
-  decision_reason: GatewayDecisionReason;
+  order_request_ref: Ref;
+  decision_outcome: GatewayResultOutcome;
+  decision_reason: GatewayResultReason;
   decided_at: string;
   policy_ref?: Ref;
-  clipped_order_intent_draft_ref?: Ref;
-  authority_status: GatewayDecisionAuthorityStatus;
+  clipped_order_request_ref?: Ref;
+  authority_status: GatewayResultAuthorityStatus;
 }
 
-export interface ExecutionAttemptRecord extends BaseRecord {
-  record_kind: "execution_attempt";
-  execution_attempt_id: string;
+export interface ExecutionResultRecord extends BaseRecord {
+  record_kind: "execution_result";
+  execution_result_id: string;
   runtime_ref: Ref;
-  order_intent_draft_ref: Ref;
-  gateway_decision_ref: Ref;
+  order_request_ref: Ref;
+  gateway_result_ref: Ref;
   stage: RuntimeExecutionStage;
   execution_mode: EvaluationExecutionMode;
   venue_scope: "external_trading_api_fixture";
   trace_ref?: Ref;
-  status: ExecutionAttemptStatus;
-  result_reason: GatewayDecisionReason;
+  status: ExecutionResultStatus;
+  result_reason: GatewayResultReason;
   created_at: string;
   completed_at?: string;
-  authority_status: ExecutionAttemptAuthorityStatus;
+  authority_status: ExecutionResultAuthorityStatus;
 }
 
-export interface BoundedRuntimeAuthorityOutcome {
+export interface LedgerWriteOutcome {
   candidate_id: string;
   candidate_version_id: string;
   runtime_id: string;
-  order_intent_draft: OrderIntentDraftRecord;
-  gateway_decision: GatewayDecisionRecord;
-  execution_attempt: ExecutionAttemptRecord;
+  order_request: OrderRequestRecord;
+  gateway_result: GatewayResultRecord;
+  execution_result: ExecutionResultRecord;
 }
 
 export interface CandidateMaterializationInput {
@@ -2205,7 +2205,7 @@ export type FixtureRecord =
   | CapabilityGrantRecord
   | CapabilityMountRecord
   | ArtifactRuntimeContractRecord
-  | RunnableArtifactRecord
+  | SystemCodeRecord
   | ResearchDirectionRecord
   | ResearchWorkerRecord
   | ExperimentRunRecord
@@ -2213,19 +2213,19 @@ export type FixtureRecord =
   | TradingEvaluationResultRecord
   | ResearchFindingRecord
   | ArtifactLineageRecord
-  | ArtifactChangeProposalRecord
+  | ImprovementProposalRecord
   | ResearchOrchestrationRunRecord
-  | ArtifactChangeProposalMaterializationAttemptRecord
+  | ImprovementProposalMaterializationAttemptRecord
   | AgentSpecRecord
   | AgentSessionRecord
   | AgentRunRecord
   | AgentEventRecord
   | ProviderReadinessRecord
   | ProviderProbeAttemptRecord
-  | TradingSystemRuntimeRecord
-  | RuntimePlacementRecord
-  | SandboxRuntimeInstanceRecord
-  | RuntimeInstanceLogRecord
+  | TradingRunRecord
+  | SandboxPlacementRecord
+  | SandboxRecord
+  | SandboxLogRecord
   | RuntimeHeartbeatRecord
   | SandboxCommandEvidenceRecord
   | HandsEnvironmentRecord
@@ -2236,12 +2236,12 @@ export type FixtureRecord =
   | EvaluationComparisonSetRecord
   | EvidenceSealingDecisionRecord
   | EvidenceClassificationRecord
-  | RuntimeControlCommandRecord
-  | RuntimeControlDecisionRecord
+  | RunControlCommandRecord
+  | RunControlDecisionRecord
   | RuntimeAuditEventRecord
-  | OrderIntentDraftRecord
-  | GatewayDecisionRecord
-  | ExecutionAttemptRecord
+  | OrderRequestRecord
+  | GatewayResultRecord
+  | ExecutionResultRecord
   | OrderFillSurfaceRecord
   | PublicMarketLivenessSurfaceRecord
   | PrivateReadinessPreflightSurfaceRecord
@@ -2514,54 +2514,54 @@ export interface CandidateLatestValidationStateReadModel {
   };
 }
 
-export interface ReplayRuntimeOrderIntentDraftReadModel {
-  order_intent_draft_id: string;
-  intent_kind: OrderIntentDraftKind;
+export interface LedgerSourceOrderRequestReadModel {
+  order_request_id: string;
+  intent_kind: OrderRequestKind;
   market_scope: "external_trading_api_fixture";
   side?: "buy" | "sell";
   order_type?: "market" | "limit";
   quantity?: string;
   limit_price?: string;
-  status: OrderIntentDraftStatus;
+  status: OrderRequestStatus;
   created_at: string;
-  authority_status: OrderIntentDraftAuthorityStatus;
+  authority_status: OrderRequestAuthorityStatus;
 }
 
-export interface ReplayRuntimeGatewayDecisionReadModel {
-  gateway_decision_id: string;
-  order_intent_draft_ref: Ref;
-  decision_outcome: GatewayDecisionOutcome;
-  decision_reason: GatewayDecisionReason;
+export interface LedgerSourceGatewayResultReadModel {
+  gateway_result_id: string;
+  order_request_ref: Ref;
+  decision_outcome: GatewayResultOutcome;
+  decision_reason: GatewayResultReason;
   decided_at: string;
-  authority_status: GatewayDecisionAuthorityStatus;
+  authority_status: GatewayResultAuthorityStatus;
 }
 
-export interface ReplayRuntimeExecutionAttemptReadModel {
-  execution_attempt_id: string;
-  order_intent_draft_ref: Ref;
-  gateway_decision_ref: Ref;
+export interface LedgerSourceExecutionResultReadModel {
+  execution_result_id: string;
+  order_request_ref: Ref;
+  gateway_result_ref: Ref;
   stage: RuntimeExecutionStage;
   execution_mode: EvaluationExecutionMode;
   venue_scope: "external_trading_api_fixture";
-  status: ExecutionAttemptStatus;
-  result_reason: GatewayDecisionReason;
+  status: ExecutionResultStatus;
+  result_reason: GatewayResultReason;
   created_at: string;
   completed_at?: string;
-  authority_status: ExecutionAttemptAuthorityStatus;
+  authority_status: ExecutionResultAuthorityStatus;
 }
 
-export interface ReplayRuntimeAuthorityReadModel {
+export interface LedgerSourceRecordsReadModel {
   has_activity: boolean;
   chain_complete: boolean;
-  latest_order_intent_draft: ReplayRuntimeOrderIntentDraftReadModel | null;
-  latest_gateway_decision: ReplayRuntimeGatewayDecisionReadModel | null;
-  latest_execution_attempt: ReplayRuntimeExecutionAttemptReadModel | null;
-  order_intent_draft: PlaceholderSummary;
-  gateway_decision: PlaceholderSummary;
-  execution_attempt: PlaceholderSummary;
+  latest_order_request: LedgerSourceOrderRequestReadModel | null;
+  latest_gateway_result: LedgerSourceGatewayResultReadModel | null;
+  latest_execution_result: LedgerSourceExecutionResultReadModel | null;
+  order_request: PlaceholderSummary;
+  gateway_result: PlaceholderSummary;
+  execution_result: PlaceholderSummary;
 }
 
-export interface ArtifactImprovementSourceFindingReadModel {
+export interface ImprovementSourceFindingReadModel {
   finding_id: string;
   finding_kind: ResearchFindingKind;
   summary: string;
@@ -2571,39 +2571,39 @@ export interface ArtifactImprovementSourceFindingReadModel {
   authority_status: "research_trace_only";
 }
 
-export interface ArtifactImprovementProposalReadModel {
+export interface ImprovementProposalReadModel {
   proposal_id: string;
-  proposed_runnable_artifact_ref: Ref;
-  parent_runnable_artifact_ref?: Ref;
+  proposed_system_code_ref: Ref;
+  parent_system_code_ref?: Ref;
   proposal_summary: string;
   requested_change_summary: string;
   expected_improvement_summary?: string;
   source_finding_refs: Ref[];
   anti_hacking_finding_refs: Ref[];
-  status: ArtifactChangeProposalStatus;
+  status: ImprovementProposalStatus;
   created_at: string;
   authority_status: "proposal_only";
 }
 
-export interface ArtifactImprovementMaterializationAttemptReadModel {
+export interface ImprovementMaterializationAttemptReadModel {
   attempt_id: string;
-  provider: ArtifactChangeProposalProviderAttribution;
-  status: ArtifactChangeProposalMaterializationStatus;
+  provider: ImprovementProposalProviderAttribution;
+  status: ImprovementProposalMaterializationStatus;
   validation_status: MaterializationValidationStatus;
-  failure_reason?: ArtifactChangeProposalMaterializationFailureReason;
+  failure_reason?: ImprovementProposalMaterializationFailureReason;
   output_artifact_proposal_ref?: Ref;
-  output_runnable_artifact_ref?: Ref;
+  output_system_code_ref?: Ref;
   output_lineage_ref?: Ref;
   created_at: string;
-  authority_status: ArtifactChangeProposalProviderOutputAuthorityStatus;
+  authority_status: ImprovementProposalProviderOutputAuthorityStatus;
 }
 
-export interface ArtifactImprovementOrchestrationRunReadModel {
+export interface ImprovementOrchestrationRunReadModel {
   run_id: string;
   input_finding_refs: Ref[];
   input_lineage_refs: Ref[];
   output_artifact_proposal_ref?: Ref;
-  output_runnable_artifact_ref?: Ref;
+  output_system_code_ref?: Ref;
   output_lineage_ref?: Ref;
   trace_ref?: Ref;
   status: ResearchOrchestrationRunStatus;
@@ -2612,10 +2612,10 @@ export interface ArtifactImprovementOrchestrationRunReadModel {
   authority_status: "research_only";
 }
 
-export interface ArtifactImprovementExperimentReadModel {
+export interface ImprovementExperimentReadModel {
   experiment_id: string;
-  runnable_artifact_ref: Ref;
-  sandbox_runtime_instance_ref?: Ref;
+  system_code_ref: Ref;
+  sandbox_ref?: Ref;
   runtime_trace_refs: Ref[];
   trace_ref?: Ref;
   status: ExperimentRunStatus;
@@ -2623,7 +2623,7 @@ export interface ArtifactImprovementExperimentReadModel {
   authority_status: "not_live";
 }
 
-export interface ArtifactImprovementEvaluationResultReadModel {
+export interface ImprovementEvaluationResultReadModel {
   result_id: string;
   experiment_run_ref: Ref;
   result_status: TradingEvaluationResultStatus;
@@ -2634,19 +2634,19 @@ export interface ArtifactImprovementEvaluationResultReadModel {
   authority_status: "not_counted" | "counted";
 }
 
-export interface ArtifactImprovementLoopReadModel {
-  loop_kind: "artifact_improvement_loop";
+export interface ImprovementReadModel {
+  improvement_kind: "improvement";
   source_model: "automated_alignment_researcher";
   has_activity: boolean;
   proposal_chain_complete: boolean;
   evaluation_chain_complete: boolean;
   chain_complete: boolean;
-  latest_source_finding: ArtifactImprovementSourceFindingReadModel | null;
-  latest_artifact_change_proposal: ArtifactImprovementProposalReadModel | null;
-  latest_materialization_attempt: ArtifactImprovementMaterializationAttemptReadModel | null;
-  latest_orchestration_run: ArtifactImprovementOrchestrationRunReadModel | null;
-  latest_experiment: ArtifactImprovementExperimentReadModel | null;
-  latest_trading_evaluation_result: ArtifactImprovementEvaluationResultReadModel | null;
+  latest_source_finding: ImprovementSourceFindingReadModel | null;
+  latest_change_proposal: ImprovementProposalReadModel | null;
+  latest_materialization: ImprovementMaterializationAttemptReadModel | null;
+  latest_research_run: ImprovementOrchestrationRunReadModel | null;
+  latest_experiment: ImprovementExperimentReadModel | null;
+  latest_evaluation_result: ImprovementEvaluationResultReadModel | null;
   evidence: {
     status: "missing" | "not_sealed";
     reason: "evaluation_required" | "evidence_sealing_not_run";
@@ -2665,20 +2665,20 @@ export interface ArtifactImprovementLoopReadModel {
   };
 }
 
-export interface ArtifactImprovementLoopReadModelInput {
+export interface ImprovementReadModelInput {
   research_findings?: ResearchFindingRecord[];
-  artifact_change_proposals?: ArtifactChangeProposalRecord[];
-  materialization_attempts?: ArtifactChangeProposalMaterializationAttemptRecord[];
+  improvement_proposals?: ImprovementProposalRecord[];
+  materialization_attempts?: ImprovementProposalMaterializationAttemptRecord[];
   research_orchestration_runs?: ResearchOrchestrationRunRecord[];
   experiment_runs?: ExperimentRunRecord[];
   trading_evaluation_results?: TradingEvaluationResultRecord[];
 }
 
-export function buildArtifactImprovementLoopReadModel(
-  input: ArtifactImprovementLoopReadModelInput = {}
-): ArtifactImprovementLoopReadModel {
+export function buildImprovementReadModel(
+  input: ImprovementReadModelInput = {}
+): ImprovementReadModel {
   const findings = input.research_findings ?? [];
-  const proposals = input.artifact_change_proposals ?? [];
+  const proposals = input.improvement_proposals ?? [];
   const materializationAttempts = input.materialization_attempts ?? [];
   const orchestrationRuns = input.research_orchestration_runs ?? [];
   const experiments = input.experiment_runs ?? [];
@@ -2687,7 +2687,7 @@ export function buildArtifactImprovementLoopReadModel(
   const latestProposal = latestByTime(
     proposals,
     (proposal) => proposal.created_at,
-    (proposal) => proposal.artifact_change_proposal_id
+    (proposal) => proposal.improvement_proposal_id
   );
   const sourceFinding = latestProposal
     ? findingForProposal(findings, latestProposal)
@@ -2701,20 +2701,20 @@ export function buildArtifactImprovementLoopReadModel(
   const materializationAttempt = latestProposal
     ? latestByTime(
         materializationAttempts.filter((attempt) =>
-          attempt.output_artifact_proposal_ref?.id === latestProposal.artifact_change_proposal_id
+          attempt.output_artifact_proposal_ref?.id === latestProposal.improvement_proposal_id
         ),
         (attempt) => attempt.created_at,
-        (attempt) => attempt.artifact_change_proposal_materialization_attempt_id
+        (attempt) => attempt.improvement_proposal_materialization_attempt_id
       )
     : latestByTime(
         materializationAttempts,
         (attempt) => attempt.created_at,
-        (attempt) => attempt.artifact_change_proposal_materialization_attempt_id
+        (attempt) => attempt.improvement_proposal_materialization_attempt_id
       );
   const orchestrationRun = latestProposal
     ? latestByTime(
         orchestrationRuns.filter((run) =>
-          run.output_artifact_proposal_ref?.id === latestProposal.artifact_change_proposal_id
+          run.output_artifact_proposal_ref?.id === latestProposal.improvement_proposal_id
         ),
         (run) => run.completed_at ?? run.started_at,
         (run) => run.research_orchestration_run_id
@@ -2727,7 +2727,7 @@ export function buildArtifactImprovementLoopReadModel(
   const experiment = latestProposal
     ? latestByTime(
         experiments.filter((item) =>
-          item.runnable_artifact_ref.id === latestProposal.proposed_runnable_artifact_ref.id
+          item.system_code_ref.id === latestProposal.proposed_system_code_ref.id
         ),
         (item) => item.submitted_at,
         (item) => item.experiment_run_id
@@ -2761,25 +2761,25 @@ export function buildArtifactImprovementLoopReadModel(
   const evaluationChainComplete = Boolean(latestProposal && experiment && evaluationResult);
 
   return {
-    loop_kind: "artifact_improvement_loop",
+    improvement_kind: "improvement",
     source_model: "automated_alignment_researcher",
     has_activity: hasActivity,
     proposal_chain_complete: Boolean(latestProposal && materializationAttempt && orchestrationRun),
     evaluation_chain_complete: evaluationChainComplete,
     chain_complete: evaluationChainComplete,
-    latest_source_finding: sourceFinding ? toArtifactImprovementSourceFindingReadModel(sourceFinding) : null,
-    latest_artifact_change_proposal: latestProposal
-      ? toArtifactImprovementProposalReadModel(latestProposal)
+    latest_source_finding: sourceFinding ? toImprovementSourceFindingReadModel(sourceFinding) : null,
+    latest_change_proposal: latestProposal
+      ? toImprovementProposalReadModel(latestProposal)
       : null,
-    latest_materialization_attempt: materializationAttempt
-      ? toArtifactImprovementMaterializationAttemptReadModel(materializationAttempt)
+    latest_materialization: materializationAttempt
+      ? toImprovementMaterializationAttemptReadModel(materializationAttempt)
       : null,
-    latest_orchestration_run: orchestrationRun
-      ? toArtifactImprovementOrchestrationRunReadModel(orchestrationRun)
+    latest_research_run: orchestrationRun
+      ? toImprovementOrchestrationRunReadModel(orchestrationRun)
       : null,
-    latest_experiment: experiment ? toArtifactImprovementExperimentReadModel(experiment) : null,
-    latest_trading_evaluation_result: evaluationResult
-      ? toArtifactImprovementEvaluationResultReadModel(evaluationResult)
+    latest_experiment: experiment ? toImprovementExperimentReadModel(experiment) : null,
+    latest_evaluation_result: evaluationResult
+      ? toImprovementEvaluationResultReadModel(evaluationResult)
       : null,
     evidence: evaluationResult
       ? {
@@ -2808,7 +2808,7 @@ export function buildArtifactImprovementLoopReadModel(
 
 function findingForProposal(
   findings: ResearchFindingRecord[],
-  proposal: ArtifactChangeProposalRecord
+  proposal: ImprovementProposalRecord
 ): ResearchFindingRecord | undefined {
   const sourceIds = new Set(proposal.source_finding_refs.map((findingRef) => findingRef.id));
   return latestByTime(
@@ -2818,9 +2818,9 @@ function findingForProposal(
   );
 }
 
-function toArtifactImprovementSourceFindingReadModel(
+function toImprovementSourceFindingReadModel(
   finding: ResearchFindingRecord
-): ArtifactImprovementSourceFindingReadModel {
+): ImprovementSourceFindingReadModel {
   return {
     finding_id: finding.research_finding_id,
     finding_kind: finding.finding_kind,
@@ -2832,13 +2832,13 @@ function toArtifactImprovementSourceFindingReadModel(
   };
 }
 
-function toArtifactImprovementProposalReadModel(
-  proposal: ArtifactChangeProposalRecord
-): ArtifactImprovementProposalReadModel {
+function toImprovementProposalReadModel(
+  proposal: ImprovementProposalRecord
+): ImprovementProposalReadModel {
   return {
-    proposal_id: proposal.artifact_change_proposal_id,
-    proposed_runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
-    parent_runnable_artifact_ref: proposal.parent_runnable_artifact_ref,
+    proposal_id: proposal.improvement_proposal_id,
+    proposed_system_code_ref: proposal.proposed_system_code_ref,
+    parent_system_code_ref: proposal.parent_system_code_ref,
     proposal_summary: proposal.proposal_summary,
     requested_change_summary: proposal.requested_change_summary,
     expected_improvement_summary: proposal.expected_improvement_summary,
@@ -2850,32 +2850,32 @@ function toArtifactImprovementProposalReadModel(
   };
 }
 
-function toArtifactImprovementMaterializationAttemptReadModel(
-  attempt: ArtifactChangeProposalMaterializationAttemptRecord
-): ArtifactImprovementMaterializationAttemptReadModel {
+function toImprovementMaterializationAttemptReadModel(
+  attempt: ImprovementProposalMaterializationAttemptRecord
+): ImprovementMaterializationAttemptReadModel {
   return {
-    attempt_id: attempt.artifact_change_proposal_materialization_attempt_id,
+    attempt_id: attempt.improvement_proposal_materialization_attempt_id,
     provider: attempt.provider,
     status: attempt.status,
     validation_status: attempt.validation_status,
     failure_reason: attempt.failure_reason,
     output_artifact_proposal_ref: attempt.output_artifact_proposal_ref,
-    output_runnable_artifact_ref: attempt.output_runnable_artifact_ref,
+    output_system_code_ref: attempt.output_system_code_ref,
     output_lineage_ref: attempt.output_lineage_ref,
     created_at: attempt.created_at,
     authority_status: attempt.authority_status
   };
 }
 
-function toArtifactImprovementOrchestrationRunReadModel(
+function toImprovementOrchestrationRunReadModel(
   run: ResearchOrchestrationRunRecord
-): ArtifactImprovementOrchestrationRunReadModel {
+): ImprovementOrchestrationRunReadModel {
   return {
     run_id: run.research_orchestration_run_id,
     input_finding_refs: run.input_finding_refs,
     input_lineage_refs: run.input_lineage_refs ?? [],
     output_artifact_proposal_ref: run.output_artifact_proposal_ref,
-    output_runnable_artifact_ref: run.output_runnable_artifact_ref,
+    output_system_code_ref: run.output_system_code_ref,
     output_lineage_ref: run.output_lineage_ref,
     trace_ref: run.trace_ref,
     status: run.status,
@@ -2885,13 +2885,13 @@ function toArtifactImprovementOrchestrationRunReadModel(
   };
 }
 
-function toArtifactImprovementExperimentReadModel(
+function toImprovementExperimentReadModel(
   experiment: ExperimentRunRecord
-): ArtifactImprovementExperimentReadModel {
+): ImprovementExperimentReadModel {
   return {
     experiment_id: experiment.experiment_run_id,
-    runnable_artifact_ref: experiment.runnable_artifact_ref,
-    sandbox_runtime_instance_ref: experiment.sandbox_runtime_instance_ref,
+    system_code_ref: experiment.system_code_ref,
+    sandbox_ref: experiment.sandbox_ref,
     runtime_trace_refs: experiment.runtime_trace_refs ?? [],
     trace_ref: experiment.trace_ref,
     status: experiment.status,
@@ -2900,9 +2900,9 @@ function toArtifactImprovementExperimentReadModel(
   };
 }
 
-function toArtifactImprovementEvaluationResultReadModel(
+function toImprovementEvaluationResultReadModel(
   result: TradingEvaluationResultRecord
-): ArtifactImprovementEvaluationResultReadModel {
+): ImprovementEvaluationResultReadModel {
   return {
     result_id: result.trading_evaluation_result_id,
     experiment_run_ref: result.experiment_run_ref,
@@ -2929,16 +2929,52 @@ function latestByTime<T>(
   }).at(-1);
 }
 
-export interface TradingLedgerReadModel {
-  ledger_kind: "trading_ledger";
+export interface OrderRequestReadModel {
+  order_request_id: string;
+  intent_kind: OrderRequestKind;
+  market_scope: "external_trading_api_fixture";
+  side?: "buy" | "sell";
+  order_type?: "market" | "limit";
+  quantity?: string;
+  limit_price?: string;
+  status: OrderRequestStatus;
+  created_at: string;
+  authority_status: OrderRequestAuthorityStatus;
+}
+
+export interface GatewayResultReadModel {
+  gateway_result_id: string;
+  order_request_ref: Ref;
+  decision_outcome: GatewayResultOutcome;
+  decision_reason: GatewayResultReason;
+  decided_at: string;
+  authority_status: GatewayResultAuthorityStatus;
+}
+
+export interface ExecutionResultReadModel {
+  execution_result_id: string;
+  order_request_ref: Ref;
+  gateway_result_ref: Ref;
+  stage: RuntimeExecutionStage;
+  execution_mode: EvaluationExecutionMode;
+  venue_scope: "external_trading_api_fixture";
+  status: ExecutionResultStatus;
+  result_reason: GatewayResultReason;
+  created_at: string;
+  completed_at?: string;
+  authority_status: ExecutionResultAuthorityStatus;
+}
+
+export interface LedgerReadModel {
+  ledger_kind: "ledger";
   has_activity: boolean;
   chain_complete: boolean;
-  latest_order_intent: ReplayRuntimeOrderIntentDraftReadModel | null;
-  latest_gateway_decision: ReplayRuntimeGatewayDecisionReadModel | null;
-  latest_execution_attempt: ReplayRuntimeExecutionAttemptReadModel | null;
-  order_intent: PlaceholderSummary;
-  gateway_decision: PlaceholderSummary;
-  execution_attempt: PlaceholderSummary;
+  latest_order_request: OrderRequestReadModel | null;
+  latest_gateway_result: GatewayResultReadModel | null;
+  latest_execution_result: ExecutionResultReadModel | null;
+  order_request: PlaceholderSummary;
+  gateway_result: PlaceholderSummary;
+  execution_result: PlaceholderSummary;
   authority_status: "not_live";
   no_authority: {
     live_exchange_authority: false;
@@ -2946,28 +2982,40 @@ export interface TradingLedgerReadModel {
     order_submission_authority: false;
     credentials: false;
   };
-  compatibility: {
-    source_projection: "runtime.bounded_authority";
-    source_record_kinds: TradingGatewayTrackedRecordKind[];
-  };
+  source_record_kinds: ["order_request", "gateway_result", "execution_result"];
 }
 
-export function buildTradingLedgerReadModel(
-  authority: ReplayRuntimeAuthorityReadModel
-): TradingLedgerReadModel {
+export function buildLedgerReadModel(
+  source: LedgerSourceRecordsReadModel
+): LedgerReadModel {
   return {
-    ledger_kind: "trading_ledger",
-    has_activity: authority.has_activity,
-    chain_complete: authority.chain_complete,
-    latest_order_intent: authority.latest_order_intent_draft,
-    latest_gateway_decision: authority.latest_gateway_decision,
-    latest_execution_attempt: authority.latest_execution_attempt,
-    order_intent: {
-      ...authority.order_intent_draft,
-      label: "Order intent"
+    ledger_kind: "ledger",
+    has_activity: source.has_activity,
+    chain_complete: source.chain_complete,
+    latest_order_request: source.latest_order_request
+      ? toOrderRequestReadModel(source.latest_order_request)
+      : null,
+    latest_gateway_result: source.latest_gateway_result
+      ? toGatewayResultReadModel(source.latest_gateway_result)
+      : null,
+    latest_execution_result: source.latest_execution_result
+      ? toExecutionResultReadModel(source.latest_execution_result)
+      : null,
+    order_request: {
+      ...source.order_request,
+      ref: canonicalRef(source.order_request.ref, "order_request"),
+      label: "Order request"
     },
-    gateway_decision: authority.gateway_decision,
-    execution_attempt: authority.execution_attempt,
+    gateway_result: {
+      ...source.gateway_result,
+      ref: canonicalRef(source.gateway_result.ref, "gateway_result"),
+      label: "Gateway result"
+    },
+    execution_result: {
+      ...source.execution_result,
+      ref: canonicalRef(source.execution_result.ref, "execution_result"),
+      label: "Execution result"
+    },
     authority_status: "not_live",
     no_authority: {
       live_exchange_authority: false,
@@ -2975,66 +3023,152 @@ export function buildTradingLedgerReadModel(
       order_submission_authority: false,
       credentials: false
     },
-    compatibility: {
-      source_projection: "runtime.bounded_authority",
-      source_record_kinds: [
-        "order_intent_draft",
-        "gateway_decision",
-        "execution_attempt"
-      ]
-    }
+    source_record_kinds: ["order_request", "gateway_result", "execution_result"]
   };
 }
 
-export interface ReplayRuntimeControlCommandReadModel {
-  command_id: string;
-  action: RuntimeControlAction;
-  requested_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
-  actor_kind: RuntimeControlActorKind;
-  actor_ref?: Ref;
-  reason: RuntimeControlCommandReason;
-  requested_at: string;
-  status: RuntimeControlCommandStatus;
-  authority_status: RuntimeControlAuthorityStatus;
+function toOrderRequestReadModel(
+  orderIntent: LedgerSourceOrderRequestReadModel
+): OrderRequestReadModel {
+  return {
+    order_request_id: orderIntent.order_request_id,
+    intent_kind: orderIntent.intent_kind,
+    market_scope: orderIntent.market_scope,
+    side: orderIntent.side,
+    order_type: orderIntent.order_type,
+    quantity: orderIntent.quantity,
+    limit_price: orderIntent.limit_price,
+    status: orderIntent.status,
+    created_at: orderIntent.created_at,
+    authority_status: orderIntent.authority_status
+  };
 }
 
-export interface ReplayRuntimeControlDecisionReadModel {
+function toGatewayResultReadModel(
+  gatewayDecision: LedgerSourceGatewayResultReadModel
+): GatewayResultReadModel {
+  return {
+    gateway_result_id: gatewayDecision.gateway_result_id,
+    order_request_ref: canonicalRef(gatewayDecision.order_request_ref, "order_request"),
+    decision_outcome: gatewayDecision.decision_outcome,
+    decision_reason: gatewayDecision.decision_reason,
+    decided_at: gatewayDecision.decided_at,
+    authority_status: gatewayDecision.authority_status
+  };
+}
+
+function toExecutionResultReadModel(
+  executionAttempt: LedgerSourceExecutionResultReadModel
+): ExecutionResultReadModel {
+  return {
+    execution_result_id: executionAttempt.execution_result_id,
+    order_request_ref: canonicalRef(executionAttempt.order_request_ref, "order_request"),
+    gateway_result_ref: canonicalRef(executionAttempt.gateway_result_ref, "gateway_result"),
+    stage: executionAttempt.stage,
+    execution_mode: executionAttempt.execution_mode,
+    venue_scope: executionAttempt.venue_scope,
+    status: executionAttempt.status,
+    result_reason: executionAttempt.result_reason,
+    created_at: executionAttempt.created_at,
+    completed_at: executionAttempt.completed_at,
+    authority_status: executionAttempt.authority_status
+  };
+}
+
+function canonicalRef(refValue: Ref, recordKind: string): Ref {
+  return {
+    record_kind: recordKind,
+    id: canonicalRecordId(refValue)
+  };
+}
+
+function canonicalRecordId(refValue: Ref): string {
+  if (refValue.record_kind === "order_request") {
+    return canonicalId(refValue.id, "order-request", "order-request");
+  }
+  if (refValue.record_kind === "gateway_result") {
+    return canonicalId(refValue.id, "gateway-result", "gateway-result");
+  }
+  if (refValue.record_kind === "execution_result") {
+    return canonicalId(refValue.id, "execution-result", "execution-result");
+  }
+  return refValue.id;
+}
+
+function canonicalId(value: string, oldPrefix: string, newPrefix: string): string {
+  return value.startsWith(oldPrefix) ? `${newPrefix}${value.slice(oldPrefix.length)}` : value;
+}
+
+export interface RunControlCommandReadModel {
+  command_id: string;
+  action: RunControlAction;
+  requested_lifecycle_status?: TradingRunLifecycleStatus;
+  actor_kind: RunControlActorKind;
+  actor_ref?: Ref;
+  reason: RunControlCommandReason;
+  requested_at: string;
+  status: RunControlCommandStatus;
+  authority_status: RunControlAuthorityStatus;
+}
+
+export interface RunControlDecisionReadModel {
   decision_id: string;
   command_ref: Ref;
-  decision_outcome: RuntimeControlDecisionOutcome;
-  decision_reason: RuntimeControlDecisionReason;
-  decided_by_actor_kind: RuntimeControlActorKind;
+  decision_outcome: RunControlDecisionOutcome;
+  decision_reason: RunControlDecisionReason;
+  decided_by_actor_kind: RunControlActorKind;
   decided_by_actor_ref?: Ref;
-  resulting_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+  resulting_lifecycle_status?: TradingRunLifecycleStatus;
   decided_at: string;
-  authority_status: RuntimeControlAuthorityStatus;
+  authority_status: RunControlAuthorityStatus;
 }
 
-export interface ReplayRuntimeAuditEventReadModel {
+export interface RunControlAuditEventReadModel {
   audit_event_id: string;
   event_kind: RuntimeAuditEventKind;
   command_ref?: Ref;
   decision_ref?: Ref;
-  actor_kind?: RuntimeControlActorKind;
+  actor_kind?: RunControlActorKind;
   actor_ref?: Ref;
-  runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+  runtime_lifecycle_status?: TradingRunLifecycleStatus;
   message?: string;
   created_at: string;
   authority_status: "not_live" | "audit_only";
 }
 
-export interface ReplayRuntimeControlReadModel {
+export interface RunControlReadModel {
   has_activity: boolean;
   chain_complete: boolean;
-  latest_command: ReplayRuntimeControlCommandReadModel | null;
-  latest_decision: ReplayRuntimeControlDecisionReadModel | null;
-  latest_audit_event: ReplayRuntimeAuditEventReadModel | null;
+  latest_command: RunControlCommandReadModel | null;
+  latest_decision: RunControlDecisionReadModel | null;
+  latest_audit_event: RunControlAuditEventReadModel | null;
   command: PlaceholderSummary;
   decision: PlaceholderSummary;
   audit_event: PlaceholderSummary;
 }
 
 export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
+  trading_system?: {
+    system_id: string;
+    version_id: string;
+    ref: Ref;
+    status: CandidateStatus;
+    summary: string;
+  };
+  system_code?: {
+    ref?: Ref;
+    summary: string;
+    declared_runtime?: string;
+    declared_outputs: string[];
+  };
+  trading_run?: {
+    ref: Ref;
+    stage: string;
+    lifecycle_status?: TradingRunLifecycleStatus;
+    authority_status: string;
+  };
+  ledger?: LedgerReadModel;
+  improvement?: ImprovementReadModel;
   candidate_version: {
     candidate_version_id: string;
     version_label: string;
@@ -3082,7 +3216,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   runtime: {
     ref: Ref;
     stage_binding_profile: string;
-    runtime_lifecycle_status?: TradingSystemRuntimeLifecycleStatus;
+    runtime_lifecycle_status?: TradingRunLifecycleStatus;
     authority_status: string;
     placement: PlaceholderSummary;
     hands_environment: PlaceholderSummary;
@@ -3095,11 +3229,9 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
       quarantine_status: string;
       authority_status: string;
     };
-    bounded_authority?: ReplayRuntimeAuthorityReadModel;
-    trading_ledger?: TradingLedgerReadModel;
-    runtime_control?: ReplayRuntimeControlReadModel;
+    ledger?: LedgerSourceRecordsReadModel;
+    run_control?: RunControlReadModel;
   };
-  improvement_loop?: ArtifactImprovementLoopReadModel;
   trading_substrate?: TradingSubstrateReadModel;
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;
@@ -3178,14 +3310,14 @@ export interface CandidateEvaluationRunOutcome {
   evidence_classifications: EvidenceClassificationRecord[];
 }
 
-export interface RuntimeInstanceLogReadModel {
+export interface SandboxLogReadModel {
   log_ref: Ref;
   lines: string[];
   captured_at: string;
   authority_status: "trace_only";
 }
 
-export interface RuntimeInstanceHeartbeatReadModel {
+export interface SandboxHeartbeatReadModel {
   heartbeat_ref: Ref;
   heartbeat_line: string;
   observed_at: string;
@@ -3203,13 +3335,13 @@ export interface SandboxCommandEvidenceReadModel {
   authority_status: "trace_only";
 }
 
-export interface SandboxRuntimeInstanceReadModel {
-  instance_id: string;
-  adapter_kind: SandboxRuntimeAdapterKind;
-  runnable_artifact_ref: Ref;
+export interface SandboxReadModel {
+  sandbox_id: string;
+  adapter_kind: SandboxAdapterKind;
+  system_code_ref: Ref;
   runtime_ref?: Ref;
-  runtime_placement_ref: Ref;
-  lifecycle_status: SandboxRuntimeInstanceLifecycleStatus;
+  sandbox_placement_ref: Ref;
+  lifecycle_status: SandboxLifecycleStatus;
   sandbox_name: string;
   sandbox_ref?: Ref;
   created_at: string;
@@ -3224,43 +3356,43 @@ export interface SandboxRuntimeInstanceReadModel {
   authority_status: "not_live";
 }
 
-export interface SandboxRuntimeInstanceDetailReadModel extends SandboxRuntimeInstanceReadModel {
-  logs: RuntimeInstanceLogReadModel[];
-  heartbeats: RuntimeInstanceHeartbeatReadModel[];
+export interface SandboxDetailReadModel extends SandboxReadModel {
+  logs: SandboxLogReadModel[];
+  heartbeats: SandboxHeartbeatReadModel[];
   command_evidence: SandboxCommandEvidenceReadModel[];
 }
 
-export interface RuntimeInstanceIndexProjection {
-  record_kind: "runtime_instance_index_projection";
+export interface SandboxIndexProjection {
+  record_kind: "sandbox_index_projection";
   version: 1;
-  runtime_instances: SandboxRuntimeInstanceReadModel[];
+  sandboxes: SandboxReadModel[];
 }
 
-export interface StartRuntimeInstanceInput {
+export interface StartSandboxInput {
   idempotency_key: string;
-  adapter_kind: SandboxRuntimeAdapterKind;
-  runnable_artifact_id: string;
-  runtime_id?: string;
-  instance_id?: string;
+  adapter_kind: SandboxAdapterKind;
+  system_code_id: string;
+  trading_run_id?: string;
+  sandbox_id?: string;
   sandbox_name?: string;
   test_ticks?: number;
   interval_ms?: number;
   created_at?: string;
 }
 
-export interface StartRuntimeInstanceOutcome {
-  runtime_instance: SandboxRuntimeInstanceDetailReadModel;
+export interface StartSandboxOutcome {
+  sandbox: SandboxDetailReadModel;
 }
 
-export interface StopRuntimeInstanceInput {
-  instance_id: string;
+export interface StopSandboxInput {
+  sandbox_id: string;
   stopped_at?: string;
   removed_at?: string;
 }
 
-export interface RuntimeInstanceLogsOutcome {
-  runtime_instance: SandboxRuntimeInstanceReadModel;
-  logs: RuntimeInstanceLogReadModel[];
-  heartbeats: RuntimeInstanceHeartbeatReadModel[];
+export interface SandboxLogsOutcome {
+  sandbox: SandboxReadModel;
+  logs: SandboxLogReadModel[];
+  heartbeats: SandboxHeartbeatReadModel[];
   command_evidence: SandboxCommandEvidenceReadModel[];
 }

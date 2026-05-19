@@ -96,7 +96,7 @@ function validMaterializationInput(): CandidateMaterializationInput {
     program: {
       summary: "Provider test program.",
       declared_runtime: "typescript-worker",
-      declared_outputs: ["OrderIntentDraft"]
+      declared_outputs: ["OrderRequest"]
     },
     capability_package: {
       summary: "Provider test capability package.",

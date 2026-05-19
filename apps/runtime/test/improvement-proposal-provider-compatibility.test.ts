@@ -4,18 +4,18 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   ResearchFindingRecord,
-  ArtifactChangeProposalProviderAttribution,
-  ArtifactChangeProposalProviderOutput,
-  ArtifactChangeProposalProviderRequest,
-  ArtifactChangeProposalProviderResult,
+  ImprovementProposalProviderAttribution,
+  ImprovementProposalProviderOutput,
+  ImprovementProposalProviderRequest,
+  ImprovementProposalProviderResult,
   ProviderKind,
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { FixtureArtifactChangeProposalProviderAdapter } from "../src/research-orchestration/fixture-artifact-change-proposal-provider";
-import { planArtifactChangeProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
-import type { ArtifactChangeProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import { FixtureImprovementProposalProviderAdapter } from "../src/research-orchestration/fixture-improvement-proposal-provider";
+import { planImprovementProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
+import type { ImprovementProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -29,22 +29,22 @@ afterEach(async () => {
   await Promise.all(tmpDirs.map((tmpDir) => rm(tmpDir, { recursive: true, force: true })));
 });
 
-describe("artifact change proposal provider adapter compatibility", () => {
+describe("improvement proposal provider adapter compatibility", () => {
   it.each([
     {
       label: "fixture",
       providerKind: "fixture_only" as const,
-      adapter: () => new FixtureArtifactChangeProposalProviderAdapter()
+      adapter: () => new FixtureImprovementProposalProviderAdapter()
     },
     {
       label: "codex-shaped",
       providerKind: "codex_cli" as const,
-      adapter: () => new StaticCompatibleArtifactChangeProposalProviderAdapter("codex_cli")
+      adapter: () => new StaticCompatibleImprovementProposalProviderAdapter("codex_cli")
     },
     {
       label: "claude-compatible-test-double",
       providerKind: "claude_code" as const,
-      adapter: () => new StaticCompatibleArtifactChangeProposalProviderAdapter("claude_code")
+      adapter: () => new StaticCompatibleImprovementProposalProviderAdapter("claude_code")
     }
   ])("routes %s adapter output through the same local-store boundary", async (caseInput) => {
     const store = await initializedStore();
@@ -59,7 +59,7 @@ describe("artifact change proposal provider adapter compatibility", () => {
     await store.recordResearchFinding(sourceFinding);
     await store.recordResearchFinding(antiHackingFinding);
 
-    const outcome = await planArtifactChangeProposalFromLocalStore({
+    const outcome = await planImprovementProposalFromLocalStore({
       store,
       task: fixtureTradingEvaluationTask(caseInput.label),
       provider_adapter: caseInput.adapter(),
@@ -68,11 +68,11 @@ describe("artifact change proposal provider adapter compatibility", () => {
     });
 
     expect(outcome.proposal.authority_status).toBe("proposal_only");
-    expect(outcome.runnable_artifact.authority_status).toBe("not_live");
+    expect(outcome.system_code.authority_status).toBe("not_live");
     expect(outcome.lineage.authority_status).toBe("lineage_only");
     expect(outcome.run.authority_status).toBe("research_only");
     expect(outcome.source_finding.research_finding_id).toBe(sourceFinding.research_finding_id);
-    const attempts = await store.listArtifactChangeProposalMaterializationAttempts();
+    const attempts = await store.listImprovementProposalMaterializationAttempts();
     expect(attempts).toHaveLength(1);
     expect(attempts[0]).toMatchObject({
       provider: {
@@ -88,21 +88,21 @@ describe("artifact change proposal provider adapter compatibility", () => {
     const sourceFinding = researchFinding("research-finding-default-provider-next", "next_artifact_hint");
     await store.recordResearchFinding(sourceFinding);
 
-    await planArtifactChangeProposalFromLocalStore({
+    await planImprovementProposalFromLocalStore({
       store,
       task: fixtureTradingEvaluationTask("default-provider"),
       idempotency_key: "default-provider-path",
       created_at: "2026-05-11T21:01:00.000Z"
     });
 
-    const attempts = await store.listArtifactChangeProposalMaterializationAttempts();
+    const attempts = await store.listImprovementProposalMaterializationAttempts();
     expect(attempts[0].provider.provider_kind).toBe("fixture_only");
     expect(attempts[0].provider.provider_kind).not.toBe("claude_code");
   });
 });
 
-class StaticCompatibleArtifactChangeProposalProviderAdapter implements ArtifactChangeProposalProviderAdapter {
-  private readonly provider: ArtifactChangeProposalProviderAttribution;
+class StaticCompatibleImprovementProposalProviderAdapter implements ImprovementProposalProviderAdapter {
+  private readonly provider: ImprovementProposalProviderAttribution;
 
   constructor(providerKind: Extract<ProviderKind, "codex_cli" | "claude_code">) {
     this.provider = {
@@ -112,9 +112,9 @@ class StaticCompatibleArtifactChangeProposalProviderAdapter implements ArtifactC
     };
   }
 
-  async runArtifactChangeProposalGeneration(
-    request: ArtifactChangeProposalProviderRequest
-  ): Promise<ArtifactChangeProposalProviderResult> {
+  async runImprovementProposalGeneration(
+    request: ImprovementProposalProviderRequest
+  ): Promise<ImprovementProposalProviderResult> {
     return {
       status: "succeeded",
       provider: this.provider,
@@ -123,7 +123,7 @@ class StaticCompatibleArtifactChangeProposalProviderAdapter implements ArtifactC
       agent_event_refs: [ref("agent_event", `agent-event-${request.idempotency_key}`)],
       trace_ref: request.trace_ref,
       provider_output_artifact_refs: [
-        ref("artifact_change_proposal_provider_output_artifact", `provider-output-${request.idempotency_key}`)
+        ref("improvement_proposal_provider_output_artifact", `provider-output-${request.idempotency_key}`)
       ],
       debug_artifact_refs: [ref("debug_artifact", `debug-${request.idempotency_key}`)],
       idempotency_key: request.idempotency_key,
@@ -132,7 +132,7 @@ class StaticCompatibleArtifactChangeProposalProviderAdapter implements ArtifactC
   }
 }
 
-function providerOutput(request: ArtifactChangeProposalProviderRequest): ArtifactChangeProposalProviderOutput {
+function providerOutput(request: ImprovementProposalProviderRequest): ImprovementProposalProviderOutput {
   const sourceFinding = request.findings.find((finding) =>
     finding.finding_kind === "next_artifact_hint" ||
     finding.finding_kind === "positive_result"
@@ -141,7 +141,7 @@ function providerOutput(request: ArtifactChangeProposalProviderRequest): Artifac
     throw new Error("no_eligible_research_finding");
   }
   return {
-    output_kind: "artifact_change_proposal_input",
+    output_kind: "improvement_proposal_input",
     trading_evaluation_task_ref: ref(
       "trading_evaluation_task",
       request.task.trading_evaluation_task_id
@@ -150,7 +150,7 @@ function providerOutput(request: ArtifactChangeProposalProviderRequest): Artifac
     anti_hacking_finding_refs: request.findings
       .filter((finding) => finding.finding_kind === "anti_hacking_case")
       .map((finding) => ref("research_finding", finding.research_finding_id)),
-    proposal_summary: "Compatible provider output for an opaque artifact change proposal.",
+    proposal_summary: "Compatible provider output for an opaque improvement proposal.",
     requested_change_summary: "Use the same materialization boundary regardless of provider label.",
     expected_improvement_summary: "Provider-neutral routing with no durable provider truth.",
     proposed_artifact_refs: [ref("provider_artifact_hint", `hint-${request.idempotency_key}`)],

@@ -118,7 +118,7 @@ function makeEvaluation(iteration = 1) {
     score: 1,
     metrics: [],
     summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-    risk_decision: "valid_order_intent_draft",
+    risk_decision: "valid_order_request",
     scenario_results: [
       makeScenarioResult("trend_long", iteration, "01"),
       makeScenarioResult("range_flat", iteration, "02")
@@ -136,8 +136,8 @@ function makeScenarioResult(scenarioId: string, iteration: number, suffix: strin
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent draft with score 1.000.",
-    risk_decision: "valid_order_intent_draft",
+    summary: "Accepted order request with score 1.000.",
+    risk_decision: "valid_order_request",
     events_path: `/tmp/s10-audit-fixture/iterations/${String(iteration).padStart(3, "0")}/run/${scenarioId}/events.jsonl`,
     provider_request_count: 3,
     runner_command_count: 5,

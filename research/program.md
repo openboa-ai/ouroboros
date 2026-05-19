@@ -7,7 +7,7 @@ Goal: improve replay evaluation score without adding provider-specific code, cre
 Scope:
 - Edit only the artifact files in the current artifact workspace.
 - Use the external `TradingApiProvider` through `TRADING_API_BASE_URL`.
-- Emit JSONL events for market snapshot, account state, order intent draft, validation, and completion.
+- Emit JSONL events for market snapshot, account state, order request, validation, and completion.
 - Prefer small changes that can be kept or discarded after one replay run.
 
 Decision rule:

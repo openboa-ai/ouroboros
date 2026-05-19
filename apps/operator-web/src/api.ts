@@ -1,7 +1,8 @@
 import type {
-  ArtifactImprovementLoopReadModel,
-  BoundedRuntimeAuthorityInput,
-  BoundedRuntimeAuthorityOutcome,
+  ImprovementReadModel,
+  LedgerInput,
+  LedgerReadModel,
+  LedgerWriteOutcome,
   ReplayRunComparisonReadModel,
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
@@ -12,10 +13,9 @@ import type {
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureWriteInput,
-  RuntimeControlAuditInput,
-  RuntimeControlAuditOutcome,
+  RunControlAuditInput,
+  RunControlAuditOutcome,
   TradingGatewayEnvironmentReadModel,
-  TradingLedgerReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 
@@ -117,22 +117,22 @@ export async function fetchReplayRunValidationState(
   return body.validation_state;
 }
 
-export type RuntimeAuthorityCommandPayload = Omit<BoundedRuntimeAuthorityInput, "candidate_id">;
+export type LedgerCommandPayload = Omit<LedgerInput, "candidate_id">;
 
-export type RuntimeAuthorityCommandOutcome = BoundedRuntimeAuthorityOutcome & {
+export type LedgerCommandOutcome = LedgerWriteOutcome & {
   status: "recorded";
 };
 
-export interface TradingLoopRunOutcome {
+export interface TradingRunOutcome {
   status: "recorded";
-  order_intent: BoundedRuntimeAuthorityOutcome["order_intent_draft"];
-  gateway_decision: BoundedRuntimeAuthorityOutcome["gateway_decision"];
-  execution_attempt: BoundedRuntimeAuthorityOutcome["execution_attempt"];
-  trading_ledger: TradingLedgerReadModel;
+  order_request: LedgerReadModel["latest_order_request"];
+  gateway_result: LedgerReadModel["latest_gateway_result"];
+  execution_result: LedgerReadModel["latest_execution_result"];
+  ledger: LedgerReadModel;
   trading_gateway_environment: TradingGatewayEnvironmentReadModel;
 }
 
-export interface ImprovementLoopRunOutcome {
+export interface ImprovementOutcome {
   status: "evaluated";
   proposal: {
     proposal_id: string;
@@ -143,12 +143,12 @@ export interface ImprovementLoopRunOutcome {
   trading_evaluation_result: {
     result_id: string;
   };
-  improvement_loop: ArtifactImprovementLoopReadModel;
+  improvement: ImprovementReadModel;
 }
 
-export type RuntimeControlCommandPayload = Omit<RuntimeControlAuditInput, "candidate_id">;
+export type RunControlCommandPayload = Omit<RunControlAuditInput, "candidate_id">;
 
-export type RuntimeControlCommandOutcome = RuntimeControlAuditOutcome & {
+export type RunControlCommandOutcome = RunControlAuditOutcome & {
   status: "recorded";
 };
 
@@ -177,12 +177,12 @@ export interface ReplayRunOutcome {
   run: ReplayRunEvidenceReadModel;
 }
 
-export function runtimeAuthorityCommandPayload(
+export function ledgerCommandPayload(
   candidate: CandidateInspectReadModel
-): RuntimeAuthorityCommandPayload {
+): LedgerCommandPayload {
   return {
     idempotency_key: [
-      "operator-web-runtime-authority",
+      "operator-web-ledger",
       candidate.candidate_id,
       candidate.candidate_version.candidate_version_id
     ].join("-"),
@@ -194,7 +194,7 @@ export function runtimeAuthorityCommandPayload(
       quantity: "0.001",
       limit_price: "60000"
     },
-    gateway_decision: {
+    gateway_result: {
       decision_outcome: "dry_run_only",
       decision_reason: "paper_stage_only",
       policy_ref: {
@@ -202,12 +202,12 @@ export function runtimeAuthorityCommandPayload(
         id: "runtime-operating-policy-paper-v1"
       }
     },
-    execution_attempt: {
+    execution_result: {
       execution_mode: "host_local",
       trace_ref: {
         record_kind: "trace_placeholder",
         id: [
-          "trace-operator-web-runtime-authority",
+          "trace-operator-web-ledger",
           candidate.candidate_id,
           candidate.candidate_version.candidate_version_id
         ].join("-")
@@ -216,12 +216,12 @@ export function runtimeAuthorityCommandPayload(
   };
 }
 
-export function runtimeControlPausePayload(
+export function runControlPausePayload(
   candidate: CandidateInspectReadModel
-): RuntimeControlCommandPayload {
+): RunControlCommandPayload {
   return {
     idempotency_key: [
-      "operator-web-runtime-control-pause",
+      "operator-web-run-control-pause",
       candidate.candidate_id,
       candidate.candidate_version.candidate_version_id
     ].join("-"),
@@ -239,11 +239,11 @@ export function runtimeControlPausePayload(
         id: "runtime-operating-policy-paper-v1"
       },
       reason: "operator_request",
-      reason_summary: "Operator requested bounded paper-runtime pause from operator-web.",
+      reason_summary: "Operator requested a paper trading run pause from operator-web.",
       trace_ref: {
         record_kind: "trace_placeholder",
         id: [
-          "trace-operator-web-runtime-control-pause",
+          "trace-operator-web-run-control-pause",
           candidate.candidate_id,
           candidate.candidate_version.candidate_version_id
         ].join("-")
@@ -335,56 +335,56 @@ export function privateReadinessPosturePayload(
   };
 }
 
-export async function recordReplayRuntimeAuthority(
+export async function recordLedger(
   candidate: CandidateInspectReadModel
-): Promise<RuntimeAuthorityCommandOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/runtime-authority`, {
+): Promise<LedgerCommandOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/ledger`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(runtimeAuthorityCommandPayload(candidate))
+    body: JSON.stringify(ledgerCommandPayload(candidate))
   });
   if (!response.ok) {
-    throw new Error(`Failed to record runtime authority for ${candidate.candidate_id}: ${response.status}`);
+    throw new Error(`Failed to record ledger for ${candidate.candidate_id}: ${response.status}`);
   }
-  return (await response.json()) as RuntimeAuthorityCommandOutcome;
+  return (await response.json()) as LedgerCommandOutcome;
 }
 
-export async function runTradingLoop(
+export async function startTradingRun(
   candidate: CandidateInspectReadModel
-): Promise<TradingLoopRunOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/trading-loop-runs`, {
+): Promise<TradingRunOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/trading-runs`, {
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Failed to run trading loop for ${candidate.candidate_id}: ${response.status}`);
+    throw new Error(`Failed to start trading run for ${candidate.candidate_id}: ${response.status}`);
   }
-  return (await response.json()) as TradingLoopRunOutcome;
+  return (await response.json()) as TradingRunOutcome;
 }
 
-export async function runImprovementLoop(
+export async function recordImprovement(
   candidate: CandidateInspectReadModel
-): Promise<ImprovementLoopRunOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/improvement-loop-runs`, {
+): Promise<ImprovementOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/improvements`, {
     method: "POST"
   });
   if (!response.ok) {
-    throw new Error(`Failed to run improvement loop for ${candidate.candidate_id}: ${response.status}`);
+    throw new Error(`Failed to record improvement for ${candidate.candidate_id}: ${response.status}`);
   }
-  return (await response.json()) as ImprovementLoopRunOutcome;
+  return (await response.json()) as ImprovementOutcome;
 }
 
-export async function recordReplayRuntimeControl(
+export async function recordRunControl(
   candidate: CandidateInspectReadModel
-): Promise<RuntimeControlCommandOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/runtime-control`, {
+): Promise<RunControlCommandOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/run-control`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(runtimeControlPausePayload(candidate))
+    body: JSON.stringify(runControlPausePayload(candidate))
   });
   if (!response.ok) {
-    throw new Error(`Failed to record runtime control for ${candidate.candidate_id}: ${response.status}`);
+    throw new Error(`Failed to record run control for ${candidate.candidate_id}: ${response.status}`);
   }
-  return (await response.json()) as RuntimeControlCommandOutcome;
+  return (await response.json()) as RunControlCommandOutcome;
 }
 
 export async function recordPrivateReadinessPosture(

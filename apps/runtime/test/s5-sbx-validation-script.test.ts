@@ -31,7 +31,7 @@ beforeEach(() => {
 });
 
 describe("S5 sbx validation harness", () => {
-  it("stops at the runtime-control preflight probe before mutating sandbox state", async () => {
+  it("stops at the run-control preflight probe before mutating sandbox state", async () => {
     const tempDir = await makeTempDir();
     const callLog = path.join(tempDir, "sbx-calls.log");
     const fakeSbx = path.join(tempDir, "sbx");
@@ -45,7 +45,7 @@ describe("S5 sbx validation harness", () => {
       const calls = (await readFile(callLog, "utf8")).trim().split("\n");
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("sbx ls runtime-control probe");
+      expect(result.stdout).toContain("sbx ls run-control probe");
       expect(result.stdout).toContain("next_action=approved_default_sbx_daemon_recovery_required");
       expect(result.stdout).toContain("active_session_interruption_approval_phrase=승인:");
       expect(result.stdout).toContain("default_sbx_recovery_command=");
@@ -77,7 +77,7 @@ describe("S5 sbx validation harness", () => {
       expect(result.stdout).toContain("active_session_interruption_approval_phrase=승인:");
       expect(result.stderr).toContain("RESULT: failed - sbx version exited 127");
       expect(result.stderr).toContain("ENOENT");
-      expect(result.stdout).not.toContain("sbx ls runtime-control probe");
+      expect(result.stdout).not.toContain("sbx ls run-control probe");
       expect(result.stdout).not.toContain("create --name ouro-s5-clock-a");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -151,7 +151,7 @@ describe("S5 sbx validation harness", () => {
       const calls = (await readFile(callLog, "utf8")).trim().split("\n");
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("sbx ls runtime-control probe");
+      expect(result.stdout).toContain("sbx ls run-control probe");
       expect(result.stdout).toContain(`default_sbx_recovery_command=OUROBOROS_SBX_BIN='${fakeAliasedSdx}'`);
       expect(result.stderr).not.toContain("not the system sdx/Starkit utility");
       expect(calls).toEqual([
@@ -181,7 +181,7 @@ describe("S5 sbx validation harness", () => {
       const calls = (await readFile(callLog, "utf8")).trim().split("\n");
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("sbx ls runtime-control probe");
+      expect(result.stdout).toContain("sbx ls run-control probe");
       expect(result.stdout).toContain(`default_sbx_recovery_command=OUROBOROS_SDX_BIN='${fakeAliasedSdx}'`);
       expect(result.stdout).toContain("npm run recover:s5-sdx-daemon:validate");
       expect(result.stderr).not.toContain("not the system sdx/Starkit utility");
@@ -239,7 +239,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("Hypervisor/libkrun access outside the Codex command sandbox");
     expect(result.stdout).toContain("Operation not permitted");
     expect(result.stdout).toContain("Exit codes:");
-    expect(result.stdout).toContain("host sbx preflight/runtime-control is blocked");
+    expect(result.stdout).toContain("host sbx preflight/run-control is blocked");
   });
 
   it("audits repo-side S5 sbx readiness without host mutation", async () => {
@@ -257,7 +257,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("PASS local S5 evidence transcripts are ignored by git");
     expect(result.stdout).toContain("REAL_ENVIRONMENT_PROOF_REQUIRED npm run validate:s5-sbx");
     expect(result.stdout).toContain("AUDIT_IS_NOT_COMPLETION true");
-    expect(result.stdout).not.toContain("sbx ls runtime-control probe");
+    expect(result.stdout).not.toContain("sbx ls run-control probe");
   });
 
   it("registers isolated login npm commands without baking in a default home", async () => {
@@ -309,7 +309,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.code, scriptOutput(result)).toBe(0);
     expect(result.stdout).toContain("Exit codes:");
     expect(result.stdout).toContain("repo readiness failed");
-    expect(result.stdout).toContain("host sbx preflight/runtime-control is blocked");
+    expect(result.stdout).toContain("host sbx preflight/run-control is blocked");
   });
 
   it("documents S5 sbx completion audit evidence requirements", async () => {
@@ -359,7 +359,7 @@ describe("S5 sbx validation harness", () => {
 
     expect(result.code, scriptOutput(result)).toBe(0);
     expect(result.stdout).toContain("local, redacted S5 Docker Sandboxes sbx blocker report");
-    expect(result.stdout).toContain("runtime-control/runtime-create blocker");
+    expect(result.stdout).toContain("run-control/runtime-create blocker");
     expect(result.stdout).toContain("Default mode is non-mutating");
     expect(result.stdout).toContain("--include-create-probe flag is not non-mutating");
     expect(result.stdout).toContain("refuses --include-create-probe before collecting diagnostics");
@@ -370,7 +370,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("sbx code-signing, Gatekeeper assessment, and quarantine metadata");
     expect(result.stdout).toContain("macOS syspolicyd, kernel sandbox denial, and DetachedSignatures hints");
     expect(result.stdout).toContain("sbx create --help and sbx template ls runtime-create context");
-    expect(result.stdout).toContain("sbx ls --json runtime-control probe");
+    expect(result.stdout).toContain("sbx ls --json run-control probe");
     expect(result.stdout).toContain("redacted daemon log lines that mention runtime-create VM start failures");
     expect(result.stdout).toContain("--include-create-probe");
     expect(result.stdout).toContain("--write-default-report");
@@ -483,7 +483,7 @@ describe("S5 sbx validation harness", () => {
       expect(result.stdout).toContain("S5_SBX_BLOCKER_REPORT_RESULT blocked");
       expect(result.stdout).toContain(`report_written=${reportPath}`);
       expect(report).toContain(`evidence_transcript=${evidencePath}`);
-      expect(report).toContain("runtime-control/runtime-create blocker");
+      expect(report).toContain("run-control/runtime-create blocker");
       expect(report).toContain("non_mutating=true");
       expect(report).toContain("uploads_diagnostics=false");
       expect(report).toContain("host macOS version");
@@ -520,7 +520,7 @@ describe("S5 sbx validation harness", () => {
       expect(report).toContain("sbx template list runtime-create context");
       expect(report).toContain("docker/sandbox-templates");
       expect(report).toContain("context canceled");
-      expect(report).toContain("sbx ls json runtime-control probe");
+      expect(report).toContain("sbx ls json run-control probe");
       expect(report).toContain("daemon log runtime-create failure hints");
       expect(report).toContain("daemon_log_path=<local-path>/daemon.log");
       expect(report).toContain("krun_start_enter failed: -1");
@@ -942,7 +942,7 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain(
-        "missing stopped lifecycle evidence for sandbox-runtime-instance-clock-b in transcript section: runtime API stop B response"
+        "missing stopped lifecycle evidence for sandbox-clock-b in transcript section: runtime API stop B response"
       );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
@@ -994,7 +994,7 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain(
-        "missing runtime_heartbeat JSON for sandbox-runtime-instance-clock-b in transcript section: direct sbx log B"
+        "missing runtime_heartbeat JSON for sandbox-clock-b in transcript section: direct sbx log B"
       );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
@@ -1012,7 +1012,7 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain(
-        "missing runtime_heartbeat evidence for sandbox-runtime-instance-clock-b in transcript section: runtime API logs B"
+        "missing runtime_heartbeat evidence for sandbox-clock-b in transcript section: runtime API logs B"
       );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
@@ -1046,7 +1046,7 @@ describe("S5 sbx validation harness", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain(
-        "missing fixture-runnable-artifact-clock-python-001 in transcript section: runtime API start B response"
+        "missing fixture-system-code-clock-python-001 in transcript section: runtime API start B response"
       );
       expect(result.stdout).toContain("COMPLETION_AUDIT_RESULT incomplete");
     } finally {
@@ -1143,7 +1143,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stderr).toContain("--evidence requires a path");
   });
 
-  it("reports host-probe runtime-control blockers without widening recovery", async () => {
+  it("reports host-probe run-control blockers without widening recovery", async () => {
     const tempDir = await makeTempDir();
     const npmCallLog = path.join(tempDir, "npm-calls.log");
     try {
@@ -1158,7 +1158,7 @@ describe("S5 sbx validation harness", () => {
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain("PASS required S5 artifact/runtime files exist");
       expect(result.stdout).toContain("BLOCKED host sbx preflight remains non-mutating");
-      expect(result.stdout).toContain("host sbx runtime-control preflight did not pass");
+      expect(result.stdout).toContain("host sbx run-control preflight did not pass");
       expect(result.stdout).toContain("PASS host recovery dry-run remains non-mutating");
       expect(result.stdout).toContain("REAL_ENVIRONMENT_PROOF_REQUIRED npm run validate:s5-sbx");
       expect(result.stdout).toContain("AUDIT_IS_NOT_COMPLETION true");
@@ -1197,7 +1197,7 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
-  it("reports host-probe preflight blockers before runtime-control without widening recovery", async () => {
+  it("reports host-probe preflight blockers before run-control without widening recovery", async () => {
     const tempDir = await makeTempDir();
     const npmCallLog = path.join(tempDir, "npm-calls.log");
     try {
@@ -1212,7 +1212,7 @@ describe("S5 sbx validation harness", () => {
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain("PASS required S5 artifact/runtime files exist");
       expect(result.stdout).toContain("BLOCKED host sbx preflight remains non-mutating");
-      expect(result.stdout).toContain("host sbx preflight stopped before runtime-control");
+      expect(result.stdout).toContain("host sbx preflight stopped before run-control");
       expect(result.stdout).toContain("PASS host recovery dry-run remains non-mutating");
       expect(result.stdout).not.toContain("FAIL");
       expect(npmCalls).toEqual([
@@ -1224,7 +1224,7 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
-  it("reports host-probe authentication blockers before runtime-control", async () => {
+  it("reports host-probe authentication blockers before run-control", async () => {
     const tempDir = await makeTempDir();
     const npmCallLog = path.join(tempDir, "npm-calls.log");
     try {
@@ -1250,7 +1250,7 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
-  it("reports host-probe daemon blockers before runtime-control", async () => {
+  it("reports host-probe daemon blockers before run-control", async () => {
     const tempDir = await makeTempDir();
     const npmCallLog = path.join(tempDir, "npm-calls.log");
     try {
@@ -1618,7 +1618,7 @@ describe("S5 sbx validation harness", () => {
       });
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("sbx_runtime_control_blocker=authentication");
+      expect(result.stdout).toContain("sbx_run_control_blocker=authentication");
       expect(result.stdout).toContain("isolated_sbx_home_auth_required=true");
       expect(result.stdout).toContain(
         `isolated_sbx_home_login_command=HOME='${sbxHome}' '${fakeAliasedSdx}' login`
@@ -1734,7 +1734,7 @@ describe("S5 sbx validation harness", () => {
     }
   });
 
-  it("summarizes daemon log runtime-control hints without printing raw metadata", async () => {
+  it("summarizes daemon log run-control hints without printing raw metadata", async () => {
     const tempDir = await makeTempDir();
     const sbxCallLog = path.join(tempDir, "sbx-calls.log");
     const pgrepCallLog = path.join(tempDir, "pgrep-calls.log");
@@ -1827,7 +1827,7 @@ describe("S5 sbx validation harness", () => {
       });
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("daemon log runtime-control hints");
+      expect(result.stdout).toContain("daemon log run-control hints");
       expect(result.stdout).toContain("runtime=stale-runtime");
       expect(result.stdout).toContain("sdk_client_health_check_failures=1");
       expect(result.stdout).toContain("last_sdk_client_health_check_failure_at=2026-05-09T11:14:32.120403+09:00");
@@ -1887,7 +1887,7 @@ describe("S5 sbx validation harness", () => {
       const dockerCalls = (await readFile(dockerCallLog, "utf8")).trim().split("\n");
 
       expect(result.code, scriptOutput(result)).toBe(0);
-      expect(result.stdout).toContain("docker socket runtime-control probe");
+      expect(result.stdout).toContain("docker socket run-control probe");
       expect(result.stdout).toContain(`docker_socket=${socketPath}`);
       expect(result.stdout).toContain("docker_server_version=ok");
       expect(result.stdout).toContain("docker_container_list=ok");
@@ -1960,16 +1960,16 @@ describe("S5 sbx validation harness", () => {
         `exec -d -w ${repoRoot} ouro-s5-clock-b python3 fixtures/trading-systems/clock.py`
       ))).toBe(true);
       expect(calls).toContain(
-        "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl"
+        "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-clock-a.jsonl"
       );
       expect(calls).toContain(
-        "exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.jsonl"
+        "exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-clock-b.jsonl"
       );
       expect(calls).toContain(
-        "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.heartbeat.json"
+        "exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-clock-a.heartbeat.json"
       );
       expect(calls).toContain(
-        "exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.heartbeat.json"
+        "exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-clock-b.heartbeat.json"
       );
       expect(calls).toContain("exec ouro-s5-clock-a pkill -TERM -f fixtures/trading-systems/clock.py");
       expect(calls).toContain("exec ouro-s5-clock-b pkill -TERM -f fixtures/trading-systems/clock.py");
@@ -2039,7 +2039,7 @@ describe("S5 sbx validation harness", () => {
       }, s5LifecycleScriptTimeoutMs);
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("sbx_runtime_control_blocker=runtime_create_failed");
+      expect(result.stdout).toContain("sbx_run_control_blocker=runtime_create_failed");
       expect(result.stdout).toContain("isolated_sbx_home_authenticated=true");
       expect(result.stdout).toContain("isolated_sbx_runtime_create_blocked=true");
       expect(result.stderr).toContain("host sandbox create blocked");
@@ -2562,9 +2562,9 @@ fi
 printf '%s\\n' "$*" >> "$SBX_CALL_LOG"
 instance_id_for_args() {
   case "$*" in
-    *sandbox-runtime-instance-clock-a*) printf '%s' "sandbox-runtime-instance-clock-a" ;;
-    *sandbox-runtime-instance-clock-b*) printf '%s' "sandbox-runtime-instance-clock-b" ;;
-    *) printf '%s' "sandbox-runtime-instance-unknown" ;;
+    *sandbox-clock-a*) printf '%s' "sandbox-clock-a" ;;
+    *sandbox-clock-b*) printf '%s' "sandbox-clock-b" ;;
+    *) printf '%s' "sandbox-unknown" ;;
   esac
 }
 case "$1" in
@@ -2739,9 +2739,9 @@ printf '%s|%s\\n' "$*" "\${OUROBOROS_SBX_EVIDENCE_PATH:-}" >> "$NPM_CALL_LOG"
 case "$*" in
   "run validate:s5-sbx"|"run validate:s5-sdx")
     echo "## OURO-32 real Docker Sandboxes sbx validation"
-    echo "## sbx ls runtime-control probe"
+    echo "## sbx ls run-control probe"
     echo 'ERROR: failed to list runtimes: list runtimes: send request: Get "http://socket/runtime": context canceled'
-    echo "RESULT: failed - sbx ls runtime-control probe timed out after 10000ms"
+    echo "RESULT: failed - sbx ls run-control probe timed out after 10000ms"
     exit 2
     ;;
   "run audit:s5-sbx:completion -- --evidence "*|"run audit:s5-sdx:completion -- --evidence "*)
@@ -2973,10 +2973,10 @@ exit 7
 }
 
 function fakeAuditNpmScript(options: {
-  preflightStage?: "runtime-control" | "diagnose" | "auth" | "daemon";
+  preflightStage?: "run-control" | "diagnose" | "auth" | "daemon";
   recoveryStage?: "ok" | "binary";
 } = {}): string {
-  const preflightStage = options.preflightStage ?? "runtime-control";
+  const preflightStage = options.preflightStage ?? "run-control";
   const recoveryOutput = options.recoveryStage === "binary"
     ? `echo "## S5 sbx daemon recovery preflight"
     echo "## sbx version"
@@ -3021,7 +3021,7 @@ function fakeAuditNpmScript(options: {
     echo '{"summary":{"pass":7,"warn":0,"fail":0,"skip":0}}'
     echo "## sbx daemon status"
     echo "Status: running"
-    echo "## sbx ls runtime-control probe"
+    echo "## sbx ls run-control probe"
     echo 'ERROR: failed to list runtimes: list runtimes: send request: Get "http://socket/runtime": context canceled' >&2
     exit 1`;
   return `#!/bin/sh
@@ -3059,7 +3059,7 @@ function fakeCompletionEvidence(
 ): string {
   const stopBResponse = [
     "## runtime API stop B response",
-    `{"runtime_instance":{"sandbox_runtime_instance_id":"sandbox-runtime-instance-clock-b","lifecycle_status":"${
+    `{"sandbox":{"sandbox_id":"sandbox-clock-b","lifecycle_status":"${
       options.failStopBResponse ? "failed" : "stopped"
     }"}}`
   ];
@@ -3107,7 +3107,7 @@ function fakeCompletionEvidence(
       : `{"summary":{"pass":7,"warn":0,"fail":${options.diagnoseFailCount ?? 0},"skip":0}}`,
     "## sbx daemon status",
     "Status: running",
-    "## sbx ls runtime-control probe",
+    "## sbx ls run-control probe",
     "$ sbx ls",
     ...(options.omitRuntimeHarnessEvidence
       ? []
@@ -3123,21 +3123,21 @@ function fakeCompletionEvidence(
           '{"reason":"raw_secret_material_rejected"}'
         ]),
     "## runtime API start A response",
-    '{"runtime_instance":{"runnable_artifact_ref":{"id":"fixture-runnable-artifact-clock-python-001"}}}',
+    '{"sandbox":{"system_code_ref":{"id":"fixture-system-code-clock-python-001"}}}',
     "## runtime API start A command evidence",
     "$ sbx create --name ouro-s5-clock-a shell /repo",
     "exit_code=0",
-    "$ sbx exec -d -w /repo ouro-s5-clock-a python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-clock-a",
+    "$ sbx exec -d -w /repo ouro-s5-clock-a python3 fixtures/trading-systems/clock.py --instance-id sandbox-clock-a",
     "exit_code=0",
     "## direct sbx log A",
-    "$ sbx exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl",
-    '{"event":"runtime_heartbeat","instance_id":"sandbox-runtime-instance-clock-a"}',
+    "$ sbx exec ouro-s5-clock-a cat /tmp/ouroboros-sandbox-clock-a.jsonl",
+    '{"event":"runtime_heartbeat","instance_id":"sandbox-clock-a"}',
     "## runtime API status A",
-    '{"instance_id":"sandbox-runtime-instance-clock-a","heartbeats":[{"heartbeat_line":"runtime_heartbeat sandbox-runtime-instance-clock-a"}]}',
+    '{"instance_id":"sandbox-clock-a","heartbeats":[{"heartbeat_line":"runtime_heartbeat sandbox-clock-a"}]}',
     "## runtime API logs A",
-    '{"logs":[{"lines":["runtime_heartbeat sandbox-runtime-instance-clock-a"]}]}',
+    '{"logs":[{"lines":["runtime_heartbeat sandbox-clock-a"]}]}',
     "## runtime API stop A response",
-    '{"runtime_instance":{"sandbox_runtime_instance_id":"sandbox-runtime-instance-clock-a","lifecycle_status":"stopped"}}',
+    '{"sandbox":{"sandbox_id":"sandbox-clock-a","lifecycle_status":"stopped"}}',
     "## runtime API stop A command evidence",
     "$ sbx exec ouro-s5-clock-a pkill -TERM -f fixtures/trading-systems/clock.py",
     "exit_code=0",
@@ -3148,12 +3148,12 @@ function fakeCompletionEvidence(
     "exit_code=0",
     "## runtime API start B response",
     options.omitStartBArtifactId
-      ? '{"runtime_instance":{"runnable_artifact_ref":{"id":"different-artifact"}}}'
-      : '{"runtime_instance":{"runnable_artifact_ref":{"id":"fixture-runnable-artifact-clock-python-001"}}}',
+      ? '{"sandbox":{"system_code_ref":{"id":"different-artifact"}}}'
+      : '{"sandbox":{"system_code_ref":{"id":"fixture-system-code-clock-python-001"}}}',
     "## runtime API start B command evidence",
     "$ sbx create --name ouro-s5-clock-b shell /repo",
     "exit_code=0",
-    "$ sbx exec -d -w /repo ouro-s5-clock-b python3 fixtures/trading-systems/clock.py --instance-id sandbox-runtime-instance-clock-b",
+    "$ sbx exec -d -w /repo ouro-s5-clock-b python3 fixtures/trading-systems/clock.py --instance-id sandbox-clock-b",
     ...(options.omitStartBExitCode ? [] : ["exit_code=0"]),
     "## sbx ls",
     "NAME AGENT STATUS WORKSPACE",
@@ -3163,19 +3163,19 @@ function fakeCompletionEvidence(
       ? []
       : [
           "## direct sbx log B",
-          "$ sbx exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.jsonl",
+          "$ sbx exec ouro-s5-clock-b cat /tmp/ouroboros-sandbox-clock-b.jsonl",
           `{"event":"runtime_heartbeat","instance_id":"${
             options.wrongDirectLogBInstance
-              ? "sandbox-runtime-instance-clock-a"
-              : "sandbox-runtime-instance-clock-b"
+              ? "sandbox-clock-a"
+              : "sandbox-clock-b"
           }"}`
         ]),
     "## runtime API status B",
-    '{"instance_id":"sandbox-runtime-instance-clock-b","heartbeats":[{"heartbeat_line":"runtime_heartbeat sandbox-runtime-instance-clock-b"}]}',
+    '{"instance_id":"sandbox-clock-b","heartbeats":[{"heartbeat_line":"runtime_heartbeat sandbox-clock-b"}]}',
     "## runtime API logs B",
     options.omitRuntimeApiLogBHeartbeat
       ? '{"logs":[{"lines":["clock line without heartbeat"]}]}'
-      : '{"logs":[{"lines":["runtime_heartbeat sandbox-runtime-instance-clock-b"]}]}',
+      : '{"logs":[{"lines":["runtime_heartbeat sandbox-clock-b"]}]}',
     ...stopAndRemoveB,
     "RESULT: passed",
     ""

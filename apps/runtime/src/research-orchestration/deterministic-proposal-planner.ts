@@ -1,19 +1,19 @@
 import { createHash } from "node:crypto";
 import type {
   ArtifactLineageRecord,
-  ArtifactChangeProposalRecord,
+  ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
   Ref,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 
-export interface DeterministicArtifactChangeProposalPlannerInput {
+export interface DeterministicImprovementProposalPlannerInput {
   task: TradingEvaluationTaskRecord;
   findings: ResearchFindingRecord[];
   existing_lineages?: ArtifactLineageRecord[];
-  parent_runnable_artifact_ref?: Ref;
+  parent_system_code_ref?: Ref;
   idempotency_key?: string;
   created_at?: string;
   artifact_path?: string;
@@ -22,17 +22,17 @@ export interface DeterministicArtifactChangeProposalPlannerInput {
   capability_policy_ref?: Ref;
 }
 
-export interface DeterministicArtifactChangeProposalPlannerOutcome {
+export interface DeterministicImprovementProposalPlannerOutcome {
   run: ResearchOrchestrationRunRecord;
-  proposal: ArtifactChangeProposalRecord;
-  runnable_artifact: RunnableArtifactRecord;
+  proposal: ImprovementProposalRecord;
+  system_code: SystemCodeRecord;
   lineage: ArtifactLineageRecord;
   source_finding: ResearchFindingRecord;
   anti_hacking_findings: ResearchFindingRecord[];
 }
 
-export class DeterministicArtifactChangeProposalPlanner {
-  plan(input: DeterministicArtifactChangeProposalPlannerInput): DeterministicArtifactChangeProposalPlannerOutcome {
+export class DeterministicImprovementProposalPlanner {
+  plan(input: DeterministicImprovementProposalPlannerInput): DeterministicImprovementProposalPlannerOutcome {
     assertBacktestEvaluationTask(input.task);
     const sourceFinding = selectSourceFinding(input.findings);
     if (!sourceFinding) {
@@ -42,16 +42,16 @@ export class DeterministicArtifactChangeProposalPlanner {
     const antiHackingFindings = input.findings
       .filter((finding) => finding.finding_kind === "anti_hacking_case")
       .sort(compareFindings);
-    const parentRunnableArtifactRef = input.parent_runnable_artifact_ref
+    const parentSystemCodeRef = input.parent_system_code_ref
       ?? parentArtifactRefFromLineage(sourceFinding, input.existing_lineages);
     const createdAt = input.created_at ?? new Date().toISOString();
     const suffix = stableSuffix(input.idempotency_key ?? [
       input.task.trading_evaluation_task_id,
       sourceFinding.research_finding_id,
-      parentRunnableArtifactRef?.id ?? "root"
+      parentSystemCodeRef?.id ?? "root"
     ].join(":"));
-    const proposedArtifactRef = ref("runnable_artifact", `research-runnable-artifact-proposal-${suffix}`);
-    const proposalRef = ref("artifact_change_proposal", `artifact-change-proposal-${suffix}`);
+    const proposedArtifactRef = ref("system_code", `research-system-code-proposal-${suffix}`);
+    const proposalRef = ref("improvement_proposal", `improvement-proposal-${suffix}`);
     const lineageRef = ref("artifact_lineage", `artifact-lineage-${suffix}`);
     const runRef = ref("research_orchestration_run", `research-orchestration-run-${suffix}`);
     const sourceFindingRef = ref("research_finding", sourceFinding.research_finding_id);
@@ -63,32 +63,32 @@ export class DeterministicArtifactChangeProposalPlanner {
       .sort(compareLineages)
       .map((lineage) => ref("artifact_lineage", lineage.artifact_lineage_id));
 
-    const proposal: ArtifactChangeProposalRecord = stripUndefined({
-      record_kind: "artifact_change_proposal",
+    const proposal: ImprovementProposalRecord = stripUndefined({
+      record_kind: "improvement_proposal",
       version: 1,
-      artifact_change_proposal_id: proposalRef.id,
+      improvement_proposal_id: proposalRef.id,
       research_worker_ref: sourceFinding.research_worker_ref,
       research_direction_ref: sourceFinding.research_direction_ref,
       trading_evaluation_task_ref: ref("trading_evaluation_task", input.task.trading_evaluation_task_id),
-      proposed_runnable_artifact_ref: proposedArtifactRef,
-      parent_runnable_artifact_ref: parentRunnableArtifactRef,
+      proposed_system_code_ref: proposedArtifactRef,
+      parent_system_code_ref: parentSystemCodeRef,
       source_finding_refs: [sourceFindingRef],
       anti_hacking_finding_refs: antiHackingFindingRefs.length ? antiHackingFindingRefs : undefined,
-      proposal_summary: `Fixture artifact change proposal from ${sourceFinding.research_finding_id}`,
+      proposal_summary: `Fixture improvement proposal from ${sourceFinding.research_finding_id}`,
       requested_change_summary: requestedChangeSummary(sourceFinding, antiHackingFindings),
       expected_improvement_summary: "Improve held-out generic trading robustness under the same sealed evaluator.",
       created_at: createdAt,
       status: "proposed",
       authority_status: "proposal_only"
-    } satisfies ArtifactChangeProposalRecord);
+    } satisfies ImprovementProposalRecord);
 
-    const runnableArtifact: RunnableArtifactRecord = {
-      record_kind: "runnable_artifact",
+    const systemCode: SystemCodeRecord = {
+      record_kind: "system_code",
       version: 1,
-      runnable_artifact_id: proposedArtifactRef.id,
+      system_code_id: proposedArtifactRef.id,
       artifact_kind: "python_file",
       artifact_path: input.artifact_path ?? "fixtures/trading-systems/clock.py",
-      artifact_digest: `sha256:${stableDigest(proposal.artifact_change_proposal_id)}`,
+      artifact_digest: `sha256:${stableDigest(proposal.improvement_proposal_id)}`,
       runtime_kind: "python",
       entrypoint: ["python", input.artifact_path ?? "fixtures/trading-systems/clock.py"],
       declared_output_contract: {
@@ -97,7 +97,7 @@ export class DeterministicArtifactChangeProposalPlanner {
       },
       artifact_runtime_contract_ref: input.artifact_runtime_contract_ref,
       secret_policy_ref: input.secret_policy_ref ?? ref("secret_policy", "no-raw-secrets"),
-      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "fixture-artifact-change-proposal"),
+      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "fixture-improvement-proposal"),
       provenance_refs: [proposalRef, sourceFindingRef],
       status: "registered",
       created_at: createdAt,
@@ -108,8 +108,8 @@ export class DeterministicArtifactChangeProposalPlanner {
       record_kind: "artifact_lineage",
       version: 1,
       artifact_lineage_id: lineageRef.id,
-      child_runnable_artifact_ref: proposedArtifactRef,
-      parent_runnable_artifact_ref: parentRunnableArtifactRef,
+      child_system_code_ref: proposedArtifactRef,
+      parent_system_code_ref: parentSystemCodeRef,
       source_finding_refs: [sourceFindingRef],
       created_by_research_worker_ref: sourceFinding.research_worker_ref,
       created_at: createdAt,
@@ -126,7 +126,7 @@ export class DeterministicArtifactChangeProposalPlanner {
       input_finding_refs: [sourceFindingRef, ...antiHackingFindingRefs],
       input_lineage_refs: inputLineageRefs.length ? inputLineageRefs : undefined,
       output_artifact_proposal_ref: proposalRef,
-      output_runnable_artifact_ref: proposedArtifactRef,
+      output_system_code_ref: proposedArtifactRef,
       output_lineage_ref: lineageRef,
       trace_ref: ref("trace_placeholder", `trace-research-orchestration-${suffix}`),
       started_at: createdAt,
@@ -138,7 +138,7 @@ export class DeterministicArtifactChangeProposalPlanner {
     return {
       run,
       proposal,
-      runnable_artifact: runnableArtifact,
+      system_code: systemCode,
       lineage,
       source_finding: sourceFinding,
       anti_hacking_findings: antiHackingFindings
@@ -173,7 +173,7 @@ function parentArtifactRefFromLineage(
     .filter((lineage) => lineageIncludesFinding(lineage, sourceFinding.research_finding_id))
     .sort(compareLineages)
     .at(-1)
-    ?.child_runnable_artifact_ref;
+    ?.child_system_code_ref;
 }
 
 function requestedChangeSummary(

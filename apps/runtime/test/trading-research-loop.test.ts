@@ -60,7 +60,7 @@ describe("Trading research research loop MVP", () => {
       agent_changed_paths: ["run.py"],
       evaluation: {
         status: "accepted",
-        risk_decision: "valid_order_intent_draft"
+        risk_decision: "valid_order_request"
       }
     });
     expect(notebook.entries[0].events_path).toContain("replay-set.json");
@@ -78,7 +78,7 @@ describe("Trading research research loop MVP", () => {
       agent_status: "edited",
       evaluation: {
         status: "disqualified",
-        risk_decision: "invalid_order_intent_draft"
+        risk_decision: "invalid_order_request"
       }
     });
     expect(notebook.entries[1].evaluation.scenario_results).toEqual([
@@ -121,14 +121,14 @@ describe("Trading research research loop MVP", () => {
     expect(run.events.map((event) => event.event)).toEqual([
       "market_snapshot",
       "account_state",
-      "order_intent_draft",
+      "order_request",
       "order_validation",
       "run_complete"
     ]);
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
       score: 0.85,
-      risk_decision: "valid_order_intent_draft"
+      risk_decision: "valid_order_request"
     });
   });
 
@@ -151,7 +151,7 @@ describe("Trading research research loop MVP", () => {
     expect(run.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          event: "order_intent_draft",
+          event: "order_request",
           side: "hold",
           quantity: 0
         })
@@ -160,7 +160,7 @@ describe("Trading research research loop MVP", () => {
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
       score: 1,
-      risk_decision: "valid_order_intent_draft"
+      risk_decision: "valid_order_request"
     });
   });
 
@@ -282,7 +282,7 @@ describe("Trading research research loop MVP", () => {
       score: 0,
       evaluation: {
         status: "disqualified",
-        risk_decision: "no_order_intent_draft"
+        risk_decision: "no_order_request"
       }
     });
     const scenarioResult = result.entries[0].evaluation.scenario_results?.[0];
@@ -300,7 +300,7 @@ describe("Trading research research loop MVP", () => {
         expect.objectContaining({
           command: [fakeSbx, "create", "--name", scenarioResult?.sandbox_name, "shell", tmpDir],
           exit_code: 42,
-          stderr_preview: "create failed: runtime-control unavailable\n"
+          stderr_preview: "create failed: run-control unavailable\n"
         })
       ]
     });
@@ -510,7 +510,7 @@ case "$1" in
     printf 'Client Version: fake-sbx\\nServer Version: fake-sbx\\n'
     ;;
   create)
-    echo 'create failed: runtime-control unavailable' >&2
+    echo 'create failed: run-control unavailable' >&2
     exit 42
     ;;
   *)

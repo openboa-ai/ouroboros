@@ -5,27 +5,27 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   ArtifactLineageRecord,
   ResearchFindingRecord,
-  ArtifactChangeProposalProviderResult,
+  ImprovementProposalProviderResult,
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { planArtifactChangeProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
-import type { ArtifactChangeProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import { planImprovementProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
+import type { ImprovementProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-artifact-change-proposal-loop-"));
+  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-improvement-proposal-loop-"));
 });
 
 afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("local-store artifact change proposal loop", () => {
+describe("local-store improvement proposal loop", () => {
   it("loads stored findings and writes planner proposal output back to local-store", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -44,7 +44,7 @@ describe("local-store artifact change proposal loop", () => {
     await store.recordResearchFinding(antiHackingFinding);
     await store.recordArtifactLineage(priorLineage);
 
-    const outcome = await planArtifactChangeProposalFromLocalStore({
+    const outcome = await planImprovementProposalFromLocalStore({
       store,
       task: fixtureTradingEvaluationTask(),
       idempotency_key: "local-store-loop",
@@ -55,10 +55,10 @@ describe("local-store artifact change proposal loop", () => {
     expect(outcome.anti_hacking_findings.map((finding) => finding.research_finding_id)).toEqual([
       antiHackingFinding.research_finding_id
     ]);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([outcome.proposal]);
-    await expect(store.getRunnableArtifact(outcome.runnable_artifact.runnable_artifact_id))
-      .resolves.toEqual(outcome.runnable_artifact);
-    await expect(store.listArtifactLineagesForArtifact(outcome.runnable_artifact.runnable_artifact_id))
+    await expect(store.listImprovementProposals()).resolves.toEqual([outcome.proposal]);
+    await expect(store.getSystemCode(outcome.system_code.system_code_id))
+      .resolves.toEqual(outcome.system_code);
+    await expect(store.listArtifactLineagesForArtifact(outcome.system_code.system_code_id))
       .resolves.toEqual([outcome.lineage]);
     await expect(store.listResearchOrchestrationRuns()).resolves.toEqual([outcome.run]);
     expect(outcome.run.input_lineage_refs).toEqual([
@@ -73,14 +73,14 @@ describe("local-store artifact change proposal loop", () => {
     const emptyStore = new LocalStore(tmpDir);
     await emptyStore.initialize();
     await expect(
-      planArtifactChangeProposalFromLocalStore({
+      planImprovementProposalFromLocalStore({
         store: emptyStore,
         task: fixtureTradingEvaluationTask(),
         idempotency_key: "empty"
       })
     ).rejects.toThrow("no_research_findings");
 
-    const antiOnlyDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-artifact-change-proposal-loop-"));
+    const antiOnlyDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-improvement-proposal-loop-"));
     const antiOnlyStore = new LocalStore(antiOnlyDir);
     try {
       await antiOnlyStore.initialize();
@@ -90,7 +90,7 @@ describe("local-store artifact change proposal loop", () => {
         createdAt: "2026-05-11T16:02:00.000Z"
       }));
       await expect(
-        planArtifactChangeProposalFromLocalStore({
+        planImprovementProposalFromLocalStore({
           store: antiOnlyStore,
           task: fixtureTradingEvaluationTask(),
           idempotency_key: "anti-only"
@@ -111,24 +111,24 @@ describe("local-store artifact change proposal loop", () => {
     }));
 
     await expect(
-      planArtifactChangeProposalFromLocalStore({
+      planImprovementProposalFromLocalStore({
         store,
         task: fixtureTradingEvaluationTask(),
-        provider_adapter: new FailingArtifactChangeProposalProviderAdapter(),
+        provider_adapter: new FailingImprovementProposalProviderAdapter(),
         idempotency_key: "local-store-loop-provider-failure",
         created_at: "2026-05-11T16:03:30.000Z"
       })
-    ).rejects.toThrow("artifact_change_proposal_provider_failed");
+    ).rejects.toThrow("improvement_proposal_provider_failed");
 
-    const attempts = await store.listArtifactChangeProposalMaterializationAttempts();
+    const attempts = await store.listImprovementProposalMaterializationAttempts();
     expect(attempts).toHaveLength(1);
     expect(attempts[0]).toMatchObject({
       status: "failed",
       validation_status: "rejected",
-      failure_reason: "artifact_change_proposal_provider_failed",
+      failure_reason: "improvement_proposal_provider_failed",
       authority_status: "proposal_input_only"
     });
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([]);
+    await expect(store.listImprovementProposals()).resolves.toEqual([]);
     await expect(store.listArtifactLineages()).resolves.toEqual([]);
     await expect(store.listResearchOrchestrationRuns()).resolves.toEqual([]);
   });
@@ -160,8 +160,8 @@ function artifactLineage(sourceFinding: ResearchFindingRecord): ArtifactLineageR
     record_kind: "artifact_lineage",
     version: 1,
     artifact_lineage_id: "artifact-lineage-market-trend-v1",
-    child_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-v1"),
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-seed-v1"),
+    child_system_code_ref: ref("system_code", "research-system-code-market-trend-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-market-seed-v1"),
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: "2026-05-11T16:00:30.000Z",
@@ -190,21 +190,21 @@ function fixtureTradingEvaluationTask(): TradingEvaluationTaskRecord {
   };
 }
 
-class FailingArtifactChangeProposalProviderAdapter implements ArtifactChangeProposalProviderAdapter {
-  async runArtifactChangeProposalGeneration(): Promise<ArtifactChangeProposalProviderResult> {
+class FailingImprovementProposalProviderAdapter implements ImprovementProposalProviderAdapter {
+  async runImprovementProposalGeneration(): Promise<ImprovementProposalProviderResult> {
     return {
       status: "failed",
       provider: {
         provider_kind: "fixture_only",
-        model: "failing-fixture-artifact-change-proposal-provider",
+        model: "failing-fixture-improvement-proposal-provider",
         invocation_surface: "failing fixture adapter"
       },
-      failure_reason: "artifact_change_proposal_provider_failed",
+      failure_reason: "improvement_proposal_provider_failed",
       agent_run_ref: ref("agent_run", "agent-run-failing-fixture-research-provider"),
       agent_event_refs: [ref("agent_event", "agent-event-failing-fixture-research-provider")],
       trace_ref: ref("trace_placeholder", "trace-failing-fixture-research-provider"),
       provider_output_artifact_refs: [
-        ref("artifact_change_proposal_provider_output_artifact", "failing-fixture-research-provider-output")
+        ref("improvement_proposal_provider_output_artifact", "failing-fixture-research-provider-output")
       ],
       debug_artifact_refs: [ref("debug_artifact", "failing-fixture-research-provider-debug")],
       idempotency_key: "failing-fixture-research-provider",

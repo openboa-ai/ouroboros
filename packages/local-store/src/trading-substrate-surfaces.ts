@@ -340,7 +340,7 @@ export function isOrderFillSurfaceRecord(value: unknown): value is OrderFillSurf
     raw.no_authority.order_submission === false &&
     raw.no_authority.credentials === false &&
     (raw.authority_status === "not_live" || raw.authority_status === "read_only") &&
-    (raw.runtime_ref === undefined || isRef(raw.runtime_ref, "trading_system_runtime")) &&
+    (raw.runtime_ref === undefined || isRef(raw.runtime_ref, "trading_run")) &&
     (raw.candidate_ref === undefined || isRef(raw.candidate_ref, "trading_system_candidate")) &&
     (raw.stage_binding_ref === undefined || isRef(raw.stage_binding_ref, "stage_binding")) &&
     (raw.source_ref === undefined || isRef(raw.source_ref))

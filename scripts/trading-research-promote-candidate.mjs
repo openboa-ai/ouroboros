@@ -96,7 +96,7 @@ const suffix = stableSuffix(`${sessionId}:${gate}:${sourceDigest}`);
 const candidateId = args["candidate-id"] ?? `trading-system-candidate-${suffix}`;
 validateCandidateId(candidateId);
 const candidateVersionId = `${candidateId}-v1`;
-const runnableArtifactId = `runnable-artifact-${suffix}`;
+const systemCodeId = `system-code-${suffix}`;
 const promotionId = `trading-research-promotion-${suffix}`;
 const candidateDir = path.join(candidateRoot, candidateId);
 const promotedArtifactDir = path.join(candidateDir, "artifact");
@@ -106,7 +106,7 @@ const promotedAt = new Date().toISOString();
 const refs = {
   candidate: ref("trading_system_candidate", candidateId),
   candidateVersion: ref("candidate_version", candidateVersionId),
-  runnableArtifact: ref("runnable_artifact", runnableArtifactId),
+  systemCode: ref("system_code", systemCodeId),
   notebook: ref("trading_research_notebook", sessionId),
   promotion: ref("trading_research_candidate_promotion", promotionId)
 };
@@ -118,12 +118,12 @@ const candidate = {
   display_name: `Trading research candidate ${sessionId}`,
   status: "materialized",
   active_version_id: candidateVersionId,
-  provenance_refs: [refs.notebook, refs.runnableArtifact, refs.promotion],
+  provenance_refs: [refs.notebook, refs.systemCode, refs.promotion],
   title: `Trading research candidate from ${sessionId}`,
   system_summary: `Promoted from Trading research ${gate} gate using artifact ${manifest.id ?? "unknown"}.`,
   candidate_status: "handoff_ready",
   evaluation_handoff_ready: true,
-  active_runnable_artifact_ref: refs.runnableArtifact,
+  active_system_code_ref: refs.systemCode,
   authority_status: "not_live"
 };
 
@@ -136,15 +136,15 @@ const candidateVersion = {
   spec_ref: ref("trading_system_spec", `${candidateId}-spec`),
   program_ref: ref("trading_system_program", `${candidateId}-program`),
   capability_package_refs: [ref("capability_package", `${candidateId}-capabilities`)],
-  runtime_ref: ref("trading_system_runtime", `${candidateId}-runtime`),
+  runtime_ref: ref("trading_run", `${candidateId}-runtime`),
   trace_placeholder_ref: ref("trace_placeholder", `${candidateId}-trace`),
-  runnable_artifact_ref: refs.runnableArtifact
+  system_code_ref: refs.systemCode
 };
 
-const runnableArtifact = {
-  record_kind: "runnable_artifact",
+const systemCode = {
+  record_kind: "system_code",
   version: 1,
-  runnable_artifact_id: runnableArtifactId,
+  system_code_id: systemCodeId,
   artifact_kind: "python_file",
   artifact_path: promotedArtifactDir,
   artifact_digest: sourceDigest,
@@ -152,7 +152,7 @@ const runnableArtifact = {
   entrypoint: asArray(manifest.entrypoint).map(String),
   declared_output_contract: {
     contract_kind: "opaque_runtime_boundary",
-    declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
+    declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
   },
   secret_policy_ref: ref("secret_policy", "secret-policy-no-raw-values-v1"),
   capability_policy_ref: ref("capability_policy", "capability-policy-trading-replay-readonly-v1"),
@@ -168,7 +168,7 @@ const promotion = {
   promotion_id: promotionId,
   candidate_ref: refs.candidate,
   candidate_version_ref: refs.candidateVersion,
-  runnable_artifact_ref: refs.runnableArtifact,
+  system_code_ref: refs.systemCode,
   source: {
     session_id: sessionId,
     notebook_path: notebookPath,
@@ -197,7 +197,7 @@ if (args["print-only"] !== "true") {
   await cp(bestArtifactDir, promotedArtifactDir, { recursive: true });
   await writeJson(path.join(candidateDir, "candidate.json"), candidate);
   await writeJson(path.join(candidateDir, "candidate-version.json"), candidateVersion);
-  await writeJson(path.join(candidateDir, "runnable-artifact.json"), runnableArtifact);
+  await writeJson(path.join(candidateDir, "system-code.json"), systemCode);
   await writeJson(path.join(candidateDir, "promotion.json"), promotion);
   await rebuildCandidateIndex(candidateRoot);
 }
@@ -445,8 +445,8 @@ function addSeededEntryMissing(missing, entry) {
   if (!Number.isFinite(entry?.evaluation?.score) || entry.evaluation.score < 1) {
     missing.push(`${label} evaluation.score >= 1`);
   }
-  if (entry?.evaluation?.risk_decision !== "valid_order_intent_draft") {
-    missing.push(`${label} evaluation.risk_decision == valid_order_intent_draft`);
+  if (entry?.evaluation?.risk_decision !== "valid_order_request") {
+    missing.push(`${label} evaluation.risk_decision == valid_order_request`);
   }
   const scenarioResults = asArray(entry?.evaluation?.scenario_results);
   for (const scenarioId of REQUIRED_SCENARIOS) {
@@ -474,8 +474,8 @@ function addSeededScenarioMissing(missing, entryLabel, scenario) {
   if (!Number.isFinite(scenario?.score) || scenario.score < 1) {
     missing.push(`${label} score >= 1`);
   }
-  if (scenario?.risk_decision !== "valid_order_intent_draft") {
-    missing.push(`${label} risk_decision == valid_order_intent_draft`);
+  if (scenario?.risk_decision !== "valid_order_request") {
+    missing.push(`${label} risk_decision == valid_order_request`);
   }
   if (!stringValue(scenario?.events_path)) {
     missing.push(`${label} events_path`);

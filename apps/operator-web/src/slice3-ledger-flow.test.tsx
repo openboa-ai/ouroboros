@@ -5,9 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   CandidateInspectReadModel,
-  ExecutionAttemptRecord,
-  GatewayDecisionRecord,
-  OrderIntentDraftRecord,
+  ExecutionResultRecord,
+  GatewayResultRecord,
+  OrderRequestRecord,
   StageBindingRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
@@ -25,8 +25,8 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("Slice 3 trading loop MLP flow", () => {
-  it("records a dry-run trading loop through runtime API and renders TradingLedger state", async () => {
+describe("Slice 3 trading run MLP flow", () => {
+  it("records a dry-run trading run through runtime API and renders Ledger state", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({ store });
 
@@ -37,23 +37,19 @@ describe("Slice 3 trading loop MLP flow", () => {
       });
       expect(initialRead.statusCode).toBe(200);
       const initialCandidate = initialRead.json() as CandidateInspectReadModel;
-      expect(initialCandidate.runtime.trading_ledger).toMatchObject({
-        ledger_kind: "trading_ledger",
-        has_activity: false,
-        chain_complete: false
-      });
-      expect(initialCandidate.runtime.bounded_authority).toMatchObject({
+      expect(initialCandidate.ledger).toMatchObject({
+        ledger_kind: "ledger",
         has_activity: false,
         chain_complete: false
       });
 
       const recorded = await server.inject({
         method: "POST",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`
       });
       const duplicate = await server.inject({
         method: "POST",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`
       });
       expect(recorded.statusCode).toBe(201);
       expect(duplicate.statusCode).toBe(201);
@@ -62,7 +58,7 @@ describe("Slice 3 trading loop MLP flow", () => {
       const outcome = recorded.json();
       expect(outcome).toMatchObject({
         status: "recorded",
-        order_intent: {
+        order_request: {
           intent_kind: "place_order",
           side: "buy",
           order_type: "limit",
@@ -71,37 +67,37 @@ describe("Slice 3 trading loop MLP flow", () => {
           status: "proposed",
           authority_status: "not_submitted"
         },
-        gateway_decision: {
+        gateway_result: {
           decision_outcome: "dry_run_only",
           decision_reason: "paper_stage_only",
           authority_status: "dry_run_only"
         },
-        execution_attempt: {
+        execution_result: {
           stage: "paper",
           execution_mode: "host_local",
           status: "dry_run_recorded",
           authority_status: "dry_run_only"
         },
-        trading_ledger: {
-          ledger_kind: "trading_ledger",
+        ledger: {
+          ledger_kind: "ledger",
           chain_complete: true
         }
       });
 
-      const orderIntent = await readStoreJson<OrderIntentDraftRecord>(
-        "order-intent-drafts",
+      const orderIntent = await readStoreJson<OrderRequestRecord>(
+        "order-requests",
         "items",
-        `${outcome.order_intent.order_intent_draft_id}.json`
+        `${outcome.order_request.order_request_id}.json`
       );
-      const gatewayDecision = await readStoreJson<GatewayDecisionRecord>(
-        "gateway-decisions",
+      const gatewayDecision = await readStoreJson<GatewayResultRecord>(
+        "gateway-results",
         "items",
-        `${outcome.gateway_decision.gateway_decision_id}.json`
+        `${outcome.gateway_result.gateway_result_id}.json`
       );
-      const executionAttempt = await readStoreJson<ExecutionAttemptRecord>(
-        "execution-attempts",
+      const executionAttempt = await readStoreJson<ExecutionResultRecord>(
+        "execution-results",
         "items",
-        `${outcome.execution_attempt.execution_attempt_id}.json`
+        `${outcome.execution_result.execution_result_id}.json`
       );
       const stageBinding = await readStoreJson<StageBindingRecord>(
         "stage-bindings",
@@ -110,8 +106,8 @@ describe("Slice 3 trading loop MLP flow", () => {
       );
 
       expect(orderIntent.runtime_ref.id).toBe(initialCandidate.runtime.ref.id);
-      expect(gatewayDecision.order_intent_draft_ref.id).toBe(orderIntent.order_intent_draft_id);
-      expect(executionAttempt.gateway_decision_ref.id).toBe(gatewayDecision.gateway_decision_id);
+      expect(gatewayDecision.order_request_ref.id).toBe(orderIntent.order_request_id);
+      expect(executionAttempt.gateway_result_ref.id).toBe(gatewayDecision.gateway_result_id);
       expect(stageBinding).toMatchObject({
         stage: "paper",
         profile: "paper",
@@ -128,51 +124,35 @@ describe("Slice 3 trading loop MLP flow", () => {
       });
       expect(readback.statusCode).toBe(200);
       const candidate = readback.json() as CandidateInspectReadModel;
-      expect(candidate.runtime.trading_ledger).toMatchObject({
-        ledger_kind: "trading_ledger",
+      expect(candidate.ledger).toMatchObject({
+        ledger_kind: "ledger",
         has_activity: true,
         chain_complete: true,
-        latest_order_intent: {
-          order_intent_draft_id: orderIntent.order_intent_draft_id,
+        latest_order_request: {
+          order_request_id: orderIntent.order_request_id,
           authority_status: "not_submitted"
         },
-        latest_gateway_decision: {
-          gateway_decision_id: gatewayDecision.gateway_decision_id,
+        latest_gateway_result: {
+          gateway_result_id: gatewayDecision.gateway_result_id,
           authority_status: "dry_run_only"
         },
-        latest_execution_attempt: {
-          execution_attempt_id: executionAttempt.execution_attempt_id,
-          authority_status: "dry_run_only"
-        }
-      });
-      expect(candidate.runtime.bounded_authority).toMatchObject({
-        has_activity: true,
-        chain_complete: true,
-        latest_order_intent_draft: {
-          order_intent_draft_id: orderIntent.order_intent_draft_id,
-          authority_status: "not_submitted"
-        },
-        latest_gateway_decision: {
-          gateway_decision_id: gatewayDecision.gateway_decision_id,
-          authority_status: "dry_run_only"
-        },
-        latest_execution_attempt: {
-          execution_attempt_id: executionAttempt.execution_attempt_id,
+        latest_execution_result: {
+          execution_result_id: executionAttempt.execution_result_id,
           authority_status: "dry_run_only"
         }
       });
 
       const html = renderToStaticMarkup(
-        <CandidateDetail candidate={candidate} onRunTradingLoop={() => undefined} />
+        <CandidateDetail candidate={candidate} onStartTradingRun={() => undefined} />
       );
-      expect(html).toContain("Trading ledger");
-      expect(html).not.toContain("Runtime Authority");
+      expect(html).toContain("Ledger");
+      expect(html).toContain("Ledger");
       expect(html).toContain("chain complete");
       expect(html).toContain("dry_run_only");
       expect(html).toContain("paper_stage_only");
-      expect(html).toContain(`order_intent_draft:${orderIntent.order_intent_draft_id}`);
-      expect(html).toContain(`gateway_decision:${gatewayDecision.gateway_decision_id}`);
-      expect(html).toContain("Run trading loop");
+      expect(html).toContain(`order_request:${outcome.order_request.order_request_id}`);
+      expect(html).toContain(`gateway_result:${outcome.gateway_result.gateway_result_id}`);
+      expect(html).toContain("Start trading run");
       expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
       expect(html).not.toMatch(/runtime stack launch/i);
     } finally {

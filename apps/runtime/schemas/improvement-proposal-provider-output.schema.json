@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ouroboros.local/schemas/artifact-change-proposal-provider-output.schema.json",
+  "$id": "https://ouroboros.local/schemas/improvement-proposal-provider-output.schema.json",
   "title": "Artifact Change Proposal Provider Output",
   "type": "object",
   "additionalProperties": false,
@@ -15,7 +15,7 @@
   ],
   "properties": {
     "output_kind": {
-      "const": "artifact_change_proposal_input"
+      "const": "improvement_proposal_input"
     },
     "trading_evaluation_task_ref": {
       "$ref": "#/$defs/ref"
@@ -33,7 +33,7 @@
         "$ref": "#/$defs/ref"
       }
     },
-    "parent_runnable_artifact_ref": {
+    "parent_system_code_ref": {
       "$ref": "#/$defs/ref"
     },
     "proposal_summary": {

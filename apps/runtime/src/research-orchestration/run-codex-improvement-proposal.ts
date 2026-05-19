@@ -1,7 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { runCodexArtifactChangeProposalDryRunAudit } from "./codex-artifact-change-proposal-dry-run-audit";
-
-type ExpectedStatus = "any" | "materialized" | "failed";
+import { runCodexImprovementProposalDryRun } from "./codex-improvement-proposal-dry-run";
 
 interface CliOptions {
   store_root?: string;
@@ -13,13 +11,11 @@ interface CliOptions {
   codex_model?: string;
   codex_timeout_ms?: number;
   working_directory?: string;
-  expect_status?: ExpectedStatus;
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
   const options = parseArgs(argv);
-  const expectedStatus = options.expect_status ?? expectedStatusFromEnv() ?? "any";
-  const outcome = await runCodexArtifactChangeProposalDryRunAudit({
+  const outcome = await runCodexImprovementProposalDryRun({
     store_root: options.store_root ?? process.env.OUROBOROS_STORE_ROOT,
     idempotency_key: options.idempotency_key ?? process.env.OUROBOROS_ARTIFACT_CHANGE_PROPOSAL_IDEMPOTENCY_KEY,
     created_at: options.created_at ?? process.env.OUROBOROS_ARTIFACT_CHANGE_PROPOSAL_CREATED_AT,
@@ -31,11 +27,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     working_directory: options.working_directory ?? process.cwd()
   });
 
-  process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
-  if (expectedStatus !== "any" && outcome.dry_run.status !== expectedStatus) {
-    process.stderr.write(
-      `expected dry-run status ${expectedStatus}, got ${outcome.dry_run.status}\n`
-    );
+  process.stdout.write(`${JSON.stringify(toCliOutput(outcome), null, 2)}\n`);
+  if (outcome.status === "failed") {
     process.exitCode = 1;
   }
 }
@@ -80,9 +73,6 @@ function parseArgs(argv: string[]): CliOptions {
       case "--working-directory":
         options.working_directory = value;
         break;
-      case "--expect-status":
-        options.expect_status = parseExpectedStatus(value);
-        break;
       default:
         throw new Error(`unknown option: ${flag}`);
     }
@@ -103,16 +93,25 @@ function parsePositiveInteger(value: string, label: string): number {
   return parsed;
 }
 
-function expectedStatusFromEnv(): ExpectedStatus | undefined {
-  const value = process.env.OUROBOROS_CODEX_ARTIFACT_CHANGE_PROPOSAL_EXPECT_STATUS;
-  return value ? parseExpectedStatus(value) : undefined;
-}
-
-function parseExpectedStatus(value: string): ExpectedStatus {
-  if (value === "any" || value === "materialized" || value === "failed") {
-    return value;
+function toCliOutput(outcome: Awaited<ReturnType<typeof runCodexImprovementProposalDryRun>>): object {
+  if (outcome.status === "failed") {
+    return outcome;
   }
-  throw new Error(`unknown expected status: ${value}`);
+  return {
+    status: outcome.status,
+    store_root: outcome.store_root,
+    idempotency_key: outcome.idempotency_key,
+    research_orchestration_run_id: outcome.outcome.run.research_orchestration_run_id,
+    improvement_proposal_id: outcome.outcome.proposal.improvement_proposal_id,
+    system_code_id: outcome.outcome.system_code.system_code_id,
+    artifact_lineage_id: outcome.outcome.lineage.artifact_lineage_id,
+    authority_status: {
+      run: outcome.outcome.run.authority_status,
+      proposal: outcome.outcome.proposal.authority_status,
+      system_code: outcome.outcome.system_code.authority_status,
+      lineage: outcome.outcome.lineage.authority_status
+    }
+  };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

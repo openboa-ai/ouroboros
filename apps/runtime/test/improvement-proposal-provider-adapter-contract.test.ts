@@ -1,31 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type {
   ResearchFindingRecord,
-  ArtifactChangeProposalProviderAttribution,
-  ArtifactChangeProposalProviderFailureReason,
-  ArtifactChangeProposalProviderProbeResult,
-  ArtifactChangeProposalProviderRequest,
-  ArtifactChangeProposalProviderResult,
+  ImprovementProposalProviderAttribution,
+  ImprovementProposalProviderFailureReason,
+  ImprovementProposalProviderProbeResult,
+  ImprovementProposalProviderRequest,
+  ImprovementProposalProviderResult,
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import type { ArtifactChangeProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("ArtifactChangeProposalProviderAdapter contract", () => {
-  it("exposes a Codex-first artifact change proposal provider seam without real provider execution", async () => {
-    const adapter = new FixtureArtifactChangeProposalProviderAdapter();
+describe("ImprovementProposalProviderAdapter contract", () => {
+  it("exposes a Codex-first improvement proposal provider seam without real provider execution", async () => {
+    const adapter = new FixtureImprovementProposalProviderAdapter();
     const request = validRequest();
 
-    await expect(adapter.probeArtifactChangeProposal?.()).resolves.toMatchObject({
+    await expect(adapter.probeImprovementProposal?.()).resolves.toMatchObject({
       provider_kind: "codex_cli",
       model: "gpt-5.4",
       readiness_status: "active_verified",
-      supported_purposes: ["artifact_change_proposal_generation"]
+      supported_purposes: ["improvement_proposal_generation"]
     });
 
-    const result = await adapter.runArtifactChangeProposalGeneration(request);
+    const result = await adapter.runImprovementProposalGeneration(request);
 
     expect(result).toMatchObject({
       status: "succeeded",
@@ -34,7 +34,7 @@ describe("ArtifactChangeProposalProviderAdapter contract", () => {
         model: "gpt-5.4"
       },
       output: {
-        output_kind: "artifact_change_proposal_input",
+        output_kind: "improvement_proposal_input",
         trading_evaluation_task_ref: ref(
           "trading_evaluation_task",
           request.task.trading_evaluation_task_id
@@ -46,57 +46,57 @@ describe("ArtifactChangeProposalProviderAdapter contract", () => {
       authority_status: "proposal_input_only"
     });
     expect(result.provider_output_artifact_refs).toEqual([
-      ref("artifact_change_proposal_provider_output_artifact", "fixture-research-provider-output-runtime-contract")
+      ref("improvement_proposal_provider_output_artifact", "fixture-research-provider-output-runtime-contract")
     ]);
     expect(JSON.stringify(result)).not.toMatch(
-      /artifact_change_proposal_id|strategy_internals|strategy_schema|venue_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/i
+      /improvement_proposal_id|strategy_internals|strategy_schema|venue_credentials|paper_order_authority|live_order_authority|promotion_decision_ref/i
     );
   });
 
   it("returns adapter failures as trace material without proposal output", async () => {
-    const adapter = new FixtureArtifactChangeProposalProviderAdapter("artifact_change_proposal_provider_failed");
-    const result = await adapter.runArtifactChangeProposalGeneration(validRequest());
+    const adapter = new FixtureImprovementProposalProviderAdapter("improvement_proposal_provider_failed");
+    const result = await adapter.runImprovementProposalGeneration(validRequest());
 
     expect(result).toMatchObject({
       status: "failed",
-      failure_reason: "artifact_change_proposal_provider_failed",
+      failure_reason: "improvement_proposal_provider_failed",
       authority_status: "proposal_input_only"
     });
     expect(result).not.toHaveProperty("output");
   });
 });
 
-class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProposalProviderAdapter {
-  private readonly failureReason?: ArtifactChangeProposalProviderFailureReason;
-  private readonly provider: ArtifactChangeProposalProviderAttribution = {
+class FixtureImprovementProposalProviderAdapter implements ImprovementProposalProviderAdapter {
+  private readonly failureReason?: ImprovementProposalProviderFailureReason;
+  private readonly provider: ImprovementProposalProviderAttribution = {
     provider_kind: "codex_cli",
     model: "gpt-5.4",
     invocation_surface: "fixture research proposal provider contract"
   };
 
-  constructor(failureReason?: ArtifactChangeProposalProviderFailureReason) {
+  constructor(failureReason?: ImprovementProposalProviderFailureReason) {
     this.failureReason = failureReason;
   }
 
-  async probeArtifactChangeProposal(): Promise<ArtifactChangeProposalProviderProbeResult> {
+  async probeImprovementProposal(): Promise<ImprovementProposalProviderProbeResult> {
     return {
       ...this.provider,
       readiness_status: this.failureReason ? "candidate_unverified" : "active_verified",
-      supported_purposes: ["artifact_change_proposal_generation"],
+      supported_purposes: ["improvement_proposal_generation"],
       failure_reason: this.failureReason
     };
   }
 
-  async runArtifactChangeProposalGeneration(
-    request: ArtifactChangeProposalProviderRequest
-  ): Promise<ArtifactChangeProposalProviderResult> {
+  async runImprovementProposalGeneration(
+    request: ImprovementProposalProviderRequest
+  ): Promise<ImprovementProposalProviderResult> {
     const base = {
       provider: this.provider,
       agent_run_ref: request.agent_run_ref,
       agent_event_refs: [ref("agent_event", "agent-event-research-provider-runtime-contract")],
       trace_ref: request.trace_ref,
       provider_output_artifact_refs: [
-        ref("artifact_change_proposal_provider_output_artifact", "fixture-research-provider-output-runtime-contract")
+        ref("improvement_proposal_provider_output_artifact", "fixture-research-provider-output-runtime-contract")
       ],
       debug_artifact_refs: [ref("debug_artifact", "fixture-research-provider-debug-runtime-contract")],
       idempotency_key: request.idempotency_key,
@@ -111,7 +111,7 @@ class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProp
       return {
         status: "failed",
         ...base,
-        failure_reason: this.failureReason ?? "invalid_artifact_change_proposal_request"
+        failure_reason: this.failureReason ?? "invalid_improvement_proposal_request"
       };
     }
 
@@ -119,7 +119,7 @@ class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProp
       status: "succeeded",
       ...base,
       output: {
-        output_kind: "artifact_change_proposal_input",
+        output_kind: "improvement_proposal_input",
         trading_evaluation_task_ref: ref(
           "trading_evaluation_task",
           request.task.trading_evaluation_task_id
@@ -128,7 +128,7 @@ class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProp
         anti_hacking_finding_refs: request.findings
           .filter((finding) => finding.finding_kind === "anti_hacking_case")
           .map((finding) => ref("research_finding", finding.research_finding_id)),
-        parent_runnable_artifact_ref: request.parent_runnable_artifact_ref,
+        parent_system_code_ref: request.parent_system_code_ref,
         proposal_summary: "Fixture provider proposal input for the next opaque generic trading artifact.",
         requested_change_summary: "Preserve sealed evaluator constraints while improving robustness.",
         expected_improvement_summary: "Higher held-out robustness after later materialization.",
@@ -139,7 +139,7 @@ class FixtureArtifactChangeProposalProviderAdapter implements ArtifactChangeProp
   }
 }
 
-function validRequest(): ArtifactChangeProposalProviderRequest {
+function validRequest(): ImprovementProposalProviderRequest {
   const task = fixtureTradingEvaluationTask();
   const sourceFinding = researchFinding("research-finding-runtime-provider-next-001", "next_artifact_hint");
   const antiHackingFinding = researchFinding(
@@ -148,11 +148,11 @@ function validRequest(): ArtifactChangeProposalProviderRequest {
   );
 
   return {
-    idempotency_key: "runtime-artifact-change-proposal-provider-contract-001",
+    idempotency_key: "runtime-improvement-proposal-provider-contract-001",
     task,
     findings: [sourceFinding, antiHackingFinding],
     existing_lineage_refs: [ref("artifact_lineage", "artifact-lineage-runtime-provider-v1")],
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-runtime-provider-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-runtime-provider-v1"),
     input_artifact_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     requested_output_contract_ref: ref("artifact_runtime_contract", "artifact-runtime-contract-python-clock-v1"),
     agent_run_ref: ref("agent_run", "agent-run-research-provider-runtime-contract"),

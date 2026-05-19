@@ -1,7 +1,7 @@
 import type {
   ExperimentRunRecord,
   Ref,
-  SandboxRuntimeInstanceRecord,
+  SandboxRecord,
   TradingEvaluationResultRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
@@ -10,8 +10,8 @@ import {
   type SealedReplayEvaluationScenario
 } from "./deterministic-sealed-replay-evaluator";
 
-export interface RuntimeArtifactResearchEvaluationInput {
-  runtime_instance: SandboxRuntimeInstanceRecord;
+export interface SystemCodeResearchEvaluationInput {
+  sandbox: SandboxRecord;
   research_worker_ref: Ref;
   research_direction_ref: Ref;
   task: TradingEvaluationTaskRecord;
@@ -21,32 +21,32 @@ export interface RuntimeArtifactResearchEvaluationInput {
   evaluator?: DeterministicSealedReplayEvaluator;
 }
 
-export interface RuntimeArtifactResearchEvaluationOutcome {
+export interface SystemCodeResearchEvaluationOutcome {
   experiment: ExperimentRunRecord;
   evaluation_result: TradingEvaluationResultRecord;
   runtime_trace_refs: Ref[];
 }
 
-export function evaluateRuntimeArtifactForResearch(
-  input: RuntimeArtifactResearchEvaluationInput
-): RuntimeArtifactResearchEvaluationOutcome {
-  const runtimeTraceRefs = runtimeTraceRefsFor(input.runtime_instance);
+export function evaluateSystemCodeForResearch(
+  input: SystemCodeResearchEvaluationInput
+): SystemCodeResearchEvaluationOutcome {
+  const runtimeTraceRefs = runtimeTraceRefsFor(input.sandbox);
   const experimentId = input.experiment_id
-    ?? `experiment-run-${safeId(input.runtime_instance.sandbox_runtime_instance_id)}`;
+    ?? `experiment-run-${safeId(input.sandbox.sandbox_id)}`;
   const experiment = {
     record_kind: "experiment_run",
     version: 1,
     experiment_run_id: experimentId,
     research_worker_ref: input.research_worker_ref,
     research_direction_ref: input.research_direction_ref,
-    runnable_artifact_ref: input.runtime_instance.runnable_artifact_ref,
+    system_code_ref: input.sandbox.system_code_ref,
     trading_evaluation_task_ref: ref("trading_evaluation_task", input.task.trading_evaluation_task_id),
-    sandbox_runtime_instance_ref: ref(
-      "sandbox_runtime_instance",
-      input.runtime_instance.sandbox_runtime_instance_id
+    sandbox_ref: ref(
+      "sandbox",
+      input.sandbox.sandbox_id
     ),
     runtime_trace_refs: runtimeTraceRefs,
-    trace_ref: input.runtime_instance.trace_ref
+    trace_ref: input.sandbox.trace_ref
       ?? ref("trace_placeholder", `trace-${safeId(experimentId)}-runtime-self-report`),
     submitted_at: input.submitted_at ?? new Date().toISOString(),
     status: "evaluated",
@@ -68,7 +68,7 @@ export function evaluateRuntimeArtifactForResearch(
   };
 }
 
-export function runtimeTraceRefsFor(instance: SandboxRuntimeInstanceRecord): Ref[] {
+export function runtimeTraceRefsFor(instance: SandboxRecord): Ref[] {
   return [
     ...(instance.trace_ref ? [instance.trace_ref] : []),
     ...instance.log_refs,

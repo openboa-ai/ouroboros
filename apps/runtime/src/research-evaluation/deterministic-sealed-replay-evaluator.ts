@@ -35,7 +35,7 @@ export class DeterministicSealedReplayEvaluator {
 
   evaluate(submission: SealedReplayEvaluationSubmission): TradingEvaluationResultRecord {
     this.assertSubmission(submission);
-    const scenario = submission.scenario ?? scenarioFromArtifact(submission.experiment.runnable_artifact_ref.id);
+    const scenario = submission.scenario ?? scenarioFromArtifact(submission.experiment.system_code_ref.id);
     const completedAt = submission.completed_at ?? new Date().toISOString();
     const base = {
       record_kind: "trading_evaluation_result" as const,
@@ -111,11 +111,11 @@ export class DeterministicSealedReplayEvaluator {
   }
 }
 
-function scenarioFromArtifact(runnableArtifactId: string): SealedReplayEvaluationScenario {
-  if (runnableArtifactId.includes("leakage") || runnableArtifactId.includes("lookahead")) {
+function scenarioFromArtifact(systemCodeId: string): SealedReplayEvaluationScenario {
+  if (systemCodeId.includes("leakage") || systemCodeId.includes("lookahead")) {
     return "disqualified_lookahead_leakage";
   }
-  if (runnableArtifactId.includes("unstable") || runnableArtifactId.includes("quarantine")) {
+  if (systemCodeId.includes("unstable") || systemCodeId.includes("quarantine")) {
     return "quarantined_metric_instability";
   }
   return "accepted_oos_survives_costs";

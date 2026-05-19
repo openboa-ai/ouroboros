@@ -7,7 +7,7 @@ import type {
   CandidateVersionRecord,
   PlaceholderSummary,
   Ref,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   TradingSystemCandidateRecord
 } from "@ouroboros/domain";
 
@@ -24,7 +24,7 @@ export interface GetPromotedCandidateInput extends PromotedCandidateBundleInput 
 interface PromotedCandidateBundle {
   candidate: TradingSystemCandidateRecord;
   version: CandidateVersionRecord;
-  runnableArtifact: RunnableArtifactRecord;
+  systemCode: SystemCodeRecord;
   promotion?: PromotedCandidatePromotionRecord;
 }
 
@@ -106,13 +106,13 @@ async function readPromotedCandidateBundle(
   const version = await readOptionalJson<CandidateVersionRecord>(
     path.join(bundleDir, "candidate-version.json")
   );
-  const runnableArtifact = await readOptionalJson<RunnableArtifactRecord>(
-    path.join(bundleDir, "runnable-artifact.json")
+  const systemCode = await readOptionalJson<SystemCodeRecord>(
+    path.join(bundleDir, "system-code.json")
   );
-  if (!candidate || !version || !runnableArtifact) {
+  if (!candidate || !version || !systemCode) {
     return undefined;
   }
-  if (!isPromotedCandidateBundle(candidate, version, runnableArtifact)) {
+  if (!isPromotedCandidateBundle(candidate, version, systemCode)) {
     return undefined;
   }
 
@@ -122,7 +122,7 @@ async function readPromotedCandidateBundle(
   return {
     candidate,
     version,
-    runnableArtifact,
+    systemCode,
     promotion
   };
 }
@@ -138,16 +138,16 @@ function toSummaryReadModel(candidate: CandidateInspectReadModel): CandidateSumm
 }
 
 function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectReadModel {
-  const { candidate, version, runnableArtifact, promotion } = bundle;
+  const { candidate, version, systemCode, promotion } = bundle;
   const capabilityRef = version.capability_package_refs[0] ?? ref(
     "capability_package",
     `${candidate.candidate_id}-capabilities`
   );
   const artifactManifestId = stringValue(promotion?.artifact_manifest?.id)
-    ?? runnableArtifact.runnable_artifact_id;
-  const artifactDigest = stringValue(promotion?.artifact_digest) ?? runnableArtifact.artifact_digest;
-  const entrypoint = Array.isArray(runnableArtifact.entrypoint)
-    ? runnableArtifact.entrypoint.filter((item): item is string => typeof item === "string")
+    ?? systemCode.system_code_id;
+  const artifactDigest = stringValue(promotion?.artifact_digest) ?? systemCode.artifact_digest;
+  const entrypoint = Array.isArray(systemCode.entrypoint)
+    ? systemCode.entrypoint.filter((item): item is string => typeof item === "string")
     : [];
 
   return {
@@ -180,19 +180,19 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
     program: {
       ref: version.program_ref,
       summary: [
-        stringValue(promotion?.artifact_manifest?.name) ?? "Promoted runnable artifact",
+        stringValue(promotion?.artifact_manifest?.name) ?? "Promoted system code",
         artifactDigest
       ].join(" / "),
       manifest: {
         ref: ref("program_manifest", `${artifactManifestId}-manifest`),
         declared_runtime: [
-          runnableArtifact.runtime_kind,
+          systemCode.runtime_kind,
           entrypoint.join(" ")
         ].filter(Boolean).join(" "),
-        declared_outputs: runnableArtifact.declared_output_contract.declared_output_kinds
+        declared_outputs: systemCode.declared_output_contract.declared_output_kinds
       },
       validation: statusPlaceholder(
-        ref("program_validation_record", `${runnableArtifact.runnable_artifact_id}-promotion-validation`),
+        ref("program_validation_record", `${systemCode.system_code_id}-promotion-validation`),
         "Program validation",
         "promoted_from_seeded_stability_gate",
         "not_counted"
@@ -278,8 +278,8 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
       runtime_lifecycle_status: "registered",
       authority_status: "not_live",
       placement: statusPlaceholder(
-        ref("runtime_placement", `${version.runtime_ref.id}-placement`),
-        "Runtime placement",
+        ref("sandbox_placement", `${version.runtime_ref.id}-placement`),
+        "Sandbox placement",
         "candidate_replay_only",
         "not_live"
       ),
@@ -312,7 +312,7 @@ function toInspectReadModel(bundle: PromotedCandidateBundle): CandidateInspectRe
 function isPromotedCandidateBundle(
   candidate: TradingSystemCandidateRecord,
   version: CandidateVersionRecord,
-  runnableArtifact: RunnableArtifactRecord
+  systemCode: SystemCodeRecord
 ): boolean {
   return candidate.record_kind === "trading_system_candidate"
     && candidate.status === "materialized"
@@ -320,8 +320,8 @@ function isPromotedCandidateBundle(
     && version.record_kind === "candidate_version"
     && version.candidate_id === candidate.candidate_id
     && version.candidate_version_id === candidate.active_version_id
-    && runnableArtifact.record_kind === "runnable_artifact"
-    && runnableArtifact.authority_status === "not_live";
+    && systemCode.record_kind === "system_code"
+    && systemCode.authority_status === "not_live";
 }
 
 function noAuthoritySatisfied(promotion?: PromotedCandidatePromotionRecord): boolean {

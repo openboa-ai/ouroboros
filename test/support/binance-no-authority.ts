@@ -525,7 +525,7 @@ export function fixturePrivateReadGateDecision(
     listen_key_user_data_stream_authority: "not_granted",
     leverage_margin_mutation_authority: "not_granted",
     order_submission_authority: "not_granted",
-    gateway_decision_authority: "not_granted",
+    gateway_result_authority: "not_granted",
     evidence_sealing_authority: "not_counted",
     promotion_authority: "not_granted",
     reason_codes: [
@@ -580,7 +580,7 @@ export function fixtureTradingGatewayContract(
     gateway_name: "TradingGateway",
     sandbox_direct_exchange_access: false,
     gateway_required_for: ["USER_DATA", "TRADE"],
-    tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+    tracking_chain: ["order_request", "gateway_result", "execution_result"],
     market_data: {
       security_type: "MARKET_DATA",
       status: "enabled",

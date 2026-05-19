@@ -5,7 +5,7 @@ import type {
   EvaluationRunRecord,
   EvidenceSealingDecisionRecord,
   Ref,
-  RuntimePlacementRecord,
+  SandboxPlacementRecord,
   StageBindingRecord
 } from "./index";
 
@@ -17,7 +17,7 @@ describe("stage-bound evaluation domain records", () => {
     const candidateVersionRef = ref("candidate_version", "candidate-version-market-breakout-v1");
     const stageBindingRef = ref("stage_binding", "stage-binding-backtest-v1");
     const traceRef = ref("trace_placeholder", "trace-backtest-evaluation-v1");
-    const runtimePlacementRef = ref("runtime_placement", "runtime-placement-host-local");
+    const runtimePlacementRef = ref("sandbox_placement", "sandbox-placement-host-local");
     const handsEnvironmentRef = ref("hands_environment", "hands-environment-fixture");
     const evaluatorRef = ref("evaluation_provider", "deterministic-backtest-fixture");
 
@@ -30,7 +30,7 @@ describe("stage-bound evaluation domain records", () => {
       stage: "backtest",
       profile: "backtest",
       execution_mode: "host_local",
-      runtime_placement_ref: runtimePlacementRef,
+      sandbox_placement_ref: runtimePlacementRef,
       hands_environment_ref: handsEnvironmentRef,
       data_window_ref: ref("backtest_data_window", "sealed-replay-2026-01"),
       simulator_ref: ref("backtest_simulator", "fixture-simulator-v1"),
@@ -92,22 +92,22 @@ describe("stage-bound evaluation domain records", () => {
     expect(sealingDecision.authority_status).not.toBe("counted");
   });
 
-  it("models physical runtime placement separately from runtime authority", () => {
+  it("models physical sandbox placement separately from gateway authority", () => {
     const hostLocalPlacement = {
-      record_kind: "runtime_placement",
+      record_kind: "sandbox_placement",
       version: 1,
-      runtime_placement_id: "runtime-placement-host-local",
+      sandbox_placement_id: "sandbox-placement-host-local",
       placement_kind: "host_local",
       tooling_kind: "host_process",
       service_name: "runtime",
       local_store_root: ".ouroboros/dev-store",
       authority_status: "not_launched"
-    } satisfies RuntimePlacementRecord;
+    } satisfies SandboxPlacementRecord;
 
     const containerizedLocalPlacement = {
-      record_kind: "runtime_placement",
+      record_kind: "sandbox_placement",
       version: 1,
-      runtime_placement_id: "runtime-placement-compose-local",
+      sandbox_placement_id: "sandbox-placement-compose-local",
       placement_kind: "containerized_local",
       tooling_kind: "docker_compose",
       service_name: "runtime",
@@ -116,38 +116,38 @@ describe("stage-bound evaluation domain records", () => {
       network_ref: ref("network", "ouroboros-local"),
       volume_ref: ref("volume", "ouroboros-store"),
       authority_status: "not_launched"
-    } satisfies RuntimePlacementRecord;
+    } satisfies SandboxPlacementRecord;
 
     const containerizedRemotePlacement = {
-      record_kind: "runtime_placement",
+      record_kind: "sandbox_placement",
       version: 1,
-      runtime_placement_id: "runtime-placement-sandbox-remote",
+      sandbox_placement_id: "sandbox-placement-sandbox-remote",
       placement_kind: "containerized_remote",
       tooling_kind: "docker_sandbox",
       service_name: "runtime",
       sandbox_template_ref: ref("sandbox_template", "docker-sandbox-compose"),
       authority_status: "not_launched"
-    } satisfies RuntimePlacementRecord;
+    } satisfies SandboxPlacementRecord;
 
     const providerManagedPlacement = {
-      record_kind: "runtime_placement",
+      record_kind: "sandbox_placement",
       version: 1,
-      runtime_placement_id: "runtime-placement-provider-managed",
+      sandbox_placement_id: "sandbox-placement-provider-managed",
       placement_kind: "provider_managed",
       tooling_kind: "provider_session",
       endpoint_ref: ref("provider_session", "provider-session-not-launched"),
       authority_status: "not_launched"
-    } satisfies RuntimePlacementRecord;
+    } satisfies SandboxPlacementRecord;
 
     const endpointBackedPlacement = {
-      record_kind: "runtime_placement",
+      record_kind: "sandbox_placement",
       version: 1,
-      runtime_placement_id: "runtime-placement-endpoint-backed",
+      sandbox_placement_id: "sandbox-placement-endpoint-backed",
       placement_kind: "endpoint_backed",
       tooling_kind: "http_endpoint",
       endpoint_ref: ref("runtime_endpoint", "runtime-endpoint-not-launched"),
       authority_status: "not_launched"
-    } satisfies RuntimePlacementRecord;
+    } satisfies SandboxPlacementRecord;
 
     expect(hostLocalPlacement.placement_kind).toBe("host_local");
     expect(containerizedLocalPlacement.volume_ref).toEqual(ref("volume", "ouroboros-store"));

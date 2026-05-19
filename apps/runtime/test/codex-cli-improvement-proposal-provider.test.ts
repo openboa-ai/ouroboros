@@ -4,12 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   ResearchFindingRecord,
-  ArtifactChangeProposalProviderOutput,
-  ArtifactChangeProposalProviderRequest,
+  ImprovementProposalProviderOutput,
+  ImprovementProposalProviderRequest,
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { CodexCliArtifactChangeProposalProviderAdapter } from "../src/providers/codex-cli-artifact-change-proposal-provider";
+import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -23,15 +23,15 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
+describe("CodexCliImprovementProposalProviderAdapter", () => {
   it("builds a schema-constrained Codex CLI command and parses proposal output", async () => {
-    const outputPath = path.join(tmpDir, "artifact-change-proposal-output.json");
+    const outputPath = path.join(tmpDir, "improvement-proposal-output.json");
     const calls: string[][] = [];
     const timeouts: Array<number | undefined> = [];
-    const adapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const adapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
-      schemaPath: "schema/artifact-change-proposal-output.schema.json",
+      schemaPath: "schema/improvement-proposal-output.schema.json",
       timeoutMs: 12_345,
       execFile: async (_file, args, options) => {
         calls.push(args);
@@ -45,7 +45,7 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
     });
     const request = validRequest();
 
-    const result = await adapter.runArtifactChangeProposalGeneration(request);
+    const result = await adapter.runImprovementProposalGeneration(request);
 
     expect(calls.map((args) => args[0])).toEqual(["--version", "exec"]);
     expect(timeouts).toEqual([12_345, 12_345]);
@@ -56,7 +56,7 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
         "--sandbox",
         "read-only",
         "--output-schema",
-        "schema/artifact-change-proposal-output.schema.json",
+        "schema/improvement-proposal-output.schema.json",
         "--output-last-message",
         outputPath
       ])
@@ -69,7 +69,7 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
         invocation_surface: "codex exec --json --output-schema"
       },
       output: {
-        output_kind: "artifact_change_proposal_input",
+        output_kind: "improvement_proposal_input",
         output_authority_status: "proposal_input_only"
       },
       agent_run_ref: request.agent_run_ref,
@@ -77,7 +77,7 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
       authority_status: "proposal_input_only"
     });
     expect(result.provider_output_artifact_refs).toEqual([
-      { record_kind: "artifact_change_proposal_provider_output_artifact", id: outputPath }
+      { record_kind: "improvement_proposal_provider_output_artifact", id: outputPath }
     ]);
     expect(result.debug_artifact_refs).toEqual([
       { record_kind: "codex_cli_request_artifact", id: path.join(tmpDir, "provider-request.json") },
@@ -91,12 +91,12 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
     await expect(readFile(path.join(tmpDir, "provider-command.json"), "utf8"))
       .resolves.toContain(outputPath);
     expect(JSON.stringify(result)).not.toMatch(
-      /artifact_change_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
+      /improvement_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
     );
   });
 
   it("exposes the real Codex version probe output when available", async () => {
-    const adapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const adapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       execFile: async (_file, args) => {
         expect(args).toEqual(["--version"]);
@@ -104,7 +104,7 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
       }
     });
 
-    await expect(adapter.probeArtifactChangeProposal()).resolves.toMatchObject({
+    await expect(adapter.probeImprovementProposal()).resolves.toMatchObject({
       provider_kind: "codex_cli",
       readiness_status: "active_verified",
       version: "codex-cli 0.130.0"
@@ -112,39 +112,39 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
   });
 
   it("probes real Codex availability without requiring it in unit tests", async () => {
-    const adapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const adapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       execFile: async () => {
         throw Object.assign(new Error("missing codex"), { code: "ENOENT" });
       }
     });
 
-    await expect(adapter.probeArtifactChangeProposal()).resolves.toMatchObject({
+    await expect(adapter.probeImprovementProposal()).resolves.toMatchObject({
       provider_kind: "codex_cli",
       readiness_status: "blocked_or_not_installed",
-      failure_reason: "artifact_change_proposal_provider_unavailable"
+      failure_reason: "improvement_proposal_provider_unavailable"
     });
-    const result = await adapter.runArtifactChangeProposalGeneration(validRequest());
+    const result = await adapter.runImprovementProposalGeneration(validRequest());
 
     expect(result).toMatchObject({
       status: "failed",
-      failure_reason: "artifact_change_proposal_provider_unavailable",
+      failure_reason: "improvement_proposal_provider_unavailable",
       authority_status: "proposal_input_only"
     });
     expect(result.provider_output_artifact_refs[0]).toEqual({
-      record_kind: "artifact_change_proposal_provider_output_artifact",
+      record_kind: "improvement_proposal_provider_output_artifact",
       id: path.join(
         tmpDir,
-        ".ouroboros/provider-runs/codex-artifact-change-proposal-provider/artifact-change-proposal-output.json"
+        ".ouroboros/provider-runs/codex-improvement-proposal-provider/improvement-proposal-output.json"
       )
     });
     await expect(readFile(result.debug_artifact_refs[0].id, "utf8"))
-      .resolves.toContain("codex-artifact-change-proposal-provider");
+      .resolves.toContain("codex-improvement-proposal-provider");
   });
 
   it("maps invalid schema output to adapter failure trace material", async () => {
-    const outputPath = path.join(tmpDir, "invalid-artifact-change-proposal-output.json");
-    const adapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const outputPath = path.join(tmpDir, "invalid-improvement-proposal-output.json");
+    const adapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
       execFile: async (_file, args) => {
@@ -156,11 +156,11 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
       }
     });
 
-    const result = await adapter.runArtifactChangeProposalGeneration(validRequest());
+    const result = await adapter.runImprovementProposalGeneration(validRequest());
 
     expect(result).toMatchObject({
       status: "failed",
-      failure_reason: "invalid_artifact_change_proposal_request",
+      failure_reason: "invalid_improvement_proposal_request",
       authority_status: "proposal_input_only"
     });
     expect(result).not.toHaveProperty("output");
@@ -168,7 +168,7 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
   });
 
   it("maps timed-out Codex execution to a timeout failure trace", async () => {
-    const adapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const adapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       execFile: async (_file, args) => {
         if (args[0] === "--version") {
@@ -182,36 +182,36 @@ describe("CodexCliArtifactChangeProposalProviderAdapter", () => {
       }
     });
 
-    await expect(adapter.runArtifactChangeProposalGeneration(validRequest())).resolves.toMatchObject({
+    await expect(adapter.runImprovementProposalGeneration(validRequest())).resolves.toMatchObject({
       status: "failed",
-      failure_reason: "artifact_change_proposal_provider_timeout",
+      failure_reason: "improvement_proposal_provider_timeout",
       authority_status: "proposal_input_only"
     });
   });
 });
 
-function validRequest(): ArtifactChangeProposalProviderRequest {
+function validRequest(): ImprovementProposalProviderRequest {
   const sourceFinding = researchFinding("research-finding-codex-provider-next-001", "next_artifact_hint");
   const antiHackingFinding = researchFinding("research-finding-codex-provider-anti-001", "anti_hacking_case");
   return {
-    idempotency_key: "codex-artifact-change-proposal-provider",
+    idempotency_key: "codex-improvement-proposal-provider",
     task: fixtureTradingEvaluationTask(),
     findings: [sourceFinding, antiHackingFinding],
     existing_lineage_refs: [ref("artifact_lineage", "artifact-lineage-codex-provider-v1")],
     input_artifact_refs: [ref("research_finding", sourceFinding.research_finding_id)],
-    agent_run_ref: ref("agent_run", "agent-run-codex-artifact-change-proposal-provider"),
-    trace_ref: ref("trace_placeholder", "trace-codex-artifact-change-proposal-provider"),
+    agent_run_ref: ref("agent_run", "agent-run-codex-improvement-proposal-provider"),
+    trace_ref: ref("trace_placeholder", "trace-codex-improvement-proposal-provider"),
     created_at: "2026-05-11T20:00:00.000Z"
   };
 }
 
-function validProviderOutput(): ArtifactChangeProposalProviderOutput {
+function validProviderOutput(): ImprovementProposalProviderOutput {
   return {
-    output_kind: "artifact_change_proposal_input",
+    output_kind: "improvement_proposal_input",
     trading_evaluation_task_ref: ref("trading_evaluation_task", "trading-evaluation-task-codex-provider-001"),
     source_finding_refs: [ref("research_finding", "research-finding-codex-provider-next-001")],
     anti_hacking_finding_refs: [ref("research_finding", "research-finding-codex-provider-anti-001")],
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-codex-provider-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-codex-provider-v1"),
     proposal_summary: "Codex provider output proposes the next opaque generic trading artifact input.",
     requested_change_summary: "Reduce drawdown while preserving sealed evaluator constraints.",
     expected_improvement_summary: "Improve held-out robustness under the same sealed evaluator.",

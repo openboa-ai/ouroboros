@@ -13,7 +13,7 @@ if (args.help) {
        OUROBOROS_ALLOW_SBX_CREATE_PROBE=1 npm run report:s5-sbx-blocker -- --include-create-probe
 
 Creates a local, redacted S5 Docker Sandboxes sbx blocker report for
-runtime-control/runtime-create blocker evidence.
+run-control/runtime-create blocker evidence.
 
 Default mode is non-mutating. It does not run sbx reset, sbx diagnose --upload, daemon recovery
 apply, direct create probes, or any cleanup against existing sandboxes. It records:
@@ -25,7 +25,7 @@ apply, direct create probes, or any cleanup against existing sandboxes. It recor
 - sbx code-signing, Gatekeeper assessment, and quarantine metadata when available
 - macOS syspolicyd, kernel sandbox denial, and DetachedSignatures hints when available
 - sbx create --help and sbx template ls runtime-create context
-- sbx ls --json runtime-control probe
+- sbx ls --json run-control probe
 - redacted daemon log lines that mention runtime-create VM start failures
 - validate:s5-sbx or validate:s5-sdx with a fresh evidence transcript
 - completion and promotion audits against that transcript
@@ -74,7 +74,7 @@ const lines = [];
 
 line("# S5 sbx Blocker Report");
 line("");
-line("objective: produce local evidence for the Docker Sandboxes sbx runtime-control/runtime-create blocker");
+line("objective: produce local evidence for the Docker Sandboxes sbx run-control/runtime-create blocker");
 line(`evidence_transcript=${evidencePath}`);
 if (reportPath) {
   line(`report_path=${reportPath}`);
@@ -220,7 +220,7 @@ const templateList = await capture("sbx template list runtime-create context", [
   allowFailure: true,
   env: sbxCommandEnv()
 });
-const listJson = await capture("sbx ls json runtime-control probe", [sbxPath, "ls", "--json"], {
+const listJson = await capture("sbx ls json run-control probe", [sbxPath, "ls", "--json"], {
   allowFailure: true,
   env: sbxCommandEnv()
 });

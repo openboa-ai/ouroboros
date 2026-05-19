@@ -6,7 +6,7 @@ import type {
   ResearchDirectionRecord,
   ResearchWorkerRecord,
   Ref,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   TradingEvaluationDisqualificationReason,
   TradingEvaluationResultRecord,
   TradingEvaluationTaskRecord
@@ -38,8 +38,8 @@ const fundingDirection = {
   authority_status: "research_seed_only"
 } satisfies ResearchDirectionRecord;
 
-const clockArtifactRef = ref("runnable_artifact", "fixture-runnable-artifact-clock-python-001");
-const candidateArtifactRef = ref("runnable_artifact", "research-runnable-artifact-market-trend-python-001");
+const clockArtifactRef = ref("system_code", "fixture-system-code-clock-python-001");
+const candidateArtifactRef = ref("system_code", "research-system-code-market-trend-python-001");
 
 describe("generic trading automated research trading evaluation contracts", () => {
   it("models multiple research workers and opaque artifact experiments for one generic trading task", () => {
@@ -81,12 +81,12 @@ describe("generic trading automated research trading evaluation contracts", () =
       experiment_run_id: "experiment-run-market-trend-001",
       research_worker_ref: ref("research_worker", trendResearcher.research_worker_id),
       research_direction_ref: trendResearcher.research_direction_ref,
-      runnable_artifact_ref: candidateArtifactRef,
+      system_code_ref: candidateArtifactRef,
       trading_evaluation_task_ref: ref(
         "trading_evaluation_task",
         evaluationTask.trading_evaluation_task_id
       ),
-      sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", "sandbox-runtime-instance-trend-001"),
+      sandbox_ref: ref("sandbox", "sandbox-trend-001"),
       trace_ref: ref("trace_placeholder", "trace-experiment-run-market-trend-001"),
       submitted_at: "2026-05-11T10:02:00.000Z",
       status: "submitted",
@@ -99,12 +99,12 @@ describe("generic trading automated research trading evaluation contracts", () =
       experiment_run_id: "experiment-run-market-funding-001",
       research_worker_ref: ref("research_worker", fundingResearcher.research_worker_id),
       research_direction_ref: fundingResearcher.research_direction_ref,
-      runnable_artifact_ref: clockArtifactRef,
+      system_code_ref: clockArtifactRef,
       trading_evaluation_task_ref: ref(
         "trading_evaluation_task",
         evaluationTask.trading_evaluation_task_id
       ),
-      sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", "sandbox-runtime-instance-funding-001"),
+      sandbox_ref: ref("sandbox", "sandbox-funding-001"),
       trace_ref: ref("trace_placeholder", "trace-experiment-run-market-funding-001"),
       submitted_at: "2026-05-11T10:02:01.000Z",
       status: "submitted",
@@ -114,8 +114,8 @@ describe("generic trading automated research trading evaluation contracts", () =
     expect(trendResearcher.research_direction_ref.id).not.toBe(fundingResearcher.research_direction_ref.id);
     expect(evaluationTask.market_scope).toBe("external_trading_api_fixture");
     expect(evaluationTask.stage).toBe("backtest");
-    expect(trendExperiment.runnable_artifact_ref.record_kind).toBe("runnable_artifact");
-    expect(fundingExperiment.runnable_artifact_ref.record_kind).toBe("runnable_artifact");
+    expect(trendExperiment.system_code_ref.record_kind).toBe("system_code");
+    expect(fundingExperiment.system_code_ref.record_kind).toBe("system_code");
     expect(Object.keys(trendExperiment)).not.toContain("strategy_internals");
     expect(Object.keys(fundingExperiment)).not.toContain("strategy_internals");
   });
@@ -225,8 +225,8 @@ describe("generic trading automated research trading evaluation contracts", () =
       record_kind: "artifact_lineage",
       version: 1,
       artifact_lineage_id: "artifact-lineage-market-trend-001-to-002",
-      parent_runnable_artifact_ref: candidateArtifactRef,
-      child_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-python-002"),
+      parent_system_code_ref: candidateArtifactRef,
+      child_system_code_ref: ref("system_code", "research-system-code-market-trend-python-002"),
       source_finding_refs: [ref("research_finding", finding.research_finding_id)],
       created_by_research_worker_ref: finding.research_worker_ref,
       created_at: "2026-05-11T10:05:00.000Z",
@@ -235,8 +235,8 @@ describe("generic trading automated research trading evaluation contracts", () =
 
     expect(finding.authority_status).toBe("research_trace_only");
     expect(lineage.source_finding_refs).toEqual([ref("research_finding", finding.research_finding_id)]);
-    expect(lineage.parent_runnable_artifact_ref?.record_kind).toBe("runnable_artifact");
-    expect(lineage.child_runnable_artifact_ref.record_kind).toBe("runnable_artifact");
+    expect(lineage.parent_system_code_ref?.record_kind).toBe("system_code");
+    expect(lineage.child_system_code_ref.record_kind).toBe("system_code");
     expect(Object.keys(lineage)).not.toContain("promotion_decision_ref");
     expect(Object.keys(lineage)).not.toContain("live_order_authority");
   });
@@ -295,7 +295,7 @@ if (false) {
     experiment_run_id: "invalid-strategy-normalized-experiment",
     research_worker_ref: ref("research_worker", "researcher"),
     research_direction_ref: ref("research_direction", "direction"),
-    runnable_artifact_ref: ref("runnable_artifact", "artifact"),
+    system_code_ref: ref("system_code", "artifact"),
     trading_evaluation_task_ref: ref("trading_evaluation_task", "task"),
     submitted_at: "2026-05-11T10:07:00.000Z",
     status: "submitted",
@@ -310,7 +310,7 @@ if (false) {
     experiment_run_id: "invalid-live-authority-experiment",
     research_worker_ref: ref("research_worker", "researcher"),
     research_direction_ref: ref("research_direction", "direction"),
-    runnable_artifact_ref: ref("runnable_artifact", "artifact"),
+    system_code_ref: ref("system_code", "artifact"),
     trading_evaluation_task_ref: ref("trading_evaluation_task", "task"),
     submitted_at: "2026-05-11T10:08:00.000Z",
     status: "submitted",
@@ -320,9 +320,9 @@ if (false) {
   } satisfies ExperimentRunRecord;
 
   const _artifactWithNormalizedStrategy = {
-    record_kind: "runnable_artifact",
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: "invalid-normalized-strategy-artifact",
+    system_code_id: "invalid-normalized-strategy-artifact",
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture",
@@ -338,9 +338,9 @@ if (false) {
     status: "registered",
     created_at: "2026-05-11T10:09:00.000Z",
     authority_status: "not_live",
-    // @ts-expect-error Runnable artifacts remain opaque and cannot normalize strategy fields.
+    // @ts-expect-error System code records remain opaque and cannot normalize strategy fields.
     moving_average_lookback: 50
-  } satisfies RunnableArtifactRecord;
+  } satisfies SystemCodeRecord;
 
   void _taskWithPaperAuthority;
   void _taskWithRawSecrets;

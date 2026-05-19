@@ -15,10 +15,10 @@ import {
   privateReadinessPolicyGate
 } from "../../../test/support/binance-no-authority";
 import type {
-  BoundedRuntimeAuthorityInput,
+  LedgerInput,
   CandidateMaterializationInput,
-  RuntimeControlAuditInput,
-  TradingSystemRuntimeRecord
+  RunControlAuditInput,
+  TradingRunRecord
 } from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
 import type {
@@ -709,7 +709,7 @@ describe("runtime read-only API", () => {
       runner_command_total: 0,
       artifact_digest: "sha256:baseline",
       score: 0.6,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_ids: ["trend_long", "range_short"],
       output_dir: path.join(runRoot, "candidate-posture-baseline", "output"),
       events_path: path.join(runRoot, "candidate-posture-baseline", "output", "replay-set.json"),
@@ -729,7 +729,7 @@ describe("runtime read-only API", () => {
       runner_command_total: 4,
       artifact_digest: "sha256:latest",
       score: 0.85,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_ids: ["trend_long", "range_short"],
       output_dir: path.join(runRoot, "candidate-posture-latest", "output"),
       events_path: path.join(runRoot, "candidate-posture-latest", "output", "replay-set.json"),
@@ -960,7 +960,7 @@ describe("runtime read-only API", () => {
       program: {
         manifest: {
           declared_runtime: "python python3 run.py",
-          declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
+          declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
         }
       },
       runtime: {
@@ -978,8 +978,8 @@ describe("runtime read-only API", () => {
         }
       }
     });
-    expect(detail.json().runtime).not.toHaveProperty("bounded_authority");
-    expect(detail.json().runtime).not.toHaveProperty("runtime_control");
+    expect(detail.json().runtime).not.toHaveProperty("ledger");
+    expect(detail.json().runtime).not.toHaveProperty("run_control");
 
     const replayRuns = await server.inject({
       method: "GET",
@@ -1099,7 +1099,7 @@ describe("runtime read-only API", () => {
       started_at: "2026-05-14T12:00:00.000Z",
       completed_at: "2026-05-14T12:01:00.000Z",
       score: 1,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_ids: ["trend_long"],
       output_dir: path.join(runRoot, "replay-run-detail", "output"),
       events_path: path.join(runRoot, "replay-run-detail", "output", "replay-set.json"),
@@ -1111,8 +1111,8 @@ describe("runtime read-only API", () => {
           status: "accepted",
           run_status: "completed",
           score: 1,
-          risk_decision: "valid_order_intent_draft",
-          summary: "Accepted order intent draft with score 1.000.",
+          risk_decision: "valid_order_request",
+          summary: "Accepted order request with score 1.000.",
           events_path: path.join(runRoot, "replay-run-detail", "output", "trend_long", "events.jsonl"),
           provider_request_count: 3,
           runner_command_count: 2,
@@ -1165,7 +1165,7 @@ describe("runtime read-only API", () => {
         run_id: "replay-run-detail",
         candidate_id: FIXTURE_CANDIDATE_ID,
         score: 1,
-        risk_decision: "valid_order_intent_draft",
+        risk_decision: "valid_order_request",
         scenario_ids: ["trend_long"],
         no_authority: {
           live_exchange: false,
@@ -1183,7 +1183,7 @@ describe("runtime read-only API", () => {
             runner_kind: "docker_sandboxes_sbx",
             sandbox_name: "ouro-s22-detail",
             status: "accepted",
-            risk_decision: "valid_order_intent_draft",
+            risk_decision: "valid_order_request",
             metrics: [
               {
                 name: "provider_boundary",
@@ -1247,7 +1247,7 @@ describe("runtime read-only API", () => {
       started_at: "2026-05-14T13:00:00.000Z",
       completed_at: "2026-05-14T13:01:00.000Z",
       score: 0.85,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_ids: ["trend_long", "range_short"],
       output_dir: path.join(runRoot, "replay-run-selected", "output"),
       events_path: path.join(runRoot, "replay-run-selected", "output", "replay-set.json"),
@@ -1274,7 +1274,7 @@ describe("runtime read-only API", () => {
       started_at: "2026-05-14T12:00:00.000Z",
       completed_at: "2026-05-14T12:01:00.000Z",
       score: 0.6,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_ids: ["trend_long", "range_short"],
       output_dir: path.join(runRoot, "replay-run-baseline", "output"),
       events_path: path.join(runRoot, "replay-run-baseline", "output", "replay-set.json"),
@@ -1323,7 +1323,7 @@ describe("runtime read-only API", () => {
           provider_request_total: 1,
           runner_command_total: 4
         },
-        risk_transition: "valid_order_intent_draft -> valid_order_intent_draft",
+        risk_transition: "valid_order_request -> valid_order_request",
         verdict: "improved",
         authority_status: "not_live",
         validation_label: "comparison_not_authority",
@@ -1555,7 +1555,7 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("records and reads bounded runtime authority through the runtime API", async () => {
+  it("records and reads Ledger through the runtime API", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({
       method: "GET",
@@ -1563,15 +1563,16 @@ describe("runtime read-only API", () => {
     });
     const candidateVersionId = candidate.json().candidate_version.candidate_version_id;
 
-    const initialAuthority = await server.inject({
+    const initialLedger = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`
     });
-    expect(initialAuthority.statusCode).toBe(200);
-    expect(initialAuthority.json()).toMatchObject({
-      candidate_id: FIXTURE_CANDIDATE_ID,
-      runtime_id: candidate.json().runtime.ref.id,
-      bounded_authority: {
+    expect(initialLedger.statusCode).toBe(200);
+    expect(initialLedger.json()).toMatchObject({
+      system_id: FIXTURE_CANDIDATE_ID,
+      trading_run_id: candidate.json().runtime.ref.id,
+      ledger: {
+        ledger_kind: "ledger",
         has_activity: false,
         chain_complete: false
       }
@@ -1579,13 +1580,13 @@ describe("runtime read-only API", () => {
 
     const first = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
-      payload: validRuntimeAuthorityInput(candidateVersionId)
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`,
+      payload: validLedgerInput(candidateVersionId)
     });
     const duplicate = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
-      payload: validRuntimeAuthorityInput(candidateVersionId)
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`,
+      payload: validLedgerInput(candidateVersionId)
     });
 
     expect(first.statusCode).toBe(201);
@@ -1593,22 +1594,18 @@ describe("runtime read-only API", () => {
     expect(duplicate.json()).toEqual(first.json());
     expect(first.json()).toMatchObject({
       status: "recorded",
-      candidate_id: FIXTURE_CANDIDATE_ID,
-      candidate_version_id: candidateVersionId,
-      runtime_id: candidate.json().runtime.ref.id,
-      order_intent_draft: {
-        record_kind: "order_intent_draft",
+      system_id: FIXTURE_CANDIDATE_ID,
+      trading_run_id: candidate.json().runtime.ref.id,
+      order_request: {
         status: "proposed",
         authority_status: "not_submitted"
       },
-      gateway_decision: {
-        record_kind: "gateway_decision",
+      gateway_result: {
         decision_outcome: "dry_run_only",
         decision_reason: "paper_stage_only",
         authority_status: "dry_run_only"
       },
-      execution_attempt: {
-        record_kind: "execution_attempt",
+      execution_result: {
         stage: "paper",
         execution_mode: "host_local",
         status: "dry_run_recorded",
@@ -1620,44 +1617,45 @@ describe("runtime read-only API", () => {
       method: "GET",
       url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
     });
-    expect(updatedCandidate.json().runtime.bounded_authority).toMatchObject({
+    expect(updatedCandidate.json().ledger).toMatchObject({
+      ledger_kind: "ledger",
       has_activity: true,
       chain_complete: true,
-      latest_order_intent_draft: {
-        order_intent_draft_id: first.json().order_intent_draft.order_intent_draft_id,
+      latest_order_request: {
+        order_request_id: first.json().order_request.order_request_id,
         authority_status: "not_submitted"
       },
-      latest_gateway_decision: {
-        gateway_decision_id: first.json().gateway_decision.gateway_decision_id,
+      latest_gateway_result: {
+        gateway_result_id: first.json().gateway_result.gateway_result_id,
         authority_status: "dry_run_only"
       },
-      latest_execution_attempt: {
-        execution_attempt_id: first.json().execution_attempt.execution_attempt_id,
+      latest_execution_result: {
+        execution_result_id: first.json().execution_result.execution_result_id,
         authority_status: "dry_run_only"
       }
     });
 
-    const projectedAuthority = await server.inject({
+    const projectedLedger = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`
     });
-    expect(projectedAuthority.json().bounded_authority.latest_execution_attempt.execution_attempt_id).toBe(
-      first.json().execution_attempt.execution_attempt_id
+    expect(projectedLedger.json().ledger.latest_execution_result.execution_result_id).toBe(
+      first.json().execution_result.execution_result_id
     );
 
     await server.close();
   });
 
-  it("runs a fixture trading loop and reads the TradingLedger through the runtime API", async () => {
+  it("starts a fixture trading run and reads the Ledger through the runtime API", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
     const first = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`
     });
     const duplicate = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/trading-loop-runs`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`
     });
 
     expect(first.statusCode).toBe(201);
@@ -1665,8 +1663,7 @@ describe("runtime read-only API", () => {
     expect(duplicate.json()).toEqual(first.json());
     expect(first.json()).toMatchObject({
       status: "recorded",
-      order_intent: {
-        record_kind: "order_intent_draft",
+      order_request: {
         intent_kind: "place_order",
         side: "buy",
         order_type: "limit",
@@ -1675,14 +1672,12 @@ describe("runtime read-only API", () => {
         status: "proposed",
         authority_status: "not_submitted"
       },
-      gateway_decision: {
-        record_kind: "gateway_decision",
+      gateway_result: {
         decision_outcome: "dry_run_only",
         decision_reason: "paper_stage_only",
         authority_status: "dry_run_only"
       },
-      execution_attempt: {
-        record_kind: "execution_attempt",
+      execution_result: {
         stage: "paper",
         execution_mode: "host_local",
         status: "dry_run_recorded",
@@ -1697,18 +1692,18 @@ describe("runtime read-only API", () => {
         live_exchange_authority: false,
         order_submission_authority: false
       },
-      trading_ledger: {
-        ledger_kind: "trading_ledger",
+      ledger: {
+        ledger_kind: "ledger",
         has_activity: true,
         chain_complete: true,
-        latest_order_intent: {
+        latest_order_request: {
           authority_status: "not_submitted"
         },
-        latest_gateway_decision: {
+        latest_gateway_result: {
           decision_outcome: "dry_run_only",
           authority_status: "dry_run_only"
         },
-        latest_execution_attempt: {
+        latest_execution_result: {
           status: "dry_run_recorded",
           authority_status: "dry_run_only"
         }
@@ -1719,47 +1714,86 @@ describe("runtime read-only API", () => {
       method: "GET",
       url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
     });
-    expect(updatedCandidate.json().runtime.trading_ledger).toMatchObject({
-      ledger_kind: "trading_ledger",
+    expect(updatedCandidate.json().ledger).toMatchObject({
+      ledger_kind: "ledger",
       chain_complete: true,
-      latest_execution_attempt: {
-        execution_attempt_id: first.json().execution_attempt.execution_attempt_id
+      latest_execution_result: {
+        execution_result_id: first.json().execution_result.execution_result_id
       }
     });
-    expect(updatedCandidate.json().runtime.bounded_authority).toMatchObject({
-      chain_complete: true,
-      latest_execution_attempt: {
-        execution_attempt_id: first.json().execution_attempt.execution_attempt_id
+    const tradingRunId = updatedCandidate.json().runtime.ref.id;
+
+    const runDetail = await server.inject({
+      method: "GET",
+      url: `/api/trading-runs/${tradingRunId}`
+    });
+    expect(runDetail.statusCode).toBe(200);
+    expect(runDetail.json()).toMatchObject({
+      trading_run_id: tradingRunId,
+      trading_run: {
+        ref: { record_kind: "trading_run", id: tradingRunId },
+        stage: "paper",
+        authority_status: "not_live"
+      },
+      ledger: {
+        ledger_kind: "ledger",
+        chain_complete: true
+      }
+    });
+
+    const observed = await server.inject({
+      method: "POST",
+      url: `/api/trading-runs/${tradingRunId}/observe`
+    });
+    expect(observed.statusCode).toBe(200);
+    expect(observed.json()).toMatchObject({
+      status: "observed",
+      trading_run_id: tradingRunId
+    });
+
+    const stopped = await server.inject({
+      method: "POST",
+      url: `/api/trading-runs/${tradingRunId}/stop`
+    });
+    expect(stopped.statusCode).toBe(201);
+    expect(stopped.json()).toMatchObject({
+      status: "stop_recorded",
+      trading_run_id: tradingRunId,
+      run_control: {
+        latest_command: {
+          action: "stop",
+          status: "decided"
+        }
       }
     });
 
     await server.close();
   });
 
-  it("runs a fixture AAR improvement loop and reads it through candidate inspect", async () => {
+  it("records a fixture AAR improvement and reads it through candidate inspect", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
     const first = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/improvement-loop-runs`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/improvements`
     });
     const duplicate = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/improvement-loop-runs`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/improvements`
     });
 
     expect(first.statusCode).toBe(201);
     expect(duplicate.statusCode).toBe(201);
-    expect(duplicate.json().improvement_loop).toMatchObject({
-      loop_kind: "artifact_improvement_loop",
+    expect(duplicate.json().improvement).toMatchObject({
+      improvement_kind: "improvement",
       proposal_chain_complete: true,
       evaluation_chain_complete: true,
       chain_complete: true
     });
     expect(first.json()).toMatchObject({
       status: "evaluated",
-      improvement_loop: {
-        loop_kind: "artifact_improvement_loop",
+      improvement: {
+        improvement_kind: "improvement",
         source_model: "automated_alignment_researcher",
         proposal_chain_complete: true,
         evaluation_chain_complete: true,
@@ -1767,7 +1801,7 @@ describe("runtime read-only API", () => {
         latest_source_finding: {
           authority_status: "research_trace_only"
         },
-        latest_artifact_change_proposal: {
+        latest_change_proposal: {
           status: "proposed",
           authority_status: "proposal_only"
         },
@@ -1775,7 +1809,7 @@ describe("runtime read-only API", () => {
           status: "evaluated",
           authority_status: "not_live"
         },
-        latest_trading_evaluation_result: {
+        latest_evaluation_result: {
           result_status: "accepted",
           evidence_disposition: "not_counted",
           authority_status: "not_counted"
@@ -1802,17 +1836,17 @@ describe("runtime read-only API", () => {
       url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
     });
     expect(updatedCandidate.statusCode).toBe(200);
-    expect(updatedCandidate.json().improvement_loop).toMatchObject({
-      loop_kind: "artifact_improvement_loop",
+    expect(updatedCandidate.json().improvement).toMatchObject({
+      improvement_kind: "improvement",
       source_model: "automated_alignment_researcher",
       chain_complete: true,
-      latest_artifact_change_proposal: {
-        proposal_id: first.json().proposal.artifact_change_proposal_id
+      latest_change_proposal: {
+        proposal_id: first.json().proposal.improvement_proposal_id
       },
       latest_experiment: {
         experiment_id: first.json().experiment.experiment_run_id
       },
-      latest_trading_evaluation_result: {
+      latest_evaluation_result: {
         result_id: first.json().trading_evaluation_result.trading_evaluation_result_id
       }
     });
@@ -1820,7 +1854,7 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("returns deterministic runtime authority API errors", async () => {
+  it("returns deterministic Ledger API errors", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({
       method: "GET",
@@ -1830,43 +1864,43 @@ describe("runtime read-only API", () => {
 
     const missingCandidate = await server.inject({
       method: "GET",
-      url: "/api/candidates/missing/runtime-authority"
+      url: "/api/trading-systems/missing/ledger"
     });
     expect(missingCandidate.statusCode).toBe(404);
     expect(missingCandidate.json()).toEqual({
-      error: "candidate_not_found",
-      candidate_id: "missing"
+      error: "trading_system_not_found",
+      system_id: "missing"
     });
     const missingCandidatePost = await server.inject({
       method: "POST",
-      url: "/api/candidates/missing/runtime-control",
-      payload: validRuntimeControlInput(candidateVersionId)
+      url: "/api/trading-systems/missing/run-control",
+      payload: validRunControlInput(candidateVersionId)
     });
     expect(missingCandidatePost.statusCode).toBe(404);
     expect(missingCandidatePost.json()).toEqual({
-      error: "candidate_not_found",
-      candidate_id: "missing"
+      error: "trading_system_not_found",
+      system_id: "missing"
     });
 
     const missingFields = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`,
       payload: { candidate_version_id: candidateVersionId }
     });
     expect(missingFields.statusCode).toBe(422);
     expect(missingFields.json()).toMatchObject({
-      error: "runtime_authority_record_failed",
-      reason: "invalid_runtime_authority_request",
-      candidate_id: FIXTURE_CANDIDATE_ID,
+      error: "ledger_record_failed",
+      reason: "invalid_ledger_request",
+      system_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: candidateVersionId
     });
 
     const invalidOutcome = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`,
       payload: {
-        ...validRuntimeAuthorityInput(candidateVersionId),
-        gateway_decision: {
+        ...validLedgerInput(candidateVersionId),
+        gateway_result: {
           decision_outcome: "live_allowed",
           decision_reason: "paper_stage_only"
         }
@@ -1874,32 +1908,32 @@ describe("runtime read-only API", () => {
     });
     expect(invalidOutcome.statusCode).toBe(422);
     expect(invalidOutcome.json()).toMatchObject({
-      error: "runtime_authority_record_failed",
-      reason: "invalid_runtime_authority_input",
-      candidate_id: FIXTURE_CANDIDATE_ID,
+      error: "ledger_record_failed",
+      reason: "invalid_ledger_input",
+      system_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: candidateVersionId
     });
 
     const missingVersion = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-authority`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/ledger`,
       payload: {
-        ...validRuntimeAuthorityInput("missing-candidate-version"),
+        ...validLedgerInput("missing-candidate-version"),
         candidate_version_id: "missing-candidate-version"
       }
     });
     expect(missingVersion.statusCode).toBe(422);
     expect(missingVersion.json()).toMatchObject({
-      error: "runtime_authority_record_failed",
+      error: "ledger_record_failed",
       reason: "candidate_version_not_found",
-      candidate_id: FIXTURE_CANDIDATE_ID,
+      system_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: "missing-candidate-version"
     });
 
     await server.close();
   });
 
-  it("records and reads runtime control through the runtime API", async () => {
+  it("records and reads run control through the runtime API", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
     const candidate = await server.inject({
       method: "GET",
@@ -1909,13 +1943,13 @@ describe("runtime read-only API", () => {
 
     const initialControl = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`
     });
     expect(initialControl.statusCode).toBe(200);
     expect(initialControl.json()).toMatchObject({
-      candidate_id: FIXTURE_CANDIDATE_ID,
+      system_id: FIXTURE_CANDIDATE_ID,
       runtime_id: candidate.json().runtime.ref.id,
-      runtime_control: {
+      run_control: {
         has_activity: false,
         chain_complete: false
       }
@@ -1923,13 +1957,13 @@ describe("runtime read-only API", () => {
 
     const first = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
-      payload: validRuntimeControlInput(candidateVersionId)
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
+      payload: validRunControlInput(candidateVersionId)
     });
     const duplicate = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
-      payload: validRuntimeControlInput(candidateVersionId)
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
+      payload: validRunControlInput(candidateVersionId)
     });
 
     expect(first.statusCode).toBe(201);
@@ -1941,13 +1975,13 @@ describe("runtime read-only API", () => {
       candidate_version_id: candidateVersionId,
       runtime_id: candidate.json().runtime.ref.id,
       command: {
-        record_kind: "runtime_control_command",
+        record_kind: "run_control_command",
         action: "pause",
         status: "decided",
         authority_status: "control_only"
       },
       decision: {
-        record_kind: "runtime_control_decision",
+        record_kind: "run_control_decision",
         decision_outcome: "allowed",
         decision_reason: "policy_allows_control",
         resulting_lifecycle_status: "paused",
@@ -1965,16 +1999,16 @@ describe("runtime read-only API", () => {
       method: "GET",
       url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
     });
-    expect(updatedCandidate.json().runtime.runtime_control).toMatchObject({
+    expect(updatedCandidate.json().runtime.run_control).toMatchObject({
       has_activity: true,
       chain_complete: true,
       latest_command: {
-        command_id: first.json().command.runtime_control_command_id,
+        command_id: first.json().command.run_control_command_id,
         action: "pause",
         authority_status: "control_only"
       },
       latest_decision: {
-        decision_id: first.json().decision.runtime_control_decision_id,
+        decision_id: first.json().decision.run_control_decision_id,
         decision_outcome: "allowed",
         resulting_lifecycle_status: "paused"
       },
@@ -1985,22 +2019,22 @@ describe("runtime read-only API", () => {
       }
     });
     expect(updatedCandidate.json().runtime.placement.authority_status).toBe("not_launched");
-    expect(JSON.stringify(updatedCandidate.json().runtime.runtime_control)).not.toMatch(
+    expect(JSON.stringify(updatedCandidate.json().runtime.run_control)).not.toMatch(
       /exchange_credentials|provider_api_key|direct_exchange_order|gateway_signing_material/
     );
 
     const projectedControl = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`
     });
-    expect(projectedControl.json().runtime_control.latest_command.command_id).toBe(
-      first.json().command.runtime_control_command_id
+    expect(projectedControl.json().run_control.latest_command.command_id).toBe(
+      first.json().command.run_control_command_id
     );
 
     await server.close();
   });
 
-  it("returns deterministic runtime control API errors", async () => {
+  it("returns deterministic run control API errors", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({ store });
     const candidate = await server.inject({
@@ -2011,67 +2045,67 @@ describe("runtime read-only API", () => {
 
     const missingCandidate = await server.inject({
       method: "GET",
-      url: "/api/candidates/missing/runtime-control"
+      url: "/api/trading-systems/missing/run-control"
     });
     expect(missingCandidate.statusCode).toBe(404);
     expect(missingCandidate.json()).toEqual({
-      error: "candidate_not_found",
-      candidate_id: "missing"
+      error: "trading_system_not_found",
+      system_id: "missing"
     });
 
     const missingFields = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
       payload: { candidate_version_id: candidateVersionId }
     });
     expect(missingFields.statusCode).toBe(422);
     expect(missingFields.json()).toMatchObject({
-      error: "runtime_control_record_failed",
-      reason: "invalid_runtime_control_request",
+      error: "run_control_record_failed",
+      reason: "invalid_run_control_request",
       candidate_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: candidateVersionId
     });
 
     const invalidAction = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
       payload: {
-        ...validRuntimeControlInput(candidateVersionId),
+        ...validRunControlInput(candidateVersionId),
         command: {
-          ...validRuntimeControlInput(candidateVersionId).command,
+          ...validRunControlInput(candidateVersionId).command,
           action: "launch_live"
         }
       }
     });
     expect(invalidAction.statusCode).toBe(422);
     expect(invalidAction.json()).toMatchObject({
-      error: "runtime_control_record_failed",
-      reason: "invalid_runtime_control_input",
+      error: "run_control_record_failed",
+      reason: "invalid_run_control_input",
       candidate_id: FIXTURE_CANDIDATE_ID,
       candidate_version_id: candidateVersionId
     });
 
     const invalidOutcome = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
       payload: {
-        ...validRuntimeControlInput(candidateVersionId),
+        ...validRunControlInput(candidateVersionId),
         decision: {
-          ...validRuntimeControlInput(candidateVersionId).decision,
+          ...validRunControlInput(candidateVersionId).decision,
           decision_outcome: "live_allowed"
         }
       }
     });
     expect(invalidOutcome.statusCode).toBe(422);
     expect(invalidOutcome.json()).toMatchObject({
-      reason: "invalid_runtime_control_input"
+      reason: "invalid_run_control_input"
     });
 
     const missingVersion = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
       payload: {
-        ...validRuntimeControlInput("missing-candidate-version"),
+        ...validRunControlInput("missing-candidate-version"),
         candidate_version_id: "missing-candidate-version"
       }
     });
@@ -2083,9 +2117,9 @@ describe("runtime read-only API", () => {
 
     const missingRuntime = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
       payload: {
-        ...validRuntimeControlInput(candidateVersionId),
+        ...validRunControlInput(candidateVersionId),
         runtime_id: "missing-runtime"
       }
     });
@@ -2097,24 +2131,24 @@ describe("runtime read-only API", () => {
 
     await writeStoreJson(
       {
-        record_kind: "trading_system_runtime",
+        record_kind: "trading_run",
         version: 1,
-        trading_system_runtime_id: "foreign-runtime-001",
+        trading_run_id: "foreign-runtime-001",
         stage_binding_profile: "paper",
-        placement_ref: { record_kind: "runtime_placement", id: "fixture-runtime-placement-001" },
+        placement_ref: { record_kind: "sandbox_placement", id: "fixture-sandbox-placement-001" },
         hands_environment_ref: { record_kind: "hands_environment", id: "fixture-hands-environment-001" },
         memory_surface_ref: { record_kind: "runtime_memory_surface", id: "fixture-runtime-memory-surface-001" },
         authority_status: "not_live"
-      } satisfies TradingSystemRuntimeRecord,
-      "trading-system-runtimes",
+      } satisfies TradingRunRecord,
+      "trading-runs",
       "items",
       "foreign-runtime-001.json"
     );
     const runtimeMismatch = await server.inject({
       method: "POST",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
       payload: {
-        ...validRuntimeControlInput(candidateVersionId),
+        ...validRunControlInput(candidateVersionId),
         runtime_id: "foreign-runtime-001"
       }
     });
@@ -2249,8 +2283,8 @@ describe("runtime read-only API", () => {
     const forbiddenPaths = [
       "/api/candidates/fixture-candidate-sealed-replay-001/start",
       "/api/candidates/fixture-candidate-sealed-replay-001/pause",
-      "/api/candidates/fixture-candidate-sealed-replay-001/runtime-control/pause",
-      "/api/candidates/fixture-candidate-sealed-replay-001/runtime-control/kill",
+      "/api/candidates/fixture-candidate-sealed-replay-001/run-control/pause",
+      "/api/candidates/fixture-candidate-sealed-replay-001/run-control/kill",
       "/api/provider-runs",
       "/api/evaluations",
       "/api/promotions",
@@ -2424,9 +2458,9 @@ function validMaterializationInput(): CandidateMaterializationInput {
       supported_stage_binding_profiles: ["backtest", "paper", "live"]
     },
     program: {
-      summary: "Generated behavior bundle that emits order intent drafts only after validation.",
+      summary: "Generated behavior bundle that emits order requests only after validation.",
       declared_runtime: "python-sandbox-placeholder",
-      declared_outputs: ["OrderIntentDraft", "ProgramEvent", "Trace"]
+      declared_outputs: ["OrderRequest", "ProgramEvent", "Trace"]
     },
     capability_package: {
       summary: "generic trading market context and indicator package request.",
@@ -2438,7 +2472,7 @@ function validMaterializationInput(): CandidateMaterializationInput {
   };
 }
 
-function validRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeAuthorityInput {
+function validLedgerInput(candidateVersionId: string): LedgerInput {
   return {
     idempotency_key: "runtime-api-authority-dry-run-001",
     candidate_id: FIXTURE_CANDIDATE_ID,
@@ -2450,12 +2484,12 @@ function validRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeA
       quantity: "0.001",
       limit_price: "60000"
     },
-    gateway_decision: {
+    gateway_result: {
       decision_outcome: "dry_run_only",
       decision_reason: "paper_stage_only",
       policy_ref: { record_kind: "runtime_operating_policy", id: "runtime-operating-policy-paper-v1" }
     },
-    execution_attempt: {
+    execution_result: {
       execution_mode: "host_local",
       trace_ref: { record_kind: "trace_placeholder", id: "trace-runtime-api-authority-dry-run-001" },
       completed_at: "2026-05-10T00:01:00.000Z"
@@ -2464,7 +2498,7 @@ function validRuntimeAuthorityInput(candidateVersionId: string): BoundedRuntimeA
   };
 }
 
-function validRuntimeControlInput(candidateVersionId: string): RuntimeControlAuditInput {
+function validRunControlInput(candidateVersionId: string): RunControlAuditInput {
   return {
     idempotency_key: "runtime-api-control-pause-001",
     candidate_id: FIXTURE_CANDIDATE_ID,
@@ -2515,7 +2549,7 @@ async function writeStoreJson(value: unknown, ...segments: string[]): Promise<vo
 
 async function writePromotedCandidateBundle(root: string, candidateId: string): Promise<void> {
   const bundleDir = path.join(root, candidateId);
-  const runnableArtifactId = `${candidateId}-artifact`;
+  const systemCodeId = `${candidateId}-artifact`;
   const candidateVersionId = `${candidateId}-v1`;
   const artifactFiles = promotedCandidateArtifactFiles();
   const artifactDigest = digestArtifactFiles(artifactFiles);
@@ -2532,13 +2566,13 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     active_version_id: candidateVersionId,
     provenance_refs: [
       { record_kind: "trading_research_notebook", id: "test-research-session" },
-      { record_kind: "runnable_artifact", id: runnableArtifactId }
+      { record_kind: "system_code", id: systemCodeId }
     ],
     title: "Promoted Trading research Candidate",
     system_summary: "Promoted from a test Trading research seeded-stability gate.",
     candidate_status: "handoff_ready",
     evaluation_handoff_ready: true,
-    active_runnable_artifact_ref: { record_kind: "runnable_artifact", id: runnableArtifactId },
+    active_system_code_ref: { record_kind: "system_code", id: systemCodeId },
     authority_status: "not_live"
   }, null, 2)}\n`, "utf8");
   await writeFile(path.join(bundleDir, "candidate-version.json"), `${JSON.stringify({
@@ -2552,14 +2586,14 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     capability_package_refs: [
       { record_kind: "capability_package", id: `${candidateId}-capabilities` }
     ],
-    runtime_ref: { record_kind: "trading_system_runtime", id: `${candidateId}-runtime` },
+    runtime_ref: { record_kind: "trading_run", id: `${candidateId}-runtime` },
     trace_placeholder_ref: { record_kind: "trace_placeholder", id: `${candidateId}-trace` },
-    runnable_artifact_ref: { record_kind: "runnable_artifact", id: runnableArtifactId }
+    system_code_ref: { record_kind: "system_code", id: systemCodeId }
   }, null, 2)}\n`, "utf8");
-  await writeFile(path.join(bundleDir, "runnable-artifact.json"), `${JSON.stringify({
-    record_kind: "runnable_artifact",
+  await writeFile(path.join(bundleDir, "system-code.json"), `${JSON.stringify({
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: runnableArtifactId,
+    system_code_id: systemCodeId,
     artifact_kind: "python_file",
     artifact_path: path.join(bundleDir, "artifact"),
     artifact_digest: artifactDigest,
@@ -2567,7 +2601,7 @@ async function writePromotedCandidateBundle(root: string, candidateId: string): 
     entrypoint: ["python3", "run.py"],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
-      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
+      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
     },
     secret_policy_ref: { record_kind: "secret_policy", id: "secret-policy-no-raw-values-v1" },
     capability_policy_ref: {
@@ -2654,7 +2688,7 @@ function promotedCandidateArtifactFiles(): Array<{ relativePath: string; content
         "    account = get_json(base_url, '/account/state')",
         "    append_event(args.output_events, {'event': 'account_state', **account})",
         "    intent = build_intent(market, account)",
-        "    append_event(args.output_events, {'event': 'order_intent_draft', **intent})",
+        "    append_event(args.output_events, {'event': 'order_request', **intent})",
         "    validation = post_json(base_url, '/orders/validate', intent)",
         "    append_event(args.output_events, {'event': 'order_validation', **validation})",
         "    append_event(args.output_events, {'event': 'run_complete', 'accepted': validation['accepted']})",

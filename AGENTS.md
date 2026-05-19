@@ -43,6 +43,27 @@ For durable domain names, schema families, public/persisted keys, or naming clea
 
 Ouroboros taxonomy should be maintained as vocabulary guidance, not as a mechanical blocklist. Prefer compact canonical nouns plus explicit fields for product scope, authority, source/provenance, lifecycle, audience, and compatibility. Do not add naming/audit blockers unless an active Linear issue explicitly asks for enforcement.
 
+Canonical Ouroboros nouns for the current product surface:
+
+| Canonical noun | Meaning |
+| --- | --- |
+| `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
+| `SystemCode` | Executable code produced for a TradingSystem. |
+| `Evaluation` | Backtest or evaluation evidence. |
+| `Improvement` | AAR-inspired proposal, experiment, and evaluation flow. |
+| `TradingRun` | One execution session for a TradingSystem. |
+| `Sandbox` | Isolated execution boundary for a TradingRun. |
+| `Gateway` | Boundary that handles OrderRequest before exchange authority. |
+| `Ledger` | OrderRequest, GatewayResult, and ExecutionResult record chain. |
+
+Use the canonical nouns above for new code, tests, docs, API paths, UI labels, and persisted keys.
+When a name drifts, replace it directly with the canonical term instead of adding aliases or
+compatibility reads.
+
+`npm run check:naming` is the repo-local naming quality gate. It checks public routes, UI labels,
+compact docs, and canonical read-model exports. If it fails, fix the vocabulary decision instead
+of widening the allowlist unless the old name is explicitly a compatibility boundary.
+
 Use the most authoritative vocabulary source for each domain before inventing project-local terms:
 
 1. Agent, harness, AI, model, tool, MCP, guardrail, eval, trace, workflow, and memory terms should follow OpenAI and Claude/Anthropic terminology when those products have established names. Treat frontier product language as de facto standard vocabulary before coining local synonyms.
@@ -59,6 +80,7 @@ Project-specific taxonomy truth currently starts from the Linear document `37 So
 
 ```bash
 bash scripts/check-docs.sh
+npm run check:naming
 bash scripts/check-secrets.sh
 git diff --check
 ```

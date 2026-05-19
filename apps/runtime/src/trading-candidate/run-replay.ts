@@ -48,7 +48,7 @@ interface CliOptions {
 interface CandidateBundle {
   candidateDir: string;
   candidate: Record<string, unknown>;
-  runnableArtifact: Record<string, unknown>;
+  systemCode: Record<string, unknown>;
   promotion?: Record<string, unknown>;
   artifactDir: string;
   artifactDigest: string;
@@ -73,7 +73,7 @@ export interface ReplayRunRecord {
   run_id: string;
   candidate_id: string;
   candidate_ref: { record_kind: "trading_system_candidate"; id: string };
-  runnable_artifact_ref?: { record_kind: string; id: string };
+  system_code_ref?: { record_kind: string; id: string };
   source_candidate_dir: string;
   promoted_artifact_dir: string;
   artifact_digest: string;
@@ -221,7 +221,7 @@ export async function runPromotedCandidateReplay(
     run_id: runId,
     candidate_id: options.candidateId,
     candidate_ref: { record_kind: "trading_system_candidate", id: options.candidateId },
-    runnable_artifact_ref: refValue(bundle.runnableArtifact.runnable_artifact_id, "runnable_artifact"),
+    system_code_ref: refValue(bundle.systemCode.system_code_id, "system_code"),
     source_candidate_dir: bundle.candidateDir,
     promoted_artifact_dir: bundle.artifactDir,
     artifact_digest: bundle.artifactDigest,
@@ -352,26 +352,26 @@ async function loadCandidateBundle(candidateRoot: string, candidateId: string): 
 
   try {
     const candidate = await readJson(path.join(candidateDir, "candidate.json"));
-    const runnableArtifact = await readJson(path.join(candidateDir, "runnable-artifact.json"));
+    const systemCode = await readJson(path.join(candidateDir, "system-code.json"));
     const promotion = await readOptionalJson(path.join(candidateDir, "promotion.json"));
     const artifactDigest = await artifactDigestFor(artifactDir);
-    const declaredDigest = stringValue(runnableArtifact.artifact_digest);
+    const declaredDigest = stringValue(systemCode.artifact_digest);
     if (declaredDigest && declaredDigest !== artifactDigest) {
       throw new ReplayRunError(
         "artifact_digest_mismatch",
-        `artifact digest matches runnable artifact (${declaredDigest})`
+        `artifact digest matches system code (${declaredDigest})`
       );
     }
-    if (candidate.authority_status !== "not_live" || runnableArtifact.authority_status !== "not_live") {
+    if (candidate.authority_status !== "not_live" || systemCode.authority_status !== "not_live") {
       throw new ReplayRunError(
         "candidate_authority_not_live_required",
-        "candidate and runnable artifact authority_status == not_live"
+        "candidate and system code authority_status == not_live"
       );
     }
     return {
       candidateDir,
       candidate,
-      runnableArtifact,
+      systemCode,
       promotion,
       artifactDir,
       artifactDigest

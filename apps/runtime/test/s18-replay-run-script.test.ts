@@ -71,7 +71,7 @@ describe("S18 Trading replay run scripts", () => {
         }
       });
       expect(run.score).toBeGreaterThan(0);
-      expect(run.risk_decision).toBe("valid_order_intent_draft");
+      expect(run.risk_decision).toBe("valid_order_request");
       expect(run.scenario_results).toHaveLength(2);
 
       const index = JSON.parse(await readFile(path.join(runRoot, "index.json"), "utf8"));
@@ -136,7 +136,7 @@ describe("S18 Trading replay run scripts", () => {
       ]);
 
       expect(result.code, scriptOutput(result)).toBe(2);
-      expect(result.stdout).toContain("MISSING candidate and runnable artifact authority_status == not_live");
+      expect(result.stdout).toContain("MISSING candidate and system code authority_status == not_live");
       expect(result.stdout).toContain("CANDIDATE_RUN_RESULT failed");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -203,10 +203,10 @@ async function writeCandidateBundle(
     active_version_id: `${candidateId}-v1`,
     authority_status: authorityStatus
   }, null, 2)}\n`, "utf8");
-  await writeFile(path.join(candidateDir, "runnable-artifact.json"), `${JSON.stringify({
-    record_kind: "runnable_artifact",
+  await writeFile(path.join(candidateDir, "system-code.json"), `${JSON.stringify({
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: `runnable-${candidateId}`,
+    system_code_id: `system-code-${candidateId}`,
     artifact_digest: digest,
     authority_status: authorityStatus
   }, null, 2)}\n`, "utf8");
@@ -272,7 +272,7 @@ const intent = market.expected_direction === "flat"
       order_type: "market",
       reason: "long replay regime with bounded account risk"
     };
-await event({ event: "order_intent_draft", ...intent });
+await event({ event: "order_request", ...intent });
 const validation = await postJson("/orders/validate", intent);
 await event({ event: "order_validation", ...validation });
 await event({ event: "run_complete", accepted: validation.accepted });
