@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type {
   Ref,
-  SandboxRuntimeInstanceRecord,
+  SandboxRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import {
-  evaluateRuntimeArtifactForResearch,
+  evaluateSystemCodeForResearch,
   runtimeTraceRefsFor
-} from "../src/research-evaluation/runtime-artifact-submission";
+} from "../src/research-evaluation/system-code-research-submission";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("runtime artifact automated research evaluation submission", () => {
+describe("system code automated research evaluation submission", () => {
   it("links SDX/SBX runtime output as trace material while using sealed evaluator output for results", () => {
-    const runtimeInstance = sandboxRuntimeInstance();
+    const sandbox = sandboxSandbox();
     const task = fixtureTradingEvaluationTask();
 
-    const outcome = evaluateRuntimeArtifactForResearch({
-      runtime_instance: runtimeInstance,
+    const outcome = evaluateSystemCodeForResearch({
+      sandbox: sandbox,
       research_worker_ref: ref("research_worker", "research-worker-market-trend-001"),
       research_direction_ref: ref("research_direction", "research-direction-market-trend-v1"),
       task,
@@ -29,10 +29,10 @@ describe("runtime artifact automated research evaluation submission", () => {
     expect(outcome.experiment).toMatchObject({
       record_kind: "experiment_run",
       experiment_run_id: "experiment-run-runtime-clock-001",
-      runnable_artifact_ref: runtimeInstance.runnable_artifact_ref,
-      sandbox_runtime_instance_ref: ref(
-        "sandbox_runtime_instance",
-        runtimeInstance.sandbox_runtime_instance_id
+      system_code_ref: sandbox.system_code_ref,
+      sandbox_ref: ref(
+        "sandbox",
+        sandbox.sandbox_id
       ),
       trading_evaluation_task_ref: ref("trading_evaluation_task", task.trading_evaluation_task_id),
       status: "evaluated",
@@ -40,7 +40,7 @@ describe("runtime artifact automated research evaluation submission", () => {
     });
     expect(outcome.runtime_trace_refs).toEqual([
       ref("trace_placeholder", "trace-runtime-self-report-clock-001"),
-      ref("runtime_instance_log", "runtime-log-clock-001"),
+      ref("sandbox_log", "runtime-log-clock-001"),
       ref("runtime_heartbeat", "runtime-heartbeat-clock-001"),
       ref("sandbox_command_evidence", "sandbox-command-evidence-clock-001")
     ]);
@@ -55,11 +55,11 @@ describe("runtime artifact automated research evaluation submission", () => {
   });
 
   it("keeps runtime trace self-report from becoming counted evidence", () => {
-    const runtimeInstance = sandboxRuntimeInstance({
-      runnableArtifactId: "research-runnable-artifact-market-lookahead-leakage-001"
+    const sandbox = sandboxSandbox({
+      systemCodeId: "research-system-code-market-lookahead-leakage-001"
     });
-    const outcome = evaluateRuntimeArtifactForResearch({
-      runtime_instance: runtimeInstance,
+    const outcome = evaluateSystemCodeForResearch({
+      sandbox: sandbox,
       research_worker_ref: ref("research_worker", "research-worker-market-leakage-001"),
       research_direction_ref: ref("research_direction", "research-direction-market-leakage-v1"),
       task: fixtureTradingEvaluationTask(),
@@ -70,32 +70,32 @@ describe("runtime artifact automated research evaluation submission", () => {
     expect(outcome.evaluation_result.disqualification_reason).toBe("lookahead_leakage");
     expect(outcome.evaluation_result.evidence_disposition).toBe("quarantined_for_review");
     expect(outcome.evaluation_result.authority_status).toBe("not_counted");
-    expect(outcome.runtime_trace_refs.map((traceRef) => traceRef.record_kind)).toContain("runtime_instance_log");
+    expect(outcome.runtime_trace_refs.map((traceRef) => traceRef.record_kind)).toContain("sandbox_log");
     expect(outcome.evaluation_result.metric_refs.map((metricRef) => metricRef.record_kind)).toEqual([
       "metric_snapshot"
     ]);
   });
 });
 
-function sandboxRuntimeInstance(options: { runnableArtifactId?: string } = {}): SandboxRuntimeInstanceRecord {
+function sandboxSandbox(options: { systemCodeId?: string } = {}): SandboxRecord {
   return {
-    record_kind: "sandbox_runtime_instance",
+    record_kind: "sandbox",
     version: 1,
-    sandbox_runtime_instance_id: "sandbox-runtime-instance-clock-001",
+    sandbox_id: "sandbox-clock-001",
     adapter_kind: "docker_sandboxes_sbx",
-    runnable_artifact_ref: ref(
-      "runnable_artifact",
-      options.runnableArtifactId ?? "research-runnable-artifact-market-accepted-001"
+    system_code_ref: ref(
+      "system_code",
+      options.systemCodeId ?? "research-system-code-market-accepted-001"
     ),
-    runtime_ref: ref("trading_system_runtime", "runtime-clock-paper-v1"),
-    runtime_placement_ref: ref("runtime_placement", "runtime-placement-sdx-clock-v1"),
+    runtime_ref: ref("trading_run", "runtime-clock-paper-v1"),
+    sandbox_placement_ref: ref("sandbox_placement", "sandbox-placement-sdx-clock-v1"),
     lifecycle_status: "running",
     sandbox_name: "ouro-s6-clock-001",
     sandbox_ref: ref("docker_sandbox", "ouro-s6-clock-001"),
     created_at: "2026-05-11T11:59:00.000Z",
     started_at: "2026-05-11T11:59:01.000Z",
     last_heartbeat_at: "2026-05-11T11:59:02.000Z",
-    log_refs: [ref("runtime_instance_log", "runtime-log-clock-001")],
+    log_refs: [ref("sandbox_log", "runtime-log-clock-001")],
     heartbeat_refs: [ref("runtime_heartbeat", "runtime-heartbeat-clock-001")],
     command_evidence_refs: [ref("sandbox_command_evidence", "sandbox-command-evidence-clock-001")],
     trace_ref: ref("trace_placeholder", "trace-runtime-self-report-clock-001"),
@@ -125,6 +125,6 @@ function fixtureTradingEvaluationTask(): TradingEvaluationTaskRecord {
 }
 
 if (false) {
-  const refs = runtimeTraceRefsFor(sandboxRuntimeInstance());
+  const refs = runtimeTraceRefsFor(sandboxSandbox());
   void refs;
 }

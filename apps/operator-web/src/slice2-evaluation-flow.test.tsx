@@ -250,9 +250,9 @@ function validMaterializationInput(): CandidateMaterializationInput {
       supported_stage_binding_profiles: ["backtest", "paper", "live"]
     },
     program: {
-      summary: "Generated behavior bundle that emits order intent drafts only after validation.",
+      summary: "Generated behavior bundle that emits order requests only after validation.",
       declared_runtime: "python-sandbox-placeholder",
-      declared_outputs: ["OrderIntentDraft", "ProgramEvent", "Trace"]
+      declared_outputs: ["OrderRequest", "ProgramEvent", "Trace"]
     },
     capability_package: {
       summary: "generic trading market context and indicator package request.",

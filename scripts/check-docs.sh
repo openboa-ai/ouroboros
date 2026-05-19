@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+node scripts/check-naming-surface.mjs
 python3 - <<'PY'
 from pathlib import Path
 import re, subprocess, sys

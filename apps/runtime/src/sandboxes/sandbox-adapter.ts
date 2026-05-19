@@ -2,69 +2,69 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import type {
   Ref,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   RuntimeHeartbeatRecord,
-  RuntimeInstanceLogRecord,
-  RuntimePlacementRecord,
+  SandboxLogRecord,
+  SandboxPlacementRecord,
   SandboxCommandEvidenceRecord,
-  SandboxRuntimeAdapterKind,
-  SandboxRuntimeInstanceDetailReadModel,
-  SandboxRuntimeInstanceLifecycleStatus,
-  SandboxRuntimeInstanceRecord
+  SandboxAdapterKind,
+  SandboxDetailReadModel,
+  SandboxLifecycleStatus,
+  SandboxRecord
 } from "@ouroboros/domain";
 
 let commandEvidenceSequence = 0;
 
-export interface SandboxRuntimeAdapterStartInput {
-  artifact: RunnableArtifactRecord;
+export interface SandboxAdapterStartInput {
+  artifact: SystemCodeRecord;
   instance_id: string;
   sandbox_name: string;
   runtime_ref?: Ref;
-  runtime_placement_id: string;
+  sandbox_placement_id: string;
   created_at: string;
   trace_ref?: Ref;
   test_ticks?: number;
   interval_ms?: number;
 }
 
-export interface SandboxRuntimeAdapterStartResult {
-  instance: SandboxRuntimeInstanceRecord;
-  placement: RuntimePlacementRecord;
-  logs: RuntimeInstanceLogRecord[];
+export interface SandboxAdapterStartResult {
+  instance: SandboxRecord;
+  placement: SandboxPlacementRecord;
+  logs: SandboxLogRecord[];
   heartbeats: RuntimeHeartbeatRecord[];
   command_evidence: SandboxCommandEvidenceRecord[];
 }
 
-export interface SandboxRuntimeAdapterObservationResult {
-  lifecycle_status?: SandboxRuntimeInstanceLifecycleStatus;
-  logs?: RuntimeInstanceLogRecord[];
+export interface SandboxAdapterObservationResult {
+  lifecycle_status?: SandboxLifecycleStatus;
+  logs?: SandboxLogRecord[];
   heartbeats?: RuntimeHeartbeatRecord[];
   command_evidence?: SandboxCommandEvidenceRecord[];
   stopped_at?: string;
   removed_at?: string;
 }
 
-export interface SandboxRuntimeAdapter {
-  readonly kind: SandboxRuntimeAdapterKind;
-  startArtifactInstance(input: SandboxRuntimeAdapterStartInput): Promise<SandboxRuntimeAdapterStartResult>;
+export interface SandboxAdapter {
+  readonly kind: SandboxAdapterKind;
+  startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult>;
   getArtifactInstanceStatus(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult>;
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult>;
   getArtifactInstanceLogs(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult>;
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult>;
   stopArtifactInstance(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult>;
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult>;
 }
 
-export class DeterministicSandboxRuntimeAdapter implements SandboxRuntimeAdapter {
+export class DeterministicSandboxAdapter implements SandboxAdapter {
   readonly kind = "deterministic_test" as const;
 
-  async startArtifactInstance(input: SandboxRuntimeAdapterStartInput): Promise<SandboxRuntimeAdapterStartResult> {
+  async startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult> {
     const tickCount = Math.max(1, input.test_ticks ?? 2);
     const intervalMs = input.interval_ms ?? 1_000;
-    const placement = sandboxPlacement(input.runtime_placement_id);
+    const placement = sandboxPlacement(input.sandbox_placement_id);
     const heartbeats = Array.from({ length: tickCount }, (_, index) => {
       const tick = index + 1;
       const observedAt = timestampOffset(input.created_at, tick * intervalMs);
@@ -78,18 +78,18 @@ export class DeterministicSandboxRuntimeAdapter implements SandboxRuntimeAdapter
     });
     const lines = heartbeats.map((heartbeat) => heartbeat.heartbeat_line);
     const log = runtimeLogRecord(input.instance_id, "start", lines, input.created_at);
-    const instance = sandboxRuntimeInstanceRecord({
+    const instance = sandboxSandboxRecord({
       adapterKind: this.kind,
       artifact: input.artifact,
       instanceId: input.instance_id,
       sandboxName: input.sandbox_name,
       runtimeRef: input.runtime_ref,
-      placementId: placement.runtime_placement_id,
+      placementId: placement.sandbox_placement_id,
       lifecycleStatus: "running",
       createdAt: input.created_at,
       startedAt: input.created_at,
       lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
-      logRefs: [ref(log.record_kind, log.runtime_instance_log_id)],
+      logRefs: [ref(log.record_kind, log.sandbox_log_id)],
       heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
       traceRef: input.trace_ref
     });
@@ -103,17 +103,17 @@ export class DeterministicSandboxRuntimeAdapter implements SandboxRuntimeAdapter
     };
   }
 
-  async getArtifactInstanceStatus(): Promise<SandboxRuntimeAdapterObservationResult> {
+  async getArtifactInstanceStatus(): Promise<SandboxAdapterObservationResult> {
     return {};
   }
 
-  async getArtifactInstanceLogs(): Promise<SandboxRuntimeAdapterObservationResult> {
+  async getArtifactInstanceLogs(): Promise<SandboxAdapterObservationResult> {
     return {};
   }
 
   async stopArtifactInstance(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult> {
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
     const stoppedAt = new Date().toISOString();
     const instanceId = instanceIdFor(instance);
     const stoppedLine = JSON.stringify({
@@ -129,7 +129,7 @@ export class DeterministicSandboxRuntimeAdapter implements SandboxRuntimeAdapter
   }
 }
 
-export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
+export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   readonly kind = "docker_sandboxes_sbx" as const;
 
   constructor(
@@ -141,9 +141,9 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
     } = {}
   ) {}
 
-  async startArtifactInstance(input: SandboxRuntimeAdapterStartInput): Promise<SandboxRuntimeAdapterStartResult> {
+  async startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult> {
     const createdAt = input.created_at;
-    const placement = sandboxPlacement(input.runtime_placement_id);
+    const placement = sandboxPlacement(input.sandbox_placement_id);
     const artifactPath = artifactEntrypointPath(input.artifact);
     const logFile = sandboxLogFile(input.instance_id);
     const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
@@ -155,13 +155,13 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
       !isDockerSandboxesSbxVersion(versionResult.stdout)
     ) {
       return {
-        instance: sandboxRuntimeInstanceRecord({
+        instance: sandboxSandboxRecord({
           adapterKind: this.kind,
           artifact: input.artifact,
           instanceId: input.instance_id,
           sandboxName: input.sandbox_name,
           runtimeRef: input.runtime_ref,
-          placementId: placement.runtime_placement_id,
+          placementId: placement.sandbox_placement_id,
           lifecycleStatus: "failed",
           createdAt,
           commandEvidenceRefs: [ref(versionEvidence.record_kind, versionEvidence.sandbox_command_evidence_id)],
@@ -185,13 +185,13 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
     const createEvidence = commandEvidenceRecord(input.instance_id, "create", createResult);
     if (createResult.exit_code !== 0) {
       return {
-        instance: sandboxRuntimeInstanceRecord({
+        instance: sandboxSandboxRecord({
           adapterKind: this.kind,
           artifact: input.artifact,
           instanceId: input.instance_id,
           sandboxName: input.sandbox_name,
           runtimeRef: input.runtime_ref,
-          placementId: placement.runtime_placement_id,
+          placementId: placement.sandbox_placement_id,
           lifecycleStatus: "failed",
           createdAt,
           commandEvidenceRefs: [
@@ -234,13 +234,13 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
     const lifecycleStatus = createResult.exit_code === 0 && execResult.exit_code === 0
       ? "running"
       : "failed";
-    const instance = sandboxRuntimeInstanceRecord({
+    const instance = sandboxSandboxRecord({
       adapterKind: this.kind,
       artifact: input.artifact,
       instanceId: input.instance_id,
       sandboxName: input.sandbox_name,
       runtimeRef: input.runtime_ref,
-      placementId: placement.runtime_placement_id,
+      placementId: placement.sandbox_placement_id,
       lifecycleStatus,
       createdAt,
       startedAt: lifecycleStatus === "running" ? createdAt : undefined,
@@ -260,8 +260,8 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
   }
 
   async getArtifactInstanceStatus(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult> {
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
     const instanceId = instanceIdFor(instance);
     const versionObservation = await this.versionObservation(instanceId, "status-version");
     if (versionObservation.failure) {
@@ -291,8 +291,8 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
   }
 
   async getArtifactInstanceLogs(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult> {
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
     const instanceId = instanceIdFor(instance);
     const versionObservation = await this.versionObservation(instanceId, "logs-version");
     if (versionObservation.failure) {
@@ -319,8 +319,8 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
   }
 
   async stopArtifactInstance(
-    instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel
-  ): Promise<SandboxRuntimeAdapterObservationResult> {
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
     const instanceId = instanceIdFor(instance);
     const sandboxName = sandboxNameFor(instance);
     const versionObservation = await this.versionObservation(instanceId, "stop-version");
@@ -379,7 +379,7 @@ export class DockerSandboxesSbxRuntimeAdapter implements SandboxRuntimeAdapter {
     suffix: string
   ): Promise<{
     evidence: SandboxCommandEvidenceRecord;
-    failure?: SandboxRuntimeAdapterObservationResult;
+    failure?: SandboxAdapterObservationResult;
   }> {
     const result = await this.runSbxCommand([this.sbxPath, "version"]);
     const evidence = commandEvidenceRecord(instanceId, commandEvidenceSuffix(suffix, result), result);
@@ -410,14 +410,14 @@ interface CommandResult {
   completed_at: string;
 }
 
-function sandboxRuntimeInstanceRecord(input: {
-  adapterKind: SandboxRuntimeAdapterKind;
-  artifact: RunnableArtifactRecord;
+function sandboxSandboxRecord(input: {
+  adapterKind: SandboxAdapterKind;
+  artifact: SystemCodeRecord;
   instanceId: string;
   sandboxName: string;
   runtimeRef?: Ref;
   placementId: string;
-  lifecycleStatus: SandboxRuntimeInstanceLifecycleStatus;
+  lifecycleStatus: SandboxLifecycleStatus;
   createdAt: string;
   startedAt?: string;
   lastHeartbeatAt?: string;
@@ -425,15 +425,15 @@ function sandboxRuntimeInstanceRecord(input: {
   heartbeatRefs?: Ref[];
   commandEvidenceRefs?: Ref[];
   traceRef?: Ref;
-}): SandboxRuntimeInstanceRecord {
+}): SandboxRecord {
   return stripUndefined({
-    record_kind: "sandbox_runtime_instance",
+    record_kind: "sandbox",
     version: 1,
-    sandbox_runtime_instance_id: input.instanceId,
+    sandbox_id: input.instanceId,
     adapter_kind: input.adapterKind,
-    runnable_artifact_ref: ref("runnable_artifact", input.artifact.runnable_artifact_id),
+    system_code_ref: ref("system_code", input.artifact.system_code_id),
     runtime_ref: input.runtimeRef,
-    runtime_placement_ref: ref("runtime_placement", input.placementId),
+    sandbox_placement_ref: ref("sandbox_placement", input.placementId),
     lifecycle_status: input.lifecycleStatus,
     sandbox_name: input.sandboxName,
     sandbox_ref: ref("docker_sandbox", input.sandboxName),
@@ -445,14 +445,14 @@ function sandboxRuntimeInstanceRecord(input: {
     command_evidence_refs: input.commandEvidenceRefs,
     trace_ref: input.traceRef,
     authority_status: "not_live"
-  } satisfies SandboxRuntimeInstanceRecord);
+  } satisfies SandboxRecord);
 }
 
-function sandboxPlacement(placementId: string): RuntimePlacementRecord {
+function sandboxPlacement(placementId: string): SandboxPlacementRecord {
   return {
-    record_kind: "runtime_placement",
+    record_kind: "sandbox_placement",
     version: 1,
-    runtime_placement_id: placementId,
+    sandbox_placement_id: placementId,
     placement_kind: "containerized_remote",
     tooling_kind: "docker_sandbox",
     sandbox_template_ref: ref("sandbox_template", "docker-sandboxes-clock-template-v1"),
@@ -465,12 +465,12 @@ function runtimeLogRecord(
   suffix: string,
   lines: string[],
   capturedAt: string
-): RuntimeInstanceLogRecord {
+): SandboxLogRecord {
   return {
-    record_kind: "runtime_instance_log",
+    record_kind: "sandbox_log",
     version: 1,
-    runtime_instance_log_id: `runtime-instance-log-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
-    sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", instanceId),
+    sandbox_log_id: `sandbox-log-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
+    sandbox_ref: ref("sandbox", instanceId),
     lines,
     captured_at: capturedAt,
     authority_status: "trace_only"
@@ -487,7 +487,7 @@ function runtimeHeartbeatRecord(
     record_kind: "runtime_heartbeat",
     version: 1,
     runtime_heartbeat_id: `runtime-heartbeat-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
-    sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", instanceId),
+    sandbox_ref: ref("sandbox", instanceId),
     heartbeat_line: heartbeatLine,
     observed_at: observedAt,
     authority_status: "trace_only"
@@ -503,7 +503,7 @@ function commandEvidenceRecord(
     record_kind: "sandbox_command_evidence",
     version: 1,
     sandbox_command_evidence_id: `sandbox-command-evidence-${safeRuntimeId(instanceId)}-${safeRuntimeId(suffix)}`,
-    sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", instanceId),
+    sandbox_ref: ref("sandbox", instanceId),
     command: result.command,
     exit_code: result.exit_code,
     stdout: result.stdout,
@@ -563,7 +563,7 @@ function resolveCommandPath(commandPath: string, workspacePath: string): string 
   return path.resolve(workspacePath, commandPath);
 }
 
-function artifactEntrypointPath(artifact: RunnableArtifactRecord): string {
+function artifactEntrypointPath(artifact: SystemCodeRecord): string {
   if (artifact.artifact_kind === "python_file") {
     return artifact.artifact_path;
   }
@@ -578,13 +578,11 @@ function sandboxHeartbeatFile(instanceId: string): string {
   return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.heartbeat.json`;
 }
 
-function instanceIdFor(instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel): string {
-  return "sandbox_runtime_instance_id" in instance
-    ? instance.sandbox_runtime_instance_id
-    : instance.instance_id;
+function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string {
+  return instance.sandbox_id;
 }
 
-function sandboxNameFor(instance: SandboxRuntimeInstanceRecord | SandboxRuntimeInstanceDetailReadModel): string {
+function sandboxNameFor(instance: SandboxRecord | SandboxDetailReadModel): string {
   return instance.sandbox_name;
 }
 

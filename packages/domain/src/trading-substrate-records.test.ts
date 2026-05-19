@@ -214,7 +214,7 @@ describe("Trading gateway contract read model", () => {
       gateway_name: "TradingGateway",
       sandbox_direct_exchange_access: false,
       gateway_required_for: ["USER_DATA", "TRADE"],
-      tracking_chain: ["order_intent_draft", "gateway_decision", "execution_attempt"],
+      tracking_chain: ["order_request", "gateway_result", "execution_result"],
       market_data: {
         security_type: "MARKET_DATA",
         status: "enabled",
@@ -268,7 +268,7 @@ describe("Trading substrate order-fill surface records", () => {
       venue: BINANCE_USDM_FUTURES_VENUE,
       instrument: BINANCE_BTCUSDT_INSTRUMENT,
       product_category: BINANCE_USDM_PERPETUAL_FUTURES_PRODUCT_CATEGORY,
-      runtime_ref: ref("trading_system_runtime", "runtime-paper-btcusdt"),
+      runtime_ref: ref("trading_run", "runtime-paper-btcusdt"),
       order_scope_ref: "fixture-btcusdt-paper-order-001",
       local_client_order_id: "fixture-btcusdt-paper-order-001",
       upstream_order_id: "fixture-upstream-order-001",
@@ -878,7 +878,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -974,7 +974,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       expect(gateDecision.listen_key_user_data_stream_authority).toBe("not_granted");
       expect(gateDecision.leverage_margin_mutation_authority).toBe("not_granted");
       expect(gateDecision.order_submission_authority).toBe("not_granted");
-      expect(gateDecision.gateway_decision_authority).toBe("not_granted");
+      expect(gateDecision.gateway_result_authority).toBe("not_granted");
       expect(gateDecision.evidence_sealing_authority).toBe("not_counted");
       expect(gateDecision.promotion_authority).toBe("not_granted");
     }
@@ -1023,7 +1023,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       account_balance_position_read_authority: "not_granted",
       listen_key_user_data_stream_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       authority_status: "not_live"
@@ -1080,7 +1080,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -1152,7 +1152,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -1221,7 +1221,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -1291,7 +1291,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,
@@ -1364,7 +1364,7 @@ describe("Trading substrate PrivateReadGate decisions", () => {
       listen_key_user_data_stream_authority: "not_granted",
       leverage_margin_mutation_authority: "not_granted",
       order_submission_authority: "not_granted",
-      gateway_decision_authority: "not_granted",
+      gateway_result_authority: "not_granted",
       evidence_sealing_authority: "not_counted",
       promotion_authority: "not_granted",
       raw_secret_material_present: false,

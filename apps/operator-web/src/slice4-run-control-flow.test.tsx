@@ -6,27 +6,27 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   CandidateInspectReadModel,
   RuntimeAuditEventRecord,
-  RuntimeControlCommandRecord,
-  RuntimeControlDecisionRecord,
-  TradingSystemRuntimeRecord
+  RunControlCommandRecord,
+  RunControlDecisionRecord,
+  TradingRunRecord
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../../runtime/src/server";
 import { expectNoOperatorActionControls } from "../../../test/support/binance-no-authority";
 import { CandidateDetail } from "./App";
-import { runtimeControlPausePayload } from "./api";
+import { runControlPausePayload } from "./api";
 
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-slice4-control-"));
+  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-slice4-run-control-"));
 });
 
 afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("Slice 4 runtime control MLP flow", () => {
+describe("Slice 4 run control MLP flow", () => {
   it("records pause control through runtime API and renders auditable operator state", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({ store });
@@ -38,23 +38,23 @@ describe("Slice 4 runtime control MLP flow", () => {
       });
       expect(initialRead.statusCode).toBe(200);
       const initialCandidate = initialRead.json() as CandidateInspectReadModel;
-      expect(initialCandidate.runtime.runtime_control).toMatchObject({
+      expect(initialCandidate.runtime.run_control).toMatchObject({
         has_activity: false,
         chain_complete: false
       });
 
       const payload = {
-        ...runtimeControlPausePayload(initialCandidate),
-        idempotency_key: "slice4-mlp-runtime-control-pause"
+        ...runControlPausePayload(initialCandidate),
+        idempotency_key: "slice4-mlp-run-control-pause"
       };
       const recorded = await server.inject({
         method: "POST",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
         payload
       });
       const duplicate = await server.inject({
         method: "POST",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}/runtime-control`,
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
         payload
       });
 
@@ -82,23 +82,23 @@ describe("Slice 4 runtime control MLP flow", () => {
       });
 
       const outcome = recorded.json();
-      const command = await readStoreJson<RuntimeControlCommandRecord>(
-        "runtime-control-commands",
+      const command = await readStoreJson<RunControlCommandRecord>(
+        "run-control-commands",
         "items",
-        `${outcome.command.runtime_control_command_id}.json`
+        `${outcome.command.run_control_command_id}.json`
       );
-      const decision = await readStoreJson<RuntimeControlDecisionRecord>(
-        "runtime-control-decisions",
+      const decision = await readStoreJson<RunControlDecisionRecord>(
+        "run-control-decisions",
         "items",
-        `${outcome.decision.runtime_control_decision_id}.json`
+        `${outcome.decision.run_control_decision_id}.json`
       );
       const auditEvent = await readStoreJson<RuntimeAuditEventRecord>(
         "runtime-audit-events",
         "items",
         `${outcome.audit_event.runtime_audit_event_id}.json`
       );
-      const runtime = await readStoreJson<TradingSystemRuntimeRecord>(
-        "trading-system-runtimes",
+      const runtime = await readStoreJson<TradingRunRecord>(
+        "trading-runs",
         "items",
         `${initialCandidate.runtime.ref.id}.json`
       );
@@ -106,24 +106,24 @@ describe("Slice 4 runtime control MLP flow", () => {
       expect(command.runtime_ref).toEqual(initialCandidate.runtime.ref);
       expect(command.runtime_ref.id).not.toBe(initialCandidate.runtime.placement.ref.id);
       expect(decision.command_ref).toEqual({
-        record_kind: "runtime_control_command",
-        id: command.runtime_control_command_id
+        record_kind: "run_control_command",
+        id: command.run_control_command_id
       });
       expect(auditEvent.command_ref).toEqual(decision.command_ref);
       expect(auditEvent.decision_ref).toEqual({
-        record_kind: "runtime_control_decision",
-        id: decision.runtime_control_decision_id
+        record_kind: "run_control_decision",
+        id: decision.run_control_decision_id
       });
       expect(auditEvent.supporting_record_refs).toEqual([
-        { record_kind: "runtime_control_command", id: command.runtime_control_command_id },
-        { record_kind: "runtime_control_decision", id: decision.runtime_control_decision_id }
+        { record_kind: "run_control_command", id: command.run_control_command_id },
+        { record_kind: "run_control_decision", id: decision.run_control_decision_id }
       ]);
       expect(runtime.runtime_lifecycle_status).toBe("paused");
-      expect(runtime.runtime_control_command_refs).toEqual([
-        { record_kind: "runtime_control_command", id: command.runtime_control_command_id }
+      expect(runtime.run_control_command_refs).toEqual([
+        { record_kind: "run_control_command", id: command.run_control_command_id }
       ]);
-      expect(runtime.runtime_control_decision_refs).toEqual([
-        { record_kind: "runtime_control_decision", id: decision.runtime_control_decision_id }
+      expect(runtime.run_control_decision_refs).toEqual([
+        { record_kind: "run_control_decision", id: decision.run_control_decision_id }
       ]);
       expect(runtime.runtime_audit_event_refs).toEqual([
         { record_kind: "runtime_audit_event", id: auditEvent.runtime_audit_event_id }
@@ -138,17 +138,17 @@ describe("Slice 4 runtime control MLP flow", () => {
       });
       expect(readback.statusCode).toBe(200);
       const candidate = readback.json() as CandidateInspectReadModel;
-      expect(candidate.runtime.runtime_control).toMatchObject({
+      expect(candidate.runtime.run_control).toMatchObject({
         has_activity: true,
         chain_complete: true,
         latest_command: {
-          command_id: command.runtime_control_command_id,
+          command_id: command.run_control_command_id,
           action: "pause",
           status: "decided",
           authority_status: "control_only"
         },
         latest_decision: {
-          decision_id: decision.runtime_control_decision_id,
+          decision_id: decision.run_control_decision_id,
           decision_outcome: "allowed",
           resulting_lifecycle_status: "paused",
           authority_status: "control_only"
@@ -161,27 +161,27 @@ describe("Slice 4 runtime control MLP flow", () => {
         }
       });
       expect(candidate.runtime.placement.authority_status).toBe("not_launched");
-      expect(JSON.stringify(candidate.runtime.runtime_control)).not.toMatch(
+      expect(JSON.stringify(candidate.runtime.run_control)).not.toMatch(
         /exchange_credentials|provider_api_key|direct_exchange_order|gateway_signing_material/
       );
 
       const html = renderToStaticMarkup(
-        <CandidateDetail candidate={candidate} onRecordRuntimeControl={() => undefined} />
+        <CandidateDetail candidate={candidate} onRecordRunControl={() => undefined} />
       );
-      expect(html).toContain("Runtime Control");
-      expect(html).toContain("Logical TradingSystemRuntime state");
+      expect(html).toContain("Run Control");
+      expect(html).toContain("Trading run state");
       expect(html).toContain("chain complete");
       expect(html).toContain("pause");
       expect(html).toContain("allowed");
       expect(html).toContain("policy_allows_control");
       expect(html).toContain("runtime_lifecycle_transitioned");
-      expect(html).toContain(`runtime_control_command:${command.runtime_control_command_id}`);
-      expect(html).toContain(`runtime_control_decision:${decision.runtime_control_decision_id}`);
-      expect(html).toContain("Record pause control");
+      expect(html).toContain(`run_control_command:${command.run_control_command_id.replace("run-control-command", "run-control-command")}`);
+      expect(html).toContain(`run_control_decision:${decision.run_control_decision_id.replace("run-control-decision", "run-control-decision")}`);
+      expect(html).toContain("Record pause");
       expect(html).toContain("control_only / audit_only / not_live");
       expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
       expect(html).not.toMatch(/direct_exchange_order|gateway_signing_material/i);
-      expect(html).not.toMatch(/\/runtime-control\/(pause|kill|start)/i);
+      expect(html).not.toMatch(/\/run-control\/(pause|kill|start)/i);
     } finally {
       await server.close();
     }

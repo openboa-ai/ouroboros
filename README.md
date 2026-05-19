@@ -1,6 +1,6 @@
 # Ouroboros
 
-Ouroboros is an automated weak-to-strong trading-system laboratory. Its first product proof is a single serious solo crypto operator evolving one agent-built `TradingSystemCandidate` into a bounded live `TradingSystemRuntime` with durable identity, evaluation, promotion, control, and audit.
+Ouroboros is an automated weak-to-strong trading-system laboratory. Its first product proof is a single serious solo crypto operator evolving one agent-built `TradingSystem` through `SystemCode`, `Evaluation`, `Improvement`, `TradingRun`, `Sandbox`, `Gateway`, and `Ledger`.
 
 ## Source Of Truth
 
@@ -31,6 +31,21 @@ Long-form product, architecture, source, service, and project-memory material li
 - `packages/local-store` owns filesystem-backed local persistence.
 - `.agents` owns reusable agent operating skills for this repo.
 
+## Naming Surface
+
+Use the same nouns in code, API, UI, and compact repo docs:
+
+```text
+TradingSystem -> SystemCode -> Evaluation -> Improvement -> TradingRun -> Sandbox -> Gateway -> Ledger
+```
+
+User-facing flow: Trading System -> System Code -> Evaluation -> Improvement -> Trading Run -> Sandbox -> Gateway -> Ledger.
+
+`OrderRequest`, `GatewayResult`, and `ExecutionResult` are the Ledger chain. Docker, Compose,
+Docker Sandboxes `sbx`, placement, adapter, and host paths are implementation details under
+`Sandbox`, not product nouns. Older persisted names can appear only in compatibility reads or
+tests that prove old records still load.
+
 ## Development Read Path
 
 1. Read the active Linear issue, milestone, blockers, comments, and project updates.
@@ -45,6 +60,7 @@ Long-form product, architecture, source, service, and project-memory material li
 npm install
 npm run hooks:install
 bash scripts/check-docs.sh
+npm run check:naming
 bash scripts/check-env-files.sh --tracked
 bash scripts/check-secrets.sh
 git diff --check
@@ -171,13 +187,13 @@ OUROBOROS_SDX_BIN=/opt/homebrew/bin/sbx npm run validate:s5-sdx
 The audit command checks repo-side S5 files, npm scripts, and help guardrails without mutating
 sandbox state. Add `-- --host-probes` to include non-mutating host `sbx` preflight and recovery
 dry-run checks. It exits `0` when readiness passes, `1` for repo readiness failures, and `2` when
-repo readiness passes but host `sbx` preflight or runtime-control remains blocked. The validation
+repo readiness passes but host `sbx` preflight or run-control remains blocked. The validation
 harness starts the runtime API with the real `docker_sandboxes_sbx` adapter, records the
-`sbx` command transcript, checks runtime-instance status and logs, and stops/removes the test
+`sbx` command transcript, checks sandbox status and logs, and stops/removes the test
 sandboxes. The preflight command records `sbx` version, diagnose, daemon status, and a non-mutating
-`sbx ls` runtime-control probe. Full validation creates named sandboxes and exits nonzero if the
+`sbx ls` run-control probe. Full validation creates named sandboxes and exits nonzero if the
 host `sbx` daemon cannot complete the lifecycle. Validation exits `2` when the host `sbx`
-preflight/runtime-control path is blocked before sandbox creation, and `1` for validation contract,
+preflight/run-control path is blocked before sandbox creation, and `1` for validation contract,
 runtime API, or lifecycle assertion failures. Blocked validation transcripts print the next
 default-daemon recovery command or isolated-home login/recovery command, depending on the selected
 `OUROBOROS_SBX_HOME` mode. Isolated-home auth blockers also print the follow-on validation command
@@ -187,7 +203,7 @@ The completion audit is non-mutating. It checks the latest `.ouroboros/s5-sbx-ev
 transcript, or an explicit `-- --evidence <path>`, and exits `2` until a real `validate:s5-sbx`
 run proves both clock sandboxes started, emitted direct sandbox log heartbeats, reported runtime API
 status/log heartbeats, returned runtime API stop responses with a `stopped` lifecycle, and were
-removed in lifecycle order. Direct sandbox log sections must contain the matching runtime instance
+removed in lifecycle order. Direct sandbox log sections must contain the matching sandbox
 id, `sbx diagnose` must report zero failures, and the transcript must not include a `RESULT:
 failed` marker. The transcript must also show the real validation harness starting the runtime API
 with the sbx adapter enabled. Completion audit also rejects Starkit or non-Docker-Sandboxes `sdx`
@@ -216,7 +232,7 @@ Useful overrides:
 - `OUROBOROS_SBX_RECOVERY_TIMEOUT_MS`: per-command recovery dry-run timeout.
 - `OUROBOROS_SBX_RUNTIME_STATE_DIR`: runtime metadata directory for recovery path checks.
 
-If preflight fails at the `sbx ls` runtime-control probe or full validation hangs at the `sbx`
+If preflight fails at the `sbx ls` run-control probe or full validation hangs at the `sbx`
 runtime endpoint, inspect the daemon state without changing it:
 
 ```bash
@@ -286,7 +302,7 @@ OUROBOROS_ALLOW_SBX_DAEMON_RESTART=1 OUROBOROS_ALLOW_ACTIVE_SBX_SESSION_INTERRUP
 ```
 
 If `sbx ls` is blocked and you need to prove whether `sbx create` is blocked by the same
-runtime-control path, run the optional direct create-path probe. It creates one uniquely named
+run-control path, run the optional direct create-path probe. It creates one uniquely named
 temporary sandbox only when the explicit gate is set, then attempts `exec` and `rm --force` for
 that same temporary name. The same gated probe can also be included in the local blocker report
 with `report:s5-sbx-blocker -- --include-create-probe`:

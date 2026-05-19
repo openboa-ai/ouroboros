@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildArtifactImprovementLoopReadModel } from "./index";
+import { buildImprovementReadModel } from "./index";
 import type {
   ArtifactLineageRecord,
-  ArtifactChangeProposalRecord,
-  ArtifactChangeProposalMaterializationAttemptRecord,
+  ImprovementProposalRecord,
+  ImprovementProposalMaterializationAttemptRecord,
   ExperimentRunRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
   Ref,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingEvaluationTaskRecord
 } from "./index";
@@ -16,7 +16,7 @@ import type {
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
 describe("automated research orchestration proposal contracts", () => {
-  it("models a proposal run from shared finding to next opaque runnable artifact", () => {
+  it("models a proposal run from shared finding to next opaque system code", () => {
     const task = fixtureTradingEvaluationTask();
     const sourceFinding = researchFinding("research-finding-market-trend-cost-survival-001", "next_artifact_hint");
     const antiHackingFinding = researchFinding("research-finding-market-lookahead-leakage-001", "anti_hacking_case");
@@ -31,13 +31,13 @@ describe("automated research orchestration proposal contracts", () => {
       proposal,
       task
     });
-    const artifact = proposedRunnableArtifact(proposal, sourceFinding);
+    const artifact = proposedSystemCode(proposal, sourceFinding);
     const lineage = artifactLineage(sourceFinding, proposal);
 
     expect(proposal).toMatchObject({
-      record_kind: "artifact_change_proposal",
-      proposed_runnable_artifact_ref: ref("runnable_artifact", artifact.runnable_artifact_id),
-      parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-python-001"),
+      record_kind: "improvement_proposal",
+      proposed_system_code_ref: ref("system_code", artifact.system_code_id),
+      parent_system_code_ref: ref("system_code", "research-system-code-market-trend-python-001"),
       source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
       anti_hacking_finding_refs: [ref("research_finding", antiHackingFinding.research_finding_id)],
       status: "proposed",
@@ -49,15 +49,15 @@ describe("automated research orchestration proposal contracts", () => {
         ref("research_finding", sourceFinding.research_finding_id),
         ref("research_finding", antiHackingFinding.research_finding_id)
       ],
-      output_artifact_proposal_ref: ref("artifact_change_proposal", proposal.artifact_change_proposal_id),
-      output_runnable_artifact_ref: ref("runnable_artifact", artifact.runnable_artifact_id),
+      output_artifact_proposal_ref: ref("improvement_proposal", proposal.improvement_proposal_id),
+      output_system_code_ref: ref("system_code", artifact.system_code_id),
       output_lineage_ref: ref("artifact_lineage", lineage.artifact_lineage_id),
       status: "proposed",
       authority_status: "research_only"
     });
-    expect(artifact.record_kind).toBe("runnable_artifact");
+    expect(artifact.record_kind).toBe("system_code");
     expect(artifact.provenance_refs).toEqual([
-      ref("artifact_change_proposal", proposal.artifact_change_proposal_id),
+      ref("improvement_proposal", proposal.improvement_proposal_id),
       ref("research_finding", sourceFinding.research_finding_id)
     ]);
     expect(lineage.source_finding_refs).toEqual([ref("research_finding", sourceFinding.research_finding_id)]);
@@ -75,7 +75,7 @@ describe("automated research orchestration proposal contracts", () => {
       antiHackingFinding,
       task
     });
-    const materializationAttempt = artifactChangeProposalMaterializationAttempt(proposal);
+    const materializationAttempt = improvementProposalMaterializationAttempt(proposal);
     const run = orchestrationRun({
       sourceFinding,
       antiHackingFinding,
@@ -85,9 +85,9 @@ describe("automated research orchestration proposal contracts", () => {
     const experiment = experimentRun(proposal, task);
     const evaluationResult = tradingEvaluationResult(experiment, task);
 
-    const loop = buildArtifactImprovementLoopReadModel({
+    const loop = buildImprovementReadModel({
       research_findings: [sourceFinding, antiHackingFinding],
-      artifact_change_proposals: [proposal],
+      improvement_proposals: [proposal],
       materialization_attempts: [materializationAttempt],
       research_orchestration_runs: [run],
       experiment_runs: [experiment],
@@ -95,7 +95,7 @@ describe("automated research orchestration proposal contracts", () => {
     });
 
     expect(loop).toMatchObject({
-      loop_kind: "artifact_improvement_loop",
+      improvement_kind: "improvement",
       source_model: "automated_alignment_researcher",
       has_activity: true,
       proposal_chain_complete: true,
@@ -106,8 +106,8 @@ describe("automated research orchestration proposal contracts", () => {
         finding_kind: "next_artifact_hint",
         authority_status: "research_trace_only"
       },
-      latest_artifact_change_proposal: {
-        proposal_id: proposal.artifact_change_proposal_id,
+      latest_change_proposal: {
+        proposal_id: proposal.improvement_proposal_id,
         status: "proposed",
         authority_status: "proposal_only"
       },
@@ -116,7 +116,7 @@ describe("automated research orchestration proposal contracts", () => {
         status: "evaluated",
         authority_status: "not_live"
       },
-      latest_trading_evaluation_result: {
+      latest_evaluation_result: {
         result_id: evaluationResult.trading_evaluation_result_id,
         result_status: "accepted",
         evidence_disposition: "not_counted",
@@ -182,16 +182,16 @@ function artifactProposal(input: {
   sourceFinding: ResearchFindingRecord;
   antiHackingFinding: ResearchFindingRecord;
   task: TradingEvaluationTaskRecord;
-}): ArtifactChangeProposalRecord {
+}): ImprovementProposalRecord {
   return {
-    record_kind: "artifact_change_proposal",
+    record_kind: "improvement_proposal",
     version: 1,
-    artifact_change_proposal_id: "artifact-change-proposal-market-trend-v2",
+    improvement_proposal_id: "improvement-proposal-market-trend-v2",
     research_worker_ref: input.sourceFinding.research_worker_ref,
     research_direction_ref: input.sourceFinding.research_direction_ref,
     trading_evaluation_task_ref: ref("trading_evaluation_task", input.task.trading_evaluation_task_id),
-    proposed_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-python-002"),
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-python-001"),
+    proposed_system_code_ref: ref("system_code", "research-system-code-market-trend-python-002"),
+    parent_system_code_ref: ref("system_code", "research-system-code-market-trend-python-001"),
     source_finding_refs: [ref("research_finding", input.sourceFinding.research_finding_id)],
     anti_hacking_finding_refs: [ref("research_finding", input.antiHackingFinding.research_finding_id)],
     proposal_summary: "Create the next opaque generic market trend artifact candidate from the accepted finding.",
@@ -206,7 +206,7 @@ function artifactProposal(input: {
 function orchestrationRun(input: {
   sourceFinding: ResearchFindingRecord;
   antiHackingFinding: ResearchFindingRecord;
-  proposal: ArtifactChangeProposalRecord;
+  proposal: ImprovementProposalRecord;
   task: TradingEvaluationTaskRecord;
 }): ResearchOrchestrationRunRecord {
   return {
@@ -222,10 +222,10 @@ function orchestrationRun(input: {
     ],
     input_lineage_refs: [ref("artifact_lineage", "artifact-lineage-market-trend-001")],
     output_artifact_proposal_ref: ref(
-      "artifact_change_proposal",
-      input.proposal.artifact_change_proposal_id
+      "improvement_proposal",
+      input.proposal.improvement_proposal_id
     ),
-    output_runnable_artifact_ref: input.proposal.proposed_runnable_artifact_ref,
+    output_system_code_ref: input.proposal.proposed_system_code_ref,
     output_lineage_ref: ref("artifact_lineage", "artifact-lineage-market-trend-001-to-002"),
     trace_ref: ref("trace_placeholder", "trace-research-orchestration-market-trend-v2"),
     started_at: "2026-05-11T14:02:00.000Z",
@@ -235,17 +235,17 @@ function orchestrationRun(input: {
   };
 }
 
-function proposedRunnableArtifact(
-  proposal: ArtifactChangeProposalRecord,
+function proposedSystemCode(
+  proposal: ImprovementProposalRecord,
   sourceFinding: ResearchFindingRecord
-): RunnableArtifactRecord {
+): SystemCodeRecord {
   return {
-    record_kind: "runnable_artifact",
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: proposal.proposed_runnable_artifact_ref.id,
+    system_code_id: proposal.proposed_system_code_ref.id,
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
-    artifact_digest: "sha256:artifact-change-proposal-market-trend-python-002",
+    artifact_digest: "sha256:improvement-proposal-market-trend-python-002",
     runtime_kind: "python",
     entrypoint: ["python", "fixtures/trading-systems/clock.py"],
     declared_output_contract: {
@@ -253,10 +253,10 @@ function proposedRunnableArtifact(
       declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat", "metric_snapshot"]
     },
     secret_policy_ref: ref("secret_policy", "no-raw-secrets"),
-    capability_policy_ref: ref("capability_policy", "fixture-artifact-change-proposal"),
+    capability_policy_ref: ref("capability_policy", "fixture-improvement-proposal"),
     artifact_runtime_contract_ref: ref("artifact_runtime_contract", "artifact-runtime-contract-python-clock-v1"),
     provenance_refs: [
-      ref("artifact_change_proposal", proposal.artifact_change_proposal_id),
+      ref("improvement_proposal", proposal.improvement_proposal_id),
       ref("research_finding", sourceFinding.research_finding_id)
     ],
     status: "registered",
@@ -267,14 +267,14 @@ function proposedRunnableArtifact(
 
 function artifactLineage(
   sourceFinding: ResearchFindingRecord,
-  proposal: ArtifactChangeProposalRecord
+  proposal: ImprovementProposalRecord
 ): ArtifactLineageRecord {
   return {
     record_kind: "artifact_lineage",
     version: 1,
     artifact_lineage_id: "artifact-lineage-market-trend-001-to-002",
-    child_runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
-    parent_runnable_artifact_ref: proposal.parent_runnable_artifact_ref,
+    child_system_code_ref: proposal.proposed_system_code_ref,
+    parent_system_code_ref: proposal.parent_system_code_ref,
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: "2026-05-11T14:02:00.000Z",
@@ -282,30 +282,30 @@ function artifactLineage(
   };
 }
 
-function artifactChangeProposalMaterializationAttempt(
-  proposal: ArtifactChangeProposalRecord
-): ArtifactChangeProposalMaterializationAttemptRecord {
+function improvementProposalMaterializationAttempt(
+  proposal: ImprovementProposalRecord
+): ImprovementProposalMaterializationAttemptRecord {
   return {
-    record_kind: "artifact_change_proposal_materialization_attempt",
+    record_kind: "improvement_proposal_materialization_attempt",
     version: 1,
-    artifact_change_proposal_materialization_attempt_id: "artifact-change-proposal-materialization-attempt-market-trend-v2",
-    idempotency_key: "artifact-change-proposal-market-trend-v2",
+    improvement_proposal_materialization_attempt_id: "improvement-proposal-materialization-attempt-market-trend-v2",
+    idempotency_key: "proposal-test-key",
     provider: {
       provider_kind: "fixture_only",
-      model: "deterministic-artifact-change-proposal-planner-fixture",
+      model: "deterministic-improvement-proposal-planner-fixture",
       invocation_surface: "fixture"
     },
     agent_run_ref: ref("agent_run", "agent-run-market-trend-v2"),
     agent_event_refs: [ref("agent_event", "agent-event-market-trend-v2")],
     trace_ref: ref("trace_placeholder", "trace-research-orchestration-market-trend-v2"),
     provider_output_artifact_refs: [
-      ref("artifact_change_proposal_provider_output_artifact", "provider-output-market-trend-v2")
+      ref("improvement_proposal_provider_output_artifact", "provider-output-market-trend-v2")
     ],
     debug_artifact_refs: [ref("debug_artifact", "debug-market-trend-v2")],
     status: "materialized",
     validation_status: "accepted",
-    output_artifact_proposal_ref: ref("artifact_change_proposal", proposal.artifact_change_proposal_id),
-    output_runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    output_artifact_proposal_ref: ref("improvement_proposal", proposal.improvement_proposal_id),
+    output_system_code_ref: proposal.proposed_system_code_ref,
     output_lineage_ref: ref("artifact_lineage", "artifact-lineage-market-trend-001-to-002"),
     created_at: "2026-05-11T14:02:00.000Z",
     authority_status: "proposal_input_only"
@@ -313,7 +313,7 @@ function artifactChangeProposalMaterializationAttempt(
 }
 
 function experimentRun(
-  proposal: ArtifactChangeProposalRecord,
+  proposal: ImprovementProposalRecord,
   task: TradingEvaluationTaskRecord
 ): ExperimentRunRecord {
   return {
@@ -322,9 +322,9 @@ function experimentRun(
     experiment_run_id: "experiment-run-market-trend-v2",
     research_worker_ref: proposal.research_worker_ref,
     research_direction_ref: proposal.research_direction_ref,
-    runnable_artifact_ref: proposal.proposed_runnable_artifact_ref,
+    system_code_ref: proposal.proposed_system_code_ref,
     trading_evaluation_task_ref: ref("trading_evaluation_task", task.trading_evaluation_task_id),
-    sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", "sandbox-runtime-instance-market-trend-v2"),
+    sandbox_ref: ref("sandbox", "sandbox-market-trend-v2"),
     runtime_trace_refs: [ref("trace_placeholder", "trace-runtime-market-trend-v2")],
     trace_ref: ref("trace_placeholder", "trace-runtime-market-trend-v2"),
     submitted_at: "2026-05-11T14:03:00.000Z",
@@ -369,9 +369,9 @@ if (false) {
       antiHackingFinding: researchFinding("anti-hacking", "anti_hacking_case"),
       task: fixtureTradingEvaluationTask()
     }),
-    // @ts-expect-error artifact change proposals must not normalize strategy internals.
+    // @ts-expect-error improvement proposals must not normalize strategy internals.
     strategy_internals: { indicator: "rsi", lookback: 14 }
-  } satisfies ArtifactChangeProposalRecord;
+  } satisfies ImprovementProposalRecord;
 
   const _proposalWithRawCredentials = {
     ...artifactProposal({
@@ -379,9 +379,9 @@ if (false) {
       antiHackingFinding: researchFinding("anti-hacking", "anti_hacking_case"),
       task: fixtureTradingEvaluationTask()
     }),
-    // @ts-expect-error artifact change proposals must not carry ExternalTradingApiProvider credential material.
+    // @ts-expect-error improvement proposals must not carry ExternalTradingApiProvider credential material.
     venue_credentials: { api_key: "redacted", api_secret: "redacted" }
-  } satisfies ArtifactChangeProposalRecord;
+  } satisfies ImprovementProposalRecord;
 
   const _proposalWithPaperAuthority = {
     ...artifactProposal({
@@ -389,9 +389,9 @@ if (false) {
       antiHackingFinding: researchFinding("anti-hacking", "anti_hacking_case"),
       task: fixtureTradingEvaluationTask()
     }),
-    // @ts-expect-error artifact change proposals cannot authorize paper orders.
+    // @ts-expect-error improvement proposals cannot authorize paper orders.
     paper_order_authority: true
-  } satisfies ArtifactChangeProposalRecord;
+  } satisfies ImprovementProposalRecord;
 
   const _proposalWithCountedAuthority = {
     ...artifactProposal({
@@ -399,9 +399,9 @@ if (false) {
       antiHackingFinding: researchFinding("anti-hacking", "anti_hacking_case"),
       task: fixtureTradingEvaluationTask()
     }),
-    // @ts-expect-error artifact change proposals are proposal-only, not counted evidence.
+    // @ts-expect-error improvement proposals are proposal-only, not counted evidence.
     authority_status: "counted"
-  } satisfies ArtifactChangeProposalRecord;
+  } satisfies ImprovementProposalRecord;
 
   const _runWithPromotionAuthority = {
     ...orchestrationRun({

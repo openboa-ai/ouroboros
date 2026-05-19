@@ -12,7 +12,7 @@ describe("DeterministicSealedReplayEvaluator", () => {
   it("returns accepted non-counted external evaluation results for robust fixture submissions", () => {
     const evaluator = new DeterministicSealedReplayEvaluator();
     const task = fixtureTradingEvaluationTask();
-    const experiment = researchExperiment("experiment-run-accepted", "research-runnable-artifact-market-accepted-001", task);
+    const experiment = researchExperiment("experiment-run-accepted", "research-system-code-market-accepted-001", task);
 
     const result = evaluator.evaluate({
       experiment,
@@ -44,12 +44,12 @@ describe("DeterministicSealedReplayEvaluator", () => {
     const evaluator = new DeterministicSealedReplayEvaluator();
     const task = fixtureTradingEvaluationTask();
     const quarantined = evaluator.evaluate({
-      experiment: researchExperiment("experiment-run-unstable", "research-runnable-artifact-market-unstable-001", task),
+      experiment: researchExperiment("experiment-run-unstable", "research-system-code-market-unstable-001", task),
       task,
       completed_at: "2026-05-11T11:00:01.000Z"
     });
     const disqualified = evaluator.evaluate({
-      experiment: researchExperiment("experiment-run-leakage", "research-runnable-artifact-market-lookahead-leakage-001", task),
+      experiment: researchExperiment("experiment-run-leakage", "research-system-code-market-lookahead-leakage-001", task),
       task,
       completed_at: "2026-05-11T11:00:02.000Z"
     });
@@ -73,7 +73,7 @@ describe("DeterministicSealedReplayEvaluator", () => {
   it("requires submissions to match the sealed generic trading backtest task", () => {
     const evaluator = new DeterministicSealedReplayEvaluator();
     const task = fixtureTradingEvaluationTask();
-    const experiment = researchExperiment("experiment-run-task-mismatch", "research-runnable-artifact-market-accepted-001", {
+    const experiment = researchExperiment("experiment-run-task-mismatch", "research-system-code-market-accepted-001", {
       ...task,
       trading_evaluation_task_id: "different-task"
     });
@@ -105,7 +105,7 @@ function fixtureTradingEvaluationTask(): TradingEvaluationTaskRecord {
 
 function researchExperiment(
   experimentId: string,
-  runnableArtifactId: string,
+  systemCodeId: string,
   task: TradingEvaluationTaskRecord
 ): ExperimentRunRecord {
   return {
@@ -114,9 +114,9 @@ function researchExperiment(
     experiment_run_id: experimentId,
     research_worker_ref: ref("research_worker", "research-worker-fixture"),
     research_direction_ref: ref("research_direction", "research-direction-fixture"),
-    runnable_artifact_ref: ref("runnable_artifact", runnableArtifactId),
+    system_code_ref: ref("system_code", systemCodeId),
     trading_evaluation_task_ref: ref("trading_evaluation_task", task.trading_evaluation_task_id),
-    sandbox_runtime_instance_ref: ref("sandbox_runtime_instance", `sandbox-runtime-instance-${experimentId}`),
+    sandbox_ref: ref("sandbox", `sandbox-${experimentId}`),
     trace_ref: ref("trace_placeholder", `runtime-self-report-trace-${experimentId}`),
     submitted_at: "2026-05-11T10:31:00.000Z",
     status: "submitted",

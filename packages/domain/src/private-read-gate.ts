@@ -106,7 +106,7 @@ export interface PrivateReadGateDecision {
   listen_key_user_data_stream_authority: PrivateReadGateAuthorityStatus;
   leverage_margin_mutation_authority: PrivateReadGateAuthorityStatus;
   order_submission_authority: PrivateReadGateAuthorityStatus;
-  gateway_decision_authority: PrivateReadGateAuthorityStatus;
+  gateway_result_authority: PrivateReadGateAuthorityStatus;
   evidence_sealing_authority: PrivateReadGateEvidenceStatus;
   promotion_authority: PrivateReadGateAuthorityStatus;
   reason_codes: PrivateReadGateReasonCode[];
@@ -194,7 +194,7 @@ export function evaluatePrivateReadGateDecision(
     listen_key_user_data_stream_authority: "not_granted",
     leverage_margin_mutation_authority: "not_granted",
     order_submission_authority: "not_granted",
-    gateway_decision_authority: "not_granted",
+    gateway_result_authority: "not_granted",
     evidence_sealing_authority: "not_counted",
     promotion_authority: "not_granted",
     reason_codes: uniqueReasonCodes([

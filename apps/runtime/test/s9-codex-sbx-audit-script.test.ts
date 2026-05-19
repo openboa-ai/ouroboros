@@ -111,12 +111,12 @@ case "$*" in
   },
   "dry_run": {
     "status": "failed",
-    "failure_reason": "artifact_change_proposal_provider_timeout"
+    "failure_reason": "improvement_proposal_provider_timeout"
   },
   "delta": {
-    "artifact_change_proposal_materialization_attempts": 1,
-    "artifact_change_proposals": 0,
-    "runnable_artifacts": 0,
+    "improvement_proposal_materialization_attempts": 1,
+    "improvement_proposals": 0,
+    "system_codes": 0,
     "artifact_lineages": 0,
     "research_orchestration_runs": 0
   }
@@ -130,7 +130,7 @@ JSON
       echo "RESULT: preflight passed"
       exit 0
     fi
-    echo "host sbx preflight/runtime-control is blocked" >&2
+    echo "host sbx preflight/run-control is blocked" >&2
     exit "\${S9_FAKE_SBX_PREFLIGHT_CODE}"
     ;;
   *)

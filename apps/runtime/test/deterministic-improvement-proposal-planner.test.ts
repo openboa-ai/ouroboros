@@ -5,13 +5,13 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { DeterministicArtifactChangeProposalPlanner } from "../src/research-orchestration/deterministic-proposal-planner";
+import { DeterministicImprovementProposalPlanner } from "../src/research-orchestration/deterministic-proposal-planner";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("deterministic artifact change proposal planner", () => {
+describe("deterministic improvement proposal planner", () => {
   it("proposes the next opaque artifact from eligible findings and anti-hacking constraints", () => {
-    const planner = new DeterministicArtifactChangeProposalPlanner();
+    const planner = new DeterministicImprovementProposalPlanner();
     const sourceFinding = researchFinding({
       id: "research-finding-market-trend-cost-survival-001",
       findingKind: "next_artifact_hint",
@@ -35,30 +35,30 @@ describe("deterministic artifact change proposal planner", () => {
     expect(outcome.source_finding).toEqual(sourceFinding);
     expect(outcome.anti_hacking_findings).toEqual([antiHackingFinding]);
     expect(outcome.proposal).toMatchObject({
-      record_kind: "artifact_change_proposal",
+      record_kind: "improvement_proposal",
       research_worker_ref: sourceFinding.research_worker_ref,
       research_direction_ref: sourceFinding.research_direction_ref,
       source_finding_refs: [{ record_kind: "research_finding", id: sourceFinding.research_finding_id }],
       anti_hacking_finding_refs: [{ record_kind: "research_finding", id: antiHackingFinding.research_finding_id }],
-      parent_runnable_artifact_ref: lineage.child_runnable_artifact_ref,
+      parent_system_code_ref: lineage.child_system_code_ref,
       status: "proposed",
       authority_status: "proposal_only"
     });
-    expect(outcome.runnable_artifact).toMatchObject({
-      record_kind: "runnable_artifact",
+    expect(outcome.system_code).toMatchObject({
+      record_kind: "system_code",
       artifact_kind: "python_file",
       artifact_path: "fixtures/trading-systems/clock.py",
       runtime_kind: "python",
       status: "registered",
       authority_status: "not_live"
     });
-    expect(outcome.runnable_artifact.provenance_refs).toEqual([
-      { record_kind: "artifact_change_proposal", id: outcome.proposal.artifact_change_proposal_id },
+    expect(outcome.system_code.provenance_refs).toEqual([
+      { record_kind: "improvement_proposal", id: outcome.proposal.improvement_proposal_id },
       { record_kind: "research_finding", id: sourceFinding.research_finding_id }
     ]);
     expect(outcome.lineage).toMatchObject({
-      child_runnable_artifact_ref: outcome.proposal.proposed_runnable_artifact_ref,
-      parent_runnable_artifact_ref: lineage.child_runnable_artifact_ref,
+      child_system_code_ref: outcome.proposal.proposed_system_code_ref,
+      parent_system_code_ref: lineage.child_system_code_ref,
       source_finding_refs: [{ record_kind: "research_finding", id: sourceFinding.research_finding_id }],
       authority_status: "lineage_only"
     });
@@ -69,10 +69,10 @@ describe("deterministic artifact change proposal planner", () => {
       ],
       input_lineage_refs: [{ record_kind: "artifact_lineage", id: lineage.artifact_lineage_id }],
       output_artifact_proposal_ref: {
-        record_kind: "artifact_change_proposal",
-        id: outcome.proposal.artifact_change_proposal_id
+        record_kind: "improvement_proposal",
+        id: outcome.proposal.improvement_proposal_id
       },
-      output_runnable_artifact_ref: outcome.proposal.proposed_runnable_artifact_ref,
+      output_system_code_ref: outcome.proposal.proposed_system_code_ref,
       output_lineage_ref: { record_kind: "artifact_lineage", id: outcome.lineage.artifact_lineage_id },
       status: "proposed",
       authority_status: "research_only"
@@ -86,7 +86,7 @@ describe("deterministic artifact change proposal planner", () => {
   });
 
   it("is stable for the same idempotency key", () => {
-    const planner = new DeterministicArtifactChangeProposalPlanner();
+    const planner = new DeterministicImprovementProposalPlanner();
     const input = {
       task: fixtureTradingEvaluationTask(),
       findings: [
@@ -104,7 +104,7 @@ describe("deterministic artifact change proposal planner", () => {
   });
 
   it("rejects missing eligible findings and unsupported task scope", () => {
-    const planner = new DeterministicArtifactChangeProposalPlanner();
+    const planner = new DeterministicImprovementProposalPlanner();
 
     expect(() =>
       planner.plan({
@@ -163,8 +163,8 @@ function artifactLineage(sourceFinding: ResearchFindingRecord): ArtifactLineageR
     record_kind: "artifact_lineage",
     version: 1,
     artifact_lineage_id: "artifact-lineage-market-trend-v1",
-    child_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-v1"),
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-seed-v1"),
+    child_system_code_ref: ref("system_code", "research-system-code-market-trend-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-market-seed-v1"),
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: "2026-05-11T15:00:30.000Z",

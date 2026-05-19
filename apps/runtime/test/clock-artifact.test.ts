@@ -18,7 +18,7 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("Python clock runnable artifact fixture", () => {
+describe("Python clock system code fixture", () => {
   it("runs in bounded test mode and emits instance-scoped heartbeat and log output", async () => {
     const logFile = path.join(tmpDir, "clock.log");
     const heartbeatFile = path.join(tmpDir, "clock-heartbeat.json");

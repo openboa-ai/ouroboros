@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { buildTradingLedgerReadModel } from "@ouroboros/domain";
+import { buildLedgerReadModel } from "@ouroboros/domain";
 import type {
-  ArtifactImprovementLoopReadModel,
+  ImprovementReadModel,
   CandidateEvaluationReadModel,
   CandidateInspectReadModel,
   CandidateLatestValidationStateReadModel,
@@ -10,8 +10,8 @@ import type {
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
-  ReplayRuntimeAuthorityReadModel,
-  ReplayRuntimeControlReadModel,
+  LedgerSourceRecordsReadModel,
+  RunControlReadModel,
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
@@ -39,8 +39,8 @@ import {
   privateReadinessPostureDraftFromCandidate,
   privateReadinessPosturePayload,
   replayRunPayload,
-  runtimeAuthorityCommandPayload,
-  runtimeControlPausePayload
+  ledgerCommandPayload,
+  runControlPausePayload
 } from "./api";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -53,11 +53,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No provider has run.");
     expect(html).toContain("Capability Package");
     expect(html).toContain("Agent And Provider");
-    expect(html).toContain("Trading ledger");
-    expect(html).toContain("Runtime Control");
+    expect(html).toContain("Ledger");
+    expect(html).toContain("Run Control");
     expect(html).toContain("Candidate Runs");
     expect(html).toContain("No candidate-id replay runs");
-    expect(html).toContain("Logical TradingSystemRuntime state");
+    expect(html).toContain("Trading run state");
     expect(html).toContain("Request / decision / result");
     expect(html).toContain("Trace And Evaluation");
     expect(html).toContain("Evaluation state");
@@ -244,7 +244,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("TradingGateway");
     expect(html).toContain("sandbox_direct_exchange_access=false");
     expect(html).toContain("USER_DATA, TRADE");
-    expect(html).toContain("order_intent_draft -&gt; gateway_decision -&gt; execution_attempt");
+    expect(html).toContain("order_request -&gt; gateway_result -&gt; execution_result");
     expect(html).toContain("GET /fapi/v3/account, GET /fapi/v3/positionRisk");
     expect(html).toContain("POST /fapi/v1/order");
     expect(html).toContain("gateway_required=true, authority=not_granted");
@@ -917,12 +917,12 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Selected run detail");
     expect(html).toContain("replay-run-detail");
-    expect(html).toContain("1 / valid_order_intent_draft");
+    expect(html).toContain("1 / valid_order_request");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expect(html).toContain("promotion-detail");
     expect(html).toContain("research-detail");
     expect(html).toContain("trend_long");
-    expect(html).toContain("Accepted order intent draft with score 1.000.");
+    expect(html).toContain("Accepted order request with score 1.000.");
     expect(html).toContain("Metric provider_boundary");
     expect(html).toContain("0.2: market/account/order validation went through the external provider");
     expect(html).toContain("sbx version");
@@ -1011,7 +1011,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("baseline-run");
     expect(html).toContain("+0.25");
     expect(html).toContain("+1");
-    expect(html).toContain("valid_order_intent_draft -&gt; valid_order_intent_draft");
+    expect(html).toContain("valid_order_request -&gt; valid_order_request");
     expect(html).toContain("Validation state");
     expect(html).toContain("Read-only validation state");
     expect(html).toContain("validation_state_not_authority");
@@ -1073,13 +1073,13 @@ describe("CandidateDetail", () => {
     expect(html).not.toMatch(/Run trading loop|Record pause control/i);
   });
 
-  it("renders TradingLedger state without implying live authority", () => {
+  it("renders Ledger state without implying live authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
-        candidate={candidateWithRuntimeAuthority(runtimeAuthority())}
+        candidate={candidateWithLedgerSource(ledgerSourceRecords())}
         tradingGatewayEnvironment={tradingGatewayEnvironment()}
-        onRunTradingLoop={() => undefined}
-        tradingLoopMessage="dry_run_only recorded: execution-attempt-001"
+        onStartTradingRun={() => undefined}
+        tradingRunMessage="dry_run_only recorded: execution-result-001"
       />
     );
 
@@ -1090,40 +1090,41 @@ describe("CandidateDetail", () => {
     expect(html).toContain("api_key=true");
     expect(html).toContain("api_secret=true");
     expect(html).toContain("live_exchange=false");
-    expect(html).toContain("Trading ledger");
-    expect(html).not.toContain("Runtime Authority");
+    expect(html).toContain("Ledger");
+    expect(html).toContain("Ledger");
     expect(html).toContain("chain complete");
-    expect(html).toContain("Order intent");
+    expect(html).toContain("Order request");
     expect(html).toContain("place_order");
     expect(html).toContain("buy / limit");
-    expect(html).toContain("Gateway decision");
+    expect(html).toContain("Gateway result");
     expect(html).toContain("dry_run_only");
     expect(html).toContain("paper_stage_only");
-    expect(html).toContain("order_intent_draft:order-intent-draft-001");
-    expect(html).toContain("Execution attempt");
-    expect(html).toContain("gateway_decision:gateway-decision-001");
-    expect(html).toContain("Run trading loop");
-    expect(html).toContain("Compatibility detail");
-    expect(html).toContain("runtime.bounded_authority");
+    expect(html).toContain("order_request:order-request-001");
+    expect(html).toContain("Execution result");
+    expect(html).toContain("gateway_result:gateway-result-001");
+    expect(html).toContain("Start trading run");
+    expect(html).not.toContain("Compatibility detail");
+    expect(html).not.toContain("runtime.ledger");
     expect(html).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
-  it("renders the artifact improvement loop without promotion or trading authority", () => {
+  it("renders Improvement without promotion or trading authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
         candidate={candidateWithImprovementLoop(artifactImprovementLoop())}
-        onRunImprovementLoop={() => undefined}
-        improvementLoopMessage="evaluation recorded: trading-evaluation-result-001"
+        onRecordImprovement={() => undefined}
+        improvementMessage="evaluation recorded: trading-evaluation-result-001"
       />
     );
 
-    expect(html).toContain("Improvement loop");
+    expect(html).toContain("Improvement");
     expect(html).toContain("automated_alignment_researcher");
     expect(html).toContain("chain complete");
     expect(html).toContain("Source finding");
-    expect(html).toContain("ArtifactChangeProposal");
-    expect(html).toContain("artifact-change-proposal-001");
+    expect(html).toContain("Change proposal");
+    expect(html).not.toContain("ImprovementProposal");
+    expect(html).toContain("improvement-proposal-001");
     expect(html).toContain("Experiment");
     expect(html).toContain("experiment-run-001");
     expect(html).toContain("Evaluation result");
@@ -1133,7 +1134,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("not_sealed");
     expect(html).toContain("Promotion");
     expect(html).toContain("not_promoted");
-    expect(html).toContain("Run improvement loop");
+    expect(html).toContain("Record improvement");
+    expect(html).not.toContain("Run improvement loop");
     expect(html).not.toContain("Run provider");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
@@ -1155,30 +1157,30 @@ describe("CandidateDetail", () => {
   it("renders runtime control state and bounded pause command without implying live authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
-        candidate={candidateWithRuntimeControl(
+        candidate={candidateWithRunControl(
           runtimeControl(),
           fixturePrivateReadinessPolicyDecision()
         )}
-        onRecordRuntimeControl={() => undefined}
-        runtimeControlMessage="control_only recorded: runtime-control-command-001"
+        onRecordRunControl={() => undefined}
+        runtimeControlMessage="Run control recorded"
       />
     );
 
-    expect(html).toContain("Runtime Control");
+    expect(html).toContain("Run Control");
     expect(html).toContain("Private-readiness policy alignment");
     expect(html).toContain("policy_not_ready");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
-    expect(html).toContain("not_order_intent_gateway_decision_evidence_or_promotion");
+    expect(html).toContain("not_order_request_gateway_result_evidence_or_promotion");
     expect(html).toContain("chain complete");
     expect(html).toContain("Latest control command");
     expect(html).toContain("pause");
     expect(html).toContain("human_operator");
     expect(html).toContain("Latest control decision");
     expect(html).toContain("policy_allows_control");
-    expect(html).toContain("runtime_control_command:runtime-control-command-001");
+    expect(html).toContain("run_control_command:run-control-command-001");
     expect(html).toContain("Latest audit event");
     expect(html).toContain("runtime_lifecycle_transitioned");
-    expect(html).toContain("Record pause control");
+    expect(html).toContain("Record pause");
     expect(html).toContain("control_only");
     expect(html).toContain("audit_only");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
@@ -1188,7 +1190,7 @@ describe("CandidateDetail", () => {
   it("distinguishes runtime control policy alignment states without granting authority", () => {
     const reviewRequiredHtml = renderToStaticMarkup(
       <CandidateDetail
-        candidate={candidateWithRuntimeControl(
+        candidate={candidateWithRunControl(
           runtimeControl(),
           fixturePrivateReadinessPolicyDecision({
             status: "review_required",
@@ -1197,13 +1199,13 @@ describe("CandidateDetail", () => {
             required_next_actions: ["review_operator_jurisdiction"]
           })
         )}
-        onRecordRuntimeControl={() => undefined}
+        onRecordRunControl={() => undefined}
       />
     );
 
     const readyHtml = renderToStaticMarkup(
       <CandidateDetail
-        candidate={candidateWithRuntimeControl(
+        candidate={candidateWithRunControl(
           runtimeControl(),
           fixturePrivateReadinessPolicyDecision({
             status: "ready",
@@ -1212,7 +1214,7 @@ describe("CandidateDetail", () => {
             required_next_actions: []
           })
         )}
-        onRecordRuntimeControl={() => undefined}
+        onRecordRunControl={() => undefined}
       />
     );
 
@@ -1227,8 +1229,8 @@ describe("CandidateDetail", () => {
     expectNoOperatorActionControls(readyHtml, { includePrivateAuthorityTerms: true });
   });
 
-  it("builds fixture-safe runtime authority command payloads", () => {
-    const payload = runtimeAuthorityCommandPayload(fixtureCandidate);
+  it("builds fixture-safe Ledger command payloads", () => {
+    const payload = ledgerCommandPayload(fixtureCandidate);
     expect(payload).toMatchObject({
       candidate_version_id: fixtureCandidate.candidate_version.candidate_version_id,
       intent: {
@@ -1236,20 +1238,20 @@ describe("CandidateDetail", () => {
         side: "buy",
         order_type: "limit"
       },
-      gateway_decision: {
+      gateway_result: {
         decision_outcome: "dry_run_only",
         decision_reason: "paper_stage_only"
       },
-      execution_attempt: {
+      execution_result: {
         execution_mode: "host_local"
       }
     });
-    expect(payload.idempotency_key).toContain("operator-web-runtime-authority");
+    expect(payload.idempotency_key).toContain("operator-web-ledger");
     expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker/i);
   });
 
-  it("builds fixture-safe runtime control pause payloads", () => {
-    const payload = runtimeControlPausePayload(fixtureCandidate);
+  it("builds fixture-safe run control pause payloads", () => {
+    const payload = runControlPausePayload(fixtureCandidate);
     expect(payload).toMatchObject({
       candidate_version_id: fixtureCandidate.candidate_version.candidate_version_id,
       command: {
@@ -1267,7 +1269,7 @@ describe("CandidateDetail", () => {
         event_kind: "runtime_lifecycle_transitioned"
       }
     });
-    expect(payload.idempotency_key).toContain("operator-web-runtime-control-pause");
+    expect(payload.idempotency_key).toContain("operator-web-run-control-pause");
     expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|broker|provider_api_key/i);
   });
 
@@ -1425,30 +1427,50 @@ function candidateWithEvaluation(evaluation: CandidateEvaluationReadModel): Cand
   };
 }
 
-function candidateWithRuntimeAuthority(
-  boundedAuthority: ReplayRuntimeAuthorityReadModel
+function candidateWithLedgerSource(
+  ledgerSource: LedgerSourceRecordsReadModel
 ): CandidateInspectReadModel {
   return {
     ...fixtureCandidate,
+    ledger: buildLedgerReadModel(ledgerSource),
     runtime: {
       ...fixtureCandidate.runtime,
-      bounded_authority: boundedAuthority,
-      trading_ledger: buildTradingLedgerReadModel(boundedAuthority)
+      ledger: ledgerSource
     }
   };
 }
 
 function candidateWithImprovementLoop(
-  improvementLoop: ArtifactImprovementLoopReadModel
+  improvementLoop: ImprovementReadModel
 ): CandidateInspectReadModel {
   return {
     ...fixtureCandidate,
-    improvement_loop: improvementLoop
+    improvement: improvementFromLoop(improvementLoop)
   };
 }
 
-function candidateWithRuntimeControl(
-  runtimeControl: ReplayRuntimeControlReadModel,
+function improvementFromLoop(loop: ImprovementReadModel): ImprovementReadModel {
+  return {
+    improvement_kind: "improvement",
+    source_model: loop.source_model,
+    has_activity: loop.has_activity,
+    proposal_chain_complete: loop.proposal_chain_complete,
+    evaluation_chain_complete: loop.evaluation_chain_complete,
+    chain_complete: loop.chain_complete,
+    latest_source_finding: loop.latest_source_finding,
+    latest_change_proposal: loop.latest_change_proposal,
+    latest_materialization: loop.latest_materialization,
+    latest_research_run: loop.latest_research_run,
+    latest_experiment: loop.latest_experiment,
+    latest_evaluation_result: loop.latest_evaluation_result,
+    evidence: loop.evidence,
+    promotion: loop.promotion,
+    no_authority: loop.no_authority
+  };
+}
+
+function candidateWithRunControl(
+  runtimeControl: RunControlReadModel,
   privateReadinessPolicyDecision?: NonNullable<
     CandidateInspectReadModel["trading_substrate"]
   >["latest_private_readiness_policy_decision"]
@@ -1457,7 +1479,7 @@ function candidateWithRuntimeControl(
     ...fixtureCandidate,
     runtime: {
       ...fixtureCandidate.runtime,
-      runtime_control: runtimeControl
+      run_control: runtimeControl
     },
     trading_substrate: {
       latest_order_fill_surface: fixtureOrderFillSurface(),
@@ -1493,7 +1515,7 @@ function promotedCandidate(): CandidateInspectReadModel {
       version_label: "trading-research-v1",
       provenance_refs: [
         { record_kind: "trading_research_notebook", id: "s15-02-seeded-codex-real-sdx-proof" },
-        { record_kind: "runnable_artifact", id: "runnable-artifact-8d42977b8c79" }
+        { record_kind: "system_code", id: "system-code-8d42977b8c79" }
       ]
     },
     spec: {
@@ -1509,7 +1531,7 @@ function promotedCandidate(): CandidateInspectReadModel {
       manifest: {
         ref: { record_kind: "program_manifest", id: "trading-system-mvp-manifest" },
         declared_runtime: "python python3 run.py",
-        declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_intent_draft"]
+        declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
       },
       validation: {
         ref: { record_kind: "program_validation_record", id: `${candidateId}-validation` },
@@ -1532,13 +1554,13 @@ function promotedCandidate(): CandidateInspectReadModel {
       mount: placeholder("capability_mount_record", `${candidateId}-mount`, "Capability mount")
     },
     runtime: {
-      ref: { record_kind: "trading_system_runtime", id: `${candidateId}-runtime` },
+      ref: { record_kind: "trading_run", id: `${candidateId}-runtime` },
       stage_binding_profile: "backtest",
       runtime_lifecycle_status: "registered",
       authority_status: "not_live",
       placement: {
-        ref: { record_kind: "runtime_placement", id: `${candidateId}-placement` },
-        label: "Runtime placement",
+        ref: { record_kind: "sandbox_placement", id: `${candidateId}-placement` },
+        label: "Sandbox placement",
         status: "candidate_replay_only",
         authority_status: "not_live"
       },
@@ -1592,7 +1614,7 @@ function replayRunDetail(overrides: Partial<ReplayRunDetailReadModel> = {}): Rep
   return {
     ...summary,
     score: 1,
-    risk_decision: "valid_order_intent_draft",
+    risk_decision: "valid_order_request",
     scenario_ids: ["trend_long"],
     output_dir: "/tmp/replay-run-001/output",
     events_path: "/tmp/replay-run-001/output/replay-set.json",
@@ -1615,8 +1637,8 @@ function replayRunDetail(overrides: Partial<ReplayRunDetailReadModel> = {}): Rep
         status: "accepted",
         run_status: "completed",
         score: 1,
-        risk_decision: "valid_order_intent_draft",
-        summary: "Accepted order intent draft with score 1.000.",
+        risk_decision: "valid_order_request",
+        summary: "Accepted order request with score 1.000.",
         events_path: "/tmp/replay-run-001/output/trend_long/events.jsonl",
         provider_request_count: 3,
         runner_command_count: 1,
@@ -1653,7 +1675,7 @@ function replayRunComparison(
       status: "accepted",
       run_status: "completed",
       score: 0.85,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_accepted: 2,
       scenario_total: 2,
       provider_request_total: 6,
@@ -1666,7 +1688,7 @@ function replayRunComparison(
       status: "accepted",
       run_status: "completed",
       score: 0.6,
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_accepted: 1,
       scenario_total: 2,
       provider_request_total: 5,
@@ -1682,7 +1704,7 @@ function replayRunComparison(
       provider_request_total: 1,
       runner_command_total: 4
     },
-    risk_transition: "valid_order_intent_draft -> valid_order_intent_draft",
+    risk_transition: "valid_order_request -> valid_order_request",
     verdict: "improved",
     verdict_reason: "selected run improved score by 0.25 and accepted scenarios by 1",
     authority_status: "not_live",
@@ -1781,12 +1803,12 @@ function candidateLatestValidationState(
   };
 }
 
-function runtimeAuthority(): ReplayRuntimeAuthorityReadModel {
+function ledgerSourceRecords(): LedgerSourceRecordsReadModel {
   return {
     has_activity: true,
     chain_complete: true,
-    latest_order_intent_draft: {
-      order_intent_draft_id: "order-intent-draft-001",
+    latest_order_request: {
+      order_request_id: "order-request-001",
       intent_kind: "place_order",
       market_scope: "external_trading_api_fixture",
       side: "buy",
@@ -1797,18 +1819,18 @@ function runtimeAuthority(): ReplayRuntimeAuthorityReadModel {
       created_at: "2026-05-10T00:00:00.000Z",
       authority_status: "not_submitted"
     },
-    latest_gateway_decision: {
-      gateway_decision_id: "gateway-decision-001",
-      order_intent_draft_ref: { record_kind: "order_intent_draft", id: "order-intent-draft-001" },
+    latest_gateway_result: {
+      gateway_result_id: "gateway-result-001",
+      order_request_ref: { record_kind: "order_request", id: "order-request-001" },
       decision_outcome: "dry_run_only",
       decision_reason: "paper_stage_only",
       decided_at: "2026-05-10T00:00:00.000Z",
       authority_status: "dry_run_only"
     },
-    latest_execution_attempt: {
-      execution_attempt_id: "execution-attempt-001",
-      order_intent_draft_ref: { record_kind: "order_intent_draft", id: "order-intent-draft-001" },
-      gateway_decision_ref: { record_kind: "gateway_decision", id: "gateway-decision-001" },
+    latest_execution_result: {
+      execution_result_id: "execution-result-001",
+      order_request_ref: { record_kind: "order_request", id: "order-request-001" },
+      gateway_result_ref: { record_kind: "gateway_result", id: "gateway-result-001" },
       stage: "paper",
       execution_mode: "host_local",
       venue_scope: "external_trading_api_fixture",
@@ -1817,30 +1839,30 @@ function runtimeAuthority(): ReplayRuntimeAuthorityReadModel {
       created_at: "2026-05-10T00:00:00.000Z",
       authority_status: "dry_run_only"
     },
-    order_intent_draft: {
-      ref: { record_kind: "order_intent_draft", id: "order-intent-draft-001" },
-      label: "Order intent draft",
+    order_request: {
+      ref: { record_kind: "order_request", id: "order-request-001" },
+      label: "Order request",
       status: "proposed",
       authority_status: "not_submitted"
     },
-    gateway_decision: {
-      ref: { record_kind: "gateway_decision", id: "gateway-decision-001" },
-      label: "Gateway decision",
+    gateway_result: {
+      ref: { record_kind: "gateway_result", id: "gateway-result-001" },
+      label: "Gateway result",
       status: "dry_run_only",
       authority_status: "dry_run_only"
     },
-    execution_attempt: {
-      ref: { record_kind: "execution_attempt", id: "execution-attempt-001" },
-      label: "Execution attempt",
+    execution_result: {
+      ref: { record_kind: "execution_result", id: "execution-result-001" },
+      label: "Execution result",
       status: "dry_run_recorded",
       authority_status: "dry_run_only"
     }
   };
 }
 
-function artifactImprovementLoop(): ArtifactImprovementLoopReadModel {
+function artifactImprovementLoop(): ImprovementReadModel {
   return {
-    loop_kind: "artifact_improvement_loop",
+    improvement_kind: "improvement",
     source_model: "automated_alignment_researcher",
     has_activity: true,
     proposal_chain_complete: true,
@@ -1855,10 +1877,10 @@ function artifactImprovementLoop(): ArtifactImprovementLoopReadModel {
       created_at: "2026-05-18T00:00:00.000Z",
       authority_status: "research_trace_only"
     },
-    latest_artifact_change_proposal: {
-      proposal_id: "artifact-change-proposal-001",
-      proposed_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
-      parent_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-001" },
+    latest_change_proposal: {
+      proposal_id: "improvement-proposal-001",
+      proposed_system_code_ref: { record_kind: "system_code", id: "system-code-002" },
+      parent_system_code_ref: { record_kind: "system_code", id: "system-code-001" },
       proposal_summary: "Adjust the fixture trading artifact to emit a valid dry-run order intent.",
       requested_change_summary: "Keep the change limited to the generated artifact.",
       expected_improvement_summary: "The next sandbox experiment should produce an accepted evaluation result.",
@@ -1868,7 +1890,7 @@ function artifactImprovementLoop(): ArtifactImprovementLoopReadModel {
       created_at: "2026-05-18T00:01:00.000Z",
       authority_status: "proposal_only"
     },
-    latest_materialization_attempt: {
+    latest_materialization: {
       attempt_id: "materialization-attempt-001",
       provider: {
         provider_kind: "codex_cli",
@@ -1877,18 +1899,18 @@ function artifactImprovementLoop(): ArtifactImprovementLoopReadModel {
       },
       status: "materialized",
       validation_status: "accepted",
-      output_artifact_proposal_ref: { record_kind: "artifact_change_proposal", id: "artifact-change-proposal-001" },
-      output_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
+      output_artifact_proposal_ref: { record_kind: "improvement_proposal", id: "improvement-proposal-001" },
+      output_system_code_ref: { record_kind: "system_code", id: "system-code-002" },
       output_lineage_ref: { record_kind: "artifact_lineage", id: "artifact-lineage-001" },
       created_at: "2026-05-18T00:02:00.000Z",
       authority_status: "proposal_input_only"
     },
-    latest_orchestration_run: {
+    latest_research_run: {
       run_id: "research-orchestration-run-001",
       input_finding_refs: [{ record_kind: "research_finding", id: "research-finding-001" }],
       input_lineage_refs: [{ record_kind: "artifact_lineage", id: "artifact-lineage-000" }],
-      output_artifact_proposal_ref: { record_kind: "artifact_change_proposal", id: "artifact-change-proposal-001" },
-      output_runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
+      output_artifact_proposal_ref: { record_kind: "improvement_proposal", id: "improvement-proposal-001" },
+      output_system_code_ref: { record_kind: "system_code", id: "system-code-002" },
       output_lineage_ref: { record_kind: "artifact_lineage", id: "artifact-lineage-001" },
       trace_ref: { record_kind: "trace", id: "trace-001" },
       status: "proposed",
@@ -1898,15 +1920,15 @@ function artifactImprovementLoop(): ArtifactImprovementLoopReadModel {
     },
     latest_experiment: {
       experiment_id: "experiment-run-001",
-      runnable_artifact_ref: { record_kind: "runnable_artifact", id: "runnable-artifact-002" },
-      sandbox_runtime_instance_ref: { record_kind: "sandbox_runtime_instance", id: "sandbox-runtime-001" },
+      system_code_ref: { record_kind: "system_code", id: "system-code-002" },
+      sandbox_ref: { record_kind: "sandbox", id: "sandbox-runtime-001" },
       runtime_trace_refs: [{ record_kind: "trace", id: "runtime-trace-001" }],
       trace_ref: { record_kind: "trace", id: "experiment-trace-001" },
       status: "evaluated",
       submitted_at: "2026-05-18T00:03:00.000Z",
       authority_status: "not_live"
     },
-    latest_trading_evaluation_result: {
+    latest_evaluation_result: {
       result_id: "trading-evaluation-result-001",
       experiment_run_ref: { record_kind: "experiment_run", id: "experiment-run-001" },
       result_status: "accepted",
@@ -1962,12 +1984,12 @@ function tradingGatewayEnvironment(): TradingGatewayEnvironmentReadModel {
   };
 }
 
-function runtimeControl(): ReplayRuntimeControlReadModel {
+function runtimeControl(): RunControlReadModel {
   return {
     has_activity: true,
     chain_complete: true,
     latest_command: {
-      command_id: "runtime-control-command-001",
+      command_id: "run-control-command-001",
       action: "pause",
       requested_lifecycle_status: "paused",
       actor_kind: "human_operator",
@@ -1978,8 +2000,8 @@ function runtimeControl(): ReplayRuntimeControlReadModel {
       authority_status: "control_only"
     },
     latest_decision: {
-      decision_id: "runtime-control-decision-001",
-      command_ref: { record_kind: "runtime_control_command", id: "runtime-control-command-001" },
+      decision_id: "run-control-decision-001",
+      command_ref: { record_kind: "run_control_command", id: "run-control-command-001" },
       decision_outcome: "allowed",
       decision_reason: "policy_allows_control",
       decided_by_actor_kind: "policy_engine",
@@ -1991,8 +2013,8 @@ function runtimeControl(): ReplayRuntimeControlReadModel {
     latest_audit_event: {
       audit_event_id: "runtime-audit-event-001",
       event_kind: "runtime_lifecycle_transitioned",
-      command_ref: { record_kind: "runtime_control_command", id: "runtime-control-command-001" },
-      decision_ref: { record_kind: "runtime_control_decision", id: "runtime-control-decision-001" },
+      command_ref: { record_kind: "run_control_command", id: "run-control-command-001" },
+      decision_ref: { record_kind: "run_control_decision", id: "run-control-decision-001" },
       actor_kind: "human_operator",
       actor_ref: { record_kind: "operator", id: "operator-web" },
       runtime_lifecycle_status: "paused",
@@ -2001,13 +2023,13 @@ function runtimeControl(): ReplayRuntimeControlReadModel {
       authority_status: "audit_only"
     },
     command: {
-      ref: { record_kind: "runtime_control_command", id: "runtime-control-command-001" },
+      ref: { record_kind: "run_control_command", id: "run-control-command-001" },
       label: "Runtime control command",
       status: "decided",
       authority_status: "control_only"
     },
     decision: {
-      ref: { record_kind: "runtime_control_decision", id: "runtime-control-decision-001" },
+      ref: { record_kind: "run_control_decision", id: "run-control-decision-001" },
       label: "Runtime control decision",
       status: "allowed",
       authority_status: "control_only"
@@ -2241,13 +2263,13 @@ const fixtureCandidate: CandidateInspectReadModel = {
     manifest: {
       ref: { record_kind: "program_manifest", id: "fixture-manifest" },
       declared_runtime: "fixture-sandbox-placeholder",
-      declared_outputs: ["OrderIntentDraft placeholder"]
+      declared_outputs: ["OrderRequest placeholder"]
     },
     validation: {
       ref: { record_kind: "program_validation_record", id: "fixture-validation" },
       label: "Program validation",
       status: "fixture_placeholder",
-      authority_status: "not_runnable"
+      authority_status: "not_executable"
     }
   },
   capability_package: {
@@ -2287,10 +2309,10 @@ const fixtureCandidate: CandidateInspectReadModel = {
     provider_probe_attempt: placeholder("provider_probe_attempt", "fixture-probe", "Provider probe")
   },
   runtime: {
-    ref: { record_kind: "trading_system_runtime", id: "fixture-runtime" },
+    ref: { record_kind: "trading_run", id: "fixture-runtime" },
     stage_binding_profile: "paper",
     authority_status: "not_live",
-    placement: placeholder("runtime_placement", "fixture-placement", "Runtime placement"),
+    placement: placeholder("sandbox_placement", "fixture-placement", "Sandbox placement"),
     hands_environment: placeholder("hands_environment", "fixture-hands", "Hands environment"),
     memory_surface: {
       ref: { record_kind: "runtime_memory_surface", id: "fixture-memory" },

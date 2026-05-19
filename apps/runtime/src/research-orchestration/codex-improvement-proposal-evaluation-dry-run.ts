@@ -1,44 +1,44 @@
 import type {
   ExperimentRunRecord,
   Ref,
-  SandboxRuntimeInstanceRecord,
+  SandboxRecord,
   TradingEvaluationResultRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
-  evaluateRuntimeArtifactForResearch,
-  type RuntimeArtifactResearchEvaluationOutcome
-} from "../research-evaluation/runtime-artifact-submission";
+  evaluateSystemCodeForResearch,
+  type SystemCodeResearchEvaluationOutcome
+} from "../research-evaluation/system-code-research-submission";
 import {
-  DeterministicSandboxRuntimeAdapter,
-  type SandboxRuntimeAdapter
-} from "../runtime-instances/sandbox-runtime-adapter";
+  DeterministicSandboxAdapter,
+  type SandboxAdapter
+} from "../sandboxes/sandbox-adapter";
 import {
-  codexArtifactChangeProposalDryRunTask,
-  runCodexArtifactChangeProposalDryRun,
-  type CodexArtifactChangeProposalDryRunInput,
-  type CodexArtifactChangeProposalDryRunOutcome
-} from "./codex-artifact-change-proposal-dry-run";
-import type { PlanArtifactChangeProposalFromLocalStoreOutcome } from "./local-store-proposal-loop";
+  codexImprovementProposalDryRunTask,
+  runCodexImprovementProposalDryRun,
+  type CodexImprovementProposalDryRunInput,
+  type CodexImprovementProposalDryRunOutcome
+} from "./codex-improvement-proposal-dry-run";
+import type { PlanImprovementProposalFromLocalStoreOutcome } from "./local-store-proposal-loop";
 
-export interface CodexArtifactChangeProposalEvaluationDryRunInput extends CodexArtifactChangeProposalDryRunInput {
-  runtime_adapter?: SandboxRuntimeAdapter;
-  runtime_instance_id?: string;
+export interface CodexImprovementProposalEvaluationDryRunInput extends CodexImprovementProposalDryRunInput {
+  runtime_adapter?: SandboxAdapter;
+  sandbox_id?: string;
   sandbox_name?: string;
-  runtime_placement_id?: string;
+  sandbox_placement_id?: string;
   runtime_test_ticks?: number;
   runtime_interval_ms?: number;
   experiment_id?: string;
   submitted_at?: string;
 }
 
-export type CodexArtifactChangeProposalEvaluationDryRunOutcome =
+export type CodexImprovementProposalEvaluationDryRunOutcome =
   | {
       status: "evaluated";
       store_root: string;
       idempotency_key: string;
-      proposal: PlanArtifactChangeProposalFromLocalStoreOutcome;
-      runtime_instance: SandboxRuntimeInstanceRecord;
+      proposal: PlanImprovementProposalFromLocalStoreOutcome;
+      sandbox: SandboxRecord;
       experiment: ExperimentRunRecord;
       evaluation_result: TradingEvaluationResultRecord;
       trace_refs: {
@@ -52,19 +52,19 @@ export type CodexArtifactChangeProposalEvaluationDryRunOutcome =
       store_root: string;
       idempotency_key: string;
       failure_reason: string;
-      proposal_dry_run?: CodexArtifactChangeProposalDryRunOutcome;
+      proposal_dry_run?: CodexImprovementProposalDryRunOutcome;
     };
 
-export async function runCodexArtifactChangeProposalEvaluationDryRun(
-  input: CodexArtifactChangeProposalEvaluationDryRunInput = {}
-): Promise<CodexArtifactChangeProposalEvaluationDryRunOutcome> {
+export async function runCodexImprovementProposalEvaluationDryRun(
+  input: CodexImprovementProposalEvaluationDryRunInput = {}
+): Promise<CodexImprovementProposalEvaluationDryRunOutcome> {
   const store = input.store ?? new LocalStore(input.store_root);
-  const idempotencyKey = input.idempotency_key ?? "codex-artifact-change-proposal-evaluation-dry-run";
+  const idempotencyKey = input.idempotency_key ?? "codex-improvement-proposal-evaluation-dry-run";
   const createdAt = input.created_at ?? new Date().toISOString();
   const submittedAt = input.submitted_at ?? createdAt;
   const suffix = safeId(idempotencyKey);
 
-  const proposalDryRun = await runCodexArtifactChangeProposalDryRun({
+  const proposalDryRun = await runCodexImprovementProposalDryRun({
     ...input,
     store,
     idempotency_key: idempotencyKey,
@@ -80,18 +80,18 @@ export async function runCodexArtifactChangeProposalEvaluationDryRun(
     };
   }
 
-  const runtimeAdapter = input.runtime_adapter ?? new DeterministicSandboxRuntimeAdapter();
+  const runtimeAdapter = input.runtime_adapter ?? new DeterministicSandboxAdapter();
   const runtimeStart = await runtimeAdapter.startArtifactInstance({
-    artifact: proposalDryRun.outcome.runnable_artifact,
-    instance_id: input.runtime_instance_id ?? `sandbox-runtime-instance-codex-research-${suffix}`,
+    artifact: proposalDryRun.outcome.system_code,
+    instance_id: input.sandbox_id ?? `sandbox-codex-research-${suffix}`,
     sandbox_name: input.sandbox_name ?? `ouro-s9-codex-research-${suffix}`,
-    runtime_placement_id: input.runtime_placement_id ?? `runtime-placement-codex-research-${suffix}`,
+    sandbox_placement_id: input.sandbox_placement_id ?? `sandbox-placement-codex-research-${suffix}`,
     created_at: createdAt,
     trace_ref: ref("trace_placeholder", `trace-runtime-codex-research-${suffix}`),
     test_ticks: input.runtime_test_ticks ?? 2,
     interval_ms: input.runtime_interval_ms
   });
-  await store.recordRuntimeInstanceStart({
+  await store.recordSandboxStart({
     instance: runtimeStart.instance,
     placement: runtimeStart.placement,
     logs: runtimeStart.logs,
@@ -104,14 +104,14 @@ export async function runCodexArtifactChangeProposalEvaluationDryRun(
       status: "failed",
       store_root: store.root(),
       idempotency_key: idempotencyKey,
-      failure_reason: "runtime_instance_failed",
+      failure_reason: "sandbox_failed",
       proposal_dry_run: proposalDryRun
     };
   }
 
-  const task = codexArtifactChangeProposalDryRunTask(createdAt);
-  const evaluationOutcome = evaluateRuntimeArtifactForResearch({
-    runtime_instance: runtimeStart.instance,
+  const task = codexImprovementProposalDryRunTask(createdAt);
+  const evaluationOutcome = evaluateSystemCodeForResearch({
+    sandbox: runtimeStart.instance,
     research_worker_ref: proposalDryRun.outcome.proposal.research_worker_ref,
     research_direction_ref: proposalDryRun.outcome.proposal.research_direction_ref,
     task,
@@ -125,7 +125,7 @@ export async function runCodexArtifactChangeProposalEvaluationDryRun(
     store_root: store.root(),
     idempotency_key: idempotencyKey,
     proposal: proposalDryRun.outcome,
-    runtime_instance: runtimeStart.instance,
+    sandbox: runtimeStart.instance,
     experiment: evaluationOutcome.experiment,
     evaluation_result: evaluationOutcome.evaluation_result,
     trace_refs: {
@@ -140,7 +140,7 @@ export async function runCodexArtifactChangeProposalEvaluationDryRun(
 
 async function persistEvaluationOutcome(
   store: LocalStore,
-  outcome: RuntimeArtifactResearchEvaluationOutcome
+  outcome: SystemCodeResearchEvaluationOutcome
 ): Promise<void> {
   await store.recordExperimentRun(outcome.experiment);
   await store.recordTradingEvaluationResult(outcome.evaluation_result);

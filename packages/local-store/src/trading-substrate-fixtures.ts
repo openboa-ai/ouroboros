@@ -58,7 +58,7 @@ export function createBinanceBtcusdtTradingSubstrateFixtureItems({
     venue: "binance_usd_m_futures",
     instrument: "BTCUSDT",
     product_category: "perpetual_futures",
-    runtime_ref: ref("trading_system_runtime", ids.runtime),
+    runtime_ref: ref("trading_run", ids.runtime),
     candidate_ref: ref("trading_system_candidate", ids.candidate),
     stage_binding_ref: ref("stage_binding", ids.stageBinding),
     order_scope_ref: "fixture-btcusdt-paper-order-001",

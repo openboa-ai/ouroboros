@@ -47,14 +47,14 @@ const checks = [];
 
 await check("required S9 Codex research files exist", async () => {
   await assertFilesExist([
-    "apps/runtime/src/research-orchestration/codex-artifact-change-proposal-dry-run.ts",
-    "apps/runtime/src/research-orchestration/codex-artifact-change-proposal-dry-run-audit.ts",
-    "apps/runtime/src/research-orchestration/codex-artifact-change-proposal-evaluation-dry-run.ts",
-    "apps/runtime/src/research-orchestration/run-codex-artifact-change-proposal.ts",
-    "apps/runtime/src/research-orchestration/run-codex-artifact-change-proposal-audit.ts",
-    "apps/runtime/src/providers/codex-cli-artifact-change-proposal-provider.ts",
-    "apps/runtime/test/codex-artifact-change-proposal-dry-run-audit.test.ts",
-    "apps/runtime/test/codex-artifact-change-proposal-evaluation-dry-run.test.ts",
+    "apps/runtime/src/research-orchestration/codex-improvement-proposal-dry-run.ts",
+    "apps/runtime/src/research-orchestration/codex-improvement-proposal-dry-run-audit.ts",
+    "apps/runtime/src/research-orchestration/codex-improvement-proposal-evaluation-dry-run.ts",
+    "apps/runtime/src/research-orchestration/run-codex-improvement-proposal.ts",
+    "apps/runtime/src/research-orchestration/run-codex-improvement-proposal-audit.ts",
+    "apps/runtime/src/providers/codex-cli-improvement-proposal-provider.ts",
+    "apps/runtime/test/codex-improvement-proposal-dry-run-audit.test.ts",
+    "apps/runtime/test/codex-improvement-proposal-evaluation-dry-run.test.ts",
     "scripts/validate-s5-sbx-runtime.mjs",
     "scripts/sdx-docker-sandboxes"
   ]);
@@ -79,12 +79,12 @@ await check("S5 sbx/sdx preflight guardrails remain registered", async () => {
   assertExitZero(help, "S5 validation help failed");
   assertIncludes(help.stdout, "Requires Docker Sandboxes sbx");
   assertIncludes(help.stdout, "/usr/bin/sdx Starkit utility is unrelated");
-  assertIncludes(help.stdout, "host sbx preflight/runtime-control is blocked");
+  assertIncludes(help.stdout, "host sbx preflight/run-control is blocked");
 });
 
 await check("fixture-only Codex research evaluation proof is registered", async () => {
-  const testFile = await readFile("apps/runtime/test/codex-artifact-change-proposal-evaluation-dry-run.test.ts", "utf8");
-  assertIncludes(testFile, "continues a Codex-shaped proposal through runtime instance and sealed generic trading evaluation");
+  const testFile = await readFile("apps/runtime/test/codex-improvement-proposal-evaluation-dry-run.test.ts", "utf8");
+  assertIncludes(testFile, "continues a Codex-shaped proposal through sandbox and sealed generic trading evaluation");
   assertIncludes(testFile, "evidence_disposition: \"not_counted\"");
   assertIncludes(testFile, "authority_status: \"not_counted\"");
 });
@@ -137,10 +137,10 @@ if (hostProbes) {
     const combined = `${result.stdout}\n${result.stderr}`;
     if (
       result.code === 2 ||
-      combined.includes("host sbx preflight/runtime-control is blocked") ||
+      combined.includes("host sbx preflight/run-control is blocked") ||
       combined.includes("Operation not permitted") ||
       combined.includes("Not authenticated") ||
-      combined.includes("runtime-control")
+      combined.includes("run-control")
     ) {
       throw new BlockedCheck(`real sbx/sdx preflight blocked via npm run ${scriptName}`);
     }

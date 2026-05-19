@@ -29,7 +29,7 @@ Environment:
 Exit codes:
   0  validation or preflight passed
   1  validation contract, runtime API, or lifecycle assertion failed
-  2  host sbx preflight/runtime-control is blocked
+  2  host sbx preflight/run-control is blocked
 `);
   process.exit(0);
 }
@@ -44,9 +44,9 @@ const commandTimeoutMs = Number(process.env.OUROBOROS_SBX_VALIDATE_TIMEOUT_MS ??
 const sandboxNameSuffix = sandboxNameSuffixFor(process.env.OUROBOROS_SBX_VALIDATE_NAME_SUFFIX);
 const sandboxA = validationSandboxName("ouro-s5-clock-a", sandboxNameSuffix);
 const sandboxB = validationSandboxName("ouro-s5-clock-b", sandboxNameSuffix);
-const instanceA = "sandbox-runtime-instance-clock-a";
-const instanceB = "sandbox-runtime-instance-clock-b";
-const artifactId = "fixture-runnable-artifact-clock-python-001";
+const instanceA = "sandbox-clock-a";
+const instanceB = "sandbox-clock-b";
+const artifactId = "fixture-system-code-clock-python-001";
 const activeSessionInterruptionApprovalPhrase =
   "승인: active sbx exec app-server 세션 중단 위험을 이해했고, sbx daemon 재시작 및 active session interruption을 허용함";
 
@@ -87,34 +87,34 @@ try {
     await verifyRawSecretRejection();
 
     cleanupSandboxNames.add(sandboxA);
-    const startA = await api("POST", "/api/runtime-instances", {
+    const startA = await api("POST", "/api/sandboxes", {
       idempotency_key: sandboxA,
       adapter_kind: "docker_sandboxes_sbx",
-      runnable_artifact_id: artifactId,
-      instance_id: instanceA,
+      system_code_id: artifactId,
+      sandbox_id: instanceA,
       sandbox_name: sandboxA,
-      runtime_id: "fixture-trading-system-runtime-001",
+      trading_run_id: "fixture-trading-run-001",
       interval_ms: 250
     });
     printJson("runtime API start A response", startA);
-    printCommandEvidence("runtime API start A command evidence", startA.runtime_instance.command_evidence);
+    printCommandEvidence("runtime API start A command evidence", startA.sandbox.command_evidence);
     assertStartResponseArtifact("runtime API start A", startA, artifactId);
-    assertLifecycleRunning("runtime API start A", startA.runtime_instance);
+    assertLifecycleRunning("runtime API start A", startA.sandbox);
 
     cleanupSandboxNames.add(sandboxB);
-    const startB = await api("POST", "/api/runtime-instances", {
+    const startB = await api("POST", "/api/sandboxes", {
       idempotency_key: sandboxB,
       adapter_kind: "docker_sandboxes_sbx",
-      runnable_artifact_id: artifactId,
-      instance_id: instanceB,
+      system_code_id: artifactId,
+      sandbox_id: instanceB,
       sandbox_name: sandboxB,
-      runtime_id: "fixture-trading-system-runtime-001",
+      trading_run_id: "fixture-trading-run-001",
       interval_ms: 250
     });
     printJson("runtime API start B response", startB);
-    printCommandEvidence("runtime API start B command evidence", startB.runtime_instance.command_evidence);
+    printCommandEvidence("runtime API start B command evidence", startB.sandbox.command_evidence);
     assertStartResponseArtifact("runtime API start B", startB, artifactId);
-    assertLifecycleRunning("runtime API start B", startB.runtime_instance);
+    assertLifecycleRunning("runtime API start B", startB.sandbox);
 
     await command("sbx ls", [sbxPath, "ls"]);
     await waitForDirectLogHeartbeat("direct sbx log A", sandboxA, instanceA);
@@ -129,14 +129,14 @@ try {
     const logsB = await waitForRuntimeLogsHeartbeat("runtime API logs B", instanceB);
     printJson("runtime API logs B", logsB);
 
-    const stopA = await api("POST", `/api/runtime-instances/${instanceA}/stop`);
+    const stopA = await api("POST", `/api/sandboxes/${instanceA}/stop`);
     printJson("runtime API stop A response", stopA);
-    printCommandEvidence("runtime API stop A command evidence", stopA.runtime_instance.command_evidence);
-    assertLifecycleStopped("runtime API stop A", stopA.runtime_instance);
-    const stopB = await api("POST", `/api/runtime-instances/${instanceB}/stop`);
+    printCommandEvidence("runtime API stop A command evidence", stopA.sandbox.command_evidence);
+    assertLifecycleStopped("runtime API stop A", stopA.sandbox);
+    const stopB = await api("POST", `/api/sandboxes/${instanceB}/stop`);
     printJson("runtime API stop B response", stopB);
-    printCommandEvidence("runtime API stop B command evidence", stopB.runtime_instance.command_evidence);
-    assertLifecycleStopped("runtime API stop B", stopB.runtime_instance);
+    printCommandEvidence("runtime API stop B command evidence", stopB.sandbox.command_evidence);
+    assertLifecycleStopped("runtime API stop B", stopB.sandbox);
 
     await removeSandbox(sandboxA);
     cleanupSandboxNames.delete(sandboxA);
@@ -180,7 +180,7 @@ async function runPreflight() {
     hostSbxPreflight: true
   });
   await command("sbx daemon status", [sbxPath, "daemon", "status"], { hostSbxPreflight: true });
-  await command("sbx ls runtime-control probe", [sbxPath, "ls"], { hostSbxPreflight: true });
+  await command("sbx ls run-control probe", [sbxPath, "ls"], { hostSbxPreflight: true });
 }
 
 function assertDockerSandboxesSbxVersion(stdout) {
@@ -201,8 +201,8 @@ function startRuntimeServer() {
       PORT: String(port),
       HOST: "127.0.0.1",
       OUROBOROS_STORE_ROOT: runtimeStoreRoot,
-      OUROBOROS_ENABLE_SBX_RUNTIME: "1",
-      OUROBOROS_RUNTIME_INSTANCE_ADAPTER: "docker_sandboxes_sbx",
+      OUROBOROS_ENABLE_SBX_SANDBOX: "1",
+      OUROBOROS_SANDBOX_ADAPTER: "docker_sandboxes_sbx",
       OUROBOROS_SBX_WORKSPACE: repoRoot,
       ...(sbxHome ? { OUROBOROS_SBX_HOME: sbxHome } : {}),
       OUROBOROS_SBX_COMMAND_TIMEOUT_MS: String(commandTimeoutMs)
@@ -293,12 +293,12 @@ async function verifyRawSecretRejection() {
   const response = await apiExpectStatus(
     "runtime API raw secret rejection probe",
     "POST",
-    "/api/runtime-instances",
+    "/api/sandboxes",
     {
       ["idempotency_" + "key"]: "ouro-s5-raw-secret-rejection",
       adapter_kind: "docker_sandboxes_sbx",
-      runnable_artifact_id: artifactId,
-      instance_id: "sandbox-runtime-instance-raw-secret-rejection",
+      system_code_id: artifactId,
+      sandbox_id: "sandbox-raw-secret-rejection",
       sandbox_name: "ouro-s5-raw-secret-rejection",
       raw_secret_values: {
         placeholder: "not-a-secret-test-value"
@@ -313,67 +313,67 @@ async function verifyRawSecretRejection() {
 }
 
 function assertStartResponseArtifact(label, outcome, expectedArtifactId) {
-  const artifactRef = outcome?.runtime_instance?.runnable_artifact_ref;
+  const artifactRef = outcome?.sandbox?.system_code_ref;
   if (artifactRef?.id !== expectedArtifactId) {
     failures.push(`${label} artifact ${artifactRef?.id ?? "missing"}`);
-    throw new Error(`${label} did not record runnable artifact ${expectedArtifactId}`);
+    throw new Error(`${label} did not record system code ${expectedArtifactId}`);
   }
 }
 
-function assertLifecycleRunning(label, runtimeInstance) {
-  if (runtimeInstance.lifecycle_status !== "running") {
-    const createBlocker = runtimeCreateBlocker(runtimeInstance);
+function assertLifecycleRunning(label, sandbox) {
+  if (sandbox.lifecycle_status !== "running") {
+    const createBlocker = sandboxCreateBlocker(sandbox);
     if (createBlocker) {
       throw new HostSbxBlockedError(`${label} host sandbox create blocked: ${createBlocker}`, "runtime_create_failed");
     }
-    failures.push(`${label} lifecycle ${runtimeInstance.lifecycle_status}`);
+    failures.push(`${label} lifecycle ${sandbox.lifecycle_status}`);
     throw new Error(`${label} did not reach running lifecycle`);
   }
 }
 
-function assertLifecycleStopped(label, runtimeInstance) {
-  if (runtimeInstance.lifecycle_status !== "stopped") {
-    failures.push(`${label} lifecycle ${runtimeInstance.lifecycle_status}`);
+function assertLifecycleStopped(label, sandbox) {
+  if (sandbox.lifecycle_status !== "stopped") {
+    failures.push(`${label} lifecycle ${sandbox.lifecycle_status}`);
     throw new Error(`${label} did not reach stopped lifecycle`);
   }
 }
 
-function assertRuntimeInstanceHeartbeat(label, runtimeInstance, instanceId) {
-  const heartbeatLines = (runtimeInstance?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line);
-  assertTextContainsHeartbeat(label, heartbeatLines.join("\n"), instanceId);
+function assertSandboxHeartbeat(label, sandbox, sandboxId) {
+  const heartbeatLines = (sandbox?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line);
+  assertTextContainsHeartbeat(label, heartbeatLines.join("\n"), sandboxId);
 }
 
-function assertRuntimeInstanceLogOutcome(label, outcome, instanceId) {
+function assertSandboxLogOutcome(label, outcome, sandboxId) {
   const lines = [
     ...(outcome?.logs ?? []).flatMap((log) => log.lines ?? []),
     ...(outcome?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line)
   ];
-  assertTextContainsHeartbeat(label, lines.join("\n"), instanceId);
+  assertTextContainsHeartbeat(label, lines.join("\n"), sandboxId);
 }
 
-function assertTextContainsHeartbeat(label, text, instanceId) {
-  if (!text.includes("runtime_heartbeat") || !text.includes(instanceId)) {
-    failures.push(`${label} missing runtime heartbeat for ${instanceId}`);
-    throw new Error(`${label} missing runtime heartbeat for ${instanceId}`);
+function assertTextContainsHeartbeat(label, text, sandboxId) {
+  if (!text.includes("runtime_heartbeat") || !text.includes(sandboxId)) {
+    failures.push(`${label} missing runtime heartbeat for ${sandboxId}`);
+    throw new Error(`${label} missing runtime heartbeat for ${sandboxId}`);
   }
 }
 
-async function waitForDirectLogHeartbeat(label, sandboxName, instanceId) {
-  await retryUntilHeartbeat(label, instanceId, async () => {
+async function waitForDirectLogHeartbeat(label, sandboxName, sandboxId) {
+  await retryUntilHeartbeat(label, sandboxId, async () => {
     const result = await command(label, [
       sbxPath,
       "exec",
       sandboxName,
       "cat",
-      sandboxLogFile(instanceId)
+      sandboxLogFile(sandboxId)
     ], { allowFailure: true });
     return `${result.stdout}\n${result.stderr}`;
   });
 }
 
-async function waitForRuntimeStatusHeartbeat(label, instanceId) {
-  return await retryUntilHeartbeat(label, instanceId, async () => {
-    const status = await api("GET", `/api/runtime-instances/${instanceId}`);
+async function waitForRuntimeStatusHeartbeat(label, sandboxId) {
+  return await retryUntilHeartbeat(label, sandboxId, async () => {
+    const status = await api("GET", `/api/sandboxes/${sandboxId}`);
     const heartbeatLines = (status?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line);
     return {
       value: status,
@@ -382,9 +382,9 @@ async function waitForRuntimeStatusHeartbeat(label, instanceId) {
   });
 }
 
-async function waitForRuntimeLogsHeartbeat(label, instanceId) {
-  return await retryUntilHeartbeat(label, instanceId, async () => {
-    const outcome = await api("GET", `/api/runtime-instances/${instanceId}/logs`);
+async function waitForRuntimeLogsHeartbeat(label, sandboxId) {
+  return await retryUntilHeartbeat(label, sandboxId, async () => {
+    const outcome = await api("GET", `/api/sandboxes/${sandboxId}/logs`);
     const lines = [
       ...(outcome?.logs ?? []).flatMap((log) => log.lines ?? []),
       ...(outcome?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line)
@@ -396,19 +396,19 @@ async function waitForRuntimeLogsHeartbeat(label, instanceId) {
   });
 }
 
-async function retryUntilHeartbeat(label, instanceId, read) {
+async function retryUntilHeartbeat(label, sandboxId, read) {
   const deadline = Date.now() + commandTimeoutMs;
   let latestText = "";
   while (Date.now() <= deadline) {
     const result = await read();
     const text = typeof result === "string" ? result : result.text;
     latestText = text;
-    if (text.includes("runtime_heartbeat") && text.includes(instanceId)) {
+    if (text.includes("runtime_heartbeat") && text.includes(sandboxId)) {
       return typeof result === "string" ? result : result.value;
     }
     await delay(250);
   }
-  assertTextContainsHeartbeat(label, latestText, instanceId);
+  assertTextContainsHeartbeat(label, latestText, sandboxId);
 }
 
 async function command(label, argv, options = {}) {
@@ -439,7 +439,7 @@ function printHostSbxBlockedHint(error) {
   section("host sbx preflight block next action");
   const blocker = error?.blocker ?? "host_preflight_blocked";
   if (sbxHome) {
-    console.log(`sbx_runtime_control_blocker=${blocker}`);
+    console.log(`sbx_run_control_blocker=${blocker}`);
     if (blocker === "runtime_create_failed") {
       console.log("isolated_sbx_home_authenticated=true");
       console.log("isolated_sbx_runtime_create_blocked=true");
@@ -467,7 +467,7 @@ function printHostSbxBlockedHint(error) {
     );
     return;
   }
-  console.log(`sbx_runtime_control_blocker=${blocker}`);
+  console.log(`sbx_run_control_blocker=${blocker}`);
   console.log("next_action=approved_default_sbx_daemon_recovery_required");
   console.log(`active_session_interruption_approval_phrase=${activeSessionInterruptionApprovalPhrase}`);
   console.log(
@@ -478,8 +478,8 @@ function printHostSbxBlockedHint(error) {
   );
 }
 
-function runtimeCreateBlocker(runtimeInstance) {
-  for (const evidence of runtimeInstance?.command_evidence ?? []) {
+function sandboxCreateBlocker(sandbox) {
+  for (const evidence of sandbox?.command_evidence ?? []) {
     const command = (evidence.command ?? []).join(" ");
     if (!command.includes(" create ")) {
       continue;
@@ -642,8 +642,8 @@ function section(label) {
   console.log(`\n## ${label}`);
 }
 
-function sandboxLogFile(instanceId) {
-  return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.jsonl`;
+function sandboxLogFile(sandboxId) {
+  return `/tmp/ouroboros-${safeRuntimeId(sandboxId)}.jsonl`;
 }
 
 function validationSandboxName(baseName, suffix) {

@@ -5,18 +5,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   ArtifactLineageRecord,
   ResearchFindingRecord,
-  ArtifactChangeProposalProviderOutput,
+  ImprovementProposalProviderOutput,
   ProviderKind,
   Ref,
-  SandboxRuntimeInstanceRecord,
+  SandboxRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { FixtureArtifactChangeProposalProviderAdapter } from "../src/research-orchestration/fixture-artifact-change-proposal-provider";
-import { planArtifactChangeProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
-import { evaluateRuntimeArtifactForResearch } from "../src/research-evaluation/runtime-artifact-submission";
-import { CodexCliArtifactChangeProposalProviderAdapter } from "../src/providers/codex-cli-artifact-change-proposal-provider";
-import type { ArtifactChangeProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import { FixtureImprovementProposalProviderAdapter } from "../src/research-orchestration/fixture-improvement-proposal-provider";
+import { planImprovementProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
+import { evaluateSystemCodeForResearch } from "../src/research-evaluation/system-code-research-submission";
+import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
+import type { ImprovementProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -30,14 +30,14 @@ type ProviderBackedEvaluationProviderKind = Extract<
 interface ProviderBackedEvaluationCase {
   label: string;
   expectedProviderKind: ProviderBackedEvaluationProviderKind;
-  adapter: (input: ProviderBackedEvaluationFixtureInput) => ArtifactChangeProposalProviderAdapter;
+  adapter: (input: ProviderBackedEvaluationFixtureInput) => ImprovementProposalProviderAdapter;
 }
 
 const providerBackedEvaluationCases = [
   {
     label: "fixture-adapter",
     expectedProviderKind: "fixture_only",
-    adapter: () => new FixtureArtifactChangeProposalProviderAdapter()
+    adapter: () => new FixtureImprovementProposalProviderAdapter()
   },
   {
     label: "codex-cli-shaped-adapter",
@@ -54,7 +54,7 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("artifact change proposal to sealed evaluation loop", () => {
+describe("improvement proposal to sealed evaluation loop", () => {
   it.each(providerBackedEvaluationCases)(
     "proves finding to provider-backed proposal to opaque artifact to sealed evaluator result through $label",
     async (caseInput) => {
@@ -76,7 +76,7 @@ describe("artifact change proposal to sealed evaluation loop", () => {
       await store.recordResearchFinding(antiHackingFinding);
       await store.recordArtifactLineage(priorLineage);
 
-      const proposalOutcome = await planArtifactChangeProposalFromLocalStore({
+      const proposalOutcome = await planImprovementProposalFromLocalStore({
         store,
         task,
         provider_adapter: caseInput.adapter({
@@ -89,12 +89,12 @@ describe("artifact change proposal to sealed evaluation loop", () => {
         idempotency_key: "proposal-to-evaluation-loop",
         created_at: "2026-05-11T17:01:00.000Z"
       });
-      const runtimeInstance = sandboxRuntimeInstance({
-        runnableArtifactRef: proposalOutcome.runnable_artifact,
-        instanceId: "sandbox-runtime-instance-proposed-artifact-001"
+      const sandbox = sandboxSandbox({
+        systemCodeRef: proposalOutcome.system_code,
+        instanceId: "sandbox-proposed-artifact-001"
       });
-      const evaluationOutcome = evaluateRuntimeArtifactForResearch({
-        runtime_instance: runtimeInstance,
+      const evaluationOutcome = evaluateSystemCodeForResearch({
+        sandbox: sandbox,
         research_worker_ref: proposalOutcome.proposal.research_worker_ref,
         research_direction_ref: proposalOutcome.proposal.research_direction_ref,
         task,
@@ -106,15 +106,15 @@ describe("artifact change proposal to sealed evaluation loop", () => {
         status: "proposed",
         authority_status: "research_only",
         output_artifact_proposal_ref: {
-          record_kind: "artifact_change_proposal",
-          id: proposalOutcome.proposal.artifact_change_proposal_id
+          record_kind: "improvement_proposal",
+          id: proposalOutcome.proposal.improvement_proposal_id
         },
-        output_runnable_artifact_ref: {
-          record_kind: "runnable_artifact",
-          id: proposalOutcome.runnable_artifact.runnable_artifact_id
+        output_system_code_ref: {
+          record_kind: "system_code",
+          id: proposalOutcome.system_code.system_code_id
         }
       });
-      const materializationAttempts = await store.listArtifactChangeProposalMaterializationAttempts();
+      const materializationAttempts = await store.listImprovementProposalMaterializationAttempts();
       expect(materializationAttempts).toHaveLength(1);
       const materializationAttempt = materializationAttempts[0];
       expect(materializationAttempt).toMatchObject({
@@ -134,18 +134,18 @@ describe("artifact change proposal to sealed evaluation loop", () => {
         },
         provider_output_artifact_refs: [
           {
-            record_kind: "artifact_change_proposal_provider_output_artifact"
+            record_kind: "improvement_proposal_provider_output_artifact"
           }
         ],
         status: "materialized",
         validation_status: "accepted",
         output_artifact_proposal_ref: {
-          record_kind: "artifact_change_proposal",
-          id: proposalOutcome.proposal.artifact_change_proposal_id
+          record_kind: "improvement_proposal",
+          id: proposalOutcome.proposal.improvement_proposal_id
         },
-        output_runnable_artifact_ref: {
-          record_kind: "runnable_artifact",
-          id: proposalOutcome.runnable_artifact.runnable_artifact_id
+        output_system_code_ref: {
+          record_kind: "system_code",
+          id: proposalOutcome.system_code.system_code_id
         },
         output_lineage_ref: {
           record_kind: "artifact_lineage",
@@ -154,36 +154,36 @@ describe("artifact change proposal to sealed evaluation loop", () => {
         authority_status: "proposal_input_only"
       });
       expect(proposalOutcome.run.trace_ref).toEqual(materializationAttempt.trace_ref);
-      expect(proposalOutcome.runnable_artifact.provenance_refs).toEqual(
+      expect(proposalOutcome.system_code.provenance_refs).toEqual(
         expect.arrayContaining([
           {
-            record_kind: "artifact_change_proposal",
-            id: proposalOutcome.proposal.artifact_change_proposal_id
+            record_kind: "improvement_proposal",
+            id: proposalOutcome.proposal.improvement_proposal_id
           },
           materializationAttempt.agent_run_ref,
           materializationAttempt.trace_ref,
           { record_kind: "research_finding", id: sourceFinding.research_finding_id }
         ])
       );
-      expect(proposalOutcome.lineage.parent_runnable_artifact_ref).toEqual(
-        priorLineage.child_runnable_artifact_ref
+      expect(proposalOutcome.lineage.parent_system_code_ref).toEqual(
+        priorLineage.child_system_code_ref
       );
-      await expect(store.listArtifactChangeProposals()).resolves.toEqual([proposalOutcome.proposal]);
-      await expect(store.getRunnableArtifact(proposalOutcome.runnable_artifact.runnable_artifact_id))
-        .resolves.toEqual(proposalOutcome.runnable_artifact);
+      await expect(store.listImprovementProposals()).resolves.toEqual([proposalOutcome.proposal]);
+      await expect(store.getSystemCode(proposalOutcome.system_code.system_code_id))
+        .resolves.toEqual(proposalOutcome.system_code);
       await expect(store.listResearchOrchestrationRuns()).resolves.toEqual([proposalOutcome.run]);
       expect(proposalOutcome.proposal.anti_hacking_finding_refs).toEqual([
         { record_kind: "research_finding", id: antiHackingFinding.research_finding_id }
       ]);
 
       expect(evaluationOutcome.experiment).toMatchObject({
-        runnable_artifact_ref: {
-          record_kind: "runnable_artifact",
-          id: proposalOutcome.runnable_artifact.runnable_artifact_id
+        system_code_ref: {
+          record_kind: "system_code",
+          id: proposalOutcome.system_code.system_code_id
         },
-        sandbox_runtime_instance_ref: {
-          record_kind: "sandbox_runtime_instance",
-          id: runtimeInstance.sandbox_runtime_instance_id
+        sandbox_ref: {
+          record_kind: "sandbox",
+          id: sandbox.sandbox_id
         },
         status: "evaluated",
         authority_status: "not_live"
@@ -230,8 +230,8 @@ interface ProviderBackedEvaluationFixtureInput {
 
 function codexCliShapedAdapter(
   input: ProviderBackedEvaluationFixtureInput
-): ArtifactChangeProposalProviderAdapter {
-  return new CodexCliArtifactChangeProposalProviderAdapter({
+): ImprovementProposalProviderAdapter {
+  return new CodexCliImprovementProposalProviderAdapter({
     workingDirectory: tmpDir,
     outputPath: input.outputPath,
     model: "gpt-5.4-codex-shaped-test",
@@ -251,7 +251,7 @@ function codexCliShapedAdapter(
       expect(outputPathIndex).toBeGreaterThan(-1);
       const outputPath = args[outputPathIndex + 1];
       expect(outputPath).toBe(input.outputPath);
-      await writeFile(outputPath, JSON.stringify(codexArtifactChangeProposalProviderOutput(input)), "utf8");
+      await writeFile(outputPath, JSON.stringify(codexImprovementProposalProviderOutput(input)), "utf8");
       return {
         stdout: "{\"type\":\"final\"}\n",
         stderr: ""
@@ -260,19 +260,19 @@ function codexCliShapedAdapter(
   });
 }
 
-function codexArtifactChangeProposalProviderOutput(
+function codexImprovementProposalProviderOutput(
   input: ProviderBackedEvaluationFixtureInput
-): ArtifactChangeProposalProviderOutput {
+): ImprovementProposalProviderOutput {
   return {
-    output_kind: "artifact_change_proposal_input",
+    output_kind: "improvement_proposal_input",
     trading_evaluation_task_ref: ref(
       "trading_evaluation_task",
       input.task.trading_evaluation_task_id
     ),
     source_finding_refs: [ref("research_finding", input.sourceFinding.research_finding_id)],
     anti_hacking_finding_refs: [ref("research_finding", input.antiHackingFinding.research_finding_id)],
-    parent_runnable_artifact_ref: input.priorLineage.child_runnable_artifact_ref,
-    proposal_summary: "Codex-shaped artifact change proposal input for the opaque runtime artifact loop.",
+    parent_system_code_ref: input.priorLineage.child_system_code_ref,
+    proposal_summary: "Codex-shaped improvement proposal input for the opaque system code loop.",
     requested_change_summary: "Materialize the proposal through the provider-neutral adapter boundary.",
     expected_improvement_summary: "Keep provider output trace-only while proving sealed generic trading evaluation.",
     proposed_artifact_refs: [
@@ -308,8 +308,8 @@ function artifactLineage(sourceFinding: ResearchFindingRecord): ArtifactLineageR
     record_kind: "artifact_lineage",
     version: 1,
     artifact_lineage_id: "artifact-lineage-market-trend-v1",
-    child_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-v1"),
-    parent_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-seed-v1"),
+    child_system_code_ref: ref("system_code", "research-system-code-market-trend-v1"),
+    parent_system_code_ref: ref("system_code", "research-system-code-market-seed-v1"),
     source_finding_refs: [ref("research_finding", sourceFinding.research_finding_id)],
     created_by_research_worker_ref: sourceFinding.research_worker_ref,
     created_at: "2026-05-11T17:00:30.000Z",
@@ -317,25 +317,25 @@ function artifactLineage(sourceFinding: ResearchFindingRecord): ArtifactLineageR
   };
 }
 
-function sandboxRuntimeInstance(input: {
-  runnableArtifactRef: { runnable_artifact_id: string };
+function sandboxSandbox(input: {
+  systemCodeRef: { system_code_id: string };
   instanceId: string;
-}): SandboxRuntimeInstanceRecord {
+}): SandboxRecord {
   return {
-    record_kind: "sandbox_runtime_instance",
+    record_kind: "sandbox",
     version: 1,
-    sandbox_runtime_instance_id: input.instanceId,
+    sandbox_id: input.instanceId,
     adapter_kind: "docker_sandboxes_sbx",
-    runnable_artifact_ref: ref("runnable_artifact", input.runnableArtifactRef.runnable_artifact_id),
-    runtime_ref: ref("trading_system_runtime", "runtime-proposed-artifact-001"),
-    runtime_placement_ref: ref("runtime_placement", "runtime-placement-sdx-proposed-artifact-001"),
+    system_code_ref: ref("system_code", input.systemCodeRef.system_code_id),
+    runtime_ref: ref("trading_run", "runtime-proposed-artifact-001"),
+    sandbox_placement_ref: ref("sandbox_placement", "sandbox-placement-sdx-proposed-artifact-001"),
     lifecycle_status: "running",
     sandbox_name: "ouro-s7-proposed-artifact-001",
     sandbox_ref: ref("docker_sandbox", "ouro-s7-proposed-artifact-001"),
     created_at: "2026-05-11T17:01:30.000Z",
     started_at: "2026-05-11T17:01:31.000Z",
     last_heartbeat_at: "2026-05-11T17:01:32.000Z",
-    log_refs: [ref("runtime_instance_log", "runtime-log-proposed-artifact-001")],
+    log_refs: [ref("sandbox_log", "runtime-log-proposed-artifact-001")],
     heartbeat_refs: [ref("runtime_heartbeat", "runtime-heartbeat-proposed-artifact-001")],
     command_evidence_refs: [ref("sandbox_command_evidence", "sandbox-command-proposed-artifact-001")],
     trace_ref: ref("trace_placeholder", "trace-runtime-self-report-proposed-artifact-001"),

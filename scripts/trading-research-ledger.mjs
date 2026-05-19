@@ -302,8 +302,8 @@ function seededStabilityEntryMissing(entry, missing) {
   if (!Number.isFinite(entry?.evaluation?.score) || entry.evaluation.score < 1) {
     missing.push(`${label} evaluation.score >= 1`);
   }
-  if (entry?.evaluation?.risk_decision !== "valid_order_intent_draft") {
-    missing.push(`${label} evaluation.risk_decision == valid_order_intent_draft`);
+  if (entry?.evaluation?.risk_decision !== "valid_order_request") {
+    missing.push(`${label} evaluation.risk_decision == valid_order_request`);
   }
   const scenarioResults = asArray(entry?.evaluation?.scenario_results);
   for (const scenarioId of SEEDED_REQUIRED_SCENARIOS) {
@@ -331,8 +331,8 @@ function seededStabilityScenarioMissing(entryLabel, scenario, missing) {
   if (!Number.isFinite(scenario?.score) || scenario.score < 1) {
     missing.push(`${label} score >= 1`);
   }
-  if (scenario?.risk_decision !== "valid_order_intent_draft") {
-    missing.push(`${label} risk_decision == valid_order_intent_draft`);
+  if (scenario?.risk_decision !== "valid_order_request") {
+    missing.push(`${label} risk_decision == valid_order_request`);
   }
   if (!stringValue(scenario?.events_path)) {
     missing.push(`${label} events_path`);

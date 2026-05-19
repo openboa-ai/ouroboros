@@ -2,10 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ArtifactChangeProposalProviderOutput, Ref } from "@ouroboros/domain";
-import { runCodexArtifactChangeProposalDryRunAudit } from "../src/research-orchestration/codex-artifact-change-proposal-dry-run-audit";
-import { codexArtifactChangeProposalDryRunFixtureIds } from "../src/research-orchestration/codex-artifact-change-proposal-dry-run";
-import { CodexCliArtifactChangeProposalProviderAdapter } from "../src/providers/codex-cli-artifact-change-proposal-provider";
+import type { ImprovementProposalProviderOutput, Ref } from "@ouroboros/domain";
+import { runCodexImprovementProposalDryRunAudit } from "../src/research-orchestration/codex-improvement-proposal-dry-run-audit";
+import { codexImprovementProposalDryRunFixtureIds } from "../src/research-orchestration/codex-improvement-proposal-dry-run";
+import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -39,7 +39,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
       { mode: 0o755 }
     );
 
-    const audit = await runCodexArtifactChangeProposalDryRunAudit({
+    const audit = await runCodexImprovementProposalDryRunAudit({
       store_root: tmpDir,
       working_directory: tmpDir,
       codex_command: fakeCodex,
@@ -53,9 +53,9 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     });
     expect(audit.dry_run.status).toBe("materialized");
     expect(audit.delta).toEqual({
-      artifact_change_proposal_materialization_attempts: 1,
-      artifact_change_proposals: 1,
-      runnable_artifacts: 1,
+      improvement_proposal_materialization_attempts: 1,
+      improvement_proposals: 1,
+      system_codes: 1,
       artifact_lineages: 1,
       research_orchestration_runs: 1
     });
@@ -69,7 +69,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
   it("proves the local success path without requiring real Codex in unit tests", async () => {
     const outputPath = path.join(tmpDir, "provider-output.json");
     const calls: string[][] = [];
-    const providerAdapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const providerAdapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
       execFile: async (_file, args) => {
@@ -82,7 +82,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
       }
     });
 
-    const audit = await runCodexArtifactChangeProposalDryRunAudit({
+    const audit = await runCodexImprovementProposalDryRunAudit({
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-audit-success",
@@ -96,9 +96,9 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     });
     expect(audit.dry_run.status).toBe("materialized");
     expect(audit.delta).toEqual({
-      artifact_change_proposal_materialization_attempts: 1,
-      artifact_change_proposals: 1,
-      runnable_artifacts: 1,
+      improvement_proposal_materialization_attempts: 1,
+      improvement_proposals: 1,
+      system_codes: 1,
       artifact_lineages: 1,
       research_orchestration_runs: 1
     });
@@ -108,7 +108,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
       authority_status: "proposal_input_only"
     });
     expect(audit.latest_attempt?.provider_output_artifact_refs).toEqual([
-      { record_kind: "artifact_change_proposal_provider_output_artifact", id: outputPath }
+      { record_kind: "improvement_proposal_provider_output_artifact", id: outputPath }
     ]);
     expect(JSON.stringify(audit)).not.toMatch(
       /strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence|venue_adapter/i
@@ -116,14 +116,14 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
   });
 
   it("records unavailable Codex without partial proposal, artifact, lineage, or run writes", async () => {
-    const providerAdapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const providerAdapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       execFile: async () => {
         throw Object.assign(new Error("missing codex"), { code: "ENOENT" });
       }
     });
 
-    const audit = await runCodexArtifactChangeProposalDryRunAudit({
+    const audit = await runCodexImprovementProposalDryRunAudit({
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-audit-missing",
@@ -132,30 +132,30 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
 
     expect(audit.probe).toMatchObject({
       readiness_status: "blocked_or_not_installed",
-      failure_reason: "artifact_change_proposal_provider_unavailable"
+      failure_reason: "improvement_proposal_provider_unavailable"
     });
     expect(audit.dry_run).toMatchObject({
       status: "failed",
-      failure_reason: "artifact_change_proposal_provider_unavailable"
+      failure_reason: "improvement_proposal_provider_unavailable"
     });
     expect(audit.delta).toEqual({
-      artifact_change_proposal_materialization_attempts: 1,
-      artifact_change_proposals: 0,
-      runnable_artifacts: 0,
+      improvement_proposal_materialization_attempts: 1,
+      improvement_proposals: 0,
+      system_codes: 0,
       artifact_lineages: 0,
       research_orchestration_runs: 0
     });
     expect(audit.latest_attempt).toMatchObject({
       status: "failed",
       validation_status: "rejected",
-      failure_reason: "artifact_change_proposal_provider_unavailable",
+      failure_reason: "improvement_proposal_provider_unavailable",
       authority_status: "proposal_input_only"
     });
   });
 
   it("records invalid provider output without partial proposal, artifact, lineage, or run writes", async () => {
     const outputPath = path.join(tmpDir, "invalid-provider-output.json");
-    const providerAdapter = new CodexCliArtifactChangeProposalProviderAdapter({
+    const providerAdapter = new CodexCliImprovementProposalProviderAdapter({
       workingDirectory: tmpDir,
       outputPath,
       execFile: async (_file, args) => {
@@ -167,7 +167,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
       }
     });
 
-    const audit = await runCodexArtifactChangeProposalDryRunAudit({
+    const audit = await runCodexImprovementProposalDryRunAudit({
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-audit-invalid",
@@ -180,12 +180,12 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     });
     expect(audit.dry_run).toMatchObject({
       status: "failed",
-      failure_reason: "invalid_artifact_change_proposal_request"
+      failure_reason: "invalid_improvement_proposal_request"
     });
     expect(audit.delta).toEqual({
-      artifact_change_proposal_materialization_attempts: 1,
-      artifact_change_proposals: 0,
-      runnable_artifacts: 0,
+      improvement_proposal_materialization_attempts: 1,
+      improvement_proposals: 0,
+      system_codes: 0,
       artifact_lineages: 0,
       research_orchestration_runs: 0
     });
@@ -193,21 +193,21 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     expect(audit.latest_attempt).toMatchObject({
       status: "failed",
       validation_status: "rejected",
-      failure_reason: "invalid_artifact_change_proposal_request",
+      failure_reason: "invalid_improvement_proposal_request",
       authority_status: "proposal_input_only"
     });
   });
 });
 
-function providerOutput(): ArtifactChangeProposalProviderOutput {
+function providerOutput(): ImprovementProposalProviderOutput {
   return {
-    output_kind: "artifact_change_proposal_input",
-    trading_evaluation_task_ref: ref("trading_evaluation_task", codexArtifactChangeProposalDryRunFixtureIds.task),
-    source_finding_refs: [ref("research_finding", codexArtifactChangeProposalDryRunFixtureIds.sourceFinding)],
-    anti_hacking_finding_refs: [ref("research_finding", codexArtifactChangeProposalDryRunFixtureIds.antiHackingFinding)],
-    parent_runnable_artifact_ref: ref(
-      "runnable_artifact",
-      codexArtifactChangeProposalDryRunFixtureIds.priorRunnableArtifact
+    output_kind: "improvement_proposal_input",
+    trading_evaluation_task_ref: ref("trading_evaluation_task", codexImprovementProposalDryRunFixtureIds.task),
+    source_finding_refs: [ref("research_finding", codexImprovementProposalDryRunFixtureIds.sourceFinding)],
+    anti_hacking_finding_refs: [ref("research_finding", codexImprovementProposalDryRunFixtureIds.antiHackingFinding)],
+    parent_system_code_ref: ref(
+      "system_code",
+      codexImprovementProposalDryRunFixtureIds.priorSystemCode
     ),
     proposal_summary: "Codex dry-run audit proposes the next opaque generic trading artifact input.",
     requested_change_summary: "Preserve sealed evaluator constraints while improving robustness.",

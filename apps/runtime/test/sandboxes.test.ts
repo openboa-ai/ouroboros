@@ -5,55 +5,55 @@ import { LocalStore } from "@ouroboros/local-store";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/server";
 import {
-  DeterministicSandboxRuntimeAdapter,
-  type SandboxRuntimeAdapter
-} from "../src/runtime-instances/sandbox-runtime-adapter";
+  DeterministicSandboxAdapter,
+  type SandboxAdapter
+} from "../src/sandboxes/sandbox-adapter";
 
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-runtime-instances-"));
+  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-sandboxes-"));
 });
 
 afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-describe("runtime instance API", () => {
+describe("sandbox API", () => {
   it("proves two opaque clock artifact instances have distinct lifecycle, logs, and persisted projections", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
-    const first = await startClockInstance(server, {
-      idempotency_key: "runtime-instance-clock-a",
-      instance_id: "sandbox-runtime-instance-clock-a",
+    const first = await startClockSandbox(server, {
+      idempotency_key: "sandbox-clock-a",
+      sandbox_id: "sandbox-clock-a",
       sandbox_name: "ouro-s5-clock-a",
       created_at: "2026-05-10T00:00:00.000Z"
     });
-    const second = await startClockInstance(server, {
-      idempotency_key: "runtime-instance-clock-b",
-      instance_id: "sandbox-runtime-instance-clock-b",
+    const second = await startClockSandbox(server, {
+      idempotency_key: "sandbox-clock-b",
+      sandbox_id: "sandbox-clock-b",
       sandbox_name: "ouro-s5-clock-b",
       created_at: "2026-05-10T00:00:10.000Z"
     });
 
-    expect(first.runtime_instance.lifecycle_status).toBe("running");
-    expect(second.runtime_instance.lifecycle_status).toBe("running");
-    expect(first.runtime_instance.instance_id).not.toBe(second.runtime_instance.instance_id);
-    expect(first.runtime_instance.sandbox_name).toBe("ouro-s5-clock-a");
-    expect(second.runtime_instance.sandbox_name).toBe("ouro-s5-clock-b");
-    expect(first.runtime_instance.runtime_placement_ref.id).not.toBe(
-      second.runtime_instance.runtime_placement_ref.id
+    expect(first.sandbox.lifecycle_status).toBe("running");
+    expect(second.sandbox.lifecycle_status).toBe("running");
+    expect(first.sandbox.sandbox_id).not.toBe(second.sandbox.sandbox_id);
+    expect(first.sandbox.sandbox_name).toBe("ouro-s5-clock-a");
+    expect(second.sandbox.sandbox_name).toBe("ouro-s5-clock-b");
+    expect(first.sandbox.sandbox_placement_ref.id).not.toBe(
+      second.sandbox.sandbox_placement_ref.id
     );
-    expect(first.runtime_instance.log_refs).toHaveLength(1);
-    expect(second.runtime_instance.log_refs).toHaveLength(1);
-    expect(first.runtime_instance.heartbeat_refs).toHaveLength(2);
-    expect(second.runtime_instance.heartbeat_refs).toHaveLength(2);
-    expect(first.runtime_instance.logs[0]?.lines.join("\n")).toContain("sandbox-runtime-instance-clock-a");
-    expect(second.runtime_instance.logs[0]?.lines.join("\n")).toContain("sandbox-runtime-instance-clock-b");
+    expect(first.sandbox.log_refs).toHaveLength(1);
+    expect(second.sandbox.log_refs).toHaveLength(1);
+    expect(first.sandbox.heartbeat_refs).toHaveLength(2);
+    expect(second.sandbox.heartbeat_refs).toHaveLength(2);
+    expect(first.sandbox.logs[0]?.lines.join("\n")).toContain("sandbox-clock-a");
+    expect(second.sandbox.logs[0]?.lines.join("\n")).toContain("sandbox-clock-b");
 
     const firstStatus = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances/sandbox-runtime-instance-clock-a"
+      url: "/api/sandboxes/sandbox-clock-a"
     });
     expect(firstStatus.statusCode).toBe(200);
     expect(firstStatus.json().lifecycle_status).toBe("running");
@@ -61,65 +61,65 @@ describe("runtime instance API", () => {
 
     const firstLogs = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances/sandbox-runtime-instance-clock-a/logs"
+      url: "/api/sandboxes/sandbox-clock-a/logs"
     });
     expect(firstLogs.statusCode).toBe(200);
-    expect(firstLogs.json().runtime_instance.instance_id).toBe("sandbox-runtime-instance-clock-a");
-    expect(firstLogs.json().logs[0].lines.join("\n")).toContain("sandbox-runtime-instance-clock-a");
+    expect(firstLogs.json().sandbox.sandbox_id).toBe("sandbox-clock-a");
+    expect(firstLogs.json().logs[0].lines.join("\n")).toContain("sandbox-clock-a");
     expect(firstLogs.json().heartbeats).toHaveLength(2);
 
     const list = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances"
+      url: "/api/sandboxes"
     });
     expect(list.statusCode).toBe(200);
-    expect(list.json().runtime_instances.map((instance: { instance_id: string }) => instance.instance_id)).toEqual([
-      "sandbox-runtime-instance-clock-a",
-      "sandbox-runtime-instance-clock-b"
+    expect(list.json().sandboxes.map((sandbox: { sandbox_id: string }) => sandbox.sandbox_id)).toEqual([
+      "sandbox-clock-a",
+      "sandbox-clock-b"
     ]);
 
     const firstStop = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances/sandbox-runtime-instance-clock-a/stop"
+      url: "/api/sandboxes/sandbox-clock-a/stop"
     });
     expect(firstStop.statusCode).toBe(200);
-    expect(firstStop.json().runtime_instance.lifecycle_status).toBe("stopped");
+    expect(firstStop.json().sandbox.lifecycle_status).toBe("stopped");
 
     const firstStopAgain = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances/sandbox-runtime-instance-clock-a/stop"
+      url: "/api/sandboxes/sandbox-clock-a/stop"
     });
     expect(firstStopAgain.statusCode).toBe(200);
-    expect(firstStopAgain.json().runtime_instance.lifecycle_status).toBe("stopped");
+    expect(firstStopAgain.json().sandbox.lifecycle_status).toBe("stopped");
 
     const secondStop = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances/sandbox-runtime-instance-clock-b/stop"
+      url: "/api/sandboxes/sandbox-clock-b/stop"
     });
     expect(secondStop.statusCode).toBe(200);
-    expect(secondStop.json().runtime_instance.lifecycle_status).toBe("stopped");
+    expect(secondStop.json().sandbox.lifecycle_status).toBe("stopped");
 
     const rebuiltStore = new LocalStore(tmpDir);
     await rebuiltStore.rebuildProjections();
-    const persistedFirst = await rebuiltStore.getRuntimeInstance("sandbox-runtime-instance-clock-a");
-    const persistedSecond = await rebuiltStore.getRuntimeInstance("sandbox-runtime-instance-clock-b");
+    const persistedFirst = await rebuiltStore.getSandbox("sandbox-clock-a");
+    const persistedSecond = await rebuiltStore.getSandbox("sandbox-clock-b");
     expect(persistedFirst?.lifecycle_status).toBe("stopped");
     expect(persistedSecond?.lifecycle_status).toBe("stopped");
     expect(persistedFirst?.sandbox_name).toBe("ouro-s5-clock-a");
     expect(persistedSecond?.sandbox_name).toBe("ouro-s5-clock-b");
     expect(persistedFirst?.log_refs.length).toBeGreaterThanOrEqual(2);
     expect(persistedSecond?.log_refs.length).toBeGreaterThanOrEqual(2);
-    expect(persistedFirst?.runtime_placement_ref.id).not.toBe(persistedSecond?.runtime_placement_ref.id);
+    expect(persistedFirst?.sandbox_placement_ref.id).not.toBe(persistedSecond?.sandbox_placement_ref.id);
   });
 
-  it("rejects raw secret material in runtime instance requests", async () => {
+  it("rejects raw secret material in sandbox requests", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
     const response = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances",
+      url: "/api/sandboxes",
       payload: {
-        idempotency_key: "runtime-instance-with-secret",
+        idempotency_key: "sandbox-with-secret",
         raw_secret_values: {
           exchange_token: "do-not-store"
         }
@@ -128,36 +128,36 @@ describe("runtime instance API", () => {
 
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({
-      error: "runtime_instance_request_failed",
+      error: "sandbox_request_failed",
       reason: "raw_secret_material_rejected",
       detail: "$.raw_secret_values"
     });
   });
 
   it("keeps the real sbx adapter behind an explicit environment gate", async () => {
-    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_RUNTIME;
-    const previousAdapter = process.env.OUROBOROS_RUNTIME_INSTANCE_ADAPTER;
-    delete process.env.OUROBOROS_ENABLE_SBX_RUNTIME;
-    delete process.env.OUROBOROS_RUNTIME_INSTANCE_ADAPTER;
+    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
+    const previousAdapter = process.env.OUROBOROS_SANDBOX_ADAPTER;
+    delete process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
+    delete process.env.OUROBOROS_SANDBOX_ADAPTER;
     try {
       const server = await buildServer({ store: new LocalStore(tmpDir) });
       const response = await server.inject({
         method: "POST",
-        url: "/api/runtime-instances",
+        url: "/api/sandboxes",
         payload: {
-          idempotency_key: "runtime-instance-sbx-disabled",
+          idempotency_key: "sandbox-sbx-disabled",
           adapter_kind: "docker_sandboxes_sbx"
         }
       });
 
       expect(response.statusCode).toBe(422);
       expect(response.json()).toMatchObject({
-        error: "runtime_instance_request_failed",
+        error: "sandbox_request_failed",
         reason: "docker_sandboxes_sbx_runtime_disabled"
       });
     } finally {
-      restoreEnv("OUROBOROS_ENABLE_SBX_RUNTIME", previousEnable);
-      restoreEnv("OUROBOROS_RUNTIME_INSTANCE_ADAPTER", previousAdapter);
+      restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
+      restoreEnv("OUROBOROS_SANDBOX_ADAPTER", previousAdapter);
     }
   });
 
@@ -167,37 +167,37 @@ describe("runtime instance API", () => {
     await writeFile(fakeSdx, fakeSdxScript(), "utf8");
     await chmod(fakeSdx, 0o755);
 
-    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_RUNTIME;
+    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
     const previousSbxBin = process.env.OUROBOROS_SBX_BIN;
     const previousCommandLog = process.env.SBX_FAKE_COMMAND_LOG;
-    process.env.OUROBOROS_ENABLE_SBX_RUNTIME = "1";
+    process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
     process.env.OUROBOROS_SBX_BIN = fakeSdx;
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     try {
       const server = await buildServer({ store: new LocalStore(tmpDir) });
       const response = await server.inject({
         method: "POST",
-        url: "/api/runtime-instances",
+        url: "/api/sandboxes",
         payload: {
-          idempotency_key: "runtime-instance-sdx-api-rejected",
+          idempotency_key: "sandbox-sdx-api-rejected",
           adapter_kind: "docker_sandboxes_sbx",
-          instance_id: "sandbox-runtime-instance-sdx-api-rejected",
+          sandbox_id: "sandbox-sdx-api-rejected",
           sandbox_name: "ouro-s5-clock-sdx-api-rejected",
-          runtime_id: "fixture-trading-system-runtime-001"
+          trading_run_id: "fixture-trading-run-001"
         }
       });
 
       expect(response.statusCode).toBe(201);
       expect(response.json().status).toBe("failed");
-      expect(response.json().runtime_instance.lifecycle_status).toBe("failed");
-      expect(response.json().runtime_instance.command_evidence).toHaveLength(1);
-      expect(response.json().runtime_instance.command_evidence[0]).toMatchObject({
+      expect(response.json().sandbox.lifecycle_status).toBe("failed");
+      expect(response.json().sandbox.command_evidence).toHaveLength(1);
+      expect(response.json().sandbox.command_evidence[0]).toMatchObject({
         command: [fakeSdx, "version"],
         stdout: "sdx 2.0 Starkit Developer eXtension\n"
       });
       expect(await readFile(commandLog, "utf8")).toBe("version\n");
     } finally {
-      restoreEnv("OUROBOROS_ENABLE_SBX_RUNTIME", previousEnable);
+      restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
       restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
       restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
     }
@@ -209,47 +209,47 @@ describe("runtime instance API", () => {
     await writeFile(fakeSbx, fakeSbxScript(), "utf8");
     await chmod(fakeSbx, 0o755);
 
-    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_RUNTIME;
+    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
     const previousSbxBin = process.env.OUROBOROS_SBX_BIN;
     const previousCommandLog = process.env.SBX_FAKE_COMMAND_LOG;
     const previousInstanceId = process.env.SBX_FAKE_INSTANCE_ID;
-    process.env.OUROBOROS_ENABLE_SBX_RUNTIME = "1";
+    process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
     process.env.OUROBOROS_SBX_BIN = fakeSbx;
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
-    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-runtime-instance-real-adapter-evidence";
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-real-adapter-evidence";
     try {
       const store = new LocalStore(tmpDir);
       const server = await buildServer({ store });
       const start = await server.inject({
         method: "POST",
-        url: "/api/runtime-instances",
+        url: "/api/sandboxes",
         payload: {
-          idempotency_key: "runtime-instance-real-adapter-evidence",
+          idempotency_key: "sandbox-real-adapter-evidence",
           adapter_kind: "docker_sandboxes_sbx",
-          instance_id: "sandbox-runtime-instance-real-adapter-evidence",
+          sandbox_id: "sandbox-real-adapter-evidence",
           sandbox_name: "ouro-s5-clock-real-adapter-evidence",
-          runtime_id: "fixture-trading-system-runtime-001",
+          trading_run_id: "fixture-trading-run-001",
           interval_ms: 1
         }
       });
       expect(start.statusCode).toBe(201);
-      expect(start.json().runtime_instance.lifecycle_status).toBe("running");
+      expect(start.json().sandbox.lifecycle_status).toBe("running");
 
       for (let index = 0; index < 2; index += 1) {
         const status = await server.inject({
           method: "GET",
-          url: "/api/runtime-instances/sandbox-runtime-instance-real-adapter-evidence"
+          url: "/api/sandboxes/sandbox-real-adapter-evidence"
         });
         expect(status.statusCode).toBe(200);
 
         const logs = await server.inject({
           method: "GET",
-          url: "/api/runtime-instances/sandbox-runtime-instance-real-adapter-evidence/logs"
+          url: "/api/sandboxes/sandbox-real-adapter-evidence/logs"
         });
         expect(logs.statusCode).toBe(200);
       }
 
-      const persisted = await store.getRuntimeInstance("sandbox-runtime-instance-real-adapter-evidence");
+      const persisted = await store.getSandbox("sandbox-real-adapter-evidence");
       expect(persisted?.command_evidence_refs).toHaveLength(11);
       const commandEvidenceIds = persisted?.command_evidence.map((evidence) => evidence.command_evidence_ref.id) ?? [];
       expect(new Set(commandEvidenceIds).size).toBe(commandEvidenceIds.length);
@@ -265,16 +265,16 @@ describe("runtime instance API", () => {
         evidence.command[4]?.endsWith(".jsonl")
       ))).toHaveLength(2);
     } finally {
-      restoreEnv("OUROBOROS_ENABLE_SBX_RUNTIME", previousEnable);
+      restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
       restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
       restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
       restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
     }
   });
 
-  it("persists failed lifecycle when a runtime adapter cannot stop an instance", async () => {
-    const baseAdapter = new DeterministicSandboxRuntimeAdapter();
-    const failingStopAdapter: SandboxRuntimeAdapter = {
+  it("persists failed lifecycle when a sandbox adapter cannot stop an instance", async () => {
+    const baseAdapter = new DeterministicSandboxAdapter();
+    const failingStopAdapter: SandboxAdapter = {
       kind: "deterministic_test",
       startArtifactInstance: (input) => baseAdapter.startArtifactInstance(input),
       getArtifactInstanceStatus: () => baseAdapter.getArtifactInstanceStatus(),
@@ -285,39 +285,39 @@ describe("runtime instance API", () => {
     };
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      runtimeInstanceAdapters: {
+      sandboxAdapters: {
         deterministic_test: failingStopAdapter
       }
     });
 
-    await startClockInstance(server, {
-      idempotency_key: "runtime-instance-stop-fails",
-      instance_id: "sandbox-runtime-instance-stop-fails",
+    await startClockSandbox(server, {
+      idempotency_key: "sandbox-stop-fails",
+      sandbox_id: "sandbox-stop-fails",
       sandbox_name: "ouro-s5-clock-stop-fails",
       created_at: "2026-05-10T00:00:00.000Z"
     });
     const stop = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances/sandbox-runtime-instance-stop-fails/stop"
+      url: "/api/sandboxes/sandbox-stop-fails/stop"
     });
 
     expect(stop.statusCode).toBe(200);
     expect(stop.json().status).toBe("failed");
-    expect(stop.json().runtime_instance.lifecycle_status).toBe("failed");
-    expect(stop.json().runtime_instance.stopped_at).toBeUndefined();
+    expect(stop.json().sandbox.lifecycle_status).toBe("failed");
+    expect(stop.json().sandbox.stopped_at).toBeUndefined();
 
     const rebuiltStore = new LocalStore(tmpDir);
     await rebuiltStore.rebuildProjections();
-    const persisted = await rebuiltStore.getRuntimeInstance("sandbox-runtime-instance-stop-fails");
+    const persisted = await rebuiltStore.getSandbox("sandbox-stop-fails");
     expect(persisted?.lifecycle_status).toBe("failed");
     expect(persisted?.stopped_at).toBeUndefined();
   });
 
-  it("does not refresh stopped runtime instances through adapter status or log reads", async () => {
-    const baseAdapter = new DeterministicSandboxRuntimeAdapter();
+  it("does not refresh stopped sandboxes through adapter status or log reads", async () => {
+    const baseAdapter = new DeterministicSandboxAdapter();
     let statusCallCount = 0;
     let logCallCount = 0;
-    const countingAdapter: SandboxRuntimeAdapter = {
+    const countingAdapter: SandboxAdapter = {
       kind: "deterministic_test",
       startArtifactInstance: (input) => baseAdapter.startArtifactInstance(input),
       getArtifactInstanceStatus: async () => {
@@ -332,27 +332,27 @@ describe("runtime instance API", () => {
     };
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      runtimeInstanceAdapters: {
+      sandboxAdapters: {
         deterministic_test: countingAdapter
       }
     });
 
-    await startClockInstance(server, {
-      idempotency_key: "runtime-instance-stopped-terminal",
-      instance_id: "sandbox-runtime-instance-stopped-terminal",
+    await startClockSandbox(server, {
+      idempotency_key: "sandbox-stopped-terminal",
+      sandbox_id: "sandbox-stopped-terminal",
       sandbox_name: "ouro-s5-clock-stopped-terminal",
       created_at: "2026-05-10T00:00:00.000Z"
     });
     const stop = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances/sandbox-runtime-instance-stopped-terminal/stop"
+      url: "/api/sandboxes/sandbox-stopped-terminal/stop"
     });
     expect(stop.statusCode).toBe(200);
-    expect(stop.json().runtime_instance.lifecycle_status).toBe("stopped");
+    expect(stop.json().sandbox.lifecycle_status).toBe("stopped");
 
     const status = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances/sandbox-runtime-instance-stopped-terminal"
+      url: "/api/sandboxes/sandbox-stopped-terminal"
     });
     expect(status.statusCode).toBe(200);
     expect(status.json().lifecycle_status).toBe("stopped");
@@ -360,19 +360,19 @@ describe("runtime instance API", () => {
 
     const logs = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances/sandbox-runtime-instance-stopped-terminal/logs"
+      url: "/api/sandboxes/sandbox-stopped-terminal/logs"
     });
     expect(logs.statusCode).toBe(200);
-    expect(logs.json().runtime_instance.lifecycle_status).toBe("stopped");
+    expect(logs.json().sandbox.lifecycle_status).toBe("stopped");
     expect(logCallCount).toBe(0);
   });
 
-  it("does not report started when a runtime adapter returns failed start lifecycle", async () => {
-    const baseAdapter = new DeterministicSandboxRuntimeAdapter();
+  it("does not report started when a sandbox adapter returns failed start lifecycle", async () => {
+    const baseAdapter = new DeterministicSandboxAdapter();
     let statusCallCount = 0;
     let stopCallCount = 0;
     let logCallCount = 0;
-    const failingStartAdapter: SandboxRuntimeAdapter = {
+    const failingStartAdapter: SandboxAdapter = {
       kind: "deterministic_test",
       startArtifactInstance: async (input) => {
         const result = await baseAdapter.startArtifactInstance(input);
@@ -400,30 +400,30 @@ describe("runtime instance API", () => {
     };
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      runtimeInstanceAdapters: {
+      sandboxAdapters: {
         deterministic_test: failingStartAdapter
       }
     });
 
     const response = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances",
+      url: "/api/sandboxes",
       payload: {
-        idempotency_key: "runtime-instance-start-fails",
-        instance_id: "sandbox-runtime-instance-start-fails",
+        idempotency_key: "sandbox-start-fails",
+        sandbox_id: "sandbox-start-fails",
         sandbox_name: "ouro-s5-clock-start-fails",
-        runtime_id: "fixture-trading-system-runtime-001"
+        trading_run_id: "fixture-trading-run-001"
       }
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.json().status).toBe("failed");
-    expect(response.json().runtime_instance.lifecycle_status).toBe("failed");
-    expect(response.json().runtime_instance.started_at).toBeUndefined();
+    expect(response.json().sandbox.lifecycle_status).toBe("failed");
+    expect(response.json().sandbox.started_at).toBeUndefined();
 
     const status = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances/sandbox-runtime-instance-start-fails"
+      url: "/api/sandboxes/sandbox-start-fails"
     });
     expect(status.statusCode).toBe(200);
     expect(status.json().lifecycle_status).toBe("failed");
@@ -431,38 +431,38 @@ describe("runtime instance API", () => {
 
     const stop = await server.inject({
       method: "POST",
-      url: "/api/runtime-instances/sandbox-runtime-instance-start-fails/stop"
+      url: "/api/sandboxes/sandbox-start-fails/stop"
     });
     expect(stop.statusCode).toBe(200);
     expect(stop.json().status).toBe("failed");
-    expect(stop.json().runtime_instance.lifecycle_status).toBe("failed");
+    expect(stop.json().sandbox.lifecycle_status).toBe("failed");
     expect(stopCallCount).toBe(0);
 
     const logs = await server.inject({
       method: "GET",
-      url: "/api/runtime-instances/sandbox-runtime-instance-start-fails/logs"
+      url: "/api/sandboxes/sandbox-start-fails/logs"
     });
     expect(logs.statusCode).toBe(200);
-    expect(logs.json().runtime_instance.lifecycle_status).toBe("failed");
+    expect(logs.json().sandbox.lifecycle_status).toBe("failed");
     expect(logCallCount).toBe(0);
   });
 });
 
-async function startClockInstance(
+async function startClockSandbox(
   server: Awaited<ReturnType<typeof buildServer>>,
   input: {
     idempotency_key: string;
-    instance_id: string;
+    sandbox_id: string;
     sandbox_name: string;
     created_at: string;
   }
 ) {
   const response = await server.inject({
     method: "POST",
-    url: "/api/runtime-instances",
+    url: "/api/sandboxes",
     payload: {
       ...input,
-      runtime_id: "fixture-trading-system-runtime-001",
+      trading_run_id: "fixture-trading-run-001",
       test_ticks: 2,
       interval_ms: 1
     }

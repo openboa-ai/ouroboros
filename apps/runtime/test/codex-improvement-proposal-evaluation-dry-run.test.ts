@@ -2,12 +2,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ArtifactChangeProposalProviderOutput, Ref } from "@ouroboros/domain";
+import type { ImprovementProposalProviderOutput, Ref } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
-  codexArtifactChangeProposalDryRunFixtureIds
-} from "../src/research-orchestration/codex-artifact-change-proposal-dry-run";
-import { runCodexArtifactChangeProposalEvaluationDryRun } from "../src/research-orchestration/codex-artifact-change-proposal-evaluation-dry-run";
+  codexImprovementProposalDryRunFixtureIds
+} from "../src/research-orchestration/codex-improvement-proposal-dry-run";
+import { runCodexImprovementProposalEvaluationDryRun } from "../src/research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -22,11 +22,11 @@ afterEach(async () => {
 });
 
 describe("Codex research proposal evaluation dry-run", () => {
-  it("continues a Codex-shaped proposal through runtime instance and sealed generic trading evaluation", async () => {
+  it("continues a Codex-shaped proposal through sandbox and sealed generic trading evaluation", async () => {
     const fakeCodex = path.join(tmpDir, "fake-codex.mjs");
     await writeFakeCodex(fakeCodex);
 
-    const outcome = await runCodexArtifactChangeProposalEvaluationDryRun({
+    const outcome = await runCodexImprovementProposalEvaluationDryRun({
       store_root: tmpDir,
       working_directory: tmpDir,
       codex_command: fakeCodex,
@@ -43,27 +43,27 @@ describe("Codex research proposal evaluation dry-run", () => {
     }
 
     expect(outcome.proposal.proposal.authority_status).toBe("proposal_only");
-    expect(outcome.proposal.runnable_artifact.authority_status).toBe("not_live");
+    expect(outcome.proposal.system_code.authority_status).toBe("not_live");
     expect(outcome.proposal.lineage.authority_status).toBe("lineage_only");
-    expect(outcome.runtime_instance).toMatchObject({
+    expect(outcome.sandbox).toMatchObject({
       adapter_kind: "deterministic_test",
       lifecycle_status: "running",
       authority_status: "not_live",
-      runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: outcome.proposal.runnable_artifact.runnable_artifact_id
+      system_code_ref: {
+        record_kind: "system_code",
+        id: outcome.proposal.system_code.system_code_id
       }
     });
     expect(outcome.experiment).toMatchObject({
       status: "evaluated",
       authority_status: "not_live",
-      runnable_artifact_ref: {
-        record_kind: "runnable_artifact",
-        id: outcome.proposal.runnable_artifact.runnable_artifact_id
+      system_code_ref: {
+        record_kind: "system_code",
+        id: outcome.proposal.system_code.system_code_id
       },
-      sandbox_runtime_instance_ref: {
-        record_kind: "sandbox_runtime_instance",
-        id: outcome.runtime_instance.sandbox_runtime_instance_id
+      sandbox_ref: {
+        record_kind: "sandbox",
+        id: outcome.sandbox.sandbox_id
       }
     });
     expect(outcome.evaluation_result).toMatchObject({
@@ -80,31 +80,31 @@ describe("Codex research proposal evaluation dry-run", () => {
     expect(outcome.trace_refs.runtime_trace_ref).not.toEqual(outcome.trace_refs.evaluator_trace_ref);
 
     const store = new LocalStore(tmpDir);
-    const materializationAttempts = await store.listArtifactChangeProposalMaterializationAttempts();
+    const materializationAttempts = await store.listImprovementProposalMaterializationAttempts();
     expect(materializationAttempts).toHaveLength(1);
     expect(materializationAttempts[0].provider_output_artifact_refs).toEqual([
       expect.objectContaining({
-        record_kind: "artifact_change_proposal_provider_output_artifact"
+        record_kind: "improvement_proposal_provider_output_artifact"
       })
     ]);
-    await expect(store.listArtifactChangeProposals()).resolves.toEqual([outcome.proposal.proposal]);
-    await expect(store.getRunnableArtifact(outcome.proposal.runnable_artifact.runnable_artifact_id))
-      .resolves.toEqual(outcome.proposal.runnable_artifact);
+    await expect(store.listImprovementProposals()).resolves.toEqual([outcome.proposal.proposal]);
+    await expect(store.getSystemCode(outcome.proposal.system_code.system_code_id))
+      .resolves.toEqual(outcome.proposal.system_code);
     const lineages = await store.listArtifactLineages();
     expect(lineages).toHaveLength(2);
     expect(lineages).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        artifact_lineage_id: codexArtifactChangeProposalDryRunFixtureIds.priorLineage
+        artifact_lineage_id: codexImprovementProposalDryRunFixtureIds.priorLineage
       }),
       outcome.proposal.lineage
     ]));
     await expect(store.listResearchOrchestrationRuns()).resolves.toEqual([outcome.proposal.run]);
-    await expect(store.listRuntimeInstances()).resolves.toHaveLength(1);
+    await expect(store.listSandboxes()).resolves.toHaveLength(1);
     await expect(store.listExperimentRuns()).resolves.toEqual([outcome.experiment]);
     await expect(store.listTradingEvaluationResults()).resolves.toEqual([outcome.evaluation_result]);
 
     const recordSurface = JSON.stringify({ outcome, materializationAttempts });
-    expect(recordSurface).toContain("artifact_change_proposal_provider_output_artifact");
+    expect(recordSurface).toContain("improvement_proposal_provider_output_artifact");
     expect(recordSurface).toContain("runtime_heartbeat");
     expect(recordSurface).toContain("trace-sealed-replay-experiment-run-codex-research-codex-research-evaluation-success");
     expect(recordSurface).not.toMatch(
@@ -132,15 +132,15 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
   );
 }
 
-function providerOutput(): ArtifactChangeProposalProviderOutput {
+function providerOutput(): ImprovementProposalProviderOutput {
   return {
-    output_kind: "artifact_change_proposal_input",
-    trading_evaluation_task_ref: ref("trading_evaluation_task", codexArtifactChangeProposalDryRunFixtureIds.task),
-    source_finding_refs: [ref("research_finding", codexArtifactChangeProposalDryRunFixtureIds.sourceFinding)],
-    anti_hacking_finding_refs: [ref("research_finding", codexArtifactChangeProposalDryRunFixtureIds.antiHackingFinding)],
-    parent_runnable_artifact_ref: ref(
-      "runnable_artifact",
-      codexArtifactChangeProposalDryRunFixtureIds.priorRunnableArtifact
+    output_kind: "improvement_proposal_input",
+    trading_evaluation_task_ref: ref("trading_evaluation_task", codexImprovementProposalDryRunFixtureIds.task),
+    source_finding_refs: [ref("research_finding", codexImprovementProposalDryRunFixtureIds.sourceFinding)],
+    anti_hacking_finding_refs: [ref("research_finding", codexImprovementProposalDryRunFixtureIds.antiHackingFinding)],
+    parent_system_code_ref: ref(
+      "system_code",
+      codexImprovementProposalDryRunFixtureIds.priorSystemCode
     ),
     proposal_summary: "Codex evaluation dry-run proposes the next opaque generic trading artifact input.",
     requested_change_summary: "Run the proposal through deterministic runtime and sealed evaluator boundaries.",

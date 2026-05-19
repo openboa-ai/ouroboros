@@ -1,55 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { buildTradingLedgerReadModel } from "./index";
+import { buildLedgerReadModel } from "./index";
 import type {
-  ExecutionAttemptRecord,
-  GatewayDecisionRecord,
-  OrderIntentDraftRecord,
-  ReplayRuntimeAuthorityReadModel,
+  ExecutionResultRecord,
+  GatewayResultRecord,
+  OrderRequestRecord,
+  LedgerSourceRecordsReadModel,
   Ref,
-  TradingSystemRuntimeRecord
+  TradingRunRecord
 } from "./index";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
-describe("bounded TradingSystemRuntime authority records", () => {
+describe("bounded TradingRun authority records", () => {
   it("models logical runtime lifecycle without using placement as identity", () => {
     const runtime = {
-      record_kind: "trading_system_runtime",
+      record_kind: "trading_run",
       version: 1,
-      trading_system_runtime_id: "runtime-paper-market-breakout-v1",
+      trading_run_id: "runtime-paper-market-breakout-v1",
       stage_binding_profile: "paper",
       runtime_lifecycle_status: "registered",
       candidate_ref: ref("trading_system_candidate", "candidate-market-breakout"),
       candidate_version_ref: ref("candidate_version", "candidate-version-market-breakout-v1"),
       stage_binding_ref: ref("stage_binding", "stage-binding-paper-v1"),
-      placement_ref: ref("runtime_placement", "runtime-placement-compose-local"),
+      placement_ref: ref("sandbox_placement", "sandbox-placement-compose-local"),
       hands_environment_ref: ref("hands_environment", "hands-environment-paper"),
       memory_surface_ref: ref("runtime_memory_surface", "runtime-memory-surface-paper-v1"),
       runtime_operating_policy_ref: ref("runtime_operating_policy", "runtime-operating-policy-paper-v1"),
       trace_ref: ref("trace_placeholder", "trace-runtime-paper-v1"),
-      order_intent_draft_refs: [],
-      gateway_decision_refs: [],
-      execution_attempt_refs: [],
+      order_request_refs: [],
+      gateway_result_refs: [],
+      execution_result_refs: [],
       created_at: "2026-05-10T00:00:00.000Z",
       authority_status: "not_live"
-    } satisfies TradingSystemRuntimeRecord;
+    } satisfies TradingRunRecord;
 
-    expect(runtime.trading_system_runtime_id).not.toBe(runtime.placement_ref.id);
+    expect(runtime.trading_run_id).not.toBe(runtime.placement_ref.id);
     expect(runtime.runtime_lifecycle_status).toBe("registered");
     expect(runtime.authority_status).toBe("not_live");
   });
 
-  it("models order intent draft, gateway decision, and dry-run execution without bypassing the gateway", () => {
-    const runtimeRef = ref("trading_system_runtime", "runtime-paper-market-breakout-v1");
+  it("models order request, gateway result, and dry-run execution without bypassing the gateway", () => {
+    const runtimeRef = ref("trading_run", "runtime-paper-market-breakout-v1");
     const candidateRef = ref("trading_system_candidate", "candidate-market-breakout");
     const candidateVersionRef = ref("candidate_version", "candidate-version-market-breakout-v1");
     const stageBindingRef = ref("stage_binding", "stage-binding-paper-v1");
     const traceRef = ref("trace_placeholder", "trace-runtime-paper-v1");
 
     const orderIntent = {
-      record_kind: "order_intent_draft",
+      record_kind: "order_request",
       version: 1,
-      order_intent_draft_id: "order-intent-draft-paper-buy-v1",
+      order_request_id: "order-request-paper-buy-v1",
       runtime_ref: runtimeRef,
       candidate_ref: candidateRef,
       candidate_version_ref: candidateVersionRef,
@@ -64,28 +64,28 @@ describe("bounded TradingSystemRuntime authority records", () => {
       status: "proposed",
       created_at: "2026-05-10T00:01:00.000Z",
       authority_status: "not_submitted"
-    } satisfies OrderIntentDraftRecord;
+    } satisfies OrderRequestRecord;
 
     const dryRunDecision = {
-      record_kind: "gateway_decision",
+      record_kind: "gateway_result",
       version: 1,
-      gateway_decision_id: "gateway-decision-paper-dry-run-v1",
+      gateway_result_id: "gateway-result-paper-dry-run-v1",
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: ref("order_intent_draft", orderIntent.order_intent_draft_id),
+      order_request_ref: ref("order_request", orderIntent.order_request_id),
       decision_outcome: "dry_run_only",
       decision_reason: "paper_stage_only",
       decided_at: "2026-05-10T00:01:01.000Z",
       policy_ref: ref("runtime_operating_policy", "runtime-operating-policy-paper-v1"),
       authority_status: "dry_run_only"
-    } satisfies GatewayDecisionRecord;
+    } satisfies GatewayResultRecord;
 
     const dryRunAttempt = {
-      record_kind: "execution_attempt",
+      record_kind: "execution_result",
       version: 1,
-      execution_attempt_id: "execution-attempt-paper-dry-run-v1",
+      execution_result_id: "execution-result-paper-dry-run-v1",
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: ref("order_intent_draft", orderIntent.order_intent_draft_id),
-      gateway_decision_ref: ref("gateway_decision", dryRunDecision.gateway_decision_id),
+      order_request_ref: ref("order_request", orderIntent.order_request_id),
+      gateway_result_ref: ref("gateway_result", dryRunDecision.gateway_result_id),
       stage: "paper",
       execution_mode: "containerized_local",
       venue_scope: "external_trading_api_fixture",
@@ -95,51 +95,51 @@ describe("bounded TradingSystemRuntime authority records", () => {
       created_at: "2026-05-10T00:01:02.000Z",
       completed_at: "2026-05-10T00:01:03.000Z",
       authority_status: "dry_run_only"
-    } satisfies ExecutionAttemptRecord;
+    } satisfies ExecutionResultRecord;
 
-    expect(dryRunAttempt.gateway_decision_ref).toEqual(
-      ref("gateway_decision", dryRunDecision.gateway_decision_id)
+    expect(dryRunAttempt.gateway_result_ref).toEqual(
+      ref("gateway_result", dryRunDecision.gateway_result_id)
     );
     expect(orderIntent.authority_status).toBe("not_submitted");
     expect(dryRunDecision.authority_status).toBe("dry_run_only");
     expect(dryRunAttempt.authority_status).toBe("dry_run_only");
   });
 
-  it("models allowed and rejected gateway decisions without submitting execution", () => {
-    const runtimeRef = ref("trading_system_runtime", "runtime-paper-market-breakout-v1");
-    const orderIntentRef = ref("order_intent_draft", "order-intent-draft-paper-buy-v1");
+  it("models allowed and rejected gateway results without submitting execution", () => {
+    const runtimeRef = ref("trading_run", "runtime-paper-market-breakout-v1");
+    const orderIntentRef = ref("order_request", "order-request-paper-buy-v1");
 
     const allowedDecision = {
-      record_kind: "gateway_decision",
+      record_kind: "gateway_result",
       version: 1,
-      gateway_decision_id: "gateway-decision-paper-allowed-v1",
+      gateway_result_id: "gateway-result-paper-allowed-v1",
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: orderIntentRef,
+      order_request_ref: orderIntentRef,
       decision_outcome: "allowed",
       decision_reason: "dry_run_allowed",
       decided_at: "2026-05-10T00:02:00.000Z",
       authority_status: "not_live"
-    } satisfies GatewayDecisionRecord;
+    } satisfies GatewayResultRecord;
 
     const rejectedDecision = {
-      record_kind: "gateway_decision",
+      record_kind: "gateway_result",
       version: 1,
-      gateway_decision_id: "gateway-decision-risk-rejected-v1",
+      gateway_result_id: "gateway-result-risk-rejected-v1",
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: orderIntentRef,
+      order_request_ref: orderIntentRef,
       decision_outcome: "rejected",
       decision_reason: "risk_limit_exceeded",
       decided_at: "2026-05-10T00:03:00.000Z",
       authority_status: "not_live"
-    } satisfies GatewayDecisionRecord;
+    } satisfies GatewayResultRecord;
 
     const blockedAttempt = {
-      record_kind: "execution_attempt",
+      record_kind: "execution_result",
       version: 1,
-      execution_attempt_id: "execution-attempt-risk-blocked-v1",
+      execution_result_id: "execution-result-risk-blocked-v1",
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: orderIntentRef,
-      gateway_decision_ref: ref("gateway_decision", rejectedDecision.gateway_decision_id),
+      order_request_ref: orderIntentRef,
+      gateway_result_ref: ref("gateway_result", rejectedDecision.gateway_result_id),
       stage: "paper",
       execution_mode: "containerized_local",
       venue_scope: "external_trading_api_fixture",
@@ -147,38 +147,38 @@ describe("bounded TradingSystemRuntime authority records", () => {
       result_reason: "risk_limit_exceeded",
       created_at: "2026-05-10T00:03:01.000Z",
       authority_status: "not_submitted"
-    } satisfies ExecutionAttemptRecord;
+    } satisfies ExecutionResultRecord;
 
     expect(allowedDecision.decision_outcome).toBe("allowed");
     expect(rejectedDecision.decision_outcome).toBe("rejected");
-    expect(blockedAttempt.gateway_decision_ref).toEqual(
-      ref("gateway_decision", rejectedDecision.gateway_decision_id)
+    expect(blockedAttempt.gateway_result_ref).toEqual(
+      ref("gateway_result", rejectedDecision.gateway_result_id)
     );
     expect(blockedAttempt.authority_status).toBe("not_submitted");
   });
 });
 
-describe("TradingLedger read model", () => {
-  it("wraps an empty bounded authority chain as an empty TradingLedger", () => {
-    const ledger = buildTradingLedgerReadModel(emptyAuthority());
+describe("Ledger read model", () => {
+  it("wraps empty source records as an empty Ledger", () => {
+    const ledger = buildLedgerReadModel(emptyAuthority());
 
     expect(ledger).toMatchObject({
-      ledger_kind: "trading_ledger",
+      ledger_kind: "ledger",
       has_activity: false,
       chain_complete: false,
-      latest_order_intent: null,
-      latest_gateway_decision: null,
-      latest_execution_attempt: null,
-      order_intent: {
-        label: "Order intent",
+      latest_order_request: null,
+      latest_gateway_result: null,
+      latest_execution_result: null,
+      order_request: {
+        label: "Order request",
         status: "not_submitted"
       },
-      gateway_decision: {
-        label: "Gateway decision",
+      gateway_result: {
+        label: "Gateway result",
         status: "not_evaluated"
       },
-      execution_attempt: {
-        label: "Execution attempt",
+      execution_result: {
+        label: "Execution result",
         status: "not_submitted"
       },
       authority_status: "not_live",
@@ -188,27 +188,20 @@ describe("TradingLedger read model", () => {
         order_submission_authority: false,
         credentials: false
       },
-      compatibility: {
-        source_projection: "runtime.bounded_authority",
-        source_record_kinds: [
-          "order_intent_draft",
-          "gateway_decision",
-          "execution_attempt"
-        ]
-      }
+      source_record_kinds: ["order_request", "gateway_result", "execution_result"]
     });
   });
 
-  it("wraps a complete order intent, gateway decision, and execution attempt chain", () => {
+  it("wraps a complete order request, gateway result, and execution result chain", () => {
     const authority = completeAuthority();
-    const ledger = buildTradingLedgerReadModel(authority);
+    const ledger = buildLedgerReadModel(authority);
 
     expect(ledger).toMatchObject({
-      ledger_kind: "trading_ledger",
+      ledger_kind: "ledger",
       has_activity: true,
       chain_complete: true,
-      latest_order_intent: {
-        order_intent_draft_id: "order-intent-draft-paper-buy-v1",
+      latest_order_request: {
+        order_request_id: "order-request-paper-buy-v1",
         intent_kind: "place_order",
         side: "buy",
         order_type: "limit",
@@ -216,68 +209,87 @@ describe("TradingLedger read model", () => {
         limit_price: "60000",
         authority_status: "not_submitted"
       },
-      latest_gateway_decision: {
-        gateway_decision_id: "gateway-decision-paper-dry-run-v1",
+      latest_gateway_result: {
+        gateway_result_id: "gateway-result-paper-dry-run-v1",
         decision_outcome: "dry_run_only",
         decision_reason: "paper_stage_only",
         authority_status: "dry_run_only"
       },
-      latest_execution_attempt: {
-        execution_attempt_id: "execution-attempt-paper-dry-run-v1",
+      latest_execution_result: {
+        execution_result_id: "execution-result-paper-dry-run-v1",
         status: "dry_run_recorded",
         authority_status: "dry_run_only"
       },
-      order_intent: {
-        label: "Order intent",
+      order_request: {
+        label: "Order request",
         status: "proposed"
       },
-      gateway_decision: {
-        label: "Gateway decision",
+      gateway_result: {
+        label: "Gateway result",
         status: "dry_run_only"
       },
-      execution_attempt: {
-        label: "Execution attempt",
+      execution_result: {
+        label: "Execution result",
         status: "dry_run_recorded"
-      },
-      authority_status: "not_live"
+      }
     });
+  });
+
+  it("builds the public Ledger from source records", () => {
+    const sourceRecords = completeAuthority();
+    const ledger = buildLedgerReadModel(sourceRecords);
+
+    expect(ledger).toMatchObject({
+      ledger_kind: "ledger",
+      chain_complete: true,
+      latest_order_request: {
+        order_request_id: "order-request-paper-buy-v1"
+      },
+      source_record_kinds: ["order_request", "gateway_result", "execution_result"]
+    });
+  });
+  it("uses Ledger as the public read-model name", () => {
+    const ledger = buildLedgerReadModel(emptyAuthority());
+
+    expect(ledger.ledger_kind).toBe("ledger");
+    expect(ledger.order_request.label).toBe("Order request");
   });
 });
 
-function emptyAuthority(): ReplayRuntimeAuthorityReadModel {
+function emptyAuthority(): LedgerSourceRecordsReadModel {
   return {
     has_activity: false,
     chain_complete: false,
-    latest_order_intent_draft: null,
-    latest_gateway_decision: null,
-    latest_execution_attempt: null,
-    order_intent_draft: {
-      ref: ref("order_intent_draft", "none"),
-      label: "Order intent draft",
+    latest_order_request: null,
+    latest_gateway_result: null,
+    latest_execution_result: null,
+    order_request: {
+      ref: ref("order_request", "none"),
+      label: "Order request",
       status: "not_submitted",
       authority_status: "not_submitted"
     },
-    gateway_decision: {
-      ref: ref("gateway_decision", "none"),
-      label: "Gateway decision",
+    gateway_result: {
+      ref: ref("gateway_result", "none"),
+      label: "Gateway result",
       status: "not_evaluated",
       authority_status: "not_live"
     },
-    execution_attempt: {
-      ref: ref("execution_attempt", "none"),
-      label: "Execution attempt",
+    execution_result: {
+      ref: ref("execution_result", "none"),
+      label: "Execution result",
       status: "not_submitted",
       authority_status: "not_submitted"
     }
   };
 }
 
-function completeAuthority(): ReplayRuntimeAuthorityReadModel {
+function completeAuthority(): LedgerSourceRecordsReadModel {
   return {
     has_activity: true,
     chain_complete: true,
-    latest_order_intent_draft: {
-      order_intent_draft_id: "order-intent-draft-paper-buy-v1",
+    latest_order_request: {
+      order_request_id: "order-request-paper-buy-v1",
       intent_kind: "place_order",
       market_scope: "external_trading_api_fixture",
       side: "buy",
@@ -288,18 +300,18 @@ function completeAuthority(): ReplayRuntimeAuthorityReadModel {
       created_at: "2026-05-10T00:01:00.000Z",
       authority_status: "not_submitted"
     },
-    latest_gateway_decision: {
-      gateway_decision_id: "gateway-decision-paper-dry-run-v1",
-      order_intent_draft_ref: ref("order_intent_draft", "order-intent-draft-paper-buy-v1"),
+    latest_gateway_result: {
+      gateway_result_id: "gateway-result-paper-dry-run-v1",
+      order_request_ref: ref("order_request", "order-request-paper-buy-v1"),
       decision_outcome: "dry_run_only",
       decision_reason: "paper_stage_only",
       decided_at: "2026-05-10T00:01:01.000Z",
       authority_status: "dry_run_only"
     },
-    latest_execution_attempt: {
-      execution_attempt_id: "execution-attempt-paper-dry-run-v1",
-      order_intent_draft_ref: ref("order_intent_draft", "order-intent-draft-paper-buy-v1"),
-      gateway_decision_ref: ref("gateway_decision", "gateway-decision-paper-dry-run-v1"),
+    latest_execution_result: {
+      execution_result_id: "execution-result-paper-dry-run-v1",
+      order_request_ref: ref("order_request", "order-request-paper-buy-v1"),
+      gateway_result_ref: ref("gateway_result", "gateway-result-paper-dry-run-v1"),
       stage: "paper",
       execution_mode: "host_local",
       venue_scope: "external_trading_api_fixture",
@@ -308,21 +320,21 @@ function completeAuthority(): ReplayRuntimeAuthorityReadModel {
       created_at: "2026-05-10T00:01:02.000Z",
       authority_status: "dry_run_only"
     },
-    order_intent_draft: {
-      ref: ref("order_intent_draft", "order-intent-draft-paper-buy-v1"),
-      label: "Order intent draft",
+    order_request: {
+      ref: ref("order_request", "order-request-paper-buy-v1"),
+      label: "Order request",
       status: "proposed",
       authority_status: "not_submitted"
     },
-    gateway_decision: {
-      ref: ref("gateway_decision", "gateway-decision-paper-dry-run-v1"),
-      label: "Gateway decision",
+    gateway_result: {
+      ref: ref("gateway_result", "gateway-result-paper-dry-run-v1"),
+      label: "Gateway result",
       status: "dry_run_only",
       authority_status: "dry_run_only"
     },
-    execution_attempt: {
-      ref: ref("execution_attempt", "execution-attempt-paper-dry-run-v1"),
-      label: "Execution attempt",
+    execution_result: {
+      ref: ref("execution_result", "execution-result-paper-dry-run-v1"),
+      label: "Execution result",
       status: "dry_run_recorded",
       authority_status: "dry_run_only"
     }

@@ -107,10 +107,10 @@ const activeSessionInterruptionGateRequired = activeSessionSummary.activeSession
 const runtimes = await inspectRuntimeMetadata();
 await inspectDaemonLog(runtimes.map((runtime) => runtime.name));
 await inspectDockerSocketRuntimeState(runtimes);
-const runtimeControlProbeResult = await command("sbx ls runtime-control probe", [sbxPath, "ls"], {
+const runtimeControlProbeResult = await command("sbx ls run-control probe", [sbxPath, "ls"], {
   allowFailure: true
 });
-printRuntimeControlBlockerHint(runtimeControlProbeResult);
+printRunControlBlockerHint(runtimeControlProbeResult);
 if (probeCreatePath) {
   const createProbePassed = await directCreatePathProbe();
   if (!createProbePassed) {
@@ -165,7 +165,7 @@ await command("sbx daemon start --detach", [sbxPath, "daemon", "start", "--detac
 await command("sbx daemon status", [sbxPath, "daemon", "status"]);
 const postRestartListResult = await command("sbx ls", [sbxPath, "ls"], { allowFailure: true });
 if (postRestartListResult.code !== 0 || postRestartListResult.timedOut) {
-  printRuntimeControlBlockerHint(postRestartListResult);
+  printRunControlBlockerHint(postRestartListResult);
   console.error("sbx daemon restart completed, but runtime listing is still failing.");
   process.exit(5);
 }
@@ -285,13 +285,13 @@ function sbxCommandEnv() {
   return sbxHome ? { ...process.env, HOME: sbxHome, OUROBOROS_SBX_HOME: sbxHome } : process.env;
 }
 
-function printRuntimeControlBlockerHint(result) {
+function printRunControlBlockerHint(result) {
   if (result.code === 0 && !result.timedOut) {
     return;
   }
   const combinedOutput = `${result.stdout}\n${result.stderr}`;
   if (isAuthFailure(combinedOutput)) {
-    console.log("sbx_runtime_control_blocker=authentication");
+    console.log("sbx_run_control_blocker=authentication");
     if (sbxHome) {
       console.log("isolated_sbx_home_auth_required=true");
       console.log(`isolated_sbx_home_login_command=HOME=${shellQuote(sbxHome)} ${shellQuote(sbxPath)} login`);
@@ -317,7 +317,7 @@ function printRuntimeControlBlockerHint(result) {
     return;
   }
   if (combinedOutput.includes("context canceled")) {
-    console.log("sbx_runtime_control_blocker=context_canceled");
+    console.log("sbx_run_control_blocker=context_canceled");
     if (!sbxHome) {
       console.log("next_action=approved_default_sbx_daemon_recovery_required");
     }
@@ -593,7 +593,7 @@ function arrayValue(value) {
 }
 
 async function inspectDaemonLog(runtimeNames) {
-  section("daemon log runtime-control hints");
+  section("daemon log run-control hints");
   const daemonLogPath = path.join(path.dirname(runtimeStateDir), "daemon.log");
   if (runtimeNames.length === 0) {
     console.log("daemon_log_status=skipped_no_runtime_metadata");
@@ -765,7 +765,7 @@ function runtimeNameForLogEntry(entry, runtimeSet) {
 }
 
 async function inspectDockerSocketRuntimeState(runtimes) {
-  section("docker socket runtime-control probe");
+  section("docker socket run-control probe");
   const runtimesWithSocket = runtimes.filter((runtime) => runtime.socketPath);
   if (runtimesWithSocket.length === 0) {
     console.log("docker_socket_status=skipped_no_socket_metadata");

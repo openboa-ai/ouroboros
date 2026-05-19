@@ -6,14 +6,14 @@ import type {
   ArtifactLineageRecord,
   ResearchFindingRecord,
   Ref,
-  SandboxRuntimeInstanceRecord,
+  SandboxRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
-  evaluateRuntimeArtifactForResearch,
-  type RuntimeArtifactResearchEvaluationOutcome
-} from "../src/research-evaluation/runtime-artifact-submission";
+  evaluateSystemCodeForResearch,
+  type SystemCodeResearchEvaluationOutcome
+} from "../src/research-evaluation/system-code-research-submission";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -37,10 +37,10 @@ describe("multi-automated research generic trading hill-climb flow", () => {
     const leakageResearcherRef = ref("research_worker", "research-worker-leakage-audit-001");
     const leakageDirectionRef = ref("research_direction", "research-direction-lookahead-audit-001");
 
-    const accepted = evaluateRuntimeArtifactForResearch({
-      runtime_instance: sandboxRuntimeInstance({
-        instanceId: "sandbox-runtime-instance-market-trend-v1",
-        runnableArtifactId: "research-runnable-artifact-market-trend-v1",
+    const accepted = evaluateSystemCodeForResearch({
+      sandbox: sandboxSandbox({
+        instanceId: "sandbox-market-trend-v1",
+        systemCodeId: "research-system-code-market-trend-v1",
         suffix: "trend-v1"
       }),
       research_worker_ref: trendResearcherRef,
@@ -50,10 +50,10 @@ describe("multi-automated research generic trading hill-climb flow", () => {
       submitted_at: "2026-05-11T13:00:00.000Z",
       scenario: "accepted_oos_survives_costs"
     });
-    const disqualified = evaluateRuntimeArtifactForResearch({
-      runtime_instance: sandboxRuntimeInstance({
-        instanceId: "sandbox-runtime-instance-market-lookahead-audit-v1",
-        runnableArtifactId: "research-runnable-artifact-market-lookahead-leakage-v1",
+    const disqualified = evaluateSystemCodeForResearch({
+      sandbox: sandboxSandbox({
+        instanceId: "sandbox-market-lookahead-audit-v1",
+        systemCodeId: "research-system-code-market-lookahead-leakage-v1",
         suffix: "lookahead-audit-v1"
       }),
       research_worker_ref: leakageResearcherRef,
@@ -103,8 +103,8 @@ describe("multi-automated research generic trading hill-climb flow", () => {
       record_kind: "artifact_lineage",
       version: 1,
       artifact_lineage_id: "artifact-lineage-market-trend-v2",
-      child_runnable_artifact_ref: ref("runnable_artifact", "research-runnable-artifact-market-trend-v2"),
-      parent_runnable_artifact_ref: accepted.experiment.runnable_artifact_ref,
+      child_system_code_ref: ref("system_code", "research-system-code-market-trend-v2"),
+      parent_system_code_ref: accepted.experiment.system_code_ref,
       source_finding_refs: [ref("research_finding", acceptedFinding.research_finding_id)],
       created_by_research_worker_ref: accepted.experiment.research_worker_ref,
       created_at: "2026-05-11T13:10:00.000Z",
@@ -113,7 +113,7 @@ describe("multi-automated research generic trading hill-climb flow", () => {
     await store.recordArtifactLineage(lineage);
 
     const persistedFindings = await store.listResearchFindings();
-    const nextLineage = await store.listArtifactLineagesForArtifact("research-runnable-artifact-market-trend-v2");
+    const nextLineage = await store.listArtifactLineagesForArtifact("research-system-code-market-trend-v2");
     expect(persistedFindings).toEqual([
       acceptedFinding,
       antiHackingFinding
@@ -144,7 +144,7 @@ describe("multi-automated research generic trading hill-climb flow", () => {
 
 function researchFinding(input: {
   id: string;
-  outcome: RuntimeArtifactResearchEvaluationOutcome;
+  outcome: SystemCodeResearchEvaluationOutcome;
   findingKind: ResearchFindingRecord["finding_kind"];
   summary: string;
 }): ResearchFindingRecord {
@@ -170,26 +170,26 @@ function researchFinding(input: {
   };
 }
 
-function sandboxRuntimeInstance(input: {
+function sandboxSandbox(input: {
   instanceId: string;
-  runnableArtifactId: string;
+  systemCodeId: string;
   suffix: string;
-}): SandboxRuntimeInstanceRecord {
+}): SandboxRecord {
   return {
-    record_kind: "sandbox_runtime_instance",
+    record_kind: "sandbox",
     version: 1,
-    sandbox_runtime_instance_id: input.instanceId,
+    sandbox_id: input.instanceId,
     adapter_kind: "docker_sandboxes_sbx",
-    runnable_artifact_ref: ref("runnable_artifact", input.runnableArtifactId),
-    runtime_ref: ref("trading_system_runtime", `runtime-${input.suffix}`),
-    runtime_placement_ref: ref("runtime_placement", `runtime-placement-sdx-${input.suffix}`),
+    system_code_ref: ref("system_code", input.systemCodeId),
+    runtime_ref: ref("trading_run", `runtime-${input.suffix}`),
+    sandbox_placement_ref: ref("sandbox_placement", `sandbox-placement-sdx-${input.suffix}`),
     lifecycle_status: "running",
     sandbox_name: `ouro-s6-${input.suffix}`,
     sandbox_ref: ref("docker_sandbox", `ouro-s6-${input.suffix}`),
     created_at: "2026-05-11T12:59:00.000Z",
     started_at: "2026-05-11T12:59:01.000Z",
     last_heartbeat_at: "2026-05-11T12:59:02.000Z",
-    log_refs: [ref("runtime_instance_log", `runtime-log-${input.suffix}`)],
+    log_refs: [ref("sandbox_log", `runtime-log-${input.suffix}`)],
     heartbeat_refs: [ref("runtime_heartbeat", `runtime-heartbeat-${input.suffix}`)],
     command_evidence_refs: [ref("sandbox_command_evidence", `sandbox-command-evidence-${input.suffix}`)],
     trace_ref: ref("trace_placeholder", `trace-runtime-self-report-${input.suffix}`),

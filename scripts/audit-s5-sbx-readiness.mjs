@@ -20,7 +20,7 @@ blocked before the two-sandbox validation transcript.
 Exit codes:
   0  repo readiness checks passed and no host blocker was detected
   1  repo readiness failed
-  2  repo readiness passed, but host sbx preflight/runtime-control is blocked
+  2  repo readiness passed, but host sbx preflight/run-control is blocked
 `);
   process.exit(0);
 }
@@ -30,12 +30,12 @@ const checks = [];
 await check("required S5 artifact/runtime files exist", async () => {
   await assertFilesExist([
     "packages/domain/src/index.ts",
-    "packages/domain/src/opaque-runnable-artifact-records.test.ts",
+    "packages/domain/src/system-code-sandbox-records.test.ts",
     "fixtures/trading-systems/clock.py",
-    "apps/runtime/src/runtime-instances/sandbox-runtime-adapter.ts",
+    "apps/runtime/src/sandboxes/sandbox-adapter.ts",
     "apps/runtime/test/clock-artifact.test.ts",
-    "apps/runtime/test/runtime-instances.test.ts",
-    "apps/runtime/test/sbx-runtime-adapter.test.ts",
+    "apps/runtime/test/sandboxes.test.ts",
+    "apps/runtime/test/sbx-sandbox-adapter.test.ts",
     "apps/runtime/test/s5-sbx-validation-script.test.ts",
     "scripts/audit-s5-sbx-completion.mjs",
     "scripts/audit-s5-sbx-promotion.mjs",
@@ -168,7 +168,7 @@ await check("blocker report help advertises local-only diagnostics", async () =>
   assertIncludes(result.stdout, "sbx version");
   assertIncludes(result.stdout, "sbx diagnose --output github-issue");
   assertIncludes(result.stdout, "Homebrew sbx stable/nightly metadata");
-  assertIncludes(result.stdout, "sbx ls --json runtime-control probe");
+  assertIncludes(result.stdout, "sbx ls --json run-control probe");
   assertIncludes(result.stdout, "--include-create-probe");
   assertIncludes(result.stdout, "OUROBOROS_SDX_BIN");
   assertIncludes(result.stdout, "OUROBOROS_ALLOW_SBX_CREATE_PROBE=1");
@@ -225,11 +225,11 @@ if (hostProbes) {
     assertIncludes(result.stdout, "OURO-32 real Docker Sandboxes sbx validation");
     assertIncludes(result.stdout, "sbx version");
     if (result.code === 0 && !result.timedOut) {
-      assertIncludes(result.stdout, "sbx ls runtime-control probe");
+      assertIncludes(result.stdout, "sbx ls run-control probe");
       return;
     }
-    if (result.stdout.includes("sbx ls runtime-control probe")) {
-      throw new BlockedCheck("host sbx runtime-control preflight did not pass");
+    if (result.stdout.includes("sbx ls run-control probe")) {
+      throw new BlockedCheck("host sbx run-control preflight did not pass");
     }
     const combinedOutput = `${result.stdout}\n${result.stderr}`;
     if (
@@ -246,7 +246,7 @@ if (hostProbes) {
     ) {
       throw new BlockedCheck("host sbx daemon preflight did not pass");
     }
-    throw new BlockedCheck("host sbx preflight stopped before runtime-control");
+    throw new BlockedCheck("host sbx preflight stopped before run-control");
   });
 
   await check("host recovery dry-run remains non-mutating", async () => {

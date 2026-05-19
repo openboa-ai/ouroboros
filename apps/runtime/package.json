@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "research:proposal:codex": "tsx src/research-orchestration/run-codex-artifact-change-proposal.ts",
-    "research:proposal:codex:audit": "tsx src/research-orchestration/run-codex-artifact-change-proposal-audit.ts",
+    "research:proposal:codex": "tsx src/research-orchestration/run-codex-improvement-proposal.ts",
+    "research:proposal:codex:audit": "tsx src/research-orchestration/run-codex-improvement-proposal-audit.ts",
     "trading:research": "tsx src/trading-research/run-trading-research.ts",
     "build": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",

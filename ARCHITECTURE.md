@@ -3,11 +3,17 @@
 Ouroboros is organized around one trust sequence:
 
 ```text
-TradingSystemCandidate
--> external evaluation
--> bounded live TradingSystemRuntime
--> runtime control and audit
+TradingSystem
+-> SystemCode
+-> Evaluation
+-> Improvement
+-> TradingRun
+-> Sandbox
+-> Gateway
+-> Ledger
 ```
+
+Canonical naming surface: Trading System -> System Code -> Evaluation -> Improvement -> Trading Run -> Sandbox -> Gateway -> Ledger.
 
 This file is a compact development map. Linear Project Documents own the full architecture archive, active contracts, source synthesis, product brief, and historical decisions.
 
@@ -21,7 +27,11 @@ This file is a compact development map. Linear Project Documents own the full ar
 
 ## Current Development Boundary
 
-Preserve these separations: candidate identity vs evaluation evidence, evaluation evidence vs promotion decisions, live runtime control vs order intent generation, provider output as trace material rather than proof, and persistence with enough attribution to replay why state exists.
+Preserve these separations: TradingSystem identity vs Evaluation evidence, Evaluation evidence vs
+Improvement or promotion decisions, TradingRun control vs OrderRequest generation, provider output
+as trace material rather than proof, and persistence with enough attribution to replay why state
+exists. Docker, Compose, Docker Sandboxes `sbx`, placement, adapter, and host paths stay below the
+Sandbox boundary.
 
 ## Linear Architecture Sources
 
@@ -35,5 +45,6 @@ Preserve these separations: candidate identity vs evaluation evidence, evaluatio
 
 ## Validation Surface
 
+- Naming surface changes: `npm run check:naming`
 - Documentation and agent-policy changes: `bash scripts/check-docs.sh`, `bash scripts/check-secrets.sh`, `git diff --check`
 - Runtime or package changes: add the relevant tests, then run `npm test` and `npm run typecheck`

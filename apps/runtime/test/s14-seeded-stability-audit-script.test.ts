@@ -179,7 +179,7 @@ function makeEntry(input: { iteration: number; decision: string; artifactDir: st
       score: 1,
       metrics: [],
       summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
-      risk_decision: "valid_order_intent_draft",
+      risk_decision: "valid_order_request",
       scenario_results: [
         makeScenarioResult(input.outputDir, input.iteration, "trend_long", "01"),
         makeScenarioResult(input.outputDir, input.iteration, "range_flat", "02")
@@ -198,8 +198,8 @@ function makeScenarioResult(outputDir: string, iteration: number, scenarioId: st
     run_status: "completed",
     score: 1,
     metrics: [],
-    summary: "Accepted order intent draft.",
-    risk_decision: "valid_order_intent_draft",
+    summary: "Accepted order request.",
+    risk_decision: "valid_order_request",
     events_path: path.join(outputDir, scenarioId, "events.jsonl"),
     provider_request_count: 3,
     runner_command_count: 5,

@@ -36,7 +36,10 @@ import type {
   PrivateReadinessPreflightSurfaceQueryInput,
   PublicMarketLivenessSurfaceQueryInput
 } from "./trading-substrate-surfaces";
-import { buildArtifactImprovementLoopReadModel, buildTradingLedgerReadModel } from "@ouroboros/domain";
+import {
+  buildImprovementReadModel,
+  buildLedgerReadModel
+} from "@ouroboros/domain";
 export type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 export type {
   AccountPositionRiskMirrorSurfaceQueryInput,
@@ -47,26 +50,24 @@ export type {
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   AccountPositionRiskMirrorSurfaceRecord,
-  ArtifactImprovementLoopReadModel,
+  ImprovementReadModel,
   AgentEventRecord,
   AgentRunRecord,
   AgentSessionRecord,
   ExperimentRunRecord,
   ArtifactLineageRecord,
-  ArtifactChangeProposalRecord,
+  ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
   ArtifactRuntimeContractRecord,
-  BoundedRuntimeAuthorityInput,
-  BoundedRuntimeAuthorityOutcome,
   AgentSpecRecord,
-  ArtifactChangeProposalMaterializationAttemptRecord,
-  ArtifactChangeProposalMaterializationFailureReason,
-  ArtifactChangeProposalMaterializationInput,
-  ArtifactChangeProposalMaterializationOutcome,
-  ArtifactChangeProposalProviderAttribution,
-  ArtifactChangeProposalProviderFailureInput,
-  ArtifactChangeProposalProviderOutput,
+  ImprovementProposalMaterializationAttemptRecord,
+  ImprovementProposalMaterializationFailureReason,
+  ImprovementProposalMaterializationInput,
+  ImprovementProposalMaterializationOutcome,
+  ImprovementProposalProviderAttribution,
+  ImprovementProposalProviderFailureInput,
+  ImprovementProposalProviderOutput,
   CandidateMaterializationAttemptIndexProjection,
   CandidateMaterializationAttemptReadModel,
   CandidateMaterializationAttemptRecord,
@@ -77,8 +78,11 @@ import type {
   CandidateIndexProjection,
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
-  ReplayRuntimeAuthorityReadModel,
-  ReplayRuntimeControlReadModel,
+  LedgerInput,
+  LedgerSourceRecordsReadModel,
+  LedgerReadModel,
+  LedgerWriteOutcome,
+  RunControlReadModel,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
   CandidateEvaluationRunInput,
@@ -90,9 +94,9 @@ import type {
   CapabilityPackageAdmissionRecord,
   CapabilityPackageRecord,
   EvaluationComparisonSetRecord,
-  ExecutionAttemptAuthorityStatus,
-  ExecutionAttemptRecord,
-  ExecutionAttemptStatus,
+  ExecutionResultAuthorityStatus,
+  ExecutionResultRecord,
+  ExecutionResultStatus,
   EvidenceClassificationKind,
   EvidenceClassificationRecord,
   EvidenceClassificationStatus,
@@ -103,10 +107,10 @@ import type {
   EvidenceSealingDecisionRecord,
   FixtureNotice,
   FixtureRecord,
-  GatewayDecisionRecord,
-  GatewayDecisionAuthorityStatus,
-  GatewayDecisionOutcome,
-  GatewayDecisionReason,
+  GatewayResultRecord,
+  GatewayResultAuthorityStatus,
+  GatewayResultOutcome,
+  GatewayResultReason,
   HandsEnvironmentRecord,
   OrderFillSurfaceReadModel,
   OrderFillSurfaceRecord,
@@ -117,7 +121,7 @@ import type {
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
-  OrderIntentDraftRecord,
+  OrderRequestRecord,
   PlaceholderSummary,
   ProgramManifestRecord,
   ProgramValidationRecord,
@@ -125,47 +129,47 @@ import type {
   ProviderProbeAttemptRecord,
   ProviderReadinessRecord,
   Ref,
-  RunnableArtifactRecord,
+  SystemCodeRecord,
   RuntimeAuditEventKind,
   RuntimeAuditEventRecord,
   RuntimeHeartbeatRecord,
-  RuntimeControlAction,
-  RuntimeControlActorKind,
-  RuntimeControlAuditInput,
-  RuntimeControlAuditOutcome,
-  RuntimeControlAuthorityStatus,
-  RuntimeControlCommandReason,
-  RuntimeControlCommandRecord,
-  RuntimeControlDecisionOutcome,
-  RuntimeControlDecisionReason,
-  RuntimeControlDecisionRecord,
-  RuntimeInstanceHeartbeatReadModel,
-  RuntimeInstanceIndexProjection,
-  RuntimeInstanceLogReadModel,
-  RuntimeInstanceLogRecord,
-  RuntimeInstanceLogsOutcome,
+  RunControlAction,
+  RunControlActorKind,
+  RunControlAuditInput,
+  RunControlAuditOutcome,
+  RunControlAuthorityStatus,
+  RunControlCommandReason,
+  RunControlCommandRecord,
+  RunControlDecisionOutcome,
+  RunControlDecisionReason,
+  RunControlDecisionRecord,
+  SandboxHeartbeatReadModel,
+  SandboxIndexProjection,
+  SandboxLogReadModel,
+  SandboxLogRecord,
+  SandboxLogsOutcome,
   RuntimeMemorySurfaceRecord,
-  RuntimePlacementRecord,
+  SandboxPlacementRecord,
   SandboxCommandEvidenceReadModel,
   SandboxCommandEvidenceRecord,
-  SandboxRuntimeInstanceDetailReadModel,
-  SandboxRuntimeInstanceReadModel,
-  SandboxRuntimeInstanceRecord,
-  StartRuntimeInstanceOutcome,
-  StopRuntimeInstanceInput,
+  SandboxRecord,
+  SandboxDetailReadModel,
+  SandboxReadModel,
+  StartSandboxOutcome,
+  StopSandboxInput,
   StageBindingRecord,
   TracePlaceholderRecord,
   TradingSystemCandidateRecord,
   TradingEvaluationResultRecord,
   TradingSystemProgramRecord,
-  TradingSystemRuntimeLifecycleStatus,
-  TradingSystemRuntimeRecord,
+  TradingRunLifecycleStatus,
+  TradingRunRecord,
   TradingSystemSpecRecord
 } from "@ouroboros/domain";
 
 export const DEFAULT_STORE_ROOT = ".ouroboros/dev-store";
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
-export const FIXTURE_RUNNABLE_ARTIFACT_ID = "fixture-runnable-artifact-clock-python-001";
+export const FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
 
 export type LocalStoreErrorCode =
   | "invalid_evaluation_input"
@@ -177,31 +181,31 @@ export type LocalStoreErrorCode =
   | "evaluation_run_not_found"
   | "evaluation_run_reload_failed"
   | "invalid_evidence_sealing_input"
-  | "invalid_runtime_authority_input"
-  | "invalid_runtime_control_input"
-  | "invalid_runtime_instance_input"
+  | "invalid_ledger_input"
+  | "invalid_run_control_input"
+  | "invalid_sandbox_input"
   | "invalid_order_fill_surface_input"
   | "invalid_public_market_liveness_surface_input"
   | "invalid_private_readiness_preflight_surface_input"
   | "invalid_private_readiness_posture_input"
   | "invalid_account_position_risk_mirror_surface_input"
-  | "invalid_runnable_artifact_input"
+  | "invalid_system_code_input"
   | "runtime_not_found"
   | "runtime_mismatch"
-  | "runnable_artifact_not_found"
-  | "runtime_instance_not_found"
-  | "runtime_authority_reload_failed"
-  | "runtime_control_reload_failed"
-  | "runtime_instance_reload_failed"
+  | "system_code_not_found"
+  | "sandbox_not_found"
+  | "ledger_reload_failed"
+  | "run_control_reload_failed"
+  | "sandbox_reload_failed"
   | "invalid_research_finding_input"
   | "invalid_artifact_lineage_input"
-  | "invalid_artifact_change_proposal_input"
+  | "invalid_improvement_proposal_input"
   | "invalid_research_orchestration_run_input"
   | "invalid_experiment_run_input"
   | "invalid_trading_evaluation_result_input"
-  | "artifact_change_proposal_materialization_reload_failed"
+  | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
-  | "artifact_change_proposal_not_found"
+  | "improvement_proposal_not_found"
   | "artifact_lineage_not_found";
 
 export class LocalStoreError extends Error {
@@ -229,7 +233,7 @@ export function candidateEvaluationRunRecordId(input: CandidateEvaluationRunIden
 
 type Collection =
   | "artifact-runtime-contracts"
-  | "runnable-artifacts"
+  | "system-codes"
   | "candidates"
   | "candidate-materialization-attempts"
   | "candidate-versions"
@@ -248,8 +252,8 @@ type Collection =
   | "agent-events"
   | "provider-readiness-records"
   | "provider-probe-attempts"
-  | "trading-system-runtimes"
-  | "runtime-placements"
+  | "trading-runs"
+  | "sandbox-placements"
   | "hands-environments"
   | "runtime-memory-surfaces"
   | "stage-bindings"
@@ -258,22 +262,22 @@ type Collection =
   | "evaluation-comparison-sets"
   | "evidence-sealing-decisions"
   | "evidence-classifications"
-  | "order-intent-drafts"
-  | "gateway-decisions"
-  | "execution-attempts"
-  | "runtime-control-commands"
-  | "runtime-control-decisions"
+  | "order-requests"
+  | "gateway-results"
+  | "execution-results"
+  | "run-control-commands"
+  | "run-control-decisions"
   | "runtime-audit-events"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
-  | "sandbox-runtime-instances"
-  | "runtime-instance-logs"
+  | "sandboxes"
+  | "sandbox-logs"
   | "runtime-heartbeats"
   | "sandbox-command-evidence"
   | "research-findings"
   | "artifact-lineages"
-  | "artifact-change-proposals"
-  | "artifact-change-proposal-materialization-attempts"
+  | "improvement-proposals"
+  | "improvement-proposal-materialization-attempts"
   | "research-orchestration-runs"
   | "experiment-runs"
   | "trading-evaluation-results";
@@ -285,13 +289,13 @@ interface FixtureItem {
   itemDir?: "items" | "placeholders";
 }
 
-export interface RuntimeInstanceObservationInput {
-  instance: SandboxRuntimeInstanceRecord;
-  placement?: RuntimePlacementRecord;
-  lifecycle_status?: SandboxRuntimeInstanceRecord["lifecycle_status"];
+export interface SandboxObservationInput {
+  instance: SandboxRecord;
+  placement?: SandboxPlacementRecord;
+  lifecycle_status?: SandboxRecord["lifecycle_status"];
   stopped_at?: string;
   removed_at?: string;
-  logs?: RuntimeInstanceLogRecord[];
+  logs?: SandboxLogRecord[];
   heartbeats?: RuntimeHeartbeatRecord[];
   command_evidence?: SandboxCommandEvidenceRecord[];
 }
@@ -314,7 +318,7 @@ const ids = {
   candidate: FIXTURE_CANDIDATE_ID,
   version: "fixture-candidate-version-001",
   artifactRuntimeContract: "fixture-artifact-runtime-contract-clock-python-001",
-  runnableArtifact: FIXTURE_RUNNABLE_ARTIFACT_ID,
+  systemCode: FIXTURE_SYSTEM_CODE_ID,
   spec: "fixture-trading-system-spec-sealed-replay-001",
   program: "fixture-trading-system-program-001",
   programManifest: "fixture-program-manifest-001",
@@ -330,8 +334,8 @@ const ids = {
   agentEvent: "fixture-agent-event-001",
   providerReadiness: "fixture-provider-readiness-001",
   providerProbe: "fixture-provider-probe-001",
-  runtime: "fixture-trading-system-runtime-001",
-  placement: "fixture-runtime-placement-001",
+  runtime: "fixture-trading-run-001",
+  placement: "fixture-sandbox-placement-001",
   handsEnvironment: "fixture-hands-environment-001",
   memorySurface: "fixture-runtime-memory-surface-001",
   trace: "fixture-trace-placeholder-001",
@@ -371,10 +375,10 @@ export function createFixtureRecords(): FixtureItem[] {
     created_at: fixtureEvaluationCreatedAt,
     authority_status: "contract_only"
   };
-  const runnableArtifact: RunnableArtifactRecord = {
-    record_kind: "runnable_artifact",
+  const systemCode: SystemCodeRecord = {
+    record_kind: "system_code",
     version: 1,
-    runnable_artifact_id: ids.runnableArtifact,
+    system_code_id: ids.systemCode,
     artifact_kind: "python_file",
     artifact_path: "fixtures/trading-systems/clock.py",
     artifact_digest: "sha256:fixture-clock-python-artifact-v1",
@@ -403,7 +407,7 @@ export function createFixtureRecords(): FixtureItem[] {
       ref("agent_run", ids.agentRun),
       ref("provider_readiness_record", ids.providerReadiness)
     ],
-    active_runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact)
+    active_system_code_ref: ref("system_code", ids.systemCode)
   };
   const candidateVersion: CandidateVersionRecord = {
     record_kind: "candidate_version",
@@ -414,10 +418,10 @@ export function createFixtureRecords(): FixtureItem[] {
     spec_ref: ref("trading_system_spec", ids.spec),
     program_ref: ref("trading_system_program", ids.program),
     capability_package_refs: [ref("capability_package", ids.capabilityPackage)],
-    runtime_ref: ref("trading_system_runtime", ids.runtime),
+    runtime_ref: ref("trading_run", ids.runtime),
     trace_placeholder_ref: ref("trace_placeholder", ids.trace),
     evaluation_run_ref: ref("evaluation_run_record", ids.evaluationRun),
-    runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact)
+    system_code_ref: ref("system_code", ids.systemCode)
   };
   const spec: TradingSystemSpecRecord = {
     record_kind: "trading_system_spec",
@@ -441,14 +445,14 @@ export function createFixtureRecords(): FixtureItem[] {
     version: 1,
     program_manifest_id: ids.programManifest,
     declared_runtime: "fixture-sandbox-placeholder",
-    declared_outputs: ["OrderIntentDraft placeholder", "Trace placeholder"]
+    declared_outputs: ["OrderRequest placeholder", "Trace placeholder"]
   };
   const programValidation: ProgramValidationRecord = {
     record_kind: "program_validation_record",
     version: 1,
     program_validation_record_id: ids.programValidation,
     status: "fixture_placeholder",
-    authority_status: "not_runnable"
+    authority_status: "not_executable"
   };
   const capabilityPackage: CapabilityPackageRecord = {
     record_kind: "capability_package",
@@ -532,22 +536,22 @@ export function createFixtureRecords(): FixtureItem[] {
     provider_readiness_record_ref: ref("provider_readiness_record", ids.providerReadiness),
     authority_status: "not_probed"
   };
-  const runtime: TradingSystemRuntimeRecord = {
-    record_kind: "trading_system_runtime",
+  const runtime: TradingRunRecord = {
+    record_kind: "trading_run",
     version: 1,
-    trading_system_runtime_id: ids.runtime,
+    trading_run_id: ids.runtime,
     stage_binding_profile: "paper",
     runtime_lifecycle_status: "fixture_placeholder",
-    placement_ref: ref("runtime_placement", ids.placement),
+    placement_ref: ref("sandbox_placement", ids.placement),
     hands_environment_ref: ref("hands_environment", ids.handsEnvironment),
     memory_surface_ref: ref("runtime_memory_surface", ids.memorySurface),
-    runnable_artifact_ref: ref("runnable_artifact", ids.runnableArtifact),
+    system_code_ref: ref("system_code", ids.systemCode),
     authority_status: "not_live"
   };
-  const placement: RuntimePlacementRecord = {
-    record_kind: "runtime_placement",
+  const placement: SandboxPlacementRecord = {
+    record_kind: "sandbox_placement",
     version: 1,
-    runtime_placement_id: ids.placement,
+    sandbox_placement_id: ids.placement,
     placement_kind: "fixture_local_placeholder",
     tooling_kind: "fixture_only",
     authority_status: "not_launched"
@@ -585,7 +589,7 @@ export function createFixtureRecords(): FixtureItem[] {
     stage: "backtest",
     profile: "backtest",
     execution_mode: "host_local",
-    runtime_placement_ref: ref("runtime_placement", ids.placement),
+    sandbox_placement_ref: ref("sandbox_placement", ids.placement),
     hands_environment_ref: ref("hands_environment", ids.handsEnvironment),
     created_at: fixtureEvaluationCreatedAt,
     authority_status: "not_live"
@@ -689,7 +693,7 @@ export function createFixtureRecords(): FixtureItem[] {
 
   return [
     { collection: "artifact-runtime-contracts", id: ids.artifactRuntimeContract, record: artifactRuntimeContract },
-    { collection: "runnable-artifacts", id: ids.runnableArtifact, record: runnableArtifact },
+    { collection: "system-codes", id: ids.systemCode, record: systemCode },
     { collection: "candidates", id: ids.candidate, record: candidate },
     { collection: "candidate-versions", id: ids.version, record: candidateVersion },
     { collection: "trading-system-specs", id: ids.spec, record: spec },
@@ -707,8 +711,8 @@ export function createFixtureRecords(): FixtureItem[] {
     { collection: "agent-events", id: ids.agentEvent, record: agentEvent },
     { collection: "provider-readiness-records", id: ids.providerReadiness, record: providerReadiness },
     { collection: "provider-probe-attempts", id: ids.providerProbe, record: providerProbe },
-    { collection: "trading-system-runtimes", id: ids.runtime, record: runtime },
-    { collection: "runtime-placements", id: ids.placement, record: placement },
+    { collection: "trading-runs", id: ids.runtime, record: runtime },
+    { collection: "sandbox-placements", id: ids.placement, record: placement },
     { collection: "hands-environments", id: ids.handsEnvironment, record: handsEnvironment },
     { collection: "runtime-memory-surfaces", id: ids.memorySurface, record: memorySurface },
     { collection: "traces", id: ids.trace, record: trace, itemDir: "placeholders" },
@@ -802,25 +806,26 @@ export class LocalStore {
       );
     }
 
-    const runtimeInstances = await this.readCollection<SandboxRuntimeInstanceRecord>(
-      "sandbox-runtime-instances"
+    const sandboxes = await this.readCollection<SandboxRecord>(
+      "sandboxes"
     );
-    const runtimeInstanceReadModels = runtimeInstances
-      .map(toSandboxRuntimeInstanceReadModel)
-      .sort(compareRuntimeInstanceReadModels);
-    const runtimeInstanceIndex: RuntimeInstanceIndexProjection = {
-      record_kind: "runtime_instance_index_projection",
+    const sandboxReadModels = sandboxes
+      .map(toSandboxReadModel)
+      .sort(compareSandboxReadModels);
+    const sandboxIndex: SandboxIndexProjection = {
+      record_kind: "sandbox_index_projection",
       version: 1,
-      runtime_instances: runtimeInstanceReadModels
+      sandboxes: sandboxReadModels
     };
     await this.writeJson(
-      path.join(this.storeRoot, "read-models/runtime-instances/index.json"),
-      runtimeInstanceIndex
+      path.join(this.storeRoot, "read-models/sandboxes/index.json"),
+      sandboxIndex
     );
-    for (const runtimeInstance of runtimeInstanceReadModels) {
+    for (const sandbox of sandboxReadModels) {
+      const sandboxDetail = await this.buildSandboxDetailReadModel(sandbox.sandbox_id);
       await this.writeJson(
-        path.join(this.storeRoot, "read-models/runtime-instances/items", `${runtimeInstance.instance_id}.json`),
-        await this.buildSandboxRuntimeInstanceDetailReadModel(runtimeInstance.instance_id)
+        path.join(this.storeRoot, "read-models/sandboxes/items", `${sandbox.sandbox_id}.json`),
+        sandboxDetail
       );
     }
   }
@@ -847,6 +852,16 @@ export class LocalStore {
       }
       throw error;
     }
+  }
+
+  async getTradingRun(tradingRunId: string): Promise<TradingRunRecord | undefined> {
+    return this.readOptionalRecord<TradingRunRecord>("trading-runs", tradingRunId);
+  }
+
+  async getCandidateForTradingRun(tradingRunId: string): Promise<CandidateInspectReadModel | undefined> {
+    const versions = await this.readCollection<CandidateVersionRecord>("candidate-versions");
+    const version = versions.find((candidateVersion) => candidateVersion.runtime_ref.id === tradingRunId);
+    return version ? this.getCandidate(version.candidate_id) : undefined;
   }
 
   async recordOrderFillSurface(surface: OrderFillSurfaceRecord): Promise<OrderFillSurfaceReadModel> {
@@ -1109,20 +1124,20 @@ export class LocalStore {
     return this.toCandidateEvaluationRunOutcome(evaluationRun);
   }
 
-  async getRunnableArtifact(runnableArtifactId: string): Promise<RunnableArtifactRecord | undefined> {
-    return this.readOptionalRecord<RunnableArtifactRecord>("runnable-artifacts", runnableArtifactId);
+  async getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined> {
+    return this.readOptionalRecord<SystemCodeRecord>("system-codes", systemCodeId);
   }
 
-  async recordRunnableArtifact(artifact: RunnableArtifactRecord): Promise<RunnableArtifactRecord> {
-    if (!isRunnableArtifactRecord(artifact)) {
+  async recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord> {
+    if (!isSystemCodeRecord(systemCode)) {
       throw new LocalStoreError(
-        "invalid_runnable_artifact_input",
-        "invalid runnable artifact input",
-        { runnable_artifact_id: (artifact as Partial<RunnableArtifactRecord> | undefined)?.runnable_artifact_id }
+        "invalid_system_code_input",
+        "invalid system code input",
+        { system_code_id: (systemCode as Partial<SystemCodeRecord> | undefined)?.system_code_id }
       );
     }
-    await this.writeJson(this.itemPath("runnable-artifacts", artifact.runnable_artifact_id), artifact);
-    return artifact;
+    await this.writeJson(this.itemPath("system-codes", systemCode.system_code_id), systemCode);
+    return systemCode;
   }
 
   async recordResearchFinding(finding: ResearchFindingRecord): Promise<ResearchFindingRecord> {
@@ -1171,46 +1186,46 @@ export class LocalStore {
   }
 
   async listArtifactLineagesForArtifact(
-    runnableArtifactId: string
+    systemCodeId: string
   ): Promise<ArtifactLineageRecord[]> {
     return (await this.listArtifactLineages()).filter(
       (lineage) =>
-        lineage.child_runnable_artifact_ref.id === runnableArtifactId ||
-        lineage.parent_runnable_artifact_ref?.id === runnableArtifactId
+        lineage.child_system_code_ref.id === systemCodeId ||
+        lineage.parent_system_code_ref?.id === systemCodeId
     );
   }
 
-  async recordArtifactChangeProposal(
-    proposal: ArtifactChangeProposalRecord
-  ): Promise<ArtifactChangeProposalRecord> {
-    if (!isArtifactChangeProposalRecord(proposal)) {
+  async recordImprovementProposal(
+    proposal: ImprovementProposalRecord
+  ): Promise<ImprovementProposalRecord> {
+    if (!isImprovementProposalRecord(proposal)) {
       throw new LocalStoreError(
-        "invalid_artifact_change_proposal_input",
-        "invalid artifact change proposal input",
+        "invalid_improvement_proposal_input",
+        "invalid improvement proposal input",
         {
-          artifact_change_proposal_id: (proposal as Partial<ArtifactChangeProposalRecord> | undefined)
-            ?.artifact_change_proposal_id
+          improvement_proposal_id: (proposal as Partial<ImprovementProposalRecord> | undefined)
+            ?.improvement_proposal_id
         }
       );
     }
     await this.assertResearchFindingRefsExist(
       [...proposal.source_finding_refs, ...(proposal.anti_hacking_finding_refs ?? [])],
-      proposal.artifact_change_proposal_id
+      proposal.improvement_proposal_id
     );
     await this.writeJson(
-      this.itemPath("artifact-change-proposals", proposal.artifact_change_proposal_id),
+      this.itemPath("improvement-proposals", proposal.improvement_proposal_id),
       proposal
     );
     return proposal;
   }
 
-  async listArtifactChangeProposals(): Promise<ArtifactChangeProposalRecord[]> {
-    return (await this.readCollection<ArtifactChangeProposalRecord>("artifact-change-proposals"))
-      .sort(compareArtifactChangeProposals);
+  async listImprovementProposals(): Promise<ImprovementProposalRecord[]> {
+    return (await this.readCollection<ImprovementProposalRecord>("improvement-proposals"))
+      .sort(compareImprovementProposals);
   }
 
-  async listArtifactChangeProposalsForFinding(researchFindingId: string): Promise<ArtifactChangeProposalRecord[]> {
-    return (await this.listArtifactChangeProposals()).filter((proposal) =>
+  async listImprovementProposalsForFinding(researchFindingId: string): Promise<ImprovementProposalRecord[]> {
+    return (await this.listImprovementProposals()).filter((proposal) =>
       proposal.source_finding_refs.some((findingRef) => findingRef.id === researchFindingId) ||
       (proposal.anti_hacking_finding_refs ?? []).some((findingRef) => findingRef.id === researchFindingId)
     );
@@ -1231,16 +1246,16 @@ export class LocalStore {
     }
     await this.assertResearchFindingRefsExist(run.input_finding_refs, run.research_orchestration_run_id);
     if (run.output_artifact_proposal_ref) {
-      const proposal = await this.readOptionalRecord<ArtifactChangeProposalRecord>(
-        "artifact-change-proposals",
+      const proposal = await this.readOptionalRecord<ImprovementProposalRecord>(
+        "improvement-proposals",
         run.output_artifact_proposal_ref.id
       );
       if (!proposal) {
         throw new LocalStoreError(
-          "artifact_change_proposal_not_found",
-          `artifact change proposal ${run.output_artifact_proposal_ref.id} not found`,
+          "improvement_proposal_not_found",
+          `improvement proposal ${run.output_artifact_proposal_ref.id} not found`,
           {
-            artifact_change_proposal_id: run.output_artifact_proposal_ref.id,
+            improvement_proposal_id: run.output_artifact_proposal_ref.id,
             research_orchestration_run_id: run.research_orchestration_run_id
           }
         );
@@ -1313,25 +1328,25 @@ export class LocalStore {
       .sort(compareTradingEvaluationResults);
   }
 
-  async listArtifactChangeProposalMaterializationAttempts(): Promise<ArtifactChangeProposalMaterializationAttemptRecord[]> {
-    return (await this.readCollection<ArtifactChangeProposalMaterializationAttemptRecord>(
-      "artifact-change-proposal-materialization-attempts"
-    )).sort(compareArtifactChangeProposalMaterializationAttempts);
+  async listImprovementProposalMaterializationAttempts(): Promise<ImprovementProposalMaterializationAttemptRecord[]> {
+    return (await this.readCollection<ImprovementProposalMaterializationAttemptRecord>(
+      "improvement-proposal-materialization-attempts"
+    )).sort(compareImprovementProposalMaterializationAttempts);
   }
 
-  async materializeArtifactChangeProposal(
-    input: ArtifactChangeProposalMaterializationInput
-  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
-    const existing = await this.findArtifactChangeProposalMaterializationAttemptByIdempotencyKey(
+  async materializeImprovementProposal(
+    input: ImprovementProposalMaterializationInput
+  ): Promise<ImprovementProposalMaterializationOutcome> {
+    const existing = await this.findImprovementProposalMaterializationAttemptByIdempotencyKey(
       input.idempotency_key
     );
     if (existing) {
-      return this.toArtifactChangeProposalMaterializationOutcome(existing);
+      return this.toImprovementProposalMaterializationOutcome(existing);
     }
 
-    const validationFailure = validateArtifactChangeProposalMaterializationInput(input);
+    const validationFailure = validateImprovementProposalMaterializationInput(input);
     if (validationFailure) {
-      return this.recordArtifactChangeProposalMaterializationFailure(input, validationFailure);
+      return this.recordImprovementProposalMaterializationFailure(input, validationFailure);
     }
 
     const providerResult = input.provider_result;
@@ -1340,9 +1355,9 @@ export class LocalStore {
     for (const findingRef of output.source_finding_refs) {
       const finding = await this.readOptionalRecord<ResearchFindingRecord>("research-findings", findingRef.id);
       if (!finding) {
-        return this.recordArtifactChangeProposalMaterializationFailure(
+        return this.recordImprovementProposalMaterializationFailure(
           input,
-          "artifact_change_proposal_source_finding_not_found"
+          "improvement_proposal_source_finding_not_found"
         );
       }
       sourceFindings.push(finding);
@@ -1351,26 +1366,26 @@ export class LocalStore {
     for (const findingRef of output.anti_hacking_finding_refs ?? []) {
       const finding = await this.readOptionalRecord<ResearchFindingRecord>("research-findings", findingRef.id);
       if (!finding) {
-        return this.recordArtifactChangeProposalMaterializationFailure(
+        return this.recordImprovementProposalMaterializationFailure(
           input,
-          "artifact_change_proposal_source_finding_not_found"
+          "improvement_proposal_source_finding_not_found"
         );
       }
     }
 
     const createdAt = input.created_at ?? new Date().toISOString();
     const suffix = stableSuffix(input.idempotency_key);
-    const attemptId = `artifact-change-proposal-materialization-attempt-${suffix}`;
-    const proposalRef = ref("artifact_change_proposal", `artifact-change-proposal-${suffix}`);
-    const runnableArtifactRef = ref("runnable_artifact", `research-runnable-artifact-proposal-${suffix}`);
+    const attemptId = `improvement-proposal-materialization-attempt-${suffix}`;
+    const proposalRef = ref("improvement_proposal", `improvement-proposal-${suffix}`);
+    const systemCodeRef = ref("system_code", `research-system-code-proposal-${suffix}`);
     const lineageRef = ref("artifact_lineage", `artifact-lineage-${suffix}`);
     const sourceFinding = sourceFindings[0];
     const artifactPath = input.artifact_path ?? "fixtures/trading-systems/clock.py";
 
-    const attempt: ArtifactChangeProposalMaterializationAttemptRecord = {
-      record_kind: "artifact_change_proposal_materialization_attempt",
+    const attempt: ImprovementProposalMaterializationAttemptRecord = {
+      record_kind: "improvement_proposal_materialization_attempt",
       version: 1,
-      artifact_change_proposal_materialization_attempt_id: attemptId,
+      improvement_proposal_materialization_attempt_id: attemptId,
       idempotency_key: input.idempotency_key,
       provider: providerResult.provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -1381,20 +1396,20 @@ export class LocalStore {
       status: "materialized",
       validation_status: "accepted",
       output_artifact_proposal_ref: proposalRef,
-      output_runnable_artifact_ref: runnableArtifactRef,
+      output_system_code_ref: systemCodeRef,
       output_lineage_ref: lineageRef,
       created_at: createdAt,
       authority_status: "proposal_input_only"
     };
-    const proposal: ArtifactChangeProposalRecord = stripUndefined({
-      record_kind: "artifact_change_proposal",
+    const proposal: ImprovementProposalRecord = stripUndefined({
+      record_kind: "improvement_proposal",
       version: 1,
-      artifact_change_proposal_id: proposalRef.id,
+      improvement_proposal_id: proposalRef.id,
       research_worker_ref: sourceFinding.research_worker_ref,
       research_direction_ref: sourceFinding.research_direction_ref,
       trading_evaluation_task_ref: output.trading_evaluation_task_ref,
-      proposed_runnable_artifact_ref: runnableArtifactRef,
-      parent_runnable_artifact_ref: output.parent_runnable_artifact_ref,
+      proposed_system_code_ref: systemCodeRef,
+      parent_system_code_ref: output.parent_system_code_ref,
       source_finding_refs: output.source_finding_refs,
       anti_hacking_finding_refs: output.anti_hacking_finding_refs,
       proposal_summary: output.proposal_summary,
@@ -1403,11 +1418,11 @@ export class LocalStore {
       created_at: createdAt,
       status: "proposed",
       authority_status: "proposal_only"
-    } satisfies ArtifactChangeProposalRecord);
-    const runnableArtifact: RunnableArtifactRecord = {
-      record_kind: "runnable_artifact",
+    } satisfies ImprovementProposalRecord);
+    const systemCode: SystemCodeRecord = {
+      record_kind: "system_code",
       version: 1,
-      runnable_artifact_id: runnableArtifactRef.id,
+      system_code_id: systemCodeRef.id,
       artifact_kind: "python_file",
       artifact_path: artifactPath,
       artifact_digest: `sha256:${createHash("sha256").update(input.idempotency_key).digest("hex")}`,
@@ -1419,7 +1434,7 @@ export class LocalStore {
       },
       artifact_runtime_contract_ref: input.artifact_runtime_contract_ref,
       secret_policy_ref: input.secret_policy_ref ?? ref("secret_policy", "no-raw-secrets"),
-      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "provider-artifact-change-proposal"),
+      capability_policy_ref: input.capability_policy_ref ?? ref("capability_policy", "provider-improvement-proposal"),
       provenance_refs: [
         proposalRef,
         providerResult.agent_run_ref,
@@ -1434,44 +1449,44 @@ export class LocalStore {
       record_kind: "artifact_lineage",
       version: 1,
       artifact_lineage_id: lineageRef.id,
-      child_runnable_artifact_ref: runnableArtifactRef,
-      parent_runnable_artifact_ref: output.parent_runnable_artifact_ref,
+      child_system_code_ref: systemCodeRef,
+      parent_system_code_ref: output.parent_system_code_ref,
       source_finding_refs: output.source_finding_refs,
       created_by_research_worker_ref: sourceFinding.research_worker_ref,
       created_at: createdAt,
       authority_status: "lineage_only"
     } satisfies ArtifactLineageRecord);
 
-    await this.writeJson(this.itemPath("artifact-change-proposal-materialization-attempts", attemptId), attempt);
-    await this.writeJson(this.itemPath("artifact-change-proposals", proposal.artifact_change_proposal_id), proposal);
-    await this.writeJson(this.itemPath("runnable-artifacts", runnableArtifact.runnable_artifact_id), runnableArtifact);
+    await this.writeJson(this.itemPath("improvement-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("improvement-proposals", proposal.improvement_proposal_id), proposal);
+    await this.writeJson(this.itemPath("system-codes", systemCode.system_code_id), systemCode);
     await this.writeJson(this.itemPath("artifact-lineages", lineage.artifact_lineage_id), lineage);
 
     return {
       status: "materialized",
       attempt,
       proposal,
-      runnable_artifact: runnableArtifact,
+      system_code: systemCode,
       lineage
     };
   }
 
-  async recordArtifactChangeProposalProviderFailure(
-    input: ArtifactChangeProposalProviderFailureInput
-  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
-    const existing = await this.findArtifactChangeProposalMaterializationAttemptByIdempotencyKey(
+  async recordImprovementProposalProviderFailure(
+    input: ImprovementProposalProviderFailureInput
+  ): Promise<ImprovementProposalMaterializationOutcome> {
+    const existing = await this.findImprovementProposalMaterializationAttemptByIdempotencyKey(
       input.idempotency_key
     );
     if (existing) {
-      return this.toArtifactChangeProposalMaterializationOutcome(existing);
+      return this.toImprovementProposalMaterializationOutcome(existing);
     }
 
     const providerResult = input.provider_result;
-    const attemptId = `artifact-change-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
-    const attempt: ArtifactChangeProposalMaterializationAttemptRecord = {
-      record_kind: "artifact_change_proposal_materialization_attempt",
+    const attemptId = `improvement-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
+    const attempt: ImprovementProposalMaterializationAttemptRecord = {
+      record_kind: "improvement_proposal_materialization_attempt",
       version: 1,
-      artifact_change_proposal_materialization_attempt_id: attemptId,
+      improvement_proposal_materialization_attempt_id: attemptId,
       idempotency_key: input.idempotency_key,
       provider: providerResult.provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -1486,19 +1501,19 @@ export class LocalStore {
       authority_status: "proposal_input_only"
     };
 
-    await this.writeJson(this.itemPath("artifact-change-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("improvement-proposal-materialization-attempts", attemptId), attempt);
     return {
       status: "failed",
       attempt
     };
   }
 
-  async listRuntimeInstances(): Promise<SandboxRuntimeInstanceReadModel[]> {
+  async listSandboxes(): Promise<SandboxReadModel[]> {
     try {
-      const index = await this.readJson<RuntimeInstanceIndexProjection>(
-        path.join(this.storeRoot, "read-models/runtime-instances/index.json")
+      const index = await this.readJson<SandboxIndexProjection>(
+        path.join(this.storeRoot, "read-models/sandboxes/index.json")
       );
-      return index.runtime_instances;
+      return index.sandboxes;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return [];
@@ -1507,12 +1522,10 @@ export class LocalStore {
     }
   }
 
-  async getRuntimeInstance(
-    instanceId: string
-  ): Promise<SandboxRuntimeInstanceDetailReadModel | undefined> {
+  async getSandbox(sandboxId: string): Promise<SandboxDetailReadModel | undefined> {
     try {
-      return await this.readJson<SandboxRuntimeInstanceDetailReadModel>(
-        path.join(this.storeRoot, "read-models/runtime-instances/items", `${instanceId}.json`)
+      return await this.readJson<SandboxDetailReadModel>(
+        path.join(this.storeRoot, "read-models/sandboxes/items", `${sandboxId}.json`)
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -1522,47 +1535,47 @@ export class LocalStore {
     }
   }
 
-  async recordRuntimeInstanceStart(
-    input: RuntimeInstanceObservationInput
-  ): Promise<StartRuntimeInstanceOutcome> {
-    await this.assertRuntimeInstanceLinks(input.instance);
-    await this.writeRuntimeInstanceObservations(input);
+  async recordSandboxStart(
+    input: SandboxObservationInput
+  ): Promise<StartSandboxOutcome> {
+    await this.assertSandboxLinks(input.instance);
+    await this.writeSandboxObservations(input);
     await this.rebuildProjections();
 
-    const runtimeInstance = await this.getRuntimeInstance(input.instance.sandbox_runtime_instance_id);
-    if (!runtimeInstance) {
+    const sandbox = await this.getSandbox(input.instance.sandbox_id);
+    if (!sandbox) {
       throw new LocalStoreError(
-        "runtime_instance_reload_failed",
-        `runtime instance ${input.instance.sandbox_runtime_instance_id} was not reloaded after start`,
-        { instance_id: input.instance.sandbox_runtime_instance_id }
+        "sandbox_reload_failed",
+        `sandbox ${input.instance.sandbox_id} was not reloaded after start`,
+        { sandbox_id: input.instance.sandbox_id }
       );
     }
-    return { runtime_instance: runtimeInstance };
+    return { sandbox };
   }
 
-  async recordRuntimeInstanceObservations(
-    instanceId: string,
-    observations: Omit<RuntimeInstanceObservationInput, "instance"> & {
-      lifecycle_status?: SandboxRuntimeInstanceRecord["lifecycle_status"];
+  async recordSandboxObservations(
+    sandboxId: string,
+    observations: Omit<SandboxObservationInput, "instance"> & {
+      lifecycle_status?: SandboxRecord["lifecycle_status"];
       last_heartbeat_at?: string;
     }
-  ): Promise<RuntimeInstanceLogsOutcome> {
-    const instance = await this.readOptionalRecord<SandboxRuntimeInstanceRecord>(
-      "sandbox-runtime-instances",
-      instanceId
+  ): Promise<SandboxLogsOutcome> {
+    const instance = await this.readOptionalRecord<SandboxRecord>(
+      "sandboxes",
+      sandboxId
     );
     if (!instance) {
       throw new LocalStoreError(
-        "runtime_instance_not_found",
-        `runtime instance ${instanceId} not found`,
-        { instance_id: instanceId }
+        "sandbox_not_found",
+        `sandbox ${sandboxId} not found`,
+        { sandbox_id: sandboxId }
       );
     }
 
     const latestHeartbeatAt = observations.last_heartbeat_at
       ?? latestObservedAt(observations.heartbeats)
       ?? instance.last_heartbeat_at;
-    const updatedInstance: SandboxRuntimeInstanceRecord = stripUndefined({
+    const updatedInstance: SandboxRecord = stripUndefined({
       ...instance,
       lifecycle_status: observations.lifecycle_status ?? instance.lifecycle_status,
       log_refs: appendUniqueRefs(instance.log_refs, refsForLogs(observations.logs)),
@@ -1572,43 +1585,43 @@ export class LocalStore {
         refsForCommandEvidence(observations.command_evidence)
       ),
       last_heartbeat_at: latestHeartbeatAt
-    } satisfies SandboxRuntimeInstanceRecord);
+    } satisfies SandboxRecord);
 
-    await this.writeRuntimeInstanceObservations({
+    await this.writeSandboxObservations({
       ...observations,
       instance: updatedInstance
     });
     await this.rebuildProjections();
 
-    const runtimeInstance = await this.getRuntimeInstance(instanceId);
-    if (!runtimeInstance) {
+    const sandbox = await this.getSandbox(sandboxId);
+    if (!sandbox) {
       throw new LocalStoreError(
-        "runtime_instance_reload_failed",
-        `runtime instance ${instanceId} was not reloaded after observations`,
-        { instance_id: instanceId }
+        "sandbox_reload_failed",
+        `sandbox ${sandboxId} was not reloaded after observations`,
+        { sandbox_id: sandboxId }
       );
     }
     return {
-      runtime_instance: runtimeInstance,
-      logs: runtimeInstance.logs,
-      heartbeats: runtimeInstance.heartbeats,
-      command_evidence: runtimeInstance.command_evidence
+      sandbox,
+      logs: sandbox.logs,
+      heartbeats: sandbox.heartbeats,
+      command_evidence: sandbox.command_evidence
     };
   }
 
-  async stopRuntimeInstance(
-    input: StopRuntimeInstanceInput,
-    observations: Omit<RuntimeInstanceObservationInput, "instance"> = {}
-  ): Promise<StartRuntimeInstanceOutcome> {
-    const instance = await this.readOptionalRecord<SandboxRuntimeInstanceRecord>(
-      "sandbox-runtime-instances",
-      input.instance_id
+  async stopSandbox(
+    input: StopSandboxInput,
+    observations: Omit<SandboxObservationInput, "instance"> = {}
+  ): Promise<StartSandboxOutcome> {
+    const instance = await this.readOptionalRecord<SandboxRecord>(
+      "sandboxes",
+      input.sandbox_id
     );
     if (!instance) {
       throw new LocalStoreError(
-        "runtime_instance_not_found",
-        `runtime instance ${input.instance_id} not found`,
-        { instance_id: input.instance_id }
+        "sandbox_not_found",
+        `sandbox ${input.sandbox_id} not found`,
+        { sandbox_id: input.sandbox_id }
       );
     }
 
@@ -1619,7 +1632,7 @@ export class LocalStore {
     const stoppedAt = lifecycleStatus === "stopped" || lifecycleStatus === "removed"
       ? instance.stopped_at ?? observations.stopped_at ?? input.stopped_at ?? new Date().toISOString()
       : instance.stopped_at ?? observations.stopped_at ?? input.stopped_at;
-    const updatedInstance: SandboxRuntimeInstanceRecord = stripUndefined({
+    const updatedInstance: SandboxRecord = stripUndefined({
       ...instance,
       lifecycle_status: lifecycleStatus,
       stopped_at: stoppedAt,
@@ -1631,23 +1644,23 @@ export class LocalStore {
         refsForCommandEvidence(observations.command_evidence)
       ),
       last_heartbeat_at: latestObservedAt(observations.heartbeats) ?? instance.last_heartbeat_at
-    } satisfies SandboxRuntimeInstanceRecord);
+    } satisfies SandboxRecord);
 
-    await this.writeRuntimeInstanceObservations({
+    await this.writeSandboxObservations({
       ...observations,
       instance: updatedInstance
     });
     await this.rebuildProjections();
 
-    const runtimeInstance = await this.getRuntimeInstance(input.instance_id);
-    if (!runtimeInstance) {
+    const sandbox = await this.getSandbox(input.sandbox_id);
+    if (!sandbox) {
       throw new LocalStoreError(
-        "runtime_instance_reload_failed",
-        `runtime instance ${input.instance_id} was not reloaded after stop`,
-        { instance_id: input.instance_id }
+        "sandbox_reload_failed",
+        `sandbox ${input.sandbox_id} was not reloaded after stop`,
+        { sandbox_id: input.sandbox_id }
       );
     }
-    return { runtime_instance: runtimeInstance };
+    return { sandbox };
   }
 
   async listCandidateEvaluationRuns(candidateId: string): Promise<CandidateEvaluationRunOutcome[]> {
@@ -1954,12 +1967,12 @@ export class LocalStore {
     return outcome;
   }
 
-  async recordBoundedRuntimeAuthority(
-    input: BoundedRuntimeAuthorityInput
-  ): Promise<BoundedRuntimeAuthorityOutcome> {
-    const validationFailure = validateBoundedRuntimeAuthorityInput(input);
+  async recordLedger(
+    input: LedgerInput
+  ): Promise<LedgerWriteOutcome> {
+    const validationFailure = validateLedgerInput(input);
     if (validationFailure) {
-      throw new LocalStoreError(validationFailure, "invalid bounded runtime authority input");
+      throw new LocalStoreError(validationFailure, "invalid ledger input");
     }
 
     const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
@@ -1999,8 +2012,8 @@ export class LocalStore {
     }
 
     const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
-    const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
-      "trading-system-runtimes",
+    const runtime = await this.readOptionalRecord<TradingRunRecord>(
+      "trading-runs",
       runtimeId
     );
     if (!runtime) {
@@ -2011,7 +2024,7 @@ export class LocalStore {
       );
     }
     if (
-      runtime.trading_system_runtime_id !== candidateVersion.runtime_ref.id ||
+      runtime.trading_run_id !== candidateVersion.runtime_ref.id ||
       (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
       (
         runtime.candidate_version_ref !== undefined &&
@@ -2020,26 +2033,26 @@ export class LocalStore {
     ) {
       throw new LocalStoreError(
         "runtime_mismatch",
-        `runtime ${runtime.trading_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
+        `runtime ${runtime.trading_run_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
         {
           candidate_id: candidate.candidate_id,
           candidate_version_id: candidateVersion.candidate_version_id,
           candidate_version_runtime_id: candidateVersion.runtime_ref.id,
-          runtime_id: runtime.trading_system_runtime_id
+          runtime_id: runtime.trading_run_id
         }
       );
     }
 
-    const recordIds = boundedRuntimeAuthorityRecordIds({
+    const recordIds = ledgerRecordIds({
       candidate_id: candidate.candidate_id,
       candidate_version_id: candidateVersion.candidate_version_id,
-      runtime_id: runtime.trading_system_runtime_id,
+      runtime_id: runtime.trading_run_id,
       idempotency_key: input.idempotency_key
     });
-    const existing = await this.readBoundedRuntimeAuthorityOutcome(
+    const existing = await this.readLedgerWriteOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trading_system_runtime_id,
+      runtime.trading_run_id,
       recordIds
     );
     if (existing) {
@@ -2047,29 +2060,29 @@ export class LocalStore {
     }
 
     const createdAt = input.created_at ?? new Date().toISOString();
-    const orderIntentRef = ref("order_intent_draft", recordIds.orderIntent);
-    const gatewayDecisionRef = ref("gateway_decision", recordIds.gatewayDecision);
-    const executionAttemptRef = ref("execution_attempt", recordIds.executionAttempt);
-    const runtimeRef = ref("trading_system_runtime", runtime.trading_system_runtime_id);
+    const orderIntentRef = ref("order_request", recordIds.orderIntent);
+    const gatewayDecisionRef = ref("gateway_result", recordIds.gatewayDecision);
+    const executionAttemptRef = ref("execution_result", recordIds.executionAttempt);
+    const runtimeRef = ref("trading_run", runtime.trading_run_id);
     const candidateRef = ref("trading_system_candidate", candidate.candidate_id);
     const candidateVersionRef = ref("candidate_version", candidateVersion.candidate_version_id);
     const stageBindingId = runtime.stage_binding_ref?.id
-      ?? `stage-binding-paper-${stableSuffix(runtime.trading_system_runtime_id)}`;
+      ?? `stage-binding-paper-${stableSuffix(runtime.trading_run_id)}`;
     const stageBindingRef = ref("stage_binding", stageBindingId);
     const existingStageBinding = await this.readOptionalRecord<StageBindingRecord>(
       "stage-bindings",
       stageBindingId
     );
 
-    const orderIntent: OrderIntentDraftRecord = stripUndefined({
-      record_kind: "order_intent_draft",
+    const orderIntent: OrderRequestRecord = stripUndefined({
+      record_kind: "order_request",
       version: 1,
-      order_intent_draft_id: recordIds.orderIntent,
+      order_request_id: recordIds.orderIntent,
       runtime_ref: runtimeRef,
       candidate_ref: candidateRef,
       candidate_version_ref: candidateVersionRef,
       stage_binding_ref: stageBindingRef,
-      trace_ref: input.execution_attempt?.trace_ref ?? runtime.trace_ref,
+      trace_ref: input.execution_result?.trace_ref ?? runtime.trace_ref,
       intent_kind: input.intent.intent_kind,
       market_scope: "external_trading_api_fixture",
       side: input.intent.side,
@@ -2079,45 +2092,45 @@ export class LocalStore {
       status: "proposed",
       created_at: createdAt,
       authority_status: "not_submitted"
-    } satisfies OrderIntentDraftRecord);
+    } satisfies OrderRequestRecord);
     const gatewayDecisionAuthorityStatus = gatewayDecisionAuthorityStatusForOutcome(
-      input.gateway_decision.decision_outcome
+      input.gateway_result.decision_outcome
     );
-    const gatewayDecision: GatewayDecisionRecord = stripUndefined({
-      record_kind: "gateway_decision",
+    const gatewayDecision: GatewayResultRecord = stripUndefined({
+      record_kind: "gateway_result",
       version: 1,
-      gateway_decision_id: recordIds.gatewayDecision,
+      gateway_result_id: recordIds.gatewayDecision,
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: orderIntentRef,
-      decision_outcome: input.gateway_decision.decision_outcome,
-      decision_reason: input.gateway_decision.decision_reason,
+      order_request_ref: orderIntentRef,
+      decision_outcome: input.gateway_result.decision_outcome,
+      decision_reason: input.gateway_result.decision_reason,
       decided_at: createdAt,
-      policy_ref: input.gateway_decision.policy_ref,
+      policy_ref: input.gateway_result.policy_ref,
       authority_status: gatewayDecisionAuthorityStatus
-    } satisfies GatewayDecisionRecord);
-    const executionAttemptStatus = input.execution_attempt?.status
-      ?? executionAttemptStatusForDecision(input.gateway_decision.decision_outcome);
+    } satisfies GatewayResultRecord);
+    const executionAttemptStatus = input.execution_result?.status
+      ?? executionAttemptStatusForDecision(input.gateway_result.decision_outcome);
     const executionAttemptAuthorityStatus = executionAttemptAuthorityStatusForStatus(
       executionAttemptStatus,
-      input.gateway_decision.decision_outcome
+      input.gateway_result.decision_outcome
     );
-    const executionAttempt: ExecutionAttemptRecord = stripUndefined({
-      record_kind: "execution_attempt",
+    const executionAttempt: ExecutionResultRecord = stripUndefined({
+      record_kind: "execution_result",
       version: 1,
-      execution_attempt_id: recordIds.executionAttempt,
+      execution_result_id: recordIds.executionAttempt,
       runtime_ref: runtimeRef,
-      order_intent_draft_ref: orderIntentRef,
-      gateway_decision_ref: gatewayDecisionRef,
+      order_request_ref: orderIntentRef,
+      gateway_result_ref: gatewayDecisionRef,
       stage: "paper",
-      execution_mode: input.execution_attempt?.execution_mode ?? "host_local",
+      execution_mode: input.execution_result?.execution_mode ?? "host_local",
       venue_scope: "external_trading_api_fixture",
-      trace_ref: input.execution_attempt?.trace_ref ?? runtime.trace_ref,
+      trace_ref: input.execution_result?.trace_ref ?? runtime.trace_ref,
       status: executionAttemptStatus,
-      result_reason: input.execution_attempt?.result_reason ?? input.gateway_decision.decision_reason,
+      result_reason: input.execution_result?.result_reason ?? input.gateway_result.decision_reason,
       created_at: createdAt,
-      completed_at: input.execution_attempt?.completed_at,
+      completed_at: input.execution_result?.completed_at,
       authority_status: executionAttemptAuthorityStatus
-    } satisfies ExecutionAttemptRecord);
+    } satisfies ExecutionResultRecord);
     const stageBinding: StageBindingRecord | undefined = existingStageBinding
       ? undefined
       : stripUndefined({
@@ -2129,57 +2142,57 @@ export class LocalStore {
           stage: "paper",
           profile: "paper",
           execution_mode: executionAttempt.execution_mode,
-          runtime_placement_ref: runtime.placement_ref,
+          sandbox_placement_ref: runtime.placement_ref,
           hands_environment_ref: runtime.hands_environment_ref,
           created_at: createdAt,
           authority_status: "not_live"
         } satisfies StageBindingRecord);
-    const updatedRuntime: TradingSystemRuntimeRecord = stripUndefined({
+    const updatedRuntime: TradingRunRecord = stripUndefined({
       ...runtime,
       runtime_lifecycle_status: runtime.runtime_lifecycle_status ?? "registered",
       candidate_ref: runtime.candidate_ref ?? candidateRef,
       candidate_version_ref: runtime.candidate_version_ref ?? candidateVersionRef,
       stage_binding_ref: stageBindingRef,
-      order_intent_draft_refs: appendUniqueRefs(runtime.order_intent_draft_refs, orderIntentRef),
-      gateway_decision_refs: appendUniqueRefs(runtime.gateway_decision_refs, gatewayDecisionRef),
-      execution_attempt_refs: appendUniqueRefs(runtime.execution_attempt_refs, executionAttemptRef),
+      order_request_refs: appendUniqueRefs(runtime.order_request_refs, orderIntentRef),
+      gateway_result_refs: appendUniqueRefs(runtime.gateway_result_refs, gatewayDecisionRef),
+      execution_result_refs: appendUniqueRefs(runtime.execution_result_refs, executionAttemptRef),
       created_at: runtime.created_at ?? createdAt
-    } satisfies TradingSystemRuntimeRecord);
+    } satisfies TradingRunRecord);
 
     const records: FixtureItem[] = [
       ...(stageBinding
         ? [{ collection: "stage-bindings" as const, id: stageBinding.stage_binding_id, record: stageBinding }]
         : []),
-      { collection: "order-intent-drafts", id: orderIntent.order_intent_draft_id, record: orderIntent },
-      { collection: "gateway-decisions", id: gatewayDecision.gateway_decision_id, record: gatewayDecision },
-      { collection: "execution-attempts", id: executionAttempt.execution_attempt_id, record: executionAttempt },
-      { collection: "trading-system-runtimes", id: updatedRuntime.trading_system_runtime_id, record: updatedRuntime }
+      { collection: "order-requests", id: orderIntent.order_request_id, record: orderIntent },
+      { collection: "gateway-results", id: gatewayDecision.gateway_result_id, record: gatewayDecision },
+      { collection: "execution-results", id: executionAttempt.execution_result_id, record: executionAttempt },
+      { collection: "trading-runs", id: updatedRuntime.trading_run_id, record: updatedRuntime }
     ];
     for (const item of records) {
       await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
     }
     await this.rebuildProjections();
 
-    const outcome = await this.readBoundedRuntimeAuthorityOutcome(
+    const outcome = await this.readLedgerWriteOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trading_system_runtime_id,
+      runtime.trading_run_id,
       recordIds
     );
     if (!outcome) {
       throw new LocalStoreError(
-        "runtime_authority_reload_failed",
-        `bounded runtime authority records were not reloaded after write`,
-        { runtime_id: runtime.trading_system_runtime_id }
+        "ledger_reload_failed",
+        `ledger records were not reloaded after write`,
+        { runtime_id: runtime.trading_run_id }
       );
     }
     return outcome;
   }
 
-  async recordRuntimeControlAudit(
-    input: RuntimeControlAuditInput
-  ): Promise<RuntimeControlAuditOutcome> {
-    const validationFailure = validateRuntimeControlAuditInput(input);
+  async recordRunControlAudit(
+    input: RunControlAuditInput
+  ): Promise<RunControlAuditOutcome> {
+    const validationFailure = validateRunControlAuditInput(input);
     if (validationFailure) {
       throw new LocalStoreError(validationFailure, "invalid runtime control input");
     }
@@ -2221,8 +2234,8 @@ export class LocalStore {
     }
 
     const runtimeId = input.runtime_id ?? candidateVersion.runtime_ref.id;
-    const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
-      "trading-system-runtimes",
+    const runtime = await this.readOptionalRecord<TradingRunRecord>(
+      "trading-runs",
       runtimeId
     );
     if (!runtime) {
@@ -2233,7 +2246,7 @@ export class LocalStore {
       );
     }
     if (
-      runtime.trading_system_runtime_id !== candidateVersion.runtime_ref.id ||
+      runtime.trading_run_id !== candidateVersion.runtime_ref.id ||
       (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
       (
         runtime.candidate_version_ref !== undefined &&
@@ -2242,12 +2255,12 @@ export class LocalStore {
     ) {
       throw new LocalStoreError(
         "runtime_mismatch",
-        `runtime ${runtime.trading_system_runtime_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
+        `runtime ${runtime.trading_run_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
         {
           candidate_id: candidate.candidate_id,
           candidate_version_id: candidateVersion.candidate_version_id,
           candidate_version_runtime_id: candidateVersion.runtime_ref.id,
-          runtime_id: runtime.trading_system_runtime_id
+          runtime_id: runtime.trading_run_id
         }
       );
     }
@@ -2255,13 +2268,13 @@ export class LocalStore {
     const recordIds = runtimeControlAuditRecordIds({
       candidate_id: candidate.candidate_id,
       candidate_version_id: candidateVersion.candidate_version_id,
-      runtime_id: runtime.trading_system_runtime_id,
+      runtime_id: runtime.trading_run_id,
       idempotency_key: input.idempotency_key
     });
-    const existing = await this.readRuntimeControlAuditOutcome(
+    const existing = await this.readRunControlAuditOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trading_system_runtime_id,
+      runtime.trading_run_id,
       recordIds
     );
     if (existing) {
@@ -2269,19 +2282,19 @@ export class LocalStore {
     }
 
     const createdAt = input.created_at ?? new Date().toISOString();
-    const runtimeRef = ref("trading_system_runtime", runtime.trading_system_runtime_id);
+    const runtimeRef = ref("trading_run", runtime.trading_run_id);
     const candidateRef = ref("trading_system_candidate", candidate.candidate_id);
     const candidateVersionRef = ref("candidate_version", candidateVersion.candidate_version_id);
-    const commandRef = ref("runtime_control_command", recordIds.command);
-    const decisionRef = ref("runtime_control_decision", recordIds.decision);
+    const commandRef = ref("run_control_command", recordIds.command);
+    const decisionRef = ref("run_control_decision", recordIds.decision);
     const auditEventRef = ref("runtime_audit_event", recordIds.auditEvent);
     const authorityStatus = runtimeControlAuthorityStatusForOutcome(
       input.decision.decision_outcome
     );
-    const command: RuntimeControlCommandRecord = stripUndefined({
-      record_kind: "runtime_control_command",
+    const command: RunControlCommandRecord = stripUndefined({
+      record_kind: "run_control_command",
       version: 1,
-      runtime_control_command_id: recordIds.command,
+      run_control_command_id: recordIds.command,
       runtime_ref: runtimeRef,
       action: input.command.action,
       requested_lifecycle_status: input.command.requested_lifecycle_status,
@@ -2292,17 +2305,17 @@ export class LocalStore {
       reason: input.command.reason,
       reason_summary: input.command.reason_summary,
       trace_ref: input.command.trace_ref ?? runtime.trace_ref,
-      related_order_intent_draft_refs: input.command.related_order_intent_draft_refs,
-      related_gateway_decision_refs: input.command.related_gateway_decision_refs,
-      related_execution_attempt_refs: input.command.related_execution_attempt_refs,
+      related_order_request_refs: input.command.related_order_request_refs,
+      related_gateway_result_refs: input.command.related_gateway_result_refs,
+      related_execution_result_refs: input.command.related_execution_result_refs,
       requested_at: createdAt,
       status: "decided",
       authority_status: authorityStatus
-    } satisfies RuntimeControlCommandRecord);
-    const decision: RuntimeControlDecisionRecord = stripUndefined({
-      record_kind: "runtime_control_decision",
+    } satisfies RunControlCommandRecord);
+    const decision: RunControlDecisionRecord = stripUndefined({
+      record_kind: "run_control_decision",
       version: 1,
-      runtime_control_decision_id: recordIds.decision,
+      run_control_decision_id: recordIds.decision,
       runtime_ref: runtimeRef,
       command_ref: commandRef,
       decision_outcome: input.decision.decision_outcome,
@@ -2313,15 +2326,15 @@ export class LocalStore {
         ?? input.command.runtime_operating_policy_ref,
       resulting_lifecycle_status: input.decision.resulting_lifecycle_status,
       trace_ref: input.decision.trace_ref ?? input.command.trace_ref ?? runtime.trace_ref,
-      related_order_intent_draft_refs: input.decision.related_order_intent_draft_refs
-        ?? input.command.related_order_intent_draft_refs,
-      related_gateway_decision_refs: input.decision.related_gateway_decision_refs
-        ?? input.command.related_gateway_decision_refs,
-      related_execution_attempt_refs: input.decision.related_execution_attempt_refs
-        ?? input.command.related_execution_attempt_refs,
+      related_order_request_refs: input.decision.related_order_request_refs
+        ?? input.command.related_order_request_refs,
+      related_gateway_result_refs: input.decision.related_gateway_result_refs
+        ?? input.command.related_gateway_result_refs,
+      related_execution_result_refs: input.decision.related_execution_result_refs
+        ?? input.command.related_execution_result_refs,
       decided_at: createdAt,
       authority_status: authorityStatus
-    } satisfies RuntimeControlDecisionRecord);
+    } satisfies RunControlDecisionRecord);
     const auditEvent: RuntimeAuditEventRecord = stripUndefined({
       record_kind: "runtime_audit_event",
       version: 1,
@@ -2341,50 +2354,50 @@ export class LocalStore {
         ?? runtime.trace_ref,
       supporting_record_refs: input.audit_event.supporting_record_refs
         ?? [commandRef, decisionRef],
-      related_order_intent_draft_refs: input.audit_event.related_order_intent_draft_refs
-        ?? decision.related_order_intent_draft_refs,
-      related_gateway_decision_refs: input.audit_event.related_gateway_decision_refs
-        ?? decision.related_gateway_decision_refs,
-      related_execution_attempt_refs: input.audit_event.related_execution_attempt_refs
-        ?? decision.related_execution_attempt_refs,
+      related_order_request_refs: input.audit_event.related_order_request_refs
+        ?? decision.related_order_request_refs,
+      related_gateway_result_refs: input.audit_event.related_gateway_result_refs
+        ?? decision.related_gateway_result_refs,
+      related_execution_result_refs: input.audit_event.related_execution_result_refs
+        ?? decision.related_execution_result_refs,
       created_at: createdAt,
       authority_status: "audit_only"
     } satisfies RuntimeAuditEventRecord);
-    const updatedRuntime: TradingSystemRuntimeRecord = stripUndefined({
+    const updatedRuntime: TradingRunRecord = stripUndefined({
       ...runtime,
       runtime_lifecycle_status: decision.resulting_lifecycle_status
         ?? runtime.runtime_lifecycle_status
         ?? "registered",
       candidate_ref: runtime.candidate_ref ?? candidateRef,
       candidate_version_ref: runtime.candidate_version_ref ?? candidateVersionRef,
-      runtime_control_command_refs: appendUniqueRefs(runtime.runtime_control_command_refs, commandRef),
-      runtime_control_decision_refs: appendUniqueRefs(runtime.runtime_control_decision_refs, decisionRef),
+      run_control_command_refs: appendUniqueRefs(runtime.run_control_command_refs, commandRef),
+      run_control_decision_refs: appendUniqueRefs(runtime.run_control_decision_refs, decisionRef),
       runtime_audit_event_refs: appendUniqueRefs(runtime.runtime_audit_event_refs, auditEventRef),
       created_at: runtime.created_at ?? createdAt
-    } satisfies TradingSystemRuntimeRecord);
+    } satisfies TradingRunRecord);
 
     const records: FixtureItem[] = [
-      { collection: "runtime-control-commands", id: command.runtime_control_command_id, record: command },
-      { collection: "runtime-control-decisions", id: decision.runtime_control_decision_id, record: decision },
+      { collection: "run-control-commands", id: command.run_control_command_id, record: command },
+      { collection: "run-control-decisions", id: decision.run_control_decision_id, record: decision },
       { collection: "runtime-audit-events", id: auditEvent.runtime_audit_event_id, record: auditEvent },
-      { collection: "trading-system-runtimes", id: updatedRuntime.trading_system_runtime_id, record: updatedRuntime }
+      { collection: "trading-runs", id: updatedRuntime.trading_run_id, record: updatedRuntime }
     ];
     for (const item of records) {
       await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
     }
     await this.rebuildProjections();
 
-    const outcome = await this.readRuntimeControlAuditOutcome(
+    const outcome = await this.readRunControlAuditOutcome(
       candidate.candidate_id,
       candidateVersion.candidate_version_id,
-      runtime.trading_system_runtime_id,
+      runtime.trading_run_id,
       recordIds
     );
     if (!outcome) {
       throw new LocalStoreError(
-        "runtime_control_reload_failed",
+        "run_control_reload_failed",
         `runtime control records were not reloaded after write`,
-        { runtime_id: runtime.trading_system_runtime_id }
+        { runtime_id: runtime.trading_run_id }
       );
     }
     return outcome;
@@ -2457,8 +2470,8 @@ export class LocalStore {
       agentSession: `agent-session-${suffix}`,
       providerReadiness: `provider-readiness-${suffix}`,
       providerProbe: `provider-probe-${suffix}`,
-      runtime: `trading-system-runtime-${suffix}`,
-      placement: `runtime-placement-${suffix}`,
+      runtime: `trading-run-${suffix}`,
+      placement: `sandbox-placement-${suffix}`,
       handsEnvironment: `hands-environment-${suffix}`,
       memorySurface: `runtime-memory-surface-${suffix}`,
       stageBinding: `stage-binding-backtest-${suffix}`,
@@ -2512,7 +2525,7 @@ export class LocalStore {
       spec_ref: ref("trading_system_spec", idsForCandidate.spec),
       program_ref: ref("trading_system_program", idsForCandidate.program),
       capability_package_refs: [ref("capability_package", idsForCandidate.capabilityPackage)],
-      runtime_ref: ref("trading_system_runtime", idsForCandidate.runtime),
+      runtime_ref: ref("trading_run", idsForCandidate.runtime),
       trace_placeholder_ref: traceRef,
       evaluation_run_ref: ref("evaluation_run_record", idsForCandidate.evaluationRun),
       materialization_attempt_ref: attemptRef,
@@ -2586,7 +2599,7 @@ export class LocalStore {
           version: 1,
           program_validation_record_id: idsForCandidate.programValidation,
           status: "fixture_placeholder",
-          authority_status: "not_runnable"
+          authority_status: "not_executable"
         } satisfies ProgramValidationRecord
       },
       {
@@ -2729,33 +2742,33 @@ export class LocalStore {
         } satisfies ProviderProbeAttemptRecord
       },
       {
-        collection: "trading-system-runtimes",
+        collection: "trading-runs",
         id: idsForCandidate.runtime,
         record: {
-          record_kind: "trading_system_runtime",
+          record_kind: "trading_run",
           version: 1,
-          trading_system_runtime_id: idsForCandidate.runtime,
+          trading_run_id: idsForCandidate.runtime,
           stage_binding_profile: "paper",
           runtime_lifecycle_status: "registered",
           candidate_ref: ref("trading_system_candidate", candidateId),
           candidate_version_ref: ref("candidate_version", idsForCandidate.version),
-          placement_ref: ref("runtime_placement", idsForCandidate.placement),
+          placement_ref: ref("sandbox_placement", idsForCandidate.placement),
           hands_environment_ref: ref("hands_environment", idsForCandidate.handsEnvironment),
           memory_surface_ref: ref("runtime_memory_surface", idsForCandidate.memorySurface),
           authority_status: "not_live"
-        } satisfies TradingSystemRuntimeRecord
+        } satisfies TradingRunRecord
       },
       {
-        collection: "runtime-placements",
+        collection: "sandbox-placements",
         id: idsForCandidate.placement,
         record: {
-          record_kind: "runtime_placement",
+          record_kind: "sandbox_placement",
           version: 1,
-          runtime_placement_id: idsForCandidate.placement,
+          sandbox_placement_id: idsForCandidate.placement,
           placement_kind: "fixture_local_placeholder",
           tooling_kind: "fixture_only",
           authority_status: "not_launched"
-        } satisfies RuntimePlacementRecord
+        } satisfies SandboxPlacementRecord
       },
       {
         collection: "hands-environments",
@@ -2806,7 +2819,7 @@ export class LocalStore {
           stage: "backtest",
           profile: "backtest",
           execution_mode: "host_local",
-          runtime_placement_ref: ref("runtime_placement", idsForCandidate.placement),
+          sandbox_placement_ref: ref("sandbox_placement", idsForCandidate.placement),
           hands_environment_ref: ref("hands_environment", idsForCandidate.handsEnvironment),
           created_at: attempt.created_at,
           authority_status: "not_live"
@@ -2921,16 +2934,16 @@ export class LocalStore {
     };
   }
 
-  private async recordArtifactChangeProposalMaterializationFailure(
-    input: ArtifactChangeProposalMaterializationInput,
-    failureReason: ArtifactChangeProposalMaterializationFailureReason
-  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
-    const attemptId = `artifact-change-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
+  private async recordImprovementProposalMaterializationFailure(
+    input: ImprovementProposalMaterializationInput,
+    failureReason: ImprovementProposalMaterializationFailureReason
+  ): Promise<ImprovementProposalMaterializationOutcome> {
+    const attemptId = `improvement-proposal-materialization-attempt-${stableSuffix(input.idempotency_key)}`;
     const providerResult = input.provider_result;
-    const attempt: ArtifactChangeProposalMaterializationAttemptRecord = {
-      record_kind: "artifact_change_proposal_materialization_attempt",
+    const attempt: ImprovementProposalMaterializationAttemptRecord = {
+      record_kind: "improvement_proposal_materialization_attempt",
       version: 1,
-      artifact_change_proposal_materialization_attempt_id: attemptId,
+      improvement_proposal_materialization_attempt_id: attemptId,
       idempotency_key: input.idempotency_key,
       provider: providerResult.provider,
       agent_run_ref: providerResult.agent_run_ref,
@@ -2945,25 +2958,25 @@ export class LocalStore {
       authority_status: "proposal_input_only"
     };
 
-    await this.writeJson(this.itemPath("artifact-change-proposal-materialization-attempts", attemptId), attempt);
+    await this.writeJson(this.itemPath("improvement-proposal-materialization-attempts", attemptId), attempt);
     return {
       status: "failed",
       attempt
     };
   }
 
-  private async findArtifactChangeProposalMaterializationAttemptByIdempotencyKey(
+  private async findImprovementProposalMaterializationAttemptByIdempotencyKey(
     idempotencyKey: string
-  ): Promise<ArtifactChangeProposalMaterializationAttemptRecord | undefined> {
-    const attempts = await this.readCollection<ArtifactChangeProposalMaterializationAttemptRecord>(
-      "artifact-change-proposal-materialization-attempts"
+  ): Promise<ImprovementProposalMaterializationAttemptRecord | undefined> {
+    const attempts = await this.readCollection<ImprovementProposalMaterializationAttemptRecord>(
+      "improvement-proposal-materialization-attempts"
     );
     return attempts.find((attempt) => attempt.idempotency_key === idempotencyKey);
   }
 
-  private async toArtifactChangeProposalMaterializationOutcome(
-    attempt: ArtifactChangeProposalMaterializationAttemptRecord
-  ): Promise<ArtifactChangeProposalMaterializationOutcome> {
+  private async toImprovementProposalMaterializationOutcome(
+    attempt: ImprovementProposalMaterializationAttemptRecord
+  ): Promise<ImprovementProposalMaterializationOutcome> {
     if (attempt.status === "failed") {
       return {
         status: "failed",
@@ -2973,33 +2986,33 @@ export class LocalStore {
 
     if (
       !attempt.output_artifact_proposal_ref ||
-      !attempt.output_runnable_artifact_ref ||
+      !attempt.output_system_code_ref ||
       !attempt.output_lineage_ref
     ) {
       throw new LocalStoreError(
-        "artifact_change_proposal_materialization_reload_failed",
-        `artifact change proposal materialization attempt ${attempt.artifact_change_proposal_materialization_attempt_id} has no output refs`,
-        { attempt_id: attempt.artifact_change_proposal_materialization_attempt_id }
+        "improvement_proposal_materialization_reload_failed",
+        `improvement proposal materialization attempt ${attempt.improvement_proposal_materialization_attempt_id} has no output refs`,
+        { attempt_id: attempt.improvement_proposal_materialization_attempt_id }
       );
     }
 
-    const proposal = await this.readOptionalRecord<ArtifactChangeProposalRecord>(
-      "artifact-change-proposals",
+    const proposal = await this.readOptionalRecord<ImprovementProposalRecord>(
+      "improvement-proposals",
       attempt.output_artifact_proposal_ref.id
     );
-    const runnableArtifact = await this.readOptionalRecord<RunnableArtifactRecord>(
-      "runnable-artifacts",
-      attempt.output_runnable_artifact_ref.id
+    const systemCode = await this.readOptionalRecord<SystemCodeRecord>(
+      "system-codes",
+      attempt.output_system_code_ref.id
     );
     const lineage = await this.readOptionalRecord<ArtifactLineageRecord>(
       "artifact-lineages",
       attempt.output_lineage_ref.id
     );
-    if (!proposal || !runnableArtifact || !lineage) {
+    if (!proposal || !systemCode || !lineage) {
       throw new LocalStoreError(
-        "artifact_change_proposal_materialization_reload_failed",
-        `artifact change proposal materialization attempt ${attempt.artifact_change_proposal_materialization_attempt_id} was not reloaded`,
-        { attempt_id: attempt.artifact_change_proposal_materialization_attempt_id }
+        "improvement_proposal_materialization_reload_failed",
+        `improvement proposal materialization attempt ${attempt.improvement_proposal_materialization_attempt_id} was not reloaded`,
+        { attempt_id: attempt.improvement_proposal_materialization_attempt_id }
       );
     }
 
@@ -3007,7 +3020,7 @@ export class LocalStore {
       status: "materialized",
       attempt,
       proposal,
-      runnable_artifact: runnableArtifact,
+      system_code: systemCode,
       lineage
     };
   }
@@ -3146,12 +3159,12 @@ export class LocalStore {
       "provider-probe-attempts",
       providerProbeAttemptRef.id
     );
-    const runtime = await this.readRecord<TradingSystemRuntimeRecord>(
-      "trading-system-runtimes",
+    const runtime = await this.readRecord<TradingRunRecord>(
+      "trading-runs",
       version.runtime_ref.id
     );
-    const placement = await this.readRecord<RuntimePlacementRecord>(
-      "runtime-placements",
+    const placement = await this.readRecord<SandboxPlacementRecord>(
+      "sandbox-placements",
       runtime.placement_ref.id
     );
     const handsEnvironment = await this.readRecord<HandsEnvironmentRecord>(
@@ -3175,11 +3188,33 @@ export class LocalStore {
         )
       : undefined;
     const latestTradingSubstrate = await buildLatestBinanceBtcusdtTradingSubstrateProjection(this);
-    const boundedAuthority = await this.buildReplayRuntimeAuthorityReadModel(runtime);
-    const improvementLoop = await this.buildArtifactImprovementLoopReadModel(candidate, version);
+    const ledgerSource = await this.buildLedgerSourceRecordsReadModel(runtime);
+    const improvement = await this.buildImprovementReadModel(candidate, version);
+    const ledger = buildLedgerReadModel(ledgerSource);
 
     return {
       ...this.toCandidateSummary(candidate),
+      trading_system: {
+        system_id: candidate.candidate_id,
+        version_id: version.candidate_version_id,
+        ref: ref(candidate.record_kind, candidate.candidate_id),
+        status: candidate.status,
+        summary: candidate.system_summary ?? candidate.display_name
+      },
+      system_code: {
+        ref: version.system_code_ref ?? candidate.active_system_code_ref,
+        summary: program.summary,
+        declared_runtime: programManifest.declared_runtime,
+        declared_outputs: programManifest.declared_outputs
+      },
+      trading_run: {
+        ref: version.runtime_ref,
+        stage: runtime.stage_binding_profile,
+        lifecycle_status: runtime.runtime_lifecycle_status,
+        authority_status: runtime.authority_status
+      },
+      ledger,
+      improvement,
       candidate_version: {
         candidate_version_id: version.candidate_version_id,
         version_label: version.version_label,
@@ -3229,7 +3264,7 @@ export class LocalStore {
         stage_binding_profile: runtime.stage_binding_profile,
         runtime_lifecycle_status: runtime.runtime_lifecycle_status,
         authority_status: runtime.authority_status,
-        placement: placeholder(runtime.placement_ref, "Runtime placement", placement),
+        placement: placeholder(runtime.placement_ref, "Sandbox placement", placement),
         hands_environment: placeholder(runtime.hands_environment_ref, "Hands environment", handsEnvironment),
         memory_surface: {
           ref: runtime.memory_surface_ref,
@@ -3240,11 +3275,9 @@ export class LocalStore {
           quarantine_status: memorySurface.quarantine_status,
           authority_status: memorySurface.authority_status
         },
-        bounded_authority: boundedAuthority,
-        trading_ledger: buildTradingLedgerReadModel(boundedAuthority),
-        runtime_control: await this.buildReplayRuntimeControlReadModel(runtime)
+        ledger: ledgerSource,
+        run_control: await this.buildRunControlReadModel(runtime)
       },
-      improvement_loop: improvementLoop,
       trading_substrate: latestTradingSubstrate,
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
       evaluation,
@@ -3254,20 +3287,20 @@ export class LocalStore {
     };
   }
 
-  private async buildArtifactImprovementLoopReadModel(
+  private async buildImprovementReadModel(
     candidate: TradingSystemCandidateRecord,
     version: CandidateVersionRecord
-  ): Promise<ArtifactImprovementLoopReadModel> {
-    const activeRunnableArtifactId = version.runnable_artifact_ref?.id ?? candidate.active_runnable_artifact_ref?.id;
-    const allProposals = await this.listArtifactChangeProposals();
-    const proposals = activeRunnableArtifactId
+  ): Promise<ImprovementReadModel> {
+    const activeSystemCodeId = version.system_code_ref?.id ?? candidate.active_system_code_ref?.id;
+    const allProposals = await this.listImprovementProposals();
+    const proposals = activeSystemCodeId
       ? allProposals.filter((proposal) =>
-          proposal.parent_runnable_artifact_ref?.id === activeRunnableArtifactId ||
-          proposal.proposed_runnable_artifact_ref.id === activeRunnableArtifactId
+          proposal.parent_system_code_ref?.id === activeSystemCodeId ||
+          proposal.proposed_system_code_ref.id === activeSystemCodeId
         )
       : allProposals;
-    const proposalIds = new Set(proposals.map((proposal) => proposal.artifact_change_proposal_id));
-    const proposedArtifactIds = new Set(proposals.map((proposal) => proposal.proposed_runnable_artifact_ref.id));
+    const proposalIds = new Set(proposals.map((proposal) => proposal.improvement_proposal_id));
+    const proposedArtifactIds = new Set(proposals.map((proposal) => proposal.proposed_system_code_ref.id));
     const sourceFindingIds = new Set(
       proposals.flatMap((proposal) => [
         ...proposal.source_finding_refs,
@@ -3277,7 +3310,7 @@ export class LocalStore {
     const findings = (await this.listResearchFindings()).filter((finding) =>
       sourceFindingIds.has(finding.research_finding_id)
     );
-    const materializationAttempts = (await this.listArtifactChangeProposalMaterializationAttempts())
+    const materializationAttempts = (await this.listImprovementProposalMaterializationAttempts())
       .filter((attempt) =>
         attempt.output_artifact_proposal_ref !== undefined &&
         proposalIds.has(attempt.output_artifact_proposal_ref.id)
@@ -3288,16 +3321,16 @@ export class LocalStore {
         proposalIds.has(run.output_artifact_proposal_ref.id)
       );
     const experiments = (await this.listExperimentRuns()).filter((experiment) =>
-      proposedArtifactIds.has(experiment.runnable_artifact_ref.id)
+      proposedArtifactIds.has(experiment.system_code_ref?.id ?? "")
     );
     const experimentIds = new Set(experiments.map((experiment) => experiment.experiment_run_id));
     const tradingEvaluationResults = (await this.listTradingEvaluationResults()).filter((result) =>
       experimentIds.has(result.experiment_run_ref.id)
     );
 
-    return buildArtifactImprovementLoopReadModel({
+    return buildImprovementReadModel({
       research_findings: findings,
-      artifact_change_proposals: proposals,
+      improvement_proposals: proposals,
       materialization_attempts: materializationAttempts,
       research_orchestration_runs: orchestrationRuns,
       experiment_runs: experiments,
@@ -3305,98 +3338,98 @@ export class LocalStore {
     });
   }
 
-  private async buildReplayRuntimeAuthorityReadModel(
-    runtime: TradingSystemRuntimeRecord
-  ): Promise<ReplayRuntimeAuthorityReadModel> {
-    const runtimeId = runtime.trading_system_runtime_id;
-    const orderIntents = (await this.readCollection<OrderIntentDraftRecord>("order-intent-drafts"))
+  private async buildLedgerSourceRecordsReadModel(
+    runtime: TradingRunRecord
+  ): Promise<LedgerSourceRecordsReadModel> {
+    const runtimeId = runtime.trading_run_id;
+    const orderIntents = (await this.readCollection<OrderRequestRecord>("order-requests"))
       .filter((orderIntent) => orderIntent.runtime_ref.id === runtimeId)
-      .sort(compareOrderIntentDrafts);
-    const latestOrderIntentDraft = orderIntents.at(-1);
-    if (!latestOrderIntentDraft) {
-      return emptyReplayRuntimeAuthorityReadModel();
+      .sort(compareOrderRequests);
+    const latestOrderRequest = orderIntents.at(-1);
+    if (!latestOrderRequest) {
+      return emptyLedgerSourceRecordsReadModel();
     }
 
-    const gatewayDecisions = (await this.readCollection<GatewayDecisionRecord>("gateway-decisions"))
-      .filter((gatewayDecision) => gatewayDecision.order_intent_draft_ref.id === latestOrderIntentDraft.order_intent_draft_id)
-      .sort(compareGatewayDecisions);
-    const latestGatewayDecision = gatewayDecisions.at(-1);
-    const executionAttempts = latestGatewayDecision
-      ? (await this.readCollection<ExecutionAttemptRecord>("execution-attempts"))
+    const gatewayDecisions = (await this.readCollection<GatewayResultRecord>("gateway-results"))
+      .filter((gatewayDecision) => gatewayDecision.order_request_ref.id === latestOrderRequest.order_request_id)
+      .sort(compareGatewayResults);
+    const latestGatewayResult = gatewayDecisions.at(-1);
+    const executionAttempts = latestGatewayResult
+      ? (await this.readCollection<ExecutionResultRecord>("execution-results"))
           .filter((executionAttempt) => (
-            executionAttempt.gateway_decision_ref.id === latestGatewayDecision.gateway_decision_id
+            executionAttempt.gateway_result_ref.id === latestGatewayResult.gateway_result_id
           ))
-          .sort(compareExecutionAttempts)
+          .sort(compareExecutionResults)
       : [];
-    const latestExecutionAttempt = executionAttempts.at(-1);
+    const latestExecutionResult = executionAttempts.at(-1);
 
     return {
       has_activity: true,
-      chain_complete: Boolean(latestGatewayDecision && latestExecutionAttempt),
-      latest_order_intent_draft: toReplayRuntimeOrderIntentDraftReadModel(latestOrderIntentDraft),
-      latest_gateway_decision: latestGatewayDecision
-        ? toReplayRuntimeGatewayDecisionReadModel(latestGatewayDecision)
+      chain_complete: Boolean(latestGatewayResult && latestExecutionResult),
+      latest_order_request: toLedgerSourceOrderRequestReadModel(latestOrderRequest),
+      latest_gateway_result: latestGatewayResult
+        ? toLedgerSourceGatewayResultReadModel(latestGatewayResult)
         : null,
-      latest_execution_attempt: latestExecutionAttempt
-        ? toReplayRuntimeExecutionAttemptReadModel(latestExecutionAttempt)
+      latest_execution_result: latestExecutionResult
+        ? toLedgerSourceExecutionResultReadModel(latestExecutionResult)
         : null,
-      order_intent_draft: statusPlaceholder(
-        ref(latestOrderIntentDraft.record_kind, latestOrderIntentDraft.order_intent_draft_id),
-        "Order intent draft",
-        latestOrderIntentDraft.status,
-        latestOrderIntentDraft.authority_status
+      order_request: statusPlaceholder(
+        ref(latestOrderRequest.record_kind, latestOrderRequest.order_request_id),
+        "Order request",
+        latestOrderRequest.status,
+        latestOrderRequest.authority_status
       ),
-      gateway_decision: latestGatewayDecision
+      gateway_result: latestGatewayResult
         ? statusPlaceholder(
-            ref(latestGatewayDecision.record_kind, latestGatewayDecision.gateway_decision_id),
-            "Gateway decision",
-            latestGatewayDecision.decision_outcome,
-            latestGatewayDecision.authority_status
+            ref(latestGatewayResult.record_kind, latestGatewayResult.gateway_result_id),
+            "Gateway result",
+            latestGatewayResult.decision_outcome,
+            latestGatewayResult.authority_status
           )
         : statusPlaceholder(
-            ref("gateway_decision", "missing"),
-            "Gateway decision",
+            ref("gateway_result", "missing"),
+            "Gateway result",
             "missing",
             "not_live"
           ),
-      execution_attempt: latestExecutionAttempt
+      execution_result: latestExecutionResult
         ? statusPlaceholder(
-            ref(latestExecutionAttempt.record_kind, latestExecutionAttempt.execution_attempt_id),
-            "Execution attempt",
-            latestExecutionAttempt.status,
-            latestExecutionAttempt.authority_status
+            ref(latestExecutionResult.record_kind, latestExecutionResult.execution_result_id),
+            "Execution result",
+            latestExecutionResult.status,
+            latestExecutionResult.authority_status
           )
         : statusPlaceholder(
-            ref("execution_attempt", "missing"),
-            "Execution attempt",
+            ref("execution_result", "missing"),
+            "Execution result",
             "missing",
             "not_submitted"
           )
     };
   }
 
-  private async buildReplayRuntimeControlReadModel(
-    runtime: TradingSystemRuntimeRecord
-  ): Promise<ReplayRuntimeControlReadModel> {
-    const runtimeId = runtime.trading_system_runtime_id;
-    const commands = (await this.readCollection<RuntimeControlCommandRecord>("runtime-control-commands"))
+  private async buildRunControlReadModel(
+    runtime: TradingRunRecord
+  ): Promise<RunControlReadModel> {
+    const runtimeId = runtime.trading_run_id;
+    const commands = (await this.readCollection<RunControlCommandRecord>("run-control-commands"))
       .filter((command) => command.runtime_ref.id === runtimeId)
-      .sort(compareRuntimeControlCommands);
+      .sort(compareRunControlCommands);
     const latestCommand = commands.at(-1);
     if (!latestCommand) {
-      return emptyReplayRuntimeControlReadModel();
+      return emptyRunControlReadModel();
     }
 
-    const decisions = (await this.readCollection<RuntimeControlDecisionRecord>("runtime-control-decisions"))
-      .filter((decision) => decision.command_ref.id === latestCommand.runtime_control_command_id)
-      .sort(compareRuntimeControlDecisions);
+    const decisions = (await this.readCollection<RunControlDecisionRecord>("run-control-decisions"))
+      .filter((decision) => decision.command_ref.id === latestCommand.run_control_command_id)
+      .sort(compareRunControlDecisions);
     const latestDecision = decisions.at(-1);
     const auditEvents = (await this.readCollection<RuntimeAuditEventRecord>("runtime-audit-events"))
       .filter((event) => (
-        event.command_ref?.id === latestCommand.runtime_control_command_id ||
+        event.command_ref?.id === latestCommand.run_control_command_id ||
         (
           latestDecision !== undefined &&
-          event.decision_ref?.id === latestDecision.runtime_control_decision_id
+          event.decision_ref?.id === latestDecision.run_control_decision_id
         )
       ))
       .sort(compareRuntimeAuditEvents);
@@ -3405,28 +3438,28 @@ export class LocalStore {
     return {
       has_activity: true,
       chain_complete: Boolean(latestDecision && latestAuditEvent),
-      latest_command: toReplayRuntimeControlCommandReadModel(latestCommand),
+      latest_command: toRunControlCommandReadModel(latestCommand),
       latest_decision: latestDecision
-        ? toReplayRuntimeControlDecisionReadModel(latestDecision)
+        ? toRunControlDecisionReadModel(latestDecision)
         : null,
       latest_audit_event: latestAuditEvent
-        ? toReplayRuntimeAuditEventReadModel(latestAuditEvent)
+        ? toRunControlAuditEventReadModel(latestAuditEvent)
         : null,
       command: statusPlaceholder(
-        ref(latestCommand.record_kind, latestCommand.runtime_control_command_id),
+        ref(latestCommand.record_kind, latestCommand.run_control_command_id),
         "Runtime control command",
         latestCommand.status,
         latestCommand.authority_status
       ),
       decision: latestDecision
         ? statusPlaceholder(
-            ref(latestDecision.record_kind, latestDecision.runtime_control_decision_id),
+            ref(latestDecision.record_kind, latestDecision.run_control_decision_id),
             "Runtime control decision",
             latestDecision.decision_outcome,
             latestDecision.authority_status
           )
         : statusPlaceholder(
-            ref("runtime_control_decision", "missing"),
+            ref("run_control_decision", "missing"),
             "Runtime control decision",
             "missing",
             "not_live"
@@ -3447,22 +3480,22 @@ export class LocalStore {
     };
   }
 
-  private async readBoundedRuntimeAuthorityOutcome(
+  private async readLedgerWriteOutcome(
     candidateId: string,
     candidateVersionId: string,
     runtimeId: string,
-    recordIds: BoundedRuntimeAuthorityRecordIds
-  ): Promise<BoundedRuntimeAuthorityOutcome | undefined> {
-    const orderIntent = await this.readOptionalRecord<OrderIntentDraftRecord>(
-      "order-intent-drafts",
+    recordIds: LedgerRecordIds
+  ): Promise<LedgerWriteOutcome | undefined> {
+    const orderIntent = await this.readOptionalRecord<OrderRequestRecord>(
+      "order-requests",
       recordIds.orderIntent
     );
-    const gatewayDecision = await this.readOptionalRecord<GatewayDecisionRecord>(
-      "gateway-decisions",
+    const gatewayDecision = await this.readOptionalRecord<GatewayResultRecord>(
+      "gateway-results",
       recordIds.gatewayDecision
     );
-    const executionAttempt = await this.readOptionalRecord<ExecutionAttemptRecord>(
-      "execution-attempts",
+    const executionAttempt = await this.readOptionalRecord<ExecutionResultRecord>(
+      "execution-results",
       recordIds.executionAttempt
     );
     if (!orderIntent || !gatewayDecision || !executionAttempt) {
@@ -3472,24 +3505,24 @@ export class LocalStore {
       candidate_id: candidateId,
       candidate_version_id: candidateVersionId,
       runtime_id: runtimeId,
-      order_intent_draft: orderIntent,
-      gateway_decision: gatewayDecision,
-      execution_attempt: executionAttempt
+      order_request: orderIntent,
+      gateway_result: gatewayDecision,
+      execution_result: executionAttempt
     };
   }
 
-  private async readRuntimeControlAuditOutcome(
+  private async readRunControlAuditOutcome(
     candidateId: string,
     candidateVersionId: string,
     runtimeId: string,
-    recordIds: RuntimeControlAuditRecordIds
-  ): Promise<RuntimeControlAuditOutcome | undefined> {
-    const command = await this.readOptionalRecord<RuntimeControlCommandRecord>(
-      "runtime-control-commands",
+    recordIds: RunControlAuditRecordIds
+  ): Promise<RunControlAuditOutcome | undefined> {
+    const command = await this.readOptionalRecord<RunControlCommandRecord>(
+      "run-control-commands",
       recordIds.command
     );
-    const decision = await this.readOptionalRecord<RuntimeControlDecisionRecord>(
-      "runtime-control-decisions",
+    const decision = await this.readOptionalRecord<RunControlDecisionRecord>(
+      "run-control-decisions",
       recordIds.decision
     );
     const auditEvent = await this.readOptionalRecord<RuntimeAuditEventRecord>(
@@ -3707,22 +3740,22 @@ export class LocalStore {
       .sort(compareEvidenceClassifications);
   }
 
-  private async assertRuntimeInstanceLinks(instance: SandboxRuntimeInstanceRecord): Promise<void> {
-    const artifact = await this.readOptionalRecord<RunnableArtifactRecord>(
-      "runnable-artifacts",
-      instance.runnable_artifact_ref.id
+  private async assertSandboxLinks(instance: SandboxRecord): Promise<void> {
+    const artifact = await this.readOptionalRecord<SystemCodeRecord>(
+      "system-codes",
+      instance.system_code_ref.id
     );
     if (!artifact) {
       throw new LocalStoreError(
-        "runnable_artifact_not_found",
-        `runnable artifact ${instance.runnable_artifact_ref.id} not found`,
-        { runnable_artifact_id: instance.runnable_artifact_ref.id }
+        "system_code_not_found",
+        `system code ${instance.system_code_ref.id} not found`,
+        { system_code_id: instance.system_code_ref.id }
       );
     }
 
     if (instance.runtime_ref) {
-      const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
-        "trading-system-runtimes",
+      const runtime = await this.readOptionalRecord<TradingRunRecord>(
+        "trading-runs",
         instance.runtime_ref.id
       );
       if (!runtime) {
@@ -3752,21 +3785,21 @@ export class LocalStore {
     }
   }
 
-  private async writeRuntimeInstanceObservations(
-    input: RuntimeInstanceObservationInput
+  private async writeSandboxObservations(
+    input: SandboxObservationInput
   ): Promise<void> {
     const records: FixtureItem[] = [
       ...(input.placement
         ? [{
-            collection: "runtime-placements" as const,
-            id: input.placement.runtime_placement_id,
+            collection: "sandbox-placements" as const,
+            id: input.placement.sandbox_placement_id,
             record: input.placement
           }]
         : []),
-      { collection: "sandbox-runtime-instances", id: input.instance.sandbox_runtime_instance_id, record: input.instance },
+      { collection: "sandboxes", id: input.instance.sandbox_id, record: input.instance },
       ...(input.logs ?? []).map((log) => ({
-        collection: "runtime-instance-logs" as const,
-        id: log.runtime_instance_log_id,
+        collection: "sandbox-logs" as const,
+        id: log.sandbox_log_id,
         record: log
       })),
       ...(input.heartbeats ?? []).map((heartbeat) => ({
@@ -3782,25 +3815,25 @@ export class LocalStore {
     ];
 
     if (input.instance.runtime_ref) {
-      const runtime = await this.readOptionalRecord<TradingSystemRuntimeRecord>(
-        "trading-system-runtimes",
+      const runtime = await this.readOptionalRecord<TradingRunRecord>(
+        "trading-runs",
         input.instance.runtime_ref.id
       );
       if (runtime) {
         records.push({
-          collection: "trading-system-runtimes",
-          id: runtime.trading_system_runtime_id,
+          collection: "trading-runs",
+          id: runtime.trading_run_id,
           record: stripUndefined({
             ...runtime,
             runtime_lifecycle_status: runtimeLifecycleForSandboxInstance(input.instance.lifecycle_status),
-            placement_ref: input.instance.runtime_placement_ref,
-            runnable_artifact_ref: input.instance.runnable_artifact_ref,
-            sandbox_runtime_instance_ref: ref(
+            placement_ref: input.instance.sandbox_placement_ref,
+            system_code_ref: input.instance.system_code_ref,
+            sandbox_ref: ref(
               input.instance.record_kind,
-              input.instance.sandbox_runtime_instance_id
+              input.instance.sandbox_id
             ),
             created_at: runtime.created_at ?? input.instance.created_at
-          } satisfies TradingSystemRuntimeRecord)
+          } satisfies TradingRunRecord)
         });
       }
     }
@@ -3810,28 +3843,28 @@ export class LocalStore {
     }
   }
 
-  private async buildSandboxRuntimeInstanceDetailReadModel(
-    instanceId: string
-  ): Promise<SandboxRuntimeInstanceDetailReadModel> {
-    const instance = await this.readRecord<SandboxRuntimeInstanceRecord>(
-      "sandbox-runtime-instances",
-      instanceId
+  private async buildSandboxDetailReadModel(
+    sandboxId: string
+  ): Promise<SandboxDetailReadModel> {
+    const instance = await this.readRecord<SandboxRecord>(
+      "sandboxes",
+      sandboxId
     );
-    const logs = (await this.readCollection<RuntimeInstanceLogRecord>("runtime-instance-logs"))
-      .filter((log) => log.sandbox_runtime_instance_ref.id === instanceId)
-      .sort(compareRuntimeInstanceLogs)
-      .map(toRuntimeInstanceLogReadModel);
+    const logs = (await this.readCollection<SandboxLogRecord>("sandbox-logs"))
+      .filter((log) => log.sandbox_ref.id === sandboxId)
+      .sort(compareSandboxLogs)
+      .map(toSandboxLogReadModel);
     const heartbeats = (await this.readCollection<RuntimeHeartbeatRecord>("runtime-heartbeats"))
-      .filter((heartbeat) => heartbeat.sandbox_runtime_instance_ref.id === instanceId)
+      .filter((heartbeat) => heartbeat.sandbox_ref.id === sandboxId)
       .sort(compareRuntimeHeartbeats)
-      .map(toRuntimeInstanceHeartbeatReadModel);
+      .map(toSandboxHeartbeatReadModel);
     const commandEvidence = (await this.readCollection<SandboxCommandEvidenceRecord>("sandbox-command-evidence"))
-      .filter((evidence) => evidence.sandbox_runtime_instance_ref?.id === instanceId)
+      .filter((evidence) => evidence.sandbox_ref?.id === sandboxId)
       .sort(compareSandboxCommandEvidence)
       .map(toSandboxCommandEvidenceReadModel);
 
     return {
-      ...toSandboxRuntimeInstanceReadModel(instance),
+      ...toSandboxReadModel(instance),
       logs,
       heartbeats,
       command_evidence: commandEvidence
@@ -3975,35 +4008,35 @@ function emptyCandidateEvaluationReadModel(
   };
 }
 
-function emptyReplayRuntimeAuthorityReadModel(): ReplayRuntimeAuthorityReadModel {
+function emptyLedgerSourceRecordsReadModel(): LedgerSourceRecordsReadModel {
   return {
     has_activity: false,
     chain_complete: false,
-    latest_order_intent_draft: null,
-    latest_gateway_decision: null,
-    latest_execution_attempt: null,
-    order_intent_draft: statusPlaceholder(
-      ref("order_intent_draft", "none"),
-      "Order intent draft",
+    latest_order_request: null,
+    latest_gateway_result: null,
+    latest_execution_result: null,
+    order_request: statusPlaceholder(
+      ref("order_request", "none"),
+      "Order request",
       "not_submitted",
       "not_submitted"
     ),
-    gateway_decision: statusPlaceholder(
-      ref("gateway_decision", "none"),
-      "Gateway decision",
+    gateway_result: statusPlaceholder(
+      ref("gateway_result", "none"),
+      "Gateway result",
       "not_evaluated",
       "not_live"
     ),
-    execution_attempt: statusPlaceholder(
-      ref("execution_attempt", "none"),
-      "Execution attempt",
+    execution_result: statusPlaceholder(
+      ref("execution_result", "none"),
+      "Execution result",
       "not_submitted",
       "not_submitted"
     )
   };
 }
 
-function emptyReplayRuntimeControlReadModel(): ReplayRuntimeControlReadModel {
+function emptyRunControlReadModel(): RunControlReadModel {
   return {
     has_activity: false,
     chain_complete: false,
@@ -4011,13 +4044,13 @@ function emptyReplayRuntimeControlReadModel(): ReplayRuntimeControlReadModel {
     latest_decision: null,
     latest_audit_event: null,
     command: statusPlaceholder(
-      ref("runtime_control_command", "none"),
+      ref("run_control_command", "none"),
       "Runtime control command",
       "pending_decision",
       "not_live"
     ),
     decision: statusPlaceholder(
-      ref("runtime_control_decision", "none"),
+      ref("run_control_decision", "none"),
       "Runtime control decision",
       "not_evaluated",
       "not_live"
@@ -4031,9 +4064,9 @@ function emptyReplayRuntimeControlReadModel(): ReplayRuntimeControlReadModel {
   };
 }
 
-function toReplayRuntimeOrderIntentDraftReadModel(orderIntent: OrderIntentDraftRecord) {
+function toLedgerSourceOrderRequestReadModel(orderIntent: OrderRequestRecord) {
   return {
-    order_intent_draft_id: orderIntent.order_intent_draft_id,
+    order_request_id: orderIntent.order_request_id,
     intent_kind: orderIntent.intent_kind,
     market_scope: orderIntent.market_scope,
     side: orderIntent.side,
@@ -4046,10 +4079,10 @@ function toReplayRuntimeOrderIntentDraftReadModel(orderIntent: OrderIntentDraftR
   };
 }
 
-function toReplayRuntimeGatewayDecisionReadModel(gatewayDecision: GatewayDecisionRecord) {
+function toLedgerSourceGatewayResultReadModel(gatewayDecision: GatewayResultRecord) {
   return {
-    gateway_decision_id: gatewayDecision.gateway_decision_id,
-    order_intent_draft_ref: gatewayDecision.order_intent_draft_ref,
+    gateway_result_id: gatewayDecision.gateway_result_id,
+    order_request_ref: gatewayDecision.order_request_ref,
     decision_outcome: gatewayDecision.decision_outcome,
     decision_reason: gatewayDecision.decision_reason,
     decided_at: gatewayDecision.decided_at,
@@ -4057,11 +4090,11 @@ function toReplayRuntimeGatewayDecisionReadModel(gatewayDecision: GatewayDecisio
   };
 }
 
-function toReplayRuntimeExecutionAttemptReadModel(executionAttempt: ExecutionAttemptRecord) {
+function toLedgerSourceExecutionResultReadModel(executionAttempt: ExecutionResultRecord) {
   return {
-    execution_attempt_id: executionAttempt.execution_attempt_id,
-    order_intent_draft_ref: executionAttempt.order_intent_draft_ref,
-    gateway_decision_ref: executionAttempt.gateway_decision_ref,
+    execution_result_id: executionAttempt.execution_result_id,
+    order_request_ref: executionAttempt.order_request_ref,
+    gateway_result_ref: executionAttempt.gateway_result_ref,
     stage: executionAttempt.stage,
     execution_mode: executionAttempt.execution_mode,
     venue_scope: executionAttempt.venue_scope,
@@ -4073,9 +4106,9 @@ function toReplayRuntimeExecutionAttemptReadModel(executionAttempt: ExecutionAtt
   };
 }
 
-function toReplayRuntimeControlCommandReadModel(command: RuntimeControlCommandRecord) {
+function toRunControlCommandReadModel(command: RunControlCommandRecord) {
   return {
-    command_id: command.runtime_control_command_id,
+    command_id: command.run_control_command_id,
     action: command.action,
     requested_lifecycle_status: command.requested_lifecycle_status,
     actor_kind: command.actor_kind,
@@ -4087,9 +4120,9 @@ function toReplayRuntimeControlCommandReadModel(command: RuntimeControlCommandRe
   };
 }
 
-function toReplayRuntimeControlDecisionReadModel(decision: RuntimeControlDecisionRecord) {
+function toRunControlDecisionReadModel(decision: RunControlDecisionRecord) {
   return {
-    decision_id: decision.runtime_control_decision_id,
+    decision_id: decision.run_control_decision_id,
     command_ref: decision.command_ref,
     decision_outcome: decision.decision_outcome,
     decision_reason: decision.decision_reason,
@@ -4101,7 +4134,7 @@ function toReplayRuntimeControlDecisionReadModel(decision: RuntimeControlDecisio
   };
 }
 
-function toReplayRuntimeAuditEventReadModel(auditEvent: RuntimeAuditEventRecord) {
+function toRunControlAuditEventReadModel(auditEvent: RuntimeAuditEventRecord) {
   return {
     audit_event_id: auditEvent.runtime_audit_event_id,
     event_kind: auditEvent.event_kind,
@@ -4135,15 +4168,15 @@ function candidateEvaluationErrorState(
   return null;
 }
 
-function toSandboxRuntimeInstanceReadModel(
-  instance: SandboxRuntimeInstanceRecord
-): SandboxRuntimeInstanceReadModel {
+function toSandboxReadModel(
+  instance: SandboxRecord
+): SandboxReadModel {
   return {
-    instance_id: instance.sandbox_runtime_instance_id,
+    sandbox_id: instance.sandbox_id,
     adapter_kind: instance.adapter_kind,
-    runnable_artifact_ref: instance.runnable_artifact_ref,
+    system_code_ref: instance.system_code_ref,
     runtime_ref: instance.runtime_ref,
-    runtime_placement_ref: instance.runtime_placement_ref,
+    sandbox_placement_ref: instance.sandbox_placement_ref,
     lifecycle_status: instance.lifecycle_status,
     sandbox_name: instance.sandbox_name,
     sandbox_ref: instance.sandbox_ref,
@@ -4160,18 +4193,18 @@ function toSandboxRuntimeInstanceReadModel(
   };
 }
 
-function toRuntimeInstanceLogReadModel(log: RuntimeInstanceLogRecord): RuntimeInstanceLogReadModel {
+function toSandboxLogReadModel(log: SandboxLogRecord): SandboxLogReadModel {
   return {
-    log_ref: ref(log.record_kind, log.runtime_instance_log_id),
+    log_ref: ref(log.record_kind, log.sandbox_log_id),
     lines: log.lines,
     captured_at: log.captured_at,
     authority_status: log.authority_status
   };
 }
 
-function toRuntimeInstanceHeartbeatReadModel(
+function toSandboxHeartbeatReadModel(
   heartbeat: RuntimeHeartbeatRecord
-): RuntimeInstanceHeartbeatReadModel {
+): SandboxHeartbeatReadModel {
   return {
     heartbeat_ref: ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id),
     heartbeat_line: heartbeat.heartbeat_line,
@@ -4195,8 +4228,8 @@ function toSandboxCommandEvidenceReadModel(
   };
 }
 
-function refsForLogs(logs: RuntimeInstanceLogRecord[] | undefined): Ref[] {
-  return (logs ?? []).map((log) => ref(log.record_kind, log.runtime_instance_log_id));
+function refsForLogs(logs: SandboxLogRecord[] | undefined): Ref[] {
+  return (logs ?? []).map((log) => ref(log.record_kind, log.sandbox_log_id));
 }
 
 function refsForHeartbeats(heartbeats: RuntimeHeartbeatRecord[] | undefined): Ref[] {
@@ -4215,8 +4248,8 @@ function latestObservedAt(heartbeats: RuntimeHeartbeatRecord[] | undefined): str
 }
 
 function runtimeLifecycleForSandboxInstance(
-  lifecycleStatus: SandboxRuntimeInstanceRecord["lifecycle_status"]
-): TradingSystemRuntimeLifecycleStatus {
+  lifecycleStatus: SandboxRecord["lifecycle_status"]
+): TradingRunLifecycleStatus {
   switch (lifecycleStatus) {
     case "starting":
       return "starting";
@@ -4235,18 +4268,18 @@ function runtimeLifecycleForSandboxInstance(
   }
 }
 
-function compareRuntimeInstanceReadModels(
-  a: SandboxRuntimeInstanceReadModel,
-  b: SandboxRuntimeInstanceReadModel
+function compareSandboxReadModels(
+  a: SandboxReadModel,
+  b: SandboxReadModel
 ): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
-  return timeCompare === 0 ? a.instance_id.localeCompare(b.instance_id) : timeCompare;
+  return timeCompare === 0 ? a.sandbox_id.localeCompare(b.sandbox_id) : timeCompare;
 }
 
-function compareRuntimeInstanceLogs(a: RuntimeInstanceLogRecord, b: RuntimeInstanceLogRecord): number {
+function compareSandboxLogs(a: SandboxLogRecord, b: SandboxLogRecord): number {
   const timeCompare = a.captured_at.localeCompare(b.captured_at);
   return timeCompare === 0
-    ? a.runtime_instance_log_id.localeCompare(b.runtime_instance_log_id)
+    ? a.sandbox_log_id.localeCompare(b.sandbox_log_id)
     : timeCompare;
 }
 
@@ -4297,50 +4330,50 @@ function compareEvidenceClassifications(
   return a.evidence_classification_id.localeCompare(b.evidence_classification_id);
 }
 
-function compareOrderIntentDrafts(a: OrderIntentDraftRecord, b: OrderIntentDraftRecord): number {
+function compareOrderRequests(a: OrderRequestRecord, b: OrderRequestRecord): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.order_intent_draft_id.localeCompare(b.order_intent_draft_id);
+  return a.order_request_id.localeCompare(b.order_request_id);
 }
 
-function compareGatewayDecisions(a: GatewayDecisionRecord, b: GatewayDecisionRecord): number {
+function compareGatewayResults(a: GatewayResultRecord, b: GatewayResultRecord): number {
   const timeCompare = a.decided_at.localeCompare(b.decided_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.gateway_decision_id.localeCompare(b.gateway_decision_id);
+  return a.gateway_result_id.localeCompare(b.gateway_result_id);
 }
 
-function compareExecutionAttempts(a: ExecutionAttemptRecord, b: ExecutionAttemptRecord): number {
+function compareExecutionResults(a: ExecutionResultRecord, b: ExecutionResultRecord): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.execution_attempt_id.localeCompare(b.execution_attempt_id);
+  return a.execution_result_id.localeCompare(b.execution_result_id);
 }
 
-function compareRuntimeControlCommands(
-  a: RuntimeControlCommandRecord,
-  b: RuntimeControlCommandRecord
+function compareRunControlCommands(
+  a: RunControlCommandRecord,
+  b: RunControlCommandRecord
 ): number {
   const timeCompare = a.requested_at.localeCompare(b.requested_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.runtime_control_command_id.localeCompare(b.runtime_control_command_id);
+  return a.run_control_command_id.localeCompare(b.run_control_command_id);
 }
 
-function compareRuntimeControlDecisions(
-  a: RuntimeControlDecisionRecord,
-  b: RuntimeControlDecisionRecord
+function compareRunControlDecisions(
+  a: RunControlDecisionRecord,
+  b: RunControlDecisionRecord
 ): number {
   const timeCompare = a.decided_at.localeCompare(b.decided_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.runtime_control_decision_id.localeCompare(b.runtime_control_decision_id);
+  return a.run_control_decision_id.localeCompare(b.run_control_decision_id);
 }
 
 function compareRuntimeAuditEvents(
@@ -4373,15 +4406,15 @@ function compareArtifactLineages(
   return a.artifact_lineage_id.localeCompare(b.artifact_lineage_id);
 }
 
-function compareArtifactChangeProposals(
-  a: ArtifactChangeProposalRecord,
-  b: ArtifactChangeProposalRecord
+function compareImprovementProposals(
+  a: ImprovementProposalRecord,
+  b: ImprovementProposalRecord
 ): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.artifact_change_proposal_id.localeCompare(b.artifact_change_proposal_id);
+  return a.improvement_proposal_id.localeCompare(b.improvement_proposal_id);
 }
 
 function compareResearchOrchestrationRuns(
@@ -4414,16 +4447,16 @@ function compareTradingEvaluationResults(
   return a.trading_evaluation_result_id.localeCompare(b.trading_evaluation_result_id);
 }
 
-function compareArtifactChangeProposalMaterializationAttempts(
-  a: ArtifactChangeProposalMaterializationAttemptRecord,
-  b: ArtifactChangeProposalMaterializationAttemptRecord
+function compareImprovementProposalMaterializationAttempts(
+  a: ImprovementProposalMaterializationAttemptRecord,
+  b: ImprovementProposalMaterializationAttemptRecord
 ): number {
   const timeCompare = a.created_at.localeCompare(b.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }
-  return a.artifact_change_proposal_materialization_attempt_id.localeCompare(
-    b.artifact_change_proposal_materialization_attempt_id
+  return a.improvement_proposal_materialization_attempt_id.localeCompare(
+    b.improvement_proposal_materialization_attempt_id
   );
 }
 
@@ -4739,11 +4772,11 @@ function validateEvidenceSealingDecisionInput(
   return undefined;
 }
 
-function validateBoundedRuntimeAuthorityInput(
-  input: BoundedRuntimeAuthorityInput
+function validateLedgerInput(
+  input: LedgerInput
 ): LocalStoreErrorCode | undefined {
   if (!input || typeof input !== "object") {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
 
   const raw = input;
@@ -4753,11 +4786,11 @@ function validateBoundedRuntimeAuthorityInput(
     (raw.candidate_version_id !== undefined && !nonEmpty(raw.candidate_version_id)) ||
     (raw.runtime_id !== undefined && !nonEmpty(raw.runtime_id))
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
     !raw.intent ||
-    !isOrderIntentDraftKind(raw.intent.intent_kind) ||
+    !isOrderRequestKind(raw.intent.intent_kind) ||
     (raw.intent.side !== undefined && raw.intent.side !== "buy" && raw.intent.side !== "sell") ||
     (
       raw.intent.order_type !== undefined &&
@@ -4767,58 +4800,58 @@ function validateBoundedRuntimeAuthorityInput(
     (raw.intent.quantity !== undefined && !nonEmpty(raw.intent.quantity)) ||
     (raw.intent.limit_price !== undefined && !nonEmpty(raw.intent.limit_price))
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
-    !raw.gateway_decision ||
-    !isGatewayDecisionOutcome(raw.gateway_decision.decision_outcome) ||
-    !isGatewayDecisionReason(raw.gateway_decision.decision_reason) ||
+    !raw.gateway_result ||
+    !isGatewayResultOutcome(raw.gateway_result.decision_outcome) ||
+    !isGatewayResultReason(raw.gateway_result.decision_reason) ||
     (
-      raw.gateway_decision.policy_ref !== undefined &&
-      !isRef(raw.gateway_decision.policy_ref)
+      raw.gateway_result.policy_ref !== undefined &&
+      !isRef(raw.gateway_result.policy_ref)
     )
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
-    raw.execution_attempt?.execution_mode !== undefined &&
-    !isEvaluationExecutionMode(raw.execution_attempt.execution_mode)
+    raw.execution_result?.execution_mode !== undefined &&
+    !isEvaluationExecutionMode(raw.execution_result.execution_mode)
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
-    raw.execution_attempt?.status !== undefined &&
-    !isExecutionAttemptStatus(raw.execution_attempt.status)
+    raw.execution_result?.status !== undefined &&
+    !isExecutionResultStatus(raw.execution_result.status)
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
-    raw.execution_attempt?.result_reason !== undefined &&
-    !isGatewayDecisionReason(raw.execution_attempt.result_reason)
+    raw.execution_result?.result_reason !== undefined &&
+    !isGatewayResultReason(raw.execution_result.result_reason)
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
-    raw.execution_attempt?.trace_ref !== undefined &&
-    !isRef(raw.execution_attempt.trace_ref, "trace_placeholder")
+    raw.execution_result?.trace_ref !== undefined &&
+    !isRef(raw.execution_result.trace_ref, "trace_placeholder")
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
   if (
-    (raw.execution_attempt?.completed_at !== undefined && !nonEmpty(raw.execution_attempt.completed_at)) ||
+    (raw.execution_result?.completed_at !== undefined && !nonEmpty(raw.execution_result.completed_at)) ||
     (raw.created_at !== undefined && !nonEmpty(raw.created_at))
   ) {
-    return "invalid_runtime_authority_input";
+    return "invalid_ledger_input";
   }
 
   return undefined;
 }
 
-function validateRuntimeControlAuditInput(
-  input: RuntimeControlAuditInput
+function validateRunControlAuditInput(
+  input: RunControlAuditInput
 ): LocalStoreErrorCode | undefined {
   if (!input || typeof input !== "object") {
-    return "invalid_runtime_control_input";
+    return "invalid_run_control_input";
   }
 
   const raw = input;
@@ -4829,17 +4862,17 @@ function validateRuntimeControlAuditInput(
     (raw.runtime_id !== undefined && !nonEmpty(raw.runtime_id)) ||
     (raw.created_at !== undefined && !nonEmpty(raw.created_at))
   ) {
-    return "invalid_runtime_control_input";
+    return "invalid_run_control_input";
   }
 
   if (
     !raw.command ||
-    !isRuntimeControlAction(raw.command.action) ||
-    !isRuntimeControlActorKind(raw.command.actor_kind) ||
-    !isRuntimeControlCommandReason(raw.command.reason) ||
+    !isRunControlAction(raw.command.action) ||
+    !isRunControlActorKind(raw.command.actor_kind) ||
+    !isRunControlCommandReason(raw.command.reason) ||
     (
       raw.command.requested_lifecycle_status !== undefined &&
-      !isTradingSystemRuntimeLifecycleStatus(raw.command.requested_lifecycle_status)
+      !isTradingRunLifecycleStatus(raw.command.requested_lifecycle_status)
     ) ||
     (raw.command.actor_ref !== undefined && !isRef(raw.command.actor_ref)) ||
     (
@@ -4848,18 +4881,18 @@ function validateRuntimeControlAuditInput(
     ) ||
     (raw.command.reason_summary !== undefined && !nonEmpty(raw.command.reason_summary)) ||
     (raw.command.trace_ref !== undefined && !isRef(raw.command.trace_ref, "trace_placeholder")) ||
-    !isOptionalRefArray(raw.command.related_order_intent_draft_refs) ||
-    !isOptionalRefArray(raw.command.related_gateway_decision_refs) ||
-    !isOptionalRefArray(raw.command.related_execution_attempt_refs)
+    !isOptionalRefArray(raw.command.related_order_request_refs) ||
+    !isOptionalRefArray(raw.command.related_gateway_result_refs) ||
+    !isOptionalRefArray(raw.command.related_execution_result_refs)
   ) {
-    return "invalid_runtime_control_input";
+    return "invalid_run_control_input";
   }
 
   if (
     !raw.decision ||
-    !isRuntimeControlDecisionOutcome(raw.decision.decision_outcome) ||
-    !isRuntimeControlDecisionReason(raw.decision.decision_reason) ||
-    !isRuntimeControlActorKind(raw.decision.decided_by_actor_kind) ||
+    !isRunControlDecisionOutcome(raw.decision.decision_outcome) ||
+    !isRunControlDecisionReason(raw.decision.decision_reason) ||
+    !isRunControlActorKind(raw.decision.decided_by_actor_kind) ||
     (raw.decision.decided_by_actor_ref !== undefined && !isRef(raw.decision.decided_by_actor_ref)) ||
     (
       raw.decision.runtime_operating_policy_ref !== undefined &&
@@ -4867,14 +4900,14 @@ function validateRuntimeControlAuditInput(
     ) ||
     (
       raw.decision.resulting_lifecycle_status !== undefined &&
-      !isTradingSystemRuntimeLifecycleStatus(raw.decision.resulting_lifecycle_status)
+      !isTradingRunLifecycleStatus(raw.decision.resulting_lifecycle_status)
     ) ||
     (raw.decision.trace_ref !== undefined && !isRef(raw.decision.trace_ref, "trace_placeholder")) ||
-    !isOptionalRefArray(raw.decision.related_order_intent_draft_refs) ||
-    !isOptionalRefArray(raw.decision.related_gateway_decision_refs) ||
-    !isOptionalRefArray(raw.decision.related_execution_attempt_refs)
+    !isOptionalRefArray(raw.decision.related_order_request_refs) ||
+    !isOptionalRefArray(raw.decision.related_gateway_result_refs) ||
+    !isOptionalRefArray(raw.decision.related_execution_result_refs)
   ) {
-    return "invalid_runtime_control_input";
+    return "invalid_run_control_input";
   }
 
   if (
@@ -4882,21 +4915,21 @@ function validateRuntimeControlAuditInput(
     !isRuntimeAuditEventKind(raw.audit_event.event_kind) ||
     (
       raw.audit_event.actor_kind !== undefined &&
-      !isRuntimeControlActorKind(raw.audit_event.actor_kind)
+      !isRunControlActorKind(raw.audit_event.actor_kind)
     ) ||
     (raw.audit_event.actor_ref !== undefined && !isRef(raw.audit_event.actor_ref)) ||
     (
       raw.audit_event.runtime_lifecycle_status !== undefined &&
-      !isTradingSystemRuntimeLifecycleStatus(raw.audit_event.runtime_lifecycle_status)
+      !isTradingRunLifecycleStatus(raw.audit_event.runtime_lifecycle_status)
     ) ||
     (raw.audit_event.message !== undefined && !nonEmpty(raw.audit_event.message)) ||
     (raw.audit_event.trace_ref !== undefined && !isRef(raw.audit_event.trace_ref, "trace_placeholder")) ||
     !isOptionalRefArray(raw.audit_event.supporting_record_refs) ||
-    !isOptionalRefArray(raw.audit_event.related_order_intent_draft_refs) ||
-    !isOptionalRefArray(raw.audit_event.related_gateway_decision_refs) ||
-    !isOptionalRefArray(raw.audit_event.related_execution_attempt_refs)
+    !isOptionalRefArray(raw.audit_event.related_order_request_refs) ||
+    !isOptionalRefArray(raw.audit_event.related_gateway_result_refs) ||
+    !isOptionalRefArray(raw.audit_event.related_execution_result_refs)
   ) {
-    return "invalid_runtime_control_input";
+    return "invalid_run_control_input";
   }
 
   return undefined;
@@ -4910,15 +4943,15 @@ function isEvidenceDispositionReason(value: unknown): value is EvidenceDispositi
   return typeof value === "string" && evidenceDispositionReasons.has(value as EvidenceDispositionReason);
 }
 
-function isOrderIntentDraftKind(value: unknown): boolean {
+function isOrderRequestKind(value: unknown): boolean {
   return value === "place_order" || value === "cancel_order" || value === "adjust_position";
 }
 
-function isGatewayDecisionOutcome(value: unknown): value is GatewayDecisionOutcome {
+function isGatewayResultOutcome(value: unknown): value is GatewayResultOutcome {
   return value === "allowed" || value === "rejected" || value === "clipped" || value === "dry_run_only";
 }
 
-function isGatewayDecisionReason(value: unknown): value is GatewayDecisionReason {
+function isGatewayResultReason(value: unknown): value is GatewayResultReason {
   return (
     value === "paper_stage_only" ||
     value === "dry_run_allowed" ||
@@ -4933,7 +4966,7 @@ function isEvaluationExecutionMode(value: unknown): boolean {
   return value === "host_local" || value === "containerized_local" || value === "containerized_remote";
 }
 
-function isExecutionAttemptStatus(value: unknown): value is ExecutionAttemptStatus {
+function isExecutionResultStatus(value: unknown): value is ExecutionResultStatus {
   return (
     value === "not_submitted" ||
     value === "dry_run_recorded" ||
@@ -4943,7 +4976,7 @@ function isExecutionAttemptStatus(value: unknown): value is ExecutionAttemptStat
   );
 }
 
-function isRuntimeControlAction(value: unknown): value is RuntimeControlAction {
+function isRunControlAction(value: unknown): value is RunControlAction {
   return (
     value === "inspect" ||
     value === "pause" ||
@@ -4956,7 +4989,7 @@ function isRuntimeControlAction(value: unknown): value is RuntimeControlAction {
   );
 }
 
-function isRuntimeControlActorKind(value: unknown): value is RuntimeControlActorKind {
+function isRunControlActorKind(value: unknown): value is RunControlActorKind {
   return (
     value === "human_operator" ||
     value === "policy_engine" ||
@@ -4965,7 +4998,7 @@ function isRuntimeControlActorKind(value: unknown): value is RuntimeControlActor
   );
 }
 
-function isRuntimeControlCommandReason(value: unknown): value is RuntimeControlCommandReason {
+function isRunControlCommandReason(value: unknown): value is RunControlCommandReason {
   return (
     value === "operator_request" ||
     value === "inspection_request" ||
@@ -4977,7 +5010,7 @@ function isRuntimeControlCommandReason(value: unknown): value is RuntimeControlC
   );
 }
 
-function isRuntimeControlDecisionOutcome(value: unknown): value is RuntimeControlDecisionOutcome {
+function isRunControlDecisionOutcome(value: unknown): value is RunControlDecisionOutcome {
   return (
     value === "allowed" ||
     value === "rejected" ||
@@ -4986,7 +5019,7 @@ function isRuntimeControlDecisionOutcome(value: unknown): value is RuntimeContro
   );
 }
 
-function isRuntimeControlDecisionReason(value: unknown): value is RuntimeControlDecisionReason {
+function isRunControlDecisionReason(value: unknown): value is RunControlDecisionReason {
   return (
     value === "policy_allows_control" ||
     value === "policy_rejected_control" ||
@@ -5012,9 +5045,9 @@ function isRuntimeAuditEventKind(value: unknown): value is RuntimeAuditEventKind
   );
 }
 
-function isTradingSystemRuntimeLifecycleStatus(
+function isTradingRunLifecycleStatus(
   value: unknown
-): value is TradingSystemRuntimeLifecycleStatus {
+): value is TradingRunLifecycleStatus {
   return (
     value === "registered" ||
     value === "deployed" ||
@@ -5030,25 +5063,25 @@ function isTradingSystemRuntimeLifecycleStatus(
   );
 }
 
-function isRunnableArtifactRecord(value: unknown): value is RunnableArtifactRecord {
+function isSystemCodeRecord(value: unknown): value is SystemCodeRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<RunnableArtifactRecord>;
+  const raw = value as Partial<SystemCodeRecord>;
   return (
-    raw.record_kind === "runnable_artifact" &&
+    raw.record_kind === "system_code" &&
     raw.version === 1 &&
-    nonEmpty(raw.runnable_artifact_id) &&
+    nonEmpty(raw.system_code_id) &&
     (raw.artifact_kind === "python_file" || raw.artifact_kind === "container_image") &&
     nonEmpty(raw.artifact_digest) &&
     (raw.artifact_ref === undefined || isRef(raw.artifact_ref)) &&
     (raw.artifact_runtime_contract_ref === undefined ||
       isRef(raw.artifact_runtime_contract_ref, "artifact_runtime_contract")) &&
-    isRunnableArtifactRuntimeKind(raw.runtime_kind) &&
+    isSystemCodeRuntimeKind(raw.runtime_kind) &&
     Array.isArray(raw.entrypoint) &&
     raw.entrypoint.length > 0 &&
     raw.entrypoint.every((item) => nonEmpty(item)) &&
-    isRunnableArtifactOutputContract(raw.declared_output_contract) &&
+    isSystemCodeOutputContract(raw.declared_output_contract) &&
     isRef(raw.secret_policy_ref, "secret_policy") &&
     isRef(raw.capability_policy_ref, "capability_policy") &&
     Array.isArray(raw.provenance_refs) &&
@@ -5094,9 +5127,9 @@ function isArtifactLineageRecord(value: unknown): value is ArtifactLineageRecord
     raw.record_kind === "artifact_lineage" &&
     raw.version === 1 &&
     nonEmpty(raw.artifact_lineage_id) &&
-    isRef(raw.child_runnable_artifact_ref, "runnable_artifact") &&
-    (raw.parent_runnable_artifact_ref === undefined ||
-      isRef(raw.parent_runnable_artifact_ref, "runnable_artifact")) &&
+    isRef(raw.child_system_code_ref, "system_code") &&
+    (raw.parent_system_code_ref === undefined ||
+      isRef(raw.parent_system_code_ref, "system_code")) &&
     Array.isArray(raw.source_finding_refs) &&
     raw.source_finding_refs.length > 0 &&
     raw.source_finding_refs.every((item) => isRef(item, "research_finding")) &&
@@ -5107,21 +5140,21 @@ function isArtifactLineageRecord(value: unknown): value is ArtifactLineageRecord
   );
 }
 
-function isArtifactChangeProposalRecord(value: unknown): value is ArtifactChangeProposalRecord {
+function isImprovementProposalRecord(value: unknown): value is ImprovementProposalRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const raw = value as Partial<ArtifactChangeProposalRecord>;
+  const raw = value as Partial<ImprovementProposalRecord>;
   return (
-    raw.record_kind === "artifact_change_proposal" &&
+    raw.record_kind === "improvement_proposal" &&
     raw.version === 1 &&
-    nonEmpty(raw.artifact_change_proposal_id) &&
+    nonEmpty(raw.improvement_proposal_id) &&
     isRef(raw.research_worker_ref, "research_worker") &&
     isRef(raw.research_direction_ref, "research_direction") &&
     isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
-    isRef(raw.proposed_runnable_artifact_ref, "runnable_artifact") &&
-    (raw.parent_runnable_artifact_ref === undefined ||
-      isRef(raw.parent_runnable_artifact_ref, "runnable_artifact")) &&
+    isRef(raw.proposed_system_code_ref, "system_code") &&
+    (raw.parent_system_code_ref === undefined ||
+      isRef(raw.parent_system_code_ref, "system_code")) &&
     Array.isArray(raw.source_finding_refs) &&
     raw.source_finding_refs.length > 0 &&
     raw.source_finding_refs.every((item) => isRef(item, "research_finding")) &&
@@ -5136,7 +5169,7 @@ function isArtifactChangeProposalRecord(value: unknown): value is ArtifactChange
     nonEmpty(raw.requested_change_summary) &&
     (raw.expected_improvement_summary === undefined || nonEmpty(raw.expected_improvement_summary)) &&
     nonEmpty(raw.created_at) &&
-    isArtifactChangeProposalStatus(raw.status) &&
+    isImprovementProposalStatus(raw.status) &&
     raw.authority_status === "proposal_only"
   );
 }
@@ -5164,9 +5197,9 @@ function isResearchOrchestrationRunRecord(value: unknown): value is ResearchOrch
       )
     ) &&
     (raw.output_artifact_proposal_ref === undefined ||
-      isRef(raw.output_artifact_proposal_ref, "artifact_change_proposal")) &&
-    (raw.output_runnable_artifact_ref === undefined ||
-      isRef(raw.output_runnable_artifact_ref, "runnable_artifact")) &&
+      isRef(raw.output_artifact_proposal_ref, "improvement_proposal")) &&
+    (raw.output_system_code_ref === undefined ||
+      isRef(raw.output_system_code_ref, "system_code")) &&
     (raw.output_lineage_ref === undefined || isRef(raw.output_lineage_ref, "artifact_lineage")) &&
     (raw.trace_ref === undefined || isRef(raw.trace_ref, "trace_placeholder")) &&
     nonEmpty(raw.started_at) &&
@@ -5187,11 +5220,11 @@ function isExperimentRunRecord(value: unknown): value is ExperimentRunRecord {
     nonEmpty(raw.experiment_run_id) &&
     isRef(raw.research_worker_ref, "research_worker") &&
     isRef(raw.research_direction_ref, "research_direction") &&
-    isRef(raw.runnable_artifact_ref, "runnable_artifact") &&
+    isRef(raw.system_code_ref, "system_code") &&
     isRef(raw.trading_evaluation_task_ref, "trading_evaluation_task") &&
     (
-      raw.sandbox_runtime_instance_ref === undefined ||
-      isRef(raw.sandbox_runtime_instance_ref, "sandbox_runtime_instance")
+      raw.sandbox_ref === undefined ||
+      isRef(raw.sandbox_ref, "sandbox")
     ) &&
     (
       raw.runtime_trace_refs === undefined ||
@@ -5248,7 +5281,7 @@ function isResearchFindingKind(value: unknown): boolean {
   );
 }
 
-function isArtifactChangeProposalStatus(value: unknown): boolean {
+function isImprovementProposalStatus(value: unknown): boolean {
   return value === "proposed" || value === "materialized" || value === "discarded";
 }
 
@@ -5305,11 +5338,11 @@ function isTradingEvaluationQuarantineReason(value: unknown): boolean {
   );
 }
 
-function isRunnableArtifactRuntimeKind(value: unknown): boolean {
+function isSystemCodeRuntimeKind(value: unknown): boolean {
   return value === "python" || value === "container_image";
 }
 
-function isRunnableArtifactOutputContract(value: unknown): boolean {
+function isSystemCodeOutputContract(value: unknown): boolean {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -5324,21 +5357,21 @@ function isRunnableArtifactOutputContract(value: unknown): boolean {
     raw.contract_kind === "opaque_runtime_boundary" &&
     Array.isArray(raw.declared_output_kinds) &&
     raw.declared_output_kinds.length > 0 &&
-    raw.declared_output_kinds.every((item) => isRunnableArtifactOutputKind(item)) &&
+    raw.declared_output_kinds.every((item) => isSystemCodeOutputKind(item)) &&
     (raw.event_envelope_ref === undefined || isRef(raw.event_envelope_ref)) &&
     (raw.log_contract_ref === undefined || isRef(raw.log_contract_ref)) &&
     (raw.heartbeat_contract_ref === undefined || isRef(raw.heartbeat_contract_ref))
   );
 }
 
-function isRunnableArtifactOutputKind(value: unknown): boolean {
+function isSystemCodeOutputKind(value: unknown): boolean {
   return (
     value === "program_event" ||
     value === "runtime_log" ||
     value === "runtime_heartbeat" ||
     value === "metric_snapshot" ||
     value === "diagnostic_artifact" ||
-    value === "order_intent_draft"
+    value === "order_request"
   );
 }
 
@@ -5383,18 +5416,18 @@ function stableSuffix(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
 }
 
-interface BoundedRuntimeAuthorityRecordIds {
+interface LedgerRecordIds {
   orderIntent: string;
   gatewayDecision: string;
   executionAttempt: string;
 }
 
-function boundedRuntimeAuthorityRecordIds(input: {
+function ledgerRecordIds(input: {
   candidate_id: string;
   candidate_version_id: string;
   runtime_id: string;
   idempotency_key: string;
-}): BoundedRuntimeAuthorityRecordIds {
+}): LedgerRecordIds {
   const suffix = stableSuffix([
     input.candidate_id,
     input.candidate_version_id,
@@ -5402,13 +5435,13 @@ function boundedRuntimeAuthorityRecordIds(input: {
     input.idempotency_key
   ].join(":"));
   return {
-    orderIntent: `order-intent-draft-${suffix}`,
-    gatewayDecision: `gateway-decision-${suffix}`,
-    executionAttempt: `execution-attempt-${suffix}`
+    orderIntent: `order-request-${suffix}`,
+    gatewayDecision: `gateway-result-${suffix}`,
+    executionAttempt: `execution-result-${suffix}`
   };
 }
 
-interface RuntimeControlAuditRecordIds {
+interface RunControlAuditRecordIds {
   command: string;
   decision: string;
   auditEvent: string;
@@ -5419,7 +5452,7 @@ function runtimeControlAuditRecordIds(input: {
   candidate_version_id: string;
   runtime_id: string;
   idempotency_key: string;
-}): RuntimeControlAuditRecordIds {
+}): RunControlAuditRecordIds {
   const suffix = stableSuffix([
     input.candidate_id,
     input.candidate_version_id,
@@ -5427,8 +5460,8 @@ function runtimeControlAuditRecordIds(input: {
     input.idempotency_key
   ].join(":"));
   return {
-    command: `runtime-control-command-${suffix}`,
-    decision: `runtime-control-decision-${suffix}`,
+    command: `run-control-command-${suffix}`,
+    decision: `run-control-decision-${suffix}`,
     auditEvent: `runtime-audit-event-${suffix}`
   };
 }
@@ -5438,8 +5471,8 @@ function privateReadinessPostureRecordId(idempotencyKey: string): string {
 }
 
 function runtimeControlAuthorityStatusForOutcome(
-  outcome: RuntimeControlDecisionOutcome
-): RuntimeControlAuthorityStatus {
+  outcome: RunControlDecisionOutcome
+): RunControlAuthorityStatus {
   if (outcome === "dry_run_only") {
     return "dry_run_only";
   }
@@ -5450,15 +5483,15 @@ function runtimeControlAuthorityStatusForOutcome(
 }
 
 function gatewayDecisionAuthorityStatusForOutcome(
-  outcome: GatewayDecisionOutcome
-): GatewayDecisionAuthorityStatus {
+  outcome: GatewayResultOutcome
+): GatewayResultAuthorityStatus {
   if (outcome === "dry_run_only") {
     return "dry_run_only";
   }
   return "not_live";
 }
 
-function executionAttemptStatusForDecision(outcome: GatewayDecisionOutcome): ExecutionAttemptStatus {
+function executionAttemptStatusForDecision(outcome: GatewayResultOutcome): ExecutionResultStatus {
   if (outcome === "dry_run_only") {
     return "dry_run_recorded";
   }
@@ -5469,9 +5502,9 @@ function executionAttemptStatusForDecision(outcome: GatewayDecisionOutcome): Exe
 }
 
 function executionAttemptAuthorityStatusForStatus(
-  status: ExecutionAttemptStatus,
-  outcome: GatewayDecisionOutcome
-): ExecutionAttemptAuthorityStatus {
+  status: ExecutionResultStatus,
+  outcome: GatewayResultOutcome
+): ExecutionResultAuthorityStatus {
   if (status === "dry_run_recorded" || outcome === "dry_run_only") {
     return "dry_run_only";
   }
@@ -5516,19 +5549,19 @@ function evidenceClassificationRecordId(input: {
   ].join(":"))}`;
 }
 
-function validateArtifactChangeProposalMaterializationInput(
-  input: ArtifactChangeProposalMaterializationInput
-): ArtifactChangeProposalMaterializationFailureReason | undefined {
+function validateImprovementProposalMaterializationInput(
+  input: ImprovementProposalMaterializationInput
+): ImprovementProposalMaterializationFailureReason | undefined {
   if (!input || typeof input !== "object") {
     return "provider_output_schema_invalid";
   }
 
-  const raw = input as Partial<ArtifactChangeProposalMaterializationInput>;
+  const raw = input as Partial<ImprovementProposalMaterializationInput>;
   const result = raw.provider_result as
-    | Partial<ArtifactChangeProposalMaterializationInput["provider_result"]>
+    | Partial<ImprovementProposalMaterializationInput["provider_result"]>
     | undefined;
-  const provider = (result?.provider ?? {}) as Partial<ArtifactChangeProposalProviderAttribution>;
-  const output = (result?.output ?? {}) as Partial<ArtifactChangeProposalProviderOutput>;
+  const provider = (result?.provider ?? {}) as Partial<ImprovementProposalProviderAttribution>;
+  const output = (result?.output ?? {}) as Partial<ImprovementProposalProviderOutput>;
 
   if (
     !nonEmpty(raw.idempotency_key) ||
@@ -5545,7 +5578,7 @@ function validateArtifactChangeProposalMaterializationInput(
     !isRequiredRefArray(result.debug_artifact_refs) ||
     !nonEmpty(result.idempotency_key) ||
     result.authority_status !== "proposal_input_only" ||
-    output.output_kind !== "artifact_change_proposal_input" ||
+    output.output_kind !== "improvement_proposal_input" ||
     !isRef(output.trading_evaluation_task_ref, "trading_evaluation_task") ||
     !Array.isArray(output.source_finding_refs) ||
     output.source_finding_refs.length === 0 ||
@@ -5558,8 +5591,8 @@ function validateArtifactChangeProposalMaterializationInput(
       )
     ) ||
     (
-      output.parent_runnable_artifact_ref !== undefined &&
-      !isRef(output.parent_runnable_artifact_ref, "runnable_artifact")
+      output.parent_system_code_ref !== undefined &&
+      !isRef(output.parent_system_code_ref, "system_code")
     ) ||
     !nonEmpty(output.proposal_summary) ||
     !nonEmpty(output.requested_change_summary) ||
@@ -5586,7 +5619,7 @@ function validateArtifactChangeProposalMaterializationInput(
     return "provider_output_schema_invalid";
   }
 
-  if (containsForbiddenArtifactChangeProposalProviderOutputKey(result)) {
+  if (containsForbiddenImprovementProposalProviderOutputKey(result)) {
     return "provider_output_rejected";
   }
 
@@ -5650,7 +5683,7 @@ function isProviderKind(value: unknown): value is ProviderKind {
   );
 }
 
-function containsForbiddenArtifactChangeProposalProviderOutputKey(value: unknown): boolean {
+function containsForbiddenImprovementProposalProviderOutputKey(value: unknown): boolean {
   const forbiddenKeys = new Set([
     "evidence",
     "evidence_record",
@@ -5671,12 +5704,12 @@ function containsForbiddenArtifactChangeProposalProviderOutputKey(value: unknown
   ]);
 
   if (Array.isArray(value)) {
-    return value.some(containsForbiddenArtifactChangeProposalProviderOutputKey);
+    return value.some(containsForbiddenImprovementProposalProviderOutputKey);
   }
   if (value && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>).some(([key, child]) => {
       const normalized = key.toLowerCase();
-      return forbiddenKeys.has(normalized) || containsForbiddenArtifactChangeProposalProviderOutputKey(child);
+      return forbiddenKeys.has(normalized) || containsForbiddenImprovementProposalProviderOutputKey(child);
     });
   }
   return false;

@@ -14,7 +14,7 @@ const completionChecklist = [
       "Server Version:",
       "## sbx diagnose --output json",
       "## sbx daemon status",
-      "## sbx ls runtime-control probe"
+      "## sbx ls run-control probe"
     ]
   },
   {
@@ -29,9 +29,9 @@ const completionChecklist = [
     evidence: [
       "create --name",
       "runtime API start A command evidence",
-      "sandbox-runtime-instance-clock-a",
+      "sandbox-clock-a",
       "direct sbx log A",
-      "cat /tmp/ouroboros-sandbox-runtime-instance-clock-a.jsonl",
+      "cat /tmp/ouroboros-sandbox-clock-a.jsonl",
       "runtime API status A",
       "runtime API logs A",
       "runtime API stop A response",
@@ -45,9 +45,9 @@ const completionChecklist = [
     evidence: [
       "create --name",
       "runtime API start B command evidence",
-      "sandbox-runtime-instance-clock-b",
+      "sandbox-clock-b",
       "direct sbx log B",
-      "cat /tmp/ouroboros-sandbox-runtime-instance-clock-b.jsonl",
+      "cat /tmp/ouroboros-sandbox-clock-b.jsonl",
       "runtime API status B",
       "runtime API logs B",
       "runtime API stop B response",
@@ -66,7 +66,7 @@ const completionChecklist = [
   {
     label: "artifact identity and raw-secret boundary recorded",
     evidence: [
-      "fixture-runnable-artifact-clock-python-001",
+      "fixture-system-code-clock-python-001",
       "runtime API raw secret rejection probe",
       "raw_secret_material_rejected"
     ]
@@ -146,19 +146,19 @@ await check("real two-sandbox validation transcript is present and complete", as
     assertAppearsInOrder(transcript, item.label, item.evidence);
   }
 
-  assertSectionHasHeartbeatJson(transcript, "direct sbx log A", "sandbox-runtime-instance-clock-a");
-  assertSectionHasHeartbeatJson(transcript, "direct sbx log B", "sandbox-runtime-instance-clock-b");
-  assertSectionContains(transcript, "runtime API start A response", ["fixture-runnable-artifact-clock-python-001"]);
-  assertSectionContains(transcript, "runtime API start B response", ["fixture-runnable-artifact-clock-python-001"]);
+  assertSectionHasHeartbeatJson(transcript, "direct sbx log A", "sandbox-clock-a");
+  assertSectionHasHeartbeatJson(transcript, "direct sbx log B", "sandbox-clock-b");
+  assertSectionContains(transcript, "runtime API start A response", ["fixture-system-code-clock-python-001"]);
+  assertSectionContains(transcript, "runtime API start B response", ["fixture-system-code-clock-python-001"]);
   assertSectionContainsStoppedLifecycle(
     transcript,
     "runtime API stop A response",
-    "sandbox-runtime-instance-clock-a"
+    "sandbox-clock-a"
   );
   assertSectionContainsStoppedLifecycle(
     transcript,
     "runtime API stop B response",
-    "sandbox-runtime-instance-clock-b"
+    "sandbox-clock-b"
   );
   assertSectionContains(transcript, "runtime API raw secret rejection probe", ["raw_secret_material_rejected"]);
   assertCommandSucceededInSection(transcript, "runtime API start A command evidence", `create --name ${sandboxNames.a}`);
@@ -174,10 +174,10 @@ await check("real two-sandbox validation transcript is present and complete", as
   assertCommandSucceededInSection(transcript, "runtime API stop B command evidence", `stop ${sandboxNames.b}`);
   assertSectionContains(transcript, `sbx rm ${sandboxNames.a}`, ["exit_code=0"]);
   assertSectionContains(transcript, `sbx rm ${sandboxNames.b}`, ["exit_code=0"]);
-  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API status A", "sandbox-runtime-instance-clock-a");
-  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API logs A", "sandbox-runtime-instance-clock-a");
-  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API status B", "sandbox-runtime-instance-clock-b");
-  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API logs B", "sandbox-runtime-instance-clock-b");
+  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API status A", "sandbox-clock-a");
+  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API logs A", "sandbox-clock-a");
+  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API status B", "sandbox-clock-b");
+  assertSectionContainsRuntimeHeartbeat(transcript, "runtime API logs B", "sandbox-clock-b");
   assertDiagnoseHasZeroFailures(transcript);
 });
 
@@ -263,7 +263,7 @@ function orderedLifecycleEvidenceFor(sandboxNames) {
       evidence: [
         "runtime API start A command evidence",
         `create --name ${sandboxNames.a}`,
-        "sandbox-runtime-instance-clock-a",
+        "sandbox-clock-a",
         "direct sbx log A",
         "runtime API status A",
         "runtime API logs A",
@@ -278,7 +278,7 @@ function orderedLifecycleEvidenceFor(sandboxNames) {
       evidence: [
         "runtime API start B command evidence",
         `create --name ${sandboxNames.b}`,
-        "sandbox-runtime-instance-clock-b",
+        "sandbox-clock-b",
         "direct sbx log B",
         "runtime API status B",
         "runtime API logs B",
