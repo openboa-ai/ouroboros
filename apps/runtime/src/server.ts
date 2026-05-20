@@ -835,6 +835,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
 
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
+      const tradingRunId = candidate.runtime.ref.id;
       try {
         await store.recordLedger({
           idempotency_key: [
@@ -859,17 +860,29 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             execution_mode: "host_local"
           }
         } satisfies LedgerInput);
-        const updatedCandidate = await store.getCandidate(request.params.system_id);
-        if (!updatedCandidate?.ledger) {
-          throw new Error("ledger was not projected after trading run");
+        await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+          idempotencyKey: `trading-run-start:${tradingRunId}:${candidateVersionId}`,
+          candidateId: request.params.system_id,
+          candidateVersionId,
+          tradingRunId,
+          action: "start",
+          lifecycleStatus: "running",
+          actorId: "runtime-api",
+          reasonSummary: "Operator requested trading run start.",
+          message: "Trading run start recorded."
+        }));
+
+        const response = await tradingRunResponse(store, tradingRunId);
+        if (!response?.ledger) {
+          throw new Error("trading run response was not projected after start");
         }
 
         return reply.code(201).send({
-          status: "recorded",
-          order_request: updatedCandidate.ledger.latest_order_request,
-          gateway_result: updatedCandidate.ledger.latest_gateway_result,
-          execution_result: updatedCandidate.ledger.latest_execution_result,
-          ledger: updatedCandidate.ledger,
+          status: "started",
+          ...response,
+          order_request: response.ledger.latest_order_request,
+          gateway_result: response.ledger.latest_gateway_result,
+          execution_result: response.ledger.latest_execution_result,
           trading_gateway_environment: tradingGatewayEnvironment
         });
       } catch (error) {
@@ -928,54 +941,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
-      const idempotencyKey = [
-        "trading-run-stop",
-        request.params.run_id,
-        candidateVersionId
-      ].join("-");
-      const now = new Date().toISOString();
-
-      await store.recordRunControlAudit({
-        idempotency_key: idempotencyKey,
-        candidate_id: candidate.candidate_id,
-        candidate_version_id: candidateVersionId,
-        runtime_id: request.params.run_id,
-        command: {
-          action: "stop",
-          requested_lifecycle_status: "stopped",
-          actor_kind: "human_operator",
-          actor_ref: { record_kind: "operator", id: "runtime-api" },
-          reason: "operator_request",
-          reason_summary: "Operator requested trading run stop.",
-          runtime_operating_policy_ref: {
-            record_kind: "runtime_operating_policy",
-            id: "runtime-operating-policy-paper-v1"
-          }
-        },
-        decision: {
-          decision_outcome: "allowed",
-          decision_reason: "policy_allows_control",
-          decided_by_actor_kind: "policy_engine",
-          decided_by_actor_ref: { record_kind: "runtime_policy_engine", id: "runtime-policy-engine-fixture" },
-          resulting_lifecycle_status: "stopped",
-          runtime_operating_policy_ref: {
-            record_kind: "runtime_operating_policy",
-            id: "runtime-operating-policy-paper-v1"
-          }
-        },
-        audit_event: {
-          event_kind: "runtime_lifecycle_transitioned",
-          runtime_lifecycle_status: "stopped",
-          actor_kind: "human_operator",
-          actor_ref: { record_kind: "operator", id: "runtime-api" },
-          message: "Trading run stop recorded."
-        },
-        created_at: now
-      } satisfies RunControlAuditInput);
+      await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+        idempotencyKey: `trading-run-stop:${request.params.run_id}:${candidateVersionId}`,
+        candidateId: candidate.candidate_id,
+        candidateVersionId,
+        tradingRunId: request.params.run_id,
+        action: "stop",
+        lifecycleStatus: "stopped",
+        actorId: "runtime-api",
+        reasonSummary: "Operator requested trading run stop.",
+        message: "Trading run stop recorded."
+      }));
 
       const response = await tradingRunResponse(store, request.params.run_id);
       return reply.code(201).send({
-        status: "stop_recorded",
+        status: "stopped",
         ...response
       });
     }
@@ -1405,6 +1385,56 @@ async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
     trading_system: candidate?.trading_system,
     ledger: candidate?.ledger,
     run_control: candidate?.runtime.run_control
+  };
+}
+
+function tradingRunLifecycleAuditInput(input: {
+  idempotencyKey: string;
+  candidateId: string;
+  candidateVersionId: string;
+  tradingRunId: string;
+  action: "start" | "stop";
+  lifecycleStatus: "running" | "stopped";
+  actorId: string;
+  reasonSummary: string;
+  message: string;
+}): RunControlAuditInput {
+  return {
+    idempotency_key: input.idempotencyKey,
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    runtime_id: input.tradingRunId,
+    command: {
+      action: input.action,
+      requested_lifecycle_status: input.lifecycleStatus,
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: input.actorId },
+      reason: "operator_request",
+      reason_summary: input.reasonSummary,
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      }
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: { record_kind: "runtime_policy_engine", id: "runtime-policy-engine-fixture" },
+      resulting_lifecycle_status: input.lifecycleStatus,
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      }
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      runtime_lifecycle_status: input.lifecycleStatus,
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: input.actorId },
+      message: input.message
+    },
+    created_at: new Date().toISOString()
   };
 }
 

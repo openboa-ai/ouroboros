@@ -154,9 +154,11 @@ export function binancePrivateReadinessPostureNoAuthorityExpectation(
 
 export function expectNoOperatorActionControls(
   html: string,
-  options: { includePrivateAuthorityTerms?: boolean } = {}
+  options: { includePrivateAuthorityTerms?: boolean; allowTradingRunControls?: boolean } = {}
 ): void {
-  expect(html).not.toMatch(OPERATOR_ACTION_CONTROL_PATTERN);
+  if (!options.allowTradingRunControls) {
+    expect(html).not.toMatch(OPERATOR_ACTION_CONTROL_PATTERN);
+  }
   expect(html).not.toMatch(OPERATOR_SIDE_EFFECT_COMMAND_PATTERN);
   if (options.includePrivateAuthorityTerms) {
     expect(html).not.toMatch(PRIVATE_AUTHORITY_TEXT_PATTERN);

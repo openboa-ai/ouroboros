@@ -38,8 +38,10 @@ import {
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
+  observeTradingRun as submitObserveTradingRun,
   runReplay as submitReplayRun,
   startTradingRun as submitTradingRun,
+  stopTradingRun as submitStopTradingRun,
   type PrivateReadinessPostureDraft
 } from "./api";
 import {
@@ -308,13 +310,73 @@ export function App() {
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         runningTradingRun: false,
-        tradingRunMessage: `dry_run_only recorded: ${outcome.execution_result?.execution_result_id ?? "execution-result"}`
+        tradingRunMessage: `started: ${outcome.trading_run.lifecycle_status ?? "running"}`
       }));
     } catch (error) {
       setState((current) => ({
         ...current,
         runningTradingRun: false,
         tradingRunError: error instanceof Error ? error.message : "Unknown trading run error"
+      }));
+    }
+  }
+
+  async function observeTradingRun() {
+    const candidate = state.selected;
+    if (!candidate || state.runningTradingRun) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      runningTradingRun: true,
+      tradingRunError: undefined,
+      tradingRunMessage: undefined
+    }));
+    try {
+      const outcome = await submitObserveTradingRun(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      setState((current) => ({
+        ...current,
+        selected,
+        runningTradingRun: false,
+        tradingRunMessage: `observed: ${outcome.trading_run.lifecycle_status ?? "unknown"}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningTradingRun: false,
+        tradingRunError: error instanceof Error ? error.message : "Unknown trading run observe error"
+      }));
+    }
+  }
+
+  async function stopTradingRun() {
+    const candidate = state.selected;
+    if (!candidate || state.runningTradingRun) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      runningTradingRun: true,
+      tradingRunError: undefined,
+      tradingRunMessage: undefined
+    }));
+    try {
+      const outcome = await submitStopTradingRun(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      setState((current) => ({
+        ...current,
+        selected,
+        runningTradingRun: false,
+        tradingRunMessage: `stopped: ${outcome.trading_run.lifecycle_status ?? "stopped"}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningTradingRun: false,
+        tradingRunError: error instanceof Error ? error.message : "Unknown trading run stop error"
       }));
     }
   }
@@ -487,6 +549,12 @@ export function App() {
             onStartTradingRun={state.selected.ledger
               ? () => void startTradingRun()
               : undefined}
+            onObserveTradingRun={state.selected
+              ? () => void observeTradingRun()
+              : undefined}
+            onStopTradingRun={state.selected
+              ? () => void stopTradingRun()
+              : undefined}
             onRecordImprovement={() => void recordImprovement()}
             onRecordRunControl={state.selected.runtime.run_control
               ? () => void recordRunControl()
@@ -588,6 +656,8 @@ export function CandidateDetail({
   onSelectReplayRun,
   onRunCandidateReplay,
   onStartTradingRun,
+  onObserveTradingRun,
+  onStopTradingRun,
   onRecordImprovement,
   onRecordRunControl,
   onRecordPrivateReadinessPosture,
@@ -619,6 +689,8 @@ export function CandidateDetail({
   onSelectReplayRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onStartTradingRun?: () => void;
+  onObserveTradingRun?: () => void;
+  onStopTradingRun?: () => void;
   onRecordImprovement?: () => void;
   onRecordRunControl?: () => void;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
@@ -736,6 +808,11 @@ export function CandidateDetail({
         />
 
         <InfoSection title="Trading Run">
+          <div className={`evaluation-status ${candidate.runtime.runtime_lifecycle_status === "running" ? "counted" : "neutral"}`}>
+            <span>Lifecycle</span>
+            <strong>{candidate.runtime.runtime_lifecycle_status ?? "registered"}</strong>
+            <span>{candidate.runtime.authority_status}</span>
+          </div>
           <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
           <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
           {candidate.runtime.runtime_lifecycle_status && (
@@ -747,6 +824,43 @@ export function CandidateDetail({
           <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
           <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
+          {(onStartTradingRun || onObserveTradingRun || onStopTradingRun) && (
+            <div className="runtime-command">
+              {onStartTradingRun && (
+                <button
+                  className="runtime-command-button"
+                  type="button"
+                  onClick={onStartTradingRun}
+                  disabled={runningTradingRun}
+                >
+                  {runningTradingRun ? "Working trading run" : "Start trading run"}
+                </button>
+              )}
+              {onObserveTradingRun && (
+                <button
+                  className="runtime-command-button"
+                  type="button"
+                  onClick={onObserveTradingRun}
+                  disabled={runningTradingRun}
+                >
+                  Observe
+                </button>
+              )}
+              {onStopTradingRun && (
+                <button
+                  className="runtime-command-button"
+                  type="button"
+                  onClick={onStopTradingRun}
+                  disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
+                >
+                  Stop
+                </button>
+              )}
+              <span>run_control / fixture_paper / not_live</span>
+            </div>
+          )}
+          {tradingRunMessage && <div className="inline-status">{tradingRunMessage}</div>}
+          {tradingRunError && <div className="inline-status error">{tradingRunError}</div>}
         </InfoSection>
 
         <TradingGatewayContractSection
@@ -757,10 +871,6 @@ export function CandidateDetail({
 
         <LedgerSection
           ledger={ledger}
-          onStartTradingRun={onStartTradingRun}
-          runningTradingRun={runningTradingRun}
-          tradingRunError={tradingRunError}
-          tradingRunMessage={tradingRunMessage}
         />
 
         <TradingSubstrateSection
@@ -2930,17 +3040,9 @@ function ImprovementSection({
 }
 
 function LedgerSection({
-  ledger,
-  onStartTradingRun,
-  runningTradingRun,
-  tradingRunError,
-  tradingRunMessage
+  ledger
 }: {
   ledger?: LedgerReadModel;
-  onStartTradingRun?: () => void;
-  runningTradingRun: boolean;
-  tradingRunError?: string;
-  tradingRunMessage?: string;
 }) {
   const statusLabel = ledger?.chain_complete
     ? "chain complete"
@@ -3013,21 +3115,6 @@ function LedgerSection({
         </div>
       )}
 
-      {onStartTradingRun && (
-        <div className="runtime-command">
-          <button
-            className="runtime-command-button"
-            type="button"
-            onClick={onStartTradingRun}
-            disabled={runningTradingRun}
-          >
-            {runningTradingRun ? "Starting trading run" : "Start trading run"}
-          </button>
-          <span>dry_run_only / paper_stage_only / not_live</span>
-        </div>
-      )}
-      {tradingRunMessage && <div className="inline-status">{tradingRunMessage}</div>}
-      {tradingRunError && <div className="inline-status error">{tradingRunError}</div>}
     </InfoSection>
   );
 }

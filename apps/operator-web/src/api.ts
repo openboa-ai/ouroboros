@@ -124,12 +124,39 @@ export type LedgerCommandOutcome = LedgerWriteOutcome & {
 };
 
 export interface TradingRunOutcome {
-  status: "recorded";
+  status: "started";
+  trading_run_id: string;
+  trading_run: {
+    ref: { record_kind: "trading_run"; id: string };
+    stage: string;
+    lifecycle_status?: string;
+    authority_status: "not_live";
+  };
+  trading_system?: CandidateInspectReadModel["trading_system"];
+  run_control?: CandidateInspectReadModel["runtime"]["run_control"];
   order_request: LedgerReadModel["latest_order_request"];
   gateway_result: LedgerReadModel["latest_gateway_result"];
   execution_result: LedgerReadModel["latest_execution_result"];
   ledger: LedgerReadModel;
   trading_gateway_environment: TradingGatewayEnvironmentReadModel;
+}
+
+export interface TradingRunObserveOutcome {
+  status: "observed";
+  trading_run_id: string;
+  trading_run: TradingRunOutcome["trading_run"];
+  trading_system?: CandidateInspectReadModel["trading_system"];
+  ledger?: LedgerReadModel;
+  run_control?: CandidateInspectReadModel["runtime"]["run_control"];
+}
+
+export interface TradingRunStopOutcome {
+  status: "stopped";
+  trading_run_id: string;
+  trading_run: TradingRunOutcome["trading_run"];
+  trading_system?: CandidateInspectReadModel["trading_system"];
+  ledger?: LedgerReadModel;
+  run_control?: CandidateInspectReadModel["runtime"]["run_control"];
 }
 
 export interface ImprovementOutcome {
@@ -359,6 +386,30 @@ export async function startTradingRun(
     throw new Error(`Failed to start trading run for ${candidate.candidate_id}: ${response.status}`);
   }
   return (await response.json()) as TradingRunOutcome;
+}
+
+export async function observeTradingRun(
+  candidate: CandidateInspectReadModel
+): Promise<TradingRunObserveOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-runs/${candidate.runtime.ref.id}/observe`, {
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to observe trading run ${candidate.runtime.ref.id}: ${response.status}`);
+  }
+  return (await response.json()) as TradingRunObserveOutcome;
+}
+
+export async function stopTradingRun(
+  candidate: CandidateInspectReadModel
+): Promise<TradingRunStopOutcome> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-runs/${candidate.runtime.ref.id}/stop`, {
+    method: "POST"
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to stop trading run ${candidate.runtime.ref.id}: ${response.status}`);
+  }
+  return (await response.json()) as TradingRunStopOutcome;
 }
 
 export async function recordImprovement(

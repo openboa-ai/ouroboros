@@ -91,6 +91,22 @@ describe("LocalStore", () => {
     expect(after?.evaluation.sealing_decision.authority_status).toEqual("not_counted");
   });
 
+  it("treats store ids as file names instead of path segments", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    await writeFile(
+      path.join(tmpDir, "read-models/candidates/outside.json"),
+      `${JSON.stringify({ record_kind: "path_traversal_sentinel" }, null, 2)}\n`,
+      "utf8"
+    );
+
+    await expect(store.getCandidate("../outside")).resolves.toBeUndefined();
+    await expect(store.getCandidate(FIXTURE_CANDIDATE_ID)).resolves.toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID
+    });
+  });
+
   it("seeds a Binance BTCUSDT order-fill substrate surface into candidate inspect read models", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1729,6 +1745,61 @@ describe("LocalStore", () => {
     expect(reloaded?.runtime.run_control?.chain_complete).toBe(true);
   });
 
+  it("records start and stop lifecycle through Run Control audit records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const startInput = runControlLifecycleInput(
+      candidate.candidate_version.candidate_version_id,
+      candidate.runtime.ref.id,
+      "start",
+      "running"
+    );
+    const firstStart = await store.recordRunControlAudit(startInput);
+    const duplicateStart = await store.recordRunControlAudit(startInput);
+
+    expect(duplicateStart).toEqual(firstStart);
+    expect(firstStart).toMatchObject({
+      command: {
+        action: "start",
+        requested_lifecycle_status: "running"
+      },
+      decision: {
+        resulting_lifecycle_status: "running"
+      },
+      audit_event: {
+        runtime_lifecycle_status: "running"
+      }
+    });
+
+    const running = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(running?.runtime.runtime_lifecycle_status).toBe("running");
+    expect(running?.runtime.run_control).toBeDefined();
+    expect(running?.runtime.run_control?.latest_command?.action).toBe("start");
+
+    const stopInput = runControlLifecycleInput(
+      candidate.candidate_version.candidate_version_id,
+      candidate.runtime.ref.id,
+      "stop",
+      "stopped"
+    );
+    const firstStop = await store.recordRunControlAudit(stopInput);
+    const duplicateStop = await store.recordRunControlAudit(stopInput);
+
+    expect(duplicateStop).toEqual(firstStop);
+    const stopped = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(stopped?.runtime.runtime_lifecycle_status).toBe("stopped");
+    expect(stopped?.runtime.run_control).toBeDefined();
+    expect(stopped?.runtime.run_control?.latest_command?.action).toBe("stop");
+    await expect(countJsonFiles("run-control-commands", "items")).resolves.toBe(2);
+    await expect(countJsonFiles("run-control-decisions", "items")).resolves.toBe(2);
+    await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(2);
+  });
+
   it("rejects invalid runtime control audit commands without creating records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -2521,6 +2592,55 @@ function validRunControlAuditInput(candidateVersionId: string): RunControlAuditI
       message: "Paper runtime paused through run-control audit chain."
     },
     created_at: "2026-05-10T00:10:00.000Z"
+  };
+}
+
+function runControlLifecycleInput(
+  candidateVersionId: string,
+  runtimeId: string,
+  action: "start" | "stop",
+  lifecycleStatus: "running" | "stopped"
+): RunControlAuditInput {
+  return {
+    idempotency_key: `trading-run-${action}:${runtimeId}:${candidateVersionId}`,
+    candidate_id: FIXTURE_CANDIDATE_ID,
+    candidate_version_id: candidateVersionId,
+    runtime_id: runtimeId,
+    command: {
+      action,
+      requested_lifecycle_status: lifecycleStatus,
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-web" },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      reason: "operator_request",
+      reason_summary: `Operator requested Trading Run ${action}.`,
+      trace_ref: { record_kind: "trace_placeholder", id: `trace-${action}-${runtimeId}` }
+    },
+    decision: {
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: {
+        record_kind: "runtime_policy_engine",
+        id: "runtime-policy-engine-fixture"
+      },
+      runtime_operating_policy_ref: {
+        record_kind: "runtime_operating_policy",
+        id: "runtime-operating-policy-paper-v1"
+      },
+      resulting_lifecycle_status: lifecycleStatus
+    },
+    audit_event: {
+      event_kind: "runtime_lifecycle_transitioned",
+      actor_kind: "human_operator",
+      actor_ref: { record_kind: "operator", id: "operator-web" },
+      runtime_lifecycle_status: lifecycleStatus,
+      message: `Trading Run ${action} recorded.`
+    },
+    created_at: `2026-05-20T00:00:0${action === "start" ? "1" : "2"}.000Z`
   };
 }
 
