@@ -3199,6 +3199,9 @@ export class LocalStore {
     const ledgerSource = await this.buildLedgerSourceRecordsReadModel(runtime);
     const improvement = await this.buildImprovementReadModel(candidate, version);
     const ledger = buildLedgerReadModel(ledgerSource);
+    const sandbox = runtime.sandbox_ref
+      ? await this.buildSandboxDetailReadModel(runtime.sandbox_ref.id)
+      : undefined;
 
     return {
       ...this.toCandidateSummary(candidate),
@@ -3284,7 +3287,8 @@ export class LocalStore {
           authority_status: memorySurface.authority_status
         },
         ledger: ledgerSource,
-        run_control: await this.buildRunControlReadModel(runtime)
+        run_control: await this.buildRunControlReadModel(runtime),
+        sandbox
       },
       trading_substrate: latestTradingSubstrate,
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),

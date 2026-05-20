@@ -15,6 +15,7 @@ import type {
   PrivateReadinessPostureWriteInput,
   RunControlAuditInput,
   RunControlAuditOutcome,
+  SandboxDetailReadModel,
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
@@ -134,6 +135,7 @@ export interface TradingRunOutcome {
   };
   trading_system?: CandidateInspectReadModel["trading_system"];
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
+  sandbox?: SandboxDetailReadModel;
   order_request: LedgerReadModel["latest_order_request"];
   gateway_result: LedgerReadModel["latest_gateway_result"];
   execution_result: LedgerReadModel["latest_execution_result"];
@@ -148,6 +150,7 @@ export interface TradingRunObserveOutcome {
   trading_system?: CandidateInspectReadModel["trading_system"];
   ledger?: LedgerReadModel;
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
+  sandbox?: SandboxDetailReadModel;
 }
 
 export interface TradingRunStopOutcome {
@@ -157,6 +160,7 @@ export interface TradingRunStopOutcome {
   trading_system?: CandidateInspectReadModel["trading_system"];
   ledger?: LedgerReadModel;
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
+  sandbox?: SandboxDetailReadModel;
 }
 
 export interface ImprovementOutcome {

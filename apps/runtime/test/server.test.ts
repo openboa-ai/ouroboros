@@ -1723,8 +1723,17 @@ describe("runtime read-only API", () => {
           status: "dry_run_recorded",
           authority_status: "dry_run_only"
         }
+      },
+      sandbox: {
+        adapter_kind: "deterministic_test",
+        runtime_ref: { record_kind: "trading_run" },
+        lifecycle_status: "running",
+        authority_status: "not_live"
       }
     });
+    expect(first.json().sandbox.runtime_ref.id).toBe(first.json().trading_run_id);
+    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
+    expect(first.json().sandbox.heartbeats.length).toBeGreaterThan(0);
 
     const updatedCandidate = await server.inject({
       method: "GET",
@@ -1743,6 +1752,12 @@ describe("runtime read-only API", () => {
       }
     });
     const tradingRunId = updatedCandidate.json().runtime.ref.id;
+    expect(updatedCandidate.json().runtime.sandbox).toMatchObject({
+      sandbox_id: first.json().sandbox.sandbox_id,
+      adapter_kind: "deterministic_test",
+      runtime_ref: { id: tradingRunId },
+      lifecycle_status: "running"
+    });
 
     const runDetail = await server.inject({
       method: "GET",
@@ -1765,6 +1780,10 @@ describe("runtime read-only API", () => {
         latest_command: {
           action: "start"
         }
+      },
+      sandbox: {
+        sandbox_id: first.json().sandbox.sandbox_id,
+        lifecycle_status: "running"
       }
     });
 
@@ -1786,8 +1805,13 @@ describe("runtime read-only API", () => {
       },
       ledger: {
         chain_complete: true
+      },
+      sandbox: {
+        lifecycle_status: "running",
+        authority_status: "not_live"
       }
     });
+    expect(observed.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
 
     const stopped = await server.inject({
       method: "POST",
@@ -1811,8 +1835,14 @@ describe("runtime read-only API", () => {
         latest_audit_event: {
           runtime_lifecycle_status: "stopped"
         }
+      },
+      sandbox: {
+        sandbox_id: first.json().sandbox.sandbox_id,
+        lifecycle_status: "stopped",
+        authority_status: "not_live"
       }
     });
+    expect(stopped.json().sandbox.logs.at(-1).lines.join("\n")).toContain("runtime_stopped");
 
     await server.close();
   });

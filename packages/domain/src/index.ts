@@ -3232,6 +3232,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     };
     ledger?: LedgerSourceRecordsReadModel;
     run_control?: RunControlReadModel;
+    sandbox?: SandboxDetailReadModel;
   };
   trading_substrate?: TradingSubstrateReadModel;
   trace: PlaceholderSummary;
