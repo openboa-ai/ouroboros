@@ -839,29 +839,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
       const tradingRunId = candidate.runtime.ref.id;
       try {
-        await store.recordLedger({
-          idempotency_key: [
-            "trading-run",
-            request.params.system_id,
-            candidateVersionId
-          ].join("-"),
-          candidate_id: request.params.system_id,
-          candidate_version_id: candidateVersionId,
-          intent: {
-            intent_kind: "place_order",
-            side: "buy",
-            order_type: "limit",
-            quantity: "0.001",
-            limit_price: "60000"
-          },
-          gateway_result: {
-            decision_outcome: "dry_run_only",
-            decision_reason: "paper_stage_only"
-          },
-          execution_result: {
-            execution_mode: "host_local"
-          }
-        } satisfies LedgerInput);
         await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
           idempotencyKey: `trading-run-start:${tradingRunId}:${candidateVersionId}`,
           candidateId: request.params.system_id,
@@ -873,13 +850,19 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           reasonSummary: "Operator requested trading run start.",
           message: "Trading run start recorded."
         }));
-        await ensureTradingRunSandbox({
+        const sandbox = await ensureTradingRunSandbox({
           store,
           sandboxAdapter: sandboxAdapters.deterministic_test,
           candidate,
           tradingRunId,
           candidateVersionId
         });
+        await store.recordLedger(ledgerInputFromSandboxOutput({
+          sandbox,
+          candidateId: request.params.system_id,
+          candidateVersionId,
+          tradingRunId
+        }));
 
         const response = await tradingRunResponse(store, tradingRunId);
         if (!response?.ledger) {
@@ -1443,6 +1426,105 @@ async function ensureTradingRunSandbox(input: {
     interval_ms: 1_000
   });
   return (await input.store.recordSandboxStart(adapterResult)).sandbox;
+}
+
+interface SandboxOrderRequestEvent {
+  intent_kind: "place_order";
+  symbol: "BTCUSDT";
+  side: "buy" | "sell";
+  order_type: "market" | "limit";
+  quantity: string;
+  limit_price?: string;
+  at?: string;
+}
+
+function ledgerInputFromSandboxOutput(input: {
+  sandbox: SandboxDetailReadModel;
+  candidateId: string;
+  candidateVersionId: string;
+  tradingRunId: string;
+}): LedgerInput {
+  const orderRequest = latestSandboxOrderRequest(input.sandbox);
+  if (!orderRequest) {
+    throw new LocalStoreError(
+      "invalid_ledger_input",
+      `sandbox ${input.sandbox.sandbox_id} did not emit an order_request event`,
+      { sandbox_id: input.sandbox.sandbox_id, runtime_id: input.tradingRunId }
+    );
+  }
+
+  return {
+    idempotency_key: [
+      "trading-run",
+      input.candidateId,
+      input.candidateVersionId
+    ].join("-"),
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
+    runtime_id: input.tradingRunId,
+    intent: {
+      intent_kind: orderRequest.intent_kind,
+      side: orderRequest.side,
+      order_type: orderRequest.order_type,
+      quantity: orderRequest.quantity,
+      limit_price: orderRequest.limit_price
+    },
+    gateway_result: {
+      decision_outcome: "dry_run_only",
+      decision_reason: "paper_stage_only"
+    },
+    execution_result: {
+      execution_mode: "host_local"
+    },
+    created_at: orderRequest.at
+  };
+}
+
+function latestSandboxOrderRequest(
+  sandbox: SandboxDetailReadModel
+): SandboxOrderRequestEvent | undefined {
+  return sandbox.logs
+    .flatMap((log) => log.lines.map(parseSandboxOrderRequestEvent))
+    .filter((event): event is SandboxOrderRequestEvent => Boolean(event))
+    .at(-1);
+}
+
+function parseSandboxOrderRequestEvent(line: string): SandboxOrderRequestEvent | undefined {
+  try {
+    const value = JSON.parse(line) as Record<string, unknown>;
+    if (value.event !== "order_request") {
+      return undefined;
+    }
+    if (
+      value.intent_kind !== "place_order" ||
+      value.symbol !== "BTCUSDT" ||
+      !isOrderSide(value.side) ||
+      !isOrderType(value.order_type) ||
+      typeof value.quantity !== "string" ||
+      (value.limit_price !== undefined && typeof value.limit_price !== "string")
+    ) {
+      return undefined;
+    }
+    return {
+      intent_kind: value.intent_kind,
+      symbol: value.symbol,
+      side: value.side,
+      order_type: value.order_type,
+      quantity: value.quantity,
+      limit_price: value.limit_price,
+      at: typeof value.at === "string" ? value.at : undefined
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function isOrderSide(value: unknown): value is "buy" | "sell" {
+  return value === "buy" || value === "sell";
+}
+
+function isOrderType(value: unknown): value is "market" | "limit" {
+  return value === "market" || value === "limit";
 }
 
 async function stopLinkedTradingRunSandbox(input: {

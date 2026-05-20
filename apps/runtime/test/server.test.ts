@@ -1737,9 +1737,11 @@ describe("runtime read-only API", () => {
       }
     });
     expect(first.json().sandbox.runtime_ref.id).toBe(first.json().trading_run_id);
+    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("\"event\":\"order_request\"");
+    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("\"symbol\":\"BTCUSDT\"");
     expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
     expect(first.json().sandbox.heartbeats.length).toBeGreaterThan(0);
-    expect(first.json().transcript.item_count).toBeGreaterThanOrEqual(9);
+    expect(first.json().transcript.item_count).toBeGreaterThanOrEqual(10);
     expect(first.json().transcript.items.map((item: { item_kind: string }) => item.item_kind))
       .toEqual(expect.arrayContaining([
         "run_control_command",
@@ -1748,6 +1750,7 @@ describe("runtime read-only API", () => {
         "sandbox_lifecycle",
         "sandbox_heartbeat",
         "sandbox_log",
+        "sandbox_order_request",
         "order_request",
         "gateway_result",
         "execution_result"
@@ -1779,7 +1782,7 @@ describe("runtime read-only API", () => {
     expect(updatedCandidate.json().runtime.transcript).toMatchObject({
       authority_status: "not_live"
     });
-    expect(updatedCandidate.json().runtime.transcript.item_count).toBeGreaterThanOrEqual(9);
+    expect(updatedCandidate.json().runtime.transcript.item_count).toBeGreaterThanOrEqual(10);
 
     const runDetail = await server.inject({
       method: "GET",
@@ -1811,7 +1814,7 @@ describe("runtime read-only API", () => {
         authority_status: "not_live"
       }
     });
-    expect(runDetail.json().transcript.item_count).toBeGreaterThanOrEqual(9);
+    expect(runDetail.json().transcript.item_count).toBeGreaterThanOrEqual(10);
 
     const observed = await server.inject({
       method: "POST",
@@ -1840,7 +1843,13 @@ describe("runtime read-only API", () => {
         authority_status: "not_live"
       }
     });
-    expect(observed.json().transcript.item_count).toBeGreaterThanOrEqual(9);
+    expect(observed.json().transcript.item_count).toBeGreaterThanOrEqual(10);
+    expect(observed.json().transcript.items
+      .some((item: { item_kind: string; summary: string }) => (
+        item.item_kind === "sandbox_order_request" &&
+        item.summary.includes("BTCUSDT buy / limit / 0.001 @ 60000")
+      )))
+      .toBe(true);
     expect(observed.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
 
     const stopped = await server.inject({

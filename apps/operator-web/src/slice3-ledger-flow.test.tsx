@@ -106,11 +106,19 @@ describe("Slice 3 trading run MLP flow", () => {
           authority_status: "not_live"
         }
       });
-      expect(outcome.transcript.item_count).toBeGreaterThanOrEqual(9);
+      expect(outcome.transcript.item_count).toBeGreaterThanOrEqual(10);
       expect(outcome.sandbox.runtime_ref.id).toBe(outcome.trading_run_id);
+      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("\"event\":\"order_request\"");
+      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("\"symbol\":\"BTCUSDT\"");
       expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
       expect(outcome.transcript.items.map((item: { item_kind: string }) => item.item_kind)).toEqual(
-        expect.arrayContaining(["order_request", "gateway_result", "execution_result", "sandbox_heartbeat"])
+        expect.arrayContaining([
+          "sandbox_order_request",
+          "order_request",
+          "gateway_result",
+          "execution_result",
+          "sandbox_heartbeat"
+        ])
       );
 
       const orderIntent = await readStoreJson<OrderRequestRecord>(
@@ -166,7 +174,7 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(candidate.runtime.transcript).toMatchObject({
         authority_status: "not_live"
       });
-      expect(candidate.runtime.transcript?.item_count).toBeGreaterThanOrEqual(9);
+      expect(candidate.runtime.transcript?.item_count).toBeGreaterThanOrEqual(10);
       expect(candidate.ledger).toMatchObject({
         ledger_kind: "ledger",
         has_activity: true,
@@ -202,6 +210,8 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(html).toContain(`gateway_result:${outcome.gateway_result.gateway_result_id}`);
       expect(html).toContain("running");
       expect(html).toContain("Trading Run Transcript");
+      expect(html).toContain("Sandbox order request");
+      expect(html).toContain("BTCUSDT buy / limit / 0.001 @ 60000");
       expect(html).toContain("Sandbox heartbeat");
       expect(html).toContain("Order request");
       expect(html).toContain("Sandbox");
@@ -236,7 +246,7 @@ describe("Slice 3 trading run MLP flow", () => {
           authority_status: "not_live"
         }
       });
-      expect(observed.json().transcript.item_count).toBeGreaterThanOrEqual(9);
+      expect(observed.json().transcript.item_count).toBeGreaterThanOrEqual(10);
 
       const stopped = await server.inject({
         method: "POST",

@@ -1846,7 +1846,10 @@ describe("LocalStore", () => {
       version: 1,
       sandbox_log_id: "sandbox-log-fixture-trading-run-readback-start",
       sandbox_ref: { record_kind: "sandbox", id: sandboxId },
-      lines: ["{\"event\":\"runtime_heartbeat\",\"tick\":1}"],
+      lines: [
+        "{\"at\":\"2026-05-20T00:00:00.000Z\",\"event\":\"order_request\",\"symbol\":\"BTCUSDT\",\"side\":\"buy\",\"order_type\":\"limit\",\"quantity\":\"0.001\",\"limit_price\":\"60000\"}",
+        "{\"event\":\"runtime_heartbeat\",\"tick\":1}"
+      ],
       captured_at: "2026-05-20T00:00:01.000Z",
       authority_status: "trace_only"
     };
@@ -1893,7 +1896,10 @@ describe("LocalStore", () => {
       lifecycle_status: "running",
       logs: [
         {
-          lines: ["{\"event\":\"runtime_heartbeat\",\"tick\":1}"]
+          lines: [
+            "{\"at\":\"2026-05-20T00:00:00.000Z\",\"event\":\"order_request\",\"symbol\":\"BTCUSDT\",\"side\":\"buy\",\"order_type\":\"limit\",\"quantity\":\"0.001\",\"limit_price\":\"60000\"}",
+            "{\"event\":\"runtime_heartbeat\",\"tick\":1}"
+          ]
         }
       ],
       heartbeats: [
@@ -1908,7 +1914,7 @@ describe("LocalStore", () => {
       has_activity: true,
       latest_item: {
         item_kind: "sandbox_log",
-        summary: "{\"event\":\"runtime_heartbeat\",\"tick\":1}"
+        summary: "{\"at\":\"2026-05-20T00:00:00.000Z\",\"event\":\"order_request\",\"symbol\":\"BTCUSDT\",\"side\":\"buy\",\"order_type\":\"limit\",\"quantity\":\"0.001\",\"limit_price\":\"60000\"} / {\"event\":\"runtime_heartbeat\",\"tick\":1}"
       }
     });
     expect(projected?.runtime.transcript?.items.map((item) => item.item_kind)).toContain(
@@ -1919,6 +1925,14 @@ describe("LocalStore", () => {
     );
     expect(projected?.runtime.transcript?.items.map((item) => item.item_kind)).toContain(
       "sandbox_log"
+    );
+    expect(projected?.runtime.transcript?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item_kind: "sandbox_order_request",
+          summary: "BTCUSDT buy / limit / 0.001 @ 60000"
+        })
+      ])
     );
   });
 

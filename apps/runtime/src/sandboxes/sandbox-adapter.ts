@@ -65,6 +65,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const tickCount = Math.max(1, input.test_ticks ?? 2);
     const intervalMs = input.interval_ms ?? 1_000;
     const placement = sandboxPlacement(input.sandbox_placement_id);
+    const orderRequestLine = sandboxOrderRequestLine(input.instance_id, input.created_at);
     const heartbeats = Array.from({ length: tickCount }, (_, index) => {
       const tick = index + 1;
       const observedAt = timestampOffset(input.created_at, tick * intervalMs);
@@ -76,7 +77,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       });
       return runtimeHeartbeatRecord(input.instance_id, `start-${tick}`, line, observedAt);
     });
-    const lines = heartbeats.map((heartbeat) => heartbeat.heartbeat_line);
+    const lines = [orderRequestLine, ...heartbeats.map((heartbeat) => heartbeat.heartbeat_line)];
     const log = runtimeLogRecord(input.instance_id, "start", lines, input.created_at);
     const instance = sandboxSandboxRecord({
       adapterKind: this.kind,
@@ -492,6 +493,21 @@ function runtimeHeartbeatRecord(
     observed_at: observedAt,
     authority_status: "trace_only"
   };
+}
+
+function sandboxOrderRequestLine(instanceId: string, at: string): string {
+  return JSON.stringify({
+    event: "order_request",
+    instance_id: instanceId,
+    symbol: "BTCUSDT",
+    intent_kind: "place_order",
+    side: "buy",
+    order_type: "limit",
+    quantity: "0.001",
+    limit_price: "60000",
+    authority_status: "trace_only",
+    at
+  });
 }
 
 function commandEvidenceRecord(
