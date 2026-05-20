@@ -100,7 +100,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("fixture_seed_no_live_connector");
     expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
-    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+    expectNoOperatorActionControls(html, {
+      includePrivateAuthorityTerms: true
+    });
   });
 
   it("renders Binance BTCUSDT public market and liveness posture without action controls", () => {
@@ -138,7 +140,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("fixture_seed_no_live_connector");
     expect(html).toContain(BINANCE_NO_AUTHORITY_LABEL);
     expect(html).toContain("not_live");
-    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+    expectNoOperatorActionControls(html, {
+      includePrivateAuthorityTerms: true
+    });
   });
 
   it("renders Binance BTCUSDT private-readiness preflight gates without action controls", () => {
@@ -1079,6 +1083,8 @@ describe("CandidateDetail", () => {
         candidate={candidateWithLedgerSource(ledgerSourceRecords())}
         tradingGatewayEnvironment={tradingGatewayEnvironment()}
         onStartTradingRun={() => undefined}
+        onObserveTradingRun={() => undefined}
+        onStopTradingRun={() => undefined}
         tradingRunMessage="dry_run_only recorded: execution-result-001"
       />
     );
@@ -1103,10 +1109,15 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Execution result");
     expect(html).toContain("gateway_result:gateway-result-001");
     expect(html).toContain("Start trading run");
+    expect(html).toContain("Observe");
+    expect(html).toContain("Stop");
     expect(html).not.toContain("Compatibility detail");
     expect(html).not.toContain("runtime.ledger");
     expect(html).toContain("not_live");
-    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+    expectNoOperatorActionControls(html, {
+      includePrivateAuthorityTerms: true,
+      allowTradingRunControls: true
+    });
   });
 
   it("renders Improvement without promotion or trading authority", () => {

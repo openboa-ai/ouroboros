@@ -11,6 +11,53 @@ import type {
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
 describe("TradingRun control and audit records", () => {
+  it("models start as a Run Control action that moves a paper TradingRun to running", () => {
+    const runtimeRef = ref("trading_run", "trading-run-paper-market-breakout-v1");
+    const commandRef = ref("run_control_command", "run-control-command-start-v1");
+    const decisionRef = ref("run_control_decision", "run-control-decision-start-v1");
+    const operatorRef = ref("operator", "operator-sjson");
+    const policyRef = ref("runtime_operating_policy", "runtime-operating-policy-paper-v1");
+
+    const startCommand = {
+      record_kind: "run_control_command",
+      version: 1,
+      run_control_command_id: commandRef.id,
+      runtime_ref: runtimeRef,
+      action: "start",
+      requested_lifecycle_status: "running",
+      actor_kind: "human_operator",
+      actor_ref: operatorRef,
+      runtime_operating_policy_ref: policyRef,
+      idempotency_key: "trading-run-start:trading-run-paper-market-breakout-v1:candidate-version-v1",
+      reason: "operator_request",
+      reason_summary: "Start fixture paper Trading Run.",
+      requested_at: "2026-05-20T00:00:00.000Z",
+      status: "decided",
+      authority_status: "control_only"
+    } satisfies RunControlCommandRecord;
+
+    const startDecision = {
+      record_kind: "run_control_decision",
+      version: 1,
+      run_control_decision_id: decisionRef.id,
+      runtime_ref: runtimeRef,
+      command_ref: commandRef,
+      decision_outcome: "allowed",
+      decision_reason: "policy_allows_control",
+      decided_by_actor_kind: "policy_engine",
+      decided_by_actor_ref: ref("runtime_policy_engine", "runtime-policy-engine-fixture"),
+      runtime_operating_policy_ref: policyRef,
+      resulting_lifecycle_status: "running",
+      decided_at: "2026-05-20T00:00:01.000Z",
+      authority_status: "control_only"
+    } satisfies RunControlDecisionRecord;
+
+    expect(startCommand.action).toBe("start");
+    expect(startCommand.requested_lifecycle_status).toBe("running");
+    expect(startDecision.resulting_lifecycle_status).toBe("running");
+    expect(startDecision.authority_status).toBe("control_only");
+  });
+
   it("models a pause decision against logical runtime identity instead of placement identity", () => {
     const runtimeRef = ref("trading_run", "runtime-paper-market-breakout-v1");
     const placementRef = ref("sandbox_placement", "sandbox-placement-compose-local");

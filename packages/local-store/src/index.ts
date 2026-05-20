@@ -775,11 +775,11 @@ export class LocalStore {
     for (const candidate of candidates) {
       const readModel = await this.buildCandidateInspectReadModel(candidate.candidate_id);
       await this.writeJson(
-        path.join(this.storeRoot, "read-models/candidates/items", `${candidate.candidate_id}.json`),
+        path.join(this.storeRoot, "read-models/candidates/items", storeJsonFileName(candidate.candidate_id)),
         readModel
       );
       await this.writeJson(
-        path.join(this.storeRoot, "read-models/candidate-evaluations/items", `${candidate.candidate_id}.json`),
+        path.join(this.storeRoot, "read-models/candidate-evaluations/items", storeJsonFileName(candidate.candidate_id)),
         readModel.evaluation
       );
     }
@@ -801,7 +801,11 @@ export class LocalStore {
     );
     for (const attempt of attemptReadModels) {
       await this.writeJson(
-        path.join(this.storeRoot, "read-models/candidate-materialization-attempts/items", `${attempt.attempt_id}.json`),
+        path.join(
+          this.storeRoot,
+          "read-models/candidate-materialization-attempts/items",
+          storeJsonFileName(attempt.attempt_id)
+        ),
         attempt
       );
     }
@@ -824,7 +828,7 @@ export class LocalStore {
     for (const sandbox of sandboxReadModels) {
       const sandboxDetail = await this.buildSandboxDetailReadModel(sandbox.sandbox_id);
       await this.writeJson(
-        path.join(this.storeRoot, "read-models/sandboxes/items", `${sandbox.sandbox_id}.json`),
+        path.join(this.storeRoot, "read-models/sandboxes/items", storeJsonFileName(sandbox.sandbox_id)),
         sandboxDetail
       );
     }
@@ -844,7 +848,7 @@ export class LocalStore {
   async getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined> {
     try {
       return await this.readJson<CandidateInspectReadModel>(
-        path.join(this.storeRoot, "read-models/candidates/items", `${candidateId}.json`)
+        path.join(this.storeRoot, "read-models/candidates/items", storeJsonFileName(candidateId))
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -1525,7 +1529,7 @@ export class LocalStore {
   async getSandbox(sandboxId: string): Promise<SandboxDetailReadModel | undefined> {
     try {
       return await this.readJson<SandboxDetailReadModel>(
-        path.join(this.storeRoot, "read-models/sandboxes/items", `${sandboxId}.json`)
+        path.join(this.storeRoot, "read-models/sandboxes/items", storeJsonFileName(sandboxId))
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -2422,7 +2426,11 @@ export class LocalStore {
   ): Promise<CandidateMaterializationAttemptReadModel | undefined> {
     try {
       return await this.readJson<CandidateMaterializationAttemptReadModel>(
-        path.join(this.storeRoot, "read-models/candidate-materialization-attempts/items", `${attemptId}.json`)
+        path.join(
+          this.storeRoot,
+          "read-models/candidate-materialization-attempts/items",
+          storeJsonFileName(attemptId)
+        )
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -3882,7 +3890,7 @@ export class LocalStore {
   }
 
   private itemPath(collection: Collection, id: string, itemDir: "items" | "placeholders" = "items"): string {
-    return path.join(this.storeRoot, collection, itemDir, `${id}.json`);
+    return path.join(this.storeRoot, collection, itemDir, storeJsonFileName(id));
   }
 
   private collectionIndexPath(collection: Collection): string {
@@ -4979,6 +4987,7 @@ function isExecutionResultStatus(value: unknown): value is ExecutionResultStatus
 function isRunControlAction(value: unknown): value is RunControlAction {
   return (
     value === "inspect" ||
+    value === "start" ||
     value === "pause" ||
     value === "resume" ||
     value === "stop" ||
@@ -5414,6 +5423,10 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function stableSuffix(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+function storeJsonFileName(id: string): string {
+  return `${encodeURIComponent(id)}.json`;
 }
 
 interface LedgerRecordIds {

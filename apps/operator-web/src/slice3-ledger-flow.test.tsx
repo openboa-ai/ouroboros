@@ -57,7 +57,20 @@ describe("Slice 3 trading run MLP flow", () => {
 
       const outcome = recorded.json();
       expect(outcome).toMatchObject({
-        status: "recorded",
+        status: "started",
+        trading_run: {
+          lifecycle_status: "running",
+          authority_status: "not_live"
+        },
+        run_control: {
+          latest_command: {
+            action: "start",
+            status: "decided"
+          },
+          latest_decision: {
+            resulting_lifecycle_status: "running"
+          }
+        },
         order_request: {
           intent_kind: "place_order",
           side: "buy",
@@ -124,6 +137,12 @@ describe("Slice 3 trading run MLP flow", () => {
       });
       expect(readback.statusCode).toBe(200);
       const candidate = readback.json() as CandidateInspectReadModel;
+      expect(candidate.runtime.runtime_lifecycle_status).toBe("running");
+      expect(candidate.runtime.run_control).toBeDefined();
+      expect(candidate.runtime.run_control?.latest_command).toMatchObject({
+        action: "start",
+        status: "decided"
+      });
       expect(candidate.ledger).toMatchObject({
         ledger_kind: "ledger",
         has_activity: true,
@@ -143,7 +162,12 @@ describe("Slice 3 trading run MLP flow", () => {
       });
 
       const html = renderToStaticMarkup(
-        <CandidateDetail candidate={candidate} onStartTradingRun={() => undefined} />
+        <CandidateDetail
+          candidate={candidate}
+          onStartTradingRun={() => undefined}
+          onObserveTradingRun={() => undefined}
+          onStopTradingRun={() => undefined}
+        />
       );
       expect(html).toContain("Ledger");
       expect(html).toContain("Ledger");
@@ -152,9 +176,63 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(html).toContain("paper_stage_only");
       expect(html).toContain(`order_request:${outcome.order_request.order_request_id}`);
       expect(html).toContain(`gateway_result:${outcome.gateway_result.gateway_result_id}`);
+      expect(html).toContain("running");
       expect(html).toContain("Start trading run");
-      expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
+      expect(html).toContain("Observe");
+      expect(html).toContain("Stop");
+      expectNoOperatorActionControls(html, {
+        includePrivateAuthorityTerms: true,
+        allowTradingRunControls: true
+      });
       expect(html).not.toMatch(/runtime stack launch/i);
+
+      const observed = await server.inject({
+        method: "POST",
+        url: `/api/trading-runs/${candidate.runtime.ref.id}/observe`
+      });
+      expect(observed.statusCode).toBe(200);
+      expect(observed.json()).toMatchObject({
+        status: "observed",
+        trading_run: {
+          lifecycle_status: "running"
+        },
+        ledger: {
+          chain_complete: true
+        }
+      });
+
+      const stopped = await server.inject({
+        method: "POST",
+        url: `/api/trading-runs/${candidate.runtime.ref.id}/stop`
+      });
+      expect(stopped.statusCode).toBe(201);
+      expect(stopped.json()).toMatchObject({
+        status: "stopped",
+        trading_run: {
+          lifecycle_status: "stopped"
+        },
+        run_control: {
+          latest_command: {
+            action: "stop"
+          }
+        }
+      });
+
+      const stoppedRead = await server.inject({
+        method: "GET",
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      });
+      const stoppedCandidate = stoppedRead.json() as CandidateInspectReadModel;
+      const stoppedHtml = renderToStaticMarkup(
+        <CandidateDetail
+          candidate={stoppedCandidate}
+          onStartTradingRun={() => undefined}
+          onObserveTradingRun={() => undefined}
+          onStopTradingRun={() => undefined}
+        />
+      );
+      expect(stoppedHtml).toContain("stopped");
+      expect(stoppedHtml).toContain("Latest control command");
     } finally {
       await server.close();
     }

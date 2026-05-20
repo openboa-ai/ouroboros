@@ -213,6 +213,7 @@ export type RuntimeExecutionStage = "paper" | "live";
 
 export type RunControlAction =
   | "inspect"
+  | "start"
   | "pause"
   | "resume"
   | "stop"

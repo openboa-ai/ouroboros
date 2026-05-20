@@ -1662,7 +1662,23 @@ describe("runtime read-only API", () => {
     expect(duplicate.statusCode).toBe(201);
     expect(duplicate.json()).toEqual(first.json());
     expect(first.json()).toMatchObject({
-      status: "recorded",
+      status: "started",
+      trading_run: {
+        lifecycle_status: "running",
+        authority_status: "not_live"
+      },
+      run_control: {
+        latest_command: {
+          action: "start",
+          status: "decided"
+        },
+        latest_decision: {
+          resulting_lifecycle_status: "running"
+        },
+        latest_audit_event: {
+          runtime_lifecycle_status: "running"
+        }
+      },
       order_request: {
         intent_kind: "place_order",
         side: "buy",
@@ -1714,6 +1730,11 @@ describe("runtime read-only API", () => {
       method: "GET",
       url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
     });
+    expect(updatedCandidate.json().runtime.runtime_lifecycle_status).toBe("running");
+    expect(updatedCandidate.json().runtime.run_control.latest_command).toMatchObject({
+      action: "start",
+      status: "decided"
+    });
     expect(updatedCandidate.json().ledger).toMatchObject({
       ledger_kind: "ledger",
       chain_complete: true,
@@ -1733,11 +1754,17 @@ describe("runtime read-only API", () => {
       trading_run: {
         ref: { record_kind: "trading_run", id: tradingRunId },
         stage: "paper",
+        lifecycle_status: "running",
         authority_status: "not_live"
       },
       ledger: {
         ledger_kind: "ledger",
         chain_complete: true
+      },
+      run_control: {
+        latest_command: {
+          action: "start"
+        }
       }
     });
 
@@ -1748,7 +1775,18 @@ describe("runtime read-only API", () => {
     expect(observed.statusCode).toBe(200);
     expect(observed.json()).toMatchObject({
       status: "observed",
-      trading_run_id: tradingRunId
+      trading_run_id: tradingRunId,
+      trading_run: {
+        lifecycle_status: "running"
+      },
+      run_control: {
+        latest_command: {
+          action: "start"
+        }
+      },
+      ledger: {
+        chain_complete: true
+      }
     });
 
     const stopped = await server.inject({
@@ -1757,12 +1795,21 @@ describe("runtime read-only API", () => {
     });
     expect(stopped.statusCode).toBe(201);
     expect(stopped.json()).toMatchObject({
-      status: "stop_recorded",
+      status: "stopped",
       trading_run_id: tradingRunId,
+      trading_run: {
+        lifecycle_status: "stopped"
+      },
       run_control: {
         latest_command: {
           action: "stop",
           status: "decided"
+        },
+        latest_decision: {
+          resulting_lifecycle_status: "stopped"
+        },
+        latest_audit_event: {
+          runtime_lifecycle_status: "stopped"
         }
       }
     });
