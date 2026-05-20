@@ -1799,6 +1799,25 @@ describe("LocalStore", () => {
     expect(stopped?.runtime.runtime_lifecycle_status).toBe("stopped");
     expect(stopped?.runtime.run_control).toBeDefined();
     expect(stopped?.runtime.run_control?.latest_command?.action).toBe("stop");
+    expect(stopped?.runtime.transcript).toMatchObject({
+      transcript_kind: "trading_run_transcript",
+      has_activity: true,
+      item_count: 6,
+      authority_status: "not_live",
+      latest_item: {
+        item_kind: "run_control_audit",
+        summary: "Trading Run stop recorded.",
+        lifecycle_status: "stopped"
+      }
+    });
+    expect(stopped?.runtime.transcript?.items.map((item) => item.item_kind)).toEqual([
+      "run_control_command",
+      "run_control_decision",
+      "run_control_audit",
+      "run_control_command",
+      "run_control_decision",
+      "run_control_audit"
+    ]);
     await expect(countJsonFiles("run-control-commands", "items")).resolves.toBe(2);
     await expect(countJsonFiles("run-control-decisions", "items")).resolves.toBe(2);
     await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(2);
@@ -1884,6 +1903,23 @@ describe("LocalStore", () => {
       ]
     });
     expect(projected?.runtime.placement.ref.id).toBe(placement.sandbox_placement_id);
+    expect(projected?.runtime.transcript).toMatchObject({
+      transcript_kind: "trading_run_transcript",
+      has_activity: true,
+      latest_item: {
+        item_kind: "sandbox_log",
+        summary: "{\"event\":\"runtime_heartbeat\",\"tick\":1}"
+      }
+    });
+    expect(projected?.runtime.transcript?.items.map((item) => item.item_kind)).toContain(
+      "sandbox_lifecycle"
+    );
+    expect(projected?.runtime.transcript?.items.map((item) => item.item_kind)).toContain(
+      "sandbox_heartbeat"
+    );
+    expect(projected?.runtime.transcript?.items.map((item) => item.item_kind)).toContain(
+      "sandbox_log"
+    );
   });
 
   it("rejects invalid runtime control audit commands without creating records", async () => {

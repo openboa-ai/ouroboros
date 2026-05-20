@@ -162,6 +162,8 @@ import type {
   TradingSystemCandidateRecord,
   TradingEvaluationResultRecord,
   TradingSystemProgramRecord,
+  TradingRunTranscriptItemReadModel,
+  TradingRunTranscriptReadModel,
   TradingRunLifecycleStatus,
   TradingRunRecord,
   TradingSystemSpecRecord
@@ -3199,9 +3201,15 @@ export class LocalStore {
     const ledgerSource = await this.buildLedgerSourceRecordsReadModel(runtime);
     const improvement = await this.buildImprovementReadModel(candidate, version);
     const ledger = buildLedgerReadModel(ledgerSource);
+    const runControl = await this.buildRunControlReadModel(runtime);
     const sandbox = runtime.sandbox_ref
       ? await this.buildSandboxDetailReadModel(runtime.sandbox_ref.id)
       : undefined;
+    const transcript = await this.buildTradingRunTranscriptReadModel(
+      runtime,
+      ledger,
+      sandbox
+    );
 
     return {
       ...this.toCandidateSummary(candidate),
@@ -3287,8 +3295,9 @@ export class LocalStore {
           authority_status: memorySurface.authority_status
         },
         ledger: ledgerSource,
-        run_control: await this.buildRunControlReadModel(runtime),
-        sandbox
+        run_control: runControl,
+        sandbox,
+        transcript
       },
       trading_substrate: latestTradingSubstrate,
       trace: placeholder(version.trace_placeholder_ref, "Trace placeholder", trace),
@@ -3489,6 +3498,153 @@ export class LocalStore {
             "missing",
             "not_live"
           )
+    };
+  }
+
+  private async buildTradingRunTranscriptReadModel(
+    runtime: TradingRunRecord,
+    ledger: LedgerReadModel,
+    sandbox?: SandboxDetailReadModel
+  ): Promise<TradingRunTranscriptReadModel> {
+    const runtimeId = runtime.trading_run_id;
+    const commands = (await this.readCollection<RunControlCommandRecord>("run-control-commands"))
+      .filter((command) => command.runtime_ref.id === runtimeId)
+      .sort(compareRunControlCommands);
+    const commandIds = new Set(commands.map((command) => command.run_control_command_id));
+    const decisions = (await this.readCollection<RunControlDecisionRecord>("run-control-decisions"))
+      .filter((decision) => commandIds.has(decision.command_ref.id))
+      .sort(compareRunControlDecisions);
+    const decisionIds = new Set(decisions.map((decision) => decision.run_control_decision_id));
+    const auditEvents = (await this.readCollection<RuntimeAuditEventRecord>("runtime-audit-events"))
+      .filter((event) => (
+        (event.command_ref ? commandIds.has(event.command_ref.id) : false) ||
+        (event.decision_ref ? decisionIds.has(event.decision_ref.id) : false)
+      ))
+      .sort(compareRuntimeAuditEvents);
+
+    const items: TradingRunTranscriptItemReadModel[] = [];
+    for (const command of commands) {
+      items.push({
+        item_id: `run-control-command:${command.run_control_command_id}`,
+        item_kind: "run_control_command",
+        occurred_at: command.requested_at,
+        label: "Run Control command",
+        summary: `${command.action} / ${command.requested_lifecycle_status ?? "unchanged"}`,
+        ref: ref(command.record_kind, command.run_control_command_id),
+        authority_status: command.authority_status,
+        lifecycle_status: command.requested_lifecycle_status
+      });
+    }
+    for (const decision of decisions) {
+      items.push({
+        item_id: `run-control-decision:${decision.run_control_decision_id}`,
+        item_kind: "run_control_decision",
+        occurred_at: decision.decided_at,
+        label: "Run Control decision",
+        summary: `${decision.decision_outcome} / ${decision.resulting_lifecycle_status ?? "unchanged"}`,
+        ref: ref(decision.record_kind, decision.run_control_decision_id),
+        authority_status: decision.authority_status,
+        lifecycle_status: decision.resulting_lifecycle_status
+      });
+    }
+    for (const auditEvent of auditEvents) {
+      items.push({
+        item_id: `run-control-audit:${auditEvent.runtime_audit_event_id}`,
+        item_kind: "run_control_audit",
+        occurred_at: auditEvent.created_at,
+        label: "Run Control audit",
+        summary: auditEvent.message ?? auditEvent.event_kind,
+        ref: ref(auditEvent.record_kind, auditEvent.runtime_audit_event_id),
+        authority_status: auditEvent.authority_status,
+        lifecycle_status: auditEvent.runtime_lifecycle_status
+      });
+    }
+
+    if (sandbox) {
+      items.push({
+        item_id: `sandbox-lifecycle:${sandbox.sandbox_id}`,
+        item_kind: "sandbox_lifecycle",
+        occurred_at: sandbox.stopped_at ?? sandbox.last_heartbeat_at ?? sandbox.started_at ?? sandbox.created_at,
+        label: "Sandbox lifecycle",
+        summary: `${sandbox.lifecycle_status} / ${sandbox.adapter_kind}`,
+        ref: ref("sandbox", sandbox.sandbox_id),
+        authority_status: sandbox.authority_status
+      });
+      for (const heartbeat of sandbox.heartbeats) {
+        items.push({
+          item_id: `sandbox-heartbeat:${heartbeat.heartbeat_ref.id}`,
+          item_kind: "sandbox_heartbeat",
+          occurred_at: heartbeat.observed_at,
+          label: "Sandbox heartbeat",
+          summary: heartbeat.heartbeat_line,
+          ref: heartbeat.heartbeat_ref,
+          authority_status: heartbeat.authority_status
+        });
+      }
+      for (const log of sandbox.logs) {
+        items.push({
+          item_id: `sandbox-log:${log.log_ref.id}`,
+          item_kind: "sandbox_log",
+          occurred_at: log.captured_at,
+          label: "Sandbox log",
+          summary: log.lines.join(" / ") || "log captured",
+          ref: log.log_ref,
+          authority_status: log.authority_status
+        });
+      }
+    }
+
+    if (ledger.latest_order_request) {
+      const orderRequest = ledger.latest_order_request;
+      items.push({
+        item_id: `order-request:${orderRequest.order_request_id}`,
+        item_kind: "order_request",
+        occurred_at: orderRequest.created_at,
+        label: "Order request",
+        summary: `${orderRequest.side ?? "none"} / ${orderRequest.order_type ?? "none"} / ${orderRequest.quantity ?? "none"} @ ${orderRequest.limit_price ?? "none"}`,
+        ref: ref("order_request", orderRequest.order_request_id),
+        authority_status: orderRequest.authority_status
+      });
+    }
+    if (ledger.latest_gateway_result) {
+      const gatewayResult = ledger.latest_gateway_result;
+      items.push({
+        item_id: `gateway-result:${gatewayResult.gateway_result_id}`,
+        item_kind: "gateway_result",
+        occurred_at: gatewayResult.decided_at,
+        label: "Gateway result",
+        summary: `${gatewayResult.decision_outcome} / ${gatewayResult.decision_reason}`,
+        ref: ref("gateway_result", gatewayResult.gateway_result_id),
+        authority_status: gatewayResult.authority_status
+      });
+    }
+    if (ledger.latest_execution_result) {
+      const executionResult = ledger.latest_execution_result;
+      items.push({
+        item_id: `execution-result:${executionResult.execution_result_id}`,
+        item_kind: "execution_result",
+        occurred_at: executionResult.completed_at ?? executionResult.created_at,
+        label: "Execution result",
+        summary: `${executionResult.status} / ${executionResult.result_reason}`,
+        ref: ref("execution_result", executionResult.execution_result_id),
+        authority_status: executionResult.authority_status
+      });
+    }
+
+    const sortedItems = items.sort(compareTradingRunTranscriptItems);
+    return {
+      transcript_kind: "trading_run_transcript",
+      has_activity: sortedItems.length > 0,
+      item_count: sortedItems.length,
+      latest_item: sortedItems.at(-1) ?? null,
+      items: sortedItems,
+      authority_status: "not_live",
+      no_authority: {
+        live_exchange_authority: false,
+        private_read_authority: false,
+        order_submission_authority: false,
+        credentials: false
+      }
     };
   }
 
@@ -4397,6 +4553,36 @@ function compareRuntimeAuditEvents(
     return timeCompare;
   }
   return a.runtime_audit_event_id.localeCompare(b.runtime_audit_event_id);
+}
+
+function compareTradingRunTranscriptItems(
+  a: TradingRunTranscriptItemReadModel,
+  b: TradingRunTranscriptItemReadModel
+): number {
+  const timeCompare = a.occurred_at.localeCompare(b.occurred_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  const kindCompare = transcriptItemKindOrder(a) - transcriptItemKindOrder(b);
+  if (kindCompare !== 0) {
+    return kindCompare;
+  }
+  return a.item_id.localeCompare(b.item_id);
+}
+
+function transcriptItemKindOrder(item: TradingRunTranscriptItemReadModel): number {
+  const order: Record<TradingRunTranscriptItemReadModel["item_kind"], number> = {
+    run_control_command: 10,
+    run_control_decision: 20,
+    run_control_audit: 30,
+    sandbox_lifecycle: 40,
+    sandbox_heartbeat: 50,
+    sandbox_log: 60,
+    order_request: 70,
+    gateway_result: 80,
+    execution_result: 90
+  };
+  return order[item.item_kind];
 }
 
 function compareResearchFindings(a: ResearchFindingRecord, b: ResearchFindingRecord): number {

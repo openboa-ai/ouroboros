@@ -1399,7 +1399,8 @@ async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
     trading_system: candidate?.trading_system,
     ledger: candidate?.ledger,
     run_control: candidate?.runtime.run_control,
-    sandbox: candidate?.runtime.sandbox
+    sandbox: candidate?.runtime.sandbox,
+    transcript: candidate?.runtime.transcript
   };
 }
 

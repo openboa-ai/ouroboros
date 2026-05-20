@@ -1729,11 +1729,29 @@ describe("runtime read-only API", () => {
         runtime_ref: { record_kind: "trading_run" },
         lifecycle_status: "running",
         authority_status: "not_live"
+      },
+      transcript: {
+        transcript_kind: "trading_run_transcript",
+        has_activity: true,
+        authority_status: "not_live"
       }
     });
     expect(first.json().sandbox.runtime_ref.id).toBe(first.json().trading_run_id);
     expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
     expect(first.json().sandbox.heartbeats.length).toBeGreaterThan(0);
+    expect(first.json().transcript.item_count).toBeGreaterThanOrEqual(9);
+    expect(first.json().transcript.items.map((item: { item_kind: string }) => item.item_kind))
+      .toEqual(expect.arrayContaining([
+        "run_control_command",
+        "run_control_decision",
+        "run_control_audit",
+        "sandbox_lifecycle",
+        "sandbox_heartbeat",
+        "sandbox_log",
+        "order_request",
+        "gateway_result",
+        "execution_result"
+      ]));
 
     const updatedCandidate = await server.inject({
       method: "GET",
@@ -1758,6 +1776,10 @@ describe("runtime read-only API", () => {
       runtime_ref: { id: tradingRunId },
       lifecycle_status: "running"
     });
+    expect(updatedCandidate.json().runtime.transcript).toMatchObject({
+      authority_status: "not_live"
+    });
+    expect(updatedCandidate.json().runtime.transcript.item_count).toBeGreaterThanOrEqual(9);
 
     const runDetail = await server.inject({
       method: "GET",
@@ -1784,8 +1806,12 @@ describe("runtime read-only API", () => {
       sandbox: {
         sandbox_id: first.json().sandbox.sandbox_id,
         lifecycle_status: "running"
+      },
+      transcript: {
+        authority_status: "not_live"
       }
     });
+    expect(runDetail.json().transcript.item_count).toBeGreaterThanOrEqual(9);
 
     const observed = await server.inject({
       method: "POST",
@@ -1809,8 +1835,12 @@ describe("runtime read-only API", () => {
       sandbox: {
         lifecycle_status: "running",
         authority_status: "not_live"
+      },
+      transcript: {
+        authority_status: "not_live"
       }
     });
+    expect(observed.json().transcript.item_count).toBeGreaterThanOrEqual(9);
     expect(observed.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
 
     const stopped = await server.inject({
@@ -1840,9 +1870,17 @@ describe("runtime read-only API", () => {
         sandbox_id: first.json().sandbox.sandbox_id,
         lifecycle_status: "stopped",
         authority_status: "not_live"
+      },
+      transcript: {
+        has_activity: true
       }
     });
     expect(stopped.json().sandbox.logs.at(-1).lines.join("\n")).toContain("runtime_stopped");
+    expect(stopped.json().transcript.items.map((item: { item_kind: string }) => item.item_kind))
+      .toContain("run_control_audit");
+    expect(stopped.json().transcript.items
+      .some((item: { summary: string }) => item.summary.includes("runtime_stopped")))
+      .toBe(true);
 
     await server.close();
   });
