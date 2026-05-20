@@ -3148,6 +3148,43 @@ export interface RunControlReadModel {
   audit_event: PlaceholderSummary;
 }
 
+export type TradingRunTranscriptItemKind =
+  | "run_control_command"
+  | "run_control_decision"
+  | "run_control_audit"
+  | "sandbox_lifecycle"
+  | "sandbox_heartbeat"
+  | "sandbox_log"
+  | "order_request"
+  | "gateway_result"
+  | "execution_result";
+
+export interface TradingRunTranscriptItemReadModel {
+  item_id: string;
+  item_kind: TradingRunTranscriptItemKind;
+  occurred_at: string;
+  label: string;
+  summary: string;
+  ref?: Ref;
+  authority_status: string;
+  lifecycle_status?: TradingRunLifecycleStatus;
+}
+
+export interface TradingRunTranscriptReadModel {
+  transcript_kind: "trading_run_transcript";
+  has_activity: boolean;
+  item_count: number;
+  latest_item: TradingRunTranscriptItemReadModel | null;
+  items: TradingRunTranscriptItemReadModel[];
+  authority_status: "not_live";
+  no_authority: {
+    live_exchange_authority: false;
+    private_read_authority: false;
+    order_submission_authority: false;
+    credentials: false;
+  };
+}
+
 export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   trading_system?: {
     system_id: string;
@@ -3233,6 +3270,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
     ledger?: LedgerSourceRecordsReadModel;
     run_control?: RunControlReadModel;
     sandbox?: SandboxDetailReadModel;
+    transcript?: TradingRunTranscriptReadModel;
   };
   trading_substrate?: TradingSubstrateReadModel;
   trace: PlaceholderSummary;

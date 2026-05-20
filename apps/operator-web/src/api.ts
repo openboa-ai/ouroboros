@@ -136,6 +136,7 @@ export interface TradingRunOutcome {
   trading_system?: CandidateInspectReadModel["trading_system"];
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
   sandbox?: SandboxDetailReadModel;
+  transcript?: CandidateInspectReadModel["runtime"]["transcript"];
   order_request: LedgerReadModel["latest_order_request"];
   gateway_result: LedgerReadModel["latest_gateway_result"];
   execution_result: LedgerReadModel["latest_execution_result"];
@@ -151,6 +152,7 @@ export interface TradingRunObserveOutcome {
   ledger?: LedgerReadModel;
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
   sandbox?: SandboxDetailReadModel;
+  transcript?: CandidateInspectReadModel["runtime"]["transcript"];
 }
 
 export interface TradingRunStopOutcome {
@@ -161,6 +163,7 @@ export interface TradingRunStopOutcome {
   ledger?: LedgerReadModel;
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
   sandbox?: SandboxDetailReadModel;
+  transcript?: CandidateInspectReadModel["runtime"]["transcript"];
 }
 
 export interface ImprovementOutcome {

@@ -12,6 +12,7 @@ import type {
   ReplayRunValidationStateReadModel,
   RunControlReadModel,
   SandboxDetailReadModel,
+  TradingRunTranscriptReadModel,
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
@@ -864,6 +865,8 @@ export function CandidateDetail({
           {tradingRunError && <div className="inline-status error">{tradingRunError}</div>}
         </InfoSection>
 
+        <TradingRunTranscriptSection transcript={candidate.runtime.transcript} />
+
         <SandboxSection sandbox={candidate.runtime.sandbox} />
 
         <TradingGatewayContractSection
@@ -944,6 +947,49 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
       <Field label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
       <Field label="Command evidence" value={String(sandbox.command_evidence.length)} />
       <Field label="Authority" value={sandbox.authority_status} />
+    </InfoSection>
+  );
+}
+
+function TradingRunTranscriptSection({
+  transcript
+}: {
+  transcript?: TradingRunTranscriptReadModel;
+}) {
+  const statusLabel = transcript?.has_activity
+    ? `${transcript.item_count} items`
+    : "none";
+
+  return (
+    <InfoSection title="Trading Run Transcript">
+      <div className={`evaluation-status ${transcript?.has_activity ? "counted" : "neutral"}`}>
+        <span>Readback</span>
+        <strong>{statusLabel}</strong>
+        <span>{transcript?.authority_status ?? "not_live"}</span>
+      </div>
+      <Field label="Items" value={String(transcript?.item_count ?? 0)} />
+      <Field label="Latest" value={transcript?.latest_item?.label ?? "none"} />
+      <Field label="Authority" value={transcript?.authority_status ?? "not_live"} />
+
+      {transcript?.items.length ? (
+        transcript.items.map((item) => (
+          <div className="evaluation-block" key={item.item_id}>
+            <h4>{item.label}</h4>
+            <Field label="When" value={item.occurred_at} />
+            <Field label="Kind" value={item.item_kind} />
+            <Field label="Summary" value={item.summary} />
+            {item.ref && <Field label="Ref" value={formatRef(item.ref)} />}
+            {item.lifecycle_status && <Field label="Lifecycle" value={item.lifecycle_status} />}
+            <Field label="Authority" value={item.authority_status} />
+          </div>
+        ))
+      ) : (
+        <div className="evaluation-block">
+          <h4>Transcript</h4>
+          <Field label="Status" value="none" />
+          <Field label="Authority" value="not_live" />
+        </div>
+      )}
     </InfoSection>
   );
 }

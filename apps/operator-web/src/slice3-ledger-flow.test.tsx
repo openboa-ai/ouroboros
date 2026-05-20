@@ -99,10 +99,19 @@ describe("Slice 3 trading run MLP flow", () => {
           adapter_kind: "deterministic_test",
           lifecycle_status: "running",
           authority_status: "not_live"
+        },
+        transcript: {
+          transcript_kind: "trading_run_transcript",
+          has_activity: true,
+          authority_status: "not_live"
         }
       });
+      expect(outcome.transcript.item_count).toBeGreaterThanOrEqual(9);
       expect(outcome.sandbox.runtime_ref.id).toBe(outcome.trading_run_id);
       expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
+      expect(outcome.transcript.items.map((item: { item_kind: string }) => item.item_kind)).toEqual(
+        expect.arrayContaining(["order_request", "gateway_result", "execution_result", "sandbox_heartbeat"])
+      );
 
       const orderIntent = await readStoreJson<OrderRequestRecord>(
         "order-requests",
@@ -154,6 +163,10 @@ describe("Slice 3 trading run MLP flow", () => {
         sandbox_id: outcome.sandbox.sandbox_id,
         lifecycle_status: "running"
       });
+      expect(candidate.runtime.transcript).toMatchObject({
+        authority_status: "not_live"
+      });
+      expect(candidate.runtime.transcript?.item_count).toBeGreaterThanOrEqual(9);
       expect(candidate.ledger).toMatchObject({
         ledger_kind: "ledger",
         has_activity: true,
@@ -188,6 +201,9 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(html).toContain(`order_request:${outcome.order_request.order_request_id}`);
       expect(html).toContain(`gateway_result:${outcome.gateway_result.gateway_result_id}`);
       expect(html).toContain("running");
+      expect(html).toContain("Trading Run Transcript");
+      expect(html).toContain("Sandbox heartbeat");
+      expect(html).toContain("Order request");
       expect(html).toContain("Sandbox");
       expect(html).toContain("deterministic_test");
       expect(html).toContain("runtime_heartbeat");
@@ -215,8 +231,12 @@ describe("Slice 3 trading run MLP flow", () => {
         },
         sandbox: {
           lifecycle_status: "running"
+        },
+        transcript: {
+          authority_status: "not_live"
         }
       });
+      expect(observed.json().transcript.item_count).toBeGreaterThanOrEqual(9);
 
       const stopped = await server.inject({
         method: "POST",
@@ -236,8 +256,14 @@ describe("Slice 3 trading run MLP flow", () => {
         sandbox: {
           sandbox_id: outcome.sandbox.sandbox_id,
           lifecycle_status: "stopped"
+        },
+        transcript: {
+          has_activity: true
         }
       });
+      expect(stopped.json().transcript.items
+        .some((item: { summary: string }) => item.summary.includes("runtime_stopped")))
+        .toBe(true);
 
       const stoppedRead = await server.inject({
         method: "GET",
@@ -253,6 +279,7 @@ describe("Slice 3 trading run MLP flow", () => {
         />
       );
       expect(stoppedHtml).toContain("stopped");
+      expect(stoppedHtml).toContain("Trading Run Transcript");
       expect(stoppedHtml).toContain("runtime_stopped");
       expect(stoppedHtml).toContain("Latest control command");
     } finally {

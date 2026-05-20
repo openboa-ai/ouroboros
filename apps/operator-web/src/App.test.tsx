@@ -1108,6 +1108,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("order_request:order-request-001");
     expect(html).toContain("Execution result");
     expect(html).toContain("gateway_result:gateway-result-001");
+    expect(html).toContain("Trading Run Transcript");
+    expect(html).toContain("Sandbox heartbeat");
+    expect(html).toContain("Order request");
+    expect(html).toContain("Gateway result");
     expect(html).toContain("Sandbox");
     expect(html).toContain("deterministic_test");
     expect(html).toContain("sandbox-running-fixture");
@@ -1463,6 +1467,66 @@ function candidateWithSandbox(
     runtime: {
       ...candidate.runtime,
       runtime_lifecycle_status: "running",
+      transcript: {
+        transcript_kind: "trading_run_transcript",
+        has_activity: true,
+        item_count: 4,
+        latest_item: {
+          item_id: "gateway-result:gateway-result-001",
+          item_kind: "gateway_result",
+          occurred_at: "2026-05-20T00:00:04.000Z",
+          label: "Gateway result",
+          summary: "dry_run_only / paper_stage_only",
+          ref: { record_kind: "gateway_result", id: "gateway-result-001" },
+          authority_status: "dry_run_only"
+        },
+        items: [
+          {
+            item_id: "run-control-audit:runtime-audit-start-001",
+            item_kind: "run_control_audit",
+            occurred_at: "2026-05-20T00:00:00.000Z",
+            label: "Run Control audit",
+            summary: "Trading Run start recorded.",
+            ref: { record_kind: "runtime_audit_event", id: "runtime-audit-start-001" },
+            authority_status: "audit_only",
+            lifecycle_status: "running"
+          },
+          {
+            item_id: "sandbox-heartbeat:runtime-heartbeat-running-fixture",
+            item_kind: "sandbox_heartbeat",
+            occurred_at: "2026-05-20T00:00:01.000Z",
+            label: "Sandbox heartbeat",
+            summary: "{\"event\":\"runtime_heartbeat\",\"tick\":1}",
+            ref: { record_kind: "runtime_heartbeat", id: "runtime-heartbeat-running-fixture" },
+            authority_status: "trace_only"
+          },
+          {
+            item_id: "order-request:order-request-001",
+            item_kind: "order_request",
+            occurred_at: "2026-05-20T00:00:03.000Z",
+            label: "Order request",
+            summary: "buy / limit / 0.001 @ 60000",
+            ref: { record_kind: "order_request", id: "order-request-001" },
+            authority_status: "draft_only"
+          },
+          {
+            item_id: "gateway-result:gateway-result-001",
+            item_kind: "gateway_result",
+            occurred_at: "2026-05-20T00:00:04.000Z",
+            label: "Gateway result",
+            summary: "dry_run_only / paper_stage_only",
+            ref: { record_kind: "gateway_result", id: "gateway-result-001" },
+            authority_status: "dry_run_only"
+          }
+        ],
+        authority_status: "not_live",
+        no_authority: {
+          live_exchange_authority: false,
+          private_read_authority: false,
+          order_submission_authority: false,
+          credentials: false
+        }
+      },
       sandbox: {
         sandbox_id: "sandbox-running-fixture",
         adapter_kind: "deterministic_test",
