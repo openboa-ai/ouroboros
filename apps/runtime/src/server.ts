@@ -51,6 +51,7 @@ import {
   getTradingSystemExecutionModeContract,
   listTradingSystemExecutionModeContracts
 } from "./trading-execution-mode-contracts";
+import { recordPaperExecutionResult } from "./paper-execution";
 import { validatePaperGatewayOrderRequest } from "./trading-gateway-validation";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
@@ -1455,6 +1456,7 @@ function ledgerInputFromSandboxOutput(input: {
     );
   }
   const gatewayResult = validatePaperGatewayOrderRequest(orderRequest);
+  const executionResult = recordPaperExecutionResult(gatewayResult);
 
   return {
     idempotency_key: [
@@ -1473,9 +1475,7 @@ function ledgerInputFromSandboxOutput(input: {
       limit_price: orderRequest.limit_price
     },
     gateway_result: gatewayResult,
-    execution_result: {
-      execution_mode: "host_local"
-    },
+    execution_result: executionResult,
     created_at: orderRequest.at
   };
 }
