@@ -51,6 +51,7 @@ import {
   getTradingSystemExecutionModeContract,
   listTradingSystemExecutionModeContracts
 } from "./trading-execution-mode-contracts";
+import { validatePaperGatewayOrderRequest } from "./trading-gateway-validation";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
@@ -1371,6 +1372,7 @@ async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
     return undefined;
   }
   const candidate = await store.getCandidateForTradingRun(tradingRunId);
+
   return {
     trading_run_id: tradingRunId,
     trading_run: {
@@ -1452,6 +1454,7 @@ function ledgerInputFromSandboxOutput(input: {
       { sandbox_id: input.sandbox.sandbox_id, runtime_id: input.tradingRunId }
     );
   }
+  const gatewayResult = validatePaperGatewayOrderRequest(orderRequest);
 
   return {
     idempotency_key: [
@@ -1469,10 +1472,7 @@ function ledgerInputFromSandboxOutput(input: {
       quantity: orderRequest.quantity,
       limit_price: orderRequest.limit_price
     },
-    gateway_result: {
-      decision_outcome: "dry_run_only",
-      decision_reason: "paper_stage_only"
-    },
+    gateway_result: gatewayResult,
     execution_result: {
       execution_mode: "host_local"
     },

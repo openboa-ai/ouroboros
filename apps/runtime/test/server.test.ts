@@ -1690,7 +1690,7 @@ describe("runtime read-only API", () => {
       },
       gateway_result: {
         decision_outcome: "dry_run_only",
-        decision_reason: "paper_stage_only",
+        decision_reason: "dry_run_allowed",
         authority_status: "dry_run_only"
       },
       execution_result: {

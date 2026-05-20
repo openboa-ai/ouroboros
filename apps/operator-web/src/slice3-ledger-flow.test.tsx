@@ -82,7 +82,7 @@ describe("Slice 3 trading run MLP flow", () => {
         },
         gateway_result: {
           decision_outcome: "dry_run_only",
-          decision_reason: "paper_stage_only",
+          decision_reason: "dry_run_allowed",
           authority_status: "dry_run_only"
         },
         execution_result: {
@@ -205,7 +205,7 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(html).toContain("Ledger");
       expect(html).toContain("chain complete");
       expect(html).toContain("dry_run_only");
-      expect(html).toContain("paper_stage_only");
+      expect(html).toContain("dry_run_allowed");
       expect(html).toContain(`order_request:${outcome.order_request.order_request_id}`);
       expect(html).toContain(`gateway_result:${outcome.gateway_result.gateway_result_id}`);
       expect(html).toContain("running");
