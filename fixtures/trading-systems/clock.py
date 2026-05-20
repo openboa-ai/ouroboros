@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Minimal opaque TradingSystem artifact fixture.
 
-The fixture exposes only runtime-boundary output: heartbeat and log lines.
+The fixture exposes only runtime-boundary output: order request, heartbeat,
+and log lines.
 It intentionally contains no trading strategy schema, credentials, network
 access, provider calls, or exchange gateway behavior.
 """
@@ -60,6 +61,20 @@ def main() -> int:
     log_path = Path(args.log_file) if args.log_file else None
     heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
     tick = 0
+
+    order_request_payload = {
+        "event": "order_request",
+        "instance_id": args.instance_id,
+        "symbol": "BTCUSDT",
+        "intent_kind": "place_order",
+        "side": "buy",
+        "order_type": "limit",
+        "quantity": "0.001",
+        "limit_price": "60000",
+        "authority_status": "trace_only",
+        "at": args.start_at,
+    }
+    emit(json.dumps(order_request_payload, sort_keys=True), log_path, heartbeat_path)
 
     while not STOP_REQUESTED:
         tick += 1

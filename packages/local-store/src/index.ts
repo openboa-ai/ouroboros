@@ -367,7 +367,7 @@ export function createFixtureRecords(): FixtureItem[] {
     entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
-      declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat"],
+      declared_output_kinds: ["program_event", "runtime_log", "runtime_heartbeat", "order_request"],
       event_envelope_ref: ref("program_event_contract", "opaque-clock-program-event-v1"),
       log_contract_ref: ref("runtime_log_contract", "opaque-clock-log-v1"),
       heartbeat_contract_ref: ref("runtime_heartbeat_contract", "opaque-clock-heartbeat-v1")
@@ -3582,6 +3582,17 @@ export class LocalStore {
         });
       }
       for (const log of sandbox.logs) {
+        for (const orderRequestEvent of sandboxOrderRequestEvents(log)) {
+          items.push({
+            item_id: `sandbox-order-request:${log.log_ref.id}:${orderRequestEvent.index}`,
+            item_kind: "sandbox_order_request",
+            occurred_at: orderRequestEvent.at ?? log.captured_at,
+            label: "Sandbox order request",
+            summary: `${orderRequestEvent.symbol ?? "BTCUSDT"} ${orderRequestEvent.side ?? "none"} / ${orderRequestEvent.order_type ?? "none"} / ${orderRequestEvent.quantity ?? "none"} @ ${orderRequestEvent.limit_price ?? "none"}`,
+            ref: log.log_ref,
+            authority_status: log.authority_status
+          });
+        }
         items.push({
           item_id: `sandbox-log:${log.log_ref.id}`,
           item_kind: "sandbox_log",
@@ -4578,11 +4589,53 @@ function transcriptItemKindOrder(item: TradingRunTranscriptItemReadModel): numbe
     sandbox_lifecycle: 40,
     sandbox_heartbeat: 50,
     sandbox_log: 60,
-    order_request: 70,
-    gateway_result: 80,
-    execution_result: 90
+    sandbox_order_request: 70,
+    order_request: 80,
+    gateway_result: 90,
+    execution_result: 100
   };
   return order[item.item_kind];
+}
+
+interface SandboxOrderRequestEvent {
+  index: number;
+  symbol?: string;
+  side?: string;
+  order_type?: string;
+  quantity?: string;
+  limit_price?: string;
+  at?: string;
+}
+
+function sandboxOrderRequestEvents(
+  log: SandboxDetailReadModel["logs"][number]
+): SandboxOrderRequestEvent[] {
+  return log.lines.flatMap((line, index) => {
+    const event = parseSandboxOrderRequestEvent(line);
+    if (!event) {
+      return [];
+    }
+    return [{ ...event, index: index + 1 }];
+  });
+}
+
+function parseSandboxOrderRequestEvent(line: string): Omit<SandboxOrderRequestEvent, "index"> | undefined {
+  try {
+    const value = JSON.parse(line) as Record<string, unknown>;
+    if (value.event !== "order_request") {
+      return undefined;
+    }
+    return {
+      symbol: typeof value.symbol === "string" ? value.symbol : undefined,
+      side: typeof value.side === "string" ? value.side : undefined,
+      order_type: typeof value.order_type === "string" ? value.order_type : undefined,
+      quantity: typeof value.quantity === "string" ? value.quantity : undefined,
+      limit_price: typeof value.limit_price === "string" ? value.limit_price : undefined,
+      at: typeof value.at === "string" ? value.at : undefined
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function compareResearchFindings(a: ResearchFindingRecord, b: ResearchFindingRecord): number {

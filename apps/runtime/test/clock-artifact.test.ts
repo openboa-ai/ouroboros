@@ -44,6 +44,18 @@ describe("Python clock system code fixture", () => {
     expect(stdoutLines).toEqual([
       {
         at: "1970-01-01T00:00:00.000Z",
+        authority_status: "trace_only",
+        event: "order_request",
+        instance_id: "clock-test-alpha",
+        intent_kind: "place_order",
+        limit_price: "60000",
+        order_type: "limit",
+        quantity: "0.001",
+        side: "buy",
+        symbol: "BTCUSDT"
+      },
+      {
+        at: "1970-01-01T00:00:00.000Z",
         event: "runtime_heartbeat",
         instance_id: "clock-test-alpha",
         tick: 1

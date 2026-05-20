@@ -3155,6 +3155,7 @@ export type TradingRunTranscriptItemKind =
   | "sandbox_lifecycle"
   | "sandbox_heartbeat"
   | "sandbox_log"
+  | "sandbox_order_request"
   | "order_request"
   | "gateway_result"
   | "execution_result";
