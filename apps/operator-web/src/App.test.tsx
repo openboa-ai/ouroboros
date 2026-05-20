@@ -1080,7 +1080,7 @@ describe("CandidateDetail", () => {
   it("renders Ledger state without implying live authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
-        candidate={candidateWithLedgerSource(ledgerSourceRecords())}
+        candidate={candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))}
         tradingGatewayEnvironment={tradingGatewayEnvironment()}
         onStartTradingRun={() => undefined}
         onObserveTradingRun={() => undefined}
@@ -1108,6 +1108,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("order_request:order-request-001");
     expect(html).toContain("Execution result");
     expect(html).toContain("gateway_result:gateway-result-001");
+    expect(html).toContain("Sandbox");
+    expect(html).toContain("deterministic_test");
+    expect(html).toContain("sandbox-running-fixture");
+    expect(html).toContain("runtime_heartbeat");
     expect(html).toContain("Start trading run");
     expect(html).toContain("Observe");
     expect(html).toContain("Stop");
@@ -1447,6 +1451,52 @@ function candidateWithLedgerSource(
     runtime: {
       ...fixtureCandidate.runtime,
       ledger: ledgerSource
+    }
+  };
+}
+
+function candidateWithSandbox(
+  candidate: CandidateInspectReadModel
+): CandidateInspectReadModel {
+  return {
+    ...candidate,
+    runtime: {
+      ...candidate.runtime,
+      runtime_lifecycle_status: "running",
+      sandbox: {
+        sandbox_id: "sandbox-running-fixture",
+        adapter_kind: "deterministic_test",
+        system_code_ref: { record_kind: "system_code", id: "fixture-system-code" },
+        runtime_ref: candidate.runtime.ref,
+        sandbox_placement_ref: { record_kind: "sandbox_placement", id: "sandbox-placement-running-fixture" },
+        lifecycle_status: "running",
+        sandbox_name: "ouro-sandbox-running-fixture",
+        sandbox_ref: { record_kind: "docker_sandbox", id: "ouro-sandbox-running-fixture" },
+        created_at: "2026-05-20T00:00:00.000Z",
+        started_at: "2026-05-20T00:00:00.000Z",
+        last_heartbeat_at: "2026-05-20T00:00:01.000Z",
+        log_refs: [{ record_kind: "sandbox_log", id: "sandbox-log-running-fixture" }],
+        heartbeat_refs: [{ record_kind: "runtime_heartbeat", id: "runtime-heartbeat-running-fixture" }],
+        command_evidence_refs: [],
+        authority_status: "not_live",
+        logs: [
+          {
+            log_ref: { record_kind: "sandbox_log", id: "sandbox-log-running-fixture" },
+            lines: ["{\"event\":\"runtime_heartbeat\",\"tick\":1}"],
+            captured_at: "2026-05-20T00:00:01.000Z",
+            authority_status: "trace_only"
+          }
+        ],
+        heartbeats: [
+          {
+            heartbeat_ref: { record_kind: "runtime_heartbeat", id: "runtime-heartbeat-running-fixture" },
+            heartbeat_line: "{\"event\":\"runtime_heartbeat\",\"tick\":1}",
+            observed_at: "2026-05-20T00:00:01.000Z",
+            authority_status: "trace_only"
+          }
+        ],
+        command_evidence: []
+      }
     }
   };
 }

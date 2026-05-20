@@ -38,9 +38,13 @@ import type {
   PublicMarketLivenessSurfaceRecord,
   SystemCodeRecord,
   RuntimeAuditEventRecord,
+  RuntimeHeartbeatRecord,
   RunControlAuditInput,
   RunControlCommandRecord,
   RunControlDecisionRecord,
+  SandboxLogRecord,
+  SandboxPlacementRecord,
+  SandboxRecord,
   StageBindingRecord,
   TracePlaceholderRecord,
   TradingEvaluationResultRecord,
@@ -1798,6 +1802,88 @@ describe("LocalStore", () => {
     await expect(countJsonFiles("run-control-commands", "items")).resolves.toBe(2);
     await expect(countJsonFiles("run-control-decisions", "items")).resolves.toBe(2);
     await expect(countJsonFiles("runtime-audit-events", "items")).resolves.toBe(2);
+  });
+
+  it("projects a linked Sandbox detail into candidate inspect read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate?.system_code?.ref) {
+      throw new Error("expected fixture candidate system code");
+    }
+
+    const sandboxId = "sandbox-fixture-trading-run-readback";
+    const placement: SandboxPlacementRecord = {
+      record_kind: "sandbox_placement",
+      version: 1,
+      sandbox_placement_id: "sandbox-placement-fixture-trading-run-readback",
+      placement_kind: "containerized_remote",
+      tooling_kind: "docker_sandbox",
+      sandbox_template_ref: { record_kind: "sandbox_template", id: "fixture-sandbox-template" },
+      authority_status: "not_launched"
+    };
+    const log: SandboxLogRecord = {
+      record_kind: "sandbox_log",
+      version: 1,
+      sandbox_log_id: "sandbox-log-fixture-trading-run-readback-start",
+      sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+      lines: ["{\"event\":\"runtime_heartbeat\",\"tick\":1}"],
+      captured_at: "2026-05-20T00:00:01.000Z",
+      authority_status: "trace_only"
+    };
+    const heartbeat: RuntimeHeartbeatRecord = {
+      record_kind: "runtime_heartbeat",
+      version: 1,
+      runtime_heartbeat_id: "runtime-heartbeat-fixture-trading-run-readback-001",
+      sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+      heartbeat_line: "{\"event\":\"runtime_heartbeat\",\"tick\":1}",
+      observed_at: "2026-05-20T00:00:01.000Z",
+      authority_status: "trace_only"
+    };
+    const sandbox: SandboxRecord = {
+      record_kind: "sandbox",
+      version: 1,
+      sandbox_id: sandboxId,
+      adapter_kind: "deterministic_test",
+      system_code_ref: candidate.system_code.ref,
+      runtime_ref: candidate.runtime.ref,
+      sandbox_placement_ref: { record_kind: "sandbox_placement", id: placement.sandbox_placement_id },
+      lifecycle_status: "running",
+      sandbox_name: "ouro-fixture-trading-run-readback",
+      sandbox_ref: { record_kind: "docker_sandbox", id: "ouro-fixture-trading-run-readback" },
+      created_at: "2026-05-20T00:00:00.000Z",
+      started_at: "2026-05-20T00:00:00.000Z",
+      last_heartbeat_at: heartbeat.observed_at,
+      log_refs: [{ record_kind: "sandbox_log", id: log.sandbox_log_id }],
+      heartbeat_refs: [{ record_kind: "runtime_heartbeat", id: heartbeat.runtime_heartbeat_id }],
+      authority_status: "not_live"
+    };
+
+    await store.recordSandboxStart({
+      instance: sandbox,
+      placement,
+      logs: [log],
+      heartbeats: [heartbeat]
+    });
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.runtime.sandbox).toMatchObject({
+      sandbox_id: sandboxId,
+      adapter_kind: "deterministic_test",
+      runtime_ref: { id: candidate.runtime.ref.id },
+      lifecycle_status: "running",
+      logs: [
+        {
+          lines: ["{\"event\":\"runtime_heartbeat\",\"tick\":1}"]
+        }
+      ],
+      heartbeats: [
+        {
+          heartbeat_line: "{\"event\":\"runtime_heartbeat\",\"tick\":1}"
+        }
+      ]
+    });
+    expect(projected?.runtime.placement.ref.id).toBe(placement.sandbox_placement_id);
   });
 
   it("rejects invalid runtime control audit commands without creating records", async () => {

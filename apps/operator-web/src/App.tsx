@@ -11,6 +11,7 @@ import type {
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
   RunControlReadModel,
+  SandboxDetailReadModel,
   CandidateSummaryReadModel,
   OrderFillSurfaceReadModel,
   PlaceholderSummary,
@@ -863,6 +864,8 @@ export function CandidateDetail({
           {tradingRunError && <div className="inline-status error">{tradingRunError}</div>}
         </InfoSection>
 
+        <SandboxSection sandbox={candidate.runtime.sandbox} />
+
         <TradingGatewayContractSection
           contract={candidate.trading_substrate?.latest_trading_gateway_contract}
         />
@@ -905,6 +908,43 @@ export function CandidateDetail({
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
+  if (!sandbox) {
+    return (
+      <InfoSection title="Sandbox">
+        <div className="evaluation-status neutral">
+          <span>Lifecycle</span>
+          <strong>not linked</strong>
+          <span>not_live</span>
+        </div>
+      </InfoSection>
+    );
+  }
+
+  const latestLog = sandbox.logs.at(-1);
+  const latestHeartbeat = sandbox.heartbeats.at(-1);
+  return (
+    <InfoSection title="Sandbox">
+      <div className={`evaluation-status ${sandbox.lifecycle_status === "running" ? "counted" : "neutral"}`}>
+        <span>Lifecycle</span>
+        <strong>{sandbox.lifecycle_status}</strong>
+        <span>{sandbox.authority_status}</span>
+      </div>
+      <Field label="Ref" value={sandbox.sandbox_id} />
+      <Field label="Adapter" value={sandbox.adapter_kind} />
+      <Field label="Name" value={sandbox.sandbox_name} />
+      <Field label="Runtime" value={sandbox.runtime_ref ? formatRef(sandbox.runtime_ref) : "none"} />
+      <Field label="System Code" value={formatRef(sandbox.system_code_ref)} />
+      <Field label="Placement" value={formatRef(sandbox.sandbox_placement_ref)} />
+      <Field label="Last heartbeat" value={sandbox.last_heartbeat_at ?? "none"} />
+      <Field label="Logs" value={latestLog?.lines.join(" / ") ?? "none"} />
+      <Field label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
+      <Field label="Command evidence" value={String(sandbox.command_evidence.length)} />
+      <Field label="Authority" value={sandbox.authority_status} />
+    </InfoSection>
   );
 }
 

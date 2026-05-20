@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
+  CandidateInspectReadModel,
   CandidateSummaryReadModel,
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
@@ -11,6 +12,7 @@ import type {
   Ref,
   RunControlAuditInput,
   SandboxAdapterKind,
+  SandboxDetailReadModel,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
@@ -871,6 +873,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           reasonSummary: "Operator requested trading run start.",
           message: "Trading run start recorded."
         }));
+        await ensureTradingRunSandbox({
+          store,
+          sandboxAdapter: sandboxAdapters.deterministic_test,
+          candidate,
+          tradingRunId,
+          candidateVersionId
+        });
 
         const response = await tradingRunResponse(store, tradingRunId);
         if (!response?.ledger) {
@@ -952,6 +961,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         reasonSummary: "Operator requested trading run stop.",
         message: "Trading run stop recorded."
       }));
+      await stopLinkedTradingRunSandbox({
+        store,
+        sandboxAdapters,
+        tradingRunId: request.params.run_id
+      });
 
       const response = await tradingRunResponse(store, request.params.run_id);
       return reply.code(201).send({
@@ -1384,8 +1398,83 @@ async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
     },
     trading_system: candidate?.trading_system,
     ledger: candidate?.ledger,
-    run_control: candidate?.runtime.run_control
+    run_control: candidate?.runtime.run_control,
+    sandbox: candidate?.runtime.sandbox
   };
+}
+
+async function ensureTradingRunSandbox(input: {
+  store: LocalStore;
+  sandboxAdapter: SandboxAdapter;
+  candidate: CandidateInspectReadModel;
+  tradingRunId: string;
+  candidateVersionId: string;
+}): Promise<SandboxDetailReadModel> {
+  const existing = await linkedTradingRunSandbox(input.store, input.tradingRunId);
+  if (existing?.lifecycle_status === "running") {
+    return existing;
+  }
+
+  const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
+  const artifact = await input.store.getSystemCode(systemCodeId);
+  if (!artifact) {
+    throw new LocalStoreError(
+      "system_code_not_found",
+      `system code ${systemCodeId} not found`,
+      { system_code_id: systemCodeId }
+    );
+  }
+
+  const idempotencyKey = [
+    "trading-run-sandbox",
+    input.tradingRunId,
+    input.candidateVersionId
+  ].join(":");
+  const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
+  const adapterResult = await input.sandboxAdapter.startArtifactInstance({
+    artifact,
+    instance_id: sandboxId,
+    sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 44)}`,
+    runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
+    sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
+    created_at: new Date().toISOString(),
+    test_ticks: 2,
+    interval_ms: 1_000
+  });
+  return (await input.store.recordSandboxStart(adapterResult)).sandbox;
+}
+
+async function stopLinkedTradingRunSandbox(input: {
+  store: LocalStore;
+  sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter>;
+  tradingRunId: string;
+}): Promise<SandboxDetailReadModel | undefined> {
+  const sandbox = await linkedTradingRunSandbox(input.store, input.tradingRunId);
+  if (!sandbox || !shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+    return sandbox;
+  }
+
+  const observations = await input.sandboxAdapters[sandbox.adapter_kind]
+    .stopArtifactInstance(sandbox);
+  return (await input.store.stopSandbox(
+    {
+      sandbox_id: sandbox.sandbox_id,
+      stopped_at: observations.stopped_at,
+      removed_at: observations.removed_at
+    },
+    observations
+  )).sandbox;
+}
+
+async function linkedTradingRunSandbox(
+  store: LocalStore,
+  tradingRunId: string
+): Promise<SandboxDetailReadModel | undefined> {
+  const tradingRun = await store.getTradingRun(tradingRunId);
+  if (!tradingRun?.sandbox_ref) {
+    return undefined;
+  }
+  return store.getSandbox(tradingRun.sandbox_ref.id);
 }
 
 function tradingRunLifecycleAuditInput(input: {

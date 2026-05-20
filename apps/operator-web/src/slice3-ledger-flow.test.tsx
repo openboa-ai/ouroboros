@@ -94,8 +94,15 @@ describe("Slice 3 trading run MLP flow", () => {
         ledger: {
           ledger_kind: "ledger",
           chain_complete: true
+        },
+        sandbox: {
+          adapter_kind: "deterministic_test",
+          lifecycle_status: "running",
+          authority_status: "not_live"
         }
       });
+      expect(outcome.sandbox.runtime_ref.id).toBe(outcome.trading_run_id);
+      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
 
       const orderIntent = await readStoreJson<OrderRequestRecord>(
         "order-requests",
@@ -143,6 +150,10 @@ describe("Slice 3 trading run MLP flow", () => {
         action: "start",
         status: "decided"
       });
+      expect(candidate.runtime.sandbox).toMatchObject({
+        sandbox_id: outcome.sandbox.sandbox_id,
+        lifecycle_status: "running"
+      });
       expect(candidate.ledger).toMatchObject({
         ledger_kind: "ledger",
         has_activity: true,
@@ -177,6 +188,9 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(html).toContain(`order_request:${outcome.order_request.order_request_id}`);
       expect(html).toContain(`gateway_result:${outcome.gateway_result.gateway_result_id}`);
       expect(html).toContain("running");
+      expect(html).toContain("Sandbox");
+      expect(html).toContain("deterministic_test");
+      expect(html).toContain("runtime_heartbeat");
       expect(html).toContain("Start trading run");
       expect(html).toContain("Observe");
       expect(html).toContain("Stop");
@@ -198,6 +212,9 @@ describe("Slice 3 trading run MLP flow", () => {
         },
         ledger: {
           chain_complete: true
+        },
+        sandbox: {
+          lifecycle_status: "running"
         }
       });
 
@@ -215,6 +232,10 @@ describe("Slice 3 trading run MLP flow", () => {
           latest_command: {
             action: "stop"
           }
+        },
+        sandbox: {
+          sandbox_id: outcome.sandbox.sandbox_id,
+          lifecycle_status: "stopped"
         }
       });
 
@@ -232,6 +253,7 @@ describe("Slice 3 trading run MLP flow", () => {
         />
       );
       expect(stoppedHtml).toContain("stopped");
+      expect(stoppedHtml).toContain("runtime_stopped");
       expect(stoppedHtml).toContain("Latest control command");
     } finally {
       await server.close();
