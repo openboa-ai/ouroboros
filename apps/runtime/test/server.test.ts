@@ -1697,6 +1697,7 @@ describe("runtime read-only API", () => {
         stage: "paper",
         execution_mode: "host_local",
         status: "dry_run_recorded",
+        result_reason: "dry_run_allowed",
         authority_status: "dry_run_only"
       },
       trading_gateway_environment: {

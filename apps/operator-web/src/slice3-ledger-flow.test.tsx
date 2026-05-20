@@ -89,6 +89,7 @@ describe("Slice 3 trading run MLP flow", () => {
           stage: "paper",
           execution_mode: "host_local",
           status: "dry_run_recorded",
+          result_reason: "dry_run_allowed",
           authority_status: "dry_run_only"
         },
         ledger: {
