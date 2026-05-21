@@ -11,6 +11,7 @@ import type {
   Ref
 } from "@ouroboros/domain";
 import type { ImprovementProposalProviderAdapter } from "./runtime-provider-adapter";
+import { safeId } from "../safe-id";
 
 const execFileAsync = promisify(execFile);
 const maxProviderOutputBytes = 10 * 1024 * 1024;
@@ -157,23 +158,28 @@ export class CodexCliImprovementProposalProviderAdapter implements ImprovementPr
     const requestFile = path.join(runDir, "provider-request.json");
     const promptFile = path.join(runDir, "provider-prompt.txt");
     const commandFile = path.join(runDir, "provider-command.json");
+    const requestManifest = `${JSON.stringify({
+      artifact_kind: "codex_cli_request_audit",
+      provider: "codex-improvement-proposal-provider",
+      request_redacted: true
+    }, null, 2)}\n`;
+    const promptManifest = [
+      "Return only JSON matching the provided schema.",
+      "Prompt redacted; executable prompt is passed directly to Codex CLI."
+    ].join("\n");
+    const commandManifest = `${JSON.stringify({
+      command: this.command,
+      cwd: this.workingDirectory,
+      schema_path: this.schemaPath,
+      args_redacted: true,
+      timeout_ms: this.timeoutMs
+    }, null, 2)}\n`;
 
     await mkdir(runDir, { recursive: true });
     await rm(outputFile, { force: true });
-    await writeFile(requestFile, `${JSON.stringify(request, null, 2)}\n`, "utf8");
-    await writeFile(promptFile, `${prompt}\n`, "utf8");
-    await writeFile(
-      commandFile,
-      `${JSON.stringify({
-        command: this.command,
-        args: commandArgs,
-        cwd: this.workingDirectory,
-        schema_path: this.schemaPath,
-        output_path: outputFile,
-        timeout_ms: this.timeoutMs
-      }, null, 2)}\n`,
-      "utf8"
-    );
+    await writeFile(requestFile, requestManifest, "utf8");
+    await writeFile(promptFile, `${promptManifest}\n`, "utf8");
+    await writeFile(commandFile, commandManifest, "utf8");
 
     return {
       outputFile,
@@ -325,9 +331,4 @@ function debugArtifactRefs(artifacts: CodexImprovementProposalRunArtifacts): Ref
 
 function ref(record_kind: string, id: string): Ref {
   return { record_kind, id };
-}
-
-function safeId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.slice(0, 96) || "empty";
 }

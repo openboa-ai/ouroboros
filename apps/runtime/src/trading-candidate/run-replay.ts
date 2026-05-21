@@ -12,6 +12,7 @@ import {
 import { defaultReplayTradingScenarioSet } from "../trading-research/replay-trading-api-provider";
 import { runTradingReplaySet } from "../trading-research/replay-set-runner";
 import type { ReplayTradingScenario, TradingArtifactRunnerKind } from "../trading-research/types";
+import { safeId as safePathComponentId } from "../safe-id";
 
 export const DEFAULT_CANDIDATE_ROOT = path.join(".ouroboros", "trading-system-candidates");
 export const DEFAULT_RUN_ROOT = path.join(".ouroboros", "trading-system-replay-runs");
@@ -584,7 +585,7 @@ function timestampId(date: Date): string {
 }
 
 function safeId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._:-]+/g, "-").replace(/^-+|-+$/g, "") || "empty";
+  return safePathComponentId(value, { extraSafeChars: [".", ":"] });
 }
 
 function validatePathSafeId(value: string, label: string): void {

@@ -1,4 +1,5 @@
 import type {
+  CandidateEvaluationRunOutcome,
   ImprovementReadModel,
   LedgerInput,
   LedgerReadModel,
@@ -185,6 +186,14 @@ export interface ImprovementOutcome {
   };
   improvement: ImprovementReadModel;
 }
+
+export type FullCycleOutcome = Omit<TradingRunOutcome, "status"> & {
+  status: "completed";
+  system_id: string;
+  candidate_version_id: string;
+  evaluation: CandidateEvaluationRunOutcome;
+  improvement: ImprovementReadModel;
+};
 
 export type RunControlCommandPayload = Omit<RunControlAuditInput, "candidate_id">;
 
@@ -443,6 +452,26 @@ export async function recordImprovement(
     throw new Error(`Failed to record improvement for ${candidate.candidate_id}: ${response.status}`);
   }
   return (await response.json()) as ImprovementOutcome;
+}
+
+export async function runFullCycle(
+  candidate: CandidateInspectReadModel,
+  input: StartTradingRunInput = {}
+): Promise<FullCycleOutcome> {
+  const hasBody = input.paper_order_request !== undefined;
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/full-cycle-runs`, {
+    method: "POST",
+    ...(hasBody
+      ? {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input)
+        }
+      : {})
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to run full cycle for ${candidate.candidate_id}: ${response.status}`);
+  }
+  return (await response.json()) as FullCycleOutcome;
 }
 
 export async function recordRunControl(

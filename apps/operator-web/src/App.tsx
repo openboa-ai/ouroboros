@@ -40,6 +40,7 @@ import {
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
+  runFullCycle as submitFullCycle,
   observeTradingRun as submitObserveTradingRun,
   runReplay as submitReplayRun,
   startTradingRun as submitTradingRun,
@@ -67,6 +68,7 @@ interface AppState {
   replayRunValidationState?: ReplayRunValidationStateReadModel;
   error?: string;
   loading: boolean;
+  runningFullCycle: boolean;
   runningTradingRun: boolean;
   recordingImprovement: boolean;
   recordingRunControl: boolean;
@@ -76,6 +78,8 @@ interface AppState {
   replayRunMessage?: string;
   tradingRunError?: string;
   tradingRunMessage?: string;
+  fullCycleError?: string;
+  fullCycleMessage?: string;
   improvementError?: string;
   improvementMessage?: string;
   runtimeControlError?: string;
@@ -90,6 +94,7 @@ export function App() {
     executionModes: [],
     replayRuns: [],
     loading: true,
+    runningFullCycle: false,
     runningTradingRun: false,
     recordingImprovement: false,
     recordingRunControl: false,
@@ -125,6 +130,7 @@ export function App() {
             replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
             replayRunValidationState: replayRunSelection.replayRunValidationState,
             loading: false,
+            runningFullCycle: false,
             runningTradingRun: false,
             recordingImprovement: false,
             recordingRunControl: false,
@@ -139,6 +145,7 @@ export function App() {
             executionModes: [],
             replayRuns: [],
             loading: false,
+            runningFullCycle: false,
             runningTradingRun: false,
             recordingImprovement: false,
             recordingRunControl: false,
@@ -161,6 +168,8 @@ export function App() {
       loading: true,
       tradingRunError: undefined,
       tradingRunMessage: undefined,
+      fullCycleError: undefined,
+      fullCycleMessage: undefined,
       improvementError: undefined,
       improvementMessage: undefined,
       runtimeControlError: undefined,
@@ -278,6 +287,52 @@ export function App() {
         ...current,
         runningCandidateReplay: false,
         replayRunError: error instanceof Error ? error.message : "Unknown candidate replay error"
+      }));
+    }
+  }
+
+  async function runFullCycle() {
+    const candidate = state.selected;
+    if (!candidate || state.runningFullCycle) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      runningFullCycle: true,
+      fullCycleError: undefined,
+      fullCycleMessage: undefined,
+      tradingRunError: undefined,
+      tradingRunMessage: undefined,
+      improvementError: undefined,
+      improvementMessage: undefined
+    }));
+    try {
+      const outcome = await submitFullCycle(candidate);
+      const selected = await fetchCandidate(candidate.candidate_id);
+      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(
+        candidate.candidate_id,
+        replayRuns,
+        state.selectedReplayRunId
+      );
+      setState((current) => ({
+        ...current,
+        selected,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
+        runningFullCycle: false,
+        fullCycleMessage: `full cycle completed: ${outcome.trading_run.lifecycle_status ?? "running"}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningFullCycle: false,
+        fullCycleError: error instanceof Error ? error.message : "Unknown full cycle error"
       }));
     }
   }
@@ -554,6 +609,9 @@ export function App() {
             onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
               ? () => void recordReplayRun()
               : undefined}
+            onRunFullCycle={state.selected.fixture_notice.mode === "fixture_convenience_mode"
+              ? () => void runFullCycle()
+              : undefined}
             onStartTradingRun={state.selected.ledger
               ? () => void startTradingRun()
               : undefined}
@@ -571,6 +629,7 @@ export function App() {
               ? () => void recordRunControl()
               : undefined}
             onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
+            runningFullCycle={state.runningFullCycle}
             runningTradingRun={state.runningTradingRun}
             recordingImprovement={state.recordingImprovement}
             recordingRunControl={state.recordingRunControl}
@@ -578,6 +637,8 @@ export function App() {
             runningCandidateReplay={state.runningCandidateReplay}
             replayRunError={state.replayRunError}
             replayRunMessage={state.replayRunMessage}
+            fullCycleError={state.fullCycleError}
+            fullCycleMessage={state.fullCycleMessage}
             tradingRunError={state.tradingRunError}
             tradingRunMessage={state.tradingRunMessage}
             improvementError={state.improvementError}
@@ -666,6 +727,7 @@ export function CandidateDetail({
   executionModes = [],
   onSelectReplayRun,
   onRunCandidateReplay,
+  onRunFullCycle,
   onStartTradingRun,
   onStartRejectedPaperOrder,
   onObserveTradingRun,
@@ -673,6 +735,7 @@ export function CandidateDetail({
   onRecordImprovement,
   onRecordRunControl,
   onRecordPrivateReadinessPosture,
+  runningFullCycle = false,
   runningCandidateReplay = false,
   runningTradingRun = false,
   recordingImprovement = false,
@@ -680,6 +743,8 @@ export function CandidateDetail({
   recordingPrivateReadinessPosture = false,
   replayRunError,
   replayRunMessage,
+  fullCycleError,
+  fullCycleMessage,
   tradingRunError,
   tradingRunMessage,
   improvementError,
@@ -700,6 +765,7 @@ export function CandidateDetail({
   executionModes?: TradingSystemExecutionModeContractReadModel[];
   onSelectReplayRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
+  onRunFullCycle?: () => void;
   onStartTradingRun?: () => void;
   onStartRejectedPaperOrder?: () => void;
   onObserveTradingRun?: () => void;
@@ -707,6 +773,7 @@ export function CandidateDetail({
   onRecordImprovement?: () => void;
   onRecordRunControl?: () => void;
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
+  runningFullCycle?: boolean;
   runningCandidateReplay?: boolean;
   runningTradingRun?: boolean;
   recordingImprovement?: boolean;
@@ -714,6 +781,8 @@ export function CandidateDetail({
   recordingPrivateReadinessPosture?: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
+  fullCycleError?: string;
+  fullCycleMessage?: string;
   tradingRunError?: string;
   tradingRunMessage?: string;
   improvementError?: string;
@@ -752,6 +821,14 @@ export function CandidateDetail({
       <TradingExecutionModesSection modes={executionModes} />
 
       <div className="section-grid">
+        <FullCycleSection
+          candidate={candidate}
+          onRunFullCycle={onRunFullCycle}
+          runningFullCycle={runningFullCycle}
+          fullCycleError={fullCycleError}
+          fullCycleMessage={fullCycleMessage}
+        />
+
         <InfoSection title="Trading System">
           <Field label="Status" value={candidate.status} />
           <Field label="Active version" value={candidate.active_version_id} />
@@ -932,6 +1009,74 @@ export function CandidateDetail({
         </InfoSection>
       </div>
     </article>
+  );
+}
+
+function FullCycleSection({
+  candidate,
+  onRunFullCycle,
+  runningFullCycle,
+  fullCycleError,
+  fullCycleMessage
+}: {
+  candidate: CandidateInspectReadModel;
+  onRunFullCycle?: () => void;
+  runningFullCycle: boolean;
+  fullCycleError?: string;
+  fullCycleMessage?: string;
+}) {
+  const evaluationStatus = candidate.evaluation.latest_run?.status ?? "none";
+  const improvementStatus = candidate.improvement?.chain_complete
+    ? "chain complete"
+    : candidate.improvement?.has_activity
+      ? "incomplete"
+      : "none";
+  const tradingRunStatus = candidate.runtime.runtime_lifecycle_status ?? "registered";
+  const sandboxStatus = candidate.runtime.sandbox?.lifecycle_status ?? "none";
+  const gatewayStatus = candidate.ledger?.latest_gateway_result?.decision_outcome ?? "none";
+  const ledgerStatus = candidate.ledger?.chain_complete
+    ? "chain complete"
+    : candidate.ledger?.has_activity
+      ? "incomplete"
+      : "none";
+  const cycleComplete = Boolean(
+    candidate.evaluation.has_runs &&
+    candidate.improvement?.chain_complete &&
+    candidate.runtime.sandbox &&
+    candidate.ledger?.chain_complete
+  );
+
+  return (
+    <InfoSection title="Full Cycle">
+      <div className={`evaluation-status ${cycleComplete ? "counted" : "neutral"}`}>
+        <span>Trading System to Ledger</span>
+        <strong>{cycleComplete ? "cycle complete" : "ready"}</strong>
+        <span>not_live</span>
+      </div>
+      <Field label="Trading System" value={candidate.trading_system?.summary ?? candidate.display_name} />
+      <Field label="System Code" value={candidate.system_code?.ref ? formatRef(candidate.system_code.ref) : formatRef(candidate.program.ref)} />
+      <Field label="Evaluation" value={evaluationStatus} />
+      <Field label="Improvement" value={improvementStatus} />
+      <Field label="Trading Run" value={tradingRunStatus} />
+      <Field label="Sandbox" value={sandboxStatus} />
+      <Field label="Gateway" value={gatewayStatus} />
+      <Field label="Ledger" value={ledgerStatus} />
+      {onRunFullCycle && (
+        <div className="runtime-command">
+          <button
+            className="runtime-command-button"
+            type="button"
+            onClick={onRunFullCycle}
+            disabled={runningFullCycle}
+          >
+            {runningFullCycle ? "Running full cycle" : "Run full cycle"}
+          </button>
+          <span>fixture_paper / not_live</span>
+        </div>
+      )}
+      {fullCycleMessage && <div className="inline-status">{fullCycleMessage}</div>}
+      {fullCycleError && <div className="inline-status error">{fullCycleError}</div>}
+    </InfoSection>
   );
 }
 

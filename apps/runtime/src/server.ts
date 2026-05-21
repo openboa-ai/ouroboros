@@ -58,6 +58,7 @@ import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
+import { safeId } from "./safe-id";
 
 export interface BuildServerOptions {
   store?: LocalStore;
@@ -854,46 +855,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
       const tradingRunId = candidate.runtime.ref.id;
       try {
-        const sandbox = await ensureTradingRunSandbox({
+        const outcome = await startFixtureTradingRun({
           store,
           sandboxAdapter: sandboxAdapters.deterministic_test,
           candidate,
+          systemId: request.params.system_id,
           tradingRunId,
           candidateVersionId,
-          paperOrderRequest
+          paperOrderRequest,
+          tradingGatewayEnvironment
         });
-        await store.recordLedger(ledgerInputFromSandboxOutput({
-          sandbox,
-          candidateId: request.params.system_id,
-          candidateVersionId,
-          tradingRunId,
-          paperOrderRequest
-        }));
-        await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-          idempotencyKey: `trading-run-start:${paperOrderRequest}:${tradingRunId}:${candidateVersionId}`,
-          candidateId: request.params.system_id,
-          candidateVersionId,
-          tradingRunId,
-          action: "start",
-          lifecycleStatus: "running",
-          actorId: "runtime-api",
-          reasonSummary: "Operator requested trading run start.",
-          message: "Trading run start recorded."
-        }));
 
-        const response = await tradingRunResponse(store, tradingRunId);
-        if (!response?.ledger) {
-          throw new Error("trading run response was not projected after start");
-        }
-
-        return reply.code(201).send({
-          status: "started",
-          ...response,
-          order_request: response.ledger.latest_order_request,
-          gateway_result: response.ledger.latest_gateway_result,
-          execution_result: response.ledger.latest_execution_result,
-          trading_gateway_environment: tradingGatewayEnvironment
-        });
+        return reply.code(201).send(outcome);
       } catch (error) {
         if (error instanceof LocalStoreError) {
           return reply.code(ledgerStatusCode(error.code)).send({
@@ -992,17 +965,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         request.params.system_id,
         candidateVersionId
       ].join("-");
-      const outcome = await runCodexImprovementProposalEvaluationDryRun({
+      const outcome = await recordFixtureImprovement({
         store,
-        initialize_store: false,
-        provider_adapter: new FixtureImprovementProposalProviderAdapter(),
-        parent_system_code_ref: {
-          record_kind: "system_code",
-          id: FIXTURE_SYSTEM_CODE_ID
-        },
-        idempotency_key: idempotencyKey,
-        created_at: "2026-05-18T00:00:00.000Z",
-        submitted_at: "2026-05-18T00:00:00.000Z"
+        systemId: request.params.system_id,
+        candidateVersionId,
+        idempotencyKey
       });
       if (outcome.status === "failed") {
         return reply.code(422).send({
@@ -1014,28 +981,116 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
 
-      await store.rebuildProjections();
-      const updatedCandidate = await store.getCandidate(request.params.system_id);
-      if (!updatedCandidate?.improvement) {
-        return reply.code(500).send({
-          error: "improvement_projection_failed",
-          system_id: request.params.system_id,
-          candidate_version_id: candidateVersionId,
-          idempotency_key: idempotencyKey
+      return reply.code(201).send(outcome);
+    }
+  );
+
+  server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
+    "/api/trading-systems/:system_id/full-cycle-runs",
+    async (request, reply) => {
+      const paperOrderRequest = startPaperOrderRequest(request.body);
+      if (!paperOrderRequest) {
+        return reply.code(400).send({
+          error: "invalid_paper_order_request",
+          allowed_values: ["valid", "rejected"]
         });
       }
 
-      return reply.code(201).send({
-        status: "evaluated",
-        idempotency_key: idempotencyKey,
-        proposal: outcome.proposal.proposal,
-        system_code: outcome.proposal.system_code,
-        lineage: outcome.proposal.lineage,
-        orchestration_run: outcome.proposal.run,
-        experiment: outcome.experiment,
-        trading_evaluation_result: outcome.evaluation_result,
-        improvement: updatedCandidate.improvement
+      const candidate = await store.getCandidate(request.params.system_id);
+      if (!candidate) {
+        return reply.code(404).send({
+          error: "trading_system_not_found",
+          system_id: request.params.system_id
+        });
+      }
+
+      const candidateVersionId = candidate.candidate_version.candidate_version_id;
+      const evaluationIdempotencyKey = [
+        "runtime-api-full-cycle-evaluation",
+        request.params.system_id,
+        candidateVersionId,
+        "backtest",
+        "host_local"
+      ].join("-");
+      const stableEvaluationRequestId = safeRouteId([
+        request.params.system_id,
+        candidateVersionId,
+        evaluationIdempotencyKey
+      ].join("-"));
+      const evaluationOutcome = await runCandidateEvaluation(store, evaluationProviderAdapter, {
+        candidate_id: request.params.system_id,
+        candidate_version_id: candidateVersionId,
+        idempotency_key: evaluationIdempotencyKey,
+        stage_binding_ref: {
+          record_kind: "stage_binding",
+          id: `stage-binding-api-full-cycle-evaluation-${stableEvaluationRequestId}`
+        },
+        trace_id: `trace-api-full-cycle-evaluation-${stableEvaluationRequestId}`,
+        execution_mode: "host_local"
       });
+      if (evaluationOutcome.status === "failed") {
+        const statusCode = evaluationOutcome.failure_reason === "candidate_not_found" ? 404 : 422;
+        return reply.code(statusCode).send({
+          error: statusCode === 404 ? "candidate_not_found" : "full_cycle_failed",
+          reason: evaluationOutcome.failure_reason,
+          system_id: request.params.system_id,
+          candidate_version_id: candidateVersionId,
+          idempotency_key: evaluationIdempotencyKey
+        });
+      }
+
+      const improvementIdempotencyKey = [
+        "runtime-api-full-cycle-improvement",
+        request.params.system_id,
+        candidateVersionId
+      ].join("-");
+      const improvementOutcome = await recordFixtureImprovement({
+        store,
+        systemId: request.params.system_id,
+        candidateVersionId,
+        idempotencyKey: improvementIdempotencyKey
+      });
+      if (improvementOutcome.status === "failed") {
+        return reply.code(422).send({
+          error: "full_cycle_failed",
+          reason: improvementOutcome.failure_reason,
+          system_id: request.params.system_id,
+          candidate_version_id: candidateVersionId,
+          idempotency_key: improvementIdempotencyKey
+        });
+      }
+
+      try {
+        const tradingRunOutcome = await startFixtureTradingRun({
+          store,
+          sandboxAdapter: sandboxAdapters.deterministic_test,
+          candidate,
+          systemId: request.params.system_id,
+          tradingRunId: candidate.runtime.ref.id,
+          candidateVersionId,
+          paperOrderRequest,
+          tradingGatewayEnvironment
+        });
+
+        return reply.code(201).send({
+          ...tradingRunOutcome,
+          status: "completed",
+          system_id: request.params.system_id,
+          candidate_version_id: candidateVersionId,
+          evaluation: evaluationOutcome.evaluation,
+          improvement: improvementOutcome.improvement
+        });
+      } catch (error) {
+        if (error instanceof LocalStoreError) {
+          return reply.code(ledgerStatusCode(error.code)).send({
+            error: "full_cycle_failed",
+            reason: error.code,
+            system_id: request.params.system_id,
+            candidate_version_id: candidateVersionId
+          });
+        }
+        throw error;
+      }
     }
   );
 
@@ -1405,6 +1460,103 @@ async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
   };
 }
 
+async function startFixtureTradingRun(input: {
+  store: LocalStore;
+  sandboxAdapter: SandboxAdapter;
+  candidate: CandidateInspectReadModel;
+  systemId: string;
+  tradingRunId: string;
+  candidateVersionId: string;
+  paperOrderRequest: PaperOrderRequestFixture;
+  tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
+}) {
+  const sandbox = await ensureTradingRunSandbox({
+    store: input.store,
+    sandboxAdapter: input.sandboxAdapter,
+    candidate: input.candidate,
+    tradingRunId: input.tradingRunId,
+    candidateVersionId: input.candidateVersionId,
+    paperOrderRequest: input.paperOrderRequest
+  });
+  await input.store.recordLedger(ledgerInputFromSandboxOutput({
+    sandbox,
+    candidateId: input.systemId,
+    candidateVersionId: input.candidateVersionId,
+    tradingRunId: input.tradingRunId,
+    paperOrderRequest: input.paperOrderRequest
+  }));
+  await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+    idempotencyKey: `trading-run-start:${input.paperOrderRequest}:${input.tradingRunId}:${input.candidateVersionId}`,
+    candidateId: input.systemId,
+    candidateVersionId: input.candidateVersionId,
+    tradingRunId: input.tradingRunId,
+    action: "start",
+    lifecycleStatus: "running",
+    actorId: "runtime-api",
+    reasonSummary: "Operator requested trading run start.",
+    message: "Trading run start recorded."
+  }));
+
+  const response = await tradingRunResponse(input.store, input.tradingRunId);
+  if (!response?.ledger) {
+    throw new Error("trading run response was not projected after start");
+  }
+
+  return {
+    status: "started",
+    ...response,
+    order_request: response.ledger.latest_order_request,
+    gateway_result: response.ledger.latest_gateway_result,
+    execution_result: response.ledger.latest_execution_result,
+    trading_gateway_environment: input.tradingGatewayEnvironment
+  } as const;
+}
+
+async function recordFixtureImprovement(input: {
+  store: LocalStore;
+  systemId: string;
+  candidateVersionId: string;
+  idempotencyKey: string;
+}) {
+  const outcome = await runCodexImprovementProposalEvaluationDryRun({
+    store: input.store,
+    initialize_store: false,
+    provider_adapter: new FixtureImprovementProposalProviderAdapter(),
+    parent_system_code_ref: {
+      record_kind: "system_code",
+      id: FIXTURE_SYSTEM_CODE_ID
+    },
+    idempotency_key: input.idempotencyKey,
+    created_at: "2026-05-18T00:00:00.000Z",
+    submitted_at: "2026-05-18T00:00:00.000Z"
+  });
+  if (outcome.status === "failed") {
+    return {
+      status: "failed",
+      idempotency_key: input.idempotencyKey,
+      failure_reason: outcome.failure_reason
+    } as const;
+  }
+
+  await input.store.rebuildProjections();
+  const updatedCandidate = await input.store.getCandidate(input.systemId);
+  if (!updatedCandidate?.improvement) {
+    throw new Error("improvement was not projected after improvement write");
+  }
+
+  return {
+    status: "evaluated",
+    idempotency_key: input.idempotencyKey,
+    proposal: outcome.proposal.proposal,
+    system_code: outcome.proposal.system_code,
+    lineage: outcome.proposal.lineage,
+    orchestration_run: outcome.proposal.run,
+    experiment: outcome.experiment,
+    trading_evaluation_result: outcome.evaluation_result,
+    improvement: updatedCandidate.improvement
+  } as const;
+}
+
 async function ensureTradingRunSandbox(input: {
   store: LocalStore;
   sandboxAdapter: SandboxAdapter;
@@ -1646,8 +1798,7 @@ function tradingRunLifecycleAuditInput(input: {
 }
 
 function safeRouteId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  const prefix = normalized.slice(0, 72) || "empty";
+  const prefix = safeId(value, { maxLength: 72 });
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
 }
