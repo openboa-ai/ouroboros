@@ -198,6 +198,7 @@ describe("Slice 3 trading run MLP flow", () => {
         <CandidateDetail
           candidate={candidate}
           onStartTradingRun={() => undefined}
+          onStartRejectedPaperOrder={() => undefined}
           onObserveTradingRun={() => undefined}
           onStopTradingRun={() => undefined}
         />
@@ -219,6 +220,7 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(html).toContain("deterministic_test");
       expect(html).toContain("runtime_heartbeat");
       expect(html).toContain("Start trading run");
+      expect(html).toContain("Run rejected paper order");
       expect(html).toContain("Observe");
       expect(html).toContain("Stop");
       expectNoOperatorActionControls(html, {
@@ -285,6 +287,7 @@ describe("Slice 3 trading run MLP flow", () => {
         <CandidateDetail
           candidate={stoppedCandidate}
           onStartTradingRun={() => undefined}
+          onStartRejectedPaperOrder={() => undefined}
           onObserveTradingRun={() => undefined}
           onStopTradingRun={() => undefined}
         />
@@ -293,6 +296,78 @@ describe("Slice 3 trading run MLP flow", () => {
       expect(stoppedHtml).toContain("Trading Run Transcript");
       expect(stoppedHtml).toContain("runtime_stopped");
       expect(stoppedHtml).toContain("Latest control command");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("renders a rejected paper order as blocked Gateway and Ledger state", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({ store });
+
+    try {
+      const recorded = await server.inject({
+        method: "POST",
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`,
+        payload: { paper_order_request: "rejected" }
+      });
+      expect(recorded.statusCode).toBe(201);
+      expect(recorded.json()).toMatchObject({
+        gateway_result: {
+          decision_outcome: "rejected",
+          decision_reason: "risk_limit_exceeded"
+        },
+        execution_result: {
+          status: "blocked",
+          result_reason: "risk_limit_exceeded"
+        }
+      });
+
+      const readback = await server.inject({
+        method: "GET",
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      });
+      expect(readback.statusCode).toBe(200);
+      const candidate = readback.json() as CandidateInspectReadModel;
+      expect(candidate.ledger).toMatchObject({
+        chain_complete: true,
+        latest_order_request: {
+          quantity: "0",
+          authority_status: "not_submitted"
+        },
+        latest_gateway_result: {
+          decision_outcome: "rejected",
+          decision_reason: "risk_limit_exceeded",
+          authority_status: "not_live"
+        },
+        latest_execution_result: {
+          status: "blocked",
+          result_reason: "risk_limit_exceeded",
+          authority_status: "not_submitted"
+        }
+      });
+
+      const html = renderToStaticMarkup(
+        <CandidateDetail
+          candidate={candidate}
+          onStartTradingRun={() => undefined}
+          onStartRejectedPaperOrder={() => undefined}
+          onObserveTradingRun={() => undefined}
+          onStopTradingRun={() => undefined}
+        />
+      );
+      expect(html).toContain("Run rejected paper order");
+      expect(html).toContain("Ledger");
+      expect(html).toContain("rejected");
+      expect(html).toContain("risk_limit_exceeded");
+      expect(html).toContain("blocked");
+      expect(html).toContain("BTCUSDT buy / limit / 0 @ 60000");
+      expect(html).toContain("Gateway result");
+      expect(html).toContain("Execution result");
+      expectNoOperatorActionControls(html, {
+        includePrivateAuthorityTerms: true,
+        allowTradingRunControls: true
+      });
     } finally {
       await server.close();
     }

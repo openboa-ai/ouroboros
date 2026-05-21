@@ -144,6 +144,12 @@ export interface TradingRunOutcome {
   trading_gateway_environment: TradingGatewayEnvironmentReadModel;
 }
 
+export type PaperOrderRequestSelection = "rejected";
+
+export interface StartTradingRunInput {
+  paper_order_request?: PaperOrderRequestSelection;
+}
+
 export interface TradingRunObserveOutcome {
   status: "observed";
   trading_run_id: string;
@@ -384,10 +390,18 @@ export async function recordLedger(
 }
 
 export async function startTradingRun(
-  candidate: CandidateInspectReadModel
+  candidate: CandidateInspectReadModel,
+  input: StartTradingRunInput = {}
 ): Promise<TradingRunOutcome> {
+  const hasBody = input.paper_order_request !== undefined;
   const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/trading-runs`, {
-    method: "POST"
+    method: "POST",
+    ...(hasBody
+      ? {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input)
+        }
+      : {})
   });
   if (!response.ok) {
     throw new Error(`Failed to start trading run for ${candidate.candidate_id}: ${response.status}`);

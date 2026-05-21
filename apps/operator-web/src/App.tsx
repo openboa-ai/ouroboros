@@ -44,6 +44,7 @@ import {
   runReplay as submitReplayRun,
   startTradingRun as submitTradingRun,
   stopTradingRun as submitStopTradingRun,
+  type PaperOrderRequestSelection,
   type PrivateReadinessPostureDraft
 } from "./api";
 import {
@@ -281,7 +282,7 @@ export function App() {
     }
   }
 
-  async function startTradingRun() {
+  async function startTradingRun(paperOrderRequest?: PaperOrderRequestSelection) {
     const candidate = state.selected;
     if (!candidate || state.runningTradingRun) {
       return;
@@ -294,7 +295,10 @@ export function App() {
       tradingRunMessage: undefined
     }));
     try {
-      const outcome = await submitTradingRun(candidate);
+      const outcome = await submitTradingRun(
+        candidate,
+        paperOrderRequest === "rejected" ? { paper_order_request: paperOrderRequest } : {}
+      );
       const selected = await fetchCandidate(candidate.candidate_id);
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
@@ -312,7 +316,9 @@ export function App() {
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         runningTradingRun: false,
-        tradingRunMessage: `started: ${outcome.trading_run.lifecycle_status ?? "running"}`
+        tradingRunMessage: paperOrderRequest === "rejected"
+          ? `rejected paper order: ${outcome.execution_result?.status ?? "blocked"}`
+          : `started: ${outcome.trading_run.lifecycle_status ?? "running"}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -551,6 +557,9 @@ export function App() {
             onStartTradingRun={state.selected.ledger
               ? () => void startTradingRun()
               : undefined}
+            onStartRejectedPaperOrder={state.selected.ledger
+              ? () => void startTradingRun("rejected")
+              : undefined}
             onObserveTradingRun={state.selected
               ? () => void observeTradingRun()
               : undefined}
@@ -658,6 +667,7 @@ export function CandidateDetail({
   onSelectReplayRun,
   onRunCandidateReplay,
   onStartTradingRun,
+  onStartRejectedPaperOrder,
   onObserveTradingRun,
   onStopTradingRun,
   onRecordImprovement,
@@ -691,6 +701,7 @@ export function CandidateDetail({
   onSelectReplayRun?: (runId: string) => void;
   onRunCandidateReplay?: () => void;
   onStartTradingRun?: () => void;
+  onStartRejectedPaperOrder?: () => void;
   onObserveTradingRun?: () => void;
   onStopTradingRun?: () => void;
   onRecordImprovement?: () => void;
@@ -826,7 +837,7 @@ export function CandidateDetail({
           <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
           <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
           <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
-          {(onStartTradingRun || onObserveTradingRun || onStopTradingRun) && (
+          {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
             <div className="runtime-command">
               {onStartTradingRun && (
                 <button
@@ -836,6 +847,16 @@ export function CandidateDetail({
                   disabled={runningTradingRun}
                 >
                   {runningTradingRun ? "Working trading run" : "Start trading run"}
+                </button>
+              )}
+              {onStartRejectedPaperOrder && (
+                <button
+                  className="runtime-command-button"
+                  type="button"
+                  onClick={onStartRejectedPaperOrder}
+                  disabled={runningTradingRun}
+                >
+                  Run rejected paper order
                 </button>
               )}
               {onObserveTradingRun && (

@@ -27,6 +27,7 @@ import type {
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
+  type PaperOrderRequestFixture,
   type SandboxAdapter
 } from "./sandboxes/sandbox-adapter";
 import {
@@ -100,6 +101,10 @@ interface RecordLedgerBody {
     completed_at?: string;
   };
   created_at?: string;
+}
+
+interface StartTradingRunBody {
+  paper_order_request?: string;
 }
 
 interface RecordRunControlBody {
@@ -827,9 +832,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   });
 
-  server.post<{ Params: { system_id: string } }>(
+  server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
     "/api/trading-systems/:system_id/trading-runs",
     async (request, reply) => {
+      const paperOrderRequest = startPaperOrderRequest(request.body);
+      if (!paperOrderRequest) {
+        return reply.code(400).send({
+          error: "invalid_paper_order_request",
+          allowed_values: ["valid", "rejected"]
+        });
+      }
+
       const candidate = await store.getCandidate(request.params.system_id);
       if (!candidate) {
         return reply.code(404).send({
@@ -842,7 +855,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const tradingRunId = candidate.runtime.ref.id;
       try {
         await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-          idempotencyKey: `trading-run-start:${tradingRunId}:${candidateVersionId}`,
+          idempotencyKey: `trading-run-start:${paperOrderRequest}:${tradingRunId}:${candidateVersionId}`,
           candidateId: request.params.system_id,
           candidateVersionId,
           tradingRunId,
@@ -857,13 +870,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           sandboxAdapter: sandboxAdapters.deterministic_test,
           candidate,
           tradingRunId,
-          candidateVersionId
+          candidateVersionId,
+          paperOrderRequest
         });
         await store.recordLedger(ledgerInputFromSandboxOutput({
           sandbox,
           candidateId: request.params.system_id,
           candidateVersionId,
-          tradingRunId
+          tradingRunId,
+          paperOrderRequest
         }));
 
         const response = await tradingRunResponse(store, tradingRunId);
@@ -1396,12 +1411,8 @@ async function ensureTradingRunSandbox(input: {
   candidate: CandidateInspectReadModel;
   tradingRunId: string;
   candidateVersionId: string;
+  paperOrderRequest: PaperOrderRequestFixture;
 }): Promise<SandboxDetailReadModel> {
-  const existing = await linkedTradingRunSandbox(input.store, input.tradingRunId);
-  if (existing?.lifecycle_status === "running") {
-    return existing;
-  }
-
   const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
   const artifact = await input.store.getSystemCode(systemCodeId);
   if (!artifact) {
@@ -1414,19 +1425,30 @@ async function ensureTradingRunSandbox(input: {
 
   const idempotencyKey = [
     "trading-run-sandbox",
+    input.paperOrderRequest,
     input.tradingRunId,
     input.candidateVersionId
   ].join(":");
   const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
+  const existing = await input.store.getSandbox(sandboxId);
+  const linked = await linkedTradingRunSandbox(input.store, input.tradingRunId);
+  if (
+    existing?.lifecycle_status === "running" &&
+    linked?.sandbox_id === existing.sandbox_id
+  ) {
+    return existing;
+  }
+
   const adapterResult = await input.sandboxAdapter.startArtifactInstance({
     artifact,
     instance_id: sandboxId,
-    sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 44)}`,
+    sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 34)}-${input.paperOrderRequest}`,
     runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
     sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
-    created_at: new Date().toISOString(),
+    created_at: existing?.created_at ?? new Date().toISOString(),
     test_ticks: 2,
-    interval_ms: 1_000
+    interval_ms: 1_000,
+    paper_order_request: input.paperOrderRequest
   });
   return (await input.store.recordSandboxStart(adapterResult)).sandbox;
 }
@@ -1446,6 +1468,7 @@ function ledgerInputFromSandboxOutput(input: {
   candidateId: string;
   candidateVersionId: string;
   tradingRunId: string;
+  paperOrderRequest: PaperOrderRequestFixture;
 }): LedgerInput {
   const orderRequest = latestSandboxOrderRequest(input.sandbox);
   if (!orderRequest) {
@@ -1461,6 +1484,7 @@ function ledgerInputFromSandboxOutput(input: {
   return {
     idempotency_key: [
       "trading-run",
+      input.paperOrderRequest,
       input.candidateId,
       input.candidateVersionId
     ].join("-"),
@@ -1478,6 +1502,16 @@ function ledgerInputFromSandboxOutput(input: {
     execution_result: executionResult,
     created_at: orderRequest.at
   };
+}
+
+function startPaperOrderRequest(body: StartTradingRunBody | undefined): PaperOrderRequestFixture | undefined {
+  if (!body?.paper_order_request) {
+    return "valid";
+  }
+  if (body.paper_order_request === "valid" || body.paper_order_request === "rejected") {
+    return body.paper_order_request;
+  }
+  return undefined;
 }
 
 function latestSandboxOrderRequest(

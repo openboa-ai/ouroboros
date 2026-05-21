@@ -15,6 +15,8 @@ import type {
 
 let commandEvidenceSequence = 0;
 
+export type PaperOrderRequestFixture = "valid" | "rejected";
+
 export interface SandboxAdapterStartInput {
   artifact: SystemCodeRecord;
   instance_id: string;
@@ -25,6 +27,7 @@ export interface SandboxAdapterStartInput {
   trace_ref?: Ref;
   test_ticks?: number;
   interval_ms?: number;
+  paper_order_request?: PaperOrderRequestFixture;
 }
 
 export interface SandboxAdapterStartResult {
@@ -65,7 +68,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const tickCount = Math.max(1, input.test_ticks ?? 2);
     const intervalMs = input.interval_ms ?? 1_000;
     const placement = sandboxPlacement(input.sandbox_placement_id);
-    const orderRequestLine = sandboxOrderRequestLine(input.instance_id, input.created_at);
+    const orderRequestLine = sandboxOrderRequestLine(
+      input.instance_id,
+      input.created_at,
+      input.paper_order_request ?? "valid"
+    );
     const heartbeats = Array.from({ length: tickCount }, (_, index) => {
       const tick = index + 1;
       const observedAt = timestampOffset(input.created_at, tick * intervalMs);
@@ -495,15 +502,20 @@ function runtimeHeartbeatRecord(
   };
 }
 
-function sandboxOrderRequestLine(instanceId: string, at: string): string {
+function sandboxOrderRequestLine(
+  instanceId: string,
+  at: string,
+  paperOrderRequest: PaperOrderRequestFixture
+): string {
   return JSON.stringify({
     event: "order_request",
     instance_id: instanceId,
+    paper_order_request: paperOrderRequest,
     symbol: "BTCUSDT",
     intent_kind: "place_order",
     side: "buy",
     order_type: "limit",
-    quantity: "0.001",
+    quantity: paperOrderRequest === "rejected" ? "0" : "0.001",
     limit_price: "60000",
     authority_status: "trace_only",
     at
