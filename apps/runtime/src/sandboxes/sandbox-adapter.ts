@@ -13,6 +13,7 @@ import type {
   SandboxLifecycleStatus,
   SandboxRecord
 } from "@ouroboros/domain";
+import { safeId } from "../safe-id";
 
 let commandEvidenceSequence = 0;
 
@@ -116,7 +117,15 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       "--paper-order-request",
       input.paper_order_request ?? "valid"
     ];
-    const executionResult = await runCommand(executionCommand, this.commandTimeoutMs, undefined, REPO_ROOT);
+    const executionResult = await runDeterministicFixtureCommand({
+      command: executionCommand,
+      instanceId: input.instance_id,
+      tickCount,
+      intervalMs,
+      startAt: input.created_at,
+      paperOrderRequest: input.paper_order_request ?? "valid",
+      timeoutMs: this.commandTimeoutMs
+    });
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute", executionResult);
     const lines = stdoutLines(executionResult.stdout);
     const log = lines.length > 0
@@ -710,11 +719,59 @@ function stdoutLines(stdout: string): string[] {
   return stdout.split(/\r?\n/).filter((line) => line.length > 0);
 }
 
+function runDeterministicFixtureCommand(input: {
+  command: string[];
+  instanceId: string;
+  tickCount: number;
+  intervalMs: number;
+  startAt: string;
+  paperOrderRequest: PaperOrderRequestFixture;
+  timeoutMs: number;
+}): Promise<CommandResult> {
+  return new Promise((resolve) => {
+    const startedAt = new Date().toISOString();
+    const args = [
+      DETERMINISTIC_FIXTURE_ARTIFACT_PATH,
+      "--instance-id",
+      input.instanceId,
+      "--ticks",
+      String(input.tickCount),
+      "--interval-ms",
+      String(input.intervalMs),
+      "--start-at",
+      input.startAt,
+      "--paper-order-request",
+      input.paperOrderRequest
+    ];
+
+    execFile(
+      "python3",
+      args,
+      {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: input.timeoutMs,
+        maxBuffer: 1024 * 1024
+      },
+      (error, stdout, stderr) => {
+        const completedAt = new Date().toISOString();
+        resolve({
+          command: input.command,
+          exit_code: error ? exitCodeFor(error) : 0,
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+          started_at: startedAt,
+          completed_at: completedAt
+        });
+      }
+    );
+  });
+}
+
 function runCommand(
   command: string[],
   timeoutMs = 30_000,
-  envOverrides: NodeJS.ProcessEnv | undefined = undefined,
-  cwd?: string
+  envOverrides: NodeJS.ProcessEnv | undefined = undefined
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
@@ -726,8 +783,7 @@ function runCommand(
         encoding: "utf8",
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
-        env: envOverrides ? { ...process.env, ...envOverrides } : process.env,
-        cwd
+        env: envOverrides ? { ...process.env, ...envOverrides } : process.env
       },
       (error, stdout, stderr) => {
         const completedAt = new Date().toISOString();
@@ -749,8 +805,7 @@ function exitCodeFor(error: Error & { code?: unknown; signal?: unknown }): numbe
 }
 
 function safeRuntimeId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.slice(0, 80) || "empty";
+  return safeId(value, { maxLength: 80 });
 }
 
 function ref(record_kind: string, id: string): Ref {

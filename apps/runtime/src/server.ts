@@ -58,6 +58,7 @@ import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
+import { safeId } from "./safe-id";
 
 export interface BuildServerOptions {
   store?: LocalStore;
@@ -1797,8 +1798,7 @@ function tradingRunLifecycleAuditInput(input: {
 }
 
 function safeRouteId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  const prefix = normalized.slice(0, 72) || "empty";
+  const prefix = safeId(value, { maxLength: 72 });
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
 }

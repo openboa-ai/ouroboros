@@ -85,11 +85,11 @@ describe("CodexCliImprovementProposalProviderAdapter", () => {
       { record_kind: "codex_cli_command_artifact", id: path.join(tmpDir, "provider-command.json") }
     ]);
     await expect(readFile(path.join(tmpDir, "provider-request.json"), "utf8"))
-      .resolves.toContain(request.idempotency_key);
+      .resolves.toContain("request_redacted");
     await expect(readFile(path.join(tmpDir, "provider-prompt.txt"), "utf8"))
       .resolves.toContain("Return only JSON matching the provided schema.");
     await expect(readFile(path.join(tmpDir, "provider-command.json"), "utf8"))
-      .resolves.toContain(outputPath);
+      .resolves.toContain("args_redacted");
     expect(JSON.stringify(result)).not.toMatch(
       /improvement_proposal_id|strategy_internals|strategy_schema|exchange_credentials|paper_order_authority|live_order_authority|promotion_decision_ref|counted_evidence/i
     );

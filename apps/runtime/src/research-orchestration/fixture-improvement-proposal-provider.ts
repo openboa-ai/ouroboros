@@ -6,6 +6,7 @@ import type {
   Ref
 } from "@ouroboros/domain";
 import type { ImprovementProposalProviderAdapter } from "../providers/runtime-provider-adapter";
+import { safeId } from "../safe-id";
 import { DeterministicImprovementProposalPlanner } from "./deterministic-proposal-planner";
 
 export interface FixtureImprovementProposalProviderAdapterOptions {
@@ -148,9 +149,4 @@ function providerOutputArtifactRef(request: ImprovementProposalProviderRequest):
 
 function ref(record_kind: string, id: string): Ref {
   return { record_kind, id };
-}
-
-function safeId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.slice(0, 96) || "empty";
 }

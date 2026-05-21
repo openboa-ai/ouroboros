@@ -9,6 +9,7 @@ import {
   evaluateSystemCodeForResearch,
   type SystemCodeResearchEvaluationOutcome
 } from "../research-evaluation/system-code-research-submission";
+import { safeId } from "../safe-id";
 import {
   DeterministicSandboxAdapter,
   type SandboxAdapter
@@ -150,9 +151,4 @@ async function persistEvaluationOutcome(
 
 function ref(record_kind: string, id: string): Ref {
   return { record_kind, id };
-}
-
-function safeId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.slice(0, 96) || "empty";
 }

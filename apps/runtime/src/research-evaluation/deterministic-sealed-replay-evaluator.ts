@@ -5,6 +5,7 @@ import type {
   TradingEvaluationScoreSummary,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
+import { safeId } from "../safe-id";
 
 export type SealedReplayEvaluationScenario =
   | "accepted_oos_survives_costs"
@@ -153,9 +154,4 @@ function zeroScore(): TradingEvaluationScoreSummary {
 
 function ref(record_kind: string, id: string): Ref {
   return { record_kind, id };
-}
-
-function safeId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.slice(0, 96) || "empty";
 }

@@ -6,6 +6,7 @@ import type {
   EvaluationProviderProbeResult,
   EvaluationProviderResult
 } from "./runtime-provider-adapter";
+import { safeId } from "../safe-id";
 
 const supportedExecutionModes: EvaluationExecutionMode[] = [
   "host_local",
@@ -138,9 +139,4 @@ export class FixtureEvaluationProviderAdapter implements EvaluationProviderAdapt
       }
     ];
   }
-}
-
-function safeId(value: string): string {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.slice(0, 96) || "empty";
 }
