@@ -1128,6 +1128,35 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("renders a one-click full cycle action over the canonical flow", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords())),
+          improvement: improvementFromLoop(artifactImprovementLoop())
+        }}
+        onRunFullCycle={() => undefined}
+        fullCycleMessage="full cycle completed: running"
+      />
+    );
+
+    expect(html).toContain("Full Cycle");
+    expect(html).toContain("Run full cycle");
+    expect(html).toContain("Trading System");
+    expect(html).toContain("System Code");
+    expect(html).toContain("Evaluation");
+    expect(html).toContain("Improvement");
+    expect(html).toContain("Trading Run");
+    expect(html).toContain("Sandbox");
+    expect(html).toContain("Gateway");
+    expect(html).toContain("Ledger");
+    expect(html).toContain("full cycle completed: running");
+    expectNoOperatorActionControls(html, {
+      includePrivateAuthorityTerms: true,
+      allowTradingRunControls: true
+    });
+  });
+
   it("renders Improvement without promotion or trading authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail

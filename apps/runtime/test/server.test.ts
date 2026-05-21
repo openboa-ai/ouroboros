@@ -1904,6 +1904,130 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("runs the fixture Trading System through one full operator-visible cycle", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(duplicate.statusCode).toBe(201);
+    expect(duplicate.json()).toMatchObject({
+      status: "completed",
+      evaluation: {
+        evaluation_run: {
+          evaluation_run_record_id: first.json().evaluation.evaluation_run.evaluation_run_record_id
+        }
+      },
+      improvement: {
+        chain_complete: true
+      },
+      trading_run_id: first.json().trading_run_id,
+      ledger: {
+        latest_order_request: {
+          order_request_id: first.json().ledger.latest_order_request.order_request_id
+        },
+        latest_gateway_result: {
+          gateway_result_id: first.json().ledger.latest_gateway_result.gateway_result_id
+        },
+        latest_execution_result: {
+          execution_result_id: first.json().ledger.latest_execution_result.execution_result_id
+        }
+      }
+    });
+    expect(first.json()).toMatchObject({
+      status: "completed",
+      system_id: FIXTURE_CANDIDATE_ID,
+      evaluation: {
+        evaluation_run: {
+          status: "created",
+          authority_status: "not_counted"
+        },
+        sealing_decision: {
+          evidence_disposition: "not_counted",
+          authority_status: "not_counted"
+        }
+      },
+      improvement: {
+        improvement_kind: "improvement",
+        chain_complete: true,
+        latest_change_proposal: {
+          status: "proposed"
+        },
+        latest_evaluation_result: {
+          result_status: "accepted",
+          authority_status: "not_counted"
+        }
+      },
+      trading_run: {
+        lifecycle_status: "running",
+        authority_status: "not_live"
+      },
+      sandbox: {
+        adapter_kind: "deterministic_test",
+        lifecycle_status: "stopped",
+        authority_status: "not_live"
+      },
+      gateway_result: {
+        decision_outcome: "dry_run_only",
+        decision_reason: "dry_run_allowed",
+        authority_status: "dry_run_only"
+      },
+      execution_result: {
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      },
+      ledger: {
+        ledger_kind: "ledger",
+        chain_complete: true
+      },
+      trading_gateway_environment: {
+        authority_status: "not_live",
+        live_exchange_authority: false,
+        order_submission_authority: false
+      }
+    });
+
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(candidate.statusCode).toBe(200);
+    expect(candidate.json()).toMatchObject({
+      evaluation: {
+        has_runs: true,
+        latest_run: {
+          run_id: first.json().evaluation.evaluation_run.evaluation_run_record_id,
+          status: "created",
+          authority_status: "not_counted"
+        }
+      },
+      improvement: {
+        chain_complete: true
+      },
+      runtime: {
+        runtime_lifecycle_status: "running",
+        sandbox: {
+          lifecycle_status: "stopped"
+        },
+        transcript: {
+          has_activity: true
+        }
+      },
+      ledger: {
+        chain_complete: true
+      }
+    });
+
+    await server.close();
+  });
+
   it("records a rejected paper order through Gateway validation and Ledger readback", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   Ref,
   SystemCodeRecord,
@@ -17,6 +18,7 @@ let commandEvidenceSequence = 0;
 
 const DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
 const DETERMINISTIC_FIXTURE_ARTIFACT_PATH = "fixtures/trading-systems/clock.py";
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 export type PaperOrderRequestFixture = "valid" | "rejected";
 
@@ -114,7 +116,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       "--paper-order-request",
       input.paper_order_request ?? "valid"
     ];
-    const executionResult = await runCommand(executionCommand, this.commandTimeoutMs);
+    const executionResult = await runCommand(executionCommand, this.commandTimeoutMs, undefined, REPO_ROOT);
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute", executionResult);
     const lines = stdoutLines(executionResult.stdout);
     const log = lines.length > 0
@@ -711,7 +713,8 @@ function stdoutLines(stdout: string): string[] {
 function runCommand(
   command: string[],
   timeoutMs = 30_000,
-  envOverrides: NodeJS.ProcessEnv | undefined = undefined
+  envOverrides: NodeJS.ProcessEnv | undefined = undefined,
+  cwd?: string
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
@@ -723,7 +726,8 @@ function runCommand(
         encoding: "utf8",
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
-        env: envOverrides ? { ...process.env, ...envOverrides } : process.env
+        env: envOverrides ? { ...process.env, ...envOverrides } : process.env,
+        cwd
       },
       (error, stdout, stderr) => {
         const completedAt = new Date().toISOString();

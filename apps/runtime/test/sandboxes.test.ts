@@ -153,6 +153,33 @@ describe("sandbox API", () => {
     );
   });
 
+  it("executes fixture SystemCode when the runtime process starts from apps/runtime", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(path.join(originalCwd, "apps/runtime"));
+    try {
+      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const started = await startClockSandbox(server, {
+        idempotency_key: "sandbox-system-code-runtime-cwd",
+        sandbox_id: "sandbox-system-code-runtime-cwd",
+        sandbox_name: "ouro-system-code-runtime-cwd",
+        created_at: "2026-05-21T00:00:00.000Z",
+        interval_ms: 1
+      });
+
+      expect(started.sandbox.lifecycle_status).toBe("stopped");
+      expect(started.sandbox.command_evidence[0]).toMatchObject({
+        exit_code: 0,
+        command: expect.arrayContaining([
+          "python3",
+          "fixtures/trading-systems/clock.py"
+        ])
+      });
+      expect(started.sandbox.logs[0].lines.join("\n")).toContain("order_request");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
   it("rejects non-fixture SystemCode in the deterministic Sandbox boundary", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
