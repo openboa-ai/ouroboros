@@ -4254,7 +4254,7 @@ function compareLedgerSourceChains(
   a: LedgerSourceChainReadModel,
   b: LedgerSourceChainReadModel
 ): number {
-  const timeCompare = a.occurred_at.localeCompare(b.occurred_at);
+  const timeCompare = a.order_request.created_at.localeCompare(b.order_request.created_at);
   if (timeCompare !== 0) {
     return timeCompare;
   }

@@ -1673,6 +1673,49 @@ describe("LocalStore", () => {
     expect(reloaded?.ledger?.chains[1].execution_result?.status).toBe("dry_run_recorded");
   });
 
+  it("keeps Ledger latest summary on the newest order request when older execution completes later", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("expected fixture candidate");
+    }
+
+    const olderPath = await store.recordLedger({
+      ...validLedgerInput(candidate.candidate_version.candidate_version_id),
+      idempotency_key: "ledger-late-older-execution",
+      execution_result: {
+        ...validLedgerInput(candidate.candidate_version.candidate_version_id).execution_result,
+        completed_at: "2026-05-21T00:10:00.000Z"
+      },
+      created_at: "2026-05-21T00:00:00.000Z"
+    });
+    const newerPath = await store.recordLedger({
+      ...validLedgerInput(candidate.candidate_version.candidate_version_id),
+      idempotency_key: "ledger-newer-order-request",
+      execution_result: {
+        ...validLedgerInput(candidate.candidate_version.candidate_version_id).execution_result,
+        completed_at: "2026-05-21T00:02:00.000Z"
+      },
+      created_at: "2026-05-21T00:01:00.000Z"
+    });
+
+    const projected = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projected?.ledger?.chains.map((chain) => chain.chain_id)).toEqual([
+      newerPath.order_request.order_request_id,
+      olderPath.order_request.order_request_id
+    ]);
+    expect(projected?.ledger?.latest_order_request?.order_request_id).toBe(
+      newerPath.order_request.order_request_id
+    );
+    expect(projected?.ledger?.latest_gateway_result?.gateway_result_id).toBe(
+      newerPath.gateway_result.gateway_result_id
+    );
+    expect(projected?.ledger?.latest_execution_result?.execution_result_id).toBe(
+      newerPath.execution_result.execution_result_id
+    );
+  });
+
   it("rejects invalid Ledger writes without creating records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
