@@ -80,7 +80,9 @@ export async function runCodexImprovementProposalEvaluationDryRun(
     };
   }
 
-  const runtimeAdapter = input.runtime_adapter ?? new DeterministicSandboxAdapter();
+  const runtimeAdapter = input.runtime_adapter ?? new DeterministicSandboxAdapter({
+    allowedSystemCodeIds: [proposalDryRun.outcome.system_code.system_code_id]
+  });
   const runtimeStart = await runtimeAdapter.startArtifactInstance({
     artifact: proposalDryRun.outcome.system_code,
     instance_id: input.sandbox_id ?? `sandbox-codex-research-${suffix}`,

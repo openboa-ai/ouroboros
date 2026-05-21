@@ -98,7 +98,7 @@ describe("Slice 3 trading run MLP flow", () => {
         },
         sandbox: {
           adapter_kind: "deterministic_test",
-          lifecycle_status: "running",
+          lifecycle_status: "stopped",
           authority_status: "not_live"
         },
         transcript: {
@@ -109,8 +109,18 @@ describe("Slice 3 trading run MLP flow", () => {
       });
       expect(outcome.transcript.item_count).toBeGreaterThanOrEqual(10);
       expect(outcome.sandbox.runtime_ref.id).toBe(outcome.trading_run_id);
-      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("\"event\":\"order_request\"");
-      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("\"symbol\":\"BTCUSDT\"");
+      expect(outcome.sandbox.command_evidence[0]).toMatchObject({
+        exit_code: 0,
+        command: expect.arrayContaining([
+          "python3",
+          "fixtures/trading-systems/clock.py",
+          "--instance-id",
+          outcome.sandbox.sandbox_id
+        ])
+      });
+      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("order_request");
+      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("runtime_stopped");
+      expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("BTCUSDT");
       expect(outcome.sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
       expect(outcome.transcript.items.map((item: { item_kind: string }) => item.item_kind)).toEqual(
         expect.arrayContaining([
@@ -170,7 +180,7 @@ describe("Slice 3 trading run MLP flow", () => {
       });
       expect(candidate.runtime.sandbox).toMatchObject({
         sandbox_id: outcome.sandbox.sandbox_id,
-        lifecycle_status: "running"
+        lifecycle_status: "stopped"
       });
       expect(candidate.runtime.transcript).toMatchObject({
         authority_status: "not_live"
@@ -243,7 +253,7 @@ describe("Slice 3 trading run MLP flow", () => {
           chain_complete: true
         },
         sandbox: {
-          lifecycle_status: "running"
+          lifecycle_status: "stopped"
         },
         transcript: {
           authority_status: "not_live"

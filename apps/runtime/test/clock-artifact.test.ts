@@ -85,7 +85,36 @@ describe("Python clock system code fixture", () => {
 
     expect(stdout).toContain("--instance-id");
     expect(stdout).toContain("--ticks");
+    expect(stdout).toContain("--paper-order-request");
     expect(stdout).toContain("--log-file");
     expect(stdout).not.toMatch(/secret|password|token|api[-_]?key|credential/i);
+  });
+
+  it("emits a rejected fixture order request when explicitly requested", async () => {
+    const { stdout } = await execFileAsync("python3", [
+      artifactPath,
+      "--instance-id",
+      "clock-test-rejected",
+      "--ticks",
+      "1",
+      "--interval-ms",
+      "1",
+      "--paper-order-request",
+      "rejected"
+    ]);
+
+    const [orderRequest] = stdout.trim().split("\n").map((line) => JSON.parse(line));
+
+    expect(orderRequest).toMatchObject({
+      event: "order_request",
+      instance_id: "clock-test-rejected",
+      symbol: "BTCUSDT",
+      intent_kind: "place_order",
+      side: "buy",
+      order_type: "limit",
+      quantity: "0",
+      limit_price: "60000",
+      authority_status: "trace_only"
+    });
   });
 });

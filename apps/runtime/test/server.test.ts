@@ -1728,7 +1728,7 @@ describe("runtime read-only API", () => {
       sandbox: {
         adapter_kind: "deterministic_test",
         runtime_ref: { record_kind: "trading_run" },
-        lifecycle_status: "running",
+        lifecycle_status: "stopped",
         authority_status: "not_live"
       },
       transcript: {
@@ -1738,8 +1738,17 @@ describe("runtime read-only API", () => {
       }
     });
     expect(first.json().sandbox.runtime_ref.id).toBe(first.json().trading_run_id);
-    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("\"event\":\"order_request\"");
-    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("\"symbol\":\"BTCUSDT\"");
+    expect(first.json().sandbox.command_evidence[0]).toMatchObject({
+      exit_code: 0,
+      command: expect.arrayContaining([
+        "python3",
+        "fixtures/trading-systems/clock.py",
+        "--instance-id",
+        first.json().sandbox.sandbox_id
+      ])
+    });
+    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("order_request");
+    expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("BTCUSDT");
     expect(first.json().sandbox.logs[0].lines.join("\n")).toContain("runtime_heartbeat");
     expect(first.json().sandbox.heartbeats.length).toBeGreaterThan(0);
     expect(first.json().transcript.item_count).toBeGreaterThanOrEqual(10);
@@ -1778,7 +1787,7 @@ describe("runtime read-only API", () => {
       sandbox_id: first.json().sandbox.sandbox_id,
       adapter_kind: "deterministic_test",
       runtime_ref: { id: tradingRunId },
-      lifecycle_status: "running"
+      lifecycle_status: "stopped"
     });
     expect(updatedCandidate.json().runtime.transcript).toMatchObject({
       authority_status: "not_live"
@@ -1809,7 +1818,7 @@ describe("runtime read-only API", () => {
       },
       sandbox: {
         sandbox_id: first.json().sandbox.sandbox_id,
-        lifecycle_status: "running"
+        lifecycle_status: "stopped"
       },
       transcript: {
         authority_status: "not_live"
@@ -1837,7 +1846,7 @@ describe("runtime read-only API", () => {
         chain_complete: true
       },
       sandbox: {
-        lifecycle_status: "running",
+        lifecycle_status: "stopped",
         authority_status: "not_live"
       },
       transcript: {
@@ -1962,7 +1971,7 @@ describe("runtime read-only API", () => {
         authority_status: "not_live"
       }
     });
-    expect(rejected.json().sandbox.logs[0].lines.join("\n")).toContain("\"quantity\":\"0\"");
+    expect(rejected.json().sandbox.logs[0].lines.join("\n")).toContain("\"quantity\": \"0\"");
     expect(rejected.json().transcript.items
       .some((item: { item_kind: string; summary: string }) => (
         item.item_kind === "sandbox_order_request" &&

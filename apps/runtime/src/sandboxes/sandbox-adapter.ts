@@ -15,6 +15,9 @@ import type {
 
 let commandEvidenceSequence = 0;
 
+const DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
+const DETERMINISTIC_FIXTURE_ARTIFACT_PATH = "fixtures/trading-systems/clock.py";
+
 export type PaperOrderRequestFixture = "valid" | "rejected";
 
 export interface SandboxAdapterStartInput {
@@ -64,28 +67,66 @@ export interface SandboxAdapter {
 export class DeterministicSandboxAdapter implements SandboxAdapter {
   readonly kind = "deterministic_test" as const;
 
+  constructor(
+    private readonly options: {
+      commandTimeoutMs?: number;
+      allowedSystemCodeIds?: readonly string[];
+    } = {}
+  ) {}
+
   async startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult> {
     const tickCount = Math.max(1, input.test_ticks ?? 2);
     const intervalMs = input.interval_ms ?? 1_000;
     const placement = sandboxPlacement(input.sandbox_placement_id);
-    const orderRequestLine = sandboxOrderRequestLine(
+    const command = systemCodeCommand(input.artifact);
+    if (!isDeterministicFixtureSystemCode(input.artifact, command, this.allowedSystemCodeIds)) {
+      const rejectedResult = rejectedSystemCodeCommandResult(input.artifact, input.created_at);
+      const commandEvidence = commandEvidenceRecord(input.instance_id, "reject-system-code", rejectedResult);
+      return {
+        instance: sandboxSandboxRecord({
+          adapterKind: this.kind,
+          artifact: input.artifact,
+          instanceId: input.instance_id,
+          sandboxName: input.sandbox_name,
+          runtimeRef: input.runtime_ref,
+          placementId: placement.sandbox_placement_id,
+          lifecycleStatus: "failed",
+          createdAt: input.created_at,
+          commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
+          traceRef: input.trace_ref
+        }),
+        placement,
+        logs: [],
+        heartbeats: [],
+        command_evidence: [commandEvidence]
+      };
+    }
+    const executionCommand = [
+      ...command,
+      "--instance-id",
       input.instance_id,
+      "--ticks",
+      String(tickCount),
+      "--interval-ms",
+      String(intervalMs),
+      "--start-at",
       input.created_at,
+      "--paper-order-request",
       input.paper_order_request ?? "valid"
+    ];
+    const executionResult = await runCommand(executionCommand, this.commandTimeoutMs);
+    const commandEvidence = commandEvidenceRecord(input.instance_id, "execute", executionResult);
+    const lines = stdoutLines(executionResult.stdout);
+    const log = lines.length > 0
+      ? runtimeLogRecord(input.instance_id, "start", lines, executionResult.completed_at)
+      : undefined;
+    const heartbeats = heartbeatRecordsFromLines(
+      input.instance_id,
+      "start",
+      lines,
+      executionResult.completed_at
     );
-    const heartbeats = Array.from({ length: tickCount }, (_, index) => {
-      const tick = index + 1;
-      const observedAt = timestampOffset(input.created_at, tick * intervalMs);
-      const line = JSON.stringify({
-        event: "runtime_heartbeat",
-        instance_id: input.instance_id,
-        tick,
-        at: observedAt
-      });
-      return runtimeHeartbeatRecord(input.instance_id, `start-${tick}`, line, observedAt);
-    });
-    const lines = [orderRequestLine, ...heartbeats.map((heartbeat) => heartbeat.heartbeat_line)];
-    const log = runtimeLogRecord(input.instance_id, "start", lines, input.created_at);
+    const lifecycleStatus = executionResult.exit_code === 0 ? "stopped" : "failed";
     const instance = sandboxSandboxRecord({
       adapterKind: this.kind,
       artifact: input.artifact,
@@ -93,21 +134,23 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       sandboxName: input.sandbox_name,
       runtimeRef: input.runtime_ref,
       placementId: placement.sandbox_placement_id,
-      lifecycleStatus: "running",
+      lifecycleStatus,
       createdAt: input.created_at,
-      startedAt: input.created_at,
+      startedAt: lifecycleStatus === "stopped" ? input.created_at : undefined,
+      stoppedAt: lifecycleStatus === "stopped" ? executionResult.completed_at : undefined,
       lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
-      logRefs: [ref(log.record_kind, log.sandbox_log_id)],
+      logRefs: log ? [ref(log.record_kind, log.sandbox_log_id)] : [],
       heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
+      commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
       traceRef: input.trace_ref
     });
 
     return {
       instance,
       placement,
-      logs: [log],
+      logs: log ? [log] : [],
       heartbeats,
-      command_evidence: []
+      command_evidence: [commandEvidence]
     };
   }
 
@@ -134,6 +177,14 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       stopped_at: stoppedAt,
       logs: [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, [stoppedLine], stoppedAt)]
     };
+  }
+
+  private get commandTimeoutMs(): number {
+    return this.options.commandTimeoutMs ?? 30_000;
+  }
+
+  private get allowedSystemCodeIds(): readonly string[] {
+    return this.options.allowedSystemCodeIds ?? [DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID];
   }
 }
 
@@ -428,6 +479,7 @@ function sandboxSandboxRecord(input: {
   lifecycleStatus: SandboxLifecycleStatus;
   createdAt: string;
   startedAt?: string;
+  stoppedAt?: string;
   lastHeartbeatAt?: string;
   logRefs?: Ref[];
   heartbeatRefs?: Ref[];
@@ -447,6 +499,7 @@ function sandboxSandboxRecord(input: {
     sandbox_ref: ref("docker_sandbox", input.sandboxName),
     created_at: input.createdAt,
     started_at: input.startedAt,
+    stopped_at: input.stoppedAt,
     last_heartbeat_at: input.lastHeartbeatAt,
     log_refs: input.logRefs ?? [],
     heartbeat_refs: input.heartbeatRefs ?? [],
@@ -500,26 +553,6 @@ function runtimeHeartbeatRecord(
     observed_at: observedAt,
     authority_status: "trace_only"
   };
-}
-
-function sandboxOrderRequestLine(
-  instanceId: string,
-  at: string,
-  paperOrderRequest: PaperOrderRequestFixture
-): string {
-  return JSON.stringify({
-    event: "order_request",
-    instance_id: instanceId,
-    paper_order_request: paperOrderRequest,
-    symbol: "BTCUSDT",
-    intent_kind: "place_order",
-    side: "buy",
-    order_type: "limit",
-    quantity: paperOrderRequest === "rejected" ? "0" : "0.001",
-    limit_price: "60000",
-    authority_status: "trace_only",
-    at
-  });
 }
 
 function commandEvidenceRecord(
@@ -598,6 +631,63 @@ function artifactEntrypointPath(artifact: SystemCodeRecord): string {
   return artifact.entrypoint[0] ?? "/app/run";
 }
 
+function isDeterministicFixtureSystemCode(
+  artifact: SystemCodeRecord,
+  command: string[],
+  allowedSystemCodeIds: readonly string[]
+): boolean {
+  return (
+    allowedSystemCodeIds.includes(artifact.system_code_id) &&
+    artifact.artifact_kind === "python_file" &&
+    artifact.artifact_path === DETERMINISTIC_FIXTURE_ARTIFACT_PATH &&
+    artifact.runtime_kind === "python" &&
+    isPythonFixtureCommand(command)
+  );
+}
+
+function isPythonFixtureCommand(command: string[]): boolean {
+  return (
+    command.length >= 2 &&
+    (command[0] === "python" || command[0] === "python3") &&
+    command[1] === DETERMINISTIC_FIXTURE_ARTIFACT_PATH
+  );
+}
+
+function systemCodeCommand(artifact: SystemCodeRecord): string[] {
+  if (artifact.entrypoint.length > 0) {
+    return artifact.entrypoint;
+  }
+  if (artifact.runtime_kind === "python") {
+    return ["python3", artifactEntrypointPath(artifact)];
+  }
+  return [artifactEntrypointPath(artifact)];
+}
+
+function rejectedSystemCodeCommandResult(
+  artifact: SystemCodeRecord,
+  at: string
+): CommandResult {
+  const artifactLocation = artifact.artifact_kind === "python_file"
+    ? artifact.artifact_path
+    : artifact.image_ref;
+  return {
+    command: [
+      "deterministic_test",
+      "reject-non-fixture-system-code",
+      artifact.system_code_id
+    ],
+    exit_code: 2,
+    stdout: "",
+    stderr: [
+      "deterministic_test only executes fixture SystemCode",
+      `${DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID}:${DETERMINISTIC_FIXTURE_ARTIFACT_PATH}`,
+      `received ${artifact.system_code_id}:${artifactLocation}`
+    ].join("\n"),
+    started_at: at,
+    completed_at: at
+  };
+}
+
 function sandboxLogFile(instanceId: string): string {
   return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.jsonl`;
 }
@@ -612,10 +702,6 @@ function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string
 
 function sandboxNameFor(instance: SandboxRecord | SandboxDetailReadModel): string {
   return instance.sandbox_name;
-}
-
-function timestampOffset(base: string, offsetMs: number): string {
-  return new Date(Date.parse(base) + offsetMs).toISOString();
 }
 
 function stdoutLines(stdout: string): string[] {

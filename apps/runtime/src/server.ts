@@ -854,17 +854,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
       const tradingRunId = candidate.runtime.ref.id;
       try {
-        await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-          idempotencyKey: `trading-run-start:${paperOrderRequest}:${tradingRunId}:${candidateVersionId}`,
-          candidateId: request.params.system_id,
-          candidateVersionId,
-          tradingRunId,
-          action: "start",
-          lifecycleStatus: "running",
-          actorId: "runtime-api",
-          reasonSummary: "Operator requested trading run start.",
-          message: "Trading run start recorded."
-        }));
         const sandbox = await ensureTradingRunSandbox({
           store,
           sandboxAdapter: sandboxAdapters.deterministic_test,
@@ -879,6 +868,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidateVersionId,
           tradingRunId,
           paperOrderRequest
+        }));
+        await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+          idempotencyKey: `trading-run-start:${paperOrderRequest}:${tradingRunId}:${candidateVersionId}`,
+          candidateId: request.params.system_id,
+          candidateVersionId,
+          tradingRunId,
+          action: "start",
+          lifecycleStatus: "running",
+          actorId: "runtime-api",
+          reasonSummary: "Operator requested trading run start.",
+          message: "Trading run start recorded."
         }));
 
         const response = await tradingRunResponse(store, tradingRunId);
@@ -1433,7 +1433,8 @@ async function ensureTradingRunSandbox(input: {
   const existing = await input.store.getSandbox(sandboxId);
   const linked = await linkedTradingRunSandbox(input.store, input.tradingRunId);
   if (
-    existing?.lifecycle_status === "running" &&
+    existing &&
+    existing.lifecycle_status !== "failed" &&
     linked?.sandbox_id === existing.sandbox_id
   ) {
     return existing;

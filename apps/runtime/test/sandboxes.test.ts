@@ -36,8 +36,8 @@ describe("sandbox API", () => {
       created_at: "2026-05-10T00:00:10.000Z"
     });
 
-    expect(first.sandbox.lifecycle_status).toBe("running");
-    expect(second.sandbox.lifecycle_status).toBe("running");
+    expect(first.sandbox.lifecycle_status).toBe("stopped");
+    expect(second.sandbox.lifecycle_status).toBe("stopped");
     expect(first.sandbox.sandbox_id).not.toBe(second.sandbox.sandbox_id);
     expect(first.sandbox.sandbox_name).toBe("ouro-s5-clock-a");
     expect(second.sandbox.sandbox_name).toBe("ouro-s5-clock-b");
@@ -56,7 +56,7 @@ describe("sandbox API", () => {
       url: "/api/sandboxes/sandbox-clock-a"
     });
     expect(firstStatus.statusCode).toBe(200);
-    expect(firstStatus.json().lifecycle_status).toBe("running");
+    expect(firstStatus.json().lifecycle_status).toBe("stopped");
     expect(firstStatus.json().sandbox_name).toBe("ouro-s5-clock-a");
 
     const firstLogs = await server.inject({
@@ -107,9 +107,96 @@ describe("sandbox API", () => {
     expect(persistedSecond?.lifecycle_status).toBe("stopped");
     expect(persistedFirst?.sandbox_name).toBe("ouro-s5-clock-a");
     expect(persistedSecond?.sandbox_name).toBe("ouro-s5-clock-b");
-    expect(persistedFirst?.log_refs.length).toBeGreaterThanOrEqual(2);
-    expect(persistedSecond?.log_refs.length).toBeGreaterThanOrEqual(2);
+    expect(persistedFirst?.log_refs.length).toBeGreaterThanOrEqual(1);
+    expect(persistedSecond?.log_refs.length).toBeGreaterThanOrEqual(1);
     expect(persistedFirst?.sandbox_placement_ref.id).not.toBe(persistedSecond?.sandbox_placement_ref.id);
+  });
+
+  it("executes fixture SystemCode through the deterministic Sandbox boundary", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const started = await startClockSandbox(server, {
+      idempotency_key: "sandbox-system-code-execution",
+      sandbox_id: "sandbox-system-code-execution",
+      sandbox_name: "ouro-system-code-execution",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    const logPayloads = started.sandbox.logs[0].lines.map((line: string) => JSON.parse(line));
+    expect(logPayloads.map((payload: { event: string }) => payload.event)).toEqual([
+      "order_request",
+      "runtime_heartbeat",
+      "runtime_heartbeat",
+      "runtime_stopped"
+    ]);
+    expect(logPayloads[0]).toMatchObject({
+      event: "order_request",
+      instance_id: "sandbox-system-code-execution",
+      symbol: "BTCUSDT",
+      quantity: "0.001",
+      at: "2026-05-21T00:00:00.000Z"
+    });
+    expect(started.sandbox.command_evidence).toHaveLength(1);
+    expect(started.sandbox.command_evidence[0]).toMatchObject({
+      exit_code: 0,
+      command: expect.arrayContaining([
+        "python3",
+        "fixtures/trading-systems/clock.py",
+        "--instance-id",
+        "sandbox-system-code-execution"
+      ])
+    });
+    expect(started.sandbox.command_evidence[0].stdout).toContain("\"event\": \"order_request\"");
+    expect(started.sandbox.command_evidence[0].stdout).not.toMatch(
+      /secret|password|token|api[-_]?key|credential/i
+    );
+  });
+
+  it("rejects non-fixture SystemCode in the deterministic Sandbox boundary", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureSystemCode = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureSystemCode || fixtureSystemCode.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    await store.recordSystemCode({
+      ...fixtureSystemCode,
+      system_code_id: "system-code-non-fixture-network-001",
+      artifact_path: "fixtures/trading-systems/clock.py",
+      artifact_digest: "sha256:non-fixture-network-artifact",
+      entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
+      created_at: "2026-05-21T00:00:00.000Z"
+    });
+    const server = await buildServer({ store });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/sandboxes",
+      payload: {
+        idempotency_key: "sandbox-reject-non-fixture",
+        sandbox_id: "sandbox-reject-non-fixture",
+        sandbox_name: "ouro-reject-non-fixture",
+        system_code_id: "system-code-non-fixture-network-001",
+        created_at: "2026-05-21T00:00:00.000Z"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().status).toBe("failed");
+    expect(response.json().sandbox.lifecycle_status).toBe("failed");
+    expect(response.json().sandbox.logs).toHaveLength(0);
+    expect(response.json().sandbox.command_evidence[0]).toMatchObject({
+      exit_code: 2,
+      command: [
+        "deterministic_test",
+        "reject-non-fixture-system-code",
+        "system-code-non-fixture-network-001"
+      ]
+    });
+    expect(response.json().sandbox.command_evidence[0].stderr).toContain(
+      "only executes fixture SystemCode"
+    );
   });
 
   it("rejects raw secret material in sandbox requests", async () => {
@@ -276,7 +363,17 @@ describe("sandbox API", () => {
     const baseAdapter = new DeterministicSandboxAdapter();
     const failingStopAdapter: SandboxAdapter = {
       kind: "deterministic_test",
-      startArtifactInstance: (input) => baseAdapter.startArtifactInstance(input),
+      startArtifactInstance: async (input) => {
+        const started = await baseAdapter.startArtifactInstance(input);
+        return {
+          ...started,
+          instance: {
+            ...started.instance,
+            lifecycle_status: "running",
+            stopped_at: undefined
+          }
+        };
+      },
       getArtifactInstanceStatus: () => baseAdapter.getArtifactInstanceStatus(),
       getArtifactInstanceLogs: () => baseAdapter.getArtifactInstanceLogs(),
       stopArtifactInstance: async () => ({
@@ -455,6 +552,7 @@ async function startClockSandbox(
     sandbox_id: string;
     sandbox_name: string;
     created_at: string;
+    interval_ms?: number;
   }
 ) {
   const response = await server.inject({
@@ -464,7 +562,7 @@ async function startClockSandbox(
       ...input,
       trading_run_id: "fixture-trading-run-001",
       test_ticks: 2,
-      interval_ms: 1
+      interval_ms: input.interval_ms ?? 1
     }
   });
   expect(response.statusCode).toBe(201);
