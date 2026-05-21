@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-file")
     parser.add_argument("--heartbeat-file")
     parser.add_argument("--start-at", default="1970-01-01T00:00:00.000Z")
+    parser.add_argument(
+        "--paper-order-request",
+        choices=("valid", "rejected"),
+        default="valid",
+    )
     args = parser.parse_args()
 
     if args.ticks < 0:
@@ -69,7 +74,7 @@ def main() -> int:
         "intent_kind": "place_order",
         "side": "buy",
         "order_type": "limit",
-        "quantity": "0.001",
+        "quantity": "0" if args.paper_order_request == "rejected" else "0.001",
         "limit_price": "60000",
         "authority_status": "trace_only",
         "at": args.start_at,

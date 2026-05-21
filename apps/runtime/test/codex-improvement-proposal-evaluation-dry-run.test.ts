@@ -47,7 +47,7 @@ describe("Codex research proposal evaluation dry-run", () => {
     expect(outcome.proposal.lineage.authority_status).toBe("lineage_only");
     expect(outcome.sandbox).toMatchObject({
       adapter_kind: "deterministic_test",
-      lifecycle_status: "running",
+      lifecycle_status: "stopped",
       authority_status: "not_live",
       system_code_ref: {
         record_kind: "system_code",
