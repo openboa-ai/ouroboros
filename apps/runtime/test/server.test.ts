@@ -1895,6 +1895,104 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("records a rejected paper order through Gateway validation and Ledger readback", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const happyPath = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`
+    });
+    const rejected = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`,
+      payload: { paper_order_request: "rejected" }
+    });
+    const duplicateRejected = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`,
+      payload: { paper_order_request: "rejected" }
+    });
+
+    expect(happyPath.statusCode).toBe(201);
+    expect(rejected.statusCode).toBe(201);
+    expect(duplicateRejected.statusCode).toBe(201);
+    expect(duplicateRejected.json()).toEqual(rejected.json());
+    expect(happyPath.json().gateway_result.decision_outcome).toBe("dry_run_only");
+    expect(rejected.json().sandbox.sandbox_id).not.toBe(happyPath.json().sandbox.sandbox_id);
+    expect(rejected.json()).toMatchObject({
+      status: "started",
+      trading_run: {
+        lifecycle_status: "running",
+        authority_status: "not_live"
+      },
+      order_request: {
+        intent_kind: "place_order",
+        side: "buy",
+        order_type: "limit",
+        quantity: "0",
+        limit_price: "60000",
+        status: "proposed",
+        authority_status: "not_submitted"
+      },
+      gateway_result: {
+        decision_outcome: "rejected",
+        decision_reason: "risk_limit_exceeded",
+        authority_status: "not_live"
+      },
+      execution_result: {
+        stage: "paper",
+        execution_mode: "host_local",
+        status: "blocked",
+        result_reason: "risk_limit_exceeded",
+        authority_status: "not_submitted"
+      },
+      ledger: {
+        chain_complete: true,
+        latest_gateway_result: {
+          decision_outcome: "rejected",
+          decision_reason: "risk_limit_exceeded"
+        },
+        latest_execution_result: {
+          status: "blocked",
+          result_reason: "risk_limit_exceeded"
+        }
+      },
+      transcript: {
+        has_activity: true,
+        authority_status: "not_live"
+      }
+    });
+    expect(rejected.json().sandbox.logs[0].lines.join("\n")).toContain("\"quantity\":\"0\"");
+    expect(rejected.json().transcript.items
+      .some((item: { item_kind: string; summary: string }) => (
+        item.item_kind === "sandbox_order_request" &&
+        item.summary.includes("BTCUSDT buy / limit / 0 @ 60000")
+      )))
+      .toBe(true);
+    expect(rejected.json().transcript.items
+      .some((item: { item_kind: string; summary: string }) => (
+        item.item_kind === "gateway_result" &&
+        item.summary.includes("rejected / risk_limit_exceeded")
+      )))
+      .toBe(true);
+    expect(rejected.json().transcript.items
+      .some((item: { item_kind: string; summary: string }) => (
+        item.item_kind === "execution_result" &&
+        item.summary.includes("blocked / risk_limit_exceeded")
+      )))
+      .toBe(true);
+
+    const candidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(candidate.json().ledger.latest_gateway_result.decision_outcome).toBe("rejected");
+    expect(candidate.json().ledger.latest_execution_result.status).toBe("blocked");
+    expect(candidate.json().runtime.sandbox.sandbox_id).toBe(rejected.json().sandbox.sandbox_id);
+
+    await server.close();
+  });
+
   it("records a fixture AAR improvement and reads it through candidate inspect", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
