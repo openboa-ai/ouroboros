@@ -1932,6 +1932,47 @@ function ledgerSourceRecords(): LedgerSourceRecordsReadModel {
   return {
     has_activity: true,
     chain_complete: true,
+    chain_count: 1,
+    chains: [
+      {
+        chain_id: "order-request-001",
+        chain_complete: true,
+        occurred_at: "2026-05-10T00:00:00.000Z",
+        order_request: {
+          order_request_id: "order-request-001",
+          intent_kind: "place_order",
+          market_scope: "external_trading_api_fixture",
+          side: "buy",
+          order_type: "limit",
+          quantity: "0.001",
+          limit_price: "60000",
+          status: "proposed",
+          created_at: "2026-05-10T00:00:00.000Z",
+          authority_status: "not_submitted"
+        },
+        gateway_result: {
+          gateway_result_id: "gateway-result-001",
+          order_request_ref: { record_kind: "order_request", id: "order-request-001" },
+          decision_outcome: "dry_run_only",
+          decision_reason: "paper_stage_only",
+          decided_at: "2026-05-10T00:00:00.000Z",
+          authority_status: "dry_run_only"
+        },
+        execution_result: {
+          execution_result_id: "execution-result-001",
+          order_request_ref: { record_kind: "order_request", id: "order-request-001" },
+          gateway_result_ref: { record_kind: "gateway_result", id: "gateway-result-001" },
+          stage: "paper",
+          execution_mode: "host_local",
+          venue_scope: "external_trading_api_fixture",
+          status: "dry_run_recorded",
+          result_reason: "paper_stage_only",
+          created_at: "2026-05-10T00:00:00.000Z",
+          authority_status: "dry_run_only"
+        },
+        authority_status: "not_live"
+      }
+    ],
     latest_order_request: {
       order_request_id: "order-request-001",
       intent_kind: "place_order",

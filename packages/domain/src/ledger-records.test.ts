@@ -248,6 +248,91 @@ describe("Ledger read model", () => {
       source_record_kinds: ["order_request", "gateway_result", "execution_result"]
     });
   });
+
+  it("keeps Ledger chain history as newest first", () => {
+    const sourceRecords = completeAuthority();
+    const latestOrderRequest = sourceRecords.latest_order_request;
+    const latestGatewayResult = sourceRecords.latest_gateway_result;
+    const latestExecutionResult = sourceRecords.latest_execution_result;
+    if (!latestOrderRequest || !latestGatewayResult || !latestExecutionResult) {
+      throw new Error("expected complete source records");
+    }
+    const rejectedOrderRequest = {
+      ...latestOrderRequest,
+      order_request_id: "order-request-risk-rejected-v1",
+      quantity: "0",
+      created_at: "2026-05-10T00:02:00.000Z"
+    } satisfies NonNullable<LedgerSourceRecordsReadModel["latest_order_request"]>;
+    const rejectedGatewayResult = {
+      ...latestGatewayResult,
+      gateway_result_id: "gateway-result-risk-rejected-v1",
+      order_request_ref: ref("order_request", rejectedOrderRequest.order_request_id),
+      decision_outcome: "rejected" as const,
+      decision_reason: "risk_limit_exceeded" as const,
+      decided_at: "2026-05-10T00:02:01.000Z",
+      authority_status: "not_live" as const
+    } satisfies NonNullable<LedgerSourceRecordsReadModel["latest_gateway_result"]>;
+    const rejectedExecutionResult = {
+      ...latestExecutionResult,
+      execution_result_id: "execution-result-risk-blocked-v1",
+      order_request_ref: ref("order_request", rejectedOrderRequest.order_request_id),
+      gateway_result_ref: ref("gateway_result", rejectedGatewayResult.gateway_result_id),
+      status: "blocked" as const,
+      result_reason: "risk_limit_exceeded" as const,
+      created_at: "2026-05-10T00:02:02.000Z",
+      authority_status: "not_submitted" as const
+    } satisfies NonNullable<LedgerSourceRecordsReadModel["latest_execution_result"]>;
+    const ledger = buildLedgerReadModel({
+      ...sourceRecords,
+      chain_count: 2,
+      chains: [
+        {
+          chain_id: rejectedOrderRequest.order_request_id,
+          chain_complete: true,
+          occurred_at: rejectedExecutionResult.created_at,
+          order_request: rejectedOrderRequest,
+          gateway_result: rejectedGatewayResult,
+          execution_result: rejectedExecutionResult,
+          authority_status: "not_live"
+        },
+        sourceRecords.chains[0]
+      ]
+    });
+
+    expect(ledger).toMatchObject({
+      chain_count: 2,
+      chains: [
+        {
+          chain_complete: true,
+          order_request: {
+            order_request_id: "order-request-risk-rejected-v1",
+            quantity: "0"
+          },
+          gateway_result: {
+            decision_outcome: "rejected",
+            decision_reason: "risk_limit_exceeded"
+          },
+          execution_result: {
+            status: "blocked",
+            result_reason: "risk_limit_exceeded"
+          }
+        },
+        {
+          order_request: {
+            order_request_id: "order-request-paper-buy-v1",
+            quantity: "0.001"
+          },
+          gateway_result: {
+            decision_outcome: "dry_run_only"
+          },
+          execution_result: {
+            status: "dry_run_recorded"
+          }
+        }
+      ]
+    });
+  });
+
   it("uses Ledger as the public read-model name", () => {
     const ledger = buildLedgerReadModel(emptyAuthority());
 
@@ -260,6 +345,8 @@ function emptyAuthority(): LedgerSourceRecordsReadModel {
   return {
     has_activity: false,
     chain_complete: false,
+    chain_count: 0,
+    chains: [],
     latest_order_request: null,
     latest_gateway_result: null,
     latest_execution_result: null,
@@ -285,41 +372,57 @@ function emptyAuthority(): LedgerSourceRecordsReadModel {
 }
 
 function completeAuthority(): LedgerSourceRecordsReadModel {
+  const latestOrderRequest = {
+    order_request_id: "order-request-paper-buy-v1",
+    intent_kind: "place_order",
+    market_scope: "external_trading_api_fixture",
+    side: "buy",
+    order_type: "limit",
+    quantity: "0.001",
+    limit_price: "60000",
+    status: "proposed",
+    created_at: "2026-05-10T00:01:00.000Z",
+    authority_status: "not_submitted"
+  } satisfies LedgerSourceRecordsReadModel["latest_order_request"];
+  const latestGatewayResult = {
+    gateway_result_id: "gateway-result-paper-dry-run-v1",
+    order_request_ref: ref("order_request", "order-request-paper-buy-v1"),
+    decision_outcome: "dry_run_only",
+    decision_reason: "paper_stage_only",
+    decided_at: "2026-05-10T00:01:01.000Z",
+    authority_status: "dry_run_only"
+  } satisfies LedgerSourceRecordsReadModel["latest_gateway_result"];
+  const latestExecutionResult = {
+    execution_result_id: "execution-result-paper-dry-run-v1",
+    order_request_ref: ref("order_request", "order-request-paper-buy-v1"),
+    gateway_result_ref: ref("gateway_result", "gateway-result-paper-dry-run-v1"),
+    stage: "paper",
+    execution_mode: "host_local",
+    venue_scope: "external_trading_api_fixture",
+    status: "dry_run_recorded",
+    result_reason: "paper_stage_only",
+    created_at: "2026-05-10T00:01:02.000Z",
+    authority_status: "dry_run_only"
+  } satisfies LedgerSourceRecordsReadModel["latest_execution_result"];
+
   return {
     has_activity: true,
     chain_complete: true,
-    latest_order_request: {
-      order_request_id: "order-request-paper-buy-v1",
-      intent_kind: "place_order",
-      market_scope: "external_trading_api_fixture",
-      side: "buy",
-      order_type: "limit",
-      quantity: "0.001",
-      limit_price: "60000",
-      status: "proposed",
-      created_at: "2026-05-10T00:01:00.000Z",
-      authority_status: "not_submitted"
-    },
-    latest_gateway_result: {
-      gateway_result_id: "gateway-result-paper-dry-run-v1",
-      order_request_ref: ref("order_request", "order-request-paper-buy-v1"),
-      decision_outcome: "dry_run_only",
-      decision_reason: "paper_stage_only",
-      decided_at: "2026-05-10T00:01:01.000Z",
-      authority_status: "dry_run_only"
-    },
-    latest_execution_result: {
-      execution_result_id: "execution-result-paper-dry-run-v1",
-      order_request_ref: ref("order_request", "order-request-paper-buy-v1"),
-      gateway_result_ref: ref("gateway_result", "gateway-result-paper-dry-run-v1"),
-      stage: "paper",
-      execution_mode: "host_local",
-      venue_scope: "external_trading_api_fixture",
-      status: "dry_run_recorded",
-      result_reason: "paper_stage_only",
-      created_at: "2026-05-10T00:01:02.000Z",
-      authority_status: "dry_run_only"
-    },
+    chain_count: 1,
+    chains: [
+      {
+        chain_id: "order-request-paper-buy-v1",
+        chain_complete: true,
+        occurred_at: "2026-05-10T00:01:02.000Z",
+        order_request: latestOrderRequest,
+        gateway_result: latestGatewayResult,
+        execution_result: latestExecutionResult,
+        authority_status: "not_live"
+      }
+    ],
+    latest_order_request: latestOrderRequest,
+    latest_gateway_result: latestGatewayResult,
+    latest_execution_result: latestExecutionResult,
     order_request: {
       ref: ref("order_request", "order-request-paper-buy-v1"),
       label: "Order request",

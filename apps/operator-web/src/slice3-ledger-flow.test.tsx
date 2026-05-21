@@ -372,6 +372,88 @@ describe("Slice 3 trading run MLP flow", () => {
       await server.close();
     }
   });
+
+  it("renders Ledger history for happy and rejected paper order chains", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({ store });
+
+    try {
+      const happyPath = await server.inject({
+        method: "POST",
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`
+      });
+      const rejectedPath = await server.inject({
+        method: "POST",
+        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`,
+        payload: { paper_order_request: "rejected" }
+      });
+
+      expect(happyPath.statusCode).toBe(201);
+      expect(rejectedPath.statusCode).toBe(201);
+
+      const readback = await server.inject({
+        method: "GET",
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      });
+      expect(readback.statusCode).toBe(200);
+      const candidate = readback.json() as CandidateInspectReadModel;
+      expect(candidate.ledger).toMatchObject({
+        chain_count: 2,
+        chains: [
+          {
+            chain_complete: true,
+            order_request: {
+              quantity: "0"
+            },
+            gateway_result: {
+              decision_outcome: "rejected",
+              decision_reason: "risk_limit_exceeded"
+            },
+            execution_result: {
+              status: "blocked",
+              result_reason: "risk_limit_exceeded"
+            }
+          },
+          {
+            chain_complete: true,
+            order_request: {
+              quantity: "0.001"
+            },
+            gateway_result: {
+              decision_outcome: "dry_run_only",
+              decision_reason: "dry_run_allowed"
+            },
+            execution_result: {
+              status: "dry_run_recorded",
+              result_reason: "dry_run_allowed"
+            }
+          }
+        ]
+      });
+
+      const html = renderToStaticMarkup(
+        <CandidateDetail
+          candidate={candidate}
+          onStartTradingRun={() => undefined}
+          onStartRejectedPaperOrder={() => undefined}
+          onObserveTradingRun={() => undefined}
+          onStopTradingRun={() => undefined}
+        />
+      );
+      expect(html).toContain("Ledger history");
+      expect(html).toContain("2 chains");
+      expect(html).toContain("rejected / risk_limit_exceeded");
+      expect(html).toContain("blocked / risk_limit_exceeded");
+      expect(html).toContain("dry_run_only / dry_run_allowed");
+      expect(html).toContain("dry_run_recorded / dry_run_allowed");
+      expectNoOperatorActionControls(html, {
+        includePrivateAuthorityTerms: true,
+        allowTradingRunControls: true
+      });
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 async function readStoreJson<T>(...segments: string[]): Promise<T> {
