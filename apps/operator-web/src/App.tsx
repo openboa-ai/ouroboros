@@ -3222,6 +3222,36 @@ function LedgerSection({
         </div>
       )}
 
+      <div className="evaluation-block">
+        <h4>Ledger history</h4>
+        <Field label="Chains" value={`${ledger?.chain_count ?? 0} chains`} />
+        <Field label="Latest first" value={ledger?.chains.length ? "yes" : "none"} />
+      </div>
+
+      {ledger?.chains.map((chain, index) => (
+        <div className="evaluation-block" key={chain.chain_id}>
+          <h4>{`Ledger chain ${index + 1}`}</h4>
+          <Field label="Complete" value={chain.chain_complete ? "yes" : "no"} />
+          <Field
+            label="Order request"
+            value={`${chain.order_request.side ?? "none"} / ${chain.order_request.order_type ?? "none"} / ${chain.order_request.quantity ?? "none"} @ ${chain.order_request.limit_price ?? "none"}`}
+          />
+          <Field
+            label="Gateway result"
+            value={chain.gateway_result
+              ? `${chain.gateway_result.decision_outcome} / ${chain.gateway_result.decision_reason}`
+              : "not_evaluated"}
+          />
+          <Field
+            label="Execution result"
+            value={chain.execution_result
+              ? `${chain.execution_result.status} / ${chain.execution_result.result_reason}`
+              : "not_submitted"}
+          />
+          <Field label="Authority" value={chain.authority_status} />
+        </div>
+      ))}
+
     </InfoSection>
   );
 }

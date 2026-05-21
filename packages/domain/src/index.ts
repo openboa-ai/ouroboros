@@ -2554,12 +2554,24 @@ export interface LedgerSourceExecutionResultReadModel {
 export interface LedgerSourceRecordsReadModel {
   has_activity: boolean;
   chain_complete: boolean;
+  chain_count: number;
+  chains: LedgerSourceChainReadModel[];
   latest_order_request: LedgerSourceOrderRequestReadModel | null;
   latest_gateway_result: LedgerSourceGatewayResultReadModel | null;
   latest_execution_result: LedgerSourceExecutionResultReadModel | null;
   order_request: PlaceholderSummary;
   gateway_result: PlaceholderSummary;
   execution_result: PlaceholderSummary;
+}
+
+export interface LedgerSourceChainReadModel {
+  chain_id: string;
+  chain_complete: boolean;
+  occurred_at: string;
+  order_request: LedgerSourceOrderRequestReadModel;
+  gateway_result: LedgerSourceGatewayResultReadModel | null;
+  execution_result: LedgerSourceExecutionResultReadModel | null;
+  authority_status: "not_live";
 }
 
 export interface ImprovementSourceFindingReadModel {
@@ -2970,6 +2982,8 @@ export interface LedgerReadModel {
   ledger_kind: "ledger";
   has_activity: boolean;
   chain_complete: boolean;
+  chain_count: number;
+  chains: LedgerChainReadModel[];
   latest_order_request: OrderRequestReadModel | null;
   latest_gateway_result: GatewayResultReadModel | null;
   latest_execution_result: ExecutionResultReadModel | null;
@@ -2986,6 +3000,16 @@ export interface LedgerReadModel {
   source_record_kinds: ["order_request", "gateway_result", "execution_result"];
 }
 
+export interface LedgerChainReadModel {
+  chain_id: string;
+  chain_complete: boolean;
+  occurred_at: string;
+  order_request: OrderRequestReadModel;
+  gateway_result: GatewayResultReadModel | null;
+  execution_result: ExecutionResultReadModel | null;
+  authority_status: "not_live";
+}
+
 export function buildLedgerReadModel(
   source: LedgerSourceRecordsReadModel
 ): LedgerReadModel {
@@ -2993,6 +3017,8 @@ export function buildLedgerReadModel(
     ledger_kind: "ledger",
     has_activity: source.has_activity,
     chain_complete: source.chain_complete,
+    chain_count: source.chain_count,
+    chains: source.chains.map(toLedgerChainReadModel),
     latest_order_request: source.latest_order_request
       ? toOrderRequestReadModel(source.latest_order_request)
       : null,
@@ -3025,6 +3051,24 @@ export function buildLedgerReadModel(
       credentials: false
     },
     source_record_kinds: ["order_request", "gateway_result", "execution_result"]
+  };
+}
+
+function toLedgerChainReadModel(
+  chain: LedgerSourceChainReadModel
+): LedgerChainReadModel {
+  return {
+    chain_id: chain.chain_id,
+    chain_complete: chain.chain_complete,
+    occurred_at: chain.occurred_at,
+    order_request: toOrderRequestReadModel(chain.order_request),
+    gateway_result: chain.gateway_result
+      ? toGatewayResultReadModel(chain.gateway_result)
+      : null,
+    execution_result: chain.execution_result
+      ? toExecutionResultReadModel(chain.execution_result)
+      : null,
+    authority_status: chain.authority_status
   };
 }
 

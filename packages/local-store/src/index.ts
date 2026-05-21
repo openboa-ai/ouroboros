@@ -79,6 +79,7 @@ import type {
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
   LedgerInput,
+  LedgerSourceChainReadModel,
   LedgerSourceRecordsReadModel,
   LedgerReadModel,
   LedgerWriteOutcome,
@@ -3363,46 +3364,45 @@ export class LocalStore {
     runtime: TradingRunRecord
   ): Promise<LedgerSourceRecordsReadModel> {
     const runtimeId = runtime.trading_run_id;
-    const orderIntents = (await this.readCollection<OrderRequestRecord>("order-requests"))
+    const orderRequests = (await this.readCollection<OrderRequestRecord>("order-requests"))
       .filter((orderIntent) => orderIntent.runtime_ref.id === runtimeId)
       .sort(compareOrderRequests);
-    const latestOrderRequest = orderIntents.at(-1);
-    if (!latestOrderRequest) {
+    if (!orderRequests.length) {
       return emptyLedgerSourceRecordsReadModel();
     }
 
-    const gatewayDecisions = (await this.readCollection<GatewayResultRecord>("gateway-results"))
-      .filter((gatewayDecision) => gatewayDecision.order_request_ref.id === latestOrderRequest.order_request_id)
-      .sort(compareGatewayResults);
-    const latestGatewayResult = gatewayDecisions.at(-1);
-    const executionAttempts = latestGatewayResult
-      ? (await this.readCollection<ExecutionResultRecord>("execution-results"))
-          .filter((executionAttempt) => (
-            executionAttempt.gateway_result_ref.id === latestGatewayResult.gateway_result_id
-          ))
-          .sort(compareExecutionResults)
-      : [];
-    const latestExecutionResult = executionAttempts.at(-1);
+    const gatewayResults = await this.readCollection<GatewayResultRecord>("gateway-results");
+    const executionResults = await this.readCollection<ExecutionResultRecord>("execution-results");
+    const chains = orderRequests
+      .map((orderRequest) => ledgerSourceChainForOrderRequest({
+        orderRequest,
+        gatewayResults,
+        executionResults
+      }))
+      .sort(compareLedgerSourceChains)
+      .reverse();
+    const latestChain = chains[0];
+    const latestOrderRequest = latestChain.order_request;
+    const latestGatewayResult = latestChain.gateway_result;
+    const latestExecutionResult = latestChain.execution_result;
 
     return {
       has_activity: true,
-      chain_complete: Boolean(latestGatewayResult && latestExecutionResult),
-      latest_order_request: toLedgerSourceOrderRequestReadModel(latestOrderRequest),
-      latest_gateway_result: latestGatewayResult
-        ? toLedgerSourceGatewayResultReadModel(latestGatewayResult)
-        : null,
-      latest_execution_result: latestExecutionResult
-        ? toLedgerSourceExecutionResultReadModel(latestExecutionResult)
-        : null,
+      chain_complete: latestChain.chain_complete,
+      chain_count: chains.length,
+      chains,
+      latest_order_request: latestOrderRequest,
+      latest_gateway_result: latestGatewayResult,
+      latest_execution_result: latestExecutionResult,
       order_request: statusPlaceholder(
-        ref(latestOrderRequest.record_kind, latestOrderRequest.order_request_id),
+        ref("order_request", latestOrderRequest.order_request_id),
         "Order request",
         latestOrderRequest.status,
         latestOrderRequest.authority_status
       ),
       gateway_result: latestGatewayResult
         ? statusPlaceholder(
-            ref(latestGatewayResult.record_kind, latestGatewayResult.gateway_result_id),
+            ref("gateway_result", latestGatewayResult.gateway_result_id),
             "Gateway result",
             latestGatewayResult.decision_outcome,
             latestGatewayResult.authority_status
@@ -3415,7 +3415,7 @@ export class LocalStore {
           ),
       execution_result: latestExecutionResult
         ? statusPlaceholder(
-            ref(latestExecutionResult.record_kind, latestExecutionResult.execution_result_id),
+            ref("execution_result", latestExecutionResult.execution_result_id),
             "Execution result",
             latestExecutionResult.status,
             latestExecutionResult.authority_status
@@ -4191,6 +4191,8 @@ function emptyLedgerSourceRecordsReadModel(): LedgerSourceRecordsReadModel {
   return {
     has_activity: false,
     chain_complete: false,
+    chain_count: 0,
+    chains: [],
     latest_order_request: null,
     latest_gateway_result: null,
     latest_execution_result: null,
@@ -4213,6 +4215,50 @@ function emptyLedgerSourceRecordsReadModel(): LedgerSourceRecordsReadModel {
       "not_submitted"
     )
   };
+}
+
+function ledgerSourceChainForOrderRequest(input: {
+  orderRequest: OrderRequestRecord;
+  gatewayResults: GatewayResultRecord[];
+  executionResults: ExecutionResultRecord[];
+}): LedgerSourceChainReadModel {
+  const gatewayResult = input.gatewayResults
+    .filter((candidate) => candidate.order_request_ref.id === input.orderRequest.order_request_id)
+    .sort(compareGatewayResults)
+    .at(-1);
+  const executionResult = gatewayResult
+    ? input.executionResults
+        .filter((candidate) => candidate.gateway_result_ref.id === gatewayResult.gateway_result_id)
+        .sort(compareExecutionResults)
+        .at(-1)
+    : undefined;
+  return {
+    chain_id: input.orderRequest.order_request_id,
+    chain_complete: Boolean(gatewayResult && executionResult),
+    occurred_at: executionResult?.completed_at
+      ?? executionResult?.created_at
+      ?? gatewayResult?.decided_at
+      ?? input.orderRequest.created_at,
+    order_request: toLedgerSourceOrderRequestReadModel(input.orderRequest),
+    gateway_result: gatewayResult
+      ? toLedgerSourceGatewayResultReadModel(gatewayResult)
+      : null,
+    execution_result: executionResult
+      ? toLedgerSourceExecutionResultReadModel(executionResult)
+      : null,
+    authority_status: "not_live"
+  };
+}
+
+function compareLedgerSourceChains(
+  a: LedgerSourceChainReadModel,
+  b: LedgerSourceChainReadModel
+): number {
+  const timeCompare = a.occurred_at.localeCompare(b.occurred_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.chain_id.localeCompare(b.chain_id);
 }
 
 function emptyRunControlReadModel(): RunControlReadModel {
