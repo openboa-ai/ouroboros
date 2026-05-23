@@ -9,6 +9,7 @@ import type {
   ReplayRunComparisonReadModel,
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
+  ReplayRunMetricReadModel,
   ReplayRunValidationStateReadModel,
   RunControlReadModel,
   SandboxDetailReadModel,
@@ -49,6 +50,50 @@ import {
   type PrivateReadinessPostureDraft
 } from "./api";
 import {
+  ActivityIcon,
+  BarChart3Icon,
+  FlaskConicalIcon,
+  ListChecksIcon,
+  PanelLeftIcon,
+  ShieldCheckIcon
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger
+} from "@/components/ui/sidebar";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger
+} from "@/components/ui/tabs";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
   buildPrivateReadinessReviewPacketProjection,
   formatPrivateReadinessCheckedGatePosture
 } from "./private-readiness-review-packet";
@@ -88,7 +133,10 @@ interface AppState {
   privateReadinessPostureMessage?: string;
 }
 
+type OperatorView = "trading" | "research" | "details";
+
 export function App() {
+  const [operatorView, setOperatorView] = useState<OperatorView>("trading");
   const [state, setState] = useState<AppState>({
     candidates: [],
     executionModes: [],
@@ -572,85 +620,104 @@ export function App() {
   }
 
   return (
-    <main className="shell">
-      <aside className="sidebar" aria-label="Candidate list">
-        <div className="brand">
-          <span className="brand-mark">OU</span>
-          <div>
-            <h1>ouroboros</h1>
-            <p>Operator inspect</p>
-          </div>
-        </div>
-        {state.candidates.map((candidate) => (
-          <CandidateSummaryRow
-            active={state.selected?.candidate_id === candidate.candidate_id}
-            candidate={candidate}
-            key={candidate.candidate_id}
-            onSelectCandidate={selectCandidate}
-          />
-        ))}
-      </aside>
-
-      <section className="content">
-        {state.loading && <div className="status-panel">Loading fixture read model...</div>}
-        {state.error && <div className="status-panel error">{state.error}</div>}
-        {!state.loading && !state.error && state.selected && (
-          <CandidateDetail
-            candidate={state.selected}
-            tradingGatewayEnvironment={state.tradingGatewayEnvironment}
-            replayRuns={state.replayRuns}
-            selectedReplayRunId={state.selectedReplayRunId}
-            replayRunDetail={state.replayRunDetail}
-            replayRunComparison={state.replayRunComparison}
-            replayRunComparisonBaselineId={state.replayRunComparisonBaselineId}
-            replayRunValidationState={state.replayRunValidationState}
-            executionModes={state.executionModes}
-            onSelectReplayRun={(runId) => void selectReplayRun(runId)}
-            onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
-              ? () => void recordReplayRun()
-              : undefined}
-            onRunFullCycle={state.selected.fixture_notice.mode === "fixture_convenience_mode"
-              ? () => void runFullCycle()
-              : undefined}
-            onStartTradingRun={state.selected.ledger
-              ? () => void startTradingRun()
-              : undefined}
-            onStartRejectedPaperOrder={state.selected.ledger
-              ? () => void startTradingRun("rejected")
-              : undefined}
-            onObserveTradingRun={state.selected
-              ? () => void observeTradingRun()
-              : undefined}
-            onStopTradingRun={state.selected
-              ? () => void stopTradingRun()
-              : undefined}
-            onRecordImprovement={() => void recordImprovement()}
-            onRecordRunControl={state.selected.runtime.run_control
-              ? () => void recordRunControl()
-              : undefined}
-            onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
-            runningFullCycle={state.runningFullCycle}
-            runningTradingRun={state.runningTradingRun}
-            recordingImprovement={state.recordingImprovement}
-            recordingRunControl={state.recordingRunControl}
-            recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
-            runningCandidateReplay={state.runningCandidateReplay}
-            replayRunError={state.replayRunError}
-            replayRunMessage={state.replayRunMessage}
-            fullCycleError={state.fullCycleError}
-            fullCycleMessage={state.fullCycleMessage}
-            tradingRunError={state.tradingRunError}
-            tradingRunMessage={state.tradingRunMessage}
-            improvementError={state.improvementError}
-            improvementMessage={state.improvementMessage}
-            runtimeControlError={state.runtimeControlError}
-            runtimeControlMessage={state.runtimeControlMessage}
-            privateReadinessPostureError={state.privateReadinessPostureError}
-            privateReadinessPostureMessage={state.privateReadinessPostureMessage}
-          />
-        )}
-      </section>
-    </main>
+    <TooltipProvider>
+      <SidebarProvider>
+        <OperatorSidebar
+          activeView={operatorView}
+          candidates={state.candidates}
+          selectedCandidateId={state.selected?.candidate_id}
+          selectedCandidateName={state.selected?.display_name}
+          onSelectCandidate={(candidateId) => void selectCandidate(candidateId)}
+          onSelectView={setOperatorView}
+        />
+        <SidebarInset>
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+            <SidebarTrigger />
+            <Separator orientation="vertical" className="h-5" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Ouroboros Operator</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {operatorView === "trading"
+                  ? "Trading"
+                  : operatorView === "research"
+                    ? "Research"
+                    : "System details"}
+              </p>
+            </div>
+          </header>
+          <main className="min-h-[calc(100svh-3.5rem)] bg-background p-4">
+            {state.loading && (
+              <Card>
+                <CardContent>Loading fixture read model...</CardContent>
+              </Card>
+            )}
+            {state.error && (
+              <Card>
+                <CardContent className="text-destructive">{state.error}</CardContent>
+              </Card>
+            )}
+            {!state.loading && !state.error && state.selected && (
+              <CandidateDetail
+                activeView={operatorView}
+                onActiveViewChange={setOperatorView}
+                candidate={state.selected}
+                candidates={state.candidates}
+                tradingGatewayEnvironment={state.tradingGatewayEnvironment}
+                replayRuns={state.replayRuns}
+                selectedReplayRunId={state.selectedReplayRunId}
+                replayRunDetail={state.replayRunDetail}
+                replayRunComparison={state.replayRunComparison}
+                replayRunComparisonBaselineId={state.replayRunComparisonBaselineId}
+                replayRunValidationState={state.replayRunValidationState}
+                executionModes={state.executionModes}
+                onSelectReplayRun={(runId) => void selectReplayRun(runId)}
+                onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
+                  ? () => void recordReplayRun()
+                  : undefined}
+                onRunFullCycle={state.selected.fixture_notice.mode === "fixture_convenience_mode"
+                  ? () => void runFullCycle()
+                  : undefined}
+                onStartTradingRun={state.selected.ledger
+                  ? () => void startTradingRun()
+                  : undefined}
+                onStartRejectedPaperOrder={state.selected.ledger
+                  ? () => void startTradingRun("rejected")
+                  : undefined}
+                onObserveTradingRun={state.selected
+                  ? () => void observeTradingRun()
+                  : undefined}
+                onStopTradingRun={state.selected
+                  ? () => void stopTradingRun()
+                  : undefined}
+                onRecordImprovement={() => void recordImprovement()}
+                onRecordRunControl={state.selected.runtime.run_control
+                  ? () => void recordRunControl()
+                  : undefined}
+                onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
+                runningFullCycle={state.runningFullCycle}
+                runningTradingRun={state.runningTradingRun}
+                recordingImprovement={state.recordingImprovement}
+                recordingRunControl={state.recordingRunControl}
+                recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
+                runningCandidateReplay={state.runningCandidateReplay}
+                replayRunError={state.replayRunError}
+                replayRunMessage={state.replayRunMessage}
+                fullCycleError={state.fullCycleError}
+                fullCycleMessage={state.fullCycleMessage}
+                tradingRunError={state.tradingRunError}
+                tradingRunMessage={state.tradingRunMessage}
+                improvementError={state.improvementError}
+                improvementMessage={state.improvementMessage}
+                runtimeControlError={state.runtimeControlError}
+                runtimeControlMessage={state.runtimeControlMessage}
+                privateReadinessPostureError={state.privateReadinessPostureError}
+                privateReadinessPostureMessage={state.privateReadinessPostureMessage}
+              />
+            )}
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
 
@@ -664,7 +731,8 @@ export function CandidateSummaryRow({
   onSelectCandidate: (candidateId: string) => void | Promise<void>;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       className={`candidate-row ${active ? "active" : ""}`}
       type="button"
       onClick={() => void onSelectCandidate(candidate.candidate_id)}
@@ -673,7 +741,109 @@ export function CandidateSummaryRow({
       <small>
         {candidate.status} · latest validation state: {latestValidationStateLabel(candidate.latest_validation_state)}
       </small>
-    </button>
+    </Button>
+  );
+}
+
+function OperatorSidebar({
+  activeView,
+  candidates,
+  selectedCandidateId,
+  selectedCandidateName,
+  onSelectCandidate,
+  onSelectView
+}: {
+  activeView: OperatorView;
+  candidates: CandidateSummaryReadModel[];
+  selectedCandidateId?: string;
+  selectedCandidateName?: string;
+  onSelectCandidate: (candidateId: string) => void;
+  onSelectView: (view: OperatorView) => void;
+}) {
+  return (
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" isActive>
+              <ShieldCheckIcon />
+              <span>ouroboros</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Operator workspace</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={activeView === "trading"}
+                  onClick={() => onSelectView("trading")}
+                >
+                  <ActivityIcon />
+                  <span>Trading</span>
+                </SidebarMenuButton>
+                <SidebarMenuBadge>1</SidebarMenuBadge>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={activeView === "research"}
+                  onClick={() => onSelectView("research")}
+                >
+                  <FlaskConicalIcon />
+                  <span>Research</span>
+                </SidebarMenuButton>
+                <SidebarMenuBadge>{String(candidates.length)}</SidebarMenuBadge>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={activeView === "details"}
+                  onClick={() => onSelectView("details")}
+                >
+                  <ListChecksIcon />
+                  <span>Details</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Trading Systems</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {candidates.map((candidate) => (
+                <SidebarMenuItem key={candidate.candidate_id}>
+                  <SidebarMenuButton
+                    isActive={selectedCandidateId === candidate.candidate_id}
+                    onClick={() => {
+                      onSelectCandidate(candidate.candidate_id);
+                      onSelectView("research");
+                    }}
+                  >
+                    <BarChart3Icon />
+                    <span className="truncate" title={candidate.display_name}>{candidate.display_name}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              <PanelLeftIcon />
+              <span>{selectedCandidateName ?? "No Trading System selected"}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
 }
 
@@ -716,7 +886,10 @@ function baselineRunIdForSelection(
 }
 
 export function CandidateDetail({
+  activeView = "details",
+  onActiveViewChange,
   candidate,
+  candidates = [],
   tradingGatewayEnvironment,
   replayRuns = [],
   selectedReplayRunId,
@@ -754,7 +927,10 @@ export function CandidateDetail({
   privateReadinessPostureError,
   privateReadinessPostureMessage
 }: {
+  activeView?: OperatorView;
+  onActiveViewChange?: (view: OperatorView) => void;
   candidate: CandidateInspectReadModel;
+  candidates?: CandidateSummaryReadModel[];
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   replayRuns?: ReplayRunEvidenceReadModel[];
   selectedReplayRunId?: string;
@@ -793,297 +969,1058 @@ export function CandidateDetail({
   privateReadinessPostureMessage?: string;
 }) {
   const ledger = candidate.ledger;
-
-  return (
-    <article className="detail">
-      <header className="detail-header">
-        <div>
-          <p className="eyebrow">{candidate.fixture_notice.label}</p>
-          <h2>{candidate.display_name}</h2>
-          <p className="muted">
-            {candidate.candidate_id} · {candidate.candidate_version.version_label}
-          </p>
-        </div>
-        <div className="header-badges">
-          <span className="mode-pill">{candidate.fixture_notice.mode}</span>
-          {candidate.latest_validation_state && (
-            <ValidationStateStatus validationState={candidate.latest_validation_state} compact />
-          )}
-        </div>
-      </header>
-
-      <section className="notice-band">
-        {candidate.fixture_notice.statements.map((statement) => (
-          <span key={statement}>{statement}</span>
-        ))}
-      </section>
-
-      <TradingExecutionModesSection modes={executionModes} />
-
-      <div className="section-grid">
-        <FullCycleSection
-          candidate={candidate}
-          onRunFullCycle={onRunFullCycle}
-          runningFullCycle={runningFullCycle}
-          fullCycleError={fullCycleError}
-          fullCycleMessage={fullCycleMessage}
-        />
-
-        <InfoSection title="Trading System">
-          <Field label="Status" value={candidate.status} />
-          <Field label="Active version" value={candidate.active_version_id} />
-          <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
-          {candidate.latest_validation_state && (
-            <CandidateLatestValidationStateBlock validationState={candidate.latest_validation_state} />
-          )}
-        </InfoSection>
-
-        <ReplayRunsSection
-          runs={replayRuns}
-          selectedRunId={selectedReplayRunId}
-          detail={replayRunDetail}
-          comparison={replayRunComparison}
-          comparisonBaselineId={replayRunComparisonBaselineId}
-          validationState={replayRunValidationState}
-          onSelectRun={onSelectReplayRun}
-          onRunCandidateReplay={onRunCandidateReplay}
-          runningCandidateReplay={runningCandidateReplay}
-          replayRunError={replayRunError}
-          replayRunMessage={replayRunMessage}
-        />
-
-        <InfoSection title="Spec">
-          <Field label="Ref" value={formatRef(candidate.spec.ref)} />
-          <Field label="Summary" value={candidate.spec.summary} />
-          <Field label="Market" value={`${candidate.spec.market} / ${candidate.spec.instrument}`} />
-          <Field label="Stage profiles" value={candidate.spec.supported_stage_binding_profiles.join(", ")} />
-        </InfoSection>
-
-        <InfoSection title="System Code">
-          <Field label="Ref" value={formatRef(candidate.program.ref)} />
-          <Field label="Summary" value={candidate.program.summary} />
-          <Field label="Manifest" value={formatRef(candidate.program.manifest.ref)} />
-          <Field label="Runtime" value={candidate.program.manifest.declared_runtime} />
-          <Placeholder item={candidate.program.validation} />
-        </InfoSection>
-
-        <InfoSection title="Capability Package">
-          <Field label="Ref" value={formatRef(candidate.capability_package.ref)} />
-          <Field label="Summary" value={candidate.capability_package.summary} />
-          <Field label="Allowed stages" value={candidate.capability_package.manifest.allowed_stages.join(", ")} />
-          <Field label="Declared permissions" value={candidate.capability_package.manifest.declared_permissions.join(", ")} />
-          <Field label="Forbidden contents" value={candidate.capability_package.manifest.forbidden_contents.join(", ")} />
-          <Placeholder item={candidate.capability_package.admission} />
-          <Placeholder item={candidate.capability_package.grant} />
-          <Placeholder item={candidate.capability_package.mount} />
-        </InfoSection>
-
-        <InfoSection title="Agent And Provider">
-          <Placeholder item={candidate.agent_provider.agent_spec} />
-          <Placeholder item={candidate.agent_provider.agent_session} />
-          <Placeholder item={candidate.agent_provider.agent_run} />
-          <Placeholder item={candidate.agent_provider.agent_event} />
-          <Placeholder item={candidate.agent_provider.provider_readiness} />
-          <Placeholder item={candidate.agent_provider.provider_probe_attempt} />
-        </InfoSection>
-
-        <MaterializationAttemptSection attempt={candidate.materialization_attempt} />
-
-        <ImprovementSection
-          improvement={candidate.improvement}
-          onRecordImprovement={onRecordImprovement}
-          recordingImprovement={recordingImprovement}
-          improvementError={improvementError}
-          improvementMessage={improvementMessage}
-        />
-
-        <InfoSection title="Trading Run">
-          <div className={`evaluation-status ${candidate.runtime.runtime_lifecycle_status === "running" ? "counted" : "neutral"}`}>
-            <span>Lifecycle</span>
-            <strong>{candidate.runtime.runtime_lifecycle_status ?? "registered"}</strong>
-            <span>{candidate.runtime.authority_status}</span>
-          </div>
-          <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
-          <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
-          {candidate.runtime.runtime_lifecycle_status && (
-            <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
-          )}
-          <Field label="Authority" value={candidate.runtime.authority_status} />
-          <Placeholder item={candidate.runtime.placement} />
-          <Placeholder item={candidate.runtime.hands_environment} />
-          <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
-          <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
-          <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
-          {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
-            <div className="runtime-command">
-              {onStartTradingRun && (
-                <button
-                  className="runtime-command-button"
-                  type="button"
-                  onClick={onStartTradingRun}
-                  disabled={runningTradingRun}
-                >
-                  {runningTradingRun ? "Working trading run" : "Start trading run"}
-                </button>
-              )}
-              {onStartRejectedPaperOrder && (
-                <button
-                  className="runtime-command-button"
-                  type="button"
-                  onClick={onStartRejectedPaperOrder}
-                  disabled={runningTradingRun}
-                >
-                  Run rejected paper order
-                </button>
-              )}
-              {onObserveTradingRun && (
-                <button
-                  className="runtime-command-button"
-                  type="button"
-                  onClick={onObserveTradingRun}
-                  disabled={runningTradingRun}
-                >
-                  Observe
-                </button>
-              )}
-              {onStopTradingRun && (
-                <button
-                  className="runtime-command-button"
-                  type="button"
-                  onClick={onStopTradingRun}
-                  disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
-                >
-                  Stop
-                </button>
-              )}
-              <span>run_control / fixture_paper / not_live</span>
-            </div>
-          )}
-          {tradingRunMessage && <div className="inline-status">{tradingRunMessage}</div>}
-          {tradingRunError && <div className="inline-status error">{tradingRunError}</div>}
-        </InfoSection>
-
-        <TradingRunTranscriptSection transcript={candidate.runtime.transcript} />
-
-        <SandboxSection sandbox={candidate.runtime.sandbox} />
-
-        <TradingGatewayContractSection
-          contract={candidate.trading_substrate?.latest_trading_gateway_contract}
-        />
-
-        <TradingGatewayEnvironmentSection environment={tradingGatewayEnvironment} />
-
-        <LedgerSection
-          ledger={ledger}
-        />
-
-        <TradingSubstrateSection
-          key={candidate.candidate_id}
-          orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
-          publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
-          privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
-          privateReadinessPosture={candidate.trading_substrate?.latest_private_readiness_posture}
-          privateReadinessPostureHistory={candidate.trading_substrate?.private_readiness_posture_history ?? []}
-          privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
-          privateReadGateDecision={candidate.trading_substrate?.latest_private_read_gate_decision}
-          accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
-          onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
-          recordingPrivateReadinessPosture={recordingPrivateReadinessPosture}
-          privateReadinessPostureError={privateReadinessPostureError}
-          privateReadinessPostureMessage={privateReadinessPostureMessage}
-        />
-
-        <RunControlSection
-          control={candidate.runtime.run_control}
-          privateReadinessPolicyDecision={
-            candidate.trading_substrate?.latest_private_readiness_policy_decision
-          }
-          onRecordRunControl={onRecordRunControl}
-          recordingRunControl={recordingRunControl}
-          runtimeControlError={runtimeControlError}
-          runtimeControlMessage={runtimeControlMessage}
-        />
-
-        <InfoSection title="Trace And Evaluation">
-          <EvaluationSection evaluation={candidate.evaluation} />
-        </InfoSection>
-      </div>
-    </article>
-  );
-}
-
-function FullCycleSection({
-  candidate,
-  onRunFullCycle,
-  runningFullCycle,
-  fullCycleError,
-  fullCycleMessage
-}: {
-  candidate: CandidateInspectReadModel;
-  onRunFullCycle?: () => void;
-  runningFullCycle: boolean;
-  fullCycleError?: string;
-  fullCycleMessage?: string;
-}) {
-  const evaluationStatus = candidate.evaluation.latest_run?.status ?? "none";
+  const latestReplayRun = replayRuns[0];
+  const publicMarketSurface = candidate.trading_substrate?.latest_public_market_liveness_surface ?? null;
+  const orderFillSurface = candidate.trading_substrate?.latest_order_fill_surface ?? null;
+  const accountPositionRiskSurface =
+    candidate.trading_substrate?.latest_account_position_risk_mirror_surface ?? null;
+  const profitSummary = buildOperatorProfitSummary(candidate, replayRunDetail, latestReplayRun);
+  const runStatus = candidate.runtime.runtime_lifecycle_status ?? "registered";
+  const ledgerStatus = ledger?.chain_complete
+    ? "chain complete"
+    : ledger?.has_activity
+      ? "incomplete"
+      : "not recorded";
   const improvementStatus = candidate.improvement?.chain_complete
     ? "chain complete"
     : candidate.improvement?.has_activity
       ? "incomplete"
-      : "none";
-  const tradingRunStatus = candidate.runtime.runtime_lifecycle_status ?? "registered";
-  const sandboxStatus = candidate.runtime.sandbox?.lifecycle_status ?? "none";
-  const gatewayStatus = candidate.ledger?.latest_gateway_result?.decision_outcome ?? "none";
-  const ledgerStatus = candidate.ledger?.chain_complete
-    ? "chain complete"
-    : candidate.ledger?.has_activity
-      ? "incomplete"
-      : "none";
-  const cycleComplete = Boolean(
-    candidate.evaluation.has_runs &&
-    candidate.improvement?.chain_complete &&
-    candidate.runtime.sandbox &&
-    candidate.ledger?.chain_complete
-  );
+      : "not recorded";
+  const tradingSystemRows = buildTradingSystemRows(candidate, candidates);
+  const accountAssetValue = accountPositionRiskSurface
+    ? `${formatBalance(accountPositionRiskSurface.total_wallet_balance)} ${accountPositionRiskSurface.asset}`
+    : "not connected";
+  const todayPnlValue = accountPositionRiskSurface
+    ? `${formatSignedBalance(accountPositionRiskSurface.unrealized_profit)} USDT`
+    : "not measured";
+  const positionValue = accountPositionRiskSurface
+    ? `${accountPositionRiskSurface.position_side} ${accountPositionRiskSurface.position_amount}`
+    : "no private read";
+  const operatorDecision = buildOperatorDecision({
+    accountPositionRiskSurface,
+    candidate,
+    ledger,
+    latestReplayRun,
+    orderFillSurface,
+    replayRunDetail
+  });
+  const exchangeEnvironment = tradingGatewayEnvironment?.exchange_environment ?? "testnet";
+  const marketFreshness = publicMarketSurface?.freshness ?? "no market data";
+  const workspaceLabel = candidate.fixture_notice.mode === "fixture_convenience_mode"
+    ? "Paper workspace"
+    : "Local workspace";
+  const nextCycleStatus = candidate.improvement?.latest_change_proposal
+    ? "handoff ready"
+    : candidate.improvement?.has_activity
+      ? "review handoff"
+      : "not produced";
 
   return (
-    <InfoSection title="Full Cycle">
-      <div className={`evaluation-status ${cycleComplete ? "counted" : "neutral"}`}>
-        <span>Trading System to Ledger</span>
-        <strong>{cycleComplete ? "cycle complete" : "ready"}</strong>
-        <span>not_live</span>
-      </div>
-      <Field label="Trading System" value={candidate.trading_system?.summary ?? candidate.display_name} />
-      <Field label="System Code" value={candidate.system_code?.ref ? formatRef(candidate.system_code.ref) : formatRef(candidate.program.ref)} />
-      <Field label="Evaluation" value={evaluationStatus} />
-      <Field label="Improvement" value={improvementStatus} />
-      <Field label="Trading Run" value={tradingRunStatus} />
-      <Field label="Sandbox" value={sandboxStatus} />
-      <Field label="Gateway" value={gatewayStatus} />
-      <Field label="Ledger" value={ledgerStatus} />
-      {onRunFullCycle && (
-        <div className="runtime-command">
-          <button
-            className="runtime-command-button"
-            type="button"
-            onClick={onRunFullCycle}
-            disabled={runningFullCycle}
-          >
-            {runningFullCycle ? "Running full cycle" : "Run full cycle"}
-          </button>
-          <span>fixture_paper / not_live</span>
+    <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
+      <Tabs
+        value={activeView}
+        onValueChange={(value) => onActiveViewChange?.(value as OperatorView)}
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">{workspaceLabel}</p>
+            <h2 className="font-heading text-3xl font-semibold tracking-tight">BTCUSDT operator cockpit</h2>
+          </div>
+          <TabsList>
+            <TabsTrigger value="trading">Trading</TabsTrigger>
+            <TabsTrigger value="research">Research</TabsTrigger>
+            <TabsTrigger value="details">Details</TabsTrigger>
+          </TabsList>
         </div>
+
+        <TabsContent value="trading" className="flex flex-col gap-4">
+      <Card aria-label="Operator decision bar">
+        <CardHeader>
+          <CardDescription>{workspaceLabel}</CardDescription>
+          <CardTitle>Trading</CardTitle>
+          <CardDescription>{operatorDecision.detail}</CardDescription>
+          <CardAction className="flex flex-wrap justify-end gap-2">
+          <Badge variant="secondary">{formatAuthorityLabel(candidate.runtime.authority_status)}</Badge>
+          <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
+          <Badge variant="secondary">{formatGatewayEnvironment(exchangeEnvironment)}</Badge>
+          <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
+            {formatFreshnessLabel(marketFreshness)}
+          </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+        <Card size="sm" className={toneCardClass(operatorDecision.tone)}>
+          <CardHeader>
+            <CardDescription>Recommended action</CardDescription>
+            <CardTitle>{operatorDecision.value}</CardTitle>
+          </CardHeader>
+        </Card>
+        <div className="flex flex-wrap gap-2">
+          {onRunFullCycle && (
+            <Button
+              type="button"
+              onClick={onRunFullCycle}
+              disabled={runningFullCycle}
+            >
+              {runningFullCycle ? "Running full cycle" : "Run next cycle"}
+            </Button>
+          )}
+          {onObserveTradingRun && (
+            <Button
+              type="button"
+              onClick={onObserveTradingRun}
+              disabled={runningTradingRun}
+              variant="secondary"
+            >
+              Observe
+            </Button>
+          )}
+          {onStopTradingRun && (
+            <Button
+              type="button"
+              onClick={onStopTradingRun}
+              disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
+              variant="outline"
+            >
+              Stop
+            </Button>
+          )}
+        </div>
+        </CardContent>
+      </Card>
+
+      {(fullCycleMessage || fullCycleError || tradingRunMessage || tradingRunError) && (
+        <Card aria-label="Operator messages">
+          <CardContent className="grid gap-2">
+            {fullCycleMessage && <p className="text-sm text-muted-foreground">{fullCycleMessage}</p>}
+            {fullCycleError && <p className="text-sm text-destructive">{fullCycleError}</p>}
+            {tradingRunMessage && <p className="text-sm text-muted-foreground">{tradingRunMessage}</p>}
+            {tradingRunError && <p className="text-sm text-destructive">{tradingRunError}</p>}
+          </CardContent>
+        </Card>
       )}
-      {fullCycleMessage && <div className="inline-status">{fullCycleMessage}</div>}
-      {fullCycleError && <div className="inline-status error">{fullCycleError}</div>}
-    </InfoSection>
+
+      <Card aria-label="Safety boundary">
+        <CardContent className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">Safety boundary</Badge>
+        <Badge variant="secondary">Paper mode</Badge>
+        <Badge variant="secondary">No exchange order</Badge>
+        <Badge variant="secondary">No API credentials</Badge>
+        <Badge variant="secondary">{formatGatewayEnvironment(exchangeEnvironment)}</Badge>
+        <span className="text-sm text-muted-foreground">{candidate.fixture_notice.statements[0]}</span>
+        </CardContent>
+      </Card>
+
+      <Card aria-label="Trading cockpit">
+        <CardHeader>
+          <CardTitle>Trading cockpit</CardTitle>
+          <CardDescription>{candidate.display_name}</CardDescription>
+          <CardAction>
+          <Badge variant={publicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
+            {publicMarketSurface?.symbol_status ?? "no market data"}
+          </Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+
+        <Card aria-label="BTCUSDT futures chart">
+          <CardHeader>
+            <CardTitle>BTCUSDT futures chart</CardTitle>
+            <CardDescription>
+              {publicMarketSurface ? "Binance USD-M Futures snapshot" : "Market feed is not connected yet."}
+            </CardDescription>
+            <CardAction>
+            <Badge variant={publicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
+              {publicMarketSurface?.symbol_status ?? "no market data"}
+            </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+          <BtcFuturesChart market={publicMarketSurface} />
+          <div className="grid gap-2 md:grid-cols-4">
+            <MiniStat label="Mark price" value={formatPrice(publicMarketSurface?.mark_price)} />
+            <MiniStat label="Index price" value={formatPrice(publicMarketSurface?.index_price)} />
+            <MiniStat label="Funding" value={publicMarketSurface?.funding_rate ?? "not connected"} />
+            <MiniStat label="Next funding" value={formatCompactDateTime(publicMarketSurface?.next_funding_time)} />
+          </div>
+          </CardContent>
+        </Card>
+
+        <section className="grid gap-3 md:grid-cols-4" aria-label="Portfolio and daily profit">
+          <OperatorMetricCard
+            label="My assets"
+            value={accountAssetValue}
+            detail={accountPositionRiskSurface
+              ? `available ${formatBalance(accountPositionRiskSurface.available_balance)} ${accountPositionRiskSurface.asset}`
+              : "Private account read is not connected."}
+            tone={accountPositionRiskSurface ? "good" : "warning"}
+          />
+          <OperatorMetricCard
+            label="Today P&L"
+            value={todayPnlValue}
+            detail={accountPositionRiskSurface
+              ? `cross P&L ${formatSignedBalance(accountPositionRiskSurface.total_cross_un_pnl)} USDT`
+              : "No account or paper P&L series has been measured yet."}
+            tone={accountPositionRiskSurface ? signedTone(accountPositionRiskSurface.unrealized_profit) : "warning"}
+          />
+          <OperatorMetricCard
+            label="Current position"
+            value={positionValue}
+            detail={accountPositionRiskSurface
+              ? `entry ${formatPrice(accountPositionRiskSurface.entry_price)}, mark ${formatPrice(accountPositionRiskSurface.mark_price)}`
+              : "Position status waits for a private-read or paper-account mirror."}
+            tone={accountPositionRiskSurface ? "good" : "neutral"}
+          />
+          <OperatorMetricCard
+            label="Risk status"
+            value={accountPositionRiskSurface?.risk_status ?? "not measured"}
+            detail={accountPositionRiskSurface
+              ? `liq ${formatPrice(accountPositionRiskSurface.liquidation_price)}, ${accountPositionRiskSurface.leverage}x ${accountPositionRiskSurface.margin_type}`
+              : "Risk waits for account or paper-account mirror."}
+            tone={accountPositionRiskSurface ? riskTone(accountPositionRiskSurface.risk_status) : "warning"}
+          />
+        </section>
+
+        <TradeStatusPanel
+          ledgerStatus={ledgerStatus}
+          ledger={ledger}
+          orderFillSurface={orderFillSurface}
+        />
+        </CardContent>
+      </Card>
+
+        </TabsContent>
+
+        <TabsContent value="research" className="flex flex-col gap-4">
+      <Card aria-label="System performance">
+        <CardHeader>
+          <CardTitle>System performance</CardTitle>
+          <CardDescription>Current system quality, risk posture, and the next action for the operator.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+        <Card size="sm" className={toneCardClass(operatorDecision.tone)}>
+          <CardHeader>
+            <CardDescription>Operator decision</CardDescription>
+            <CardTitle>{operatorDecision.value}</CardTitle>
+            <CardDescription>{operatorDecision.detail}</CardDescription>
+          </CardHeader>
+        </Card>
+        <div className="grid gap-3 md:grid-cols-4">
+          <OperatorStatusCard
+            label="Profit analysis"
+            value={profitSummary[0].value}
+            detail={profitSummary[0].detail}
+            tone={profitSummary[0].tone}
+          />
+          <OperatorStatusCard
+            label="Selected Trading System"
+            value={runStatus}
+            detail={`${candidate.display_name}; ${candidate.runtime.stage_binding_profile} / ${candidate.runtime.authority_status}`}
+            tone={runStatus === "running" ? "good" : "neutral"}
+          />
+          <OperatorStatusCard
+            label="Evaluation"
+            value={improvementStatus}
+            detail={candidate.improvement?.latest_evaluation_result
+              ? `evaluation score ${formatScore(candidate.improvement.latest_evaluation_result.total_score)}`
+              : latestReplayRun
+                ? `${latestReplayRun.scenario_accepted}/${latestReplayRun.scenario_total} scenarios`
+                : "No evaluation result yet."}
+            tone={candidate.improvement?.chain_complete || latestReplayRun?.status === "accepted" ? "good" : "neutral"}
+          />
+          <OperatorStatusCard
+            label="Next cycle handoff"
+            value={nextCycleStatus}
+            detail={candidate.improvement?.latest_change_proposal
+              ? `proposal ${candidate.improvement.latest_change_proposal.proposal_id}`
+              : "Run a full cycle to produce the next System Code candidate."}
+            tone={candidate.improvement?.latest_change_proposal ? "good" : "warning"}
+          />
+        </div>
+        </CardContent>
+      </Card>
+
+      <Card aria-label="Research cycle">
+        <CardHeader>
+          <CardTitle>Research</CardTitle>
+          <CardDescription>
+            How the same Trading System is evaluated, improved, and prepared for the next cycle.
+          </CardDescription>
+          <CardAction>
+          <Badge variant="secondary">{String(tradingSystemRows.length)}</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+        <div className="grid gap-3 md:grid-cols-4" aria-label="Research cycle">
+          <ResearchStage
+            label="Current System Code"
+            status={candidate.program.summary}
+            tone="good"
+          />
+          <ResearchStage
+            label="Evaluation"
+            status={candidate.improvement?.latest_evaluation_result
+              ? `score ${formatScore(candidate.improvement.latest_evaluation_result.total_score)}`
+              : latestReplayRun
+                ? latestReplayRun.status
+                : "needed"}
+            tone={candidate.improvement?.latest_evaluation_result || latestReplayRun ? "good" : "warning"}
+          />
+          <ResearchStage
+            label="Improvement output"
+            status={candidate.improvement?.latest_change_proposal?.proposal_id ?? "not produced"}
+            tone={candidate.improvement?.latest_change_proposal ? "good" : "neutral"}
+          />
+          <ResearchStage
+            label="Next cycle"
+            status={nextCycleStatus}
+            tone={nextCycleStatus === "handoff ready" ? "good" : "warning"}
+          />
+        </div>
+        <div className="grid gap-2">
+          {tradingSystemRows.map((row) => (
+            <Card size="sm" key={row.id} className={row.active ? "border-primary/40" : ""}>
+              <CardHeader>
+                <CardDescription>{row.status}</CardDescription>
+                <CardTitle className="text-sm">{row.name}</CardTitle>
+                <CardDescription>{row.evaluation}</CardDescription>
+                <CardAction>
+              <Badge variant={row.active ? "default" : "secondary"}>{row.active ? "running view" : "queued"}</Badge>
+                </CardAction>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+        </CardContent>
+      </Card>
+
+        </TabsContent>
+
+        <TabsContent value="details" className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>{candidate.display_name}</CardTitle>
+          <CardDescription>Fixture dry-run only - why the first screen does not show real P&L yet</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Badge variant="outline">{candidate.fixture_notice.label}</Badge>
+          <Badge variant="outline">fixture mode: {candidate.fixture_notice.mode}</Badge>
+          {candidate.fixture_notice.statements.map((statement) => (
+            <Badge key={statement} variant="outline">{statement}</Badge>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card aria-label="Details">
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+          <CardDescription>Open only the area you need. Raw refs and implementation records stay below this line.</CardDescription>
+        </CardHeader>
+        <CardContent>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <ReplayRunsSection
+            runs={replayRuns}
+            selectedRunId={selectedReplayRunId}
+            detail={replayRunDetail}
+            comparison={replayRunComparison}
+            comparisonBaselineId={replayRunComparisonBaselineId}
+            validationState={replayRunValidationState}
+            onSelectRun={onSelectReplayRun}
+            onRunCandidateReplay={onRunCandidateReplay}
+            runningCandidateReplay={runningCandidateReplay}
+            replayRunError={replayRunError}
+            replayRunMessage={replayRunMessage}
+          />
+
+          <InfoSection
+            title="Trace And Evaluation"
+            summary={evaluationStatusLabel(candidate.evaluation)}
+            badge={candidate.evaluation.counted_evidence.evidence_disposition}
+          >
+            <EvaluationSection evaluation={candidate.evaluation} />
+          </InfoSection>
+
+          <ImprovementSection
+            improvement={candidate.improvement}
+            onRecordImprovement={onRecordImprovement}
+            recordingImprovement={recordingImprovement}
+            improvementError={improvementError}
+            improvementMessage={improvementMessage}
+          />
+
+          <InfoSection
+            title="Trading Run"
+            summary={`${runStatus} / ${candidate.runtime.authority_status}`}
+            badge={runStatus}
+          >
+            <div className={`evaluation-status ${runStatus === "running" ? "counted" : "neutral"}`}>
+              <span>Lifecycle</span>
+              <strong>{runStatus}</strong>
+              <span>{candidate.runtime.authority_status}</span>
+            </div>
+            <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
+            <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
+            {candidate.runtime.runtime_lifecycle_status && (
+              <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
+            )}
+            <Field label="Authority" value={candidate.runtime.authority_status} />
+            <Placeholder item={candidate.runtime.placement} />
+            <Placeholder item={candidate.runtime.hands_environment} />
+            <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
+            <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
+            <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
+            {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
+              <div className="runtime-command">
+                {onStartTradingRun && (
+                  <Button
+                    className="runtime-command-button"
+                    type="button"
+                    onClick={onStartTradingRun}
+                    disabled={runningTradingRun}
+                  >
+                    {runningTradingRun ? "Working trading run" : "Start trading run"}
+                  </Button>
+                )}
+                {onStartRejectedPaperOrder && (
+                  <Button
+                    className="runtime-command-button"
+                    type="button"
+                    onClick={onStartRejectedPaperOrder}
+                    disabled={runningTradingRun}
+                    variant="outline"
+                  >
+                    Run rejected paper order
+                  </Button>
+                )}
+                {onObserveTradingRun && (
+                  <Button
+                    className="runtime-command-button"
+                    type="button"
+                    onClick={onObserveTradingRun}
+                    disabled={runningTradingRun}
+                    variant="secondary"
+                  >
+                    Observe
+                  </Button>
+                )}
+                {onStopTradingRun && (
+                  <Button
+                    className="runtime-command-button"
+                    type="button"
+                    onClick={onStopTradingRun}
+                    disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
+                    variant="outline"
+                  >
+                    Stop
+                  </Button>
+                )}
+                <span>run_control / fixture_paper / not_live</span>
+              </div>
+            )}
+          </InfoSection>
+
+          <LedgerSection ledger={ledger} />
+
+          <TradingGatewayContractSection
+            contract={candidate.trading_substrate?.latest_trading_gateway_contract}
+          />
+
+          <TradingGatewayEnvironmentSection environment={tradingGatewayEnvironment} />
+
+          <SandboxSection sandbox={candidate.runtime.sandbox} />
+
+          <TradingRunTranscriptSection transcript={candidate.runtime.transcript} />
+
+          <InfoSection
+            title="Trading System"
+            summary={`${candidate.status} / ${latestValidationStateLabel(candidate.latest_validation_state)}`}
+            badge={candidate.status}
+          >
+            <Field label="Status" value={candidate.status} />
+            <Field label="Active version" value={candidate.active_version_id} />
+            <Field label="Latest validation state" value={latestValidationStateLabel(candidate.latest_validation_state)} />
+            <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
+            {candidate.latest_validation_state && (
+              <CandidateLatestValidationStateBlock validationState={candidate.latest_validation_state} />
+            )}
+          </InfoSection>
+
+          <InfoSection
+            title="Spec"
+            summary={`${candidate.spec.market} / ${candidate.spec.instrument}`}
+            badge={candidate.spec.supported_stage_binding_profiles.join(", ")}
+          >
+            <Field label="Ref" value={formatRef(candidate.spec.ref)} />
+            <Field label="Summary" value={candidate.spec.summary} />
+            <Field label="Market" value={`${candidate.spec.market} / ${candidate.spec.instrument}`} />
+            <Field label="Stage profiles" value={candidate.spec.supported_stage_binding_profiles.join(", ")} />
+          </InfoSection>
+
+          <InfoSection
+            title="System Code"
+            summary={candidate.program.summary}
+            badge={candidate.program.manifest.declared_runtime}
+          >
+            <Field label="Ref" value={formatRef(candidate.program.ref)} />
+            <Field label="Summary" value={candidate.program.summary} />
+            <Field label="Manifest" value={formatRef(candidate.program.manifest.ref)} />
+            <Field label="Runtime" value={candidate.program.manifest.declared_runtime} />
+            <Placeholder item={candidate.program.validation} />
+          </InfoSection>
+
+          <InfoSection
+            title="Capability Package"
+            summary={`allowed: ${candidate.capability_package.manifest.allowed_stages.join(", ")}`}
+            badge="not_live"
+          >
+            <Field label="Ref" value={formatRef(candidate.capability_package.ref)} />
+            <Field label="Summary" value={candidate.capability_package.summary} />
+            <Field label="Allowed stages" value={candidate.capability_package.manifest.allowed_stages.join(", ")} />
+            <Field label="Declared permissions" value={candidate.capability_package.manifest.declared_permissions.join(", ")} />
+            <Field label="Forbidden contents" value={candidate.capability_package.manifest.forbidden_contents.join(", ")} />
+            <Placeholder item={candidate.capability_package.admission} />
+            <Placeholder item={candidate.capability_package.grant} />
+            <Placeholder item={candidate.capability_package.mount} />
+          </InfoSection>
+
+          <InfoSection
+            title="Agent And Provider"
+            summary={candidate.agent_provider.provider_readiness.authority_status}
+            badge={candidate.agent_provider.provider_readiness.authority_status}
+          >
+            <Placeholder item={candidate.agent_provider.agent_spec} />
+            <Placeholder item={candidate.agent_provider.agent_session} />
+            <Placeholder item={candidate.agent_provider.agent_run} />
+            <Placeholder item={candidate.agent_provider.agent_event} />
+            <Placeholder item={candidate.agent_provider.provider_readiness} />
+            <Placeholder item={candidate.agent_provider.provider_probe_attempt} />
+          </InfoSection>
+
+          <MaterializationAttemptSection attempt={candidate.materialization_attempt} />
+
+          <TradingExecutionModesSection modes={executionModes} />
+
+          <TradingSubstrateSection
+            key={candidate.candidate_id}
+            orderFillSurface={candidate.trading_substrate?.latest_order_fill_surface}
+            publicMarketSurface={candidate.trading_substrate?.latest_public_market_liveness_surface}
+            privateReadinessSurface={candidate.trading_substrate?.latest_private_readiness_preflight_surface}
+            privateReadinessPosture={candidate.trading_substrate?.latest_private_readiness_posture}
+            privateReadinessPostureHistory={candidate.trading_substrate?.private_readiness_posture_history ?? []}
+            privateReadinessPolicyDecision={candidate.trading_substrate?.latest_private_readiness_policy_decision}
+            privateReadGateDecision={candidate.trading_substrate?.latest_private_read_gate_decision}
+            accountPositionRiskSurface={candidate.trading_substrate?.latest_account_position_risk_mirror_surface}
+            onRecordPrivateReadinessPosture={onRecordPrivateReadinessPosture}
+            recordingPrivateReadinessPosture={recordingPrivateReadinessPosture}
+            privateReadinessPostureError={privateReadinessPostureError}
+            privateReadinessPostureMessage={privateReadinessPostureMessage}
+          />
+
+          <RunControlSection
+            control={candidate.runtime.run_control}
+            privateReadinessPolicyDecision={
+              candidate.trading_substrate?.latest_private_readiness_policy_decision
+            }
+            onRecordRunControl={onRecordRunControl}
+            recordingRunControl={recordingRunControl}
+            runtimeControlError={runtimeControlError}
+            runtimeControlMessage={runtimeControlMessage}
+          />
+        </div>
+        </CardContent>
+      </Card>
+        </TabsContent>
+      </Tabs>
+    </article>
   );
+}
+
+type OperatorTone = "good" | "warning" | "danger" | "neutral";
+
+interface OperatorMetric {
+  label: string;
+  value: string;
+  detail: string;
+  tone: OperatorTone;
+}
+
+function OperatorMetricCard({
+  label,
+  value,
+  detail,
+  tone
+}: OperatorMetric) {
+  return (
+    <Card size="sm" className={toneCardClass(tone)}>
+      <CardHeader>
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-2xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent className="text-xs text-muted-foreground">{detail}</CardContent>
+    </Card>
+  );
+}
+
+function OperatorStatusCard({
+  label,
+  value,
+  detail,
+  tone
+}: OperatorMetric) {
+  return (
+    <Card size="sm" className={toneCardClass(tone)}>
+      <CardHeader>
+        <CardDescription>{label}</CardDescription>
+        <CardTitle>{value}</CardTitle>
+      </CardHeader>
+      <CardContent className="text-xs text-muted-foreground">{detail}</CardContent>
+    </Card>
+  );
+}
+
+function TradeStatusPanel({
+  ledger,
+  ledgerStatus,
+  orderFillSurface
+}: {
+  ledger?: LedgerReadModel;
+  ledgerStatus: string;
+  orderFillSurface?: OrderFillSurfaceReadModel | null;
+}) {
+  const requestedQuantity = orderFillSurface?.requested_quantity ?? ledger?.latest_order_request?.quantity;
+  const filledQuantity = orderFillSurface?.cumulative_filled_quantity ?? "0";
+  const fillPercent = calculateFillPercent(filledQuantity, requestedQuantity);
+  const sideAndType = orderFillSurface?.side && orderFillSurface.order_type
+    ? `${orderFillSurface.side} ${orderFillSurface.order_type}`
+    : ledger?.latest_order_request
+      ? `${ledger.latest_order_request.side} ${ledger.latest_order_request.order_type}`
+      : "no order request";
+
+  return (
+    <Card aria-label="Trade status">
+      <CardHeader>
+        <CardTitle>Order / trade status</CardTitle>
+        <CardDescription>What the current system attempted and what happened.</CardDescription>
+        <CardAction>
+        <Badge variant={orderFillSurface ? "default" : ledger?.chain_complete ? "default" : "secondary"}>
+          {orderFillSurface?.posture ?? ledgerStatus}
+        </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+      <div className="grid gap-2 md:grid-cols-4">
+        <MiniStat label="Side / type" value={sideAndType} />
+        <MiniStat label="Filled" value={`${filledQuantity}/${requestedQuantity ?? "0"}`} />
+        <MiniStat label="Average price" value={orderFillSurface?.average_fill_price ?? "not filled"} />
+        <MiniStat label="Execution" value={ledger?.latest_execution_result?.status ?? "not recorded"} />
+      </div>
+      <Progress value={fillPercent} aria-label="Fill progress" />
+      <div className="flex flex-wrap gap-2">
+        <Badge variant={ledger?.latest_order_request ? "default" : "secondary"}>OrderRequest</Badge>
+        <Badge variant={ledger?.latest_gateway_result ? "default" : "secondary"}>GatewayResult</Badge>
+        <Badge variant={ledger?.latest_execution_result ? "default" : "secondary"}>ExecutionResult</Badge>
+      </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ResearchStage({
+  label,
+  status,
+  tone
+}: {
+  label: string;
+  status: string;
+  tone: OperatorTone;
+}) {
+  return (
+    <Card size="sm" className={toneCardClass(tone)}>
+      <CardHeader>
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-sm">{status}</CardTitle>
+      </CardHeader>
+    </Card>
+  );
+}
+
+function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadModel | null }) {
+  if (!market) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Market feed not connected</CardTitle>
+          <CardDescription>
+            Connect Binance USD-M Futures public market data to render the live BTCUSDT chart.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const points = marketChartPoints(market);
+  return (
+    <Card>
+      <CardContent className="grid gap-3">
+      <svg
+        className="aspect-[16/5] w-full rounded-lg bg-muted"
+        viewBox="0 0 520 180"
+        role="img"
+        aria-label="BTCUSDT mark price snapshot"
+      >
+        <defs>
+          <linearGradient id="marketLineFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#0ECB81" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#0ECB81" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <line x1="20" x2="500" y1="42" y2="42" stroke="#2B3139" strokeWidth="1" />
+        <line x1="20" x2="500" y1="80" y2="80" stroke="#2B3139" strokeWidth="1" />
+        <line x1="20" x2="500" y1="118" y2="118" stroke="#2B3139" strokeWidth="1" />
+        <path d={`${points} L 500 156 L 20 156 Z`} fill="url(#marketLineFill)" />
+        <path d={points} fill="none" stroke="#0ECB81" strokeLinecap="round" strokeWidth="3" />
+        <line x1="20" x2="500" y1="156" y2="156" stroke="#2B3139" strokeWidth="1" />
+      </svg>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <strong>{market.instrument} {market.contract_type}</strong>
+        <span>snapshot only / {formatFreshnessLabel(market.freshness)} / {formatAuthorityLabel(market.authority_status)}</span>
+      </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-sm">{value}</CardTitle>
+      </CardHeader>
+    </Card>
+  );
+}
+
+interface OperatorDecisionInput {
+  accountPositionRiskSurface?: AccountPositionRiskMirrorSurfaceReadModel | null;
+  candidate: CandidateInspectReadModel;
+  ledger?: LedgerReadModel;
+  latestReplayRun?: ReplayRunEvidenceReadModel;
+  orderFillSurface?: OrderFillSurfaceReadModel | null;
+  replayRunDetail?: ReplayRunDetailReadModel;
+}
+
+function buildOperatorDecision({
+  accountPositionRiskSurface,
+  candidate,
+  ledger,
+  latestReplayRun,
+  orderFillSurface,
+  replayRunDetail
+}: OperatorDecisionInput): OperatorMetric {
+  if (accountPositionRiskSurface?.risk_status === "breach") {
+    return {
+      label: "Recommended action",
+      value: "Stop and inspect",
+      detail: "Risk status is breach; stop the Trading Run before considering another cycle.",
+      tone: "danger"
+    };
+  }
+
+  if (candidate.runtime.runtime_lifecycle_status === "running" && accountPositionRiskSurface?.risk_status === "watch") {
+    return {
+      label: "Recommended action",
+      value: "Observe risk",
+      detail: "The Trading Run is active and risk is on watch; inspect position and Ledger before another cycle.",
+      tone: "warning"
+    };
+  }
+
+  if (candidate.improvement?.latest_change_proposal) {
+    return {
+      label: "Recommended action",
+      value: "Run next cycle",
+      detail: `Improvement produced ${candidate.improvement.latest_change_proposal.proposal_id}; review the handoff and start the next paper cycle.`,
+      tone: "good"
+    };
+  }
+
+  if (ledger?.chain_complete || orderFillSurface) {
+    return {
+      label: "Recommended action",
+      value: "Evaluate then improve",
+      detail: "A request/result chain exists; use the outcome to judge whether the next System Code is better.",
+      tone: "good"
+    };
+  }
+
+  if (latestReplayRun || replayRunDetail) {
+    return {
+      label: "Recommended action",
+      value: "Create improvement",
+      detail: "Evaluation evidence exists; produce an Improvement output before starting another run.",
+      tone: "warning"
+    };
+  }
+
+  return {
+    label: "Recommended action",
+    value: "Run first cycle",
+    detail: "No complete request/result chain is visible yet; run the fixture paper cycle to create decision evidence.",
+    tone: "warning"
+  };
+}
+
+function buildOperatorProfitSummary(
+  candidate: CandidateInspectReadModel,
+  replayRunDetail?: ReplayRunDetailReadModel,
+  latestReplayRun?: ReplayRunEvidenceReadModel
+): OperatorMetric[] {
+  const profitMetric = findProfitMetric(replayRunDetail);
+  const improvementScore = candidate.improvement?.latest_evaluation_result?.total_score;
+  const evaluationScore = replayRunDetail?.score ?? improvementScore;
+  const acceptedScenarios = latestReplayRun
+    ? `${latestReplayRun.scenario_accepted}/${latestReplayRun.scenario_total} scenarios accepted`
+    : "No replay evidence yet";
+  const riskDecision = replayRunDetail?.risk_decision ?? latestReplayRun?.status ?? "not reviewed";
+  const ledger = candidate.ledger;
+  const profitSignalDetail = replayRunDetail
+    ? `${acceptedScenarios}; ${riskDecision}`
+    : improvementScore === undefined
+      ? "Run full cycle to create the first paper evidence."
+      : `Improvement evaluation score; ${acceptedScenarios.toLowerCase()}.`;
+
+  return [
+    {
+      label: "Profit signal",
+      value: evaluationScore === undefined ? "not measured" : `score ${formatScore(evaluationScore)}`,
+      detail: profitSignalDetail,
+      tone: evaluationScore === undefined
+        ? "neutral"
+        : evaluationScore >= 0.7 && isPositiveRiskDecision(riskDecision)
+          ? "good"
+          : "warning"
+    },
+    {
+      label: "Paper P&L",
+      value: profitMetric ? `score ${formatScore(profitMetric.score)}` : "not measured",
+      detail: profitMetric?.detail ?? "P&L metric is the next required evidence before live decisions.",
+      tone: profitMetric ? "good" : "warning"
+    },
+    {
+      label: "Risk",
+      value: riskDecision,
+      detail: replayRunDetail
+        ? `${replayRunDetail.scenario_ids.length} scenario detail${replayRunDetail.scenario_ids.length === 1 ? "" : "s"} loaded`
+        : acceptedScenarios,
+      tone: isPositiveRiskDecision(riskDecision) ? "good" : riskDecision === "not reviewed" ? "neutral" : "warning"
+    },
+    {
+      label: "Order result",
+      value: ledger?.chain_complete ? "recorded" : "missing",
+      detail: ledger?.latest_execution_result?.status ?? "Order request, gateway result, and execution result are not complete yet.",
+      tone: ledger?.chain_complete ? "good" : "neutral"
+    }
+  ];
+}
+
+function findProfitMetric(detail?: ReplayRunDetailReadModel): ReplayRunMetricReadModel | undefined {
+  return detail?.scenarios
+    .flatMap((scenario) => scenario.metrics)
+    .find((metric) => /pnl|profit|return/i.test(metric.name));
+}
+
+function formatScore(score: number): string {
+  return score.toFixed(2);
+}
+
+function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): string {
+  const values = [
+    parseNumber(market.index_price),
+    parseNumber(market.estimated_settle_price ?? market.index_price),
+    parseNumber(market.mark_price),
+    parseNumber(market.mark_price) * 1.00025,
+    parseNumber(market.index_price) * 0.99985,
+    parseNumber(market.mark_price)
+  ].filter((value) => Number.isFinite(value));
+  if (values.length === 0) {
+    return "M 20 90 L 500 90";
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  return values
+    .map((value, index) => {
+      const x = 20 + (index * (480 / Math.max(values.length - 1, 1)));
+      const y = 28 + ((max - value) / range) * 116;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function parseNumber(value: string): number {
+  return Number.parseFloat(value);
+}
+
+function formatBalance(value?: string): string {
+  return formatDecimal(value, 2, "not connected");
+}
+
+function formatPrice(value?: string): string {
+  return formatDecimal(value, 2, "not connected");
+}
+
+function formatSignedBalance(value: string): string {
+  const numeric = parseNumber(value);
+  if (!Number.isFinite(numeric)) {
+    return value;
+  }
+  const formatted = formatDecimal(value, 2, value);
+  return numeric > 0 ? `+${formatted}` : formatted;
+}
+
+function formatDecimal(value: string | undefined, maximumFractionDigits: number, fallback: string): string {
+  if (!value) {
+    return fallback;
+  }
+  const numeric = parseNumber(value);
+  if (!Number.isFinite(numeric)) {
+    return value;
+  }
+  return numeric.toLocaleString("en-US", {
+    maximumFractionDigits,
+    minimumFractionDigits: Math.min(2, maximumFractionDigits)
+  });
+}
+
+function formatCompactDateTime(value?: string): string {
+  if (!value) {
+    return "not connected";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function formatAuthorityLabel(value?: string): string {
+  if (!value || value === "not_live") {
+    return "paper only";
+  }
+  return value.replaceAll("_", " ");
+}
+
+function formatGatewayEnvironment(value: string): string {
+  if (value === "testnet") {
+    return "Testnet gateway";
+  }
+  if (value === "mainnet") {
+    return "Mainnet gateway";
+  }
+  if (value === "unbound") {
+    return "Gateway locked";
+  }
+  return `${value.replaceAll("_", " ")} gateway`;
+}
+
+function formatFreshnessLabel(value: string): string {
+  if (value === "fresh") {
+    return "market fresh";
+  }
+  if (value === "stale") {
+    return "market stale";
+  }
+  return value.replaceAll("_", " ");
+}
+
+function signedTone(value: string): OperatorTone {
+  const numeric = parseNumber(value);
+  if (!Number.isFinite(numeric) || numeric === 0) {
+    return "neutral";
+  }
+  return numeric > 0 ? "good" : "danger";
+}
+
+function riskTone(value: string): OperatorTone {
+  if (value === "breach") {
+    return "danger";
+  }
+  if (value === "watch") {
+    return "warning";
+  }
+  return "good";
+}
+
+function toneCardClass(tone: OperatorTone): string {
+  if (tone === "danger") {
+    return "border-destructive/40 bg-destructive/5";
+  }
+  if (tone === "warning") {
+    return "border-muted-foreground/30 bg-muted/40";
+  }
+  if (tone === "good") {
+    return "border-primary/20 bg-card";
+  }
+  return "bg-card";
+}
+
+function isPositiveRiskDecision(value: string): boolean {
+  return /accepted|valid|pass|ready|complete/i.test(value);
+}
+
+function calculateFillPercent(filled: string, requested?: string): number {
+  const filledValue = parseNumber(filled);
+  const requestedValue = requested ? parseNumber(requested) : 0;
+  if (!Number.isFinite(filledValue) || !Number.isFinite(requestedValue) || requestedValue <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, (filledValue / requestedValue) * 100));
+}
+
+interface TradingSystemRow {
+  id: string;
+  name: string;
+  status: string;
+  evaluation: string;
+  active: boolean;
+}
+
+function buildTradingSystemRows(
+  selected: CandidateInspectReadModel,
+  candidates: CandidateSummaryReadModel[]
+): TradingSystemRow[] {
+  const rows = candidates.map((candidate) => ({
+    id: candidate.candidate_id,
+    name: candidate.display_name,
+    status: candidate.status,
+    evaluation: latestValidationStateLabel(candidate.latest_validation_state),
+    active: candidate.candidate_id === selected.candidate_id
+  }));
+  if (!rows.some((row) => row.id === selected.candidate_id)) {
+    rows.unshift({
+      id: selected.candidate_id,
+      name: selected.display_name,
+      status: selected.status,
+      evaluation: latestValidationStateLabel(selected.latest_validation_state),
+      active: true
+    });
+  }
+  return rows;
 }
 
 function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
   if (!sandbox) {
     return (
-      <InfoSection title="Sandbox">
+      <InfoSection title="Sandbox" summary="not linked / not_live" badge="not linked">
         <div className="evaluation-status neutral">
           <span>Lifecycle</span>
           <strong>not linked</strong>
@@ -1096,7 +2033,11 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
   const latestLog = sandbox.logs.at(-1);
   const latestHeartbeat = sandbox.heartbeats.at(-1);
   return (
-    <InfoSection title="Sandbox">
+    <InfoSection
+      title="Sandbox"
+      summary={`${sandbox.lifecycle_status} / ${sandbox.adapter_kind}`}
+      badge={sandbox.lifecycle_status}
+    >
       <div className={`evaluation-status ${sandbox.lifecycle_status === "running" ? "counted" : "neutral"}`}>
         <span>Lifecycle</span>
         <strong>{sandbox.lifecycle_status}</strong>
@@ -1127,7 +2068,11 @@ function TradingRunTranscriptSection({
     : "none";
 
   return (
-    <InfoSection title="Trading Run Transcript">
+    <InfoSection
+      title="Trading Run Transcript"
+      summary={`${statusLabel} / ${transcript?.authority_status ?? "not_live"}`}
+      badge={transcript?.has_activity ? "activity" : "none"}
+    >
       <div className={`evaluation-status ${transcript?.has_activity ? "counted" : "neutral"}`}>
         <span>Readback</span>
         <strong>{statusLabel}</strong>
@@ -1170,30 +2115,35 @@ export function TradingExecutionModesSection({
   }
 
   return (
-    <section className="execution-mode-panel" aria-label="Trading execution modes">
-      <div>
-        <p className="eyebrow">Execution modes</p>
-        <h3>Backtest / paper / live contract</h3>
-      </div>
-      <div className="execution-mode-grid">
-        {modes.map((mode) => (
-          <div className="execution-mode-card" key={mode.mode}>
-            <div className="execution-mode-card-header">
-              <strong>{mode.label}</strong>
-              <span>{mode.support_status}</span>
-            </div>
-            <Field label="Mode" value={mode.mode} />
-            <Field label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
-            <Field label="Market data" value={mode.provider_contract.market_data} />
-            <Field label="Account" value={mode.provider_contract.account} />
-            <Field label="Order plane" value={mode.provider_contract.order_plane} />
-            <Field label="Authority" value={mode.authority.status} />
-            <Field label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
-            <Field label="Artifact order submission" value={mode.artifact_contract.order_submission} />
+    <Card className="execution-mode-panel" aria-label="Trading execution modes">
+      <details className="info-details">
+        <summary className="info-summary">
+          <div>
+            <CardTitle>Backtest / paper / live contract</CardTitle>
+            <p>Execution modes: {modes.map((mode) => mode.mode).join(", ")}</p>
           </div>
-        ))}
-      </div>
-    </section>
+          <Badge variant="secondary">{String(modes.length)}</Badge>
+        </summary>
+        <CardContent className="execution-mode-grid">
+          {modes.map((mode) => (
+            <div className="execution-mode-card" key={mode.mode}>
+              <div className="execution-mode-card-header">
+                <strong>{mode.label}</strong>
+                <span>{mode.support_status}</span>
+              </div>
+              <Field label="Mode" value={mode.mode} />
+              <Field label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
+              <Field label="Market data" value={mode.provider_contract.market_data} />
+              <Field label="Account" value={mode.provider_contract.account} />
+              <Field label="Order plane" value={mode.provider_contract.order_plane} />
+              <Field label="Authority" value={mode.authority.status} />
+              <Field label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
+              <Field label="Artifact order submission" value={mode.artifact_contract.order_submission} />
+            </div>
+          ))}
+        </CardContent>
+      </details>
+    </Card>
   );
 }
 
@@ -1225,7 +2175,11 @@ function ReplayRunsSection({
   const latestRun = runs[0];
   const activeRunId = selectedRunId ?? detail?.run_id ?? latestRun?.run_id;
   return (
-    <InfoSection title="Candidate Runs">
+    <InfoSection
+      title="Candidate Runs"
+      summary={latestRun ? `${latestRun.status} / ${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted` : "no replay runs"}
+      badge={latestRun?.status ?? "none"}
+    >
       <div className="evaluation-status neutral">
         <span>Candidate-id replay evidence</span>
         <strong>{latestRun ? latestRun.status : "none"}</strong>
@@ -1258,12 +2212,13 @@ function ReplayRunsSection({
           <h4>Run history</h4>
           <div className="run-history-list">
             {runs.map((run) => (
-              <button
+              <Button
                 aria-pressed={activeRunId === run.run_id}
                 className={`run-history-row ${activeRunId === run.run_id ? "active" : ""}`}
                 key={run.run_id}
                 type="button"
                 onClick={() => onSelectRun?.(run.run_id)}
+                variant="ghost"
               >
                 <span>{run.run_id}</span>
                 <small>
@@ -1272,7 +2227,7 @@ function ReplayRunsSection({
                 <small>
                   {run.scenario_accepted}/{run.scenario_total} accepted · {run.completed_at}
                 </small>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -1290,14 +2245,14 @@ function ReplayRunsSection({
 
       {onRunCandidateReplay && (
         <div className="runtime-command">
-          <button
+          <Button
             className="runtime-command-button"
             type="button"
             onClick={onRunCandidateReplay}
             disabled={runningCandidateReplay}
           >
             {runningCandidateReplay ? "Running replay" : "Run replay"}
-          </button>
+          </Button>
           <span>host_process / replay_only / not_live</span>
         </div>
       )}
@@ -1524,7 +2479,7 @@ function TradingGatewayContractSection({
 }) {
   if (!contract) {
     return (
-      <InfoSection title="Trading gateway contract">
+      <InfoSection title="Trading gateway contract" summary="not projected / not_live" badge="none">
         <div className="placeholder">
           <strong>No trading gateway contract</strong>
           <span>BTCUSDT gateway contract has not been projected</span>
@@ -1535,7 +2490,11 @@ function TradingGatewayContractSection({
   }
 
   return (
-    <InfoSection title="Trading gateway contract">
+    <InfoSection
+      title="Trading gateway contract"
+      summary={`${contract.gateway_name} / ${contract.authority_status}`}
+      badge={contract.authority_status}
+    >
       <Field label="Gateway" value={contract.gateway_name} />
       <Field
         label="Sandbox exchange access"
@@ -1599,7 +2558,11 @@ export function TradingGatewayEnvironmentSection({
   }
 
   return (
-    <InfoSection title="Trading gateway environment">
+    <InfoSection
+      title="Trading gateway environment"
+      summary={`${environment.exchange_environment} / ${environment.configuration_status}`}
+      badge={environment.configuration_status}
+    >
       <Field
         label="Exchange binding"
         value={`${environment.exchange_environment} / ${environment.exchange_environment_source}`}
@@ -1705,7 +2668,11 @@ function TradingSubstrateSection({
   }
 
   return (
-    <InfoSection title="Trading Substrate">
+    <InfoSection
+      title="Trading Substrate"
+      summary={`${publicMarketSurface?.symbol_status ?? "public unknown"} / ${privateReadinessSurface?.credential_gate.status ?? "private not ready"}`}
+      badge={privateReadinessPolicyDecision?.status ?? "not_ready"}
+    >
       {publicMarketSurface ? (
         <>
           <div className={`evaluation-status ${publicMarketStatusTone(publicMarketSurface)}`}>
@@ -1967,13 +2934,13 @@ function TradingSubstrateSection({
             ))}
           </div>
           <div className="runtime-command">
-            <button
+            <Button
               className="runtime-command-button"
               type="submit"
               disabled={recordingPrivateReadinessPosture}
             >
               {recordingPrivateReadinessPosture ? "Saving posture" : "Save local posture"}
-            </button>
+            </Button>
             <span>local_config / no_secret / not_live</span>
           </div>
         </form>
@@ -3022,7 +3989,11 @@ function RunControlSection({
       : "none";
 
   return (
-    <InfoSection title="Run Control">
+    <InfoSection
+      title="Run Control"
+      summary={`${statusLabel} / ${control?.audit_event.authority_status ?? "not_live"}`}
+      badge={control?.latest_command?.action ?? statusLabel}
+    >
       <div className={`evaluation-status ${control?.chain_complete ? "counted" : "neutral"}`}>
         <span>Trading run state</span>
         <strong>{statusLabel}</strong>
@@ -3113,14 +4084,14 @@ function RunControlSection({
 
       {onRecordRunControl && (
         <div className="runtime-command">
-          <button
+          <Button
             className="runtime-command-button"
             type="button"
             onClick={onRecordRunControl}
             disabled={recordingRunControl}
           >
             {recordingRunControl ? "Recording pause" : "Record pause"}
-          </button>
+          </Button>
           <span>control_only / audit_only / not_live</span>
         </div>
       )}
@@ -3169,7 +4140,11 @@ function ImprovementSection({
       : "none";
 
   return (
-    <InfoSection title="Improvement">
+    <InfoSection
+      title="Improvement"
+      summary={`proposal ${improvement?.proposal_chain_complete ? "complete" : "incomplete"} / evaluation ${improvement?.evaluation_chain_complete ? "complete" : "incomplete"}`}
+      badge={statusLabel}
+    >
       <div className={`evaluation-status ${improvement?.chain_complete ? "counted" : "neutral"}`}>
         <span>Proposal / experiment / evaluation</span>
         <strong>{statusLabel}</strong>
@@ -3274,14 +4249,14 @@ function ImprovementSection({
 
       {onRecordImprovement && (
         <div className="runtime-command">
-          <button
+          <Button
             className="runtime-command-button"
             type="button"
             onClick={onRecordImprovement}
             disabled={recordingImprovement}
           >
             {recordingImprovement ? "Recording improvement" : "Record improvement"}
-          </button>
+          </Button>
           <span>proposal_only / sandbox_evaluation / not_live</span>
         </div>
       )}
@@ -3303,7 +4278,11 @@ function LedgerSection({
       : "none";
 
   return (
-    <InfoSection title="Ledger">
+    <InfoSection
+      title="Ledger"
+      summary={`Order request -> Gateway result -> Execution result: ${statusLabel}`}
+      badge={statusLabel}
+    >
       <div className={`evaluation-status ${ledger?.chain_complete ? "counted" : "neutral"}`}>
         <span>Request / decision / result</span>
         <strong>{statusLabel}</strong>
@@ -3519,7 +4498,11 @@ function EvidenceClassificationItem({
 
 function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMaterializationAttemptReadModel }) {
   return (
-    <InfoSection title="Materialization Attempt">
+    <InfoSection
+      title="Materialization Attempt"
+      summary={attempt ? `${attempt.status} / ${attempt.validation_status}` : "none"}
+      badge={attempt?.status ?? "none"}
+    >
       {attempt ? (
         <>
           <Field label="Attempt" value={attempt.attempt_id} />
@@ -3545,13 +4528,46 @@ function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMateria
   );
 }
 
-function InfoSection({ title, children }: { title: string; children: React.ReactNode }) {
+function InfoSection({
+  title,
+  summary,
+  badge,
+  defaultOpen: _defaultOpen = false,
+  children
+}: {
+  title: string;
+  summary?: string;
+  badge?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="info-section">
-      <h3>{title}</h3>
-      <div className="field-list">{children}</div>
-    </section>
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {summary && <CardDescription>{summary}</CardDescription>}
+        {badge && (
+          <CardAction>
+            <Badge variant={badgeVariant(badge)}>{badge}</Badge>
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="grid gap-2">{children}</CardContent>
+    </Card>
   );
+}
+
+function badgeVariant(badge: string): "default" | "secondary" | "outline" | "destructive" {
+  if (badge.includes("complete") || badge === "running" || badge === "available" || badge === "ready") {
+    return "default";
+  }
+  if (badge.includes("blocked") || badge.includes("failed") || badge.includes("rejected")) {
+    return "destructive";
+  }
+  if (badge.includes("review") || badge.includes("planned") || badge.includes("pending")) {
+    return "outline";
+  }
+  return "secondary";
 }
 
 function Field({ label, value }: { label: string; value: string }) {

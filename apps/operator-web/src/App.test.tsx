@@ -1065,7 +1065,7 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Promoted local candidate bundle");
     expect(html).toContain("local_promoted_candidate_bundle");
-    expect(html).toContain("Trading research candidate");
+    expect(html).toContain("Trading System bundle");
     expect(html).toContain("materialized");
     expect(html).toContain("External trading API provider / Trading system");
     expect(html).toContain("docker_sandboxes_sbx");
@@ -1129,29 +1129,61 @@ describe("CandidateDetail", () => {
   });
 
   it("renders a one-click full cycle action over the canonical flow", () => {
-    const html = renderToStaticMarkup(
+    const candidate = {
+      ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords())),
+      improvement: improvementFromLoop(artifactImprovementLoop())
+    };
+    const tradingHtml = renderToStaticMarkup(
       <CandidateDetail
-        candidate={{
-          ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords())),
-          improvement: improvementFromLoop(artifactImprovementLoop())
-        }}
+        activeView="trading"
+        candidate={candidate}
         onRunFullCycle={() => undefined}
         fullCycleMessage="full cycle completed: running"
       />
     );
+    const researchHtml = renderToStaticMarkup(
+      <CandidateDetail activeView="research" candidate={candidate} />
+    );
+    const detailsHtml = renderToStaticMarkup(
+      <CandidateDetail activeView="details" candidate={candidate} />
+    );
 
-    expect(html).toContain("Full Cycle");
-    expect(html).toContain("Run full cycle");
-    expect(html).toContain("Trading System");
-    expect(html).toContain("System Code");
-    expect(html).toContain("Evaluation");
-    expect(html).toContain("Improvement");
-    expect(html).toContain("Trading Run");
-    expect(html).toContain("Sandbox");
-    expect(html).toContain("Gateway");
-    expect(html).toContain("Ledger");
-    expect(html).toContain("full cycle completed: running");
-    expectNoOperatorActionControls(html, {
+    expect(tradingHtml).toContain("BTCUSDT operator cockpit");
+    expect(tradingHtml).toContain("Recommended action");
+    expect(tradingHtml).toContain("Run next cycle");
+    expect(tradingHtml).toContain("Trading cockpit");
+    expect(tradingHtml).toContain("BTCUSDT futures chart");
+    expect(tradingHtml).toContain("My assets");
+    expect(tradingHtml).toContain("Today P&amp;L");
+    expect(tradingHtml).toContain("Current position");
+    expect(tradingHtml).toContain("Risk status");
+    expect(tradingHtml).toContain("Order / trade status");
+    expect(tradingHtml).toContain("OrderRequest");
+    expect(tradingHtml).toContain("GatewayResult");
+    expect(tradingHtml).toContain("ExecutionResult");
+    expect(tradingHtml).toContain("Safety boundary");
+    expect(tradingHtml).toContain("full cycle completed: running");
+    expect(tradingHtml).not.toContain("Research cycle");
+
+    expect(researchHtml).toContain("Research");
+    expect(researchHtml).toContain("Research cycle");
+    expect(researchHtml).toContain("System performance");
+    expect(researchHtml).toContain("Profit analysis");
+    expect(researchHtml).toContain("Selected Trading System");
+    expect(researchHtml).toContain("Next cycle handoff");
+    expect(researchHtml).not.toContain("Trading cockpit");
+
+    expect(detailsHtml).toContain("Details");
+    expect(detailsHtml).toContain("Gateway");
+    expect(detailsHtml).toContain("Trading System");
+    expect(detailsHtml).toContain("System Code");
+    expect(detailsHtml).toContain("Evaluation");
+    expect(detailsHtml).toContain("Improvement");
+    expect(detailsHtml).toContain("Trading Run");
+    expect(detailsHtml).toContain("Sandbox");
+    expect(detailsHtml).toContain("Ledger");
+    expect(detailsHtml).not.toContain("Trading cockpit");
+    expectNoOperatorActionControls(`${tradingHtml}${researchHtml}${detailsHtml}`, {
       includePrivateAuthorityTerms: true,
       allowTradingRunControls: true
     });
@@ -1652,14 +1684,14 @@ function promotedCandidate(): CandidateInspectReadModel {
   return {
     ...fixtureCandidate,
     candidate_id: candidateId,
-    display_name: "Trading research candidate s15-02-seeded-codex-real-sdx-proof",
+    display_name: "Trading System s15-02-seeded-codex-real-sdx-proof",
     status: "materialized",
     active_version_id: `${candidateId}-v1`,
     fixture_notice: {
       mode: "local_promoted_candidate_bundle",
       label: "Promoted local candidate bundle",
       statements: [
-        "Read-only TradingSystemCandidate bundle promoted from Trading research.",
+        "Read-only Trading System bundle promoted from research.",
         "No exchange credentials or order authority are mounted.",
         "Replay-run evidence is replay-only and not counted trading authority."
       ]
