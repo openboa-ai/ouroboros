@@ -1973,8 +1973,42 @@ function toneCardClass(tone: OperatorTone): string {
   return "bg-card";
 }
 
-function isPositiveRiskDecision(value: string): boolean {
-  return /accepted|valid|pass|ready|complete/i.test(value);
+const POSITIVE_RISK_DECISIONS = new Set([
+  "accepted",
+  "chain_complete",
+  "complete",
+  "pass",
+  "passed",
+  "passes",
+  "passes_replay_checks",
+  "ready",
+  "valid",
+  "valid_order_request"
+]);
+
+const NEGATIVE_STATUS_TOKENS = new Set([
+  "blocked",
+  "breach",
+  "disabled",
+  "failed",
+  "incomplete",
+  "invalid",
+  "missing",
+  "no",
+  "not",
+  "rejected"
+]);
+
+export function isPositiveRiskDecision(value: string): boolean {
+  const normalized = normalizeStatusValue(value);
+  if (POSITIVE_RISK_DECISIONS.has(normalized)) {
+    return true;
+  }
+  const tokens = statusTokens(normalized);
+  if (tokens.some((token) => NEGATIVE_STATUS_TOKENS.has(token))) {
+    return false;
+  }
+  return tokens.some((token) => POSITIVE_RISK_DECISIONS.has(token));
 }
 
 function calculateFillPercent(filled: string, requested?: string): number {
@@ -4557,17 +4591,53 @@ function InfoSection({
   );
 }
 
-function badgeVariant(badge: string): "default" | "secondary" | "outline" | "destructive" {
-  if (badge.includes("complete") || badge === "running" || badge === "available" || badge === "ready") {
-    return "default";
-  }
-  if (badge.includes("blocked") || badge.includes("failed") || badge.includes("rejected")) {
+const DEFAULT_BADGE_VALUES = new Set([
+  "accepted",
+  "available",
+  "chain_complete",
+  "complete",
+  "ready",
+  "running",
+  "succeeded"
+]);
+
+const OUTLINE_BADGE_TOKENS = new Set([
+  "incomplete",
+  "pending",
+  "planned",
+  "required",
+  "review"
+]);
+
+const DESTRUCTIVE_BADGE_TOKENS = new Set([
+  "blocked",
+  "breach",
+  "failed",
+  "invalid",
+  "rejected"
+]);
+
+export function badgeVariant(badge: string): "default" | "secondary" | "outline" | "destructive" {
+  const normalized = normalizeStatusValue(badge);
+  const tokens = statusTokens(normalized);
+  if (tokens.some((token) => DESTRUCTIVE_BADGE_TOKENS.has(token))) {
     return "destructive";
   }
-  if (badge.includes("review") || badge.includes("planned") || badge.includes("pending")) {
+  if (DEFAULT_BADGE_VALUES.has(normalized)) {
+    return "default";
+  }
+  if (tokens.some((token) => OUTLINE_BADGE_TOKENS.has(token))) {
     return "outline";
   }
   return "secondary";
+}
+
+function normalizeStatusValue(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function statusTokens(normalizedValue: string): string[] {
+  return normalizedValue.split("_").filter(Boolean);
 }
 
 function Field({ label, value }: { label: string; value: string }) {

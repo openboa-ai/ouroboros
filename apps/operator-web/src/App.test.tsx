@@ -29,8 +29,10 @@ import {
   ref
 } from "../../../test/support/binance-no-authority";
 import {
+  badgeVariant,
   CandidateDetail,
   CandidateSummaryRow,
+  isPositiveRiskDecision,
   PrivateReadinessReviewPacketSections,
   TradingGatewayEnvironmentSection,
   TradingExecutionModesSection
@@ -43,6 +45,24 @@ import {
   runControlPausePayload
 } from "./api";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
+
+describe("operator status helpers", () => {
+  it("matches positive replay risk decisions without accepting invalid values by substring", () => {
+    expect(isPositiveRiskDecision("valid_order_request")).toBe(true);
+    expect(isPositiveRiskDecision("passes_replay_checks")).toBe(true);
+    expect(isPositiveRiskDecision("invalid_order_request")).toBe(false);
+    expect(isPositiveRiskDecision("no_order_request")).toBe(false);
+    expect(isPositiveRiskDecision("not_ready")).toBe(false);
+  });
+
+  it("does not style incomplete status badges as successful", () => {
+    expect(badgeVariant("complete")).toBe("default");
+    expect(badgeVariant("chain complete")).toBe("default");
+    expect(badgeVariant("incomplete")).toBe("outline");
+    expect(badgeVariant("chain incomplete")).toBe("outline");
+    expect(badgeVariant("invalid_order_request")).toBe("destructive");
+  });
+});
 
 describe("CandidateDetail", () => {
   it("renders fixture labels and inspect sections without action controls", () => {
