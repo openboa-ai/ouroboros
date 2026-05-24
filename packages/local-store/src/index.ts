@@ -2510,6 +2510,7 @@ export class LocalStore {
       validation_status: "accepted",
       resulting_candidate_ref: ref("trading_system_candidate", candidateId),
       artifact_refs: input.artifact_refs,
+      ...(input.full_cycle_lineage ? { full_cycle_lineage: input.full_cycle_lineage } : {}),
       created_at: new Date().toISOString()
     };
 
@@ -3205,6 +3206,13 @@ export class LocalStore {
     const ledgerSource = await this.buildLedgerSourceRecordsReadModel(runtime);
     const improvement = await this.buildImprovementReadModel(candidate, version);
     const ledger = buildLedgerReadModel(ledgerSource);
+    const fullCycleLineage = buildFullCycleLineageReadModel({
+      candidate,
+      version,
+      materializationAttempt,
+      runtime,
+      ledger
+    });
     const runControl = await this.buildRunControlReadModel(runtime);
     const sandbox = runtime.sandbox_ref
       ? await this.buildSandboxDetailReadModel(runtime.sandbox_ref.id)
@@ -3308,7 +3316,8 @@ export class LocalStore {
       evaluation,
       materialization_attempt: materializationAttempt
         ? toCandidateMaterializationAttemptReadModel(materializationAttempt)
-        : undefined
+        : undefined,
+      full_cycle_lineage: fullCycleLineage
     };
   }
 
@@ -4991,6 +5000,37 @@ function toCandidateMaterializationAttemptReadModel(
     artifact_refs: attempt.artifact_refs,
     created_at: attempt.created_at,
     authority_label: "provider_output_not_evidence"
+  };
+}
+
+function buildFullCycleLineageReadModel(input: {
+  candidate: TradingSystemCandidateRecord;
+  version: CandidateVersionRecord;
+  materializationAttempt?: CandidateMaterializationAttemptRecord;
+  runtime: TradingRunRecord;
+  ledger: LedgerReadModel;
+}): CandidateInspectReadModel["full_cycle_lineage"] {
+  const persisted = input.materializationAttempt?.full_cycle_lineage;
+  if (!persisted) {
+    return undefined;
+  }
+
+  return {
+    handoff_status: "runnable",
+    source: persisted.source,
+    generated: persisted.generated,
+    materialized: {
+      trading_system_id: input.candidate.candidate_id,
+      candidate_version_id: input.version.candidate_version_id,
+      system_code_ref: input.version.system_code_ref ?? input.candidate.active_system_code_ref
+    },
+    evidence: {
+      evaluation_status: persisted.evaluation.status,
+      evaluation_score: persisted.evaluation.score,
+      trading_run_id: input.runtime.trading_run_id,
+      gateway_result_outcome: input.ledger.latest_gateway_result?.decision_outcome ?? "missing",
+      ledger_chain_complete: input.ledger.chain_complete
+    }
   };
 }
 

@@ -2166,6 +2166,24 @@ export interface CandidateMaterializationInput {
   };
   artifact_refs: Ref[];
   system_code_ref?: Ref;
+  full_cycle_lineage?: CandidateMaterializationFullCycleLineageInput;
+}
+
+export interface CandidateMaterializationFullCycleLineageInput {
+  source: {
+    trading_system_id: string;
+    candidate_version_id: string;
+    system_code_ref?: Ref;
+  };
+  generated: {
+    system_code_ref: Ref;
+    artifact_digest: string;
+    generated_by_agent: true;
+  };
+  evaluation: {
+    status: string;
+    score: number;
+  };
 }
 
 export interface CandidateMaterializationFailureInput {
@@ -2191,6 +2209,7 @@ export interface CandidateMaterializationAttemptRecord extends BaseRecord {
   failure_reason?: CandidateMaterializationFailureReason;
   resulting_candidate_ref?: Ref;
   artifact_refs: Ref[];
+  full_cycle_lineage?: CandidateMaterializationFullCycleLineageInput;
   created_at: string;
 }
 
@@ -3193,6 +3212,34 @@ export interface RunControlReadModel {
   audit_event: PlaceholderSummary;
 }
 
+export interface FullCycleLineageReadModel {
+  handoff_status: "runnable" | "blocked";
+  source: {
+    trading_system_id: string;
+    candidate_version_id: string;
+    system_code_ref?: Ref;
+  };
+  generated?: {
+    system_code_ref: Ref;
+    artifact_digest: string;
+    generated_by_agent: true;
+  };
+  materialized?: {
+    trading_system_id: string;
+    candidate_version_id: string;
+    system_code_ref?: Ref;
+  };
+  evidence?: {
+    evaluation_status: string;
+    evaluation_score: number;
+    trading_run_id: string;
+    gateway_result_outcome: string;
+    ledger_chain_complete: boolean;
+  };
+  blocked_stage?: string;
+  blocked_reason?: string;
+}
+
 export type TradingRunTranscriptItemKind =
   | "run_control_command"
   | "run_control_decision"
@@ -3322,6 +3369,7 @@ export interface CandidateInspectReadModel extends CandidateSummaryReadModel {
   trace: PlaceholderSummary;
   evaluation: CandidateEvaluationReadModel;
   materialization_attempt?: CandidateMaterializationAttemptReadModel;
+  full_cycle_lineage?: FullCycleLineageReadModel;
 }
 
 export interface CandidateIndexProjection {

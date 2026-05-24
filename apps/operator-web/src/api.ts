@@ -10,7 +10,7 @@ import type {
   CandidateInspectReadModel,
   CandidateMaterializationAttemptReadModel,
   CandidateSummaryReadModel,
-  Ref,
+  FullCycleLineageReadModel,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureWriteInput,
@@ -215,33 +215,7 @@ export type FullCycleOutcome = Omit<TradingRunOutcome, "status"> & {
     generated_by_agent: true;
     authority_status: "not_live";
   };
-  full_cycle_lineage?: {
-    handoff_status: "runnable" | "blocked";
-    source: {
-      trading_system_id: string;
-      candidate_version_id: string;
-      system_code_ref?: Ref;
-    };
-    generated?: {
-      system_code_ref: Ref;
-      artifact_digest: string;
-      generated_by_agent: true;
-    };
-    materialized?: {
-      trading_system_id: string;
-      candidate_version_id: string;
-      system_code_ref?: Ref;
-    };
-    evidence?: {
-      evaluation_status: string;
-      evaluation_score: number;
-      trading_run_id: string;
-      gateway_result_outcome: string;
-      ledger_chain_complete: boolean;
-    };
-    blocked_stage?: string;
-    blocked_reason?: string;
-  };
+  full_cycle_lineage?: FullCycleLineageReadModel;
   backtest: {
     status: string;
     score: number;

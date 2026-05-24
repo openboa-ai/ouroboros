@@ -985,6 +985,7 @@ export function CandidateDetail({
   const visibleFullCycle = lastFullCycle?.next_trading_system.candidate_id === candidate.candidate_id
     ? lastFullCycle
     : undefined;
+  const visibleFullCycleLineage = visibleFullCycle?.full_cycle_lineage;
   const recoveredAgentCycle = !visibleFullCycle && isAgentCycleMaterialization(candidate)
     ? buildRecoveredAgentCycleEvidence(candidate)
     : undefined;
@@ -1399,33 +1400,7 @@ export function CandidateDetail({
                 tone={visibleFullCycle.ledger.chain_complete ? "good" : "warning"}
               />
             </div>
-            {visibleFullCycle.full_cycle_lineage && (
-              <section className="grid gap-2" aria-label="Full-cycle lineage">
-                <h4 className="text-sm font-medium">Full-cycle lineage</h4>
-                <dl className="grid gap-2 md:grid-cols-4">
-                  <Field
-                    label="Source Trading System"
-                    value={visibleFullCycle.full_cycle_lineage.source.trading_system_id}
-                  />
-                  <Field
-                    label="Source System Code"
-                    value={visibleFullCycle.full_cycle_lineage.source.system_code_ref
-                      ? formatRef(visibleFullCycle.full_cycle_lineage.source.system_code_ref)
-                      : "none"}
-                  />
-                  <Field
-                    label="Next Trading System"
-                    value={visibleFullCycle.full_cycle_lineage.materialized?.trading_system_id ?? "not materialized"}
-                  />
-                  <Field
-                    label="Evidence Chain"
-                    value={visibleFullCycle.full_cycle_lineage.evidence?.ledger_chain_complete
-                      ? "Ledger chain complete"
-                      : visibleFullCycle.full_cycle_lineage.blocked_stage ?? "pending"}
-                  />
-                </dl>
-              </section>
-            )}
+            {visibleFullCycleLineage && <FullCycleLineageSection lineage={visibleFullCycleLineage} />}
           </CardContent>
         </Card>
       )}
@@ -1441,31 +1416,36 @@ export function CandidateDetail({
               <Badge variant="default">materialized</Badge>
             </CardAction>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-4">
-            <OperatorStatusCard
-              label="System Code"
-              value={recoveredAgentCycle.systemCodeId}
-              detail={candidate.system_code?.declared_runtime ?? candidate.program.manifest.declared_runtime}
-              tone="good"
-            />
-            <OperatorStatusCard
-              label="Backtest"
-              value="recorded"
-              detail={recoveredAgentCycle.evaluationDetail}
-              tone="good"
-            />
-            <OperatorStatusCard
-              label="Paper Trading Run"
-              value={runStatus}
-              detail="Ledger chain is visible in the current Trading Run."
-              tone={ledger?.chain_complete ? "good" : "neutral"}
-            />
-            <OperatorStatusCard
-              label="Ledger"
-              value={ledger?.chain_complete ? "chain complete" : "incomplete"}
-              detail="OrderRequest -> GatewayResult -> ExecutionResult"
-              tone={ledger?.chain_complete ? "good" : "warning"}
-            />
+          <CardContent className="grid gap-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <OperatorStatusCard
+                label="System Code"
+                value={recoveredAgentCycle.systemCodeId}
+                detail={candidate.system_code?.declared_runtime ?? candidate.program.manifest.declared_runtime}
+                tone="good"
+              />
+              <OperatorStatusCard
+                label="Backtest"
+                value="recorded"
+                detail={recoveredAgentCycle.evaluationDetail}
+                tone="good"
+              />
+              <OperatorStatusCard
+                label="Paper Trading Run"
+                value={runStatus}
+                detail="Ledger chain is visible in the current Trading Run."
+                tone={ledger?.chain_complete ? "good" : "neutral"}
+              />
+              <OperatorStatusCard
+                label="Ledger"
+                value={ledger?.chain_complete ? "chain complete" : "incomplete"}
+                detail="OrderRequest -> GatewayResult -> ExecutionResult"
+                tone={ledger?.chain_complete ? "good" : "warning"}
+              />
+            </div>
+            {recoveredAgentCycle.fullCycleLineage && (
+              <FullCycleLineageSection lineage={recoveredAgentCycle.fullCycleLineage} />
+            )}
           </CardContent>
         </Card>
       )}
@@ -1725,6 +1705,7 @@ interface RecoveredAgentCycleEvidence {
   providerLabel: string;
   systemCodeId: string;
   evaluationDetail: string;
+  fullCycleLineage?: NonNullable<CandidateInspectReadModel["full_cycle_lineage"]>;
 }
 
 function isAgentCycleMaterialization(candidate: CandidateInspectReadModel): boolean {
@@ -1747,8 +1728,45 @@ function buildRecoveredAgentCycleEvidence(
   return {
     providerLabel,
     systemCodeId,
-    evaluationDetail: "Agent materialization accepted; paper Ledger chain complete. Full backtest score is available in the active cycle result."
+    evaluationDetail: candidate.full_cycle_lineage
+      ? "Agent materialization accepted; recovered full-cycle lineage includes backtest and paper Ledger evidence."
+      : "Agent materialization accepted; paper Ledger chain complete. Full backtest score is available in the active cycle result.",
+    fullCycleLineage: candidate.full_cycle_lineage
   };
+}
+
+function FullCycleLineageSection({
+  lineage
+}: {
+  lineage: NonNullable<CandidateInspectReadModel["full_cycle_lineage"]>;
+}) {
+  return (
+    <section className="grid gap-2" aria-label="Full-cycle lineage">
+      <h4 className="text-sm font-medium">Full-cycle lineage</h4>
+      <dl className="grid gap-2 md:grid-cols-4">
+        <Field
+          label="Source Trading System"
+          value={lineage.source.trading_system_id}
+        />
+        <Field
+          label="Source System Code"
+          value={lineage.source.system_code_ref
+            ? formatRef(lineage.source.system_code_ref)
+            : "none"}
+        />
+        <Field
+          label="Next Trading System"
+          value={lineage.materialized?.trading_system_id ?? "not materialized"}
+        />
+        <Field
+          label="Evidence Chain"
+          value={lineage.evidence?.ledger_chain_complete
+            ? "Ledger chain complete"
+            : lineage.blocked_stage ?? "pending"}
+        />
+      </dl>
+    </section>
+  );
 }
 
 function providerKindLabel(providerKind?: string): string {

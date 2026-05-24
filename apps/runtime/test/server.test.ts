@@ -2229,6 +2229,40 @@ describe("runtime read-only API", () => {
       },
       ledger: {
         chain_complete: true
+      },
+      full_cycle_lineage: {
+        handoff_status: "runnable",
+        source: {
+          trading_system_id: FIXTURE_CANDIDATE_ID,
+          candidate_version_id: "fixture-candidate-version-001",
+          system_code_ref: {
+            record_kind: "system_code",
+            id: FIXTURE_SYSTEM_CODE_ID
+          }
+        },
+        generated: {
+          system_code_ref: {
+            record_kind: "system_code",
+            id: first.json().system_code_handoff.system_code_id
+          },
+          artifact_digest: first.json().system_code_handoff.artifact_digest,
+          generated_by_agent: true
+        },
+        materialized: {
+          trading_system_id: first.json().next_trading_system.candidate_id,
+          candidate_version_id: first.json().next_trading_system.candidate_version.candidate_version_id,
+          system_code_ref: {
+            record_kind: "system_code",
+            id: first.json().system_code_handoff.system_code_id
+          }
+        },
+        evidence: {
+          evaluation_status: "accepted",
+          evaluation_score: 1,
+          trading_run_id: first.json().next_trading_system.runtime.ref.id,
+          gateway_result_outcome: "dry_run_only",
+          ledger_chain_complete: true
+        }
       }
     });
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
@@ -2265,6 +2299,34 @@ describe("runtime read-only API", () => {
         }
       },
       materialized: {
+        system_code_ref: {
+          record_kind: "system_code",
+          id: second.json().system_code_handoff.system_code_id
+        }
+      },
+      evidence: {
+        ledger_chain_complete: true
+      }
+    });
+
+    const secondCandidate = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${second.json().next_trading_system.candidate_id}`
+    });
+    expect(secondCandidate.statusCode).toBe(200);
+    expect(secondCandidate.json().full_cycle_lineage).toMatchObject({
+      handoff_status: "runnable",
+      source: {
+        trading_system_id: first.json().next_trading_system.candidate_id,
+        candidate_version_id: first.json().next_trading_system.candidate_version.candidate_version_id,
+        system_code_ref: {
+          record_kind: "system_code",
+          id: first.json().system_code_handoff.system_code_id
+        }
+      },
+      materialized: {
+        trading_system_id: second.json().next_trading_system.candidate_id,
+        candidate_version_id: second.json().next_trading_system.candidate_version.candidate_version_id,
         system_code_ref: {
           record_kind: "system_code",
           id: second.json().system_code_handoff.system_code_id
