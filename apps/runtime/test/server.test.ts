@@ -26,7 +26,6 @@ import type {
   CandidateGenerationProviderResult,
   RuntimeProviderAdapter
 } from "../src/providers/runtime-provider-adapter";
-import { FixtureTradingResearchAgentAdapter } from "../src/trading-research/agent-adapters";
 import type {
   AgentEditInput,
   AgentEditResult,
@@ -1913,7 +1912,6 @@ describe("runtime read-only API", () => {
   it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      tradingResearchAgentAdapter: new FixtureTradingResearchAgentAdapter(),
       tradingResearchIterations: 1
     });
 
@@ -2057,6 +2055,26 @@ describe("runtime read-only API", () => {
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
     expect(list.json().candidates.map((item: { candidate_id: string }) => item.candidate_id))
       .toContain(first.json().next_trading_system.candidate_id);
+
+    await server.close();
+  });
+
+  it("rejects unsupported paper order request choices on full-cycle agent runs", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 1
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`,
+      payload: { paper_order_request: "rejected" }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "invalid_paper_order_request",
+      allowed_values: ["valid"]
+    });
 
     await server.close();
   });

@@ -991,6 +991,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
     "/api/trading-systems/:system_id/full-cycle-runs",
     async (request, reply) => {
+      const paperOrderRequest = startPaperOrderRequest(request.body);
+      if (!paperOrderRequest || paperOrderRequest !== "valid") {
+        return reply.code(400).send({
+          error: "invalid_paper_order_request",
+          allowed_values: ["valid"]
+        });
+      }
+
       const candidate = await store.getCandidate(request.params.system_id);
       if (!candidate) {
         return reply.code(404).send({

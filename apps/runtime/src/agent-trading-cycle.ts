@@ -19,7 +19,7 @@ import {
   readTradingSystemManifest
 } from "./trading-research/artifact-runner";
 import {
-  CodexTradingResearchAgentAdapter
+  FixtureTradingResearchAgentAdapter
 } from "./trading-research/agent-adapters";
 import {
   defaultReplayTradingScenario,
@@ -99,7 +99,7 @@ export interface AgentTradingCycleOutcome {
 export async function runAgentTradingCycle(
   input: RunAgentTradingCycleInput
 ): Promise<AgentTradingCycleOutcome> {
-  const agentAdapter = input.agentAdapter ?? new CodexTradingResearchAgentAdapter();
+  const agentAdapter = input.agentAdapter ?? new FixtureTradingResearchAgentAdapter();
   const sessionId = [
     "agent-cycle",
     safeId(input.sourceSystemId),
