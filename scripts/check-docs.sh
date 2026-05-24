@@ -148,6 +148,54 @@ for path in skill_files:
   for heading in ["## Role", "## Workflow", "## Required Output", "## Handoff", "## Hard Boundaries"]:
       if heading not in body: skill_errors.append(f"{path}: missing heading {heading}")
 if skill_errors: fail("Skill check failed:\n"+"\n".join(skill_errors[:200]))
+codex_agent_files=sorted(Path(".codex/agents").glob("*.toml")); agent_errors=[]
+toml_name_re=re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
+def toml_string(body, key):
+  triple=re.search(rf'(?ms)^\s*{re.escape(key)}\s*=\s*"""(.*?)"""', body)
+  if triple: return triple.group(1)
+  double=re.search(rf'(?m)^\s*{re.escape(key)}\s*=\s*"((?:[^"\\]|\\.)*)"', body)
+  if double: return double.group(1)
+  single=re.search(rf"(?m)^\s*{re.escape(key)}\s*=\s*'([^']*)'", body)
+  if single: return single.group(1)
+  return None
+def toml_scalar(body, key):
+  value=toml_string(body, key)
+  return value.strip() if isinstance(value, str) else None
+secret_patterns=[
+  r"sk-[A-Za-z0-9_-]{12,}",
+  r"BEGIN [A-Z ]*PRIVATE KEY",
+  r"(?i)api[_-]?key\s*=",
+  r"(?i)api[_-]?secret\s*=",
+  r"(?i)secret[_-]?key\s*="
+]
+if not codex_agent_files:
+  agent_errors.append(".codex/agents: missing project-scoped custom agents")
+for path in codex_agent_files:
+  body=text(path)
+  name=toml_scalar(body, "name")
+  desc=toml_scalar(body, "description")
+  instructions=toml_scalar(body, "developer_instructions")
+  sandbox_mode=toml_scalar(body, "sandbox_mode")
+  if name != path.stem:
+      agent_errors.append(f"{path}: name must match file stem")
+  if not name or not toml_name_re.fullmatch(name):
+      agent_errors.append(f"{path}: missing or invalid name")
+  if not desc:
+      agent_errors.append(f"{path}: missing description")
+  if not instructions:
+      agent_errors.append(f"{path}: missing developer_instructions")
+  if sandbox_mode != "read-only":
+      agent_errors.append(f"{path}: sandbox_mode must be read-only")
+  if instructions and "Do not edit files" not in instructions:
+      agent_errors.append(f"{path}: developer_instructions must prohibit file edits")
+  if instructions and "Never output raw secret values" not in instructions:
+      agent_errors.append(f"{path}: developer_instructions must prohibit raw secret output")
+  if instructions and "live Binance" not in instructions:
+      agent_errors.append(f"{path}: developer_instructions must preserve live Binance authority boundary")
+  for pattern in secret_patterns:
+      if re.search(pattern, body):
+          agent_errors.append(f"{path}: contains secret-looking assignment or key material")
+if agent_errors: fail("Codex custom agent check failed:\n"+"\n".join(agent_errors[:200]))
 corpus="\n".join(text(p) for p in [Path("AGENTS.md"), Path(".agents/AGENTS.md"), Path(".agents/skills/AGENTS.md")] if p.exists())
 for term in ["llm-wiki", "writeback_needed", "project-context", ".agents/skills/AGENTS.md", "superpowers:using-superpowers", "Skill-First Gate"]:
   if term not in corpus: fail("Skill routing terms missing: "+term)

@@ -33,6 +33,22 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 5. Before stopping, decide `writeback_needed: yes/no`.
 6. If `writeback_needed: yes`, route to `llm-wiki`.
 
+## Codex Feature Routing
+
+Use repo-local skills for repeatable workflow, external plugins for connected systems, and
+project-scoped subagents for read-heavy parallel evidence. A subagent report is input evidence,
+not a final decision. The main worker still owns patch scope, validation, and handoff.
+
+Recommended subagent uses:
+
+- context exploration before planning a broad task
+- code-path mapping before implementation
+- review of a branch or diff before promotion
+- browser or UI reproduction evidence before a focused fix
+
+Do not create a new skill or subagent for one-off work. Prefer updating this registry when a
+capability becomes reusable.
+
 ## External Workflow Skills
 
 This is the registry-level Skill-First Gate. `superpowers:using-superpowers` maps to skill selection. `superpowers:brainstorming` maps to `auto-pm`. `superpowers:executing-plans` maps to `auto-coding`. `superpowers:systematic-debugging` maps to `ci-recovery`. `superpowers:verification-before-completion` and `superpowers:finishing-a-development-branch` map to `auto-promotion-protocol`.
