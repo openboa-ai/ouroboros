@@ -1280,6 +1280,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("agent handoff ready");
     expect(html).toContain("backtest recorded");
     expect(html).toContain("system-code-agent-reloaded");
+    expect(html).toContain("Full-cycle lineage");
+    expect(html).toContain("Source Trading System");
+    expect(html).toContain("fixture-candidate-sealed-replay-001");
+    expect(html).toContain("Next Trading System");
+    expect(html).toContain("candidate-agent-generated-reloaded");
+    expect(html).toContain("Ledger chain complete");
     expect(html).not.toContain("No evaluation result yet.");
     expect(html).not.toContain("Run a full cycle to produce the next System Code candidate.");
     expectNoOperatorActionControls(html, {
@@ -1757,6 +1763,40 @@ function candidateWithAgentCycleMaterialization(
       artifact_refs: [{ record_kind: "system_code", id: "system-code-agent-reloaded" }],
       created_at: "2026-05-23T00:00:00.000Z",
       authority_label: "provider_output_not_evidence"
+    },
+    full_cycle_lineage: {
+      handoff_status: "runnable",
+      source: {
+        trading_system_id: "fixture-candidate-sealed-replay-001",
+        candidate_version_id: "fixture-candidate-version-001",
+        system_code_ref: {
+          record_kind: "system_code",
+          id: "fixture-system-code-clock-python-001"
+        }
+      },
+      generated: {
+        system_code_ref: {
+          record_kind: "system_code",
+          id: "system-code-agent-reloaded"
+        },
+        artifact_digest: "sha256:agent-reloaded",
+        generated_by_agent: true
+      },
+      materialized: {
+        trading_system_id: "candidate-agent-generated-reloaded",
+        candidate_version_id: candidate.candidate_version.candidate_version_id,
+        system_code_ref: {
+          record_kind: "system_code",
+          id: "system-code-agent-reloaded"
+        }
+      },
+      evidence: {
+        evaluation_status: "accepted",
+        evaluation_score: 1,
+        trading_run_id: candidate.runtime.ref.id,
+        gateway_result_outcome: "dry_run_only",
+        ledger_chain_complete: true
+      }
     }
   };
 }
