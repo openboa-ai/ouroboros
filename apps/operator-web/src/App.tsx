@@ -38,6 +38,7 @@ import {
   fetchCandidateSummaries,
   fetchTradingGatewayEnvironment,
   fetchTradingExecutionModeContracts,
+  fetchTradingResearchRuntime,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
@@ -48,7 +49,9 @@ import {
   stopTradingRun as submitStopTradingRun,
   type FullCycleOutcome,
   type PaperOrderRequestSelection,
-  type PrivateReadinessPostureDraft
+  type PrivateReadinessPostureDraft,
+  type TradingResearchAgentSelection,
+  type TradingResearchRuntimeReadModel
 } from "./api";
 import {
   ActivityIcon,
@@ -60,6 +63,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardAction,
@@ -105,6 +109,9 @@ interface AppState {
   candidates: CandidateSummaryReadModel[];
   executionModes: TradingSystemExecutionModeContractReadModel[];
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
+  tradingResearchRuntime?: TradingResearchRuntimeReadModel;
+  selectedTradingResearchAgent: TradingResearchAgentSelection;
+  tradingResearchIterations: number;
   selected?: CandidateInspectReadModel;
   replayRuns: ReplayRunEvidenceReadModel[];
   selectedReplayRunId?: string;
@@ -143,6 +150,8 @@ export function App() {
     candidates: [],
     executionModes: [],
     replayRuns: [],
+    selectedTradingResearchAgent: "codex",
+    tradingResearchIterations: 1,
     loading: true,
     runningFullCycle: false,
     runningTradingRun: false,
@@ -156,10 +165,16 @@ export function App() {
     let cancelled = false;
     async function load() {
       try {
-        const [candidates, executionModes, tradingGatewayEnvironment] = await Promise.all([
+        const [
+          candidates,
+          executionModes,
+          tradingGatewayEnvironment,
+          tradingResearchRuntime
+        ] = await Promise.all([
           fetchCandidateSummaries(),
           fetchTradingExecutionModeContracts(),
-          fetchTradingGatewayEnvironment()
+          fetchTradingGatewayEnvironment(),
+          fetchTradingResearchRuntime()
         ]);
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
@@ -172,6 +187,9 @@ export function App() {
             candidates,
             executionModes,
             tradingGatewayEnvironment,
+            tradingResearchRuntime,
+            selectedTradingResearchAgent: tradingResearchRuntime.default_agent,
+            tradingResearchIterations: tradingResearchRuntime.iterations,
             selected,
             replayRuns,
             selectedReplayRunId: replayRunSelection.selectedReplayRunId,
@@ -194,6 +212,8 @@ export function App() {
             candidates: [],
             executionModes: [],
             replayRuns: [],
+            selectedTradingResearchAgent: "codex",
+            tradingResearchIterations: 1,
             loading: false,
             runningFullCycle: false,
             runningTradingRun: false,
@@ -358,7 +378,10 @@ export function App() {
       improvementMessage: undefined
     }));
     try {
-      const outcome = await submitFullCycle(candidate);
+      const outcome = await submitFullCycle(candidate, {
+        research_agent: state.selectedTradingResearchAgent,
+        research_iterations: state.tradingResearchIterations
+      });
       const selected = await fetchCandidate(outcome.next_trading_system.candidate_id);
       const candidates = await fetchCandidateSummaries();
       const replayRuns = await fetchReplayRunEvidence(selected.candidate_id);
@@ -668,6 +691,9 @@ export function App() {
                 candidate={state.selected}
                 candidates={state.candidates}
                 tradingGatewayEnvironment={state.tradingGatewayEnvironment}
+                tradingResearchRuntime={state.tradingResearchRuntime}
+                selectedTradingResearchAgent={state.selectedTradingResearchAgent}
+                tradingResearchIterations={state.tradingResearchIterations}
                 replayRuns={state.replayRuns}
                 selectedReplayRunId={state.selectedReplayRunId}
                 replayRunDetail={state.replayRunDetail}
@@ -676,6 +702,16 @@ export function App() {
                 replayRunValidationState={state.replayRunValidationState}
                 executionModes={state.executionModes}
                 onSelectReplayRun={(runId) => void selectReplayRun(runId)}
+                onSelectTradingResearchAgent={(agent) =>
+                  setState((current) => ({
+                    ...current,
+                    selectedTradingResearchAgent: agent
+                  }))}
+                onTradingResearchIterationsChange={(iterations) =>
+                  setState((current) => ({
+                    ...current,
+                    tradingResearchIterations: iterations
+                  }))}
                 onRunCandidateReplay={state.selected.fixture_notice.mode === "local_promoted_candidate_bundle"
                   ? () => void recordReplayRun()
                   : undefined}
@@ -897,6 +933,9 @@ export function CandidateDetail({
   candidate,
   candidates = [],
   tradingGatewayEnvironment,
+  tradingResearchRuntime = defaultTradingResearchRuntime(),
+  selectedTradingResearchAgent = tradingResearchRuntime.default_agent,
+  tradingResearchIterations = tradingResearchRuntime.iterations,
   replayRuns = [],
   selectedReplayRunId,
   replayRunDetail,
@@ -905,6 +944,8 @@ export function CandidateDetail({
   replayRunValidationState,
   executionModes = [],
   onSelectReplayRun,
+  onSelectTradingResearchAgent,
+  onTradingResearchIterationsChange,
   onRunCandidateReplay,
   onRunFullCycle,
   onStartTradingRun,
@@ -939,6 +980,9 @@ export function CandidateDetail({
   candidate: CandidateInspectReadModel;
   candidates?: CandidateSummaryReadModel[];
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
+  tradingResearchRuntime?: TradingResearchRuntimeReadModel;
+  selectedTradingResearchAgent?: TradingResearchAgentSelection;
+  tradingResearchIterations?: number;
   replayRuns?: ReplayRunEvidenceReadModel[];
   selectedReplayRunId?: string;
   replayRunDetail?: ReplayRunDetailReadModel;
@@ -947,6 +991,8 @@ export function CandidateDetail({
   replayRunValidationState?: ReplayRunValidationStateReadModel;
   executionModes?: TradingSystemExecutionModeContractReadModel[];
   onSelectReplayRun?: (runId: string) => void;
+  onSelectTradingResearchAgent?: (agent: TradingResearchAgentSelection) => void;
+  onTradingResearchIterationsChange?: (iterations: number) => void;
   onRunCandidateReplay?: () => void;
   onRunFullCycle?: () => void;
   onStartTradingRun?: () => void;
@@ -1092,6 +1138,11 @@ export function CandidateDetail({
     : candidate.improvement?.latest_change_proposal
       ? `proposal ${candidate.improvement.latest_change_proposal.proposal_id}`
       : "Run a full cycle to produce the next System Code candidate.";
+  const selectedResearchAgent = tradingResearchRuntime.agents.find(
+    (agent) => agent.agent === selectedTradingResearchAgent
+  );
+  const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
+  const runFullCycleDisabled = runningFullCycle || selectedResearchAgentBlocked;
 
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
@@ -1133,12 +1184,45 @@ export function CandidateDetail({
             <CardTitle>{operatorDecision.value}</CardTitle>
           </CardHeader>
         </Card>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onRunFullCycle && (
+            <>
+              <div className="flex h-10 items-center gap-1 rounded-md border bg-background px-1" aria-label="Researcher">
+                {tradingResearchRuntime.available_agents.map((agent) => (
+                  <Button
+                    key={agent}
+                    type="button"
+                    variant={selectedTradingResearchAgent === agent ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => onSelectTradingResearchAgent?.(agent)}
+                    disabled={runningFullCycle}
+                  >
+                    {formatResearchAgentLabel(agent)}
+                  </Button>
+                ))}
+              </div>
+              <Input
+                aria-label="Research iterations"
+                className="h-10 w-20"
+                min={1}
+                max={10}
+                type="number"
+                value={tradingResearchIterations}
+                onChange={(event) => {
+                  const iterations = Number(event.target.value);
+                  if (Number.isInteger(iterations) && iterations >= 1 && iterations <= 10) {
+                    onTradingResearchIterationsChange?.(iterations);
+                  }
+                }}
+                disabled={runningFullCycle}
+              />
+            </>
+          )}
           {onRunFullCycle && (
             <Button
               type="button"
               onClick={onRunFullCycle}
-              disabled={runningFullCycle}
+              disabled={runFullCycleDisabled}
             >
               {runningFullCycle ? "Running full cycle" : "Run next cycle"}
             </Button>
@@ -1164,6 +1248,17 @@ export function CandidateDetail({
             </Button>
           )}
         </div>
+        {onRunFullCycle && selectedResearchAgentBlocked && (
+          <p className="text-sm text-destructive">
+            {formatResearchAgentLabel(selectedTradingResearchAgent)} unavailable: {selectedResearchAgent?.failure_reason ?? "not installed"}
+          </p>
+        )}
+        {onRunFullCycle && selectedResearchAgent && !selectedResearchAgentBlocked && (
+          <p className="text-sm text-muted-foreground">
+            {formatResearchAgentLabel(selectedTradingResearchAgent)} researcher ready
+            {selectedResearchAgent.version ? `: ${selectedResearchAgent.version}` : ""}
+          </p>
+        )}
         </CardContent>
       </Card>
 
@@ -2196,6 +2291,36 @@ function formatFreshnessLabel(value: string): string {
     return "market stale";
   }
   return value.replaceAll("_", " ");
+}
+
+function formatResearchAgentLabel(value: TradingResearchAgentSelection): string {
+  return value === "codex" ? "Codex" : "Fixture";
+}
+
+function defaultTradingResearchRuntime(): TradingResearchRuntimeReadModel {
+  return {
+    default_agent: "codex",
+    available_agents: ["codex", "fixture"],
+    iterations: 1,
+    agents: [
+      {
+        agent: "codex",
+        provider: "codex",
+        readiness_status: "active_verified",
+        permission_policy: "artifact_workspace_only",
+        command: "codex",
+        timeout_ms: 120_000,
+        reasoning_effort: "low"
+      },
+      {
+        agent: "fixture",
+        provider: "fixture",
+        readiness_status: "active_verified",
+        permission_policy: "fixture_only",
+        model: "scripted-fixture"
+      }
+    ]
+  };
 }
 
 function signedTone(value: string): OperatorTone {

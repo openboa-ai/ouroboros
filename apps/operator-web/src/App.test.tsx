@@ -43,7 +43,8 @@ import {
   replayRunPayload,
   ledgerCommandPayload,
   runControlPausePayload,
-  type FullCycleOutcome
+  type FullCycleOutcome,
+  type TradingResearchRuntimeReadModel
 } from "./api";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -1230,6 +1231,52 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("renders Codex researcher selection for full-cycle operator runs", () => {
+    const candidate = {
+      ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
+    };
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        onRunFullCycle={() => undefined}
+        tradingResearchRuntime={tradingResearchRuntimeFixture({
+          codexReadiness: "active_verified"
+        })}
+        selectedTradingResearchAgent="codex"
+        tradingResearchIterations={2}
+      />
+    );
+
+    expect(html).toContain("aria-label=\"Researcher\"");
+    expect(html).toContain("Codex");
+    expect(html).toContain("Fixture");
+    expect(html).toContain("aria-label=\"Research iterations\"");
+    expect(html).toContain("value=\"2\"");
+    expect(html).toContain("Codex researcher ready");
+    expect(html).toContain("Run next cycle");
+  });
+
+  it("disables full-cycle action when selected Codex researcher is unavailable", () => {
+    const candidate = {
+      ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
+    };
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        onRunFullCycle={() => undefined}
+        tradingResearchRuntime={tradingResearchRuntimeFixture({
+          codexReadiness: "blocked_or_not_installed"
+        })}
+        selectedTradingResearchAgent="codex"
+      />
+    );
+
+    expect(html).toContain("Codex unavailable: codex_cli_unavailable");
+    expect(html).toContain("disabled");
+  });
+
   it("counts accepted full-cycle scenarios from scenario result status", () => {
     const candidate = {
       ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
@@ -2363,6 +2410,37 @@ function ledgerSourceRecords(): LedgerSourceRecordsReadModel {
       status: "dry_run_recorded",
       authority_status: "dry_run_only"
     }
+  };
+}
+
+function tradingResearchRuntimeFixture(input: {
+  codexReadiness: "active_verified" | "blocked_or_not_installed";
+}): TradingResearchRuntimeReadModel {
+  return {
+    default_agent: "codex",
+    available_agents: ["codex", "fixture"],
+    iterations: 1,
+    agents: [
+      {
+        agent: "codex",
+        provider: "codex",
+        readiness_status: input.codexReadiness,
+        permission_policy: "artifact_workspace_only",
+        command: "codex",
+        model: "test-model",
+        timeout_ms: 120_000,
+        reasoning_effort: "low",
+        version: input.codexReadiness === "active_verified" ? "codex-cli 0.130.0" : undefined,
+        failure_reason: input.codexReadiness === "blocked_or_not_installed" ? "codex_cli_unavailable" : undefined
+      },
+      {
+        agent: "fixture",
+        provider: "fixture",
+        readiness_status: "active_verified",
+        permission_policy: "fixture_only",
+        model: "scripted-fixture"
+      }
+    ]
   };
 }
 

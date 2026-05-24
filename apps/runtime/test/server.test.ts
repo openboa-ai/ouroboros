@@ -32,6 +32,7 @@ import type {
   AgentEditResult,
   TradingResearchAgentAdapter
 } from "../src/trading-research/types";
+import type { TradingResearchRuntimeAgent } from "../src/trading-research/runtime-config";
 
 let tmpDir: string;
 
@@ -2119,6 +2120,118 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("exposes Codex-first trading research runtime config and lets full-cycle runs select it", async () => {
+    const selectedAgents: TradingResearchRuntimeAgent[] = [];
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchRuntimeConfig: {
+        default_agent: "codex",
+        available_agents: ["codex", "fixture"],
+        iterations: 2,
+        codex: {
+          command: "codex-test-bin",
+          model: "test-model",
+          timeout_ms: 30_000,
+          reasoning_effort: "medium"
+        }
+      },
+      tradingResearchProbeExecFile: async (_file, args) => {
+        expect(args).toEqual(["--version"]);
+        return { stdout: "codex-cli 0.130.0\n", stderr: "" };
+      },
+      tradingResearchAgentFactory: (agent) => {
+        selectedAgents.push(agent);
+        return agent === "codex"
+          ? new ScriptedCodexTradingResearchAgentAdapter()
+          : new ScriptedFixtureTradingResearchAgentAdapter();
+      },
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
+    });
+
+    const runtime = await server.inject({
+      method: "GET",
+      url: "/api/trading-research/runtime"
+    });
+    expect(runtime.statusCode).toBe(200);
+    expect(runtime.json()).toMatchObject({
+      trading_research_runtime: {
+        default_agent: "codex",
+        available_agents: ["codex", "fixture"],
+        iterations: 2,
+        agents: [
+          {
+            agent: "codex",
+            provider: "codex",
+            readiness_status: "active_verified",
+            command: "codex-test-bin",
+            model: "test-model",
+            reasoning_effort: "medium",
+            version: "codex-cli 0.130.0"
+          },
+          {
+            agent: "fixture",
+            provider: "fixture",
+            readiness_status: "active_verified"
+          }
+        ]
+      }
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`,
+      payload: {
+        research_agent: "codex",
+        research_iterations: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(selectedAgents).toEqual(["codex"]);
+    expect(response.json()).toMatchObject({
+      status: "completed",
+      agent_research: {
+        agent: {
+          provider: "codex",
+          permission_policy: "artifact_workspace_only"
+        }
+      },
+      trading_gateway_environment: {
+        authority_status: "not_live"
+      }
+    });
+
+    await server.close();
+  });
+
+  it("rejects invalid trading research full-cycle selection input", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const invalidAgent = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`,
+      payload: { research_agent: "open-code" }
+    });
+    expect(invalidAgent.statusCode).toBe(400);
+    expect(invalidAgent.json()).toMatchObject({
+      error: "invalid_research_agent",
+      allowed_values: ["codex", "fixture"]
+    });
+
+    const invalidIterations = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`,
+      payload: { research_iterations: 0 }
+    });
+    expect(invalidIterations.statusCode).toBe(400);
+    expect(invalidIterations.json()).toMatchObject({
+      error: "invalid_research_iterations",
+      allowed_range: "1..10"
+    });
+
+    await server.close();
+  });
+
   it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
@@ -3526,6 +3639,48 @@ class NoOrderRequestTradingResearchAgentAdapter implements TradingResearchAgentA
     return {
       status: "edited",
       summary: "Fixture agent suppressed the paper OrderRequest event.",
+      changed_paths: ["run.py"]
+    };
+  }
+}
+
+class ScriptedCodexTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-codex-trading-research-test",
+    provider: "codex" as const,
+    model: "test-model",
+    permission_policy: "artifact_workspace_only" as const
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const edited = source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = 0.02");
+    await writeFile(runPath, edited, "utf8");
+    return {
+      status: "edited",
+      summary: "Scripted Codex agent set RISK_FRACTION to 0.02.",
+      changed_paths: ["run.py"]
+    };
+  }
+}
+
+class ScriptedFixtureTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-fixture-trading-research-test",
+    provider: "fixture" as const,
+    model: "scripted-fixture",
+    permission_policy: "fixture_only" as const
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const edited = source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = 0.02");
+    await writeFile(runPath, edited, "utf8");
+    return {
+      status: "edited",
+      summary: "Scripted fixture agent set RISK_FRACTION to 0.02.",
       changed_paths: ["run.py"]
     };
   }

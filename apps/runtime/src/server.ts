@@ -61,6 +61,14 @@ import {
 } from "./trading-gateway-runtime-binding";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "./trading-research/types";
+import {
+  createTradingResearchAgentAdapter,
+  fixtureTradingResearchRuntimeConfig,
+  probeTradingResearchRuntimeConfig,
+  type TradingResearchProbeExecFile,
+  type TradingResearchRuntimeAgent,
+  type TradingResearchRuntimeConfig
+} from "./trading-research/runtime-config";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
 import { runAgentTradingCycle } from "./agent-trading-cycle";
@@ -80,6 +88,9 @@ export interface BuildServerOptions {
   tradingGatewayEnv?: Record<string, string | undefined>;
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchAgentAdapter?: TradingResearchAgentAdapter;
+  tradingResearchAgentFactory?: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
+  tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
+  tradingResearchProbeExecFile?: TradingResearchProbeExecFile;
   tradingResearchIterations?: number;
   binancePublicMarketClient?: BinancePublicMarketDataClient;
 }
@@ -120,6 +131,8 @@ interface RecordLedgerBody {
 interface StartTradingRunBody {
   paper_order_request?: string;
   runtime_environment?: string;
+  research_agent?: string;
+  research_iterations?: number;
 }
 
 interface RecordRunControlBody {
@@ -210,6 +223,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
+  const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
+    ?? fixtureTradingResearchRuntimeConfig();
+  const tradingResearchAgentFactory = options.tradingResearchAgentFactory
+    ?? ((agent: TradingResearchRuntimeAgent) => {
+      if (options.tradingResearchAgentAdapter && options.tradingResearchAgentAdapter.agent.provider === agent) {
+        return options.tradingResearchAgentAdapter;
+      }
+      return createTradingResearchAgentAdapter(tradingResearchRuntimeConfig, agent);
+    });
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
     deterministic_test: providedSandboxAdapters?.deterministic_test
@@ -239,6 +261,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   server.get("/api/trading-gateway/environment", async () => ({
     trading_gateway_environment: tradingGatewayEnvironment
+  }));
+
+  server.get("/api/trading-research/runtime", async () => ({
+    trading_research_runtime: await probeTradingResearchRuntimeConfig(
+      tradingResearchRuntimeConfig,
+      options.tradingResearchProbeExecFile
+    )
   }));
 
   server.get("/api/trading-execution-modes", async () => ({
@@ -1063,6 +1092,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
 
+      const researchAgent = startTradingResearchAgent(request.body);
+      if (researchAgent === "invalid") {
+        return reply.code(400).send({
+          error: "invalid_research_agent",
+          allowed_values: ["codex", "fixture"]
+        });
+      }
+      const researchIterations = startTradingResearchIterations(request.body);
+      if (researchIterations === "invalid") {
+        return reply.code(400).send({
+          error: "invalid_research_iterations",
+          allowed_range: "1..10"
+        });
+      }
+
       const candidate = await store.getCandidate(request.params.system_id);
       if (!candidate) {
         return reply.code(404).send({
@@ -1079,8 +1123,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           sourceCandidateVersionId: candidateVersionId,
           tradingGatewayEnvironment,
           gatewayRuntimeBinding,
-          agentAdapter: options.tradingResearchAgentAdapter,
-          iterations: options.tradingResearchIterations
+          agentAdapter: tradingResearchAgentFactory(researchAgent ?? tradingResearchRuntimeConfig.default_agent),
+          iterations: researchIterations ?? options.tradingResearchIterations ?? tradingResearchRuntimeConfig.iterations
         });
         return reply.code(201).send(outcome);
       } catch (error) {
@@ -1705,6 +1749,29 @@ function startRuntimeEnvironment(body: StartTradingRunBody | undefined): Trading
     return body.runtime_environment;
   }
   return undefined;
+}
+
+function startTradingResearchAgent(
+  body: StartTradingRunBody | undefined
+): TradingResearchRuntimeAgent | "invalid" | undefined {
+  if (!body?.research_agent) {
+    return undefined;
+  }
+  if (body.research_agent === "codex" || body.research_agent === "fixture") {
+    return body.research_agent;
+  }
+  return "invalid";
+}
+
+function startTradingResearchIterations(body: StartTradingRunBody | undefined): number | "invalid" | undefined {
+  if (body?.research_iterations === undefined) {
+    return undefined;
+  }
+  const iterations = Number(body.research_iterations);
+  if (Number.isInteger(iterations) && iterations >= 1 && iterations <= 10) {
+    return iterations;
+  }
+  return "invalid";
 }
 
 function blockedFullCycleLineage(input: {

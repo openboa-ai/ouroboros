@@ -67,6 +67,35 @@ export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEn
   return body.trading_gateway_environment;
 }
 
+export type TradingResearchAgentSelection = "codex" | "fixture";
+
+export interface TradingResearchRuntimeReadModel {
+  default_agent: TradingResearchAgentSelection;
+  available_agents: TradingResearchAgentSelection[];
+  iterations: number;
+  agents: Array<{
+    agent: TradingResearchAgentSelection;
+    provider: TradingResearchAgentSelection;
+    readiness_status: "active_verified" | "blocked_or_not_installed";
+    permission_policy: "artifact_workspace_only" | "fixture_only";
+    model?: string;
+    command?: string;
+    timeout_ms?: number;
+    reasoning_effort?: "low" | "medium" | "high" | "xhigh";
+    version?: string;
+    failure_reason?: string;
+  }>;
+}
+
+export async function fetchTradingResearchRuntime(): Promise<TradingResearchRuntimeReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-research/runtime`);
+  if (!response.ok) {
+    throw new Error(`Failed to load trading research runtime: ${response.status}`);
+  }
+  const body = (await response.json()) as { trading_research_runtime: TradingResearchRuntimeReadModel };
+  return body.trading_research_runtime;
+}
+
 export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {
   const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs?limit=5`);
   if (!response.ok) {
@@ -149,6 +178,8 @@ export type PaperOrderRequestSelection = "rejected";
 
 export interface StartTradingRunInput {
   paper_order_request?: PaperOrderRequestSelection;
+  research_agent?: TradingResearchAgentSelection;
+  research_iterations?: number;
 }
 
 export interface TradingRunObserveOutcome {
@@ -501,7 +532,7 @@ export async function runFullCycle(
   candidate: CandidateInspectReadModel,
   input: StartTradingRunInput = {}
 ): Promise<FullCycleOutcome> {
-  const hasBody = input.paper_order_request !== undefined;
+  const hasBody = Object.keys(input).length > 0;
   const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/full-cycle-runs`, {
     method: "POST",
     ...(hasBody
