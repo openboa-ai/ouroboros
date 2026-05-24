@@ -1372,31 +1372,60 @@ export function CandidateDetail({
               <Badge variant="default">{visibleFullCycle.agent_research.latest_decision}</Badge>
             </CardAction>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-4">
-            <OperatorStatusCard
-              label="System Code"
-              value={visibleFullCycle.system_code_handoff.system_code_id}
-              detail={visibleFullCycle.system_code_handoff.runtime_kind}
-              tone="good"
-            />
-            <OperatorStatusCard
-              label="Backtest"
-              value={formatScore(visibleFullCycle.backtest.score)}
-              detail={visibleFullCycle.backtest.summary}
-              tone={visibleFullCycle.backtest.status === "accepted" ? "good" : "warning"}
-            />
-            <OperatorStatusCard
-              label="Paper Trading Run"
-              value={visibleFullCycle.trading_run.lifecycle_status ?? "registered"}
-              detail={`${visibleFullCycle.paper_trading.provider_request_count} provider calls`}
-              tone={visibleFullCycle.trading_run.lifecycle_status === "running" ? "good" : "neutral"}
-            />
-            <OperatorStatusCard
-              label="Ledger"
-              value={visibleFullCycle.ledger.chain_complete ? "chain complete" : "incomplete"}
-              detail="OrderRequest -> GatewayResult -> ExecutionResult"
-              tone={visibleFullCycle.ledger.chain_complete ? "good" : "warning"}
-            />
+          <CardContent className="grid gap-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <OperatorStatusCard
+                label="System Code"
+                value={visibleFullCycle.system_code_handoff.system_code_id}
+                detail={visibleFullCycle.system_code_handoff.runtime_kind}
+                tone="good"
+              />
+              <OperatorStatusCard
+                label="Backtest"
+                value={formatScore(visibleFullCycle.backtest.score)}
+                detail={visibleFullCycle.backtest.summary}
+                tone={visibleFullCycle.backtest.status === "accepted" ? "good" : "warning"}
+              />
+              <OperatorStatusCard
+                label="Paper Trading Run"
+                value={visibleFullCycle.trading_run.lifecycle_status ?? "registered"}
+                detail={`${visibleFullCycle.paper_trading.provider_request_count} provider calls`}
+                tone={visibleFullCycle.trading_run.lifecycle_status === "running" ? "good" : "neutral"}
+              />
+              <OperatorStatusCard
+                label="Ledger"
+                value={visibleFullCycle.ledger.chain_complete ? "chain complete" : "incomplete"}
+                detail="OrderRequest -> GatewayResult -> ExecutionResult"
+                tone={visibleFullCycle.ledger.chain_complete ? "good" : "warning"}
+              />
+            </div>
+            {visibleFullCycle.full_cycle_lineage && (
+              <section className="grid gap-2" aria-label="Full-cycle lineage">
+                <h4 className="text-sm font-medium">Full-cycle lineage</h4>
+                <dl className="grid gap-2 md:grid-cols-4">
+                  <Field
+                    label="Source Trading System"
+                    value={visibleFullCycle.full_cycle_lineage.source.trading_system_id}
+                  />
+                  <Field
+                    label="Source System Code"
+                    value={visibleFullCycle.full_cycle_lineage.source.system_code_ref
+                      ? formatRef(visibleFullCycle.full_cycle_lineage.source.system_code_ref)
+                      : "none"}
+                  />
+                  <Field
+                    label="Next Trading System"
+                    value={visibleFullCycle.full_cycle_lineage.materialized?.trading_system_id ?? "not materialized"}
+                  />
+                  <Field
+                    label="Evidence Chain"
+                    value={visibleFullCycle.full_cycle_lineage.evidence?.ledger_chain_complete
+                      ? "Ledger chain complete"
+                      : visibleFullCycle.full_cycle_lineage.blocked_stage ?? "pending"}
+                  />
+                </dl>
+              </section>
+            )}
           </CardContent>
         </Card>
       )}

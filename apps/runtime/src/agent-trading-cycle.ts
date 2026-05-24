@@ -75,6 +75,7 @@ export interface AgentTradingCycleOutcome {
     authority_status: "not_live";
   };
   backtest: TradingEvaluationResult;
+  full_cycle_lineage: FullCycleLineage;
   next_trading_system: CandidateInspectReadModel;
   trading_run_id: string;
   trading_run: {
@@ -96,6 +97,34 @@ export interface AgentTradingCycleOutcome {
   run_control?: CandidateInspectReadModel["runtime"]["run_control"];
   transcript?: CandidateInspectReadModel["runtime"]["transcript"];
   trading_gateway_environment: TradingGatewayEnvironmentReadModel;
+}
+
+export interface FullCycleLineage {
+  handoff_status: "runnable" | "blocked";
+  source: {
+    trading_system_id: string;
+    candidate_version_id: string;
+    system_code_ref?: Ref;
+  };
+  generated?: {
+    system_code_ref: Ref;
+    artifact_digest: string;
+    generated_by_agent: true;
+  };
+  materialized?: {
+    trading_system_id: string;
+    candidate_version_id: string;
+    system_code_ref?: Ref;
+  };
+  evidence?: {
+    evaluation_status: string;
+    evaluation_score: number;
+    trading_run_id: string;
+    gateway_result_outcome: string;
+    ledger_chain_complete: boolean;
+  };
+  blocked_stage?: string;
+  blocked_reason?: string;
 }
 
 export async function runAgentTradingCycle(
@@ -202,6 +231,7 @@ export async function runAgentTradingCycle(
   if (!nextTradingSystem?.ledger) {
     throw new Error("agent_trading_cycle_projection_failed");
   }
+  const sourceTradingSystem = await input.store.getCandidate(input.sourceSystemId);
 
   return {
     status: "completed",
@@ -227,6 +257,31 @@ export async function runAgentTradingCycle(
       authority_status: "not_live"
     },
     backtest: materializedEntry.evaluation,
+    full_cycle_lineage: {
+      handoff_status: "runnable",
+      source: {
+        trading_system_id: input.sourceSystemId,
+        candidate_version_id: input.sourceCandidateVersionId,
+        system_code_ref: sourceTradingSystem?.system_code?.ref
+      },
+      generated: {
+        system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+        artifact_digest: systemCode.artifact_digest,
+        generated_by_agent: true
+      },
+      materialized: {
+        trading_system_id: nextTradingSystem.candidate_id,
+        candidate_version_id: nextTradingSystem.candidate_version.candidate_version_id,
+        system_code_ref: nextTradingSystem.system_code?.ref
+      },
+      evidence: {
+        evaluation_status: materializedEntry.evaluation.status,
+        evaluation_score: materializedEntry.evaluation.score,
+        trading_run_id: nextTradingSystem.runtime.ref.id,
+        gateway_result_outcome: nextTradingSystem.ledger.latest_gateway_result?.decision_outcome ?? "missing",
+        ledger_chain_complete: nextTradingSystem.ledger.chain_complete
+      }
+    },
     next_trading_system: nextTradingSystem,
     trading_run_id: nextTradingSystem.runtime.ref.id,
     trading_run: {

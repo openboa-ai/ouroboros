@@ -1048,7 +1048,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             error: "full_cycle_failed",
             reason: error.code,
             system_id: request.params.system_id,
-            candidate_version_id: candidateVersionId
+            candidate_version_id: candidateVersionId,
+            full_cycle_lineage: blockedFullCycleLineage({
+              candidate,
+              candidateVersionId,
+              reason: error.code
+            })
           });
         }
         if (error instanceof Error && error.message.startsWith("agent_trading_cycle_")) {
@@ -1056,7 +1061,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             error: "full_cycle_failed",
             reason: error.message,
             system_id: request.params.system_id,
-            candidate_version_id: candidateVersionId
+            candidate_version_id: candidateVersionId,
+            full_cycle_lineage: blockedFullCycleLineage({
+              candidate,
+              candidateVersionId,
+              reason: error.message
+            })
           });
         }
         throw error;
@@ -1635,6 +1645,42 @@ function startPaperOrderRequest(body: StartTradingRunBody | undefined): PaperOrd
     return body.paper_order_request;
   }
   return undefined;
+}
+
+function blockedFullCycleLineage(input: {
+  candidate: CandidateInspectReadModel;
+  candidateVersionId: string;
+  reason: string;
+}) {
+  return {
+    handoff_status: "blocked" as const,
+    blocked_stage: fullCycleBlockedStage(input.reason),
+    blocked_reason: input.reason,
+    source: {
+      trading_system_id: input.candidate.candidate_id,
+      candidate_version_id: input.candidateVersionId,
+      system_code_ref: input.candidate.system_code?.ref
+    }
+  };
+}
+
+function fullCycleBlockedStage(reason: string): string {
+  if (reason.includes("rejected_paper_order_request")) {
+    return "paper_gateway";
+  }
+  if (reason.includes("missing_order_request")) {
+    return "paper_trading";
+  }
+  if (reason.includes("source_system_code") || reason.includes("source_artifact")) {
+    return "source_system_code";
+  }
+  if (reason.includes("agent_failed") || reason.includes("no_research_entry")) {
+    return "agent_research";
+  }
+  if (reason.includes("materialization") || reason.includes("projection")) {
+    return "materialization";
+  }
+  return "full_cycle";
 }
 
 async function refreshBinancePublicMarketSurface(input: {
