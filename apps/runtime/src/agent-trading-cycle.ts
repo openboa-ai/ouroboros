@@ -130,6 +130,12 @@ export async function runAgentTradingCycle(
     manifestEntrypoint: manifest.entrypoint,
     agent: agentAdapter.agent
   });
+  const paperRun = await runPaperArtifact({
+    artifactDir,
+    outputDir: path.join(runRoot, "paper"),
+    manifestEntrypoint: manifest.entrypoint
+  });
+  const paperLedger = paperLedgerResultFromRun(paperRun);
   const materialization = await input.store.materializeCandidate(materializationInput({
     sourceSystemId: input.sourceSystemId,
     sourceCandidateVersionId: input.sourceCandidateVersionId,
@@ -141,14 +147,9 @@ export async function runAgentTradingCycle(
     throw new Error("agent_trading_cycle_materialization_failed");
   }
 
-  const paperRun = await runPaperArtifact({
-    artifactDir,
-    outputDir: path.join(runRoot, "paper"),
-    manifestEntrypoint: manifest.entrypoint
-  });
   const candidate = materialization.candidate;
-  await input.store.recordLedger(ledgerInputFromPaperRun({
-    run: paperRun,
+  await input.store.recordLedger(ledgerInputFromPaperResult({
+    result: paperLedger,
     candidateId: candidate.candidate_id,
     candidateVersionId: candidate.candidate_version.candidate_version_id,
     tradingRunId: candidate.runtime.ref.id
@@ -351,13 +352,10 @@ function materializationInput(input: {
   };
 }
 
-function ledgerInputFromPaperRun(input: {
-  run: ArtifactRunResult;
-  candidateId: string;
-  candidateVersionId: string;
-  tradingRunId: string;
-}): LedgerInput {
-  const orderRequest = latestEvent<OrderRequest>(input.run.events, "order_request");
+type PaperLedgerResult = Pick<LedgerInput, "intent" | "gateway_result" | "execution_result">;
+
+function paperLedgerResultFromRun(run: ArtifactRunResult): PaperLedgerResult {
+  const orderRequest = latestEvent<OrderRequest>(run.events, "order_request");
   if (!orderRequest) {
     throw new Error("agent_trading_cycle_missing_order_request");
   }
@@ -367,14 +365,27 @@ function ledgerInputFromPaperRun(input: {
   const orderType = orderRequest.order_type === "market" || orderRequest.order_type === "limit"
     ? orderRequest.order_type
     : undefined;
-  const gatewayOrderRequest = {
+  const intent = {
     intent_kind: "place_order" as const,
     symbol: orderRequest.symbol,
     side,
     order_type: orderType,
     quantity: decimalString(orderRequest.quantity)
   };
-  const gatewayResult = validatePaperGatewayOrderRequest(gatewayOrderRequest);
+  const gatewayResult = validatePaperGatewayOrderRequest(intent);
+  return {
+    intent,
+    gateway_result: gatewayResult,
+    execution_result: recordPaperExecutionResult(gatewayResult)
+  };
+}
+
+function ledgerInputFromPaperResult(input: {
+  result: PaperLedgerResult;
+  candidateId: string;
+  candidateVersionId: string;
+  tradingRunId: string;
+}): LedgerInput {
   return {
     idempotency_key: [
       "agent-cycle-ledger",
@@ -384,9 +395,9 @@ function ledgerInputFromPaperRun(input: {
     candidate_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,
     runtime_id: input.tradingRunId,
-    intent: gatewayOrderRequest,
-    gateway_result: gatewayResult,
-    execution_result: recordPaperExecutionResult(gatewayResult)
+    intent: input.result.intent,
+    gateway_result: input.result.gateway_result,
+    execution_result: input.result.execution_result
   };
 }
 

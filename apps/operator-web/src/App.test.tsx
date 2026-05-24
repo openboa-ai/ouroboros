@@ -1223,6 +1223,44 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("counts accepted full-cycle scenarios from scenario result status", () => {
+    const candidate = {
+      ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
+    };
+    const outcome = fullCycleOutcome(candidate);
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={candidate}
+        lastFullCycle={{
+          ...outcome,
+          backtest: {
+            ...outcome.backtest,
+            scenario_results: [
+              {
+                scenario_id: "trend_long",
+                status: "accepted",
+                score: 1,
+                risk_decision: "valid_order_request",
+                summary: "Accepted order request."
+              },
+              {
+                scenario_id: "range_flat",
+                status: "disqualified",
+                score: 0,
+                risk_decision: "no_order_request",
+                summary: "No order request."
+              }
+            ]
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("1/2 scenarios accepted");
+    expect(html).not.toContain("2/2 scenarios accepted");
+  });
+
   it("keeps agent-created Trading System evidence visible after reload", () => {
     const candidate = candidateWithAgentCycleMaterialization(
       candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))

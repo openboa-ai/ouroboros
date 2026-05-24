@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -27,6 +27,11 @@ import type {
   RuntimeProviderAdapter
 } from "../src/providers/runtime-provider-adapter";
 import { FixtureTradingResearchAgentAdapter } from "../src/trading-research/agent-adapters";
+import type {
+  AgentEditInput,
+  AgentEditResult,
+  TradingResearchAgentAdapter
+} from "../src/trading-research/types";
 
 let tmpDir: string;
 
@@ -2056,6 +2061,31 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("does not materialize the next Trading System when paper validation cannot form a Ledger chain", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchAgentAdapter: new NoOrderRequestTradingResearchAgentAdapter(),
+      tradingResearchIterations: 1
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "full_cycle_failed",
+      reason: "agent_trading_cycle_missing_order_request"
+    });
+
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.json().candidates
+      .some((item: { display_name?: string }) => item.display_name === "Agent generated BTCUSDT Trading System"))
+      .toBe(false);
+
+    await server.close();
+  });
+
   it("records a rejected paper order through Gateway validation and Ledger readback", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
@@ -2923,6 +2953,33 @@ function validRunControlInput(candidateVersionId: string): RunControlAuditInput 
     },
     created_at: "2026-05-10T00:10:00.000Z"
   };
+}
+
+class NoOrderRequestTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-fixture-no-order-request",
+    provider: "fixture" as const,
+    model: "no-order-request-fixture",
+    permission_policy: "fixture_only" as const
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const edited = source.replace(
+      '    append_event(args.output_events, {"event": "order_request", **intent})',
+      '    if "/paper/" not in args.output_events:\n        append_event(args.output_events, {"event": "order_request", **intent})'
+    );
+    if (edited === source) {
+      throw new Error("fixture_order_request_rewrite_failed");
+    }
+    await writeFile(runPath, edited, "utf8");
+    return {
+      status: "edited",
+      summary: "Fixture agent suppressed the paper OrderRequest event.",
+      changed_paths: ["run.py"]
+    };
+  }
 }
 
 async function writeStoreJson(value: unknown, ...segments: string[]): Promise<void> {

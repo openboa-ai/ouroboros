@@ -1972,9 +1972,11 @@ function buildOperatorProfitSummary(
   const improvementScore = candidate.improvement?.latest_evaluation_result?.total_score;
   const cycleScore = lastFullCycle?.backtest.score;
   const evaluationScore = replayRunDetail?.score ?? improvementScore ?? cycleScore;
-  const cycleScenarioCount = lastFullCycle?.backtest.scenario_results?.length ?? 0;
+  const cycleScenarioTotal = lastFullCycle?.backtest.scenario_results?.length ?? 0;
+  const cycleScenarioAccepted = lastFullCycle?.backtest.scenario_results
+    ?.filter((result) => result.status === "accepted").length ?? 0;
   const acceptedScenarios = lastFullCycle
-    ? `${cycleScenarioCount}/${cycleScenarioCount} scenarios accepted`
+    ? `${cycleScenarioAccepted}/${cycleScenarioTotal} scenarios accepted`
     : latestReplayRun
     ? `${latestReplayRun.scenario_accepted}/${latestReplayRun.scenario_total} scenarios accepted`
     : "No replay evidence yet";
@@ -1983,7 +1985,7 @@ function buildOperatorProfitSummary(
   const profitSignalDetail = replayRunDetail
     ? `${acceptedScenarios}; ${riskDecision}`
     : lastFullCycle
-      ? lastFullCycle.backtest.summary
+      ? `${acceptedScenarios}; ${riskDecision}; ${lastFullCycle.backtest.summary}`
       : improvementScore === undefined
       ? "Run full cycle to create the first paper evidence."
       : `Improvement evaluation score; ${acceptedScenarios.toLowerCase()}.`;
