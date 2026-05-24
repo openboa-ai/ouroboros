@@ -344,6 +344,45 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("does not refresh Binance public market data for unknown candidate inspect", async () => {
+    let refreshCallCount = 0;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      tradingGatewayEnv: {
+        OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL: BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL
+      },
+      binancePublicMarketClient: {
+        async exchangeInformation() {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
+        },
+        async markPrice(_request?: { symbol?: string }) {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
+        },
+        async checkServerTime() {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
+        }
+      }
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: "/api/candidates/missing-candidate"
+    });
+    expect(detail.statusCode).toBe(404);
+    expect(detail.json()).toMatchObject({
+      error: "candidate_not_found",
+      candidate_id: "missing-candidate"
+    });
+    expect(refreshCallCount).toBe(0);
+
+    await server.close();
+  });
+
   it("keeps candidate inspect available when Binance public market refresh fails", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),

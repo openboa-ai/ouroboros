@@ -475,11 +475,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.get<{ Params: { candidate_id: string } }>(
     "/api/candidates/:candidate_id",
     async (request, reply) => {
-      await refreshBinancePublicMarketSurface({
-        store,
-        tradingGatewayEnvironment,
-        client: options.binancePublicMarketClient
-      });
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
@@ -492,7 +487,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id
         });
       }
-      return candidate;
+      await refreshBinancePublicMarketSurface({
+        store,
+        tradingGatewayEnvironment,
+        client: options.binancePublicMarketClient
+      });
+      return await getCandidateReadModel(
+        store,
+        request.params.candidate_id,
+        options.promotedCandidateRoot,
+        options.replayRunRoot
+      ) ?? candidate;
     }
   );
 
