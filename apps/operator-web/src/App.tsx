@@ -1341,7 +1341,7 @@ export function CandidateDetail({
           <ResearchStage
             label="Next cycle"
             status={nextCycleStatus}
-            tone={nextCycleStatus === "handoff ready" ? "good" : "warning"}
+            tone={nextCycleStatus === "handoff ready" || nextCycleStatus === "agent handoff ready" ? "good" : "warning"}
           />
         </div>
         <div className="grid gap-2">

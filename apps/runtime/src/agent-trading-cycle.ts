@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -100,14 +100,22 @@ export async function runAgentTradingCycle(
   input: RunAgentTradingCycleInput
 ): Promise<AgentTradingCycleOutcome> {
   const agentAdapter = input.agentAdapter ?? new FixtureTradingResearchAgentAdapter();
+  const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = [
     "agent-cycle",
     safeId(input.sourceSystemId),
     safeId(input.sourceCandidateVersionId)
   ].join("-");
   const runRoot = path.join(input.store.root(), "agent-cycle-runs", sessionId);
+  const artifactSourceDir = await sourceResearchArtifactDir({
+    store: input.store,
+    sourceSystemId: input.sourceSystemId,
+    sourceCandidateVersionId: input.sourceCandidateVersionId,
+    repoRoot
+  });
   const research = await runTradingResearchLoop({
-    repo_root: input.repoRoot ?? REPO_ROOT,
+    repo_root: repoRoot,
+    artifact_source_dir: artifactSourceDir,
     run_root: runRoot,
     session_id: sessionId,
     iterations: input.iterations ?? 1,
@@ -298,6 +306,76 @@ async function runPaperArtifact(input: {
   } finally {
     await provider.close();
   }
+}
+
+async function sourceResearchArtifactDir(input: {
+  store: LocalStore;
+  sourceSystemId: string;
+  sourceCandidateVersionId: string;
+  repoRoot: string;
+}): Promise<string> {
+  const candidate = await input.store.getCandidate(input.sourceSystemId);
+  if (!candidate) {
+    throw new Error("agent_trading_cycle_source_system_not_found");
+  }
+  if (candidate.candidate_version.candidate_version_id !== input.sourceCandidateVersionId) {
+    throw new Error("agent_trading_cycle_source_version_mismatch");
+  }
+
+  const systemCodeRef = candidate.system_code?.ref;
+  if (!systemCodeRef) {
+    throw new Error("agent_trading_cycle_missing_source_system_code");
+  }
+  const systemCode = await input.store.getSystemCode(systemCodeRef.id);
+  if (!systemCode) {
+    throw new Error("agent_trading_cycle_source_system_code_not_found");
+  }
+  if (systemCode.artifact_kind !== "python_file") {
+    throw new Error("agent_trading_cycle_source_system_code_not_python");
+  }
+
+  return researchArtifactSourceDir({
+    systemCode,
+    repoRoot: input.repoRoot
+  });
+}
+
+async function researchArtifactSourceDir(input: {
+  systemCode: SystemCodeRecord & { artifact_kind: "python_file" };
+  repoRoot: string;
+}): Promise<string> {
+  const artifactPath = path.isAbsolute(input.systemCode.artifact_path)
+    ? input.systemCode.artifact_path
+    : path.join(input.repoRoot, input.systemCode.artifact_path);
+  const artifactStat = await stat(artifactPath).catch(() => undefined);
+  if (!artifactStat) {
+    throw new Error("agent_trading_cycle_source_artifact_not_found");
+  }
+  if (artifactStat.isDirectory()) {
+    await assertResearchArtifactManifest(artifactPath);
+    return artifactPath;
+  }
+
+  const artifactDir = path.dirname(artifactPath);
+  if (await hasResearchArtifactManifest(artifactDir)) {
+    return artifactDir;
+  }
+  if (input.systemCode.artifact_path === "fixtures/trading-systems/clock.py") {
+    return path.join(input.repoRoot, "artifacts/trading-system");
+  }
+  throw new Error("agent_trading_cycle_source_artifact_not_research_compatible");
+}
+
+async function assertResearchArtifactManifest(artifactDir: string): Promise<void> {
+  if (await hasResearchArtifactManifest(artifactDir)) {
+    return;
+  }
+  throw new Error("agent_trading_cycle_source_artifact_missing_manifest");
+}
+
+async function hasResearchArtifactManifest(artifactDir: string): Promise<boolean> {
+  const manifest = await stat(path.join(artifactDir, "manifest.json")).catch(() => undefined);
+  return Boolean(manifest?.isFile());
 }
 
 function materializationInput(input: {
