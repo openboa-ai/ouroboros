@@ -891,9 +891,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Paper trading");
     expect(html).toContain("paper_order_sink");
     expect(html).toContain("paper_only");
-    expect(html).toContain("Live gated trading");
+    expect(html).toContain("Live disabled");
     expect(html).toContain("gated_live_order_gateway");
-    expect(html).toContain("live_requires_gateway");
+    expect(html).toContain("live_disabled");
     expect(html).toContain("TradingApiProvider");
     expect(html).toContain("forbidden");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
@@ -1111,9 +1111,12 @@ describe("CandidateDetail", () => {
     );
 
     expect(html).toContain("Trading gateway environment");
-    expect(html).toContain("testnet / environment_variables");
-    expect(html).toContain("testnet");
-    expect(html).toContain("https://demo-fapi.binance.com");
+    expect(html).toContain("paper / mlp_policy");
+    expect(html).toContain("Gateway locked / runtime_binding_policy");
+    expect(html).toContain("https://fapi.binance.com");
+    expect(html).toContain("fake_paper_account");
+    expect(html).toContain("fake_paper_order_executor");
+    expect(html).toContain("live_gateway_not_enabled_in_mlp");
     expect(html).toContain("api_key=true");
     expect(html).toContain("api_secret=true");
     expect(html).toContain("live_exchange=false");
@@ -2466,18 +2469,46 @@ function tradingGatewayEnvironment(): TradingGatewayEnvironmentReadModel {
     venue: "binance_usd_m_futures",
     instrument: "BTCUSDT",
     product_category: "perpetual_futures",
-    exchange_environment: "testnet",
-    exchange_environment_source: "environment_variables",
-    rest_base_url: "https://demo-fapi.binance.com",
-    credential_scope: "runtime_selected",
+    runtime_environment: "paper",
+    runtime_environment_source: "mlp_policy",
+    exchange_environment: "unbound",
+    exchange_environment_source: "runtime_binding_policy",
+    rest_base_url: null,
+    credential_scope: "none",
     credential_source: "environment_variables",
     api_key_configured: true,
     api_secret_configured: true,
     configuration_status: "configured",
-    configuration_reason: "testnet_credentials_configured_without_live_authority",
+    configuration_reason: "credentials_configured_but_not_used_by_paper_runtime",
     authority_status: "not_live",
     live_exchange_authority: false,
     order_submission_authority: false,
+    live_disabled_reason: "live_gateway_not_enabled_in_mlp",
+    runtime_bindings: {
+      paper: {
+        status: "enabled",
+        market_data_source: "binance_production_public_rest",
+        rest_base_url: "https://fapi.binance.com",
+        account_provider: "fake_paper_account",
+        executor: "fake_paper_order_executor",
+        ledger: "fake_ledger",
+        live_exchange_authority: false,
+        order_submission_authority: false,
+        authority_status: "dry_run_only"
+      },
+      live: {
+        status: "disabled",
+        disabled_reason: "live_gateway_not_enabled_in_mlp",
+        market_data_source: "binance_production_public_rest",
+        rest_base_url: "https://fapi.binance.com",
+        account_provider: "live_account",
+        executor: "live_order_executor",
+        ledger: "ledger",
+        live_exchange_authority: false,
+        order_submission_authority: false,
+        authority_status: "not_live"
+      }
+    },
     env_var_names: {
       rest_base_url: "OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL",
       api_key: "OUROBOROS_BINANCE_API_KEY",
@@ -2690,29 +2721,29 @@ function tradingExecutionModes(): TradingSystemExecutionModeContractReadModel[] 
     {
       mode: "paper",
       label: "Paper trading",
-      support_status: "planned",
+      support_status: "available",
       stage_binding_profile: "paper",
       artifact_contract: baseArtifactContract,
       provider_contract: {
         market_data: "realtime_market_data",
         account: "paper_account",
         order_plane: "paper_order_sink",
-        credentials_scope: "provider_side_only"
+        credentials_scope: "none_required"
       },
       authority: {
         artifact_has_credentials: false,
         artifact_has_order_authority: false,
-        provider_may_submit_orders: true,
+        provider_may_submit_orders: false,
         live_exchange_authority: false,
         status: "paper_only"
       },
-      required_controls: ["paper account isolation"],
+      required_controls: ["fake paper account isolation"],
       forbidden_artifact_capabilities: forbiddenArtifactCapabilities
     },
     {
       mode: "live",
-      label: "Live gated trading",
-      support_status: "planned",
+      label: "Live disabled",
+      support_status: "disabled",
       stage_binding_profile: "live",
       artifact_contract: baseArtifactContract,
       provider_contract: {
@@ -2724,11 +2755,11 @@ function tradingExecutionModes(): TradingSystemExecutionModeContractReadModel[] 
       authority: {
         artifact_has_credentials: false,
         artifact_has_order_authority: false,
-        provider_may_submit_orders: true,
-        live_exchange_authority: true,
-        status: "live_requires_gateway"
+        provider_may_submit_orders: false,
+        live_exchange_authority: false,
+        status: "live_disabled"
       },
-      required_controls: ["risk gateway"],
+      required_controls: ["live_gateway_not_enabled_in_mlp"],
       forbidden_artifact_capabilities: forbiddenArtifactCapabilities
     }
   ];

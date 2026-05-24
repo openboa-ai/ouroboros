@@ -13,6 +13,7 @@ import type {
   RunControlAuditInput,
   SandboxAdapterKind,
   SandboxDetailReadModel,
+  TradingRuntimeEnvironment,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
@@ -52,8 +53,12 @@ import {
   getTradingSystemExecutionModeContract,
   listTradingSystemExecutionModeContracts
 } from "./trading-execution-mode-contracts";
-import { recordPaperExecutionResult } from "./paper-execution";
-import { validatePaperGatewayOrderRequest } from "./trading-gateway-validation";
+import {
+  createGatewayRuntimeBinding,
+  executeGatewayOrderRequest,
+  LIVE_GATEWAY_DISABLED_REASON,
+  type GatewayRuntimeBinding
+} from "./trading-gateway-runtime-binding";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "./trading-research/types";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
@@ -61,7 +66,7 @@ import { FixtureImprovementProposalProviderAdapter } from "./research-orchestrat
 import { runAgentTradingCycle } from "./agent-trading-cycle";
 import {
   BinancePublicMarketSdkAdapter,
-  type BinancePublicMarketLivenessClient
+  type BinancePublicMarketDataClient
 } from "./trading-substrate/binance-public-market-adapter";
 import { safeId } from "./safe-id";
 
@@ -76,7 +81,7 @@ export interface BuildServerOptions {
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchAgentAdapter?: TradingResearchAgentAdapter;
   tradingResearchIterations?: number;
-  binancePublicMarketClient?: BinancePublicMarketLivenessClient;
+  binancePublicMarketClient?: BinancePublicMarketDataClient;
 }
 
 interface CreateEvaluationRunBody {
@@ -114,6 +119,7 @@ interface RecordLedgerBody {
 
 interface StartTradingRunBody {
   paper_order_request?: string;
+  runtime_environment?: string;
 }
 
 interface RecordRunControlBody {
@@ -490,11 +496,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id
         });
       }
-      await refreshBinancePublicMarketSurface({
-        store,
-        tradingGatewayEnvironment,
-        client: options.binancePublicMarketClient
-      });
       return await getCandidateReadModel(
         store,
         request.params.candidate_id,
@@ -863,6 +864,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
     "/api/trading-systems/:system_id/trading-runs",
     async (request, reply) => {
+      const runtimeEnvironment = startRuntimeEnvironment(request.body);
+      if (!runtimeEnvironment) {
+        return reply.code(400).send({
+          error: "invalid_runtime_environment",
+          allowed_values: ["paper", "live"]
+        });
+      }
+      const gatewayRuntimeBinding = createGatewayRuntimeBinding({
+        environment: runtimeEnvironment,
+        marketDataClient: options.binancePublicMarketClient
+      });
+      if (gatewayRuntimeBinding.status === "disabled") {
+        return reply.code(422).send({
+          error: "gateway_runtime_binding_disabled",
+          reason: gatewayRuntimeBinding.disabled_reason ?? LIVE_GATEWAY_DISABLED_REASON,
+          runtime_environment: gatewayRuntimeBinding.environment
+        });
+      }
+
       const paperOrderRequest = startPaperOrderRequest(request.body);
       if (!paperOrderRequest) {
         return reply.code(400).send({
@@ -890,7 +910,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           tradingRunId,
           candidateVersionId,
           paperOrderRequest,
-          tradingGatewayEnvironment
+          tradingGatewayEnvironment,
+          gatewayRuntimeBinding
         });
 
         return reply.code(201).send(outcome);
@@ -1015,6 +1036,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
     "/api/trading-systems/:system_id/full-cycle-runs",
     async (request, reply) => {
+      const runtimeEnvironment = startRuntimeEnvironment(request.body);
+      if (!runtimeEnvironment) {
+        return reply.code(400).send({
+          error: "invalid_runtime_environment",
+          allowed_values: ["paper", "live"]
+        });
+      }
+      const gatewayRuntimeBinding = createGatewayRuntimeBinding({
+        environment: runtimeEnvironment,
+        marketDataClient: options.binancePublicMarketClient
+      });
+      if (gatewayRuntimeBinding.status === "disabled") {
+        return reply.code(422).send({
+          error: "gateway_runtime_binding_disabled",
+          reason: gatewayRuntimeBinding.disabled_reason ?? LIVE_GATEWAY_DISABLED_REASON,
+          runtime_environment: gatewayRuntimeBinding.environment
+        });
+      }
+
       const paperOrderRequest = startPaperOrderRequest(request.body);
       if (!paperOrderRequest || paperOrderRequest !== "valid") {
         return reply.code(400).send({
@@ -1038,6 +1078,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           sourceSystemId: request.params.system_id,
           sourceCandidateVersionId: candidateVersionId,
           tradingGatewayEnvironment,
+          gatewayRuntimeBinding,
           agentAdapter: options.tradingResearchAgentAdapter,
           iterations: options.tradingResearchIterations
         });
@@ -1057,6 +1098,19 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           });
         }
         if (error instanceof Error && error.message.startsWith("agent_trading_cycle_")) {
+          return reply.code(422).send({
+            error: "full_cycle_failed",
+            reason: error.message,
+            system_id: request.params.system_id,
+            candidate_version_id: candidateVersionId,
+            full_cycle_lineage: blockedFullCycleLineage({
+              candidate,
+              candidateVersionId,
+              reason: error.message
+            })
+          });
+        }
+        if (error instanceof Error && error.message.startsWith("binance_public_market_")) {
           return reply.code(422).send({
             error: "full_cycle_failed",
             reason: error.message,
@@ -1449,6 +1503,7 @@ async function startFixtureTradingRun(input: {
   candidateVersionId: string;
   paperOrderRequest: PaperOrderRequestFixture;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
+  gatewayRuntimeBinding: GatewayRuntimeBinding;
 }) {
   const sandbox = await ensureTradingRunSandbox({
     store: input.store,
@@ -1458,12 +1513,13 @@ async function startFixtureTradingRun(input: {
     candidateVersionId: input.candidateVersionId,
     paperOrderRequest: input.paperOrderRequest
   });
-  await input.store.recordLedger(ledgerInputFromSandboxOutput({
+  await input.store.recordLedger(await ledgerInputFromSandboxOutput({
     sandbox,
     candidateId: input.systemId,
     candidateVersionId: input.candidateVersionId,
     tradingRunId: input.tradingRunId,
-    paperOrderRequest: input.paperOrderRequest
+    paperOrderRequest: input.paperOrderRequest,
+    gatewayRuntimeBinding: input.gatewayRuntimeBinding
   }));
   await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
     idempotencyKey: `trading-run-start:${input.paperOrderRequest}:${input.tradingRunId}:${input.candidateVersionId}`,
@@ -1596,13 +1652,14 @@ interface SandboxOrderRequestEvent {
   at?: string;
 }
 
-function ledgerInputFromSandboxOutput(input: {
+async function ledgerInputFromSandboxOutput(input: {
   sandbox: SandboxDetailReadModel;
   candidateId: string;
   candidateVersionId: string;
   tradingRunId: string;
   paperOrderRequest: PaperOrderRequestFixture;
-}): LedgerInput {
+  gatewayRuntimeBinding: GatewayRuntimeBinding;
+}): Promise<LedgerInput> {
   const orderRequest = latestSandboxOrderRequest(input.sandbox);
   if (!orderRequest) {
     throw new LocalStoreError(
@@ -1611,8 +1668,7 @@ function ledgerInputFromSandboxOutput(input: {
       { sandbox_id: input.sandbox.sandbox_id, runtime_id: input.tradingRunId }
     );
   }
-  const gatewayResult = validatePaperGatewayOrderRequest(orderRequest);
-  const executionResult = recordPaperExecutionResult(gatewayResult);
+  const gatewayExecution = await executeGatewayOrderRequest(input.gatewayRuntimeBinding, orderRequest);
 
   return {
     idempotency_key: [
@@ -1624,15 +1680,9 @@ function ledgerInputFromSandboxOutput(input: {
     candidate_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,
     runtime_id: input.tradingRunId,
-    intent: {
-      intent_kind: orderRequest.intent_kind,
-      side: orderRequest.side,
-      order_type: orderRequest.order_type,
-      quantity: orderRequest.quantity,
-      limit_price: orderRequest.limit_price
-    },
-    gateway_result: gatewayResult,
-    execution_result: executionResult,
+    intent: gatewayExecution.intent,
+    gateway_result: gatewayExecution.gateway_result,
+    execution_result: gatewayExecution.execution_result,
     created_at: orderRequest.at
   };
 }
@@ -1643,6 +1693,16 @@ function startPaperOrderRequest(body: StartTradingRunBody | undefined): PaperOrd
   }
   if (body.paper_order_request === "valid" || body.paper_order_request === "rejected") {
     return body.paper_order_request;
+  }
+  return undefined;
+}
+
+function startRuntimeEnvironment(body: StartTradingRunBody | undefined): TradingRuntimeEnvironment | undefined {
+  if (!body?.runtime_environment) {
+    return "paper";
+  }
+  if (body.runtime_environment === "paper" || body.runtime_environment === "live") {
+    return body.runtime_environment;
   }
   return undefined;
 }
@@ -1671,6 +1731,9 @@ function fullCycleBlockedStage(reason: string): string {
   if (reason.includes("missing_order_request")) {
     return "paper_trading";
   }
+  if (reason.includes("binance_public_market_snapshot")) {
+    return "paper_trading";
+  }
   if (reason.includes("source_system_code") || reason.includes("source_artifact")) {
     return "source_system_code";
   }
@@ -1686,9 +1749,9 @@ function fullCycleBlockedStage(reason: string): string {
 async function refreshBinancePublicMarketSurface(input: {
   store: LocalStore;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
-  client?: BinancePublicMarketLivenessClient;
+  client?: BinancePublicMarketDataClient;
 }): Promise<{ status: "recorded" | "skipped" | "failed"; reason?: string }> {
-  const restBaseUrl = input.tradingGatewayEnvironment.rest_base_url;
+  const restBaseUrl = input.tradingGatewayEnvironment.runtime_bindings.paper.rest_base_url;
   if (!restBaseUrl) {
     return {
       status: "skipped",

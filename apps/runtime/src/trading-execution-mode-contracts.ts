@@ -43,7 +43,7 @@ export const tradingSystemExecutionModeContracts: TradingSystemExecutionModeCont
   {
     mode: "paper",
     label: "Paper trading",
-    support_status: "planned",
+    support_status: "available",
     stage_binding_profile: "paper",
     artifact_contract: {
       artifact_shape: "opaque_trading_system",
@@ -55,19 +55,20 @@ export const tradingSystemExecutionModeContracts: TradingSystemExecutionModeCont
       market_data: "realtime_market_data",
       account: "paper_account",
       order_plane: "paper_order_sink",
-      credentials_scope: "provider_side_only"
+      credentials_scope: "none_required"
     },
     authority: {
       artifact_has_credentials: false,
       artifact_has_order_authority: false,
-      provider_may_submit_orders: true,
+      provider_may_submit_orders: false,
       live_exchange_authority: false,
       status: "paper_only"
     },
     required_controls: [
-      "paper account isolation",
-      "operator-visible order ledger",
-      "provider-side paper gateway"
+      "Binance production public market data",
+      "fake paper account isolation",
+      "fake paper executor",
+      "candidate-isolated fake Ledger"
     ],
     forbidden_artifact_capabilities: [
       "credentials",
@@ -78,8 +79,8 @@ export const tradingSystemExecutionModeContracts: TradingSystemExecutionModeCont
   },
   {
     mode: "live",
-    label: "Live gated trading",
-    support_status: "planned",
+    label: "Live disabled",
+    support_status: "disabled",
     stage_binding_profile: "live",
     artifact_contract: {
       artifact_shape: "opaque_trading_system",
@@ -96,16 +97,13 @@ export const tradingSystemExecutionModeContracts: TradingSystemExecutionModeCont
     authority: {
       artifact_has_credentials: false,
       artifact_has_order_authority: false,
-      provider_may_submit_orders: true,
-      live_exchange_authority: true,
-      status: "live_requires_gateway"
+      provider_may_submit_orders: false,
+      live_exchange_authority: false,
+      status: "live_disabled"
     },
     required_controls: [
-      "human promotion decision",
-      "runtime operating policy",
-      "risk gateway",
-      "kill switch",
-      "audit trail"
+      "future bounded live-enablement issue",
+      "live_gateway_not_enabled_in_mlp"
     ],
     forbidden_artifact_capabilities: [
       "credentials",
