@@ -14,6 +14,27 @@ Start every non-trivial task from:
 
 The repo is the implementation surface. Linear is the documentation and execution-state authority.
 
+## Codex Operating Contract
+
+This repository uses Codex features as an operating system for quality, not as a second source of
+truth.
+
+| Codex surface | Repo role |
+| --- | --- |
+| `AGENTS.md` | Always-on policy for source order, boundaries, naming, validation, and writeback. |
+| `.agents/skills` | Bounded workflow instructions loaded only when the task matches the skill. |
+| Plugins | External app, MCP, and reusable workflow bundles such as Linear, GitHub, browser, security, and OpenAI docs access. |
+| Project-scoped subagents | Explicitly requested read-only exploration or review workers for parallel evidence gathering. |
+| Hooks | Local pre-tool and post-tool safety checks; Git hooks and CI remain the final guard. |
+
+Use plugins to access the authoritative system that owns the fact: Linear for project truth,
+GitHub for PR/CI/review evidence, OpenAI docs for Codex/OpenAI behavior, and browser tooling for
+rendered local UI evidence. Do not replace maintained project truth with chat memory.
+
+Use project-scoped subagents only when the task benefits from parallel read-only work, such as
+Linear context recovery, code path mapping, PR review, or UI reproduction. Subagents are advisory:
+the main Codex worker remains responsible for the final patch, validation, and writeback decision.
+
 ## Repository Responsibility
 
 The repo owns implementation truth: code, tests, fixtures, local validation scripts, compact developer-facing repo docs, executable agent instructions, and review evidence.
@@ -25,17 +46,36 @@ When the two disagree, stop and reconcile through Linear before extending local 
 ## Agent Workflow
 
 1. Recover the current branch, issue, dirty state, and nearest validation evidence.
-2. Read the relevant Linear document set through [LINEAR.md](LINEAR.md).
-3. Route work through `.agents/skills/AGENTS.md` when the task is multi-step or ambiguous.
-4. Keep implementation changes bounded to the active issue.
-5. Run the narrowest meaningful validation, then the repo's required checks.
-6. Write durable project outcomes back to Linear. Only update repo docs when developer execution would be wrong without the local change.
+2. Read the active Linear frontier first: `04`, then `05`, then the active issue or project update.
+3. Read the relevant architecture, contract, source, and service documents through [LINEAR.md](LINEAR.md).
+4. Read this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`.
+5. Route work through `.agents/skills/AGENTS.md` when the task is multi-step or ambiguous.
+6. Keep implementation changes bounded to the active issue.
+7. Run the narrowest meaningful validation, then the repo's required checks.
+8. Write durable project outcomes back to Linear. Only update repo docs when developer execution would be wrong without the local change.
 
 ## Skill-First Gate
 
 Use `.agents/skills/AGENTS.md` before routing multi-step repo work. Keep `project-context`, `llm-wiki`, `writeback_needed`, `superpowers:using-superpowers`, and Skill-First Gate active.
 
 `llm-wiki` remains the durable-writeback skill name for compatibility, but its target is now Linear Project Documents, Linear comments, Linear project updates, or the minimal repo docs listed above.
+
+Default skill routing:
+
+| Work shape | Skill route |
+| --- | --- |
+| Recover branch, dirty state, PR, task, and nearest evidence | `auto-run-memory` |
+| Explain current product, architecture, or repo posture | `project-context` |
+| Decide the next bounded frontier or owner | `auto-project` |
+| Shape a rough request into acceptance criteria | `auto-pm` |
+| Implement one approved docs, code, config, or CI change | `auto-coding` |
+| Review scenarios, regressions, risks, or acceptance | `auto-qa` |
+| Decide PR readiness, landing, or reroute | `auto-promotion-protocol` |
+| Update Linear durable truth or project-document memory | `llm-wiki` |
+| Design durable vocabulary or schema names | `taxonomy-design` |
+
+When an external Superpowers skill is available, use it as process support behind the same
+repo-local ownership model. Project truth still comes from Linear and this repo.
 
 ## Taxonomy and Naming
 
@@ -78,11 +118,19 @@ Project-specific taxonomy truth currently starts from the Linear document `37 So
 
 ## Validation
 
+Before a PR is ready for merge, collect all of the following evidence unless the active issue
+explicitly narrows the scope:
+
 ```bash
 bash scripts/check-docs.sh
 npm run check:naming
+bash scripts/check-env-files.sh --tracked
 bash scripts/check-secrets.sh
 git diff --check
 ```
 
 For implementation changes, also run the relevant package tests and type checks.
+For PR completion, wait for GitHub CI and Codex review. If review leaves actionable comments, fix
+or explicitly reroute them before merge. After merge, write the durable outcome to Linear when the
+change affects project state, operating policy, source interpretation, architecture, CI evidence,
+or the active frontier.
