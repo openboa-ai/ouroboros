@@ -2275,6 +2275,32 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("reports the backtest for the materialized best full-cycle artifact", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 2
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      agent_research: {
+        best_score: 1,
+        latest_decision: "discard"
+      },
+      backtest: {
+        status: "accepted",
+        score: 1,
+        risk_decision: "valid_order_request"
+      }
+    });
+
+    await server.close();
+  });
+
   it("rejects unsupported paper order request choices on full-cycle agent runs", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
@@ -2291,6 +2317,31 @@ describe("runtime read-only API", () => {
       error: "invalid_paper_order_request",
       allowed_values: ["valid"]
     });
+
+    await server.close();
+  });
+
+  it("does not materialize the next Trading System when paper Gateway validation rejects the order", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchAgentAdapter: new RejectedPaperOrderTradingResearchAgentAdapter(),
+      tradingResearchIterations: 1
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "full_cycle_failed",
+      reason: "agent_trading_cycle_rejected_paper_order_request"
+    });
+
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.json().candidates
+      .some((item: { display_name?: string }) => item.display_name === "Agent generated BTCUSDT Trading System"))
+      .toBe(false);
 
     await server.close();
   });
@@ -3211,6 +3262,30 @@ class NoOrderRequestTradingResearchAgentAdapter implements TradingResearchAgentA
     return {
       status: "edited",
       summary: "Fixture agent suppressed the paper OrderRequest event.",
+      changed_paths: ["run.py"]
+    };
+  }
+}
+
+class RejectedPaperOrderTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-fixture-rejected-paper-order",
+    provider: "fixture" as const,
+    model: "rejected-paper-order-fixture",
+    permission_policy: "fixture_only" as const
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const edited = source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = 0");
+    if (edited === source) {
+      throw new Error("fixture_rejected_order_rewrite_failed");
+    }
+    await writeFile(runPath, edited, "utf8");
+    return {
+      status: "edited",
+      summary: "Fixture agent forced a rejected paper OrderRequest.",
       changed_paths: ["run.py"]
     };
   }

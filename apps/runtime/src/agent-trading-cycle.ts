@@ -34,7 +34,9 @@ import type {
   OrderRequest,
   TradingEvaluationResult,
   TradingResearchAgentAdapter,
-  TradingResearchDecision
+  TradingResearchDecision,
+  TradingResearchLoopResult,
+  TradingResearchNotebookEntry
 } from "./trading-research/types";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -130,6 +132,7 @@ export async function runAgentTradingCycle(
   }
 
   const artifactDir = research.best_artifact_dir ?? latestEntry.artifact_dir;
+  const materializedEntry = materializedResearchEntry(research, latestEntry);
   const manifest = await readTradingSystemManifest(artifactDir);
   const systemCode = await registerSystemCode({
     store: input.store,
@@ -223,7 +226,7 @@ export async function runAgentTradingCycle(
       generated_by_agent: true,
       authority_status: "not_live"
     },
-    backtest: latestEntry.evaluation,
+    backtest: materializedEntry.evaluation,
     next_trading_system: nextTradingSystem,
     trading_run_id: nextTradingSystem.runtime.ref.id,
     trading_run: {
@@ -246,6 +249,19 @@ export async function runAgentTradingCycle(
     transcript: nextTradingSystem.runtime.transcript,
     trading_gateway_environment: input.tradingGatewayEnvironment
   };
+}
+
+function materializedResearchEntry(
+  research: TradingResearchLoopResult,
+  latestEntry: TradingResearchNotebookEntry
+): TradingResearchNotebookEntry {
+  if (!research.best_artifact_dir) {
+    return latestEntry;
+  }
+  return [...research.entries]
+    .reverse()
+    .find((entry) => entry.decision === "keep" && entry.score === research.best_score)
+    ?? latestEntry;
 }
 
 async function registerSystemCode(input: {
@@ -451,6 +467,9 @@ function paperLedgerResultFromRun(run: ArtifactRunResult): PaperLedgerResult {
     quantity: decimalString(orderRequest.quantity)
   };
   const gatewayResult = validatePaperGatewayOrderRequest(intent);
+  if (gatewayResult.decision_outcome === "rejected") {
+    throw new Error("agent_trading_cycle_rejected_paper_order_request");
+  }
   return {
     intent,
     gateway_result: gatewayResult,
