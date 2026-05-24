@@ -5,7 +5,7 @@ cd "$ROOT"
 node scripts/check-naming-surface.mjs
 python3 - <<'PY'
 from pathlib import Path
-import re, subprocess, sys
+import re, subprocess, sys, tomllib
 def fail(msg): print(msg, file=sys.stderr); sys.exit(1)
 tracked = [Path(x) for x in subprocess.check_output(["git", "ls-files"], text=True).splitlines() if x]
 active = [Path(p) for p in ["AGENTS.md", "README.md", "ARCHITECTURE.md", "LINEAR.md", ".agents/AGENTS.md", ".agents/skills/AGENTS.md"]]
@@ -150,19 +150,19 @@ for path in skill_files:
 if skill_errors: fail("Skill check failed:\n"+"\n".join(skill_errors[:200]))
 codex_agent_files=sorted(Path(".codex/agents").glob("*.toml")); agent_errors=[]
 toml_name_re=re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
-def toml_string(body, key):
-  triple=re.search(rf'(?ms)^\s*{re.escape(key)}\s*=\s*"""(.*?)"""', body)
-  if triple: return triple.group(1)
-  triple_literal=re.search(rf"(?ms)^\s*{re.escape(key)}\s*=\s*'''(.*?)'''", body)
-  if triple_literal: return triple_literal.group(1)
-  double=re.search(rf'(?m)^\s*{re.escape(key)}\s*=\s*"((?:[^"\\]|\\.)*)"', body)
-  if double: return double.group(1)
-  single=re.search(rf"(?m)^\s*{re.escape(key)}\s*=\s*'([^']*)'", body)
-  if single: return single.group(1)
+def load_agent_toml(path):
+  try:
+      return tomllib.loads(text(path))
+  except tomllib.TOMLDecodeError as error:
+      agent_errors.append(f"{path}: invalid TOML: {error}")
+      return {}
+def toml_scalar(data, path, key):
+  value=data.get(key)
+  if isinstance(value, str):
+      return value.strip()
+  if value is not None:
+      agent_errors.append(f"{path}: {key} must be a string")
   return None
-def toml_scalar(body, key):
-  value=toml_string(body, key)
-  return value.strip() if isinstance(value, str) else None
 secret_patterns=[
   r"sk-[A-Za-z0-9_-]{12,}",
   r"BEGIN [A-Z ]*PRIVATE KEY",
@@ -174,10 +174,11 @@ if not codex_agent_files:
   agent_errors.append(".codex/agents: missing project-scoped custom agents")
 for path in codex_agent_files:
   body=text(path)
-  name=toml_scalar(body, "name")
-  desc=toml_scalar(body, "description")
-  instructions=toml_scalar(body, "developer_instructions")
-  sandbox_mode=toml_scalar(body, "sandbox_mode")
+  data=load_agent_toml(path)
+  name=toml_scalar(data, path, "name")
+  desc=toml_scalar(data, path, "description")
+  instructions=toml_scalar(data, path, "developer_instructions")
+  sandbox_mode=toml_scalar(data, path, "sandbox_mode")
   if name != path.stem:
       agent_errors.append(f"{path}: name must match file stem")
   if not name or not toml_name_re.fullmatch(name):
