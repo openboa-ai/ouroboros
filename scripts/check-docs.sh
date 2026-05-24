@@ -153,6 +153,8 @@ toml_name_re=re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$")
 def toml_string(body, key):
   triple=re.search(rf'(?ms)^\s*{re.escape(key)}\s*=\s*"""(.*?)"""', body)
   if triple: return triple.group(1)
+  triple_literal=re.search(rf"(?ms)^\s*{re.escape(key)}\s*=\s*'''(.*?)'''", body)
+  if triple_literal: return triple_literal.group(1)
   double=re.search(rf'(?m)^\s*{re.escape(key)}\s*=\s*"((?:[^"\\]|\\.)*)"', body)
   if double: return double.group(1)
   single=re.search(rf"(?m)^\s*{re.escape(key)}\s*=\s*'([^']*)'", body)
