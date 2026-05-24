@@ -1199,6 +1199,10 @@ describe("CandidateDetail", () => {
     expect(researchHtml).toContain("Next cycle handoff");
     expect(researchHtml).toContain("agent handoff ready");
     expect(researchHtml).toContain("Agent generated Trading System");
+    expect(researchHtml).toContain("Full-cycle lineage");
+    expect(researchHtml).toContain("Source Trading System");
+    expect(researchHtml).toContain("fixture-candidate-sealed-replay-001");
+    expect(researchHtml).toContain("Next Trading System");
     expect(researchHtml).toContain("system-code-agent-test");
     expect(researchHtml).toContain("Backtest");
     expect(researchHtml).toContain("Paper Trading Run");
@@ -2149,6 +2153,40 @@ function fullCycleOutcome(candidate: CandidateInspectReadModel): FullCycleOutcom
       declared_output_kinds: ["order_request"],
       generated_by_agent: true,
       authority_status: "not_live"
+    },
+    full_cycle_lineage: {
+      handoff_status: "runnable",
+      source: {
+        trading_system_id: "fixture-candidate-sealed-replay-001",
+        candidate_version_id: "fixture-candidate-version-001",
+        system_code_ref: {
+          record_kind: "system_code",
+          id: "fixture-system-code-clock-python-001"
+        }
+      },
+      generated: {
+        system_code_ref: {
+          record_kind: "system_code",
+          id: "system-code-agent-test"
+        },
+        artifact_digest: "sha256:test",
+        generated_by_agent: true
+      },
+      materialized: {
+        trading_system_id: candidate.candidate_id,
+        candidate_version_id: candidate.candidate_version.candidate_version_id,
+        system_code_ref: {
+          record_kind: "system_code",
+          id: "system-code-agent-test"
+        }
+      },
+      evidence: {
+        evaluation_status: "accepted",
+        evaluation_score: 1,
+        trading_run_id: candidate.runtime.ref.id,
+        gateway_result_outcome: "dry_run_only",
+        ledger_chain_complete: true
+      }
     },
     backtest: {
       status: "accepted",

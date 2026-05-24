@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import { FIXTURE_CANDIDATE_ID, FIXTURE_SYSTEM_CODE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
 import {
   BINANCE_BTCUSDT_QUERY,
@@ -2154,6 +2154,33 @@ describe("runtime read-only API", () => {
         ledger_kind: "ledger",
         chain_complete: true
       },
+      full_cycle_lineage: {
+        handoff_status: "runnable",
+        source: {
+          trading_system_id: FIXTURE_CANDIDATE_ID,
+          system_code_ref: {
+            record_kind: "system_code",
+            id: FIXTURE_SYSTEM_CODE_ID
+          }
+        },
+        generated: {
+          generated_by_agent: true,
+          system_code_ref: {
+            record_kind: "system_code"
+          }
+        },
+        materialized: {
+          system_code_ref: {
+            record_kind: "system_code"
+          }
+        },
+        evidence: {
+          evaluation_status: "accepted",
+          trading_run_id: expect.any(String),
+          gateway_result_outcome: "dry_run_only",
+          ledger_chain_complete: true
+        }
+      },
       trading_gateway_environment: {
         authority_status: "not_live",
         live_exchange_authority: false,
@@ -2162,6 +2189,15 @@ describe("runtime read-only API", () => {
     });
     expect(first.json().next_trading_system.candidate_id).not.toBe(FIXTURE_CANDIDATE_ID);
     expect(first.json().next_trading_system.system_code.ref.id).toBe(
+      first.json().system_code_handoff.system_code_id
+    );
+    expect(first.json().full_cycle_lineage.generated.system_code_ref.id).toBe(
+      first.json().system_code_handoff.system_code_id
+    );
+    expect(first.json().full_cycle_lineage.materialized.trading_system_id).toBe(
+      first.json().next_trading_system.candidate_id
+    );
+    expect(first.json().full_cycle_lineage.materialized.system_code_ref.id).toBe(
       first.json().system_code_handoff.system_code_id
     );
     expect(first.json().paper_trading.provider_request_count).toBeGreaterThanOrEqual(3);
@@ -2198,6 +2234,46 @@ describe("runtime read-only API", () => {
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
     expect(list.json().candidates.map((item: { candidate_id: string }) => item.candidate_id))
       .toContain(first.json().next_trading_system.candidate_id);
+
+    await server.close();
+  });
+
+  it("preserves source-to-next full-cycle lineage when running another cycle", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 1
+    });
+
+    const first = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(first.statusCode).toBe(201);
+
+    const second = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${first.json().next_trading_system.candidate_id}/full-cycle-runs`
+    });
+    expect(second.statusCode).toBe(201);
+    expect(second.json().full_cycle_lineage).toMatchObject({
+      handoff_status: "runnable",
+      source: {
+        trading_system_id: first.json().next_trading_system.candidate_id,
+        system_code_ref: {
+          record_kind: "system_code",
+          id: first.json().system_code_handoff.system_code_id
+        }
+      },
+      materialized: {
+        system_code_ref: {
+          record_kind: "system_code",
+          id: second.json().system_code_handoff.system_code_id
+        }
+      },
+      evidence: {
+        ledger_chain_complete: true
+      }
+    });
 
     await server.close();
   });
@@ -2335,7 +2411,19 @@ describe("runtime read-only API", () => {
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({
       error: "full_cycle_failed",
-      reason: "agent_trading_cycle_rejected_paper_order_request"
+      reason: "agent_trading_cycle_rejected_paper_order_request",
+      full_cycle_lineage: {
+        handoff_status: "blocked",
+        blocked_stage: "paper_gateway",
+        blocked_reason: "agent_trading_cycle_rejected_paper_order_request",
+        source: {
+          trading_system_id: FIXTURE_CANDIDATE_ID,
+          system_code_ref: {
+            record_kind: "system_code",
+            id: FIXTURE_SYSTEM_CODE_ID
+          }
+        }
+      }
     });
 
     const list = await server.inject({ method: "GET", url: "/api/candidates" });
