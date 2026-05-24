@@ -1,9 +1,12 @@
 import { buildServer } from "./server";
+import { loadTradingResearchRuntimeConfig } from "./trading-research/runtime-config";
 
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST ?? "127.0.0.1";
 
-const server = await buildServer();
+const server = await buildServer({
+  tradingResearchRuntimeConfig: loadTradingResearchRuntimeConfig(process.env)
+});
 
 try {
   await server.listen({ host, port });

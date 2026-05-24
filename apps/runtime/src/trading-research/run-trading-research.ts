@@ -1,16 +1,19 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  CodexTradingResearchAgentAdapter,
-  FixtureTradingResearchAgentAdapter
-} from "./agent-adapters";
+import { CodexTradingResearchAgentAdapter } from "./agent-adapters";
 import {
   DockerSandboxesSbxTradingArtifactRunner,
   readTradingSystemManifest,
   type TradingArtifactRunner
 } from "./artifact-runner";
 import { runTradingReplaySet } from "./replay-set-runner";
+import {
+  createTradingResearchAgentAdapter,
+  loadTradingResearchRuntimeConfig,
+  type TradingResearchReasoningEffort,
+  type TradingResearchRuntimeAgent
+} from "./runtime-config";
 import type {
   TradingArtifactRunnerKind,
   TradingResearchAgentAdapter,
@@ -191,8 +194,21 @@ function artifactRunnerFor(kind: TradingArtifactRunnerKind | undefined): Trading
   return new DockerSandboxesSbxTradingArtifactRunner();
 }
 
-function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: string; model?: string } {
-  const parsed: RunTradingResearchLoopInput & { agent?: string; model?: string } = {};
+function parseCliArgs(args: string[]): RunTradingResearchLoopInput & {
+  agent?: TradingResearchRuntimeAgent;
+  agent_command?: string;
+  model?: string;
+  reasoning_effort?: TradingResearchReasoningEffort;
+} {
+  const config = loadTradingResearchRuntimeConfig(process.env, { iterations: 3 });
+  const parsed: RunTradingResearchLoopInput & {
+    agent?: TradingResearchRuntimeAgent;
+    agent_command?: string;
+    model?: string;
+    reasoning_effort?: TradingResearchReasoningEffort;
+  } = {
+    iterations: config.iterations
+  };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const next = args[index + 1];
@@ -203,10 +219,16 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: s
       parsed.mode = next as TradingResearchMode;
       index += 1;
     } else if (arg === "--agent" && next) {
-      parsed.agent = next;
+      parsed.agent = parseTradingResearchAgent(next);
       index += 1;
     } else if (arg === "--model" && next) {
       parsed.model = next;
+      index += 1;
+    } else if (arg === "--agent-command" && next) {
+      parsed.agent_command = next;
+      index += 1;
+    } else if (arg === "--reasoning-effort" && next) {
+      parsed.reasoning_effort = parseReasoningEffort(next);
       index += 1;
     } else if (arg === "--agent-timeout-ms" && next) {
       parsed.agent_timeout_ms = Number(next);
@@ -231,17 +253,32 @@ function parseCliArgs(args: string[]): RunTradingResearchLoopInput & { agent?: s
   if (parsed.mode && parsed.mode !== "replay") {
     throw new Error("Only --mode replay is supported in the S10 MVP.");
   }
-  if (parsed.agent === "fixture") {
-    parsed.agent_adapter = new FixtureTradingResearchAgentAdapter();
-  } else if (!parsed.agent || parsed.agent === "codex") {
-    parsed.agent_adapter = new CodexTradingResearchAgentAdapter({
-      model: parsed.model,
-      timeout_ms: parsed.agent_timeout_ms
-    });
-  } else {
-    throw new Error("Only --agent codex and --agent fixture are supported in the S10 MVP.");
-  }
+  parsed.agent_adapter = createTradingResearchAgentAdapter({
+    ...config,
+    default_agent: parsed.agent ?? config.default_agent,
+    codex: {
+      ...config.codex,
+      command: parsed.agent_command ?? config.codex.command,
+      model: parsed.model ?? config.codex.model,
+      timeout_ms: parsed.agent_timeout_ms ?? config.codex.timeout_ms,
+      reasoning_effort: parsed.reasoning_effort ?? config.codex.reasoning_effort
+    }
+  }, parsed.agent ?? config.default_agent);
   return parsed;
+}
+
+function parseTradingResearchAgent(value: string): TradingResearchRuntimeAgent {
+  if (value === "codex" || value === "fixture") {
+    return value;
+  }
+  throw new Error("Only --agent codex and --agent fixture are supported in the S10 MVP.");
+}
+
+function parseReasoningEffort(value: string): TradingResearchReasoningEffort {
+  if (value === "low" || value === "medium" || value === "high" || value === "xhigh") {
+    return value;
+  }
+  throw new Error("Only --reasoning-effort low, medium, high, and xhigh are supported.");
 }
 
 function parseArtifactRunnerKind(value: string): TradingArtifactRunnerKind {

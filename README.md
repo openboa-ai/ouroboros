@@ -104,6 +104,21 @@ Ledger. Demo/testnet URLs are test-only injected clients, not product runtime en
 profile examples keep the same credential variable names for future compatibility, but the current
 app reports `not_live`, does not require credentials for paper, and performs no live exchange calls.
 
+Trading research can run from the CLI or the Operator web full-cycle action through the same
+researcher runtime config. Normal runtime startup defaults to Codex, while tests can still inject
+fixture adapters:
+
+```bash
+OUROBOROS_TRADING_RESEARCH_AGENT=codex
+OUROBOROS_TRADING_RESEARCH_CODEX_BIN=codex
+OUROBOROS_TRADING_RESEARCH_MODEL=
+OUROBOROS_TRADING_RESEARCH_TIMEOUT_MS=120000
+OUROBOROS_TRADING_RESEARCH_ITERATIONS=1
+```
+
+Use `npm run trading:research -- --agent codex` for CLI research runs, or select Codex in the
+Operator web full-cycle controls. `fixture` remains an explicit dev/test fallback only.
+
 Compose validation covers package-level checks in a clean container image:
 
 ```bash
