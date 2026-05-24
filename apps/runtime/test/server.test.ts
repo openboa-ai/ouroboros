@@ -26,6 +26,7 @@ import type {
   CandidateGenerationProviderResult,
   RuntimeProviderAdapter
 } from "../src/providers/runtime-provider-adapter";
+import { FixtureTradingResearchAgentAdapter } from "../src/trading-research/agent-adapters";
 
 let tmpDir: string;
 
@@ -1904,8 +1905,12 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("runs the fixture Trading System through one full operator-visible cycle", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+  it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchAgentAdapter: new FixtureTradingResearchAgentAdapter(),
+      tradingResearchIterations: 1
+    });
 
     const first = await server.inject({
       method: "POST",
@@ -1920,15 +1925,19 @@ describe("runtime read-only API", () => {
     expect(duplicate.statusCode).toBe(201);
     expect(duplicate.json()).toMatchObject({
       status: "completed",
-      evaluation: {
-        evaluation_run: {
-          evaluation_run_record_id: first.json().evaluation.evaluation_run.evaluation_run_record_id
+      agent_research: {
+        session_id: first.json().agent_research.session_id,
+        agent: {
+          provider: "fixture"
         }
       },
-      improvement: {
-        chain_complete: true
+      system_code_handoff: {
+        system_code_id: first.json().system_code_handoff.system_code_id,
+        generated_by_agent: true
       },
-      trading_run_id: first.json().trading_run_id,
+      next_trading_system: {
+        candidate_id: first.json().next_trading_system.candidate_id
+      },
       ledger: {
         latest_order_request: {
           order_request_id: first.json().ledger.latest_order_request.order_request_id
@@ -1943,35 +1952,47 @@ describe("runtime read-only API", () => {
     });
     expect(first.json()).toMatchObject({
       status: "completed",
-      system_id: FIXTURE_CANDIDATE_ID,
-      evaluation: {
-        evaluation_run: {
-          status: "created",
-          authority_status: "not_counted"
+      source_system_id: FIXTURE_CANDIDATE_ID,
+      agent_research: {
+        agent: {
+          provider: "fixture",
+          permission_policy: "fixture_only"
         },
-        sealing_decision: {
-          evidence_disposition: "not_counted",
-          authority_status: "not_counted"
-        }
+        best_score: 1,
+        latest_decision: "keep"
       },
-      improvement: {
-        improvement_kind: "improvement",
-        chain_complete: true,
-        latest_change_proposal: {
-          status: "proposed"
+      system_code_handoff: {
+        generated_by_agent: true,
+        runtime_kind: "python",
+        declared_output_kinds: expect.arrayContaining(["order_request"]),
+        authority_status: "not_live"
+      },
+      backtest: {
+        status: "accepted",
+        score: 1,
+        risk_decision: "valid_order_request",
+        scenario_results: [
+          expect.objectContaining({ scenario_id: "trend_long", status: "accepted" }),
+          expect.objectContaining({ scenario_id: "range_flat", status: "accepted" })
+        ]
+      },
+      next_trading_system: {
+        status: "materialized",
+        spec: {
+          market: "Binance USD-M Futures",
+          instrument: "BTCUSDT"
         },
-        latest_evaluation_result: {
-          result_status: "accepted",
-          authority_status: "not_counted"
+        system_code: {
+          declared_runtime: "python"
         }
       },
       trading_run: {
         lifecycle_status: "running",
         authority_status: "not_live"
       },
-      sandbox: {
-        adapter_kind: "deterministic_test",
-        lifecycle_status: "stopped",
+      paper_trading: {
+        run_status: "completed",
+        provider_request_count: expect.any(Number),
         authority_status: "not_live"
       },
       gateway_result: {
@@ -1993,29 +2014,33 @@ describe("runtime read-only API", () => {
         order_submission_authority: false
       }
     });
+    expect(first.json().next_trading_system.candidate_id).not.toBe(FIXTURE_CANDIDATE_ID);
+    expect(first.json().next_trading_system.system_code.ref.id).toBe(
+      first.json().system_code_handoff.system_code_id
+    );
+    expect(first.json().paper_trading.provider_request_count).toBeGreaterThanOrEqual(3);
 
     const candidate = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      url: `/api/candidates/${first.json().next_trading_system.candidate_id}`
     });
     expect(candidate.statusCode).toBe(200);
     expect(candidate.json()).toMatchObject({
+      candidate_id: first.json().next_trading_system.candidate_id,
+      system_code: {
+        ref: {
+          id: first.json().system_code_handoff.system_code_id
+        }
+      },
       evaluation: {
         has_runs: true,
         latest_run: {
-          run_id: first.json().evaluation.evaluation_run.evaluation_run_record_id,
           status: "created",
           authority_status: "not_counted"
         }
       },
-      improvement: {
-        chain_complete: true
-      },
       runtime: {
         runtime_lifecycle_status: "running",
-        sandbox: {
-          lifecycle_status: "stopped"
-        },
         transcript: {
           has_activity: true
         }
@@ -2024,6 +2049,9 @@ describe("runtime read-only API", () => {
         chain_complete: true
       }
     });
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.json().candidates.map((item: { candidate_id: string }) => item.candidate_id))
+      .toContain(first.json().next_trading_system.candidate_id);
 
     await server.close();
   });

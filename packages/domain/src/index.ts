@@ -2149,8 +2149,8 @@ export interface CandidateMaterializationInput {
   };
   spec: {
     summary: string;
-    market: "ExternalTradingApiProvider";
-    instrument: "generic trading instruments";
+    market: "ExternalTradingApiProvider" | "Binance USD-M Futures";
+    instrument: "generic trading instruments" | "BTCUSDT";
     supported_stage_binding_profiles: Array<"backtest" | "paper" | "live">;
   };
   program: {
@@ -2165,6 +2165,7 @@ export interface CandidateMaterializationInput {
     forbidden_contents: string[];
   };
   artifact_refs: Ref[];
+  system_code_ref?: Ref;
 }
 
 export interface CandidateMaterializationFailureInput {

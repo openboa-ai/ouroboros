@@ -176,7 +176,7 @@ describe("Trading research research loop MVP", () => {
       const response = await fetch(`${provider.base_url}/market/snapshot`);
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
-        symbol: "SYNTH-USD",
+        symbol: "BTCUSDT",
         expected_direction: "long"
       });
     } finally {

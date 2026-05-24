@@ -42,7 +42,8 @@ import {
   privateReadinessPosturePayload,
   replayRunPayload,
   ledgerCommandPayload,
-  runControlPausePayload
+  runControlPausePayload,
+  type FullCycleOutcome
 } from "./api";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -1150,8 +1151,7 @@ describe("CandidateDetail", () => {
 
   it("renders a one-click full cycle action over the canonical flow", () => {
     const candidate = {
-      ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords())),
-      improvement: improvementFromLoop(artifactImprovementLoop())
+      ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
     };
     const tradingHtml = renderToStaticMarkup(
       <CandidateDetail
@@ -1162,7 +1162,11 @@ describe("CandidateDetail", () => {
       />
     );
     const researchHtml = renderToStaticMarkup(
-      <CandidateDetail activeView="research" candidate={candidate} />
+      <CandidateDetail
+        activeView="research"
+        candidate={candidate}
+        lastFullCycle={fullCycleOutcome(candidate)}
+      />
     );
     const detailsHtml = renderToStaticMarkup(
       <CandidateDetail activeView="details" candidate={candidate} />
@@ -1190,7 +1194,17 @@ describe("CandidateDetail", () => {
     expect(researchHtml).toContain("System performance");
     expect(researchHtml).toContain("Profit analysis");
     expect(researchHtml).toContain("Selected Trading System");
+    expect(researchHtml).toContain("backtest accepted");
+    expect(researchHtml).toContain("score 1.00");
     expect(researchHtml).toContain("Next cycle handoff");
+    expect(researchHtml).toContain("agent handoff ready");
+    expect(researchHtml).toContain("Agent generated Trading System");
+    expect(researchHtml).toContain("system-code-agent-test");
+    expect(researchHtml).toContain("Backtest");
+    expect(researchHtml).toContain("Paper Trading Run");
+    expect(researchHtml).toContain("Ledger");
+    expect(researchHtml).not.toContain("No evaluation result yet.");
+    expect(researchHtml).not.toContain("Run a full cycle to produce the next System Code candidate.");
     expect(researchHtml).not.toContain("Trading cockpit");
 
     expect(detailsHtml).toContain("Details");
@@ -1204,6 +1218,29 @@ describe("CandidateDetail", () => {
     expect(detailsHtml).toContain("Ledger");
     expect(detailsHtml).not.toContain("Trading cockpit");
     expectNoOperatorActionControls(`${tradingHtml}${researchHtml}${detailsHtml}`, {
+      includePrivateAuthorityTerms: true,
+      allowTradingRunControls: true
+    });
+  });
+
+  it("keeps agent-created Trading System evidence visible after reload", () => {
+    const candidate = candidateWithAgentCycleMaterialization(
+      candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
+    );
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={candidate}
+      />
+    );
+
+    expect(html).toContain("Agent generated Trading System");
+    expect(html).toContain("agent handoff ready");
+    expect(html).toContain("backtest recorded");
+    expect(html).toContain("system-code-agent-reloaded");
+    expect(html).not.toContain("No evaluation result yet.");
+    expect(html).not.toContain("Run a full cycle to produce the next System Code candidate.");
+    expectNoOperatorActionControls(html, {
       includePrivateAuthorityTerms: true,
       allowTradingRunControls: true
     });
@@ -1646,6 +1683,42 @@ function candidateWithSandbox(
   };
 }
 
+function candidateWithAgentCycleMaterialization(
+  candidate: CandidateInspectReadModel
+): CandidateInspectReadModel {
+  return {
+    ...candidate,
+    candidate_id: "candidate-agent-generated-reloaded",
+    display_name: "Agent generated BTCUSDT Trading System",
+    status: "materialized",
+    spec: {
+      ...candidate.spec,
+      market: "Binance USD-M Futures",
+      instrument: "BTCUSDT"
+    },
+    system_code: {
+      ref: { record_kind: "system_code", id: "system-code-agent-reloaded" },
+      summary: "Agent-generated Python SystemCode using the TradingApiProvider boundary.",
+      declared_runtime: "python",
+      declared_outputs: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
+    },
+    materialization_attempt: {
+      attempt_id: "candidate-materialization-attempt-agent-cycle-reloaded",
+      idempotency_key: "agent-cycle-materialize:fixture-candidate-sealed-replay-001:fixture-candidate-version-001",
+      provider_kind: "codex_cli",
+      model: "gpt-5",
+      agent_run_ref: { record_kind: "agent_run", id: "agent-run-agent-cycle-reloaded" },
+      trace_ref: { record_kind: "trace_placeholder", id: "trace-agent-cycle-reloaded" },
+      status: "materialized",
+      validation_status: "accepted",
+      resulting_candidate_ref: { record_kind: "trading_system_candidate", id: "candidate-agent-generated-reloaded" },
+      artifact_refs: [{ record_kind: "system_code", id: "system-code-agent-reloaded" }],
+      created_at: "2026-05-23T00:00:00.000Z",
+      authority_label: "provider_output_not_evidence"
+    }
+  };
+}
+
 function candidateWithImprovementLoop(
   improvementLoop: ImprovementReadModel
 ): CandidateInspectReadModel {
@@ -2006,6 +2079,73 @@ function candidateLatestValidationState(
       paper_trading: false
     },
     ...overrides
+  };
+}
+
+function fullCycleOutcome(candidate: CandidateInspectReadModel): FullCycleOutcome {
+  const ledger = candidate.ledger ?? buildLedgerReadModel(ledgerSourceRecords());
+  return {
+    status: "completed",
+    source_system_id: "fixture-candidate-sealed-replay-001",
+    source_candidate_version_id: "fixture-candidate-version-001",
+    agent_research: {
+      session_id: "agent-cycle-test",
+      run_root: "/tmp/agent-cycle-test",
+      notebook_path: "/tmp/agent-cycle-test/notebook.json",
+      agent: {
+        id: "managed-agent-fixture-trading-research",
+        provider: "fixture",
+        model: "scripted-fixture",
+        permission_policy: "fixture_only"
+      },
+      best_score: 1,
+      best_artifact_dir: "/tmp/agent-cycle-test/best",
+      latest_decision: "keep",
+      latest_summary: "Accepted replay set with average score 1.000 across 2 scenarios."
+    },
+    system_code_handoff: {
+      system_code_id: "system-code-agent-test",
+      artifact_path: "/tmp/agent-cycle-test/best/run.py",
+      artifact_digest: "sha256:test",
+      runtime_kind: "python",
+      declared_output_kinds: ["order_request"],
+      generated_by_agent: true,
+      authority_status: "not_live"
+    },
+    backtest: {
+      status: "accepted",
+      score: 1,
+      risk_decision: "valid_order_request",
+      summary: "Accepted replay set with average score 1.000 across 2 scenarios.",
+      scenario_results: [
+        {
+          scenario_id: "trend_long",
+          status: "accepted",
+          score: 1,
+          risk_decision: "valid_order_request",
+          summary: "Accepted order request with score 1.000."
+        }
+      ]
+    },
+    next_trading_system: candidate,
+    trading_run_id: candidate.runtime.ref.id,
+    trading_run: {
+      ref: { record_kind: "trading_run", id: candidate.runtime.ref.id },
+      stage: candidate.runtime.stage_binding_profile,
+      lifecycle_status: candidate.runtime.runtime_lifecycle_status,
+      authority_status: "not_live"
+    },
+    paper_trading: {
+      run_status: "completed",
+      events_path: "/tmp/agent-cycle-test/paper/events.jsonl",
+      provider_request_count: 3,
+      authority_status: "not_live"
+    },
+    order_request: ledger.latest_order_request,
+    gateway_result: ledger.latest_gateway_result,
+    execution_result: ledger.latest_execution_result,
+    ledger,
+    trading_gateway_environment: tradingGatewayEnvironment()
   };
 }
 
