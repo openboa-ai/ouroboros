@@ -1,5 +1,4 @@
 import type {
-  CandidateEvaluationRunOutcome,
   ImprovementReadModel,
   LedgerInput,
   LedgerReadModel,
@@ -189,10 +188,52 @@ export interface ImprovementOutcome {
 
 export type FullCycleOutcome = Omit<TradingRunOutcome, "status"> & {
   status: "completed";
-  system_id: string;
-  candidate_version_id: string;
-  evaluation: CandidateEvaluationRunOutcome;
-  improvement: ImprovementReadModel;
+  source_system_id: string;
+  source_candidate_version_id: string;
+  agent_research: {
+    session_id: string;
+    run_root: string;
+    notebook_path: string;
+    agent: {
+      id: string;
+      provider: "codex" | "claude" | "fixture";
+      model?: string;
+      permission_policy: "artifact_workspace_only" | "fixture_only";
+    };
+    best_score?: number;
+    best_artifact_dir: string;
+    latest_decision: "keep" | "discard" | "crash";
+    latest_summary: string;
+  };
+  system_code_handoff: {
+    system_code_id: string;
+    artifact_path: string;
+    artifact_digest: string;
+    runtime_kind: "python";
+    declared_output_kinds: string[];
+    generated_by_agent: true;
+    authority_status: "not_live";
+  };
+  backtest: {
+    status: string;
+    score: number;
+    risk_decision: string;
+    summary: string;
+    scenario_results?: Array<{
+      scenario_id: string;
+      status: string;
+      score: number;
+      risk_decision: string;
+      summary: string;
+    }>;
+  };
+  next_trading_system: CandidateInspectReadModel;
+  paper_trading: {
+    run_status: string;
+    events_path: string;
+    provider_request_count: number;
+    authority_status: "not_live";
+  };
 };
 
 export type RunControlCommandPayload = Omit<RunControlAuditInput, "candidate_id">;

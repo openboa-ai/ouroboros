@@ -46,6 +46,7 @@ import {
   runReplay as submitReplayRun,
   startTradingRun as submitTradingRun,
   stopTradingRun as submitStopTradingRun,
+  type FullCycleOutcome,
   type PaperOrderRequestSelection,
   type PrivateReadinessPostureDraft
 } from "./api";
@@ -125,6 +126,7 @@ interface AppState {
   tradingRunMessage?: string;
   fullCycleError?: string;
   fullCycleMessage?: string;
+  lastFullCycle?: FullCycleOutcome;
   improvementError?: string;
   improvementMessage?: string;
   runtimeControlError?: string;
@@ -357,15 +359,17 @@ export function App() {
     }));
     try {
       const outcome = await submitFullCycle(candidate);
-      const selected = await fetchCandidate(candidate.candidate_id);
-      const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
+      const selected = await fetchCandidate(outcome.next_trading_system.candidate_id);
+      const candidates = await fetchCandidateSummaries();
+      const replayRuns = await fetchReplayRunEvidence(selected.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
-        candidate.candidate_id,
+        selected.candidate_id,
         replayRuns,
-        state.selectedReplayRunId
+        undefined
       );
       setState((current) => ({
         ...current,
+        candidates,
         selected,
         replayRuns,
         selectedReplayRunId: replayRunSelection.selectedReplayRunId,
@@ -374,7 +378,8 @@ export function App() {
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         runningFullCycle: false,
-        fullCycleMessage: `full cycle completed: ${outcome.trading_run.lifecycle_status ?? "running"}`
+        lastFullCycle: outcome,
+        fullCycleMessage: `agent generated ${outcome.next_trading_system.display_name}: backtest ${outcome.backtest.score.toFixed(3)}, paper ${outcome.trading_run.lifecycle_status ?? "running"}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -704,6 +709,7 @@ export function App() {
                 replayRunMessage={state.replayRunMessage}
                 fullCycleError={state.fullCycleError}
                 fullCycleMessage={state.fullCycleMessage}
+                lastFullCycle={state.lastFullCycle}
                 tradingRunError={state.tradingRunError}
                 tradingRunMessage={state.tradingRunMessage}
                 improvementError={state.improvementError}
@@ -918,6 +924,7 @@ export function CandidateDetail({
   replayRunMessage,
   fullCycleError,
   fullCycleMessage,
+  lastFullCycle,
   tradingRunError,
   tradingRunMessage,
   improvementError,
@@ -959,6 +966,7 @@ export function CandidateDetail({
   replayRunMessage?: string;
   fullCycleError?: string;
   fullCycleMessage?: string;
+  lastFullCycle?: FullCycleOutcome;
   tradingRunError?: string;
   tradingRunMessage?: string;
   improvementError?: string;
@@ -974,7 +982,24 @@ export function CandidateDetail({
   const orderFillSurface = candidate.trading_substrate?.latest_order_fill_surface ?? null;
   const accountPositionRiskSurface =
     candidate.trading_substrate?.latest_account_position_risk_mirror_surface ?? null;
-  const profitSummary = buildOperatorProfitSummary(candidate, replayRunDetail, latestReplayRun);
+  const visibleFullCycle = lastFullCycle?.next_trading_system.candidate_id === candidate.candidate_id
+    ? lastFullCycle
+    : undefined;
+  const recoveredAgentCycle = !visibleFullCycle && isAgentCycleMaterialization(candidate)
+    ? buildRecoveredAgentCycleEvidence(candidate)
+    : undefined;
+  const baseProfitSummary = buildOperatorProfitSummary(candidate, replayRunDetail, latestReplayRun, visibleFullCycle);
+  const profitSummary = recoveredAgentCycle
+    ? [
+        {
+          label: "Profit signal",
+          value: "paper evidence",
+          detail: "Agent SystemCode generated; paper Ledger recorded. Backtest score appears in the active cycle result.",
+          tone: "good" as const
+        },
+        ...baseProfitSummary.slice(1)
+      ]
+    : baseProfitSummary;
   const runStatus = candidate.runtime.runtime_lifecycle_status ?? "registered";
   const ledgerStatus = ledger?.chain_complete
     ? "chain complete"
@@ -1011,9 +1036,61 @@ export function CandidateDetail({
     : "Local workspace";
   const nextCycleStatus = candidate.improvement?.latest_change_proposal
     ? "handoff ready"
-    : candidate.improvement?.has_activity
+    : visibleFullCycle
+      ? "agent handoff ready"
+      : recoveredAgentCycle
+        ? "agent handoff ready"
+      : candidate.improvement?.has_activity
       ? "review handoff"
       : "not produced";
+  const evaluationStatusValue = visibleFullCycle
+    ? `backtest ${visibleFullCycle.backtest.status}`
+    : recoveredAgentCycle
+      ? "backtest recorded"
+    : improvementStatus;
+  const evaluationStatusDetail = visibleFullCycle
+    ? `score ${formatScore(visibleFullCycle.backtest.score)}; ${visibleFullCycle.backtest.summary}`
+    : recoveredAgentCycle
+      ? recoveredAgentCycle.evaluationDetail
+    : candidate.improvement?.latest_evaluation_result
+      ? `evaluation score ${formatScore(candidate.improvement.latest_evaluation_result.total_score)}`
+      : latestReplayRun
+        ? `${latestReplayRun.scenario_accepted}/${latestReplayRun.scenario_total} scenarios`
+        : "No evaluation result yet.";
+  const evaluationStatusTone = visibleFullCycle
+    ? visibleFullCycle.backtest.status === "accepted" ? "good" : "warning"
+    : recoveredAgentCycle
+      ? "good"
+    : candidate.improvement?.chain_complete || latestReplayRun?.status === "accepted" ? "good" : "neutral";
+  const researchEvaluationStageStatus = visibleFullCycle
+    ? `${visibleFullCycle.backtest.status} ${formatScore(visibleFullCycle.backtest.score)}`
+    : recoveredAgentCycle
+      ? "recorded"
+    : candidate.improvement?.latest_evaluation_result
+      ? `score ${formatScore(candidate.improvement.latest_evaluation_result.total_score)}`
+      : latestReplayRun
+        ? latestReplayRun.status
+        : "needed";
+  const researchEvaluationStageTone = visibleFullCycle
+    ? visibleFullCycle.backtest.status === "accepted" ? "good" : "warning"
+    : recoveredAgentCycle
+      ? "good"
+    : candidate.improvement?.latest_evaluation_result || latestReplayRun ? "good" : "warning";
+  const improvementOutputStatus = visibleFullCycle
+    ? visibleFullCycle.system_code_handoff.system_code_id
+    : recoveredAgentCycle
+      ? recoveredAgentCycle.systemCodeId
+    : candidate.improvement?.latest_change_proposal?.proposal_id ?? "not produced";
+  const improvementOutputTone = visibleFullCycle || recoveredAgentCycle || candidate.improvement?.latest_change_proposal
+    ? "good"
+    : "neutral";
+  const nextCycleDetail = visibleFullCycle
+    ? `agent ${visibleFullCycle.agent_research.agent.provider}; SystemCode ${visibleFullCycle.system_code_handoff.system_code_id}`
+    : recoveredAgentCycle
+      ? `agent ${recoveredAgentCycle.providerLabel}; SystemCode ${recoveredAgentCycle.systemCodeId}`
+    : candidate.improvement?.latest_change_proposal
+      ? `proposal ${candidate.improvement.latest_change_proposal.proposal_id}`
+      : "Run a full cycle to produce the next System Code candidate.";
 
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
@@ -1220,21 +1297,15 @@ export function CandidateDetail({
           />
           <OperatorStatusCard
             label="Evaluation"
-            value={improvementStatus}
-            detail={candidate.improvement?.latest_evaluation_result
-              ? `evaluation score ${formatScore(candidate.improvement.latest_evaluation_result.total_score)}`
-              : latestReplayRun
-                ? `${latestReplayRun.scenario_accepted}/${latestReplayRun.scenario_total} scenarios`
-                : "No evaluation result yet."}
-            tone={candidate.improvement?.chain_complete || latestReplayRun?.status === "accepted" ? "good" : "neutral"}
+            value={evaluationStatusValue}
+            detail={evaluationStatusDetail}
+            tone={evaluationStatusTone}
           />
           <OperatorStatusCard
             label="Next cycle handoff"
             value={nextCycleStatus}
-            detail={candidate.improvement?.latest_change_proposal
-              ? `proposal ${candidate.improvement.latest_change_proposal.proposal_id}`
-              : "Run a full cycle to produce the next System Code candidate."}
-            tone={candidate.improvement?.latest_change_proposal ? "good" : "warning"}
+            detail={nextCycleDetail}
+            tone={visibleFullCycle || recoveredAgentCycle || candidate.improvement?.latest_change_proposal ? "good" : "warning"}
           />
         </div>
         </CardContent>
@@ -1259,22 +1330,18 @@ export function CandidateDetail({
           />
           <ResearchStage
             label="Evaluation"
-            status={candidate.improvement?.latest_evaluation_result
-              ? `score ${formatScore(candidate.improvement.latest_evaluation_result.total_score)}`
-              : latestReplayRun
-                ? latestReplayRun.status
-                : "needed"}
-            tone={candidate.improvement?.latest_evaluation_result || latestReplayRun ? "good" : "warning"}
+            status={researchEvaluationStageStatus}
+            tone={researchEvaluationStageTone}
           />
           <ResearchStage
             label="Improvement output"
-            status={candidate.improvement?.latest_change_proposal?.proposal_id ?? "not produced"}
-            tone={candidate.improvement?.latest_change_proposal ? "good" : "neutral"}
+            status={improvementOutputStatus}
+            tone={improvementOutputTone}
           />
           <ResearchStage
             label="Next cycle"
             status={nextCycleStatus}
-            tone={nextCycleStatus === "handoff ready" ? "good" : "warning"}
+            tone={nextCycleStatus === "handoff ready" || nextCycleStatus === "agent handoff ready" ? "good" : "warning"}
           />
         </div>
         <div className="grid gap-2">
@@ -1293,6 +1360,86 @@ export function CandidateDetail({
         </div>
         </CardContent>
       </Card>
+
+      {visibleFullCycle && (
+        <Card aria-label="Agent generated Trading System">
+          <CardHeader>
+            <CardTitle>Agent generated Trading System</CardTitle>
+            <CardDescription>
+              {visibleFullCycle.agent_research.agent.provider} produced SystemCode, backtest accepted it, and paper trading recorded a Ledger chain.
+            </CardDescription>
+            <CardAction>
+              <Badge variant="default">{visibleFullCycle.agent_research.latest_decision}</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-4">
+            <OperatorStatusCard
+              label="System Code"
+              value={visibleFullCycle.system_code_handoff.system_code_id}
+              detail={visibleFullCycle.system_code_handoff.runtime_kind}
+              tone="good"
+            />
+            <OperatorStatusCard
+              label="Backtest"
+              value={formatScore(visibleFullCycle.backtest.score)}
+              detail={visibleFullCycle.backtest.summary}
+              tone={visibleFullCycle.backtest.status === "accepted" ? "good" : "warning"}
+            />
+            <OperatorStatusCard
+              label="Paper Trading Run"
+              value={visibleFullCycle.trading_run.lifecycle_status ?? "registered"}
+              detail={`${visibleFullCycle.paper_trading.provider_request_count} provider calls`}
+              tone={visibleFullCycle.trading_run.lifecycle_status === "running" ? "good" : "neutral"}
+            />
+            <OperatorStatusCard
+              label="Ledger"
+              value={visibleFullCycle.ledger.chain_complete ? "chain complete" : "incomplete"}
+              detail="OrderRequest -> GatewayResult -> ExecutionResult"
+              tone={visibleFullCycle.ledger.chain_complete ? "good" : "warning"}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {!visibleFullCycle && recoveredAgentCycle && (
+        <Card aria-label="Agent generated Trading System">
+          <CardHeader>
+            <CardTitle>Agent generated Trading System</CardTitle>
+            <CardDescription>
+              {recoveredAgentCycle.providerLabel} produced SystemCode, paper trading recorded a Ledger chain, and the Trading System is ready for the next cycle.
+            </CardDescription>
+            <CardAction>
+              <Badge variant="default">materialized</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-4">
+            <OperatorStatusCard
+              label="System Code"
+              value={recoveredAgentCycle.systemCodeId}
+              detail={candidate.system_code?.declared_runtime ?? candidate.program.manifest.declared_runtime}
+              tone="good"
+            />
+            <OperatorStatusCard
+              label="Backtest"
+              value="recorded"
+              detail={recoveredAgentCycle.evaluationDetail}
+              tone="good"
+            />
+            <OperatorStatusCard
+              label="Paper Trading Run"
+              value={runStatus}
+              detail="Ledger chain is visible in the current Trading Run."
+              tone={ledger?.chain_complete ? "good" : "neutral"}
+            />
+            <OperatorStatusCard
+              label="Ledger"
+              value={ledger?.chain_complete ? "chain complete" : "incomplete"}
+              detail="OrderRequest -> GatewayResult -> ExecutionResult"
+              tone={ledger?.chain_complete ? "good" : "warning"}
+            />
+          </CardContent>
+        </Card>
+      )}
 
         </TabsContent>
 
@@ -1545,6 +1692,49 @@ interface OperatorMetric {
   tone: OperatorTone;
 }
 
+interface RecoveredAgentCycleEvidence {
+  providerLabel: string;
+  systemCodeId: string;
+  evaluationDetail: string;
+}
+
+function isAgentCycleMaterialization(candidate: CandidateInspectReadModel): boolean {
+  return Boolean(
+    candidate.materialization_attempt?.idempotency_key.startsWith("agent-cycle-materialize:") &&
+    candidate.materialization_attempt.status === "materialized" &&
+    candidate.materialization_attempt.validation_status === "accepted" &&
+    candidate.ledger?.chain_complete
+  );
+}
+
+function buildRecoveredAgentCycleEvidence(
+  candidate: CandidateInspectReadModel
+): RecoveredAgentCycleEvidence {
+  const providerLabel = providerKindLabel(candidate.materialization_attempt?.provider_kind);
+  const systemCodeId = candidate.system_code?.ref?.id
+    ?? candidate.materialization_attempt?.artifact_refs.find((ref) => ref.record_kind === "system_code")?.id
+    ?? "system-code-not-linked";
+
+  return {
+    providerLabel,
+    systemCodeId,
+    evaluationDetail: "Agent materialization accepted; paper Ledger chain complete. Full backtest score is available in the active cycle result."
+  };
+}
+
+function providerKindLabel(providerKind?: string): string {
+  if (providerKind === "codex_cli") {
+    return "codex";
+  }
+  if (providerKind === "claude_code") {
+    return "claude";
+  }
+  if (providerKind === "fixture_only") {
+    return "fixture";
+  }
+  return providerKind ?? "agent";
+}
+
 function OperatorMetricCard({
   label,
   value,
@@ -1775,19 +1965,28 @@ function buildOperatorDecision({
 function buildOperatorProfitSummary(
   candidate: CandidateInspectReadModel,
   replayRunDetail?: ReplayRunDetailReadModel,
-  latestReplayRun?: ReplayRunEvidenceReadModel
+  latestReplayRun?: ReplayRunEvidenceReadModel,
+  lastFullCycle?: FullCycleOutcome
 ): OperatorMetric[] {
   const profitMetric = findProfitMetric(replayRunDetail);
   const improvementScore = candidate.improvement?.latest_evaluation_result?.total_score;
-  const evaluationScore = replayRunDetail?.score ?? improvementScore;
-  const acceptedScenarios = latestReplayRun
+  const cycleScore = lastFullCycle?.backtest.score;
+  const evaluationScore = replayRunDetail?.score ?? improvementScore ?? cycleScore;
+  const cycleScenarioTotal = lastFullCycle?.backtest.scenario_results?.length ?? 0;
+  const cycleScenarioAccepted = lastFullCycle?.backtest.scenario_results
+    ?.filter((result) => result.status === "accepted").length ?? 0;
+  const acceptedScenarios = lastFullCycle
+    ? `${cycleScenarioAccepted}/${cycleScenarioTotal} scenarios accepted`
+    : latestReplayRun
     ? `${latestReplayRun.scenario_accepted}/${latestReplayRun.scenario_total} scenarios accepted`
     : "No replay evidence yet";
-  const riskDecision = replayRunDetail?.risk_decision ?? latestReplayRun?.status ?? "not reviewed";
+  const riskDecision = replayRunDetail?.risk_decision ?? lastFullCycle?.backtest.risk_decision ?? latestReplayRun?.status ?? "not reviewed";
   const ledger = candidate.ledger;
   const profitSignalDetail = replayRunDetail
     ? `${acceptedScenarios}; ${riskDecision}`
-    : improvementScore === undefined
+    : lastFullCycle
+      ? `${acceptedScenarios}; ${riskDecision}; ${lastFullCycle.backtest.summary}`
+      : improvementScore === undefined
       ? "Run full cycle to create the first paper evidence."
       : `Improvement evaluation score; ${acceptedScenarios.toLowerCase()}.`;
 

@@ -55,9 +55,10 @@ import {
 import { recordPaperExecutionResult } from "./paper-execution";
 import { validatePaperGatewayOrderRequest } from "./trading-gateway-validation";
 import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
-import type { TradingArtifactRunnerKind } from "./trading-research/types";
+import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "./trading-research/types";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
+import { runAgentTradingCycle } from "./agent-trading-cycle";
 import {
   BinancePublicMarketSdkAdapter,
   type BinancePublicMarketLivenessClient
@@ -73,6 +74,8 @@ export interface BuildServerOptions {
   promotedCandidateRoot?: string;
   tradingGatewayEnv?: Record<string, string | undefined>;
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
+  tradingResearchAgentAdapter?: TradingResearchAgentAdapter;
+  tradingResearchIterations?: number;
   binancePublicMarketClient?: BinancePublicMarketLivenessClient;
 }
 
@@ -1013,10 +1016,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     "/api/trading-systems/:system_id/full-cycle-runs",
     async (request, reply) => {
       const paperOrderRequest = startPaperOrderRequest(request.body);
-      if (!paperOrderRequest) {
+      if (!paperOrderRequest || paperOrderRequest !== "valid") {
         return reply.code(400).send({
           error: "invalid_paper_order_request",
-          allowed_values: ["valid", "rejected"]
+          allowed_values: ["valid"]
         });
       }
 
@@ -1029,86 +1032,29 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
 
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
-      const evaluationIdempotencyKey = [
-        "runtime-api-full-cycle-evaluation",
-        request.params.system_id,
-        candidateVersionId,
-        "backtest",
-        "host_local"
-      ].join("-");
-      const stableEvaluationRequestId = safeRouteId([
-        request.params.system_id,
-        candidateVersionId,
-        evaluationIdempotencyKey
-      ].join("-"));
-      const evaluationOutcome = await runCandidateEvaluation(store, evaluationProviderAdapter, {
-        candidate_id: request.params.system_id,
-        candidate_version_id: candidateVersionId,
-        idempotency_key: evaluationIdempotencyKey,
-        stage_binding_ref: {
-          record_kind: "stage_binding",
-          id: `stage-binding-api-full-cycle-evaluation-${stableEvaluationRequestId}`
-        },
-        trace_id: `trace-api-full-cycle-evaluation-${stableEvaluationRequestId}`,
-        execution_mode: "host_local"
-      });
-      if (evaluationOutcome.status === "failed") {
-        const statusCode = evaluationOutcome.failure_reason === "candidate_not_found" ? 404 : 422;
-        return reply.code(statusCode).send({
-          error: statusCode === 404 ? "candidate_not_found" : "full_cycle_failed",
-          reason: evaluationOutcome.failure_reason,
-          system_id: request.params.system_id,
-          candidate_version_id: candidateVersionId,
-          idempotency_key: evaluationIdempotencyKey
-        });
-      }
-
-      const improvementIdempotencyKey = [
-        "runtime-api-full-cycle-improvement",
-        request.params.system_id,
-        candidateVersionId
-      ].join("-");
-      const improvementOutcome = await recordFixtureImprovement({
-        store,
-        systemId: request.params.system_id,
-        candidateVersionId,
-        idempotencyKey: improvementIdempotencyKey
-      });
-      if (improvementOutcome.status === "failed") {
-        return reply.code(422).send({
-          error: "full_cycle_failed",
-          reason: improvementOutcome.failure_reason,
-          system_id: request.params.system_id,
-          candidate_version_id: candidateVersionId,
-          idempotency_key: improvementIdempotencyKey
-        });
-      }
-
       try {
-        const tradingRunOutcome = await startFixtureTradingRun({
+        const outcome = await runAgentTradingCycle({
           store,
-          sandboxAdapter: sandboxAdapters.deterministic_test,
-          candidate,
-          systemId: request.params.system_id,
-          tradingRunId: candidate.runtime.ref.id,
-          candidateVersionId,
-          paperOrderRequest,
-          tradingGatewayEnvironment
+          sourceSystemId: request.params.system_id,
+          sourceCandidateVersionId: candidateVersionId,
+          tradingGatewayEnvironment,
+          agentAdapter: options.tradingResearchAgentAdapter,
+          iterations: options.tradingResearchIterations
         });
-
-        return reply.code(201).send({
-          ...tradingRunOutcome,
-          status: "completed",
-          system_id: request.params.system_id,
-          candidate_version_id: candidateVersionId,
-          evaluation: evaluationOutcome.evaluation,
-          improvement: improvementOutcome.improvement
-        });
+        return reply.code(201).send(outcome);
       } catch (error) {
         if (error instanceof LocalStoreError) {
           return reply.code(ledgerStatusCode(error.code)).send({
             error: "full_cycle_failed",
             reason: error.code,
+            system_id: request.params.system_id,
+            candidate_version_id: candidateVersionId
+          });
+        }
+        if (error instanceof Error && error.message.startsWith("agent_trading_cycle_")) {
+          return reply.code(422).send({
+            error: "full_cycle_failed",
+            reason: error.message,
             system_id: request.params.system_id,
             candidate_version_id: candidateVersionId
           });

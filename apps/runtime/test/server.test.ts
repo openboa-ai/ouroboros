@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -27,6 +27,11 @@ import type {
   CandidateGenerationProviderResult,
   RuntimeProviderAdapter
 } from "../src/providers/runtime-provider-adapter";
+import type {
+  AgentEditInput,
+  AgentEditResult,
+  TradingResearchAgentAdapter
+} from "../src/trading-research/types";
 
 let tmpDir: string;
 
@@ -2047,8 +2052,11 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("runs the fixture Trading System through one full operator-visible cycle", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+  it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 1
+    });
 
     const first = await server.inject({
       method: "POST",
@@ -2063,15 +2071,19 @@ describe("runtime read-only API", () => {
     expect(duplicate.statusCode).toBe(201);
     expect(duplicate.json()).toMatchObject({
       status: "completed",
-      evaluation: {
-        evaluation_run: {
-          evaluation_run_record_id: first.json().evaluation.evaluation_run.evaluation_run_record_id
+      agent_research: {
+        session_id: first.json().agent_research.session_id,
+        agent: {
+          provider: "fixture"
         }
       },
-      improvement: {
-        chain_complete: true
+      system_code_handoff: {
+        system_code_id: first.json().system_code_handoff.system_code_id,
+        generated_by_agent: true
       },
-      trading_run_id: first.json().trading_run_id,
+      next_trading_system: {
+        candidate_id: first.json().next_trading_system.candidate_id
+      },
       ledger: {
         latest_order_request: {
           order_request_id: first.json().ledger.latest_order_request.order_request_id
@@ -2086,35 +2098,47 @@ describe("runtime read-only API", () => {
     });
     expect(first.json()).toMatchObject({
       status: "completed",
-      system_id: FIXTURE_CANDIDATE_ID,
-      evaluation: {
-        evaluation_run: {
-          status: "created",
-          authority_status: "not_counted"
+      source_system_id: FIXTURE_CANDIDATE_ID,
+      agent_research: {
+        agent: {
+          provider: "fixture",
+          permission_policy: "fixture_only"
         },
-        sealing_decision: {
-          evidence_disposition: "not_counted",
-          authority_status: "not_counted"
-        }
+        best_score: 1,
+        latest_decision: "keep"
       },
-      improvement: {
-        improvement_kind: "improvement",
-        chain_complete: true,
-        latest_change_proposal: {
-          status: "proposed"
+      system_code_handoff: {
+        generated_by_agent: true,
+        runtime_kind: "python",
+        declared_output_kinds: expect.arrayContaining(["order_request"]),
+        authority_status: "not_live"
+      },
+      backtest: {
+        status: "accepted",
+        score: 1,
+        risk_decision: "valid_order_request",
+        scenario_results: [
+          expect.objectContaining({ scenario_id: "trend_long", status: "accepted" }),
+          expect.objectContaining({ scenario_id: "range_flat", status: "accepted" })
+        ]
+      },
+      next_trading_system: {
+        status: "materialized",
+        spec: {
+          market: "Binance USD-M Futures",
+          instrument: "BTCUSDT"
         },
-        latest_evaluation_result: {
-          result_status: "accepted",
-          authority_status: "not_counted"
+        system_code: {
+          declared_runtime: "python"
         }
       },
       trading_run: {
         lifecycle_status: "running",
         authority_status: "not_live"
       },
-      sandbox: {
-        adapter_kind: "deterministic_test",
-        lifecycle_status: "stopped",
+      paper_trading: {
+        run_status: "completed",
+        provider_request_count: expect.any(Number),
         authority_status: "not_live"
       },
       gateway_result: {
@@ -2136,29 +2160,33 @@ describe("runtime read-only API", () => {
         order_submission_authority: false
       }
     });
+    expect(first.json().next_trading_system.candidate_id).not.toBe(FIXTURE_CANDIDATE_ID);
+    expect(first.json().next_trading_system.system_code.ref.id).toBe(
+      first.json().system_code_handoff.system_code_id
+    );
+    expect(first.json().paper_trading.provider_request_count).toBeGreaterThanOrEqual(3);
 
     const candidate = await server.inject({
       method: "GET",
-      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      url: `/api/candidates/${first.json().next_trading_system.candidate_id}`
     });
     expect(candidate.statusCode).toBe(200);
     expect(candidate.json()).toMatchObject({
+      candidate_id: first.json().next_trading_system.candidate_id,
+      system_code: {
+        ref: {
+          id: first.json().system_code_handoff.system_code_id
+        }
+      },
       evaluation: {
         has_runs: true,
         latest_run: {
-          run_id: first.json().evaluation.evaluation_run.evaluation_run_record_id,
           status: "created",
           authority_status: "not_counted"
         }
       },
-      improvement: {
-        chain_complete: true
-      },
       runtime: {
         runtime_lifecycle_status: "running",
-        sandbox: {
-          lifecycle_status: "stopped"
-        },
         transcript: {
           has_activity: true
         }
@@ -2167,6 +2195,178 @@ describe("runtime read-only API", () => {
         chain_complete: true
       }
     });
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.json().candidates.map((item: { candidate_id: string }) => item.candidate_id))
+      .toContain(first.json().next_trading_system.candidate_id);
+
+    await server.close();
+  });
+
+  it("seeds full-cycle research from the selected Trading System SystemCode artifact", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      tradingResearchIterations: 1
+    });
+    const sourceArtifactDir = path.join(tmpDir, "source-trading-system-artifact");
+    await cp(path.join(process.cwd(), "artifacts/trading-system"), sourceArtifactDir, { recursive: true });
+    const sourceRunPath = path.join(sourceArtifactDir, "run.py");
+    const sourceRun = await readFile(sourceRunPath, "utf8");
+    const markedSource = sourceRun.replace(
+      "RISK_FRACTION = 0.01",
+      "RISK_FRACTION = 0.03\nSOURCE_SYSTEM_MARKER = 'lineage-source-artifact'"
+    );
+    await writeFile(sourceRunPath, markedSource, "utf8");
+    const artifactDigest = createHash("sha256").update(markedSource).digest("hex");
+    const sourceSystemCodeId = "system-code-source-lineage-test";
+    await store.recordSystemCode({
+      record_kind: "system_code",
+      version: 1,
+      system_code_id: sourceSystemCodeId,
+      artifact_kind: "python_file",
+      artifact_path: sourceArtifactDir,
+      artifact_digest: `sha256:${artifactDigest}`,
+      runtime_kind: "python",
+      entrypoint: ["python3", "run.py"],
+      declared_output_contract: {
+        contract_kind: "opaque_runtime_boundary",
+        declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
+      },
+      secret_policy_ref: { record_kind: "secret_policy", id: "secret-policy-no-raw-values-v1" },
+      capability_policy_ref: { record_kind: "capability_policy", id: "capability-policy-test-lineage" },
+      provenance_refs: [{ record_kind: "provider_output_artifact", id: "source-lineage-artifact" }],
+      status: "registered",
+      created_at: "2026-05-24T00:00:00.000Z",
+      authority_status: "not_live"
+    });
+    const materializationInput = validMaterializationInput();
+    const materialized = await store.materializeCandidate({
+      ...materializationInput,
+      idempotency_key: "runtime-source-artifact-lineage-001",
+      provider: {
+        ...materializationInput.provider,
+        agent_run_id: "agent-run-source-artifact-lineage-001",
+        agent_event_id: "agent-event-source-artifact-lineage-001",
+        trace_id: "trace-source-artifact-lineage-001",
+        output_artifact_hash: `sha256:${artifactDigest}`
+      },
+      candidate: {
+        ...materializationInput.candidate,
+        title: "Source lineage Trading System",
+        system_summary: "Trading System with a unique source SystemCode marker."
+      },
+      artifact_refs: [{ record_kind: "system_code", id: sourceSystemCodeId }],
+      system_code_ref: { record_kind: "system_code", id: sourceSystemCodeId }
+    });
+    expect(materialized.status).toBe("materialized");
+    if (materialized.status !== "materialized") {
+      throw new Error("source lineage materialization failed");
+    }
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${materialized.candidate.candidate_id}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(201);
+    const generatedSource = await readFile(response.json().system_code_handoff.artifact_path, "utf8");
+    expect(generatedSource).toContain("SOURCE_SYSTEM_MARKER = 'lineage-source-artifact'");
+    expect(generatedSource).toContain("RISK_FRACTION = 0.02");
+
+    await server.close();
+  });
+
+  it("reports the backtest for the materialized best full-cycle artifact", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 2
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      agent_research: {
+        best_score: 1,
+        latest_decision: "discard"
+      },
+      backtest: {
+        status: "accepted",
+        score: 1,
+        risk_decision: "valid_order_request"
+      }
+    });
+
+    await server.close();
+  });
+
+  it("rejects unsupported paper order request choices on full-cycle agent runs", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 1
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`,
+      payload: { paper_order_request: "rejected" }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: "invalid_paper_order_request",
+      allowed_values: ["valid"]
+    });
+
+    await server.close();
+  });
+
+  it("does not materialize the next Trading System when paper Gateway validation rejects the order", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchAgentAdapter: new RejectedPaperOrderTradingResearchAgentAdapter(),
+      tradingResearchIterations: 1
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "full_cycle_failed",
+      reason: "agent_trading_cycle_rejected_paper_order_request"
+    });
+
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.json().candidates
+      .some((item: { display_name?: string }) => item.display_name === "Agent generated BTCUSDT Trading System"))
+      .toBe(false);
+
+    await server.close();
+  });
+
+  it("does not materialize the next Trading System when paper validation cannot form a Ledger chain", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchAgentAdapter: new NoOrderRequestTradingResearchAgentAdapter(),
+      tradingResearchIterations: 1
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "full_cycle_failed",
+      reason: "agent_trading_cycle_missing_order_request"
+    });
+
+    const list = await server.inject({ method: "GET", url: "/api/candidates" });
+    expect(list.json().candidates
+      .some((item: { display_name?: string }) => item.display_name === "Agent generated BTCUSDT Trading System"))
+      .toBe(false);
 
     await server.close();
   });
@@ -3038,6 +3238,57 @@ function validRunControlInput(candidateVersionId: string): RunControlAuditInput 
     },
     created_at: "2026-05-10T00:10:00.000Z"
   };
+}
+
+class NoOrderRequestTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-fixture-no-order-request",
+    provider: "fixture" as const,
+    model: "no-order-request-fixture",
+    permission_policy: "fixture_only" as const
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const edited = source.replace(
+      '    append_event(args.output_events, {"event": "order_request", **intent})',
+      '    if "/paper/" not in args.output_events:\n        append_event(args.output_events, {"event": "order_request", **intent})'
+    );
+    if (edited === source) {
+      throw new Error("fixture_order_request_rewrite_failed");
+    }
+    await writeFile(runPath, edited, "utf8");
+    return {
+      status: "edited",
+      summary: "Fixture agent suppressed the paper OrderRequest event.",
+      changed_paths: ["run.py"]
+    };
+  }
+}
+
+class RejectedPaperOrderTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-fixture-rejected-paper-order",
+    provider: "fixture" as const,
+    model: "rejected-paper-order-fixture",
+    permission_policy: "fixture_only" as const
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    const edited = source.replace(/RISK_FRACTION = [0-9.]+/, "RISK_FRACTION = 0");
+    if (edited === source) {
+      throw new Error("fixture_rejected_order_rewrite_failed");
+    }
+    await writeFile(runPath, edited, "utf8");
+    return {
+      status: "edited",
+      summary: "Fixture agent forced a rejected paper OrderRequest.",
+      changed_paths: ["run.py"]
+    };
+  }
 }
 
 async function writeStoreJson(value: unknown, ...segments: string[]): Promise<void> {

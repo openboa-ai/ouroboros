@@ -13,10 +13,10 @@ export const defaultReplayTradingScenario: ReplayTradingScenario = {
   id: "trend_long",
   description: "Trend-following replay regime where fast average is above slow average.",
   market: {
-    symbol: "SYNTH-USD",
-    price: 100,
-    moving_average_fast: 103,
-    moving_average_slow: 100,
+    symbol: "BTCUSDT",
+    price: 60000,
+    moving_average_fast: 60300,
+    moving_average_slow: 60000,
     volatility: 0.018,
     expected_direction: "long",
     observed_at: "2026-05-12T00:00:00.000Z"
@@ -35,10 +35,10 @@ export const defaultReplayTradingScenarioSet: ReplayTradingScenario[] = [
     id: "range_flat",
     description: "Range-bound replay regime where no directional position should be opened.",
     market: {
-      symbol: "SYNTH-USD",
-      price: 101,
-      moving_average_fast: 100,
-      moving_average_slow: 100,
+      symbol: "BTCUSDT",
+      price: 60100,
+      moving_average_fast: 60000,
+      moving_average_slow: 60000,
       volatility: 0.009,
       expected_direction: "flat",
       observed_at: "2026-05-12T00:05:00.000Z"

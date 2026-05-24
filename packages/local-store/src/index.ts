@@ -2495,6 +2495,7 @@ export class LocalStore {
     const agentRunRef = ref("agent_run", input.provider.agent_run_id);
     const traceRef = ref("trace_placeholder", input.provider.trace_id);
     const providerReadinessRef = ref("provider_readiness_record", idsForCandidate.providerReadiness);
+    const systemCodeRef = input.system_code_ref;
 
     const attempt: CandidateMaterializationAttemptRecord = {
       record_kind: "candidate_materialization_attempt",
@@ -2525,7 +2526,8 @@ export class LocalStore {
       first_market_scope: input.candidate.first_market_scope,
       candidate_status: "handoff_ready",
       evaluation_handoff_ready: true,
-      materialized_from_attempt_ref: attemptRef
+      materialized_from_attempt_ref: attemptRef,
+      active_system_code_ref: systemCodeRef
     };
     const candidateVersion: CandidateVersionRecord = {
       record_kind: "candidate_version",
@@ -2545,7 +2547,8 @@ export class LocalStore {
       agent_run_ref: agentRunRef,
       agent_event_ref: ref("agent_event", input.provider.agent_event_id),
       provider_readiness_ref: providerReadinessRef,
-      provider_probe_attempt_ref: ref("provider_probe_attempt", idsForCandidate.providerProbe)
+      provider_probe_attempt_ref: ref("provider_probe_attempt", idsForCandidate.providerProbe),
+      system_code_ref: systemCodeRef
     };
     const materializedEvaluationRunRef = ref("evaluation_run_record", idsForCandidate.evaluationRun);
     const materializedSealingDecisionRef = ref(
@@ -5960,10 +5963,18 @@ function validateCandidateMaterializationInput(
     return "schema_invalid";
   }
 
+  const supportedSpec = (
+    spec.market === "ExternalTradingApiProvider" &&
+    spec.instrument === "generic trading instruments"
+  ) || (
+    spec.market === "Binance USD-M Futures" &&
+    spec.instrument === "BTCUSDT"
+  );
+
   if (
     candidate.first_market_scope !== "external_trading_api_fixture" ||
-    spec.market !== "ExternalTradingApiProvider" ||
-    spec.instrument !== "generic trading instruments" ||
+    !supportedSpec ||
+    (candidateInput.system_code_ref !== undefined && !isRef(candidateInput.system_code_ref, "system_code")) ||
     containsForbiddenMaterializationKey(input)
   ) {
     return "materialization_rejected";
