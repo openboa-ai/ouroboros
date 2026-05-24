@@ -36,9 +36,11 @@ export type StageBindingStage = "backtest" | "paper" | "live";
 
 export type StageBindingProfile = "backtest" | "paper" | "live";
 
+export type TradingRuntimeEnvironment = "paper" | "live";
+
 export type TradingSystemExecutionMode = "backtest" | "paper" | "live";
 
-export type TradingSystemExecutionModeSupportStatus = "available" | "planned";
+export type TradingSystemExecutionModeSupportStatus = "available" | "planned" | "disabled";
 
 export type TradingApiProviderMarketDataPlane =
   | "historical_replay"
@@ -57,7 +59,8 @@ export type TradingApiProviderOrderPlane =
 export type TradingSystemExecutionAuthorityStatus =
   | "not_live"
   | "paper_only"
-  | "live_requires_gateway";
+  | "live_requires_gateway"
+  | "live_disabled";
 
 export interface TradingSystemExecutionModeContractReadModel {
   mode: TradingSystemExecutionMode;
@@ -417,6 +420,10 @@ export type TradingSubstrateProductCategory = "perpetual_futures";
 
 export type TradingGatewayExchangeEnvironment = "unbound" | "testnet" | "mainnet" | "custom";
 
+export type TradingGatewayEnvironmentSource =
+  | "environment_variables"
+  | "runtime_binding_policy";
+
 export type TradingGatewayCredentialScope = "none" | "runtime_selected";
 
 export type TradingGatewayEnvironmentStatus = "configured" | "blocked";
@@ -426,8 +433,10 @@ export interface TradingGatewayEnvironmentReadModel {
   venue: TradingSubstrateVenue;
   instrument: TradingSubstrateInstrument;
   product_category: TradingSubstrateProductCategory;
+  runtime_environment: TradingRuntimeEnvironment;
+  runtime_environment_source: "mlp_policy";
   exchange_environment: TradingGatewayExchangeEnvironment;
-  exchange_environment_source: "environment_variables";
+  exchange_environment_source: TradingGatewayEnvironmentSource;
   rest_base_url: string | null;
   credential_scope: TradingGatewayCredentialScope;
   credential_source: "not_required" | "environment_variables";
@@ -438,6 +447,32 @@ export interface TradingGatewayEnvironmentReadModel {
   authority_status: "not_live";
   live_exchange_authority: false;
   order_submission_authority: false;
+  live_disabled_reason: "live_gateway_not_enabled_in_mlp";
+  runtime_bindings: {
+    paper: {
+      status: "enabled";
+      market_data_source: "binance_production_public_rest";
+      rest_base_url: "https://fapi.binance.com";
+      account_provider: "fake_paper_account";
+      executor: "fake_paper_order_executor";
+      ledger: "fake_ledger";
+      live_exchange_authority: false;
+      order_submission_authority: false;
+      authority_status: "dry_run_only";
+    };
+    live: {
+      status: "disabled";
+      disabled_reason: "live_gateway_not_enabled_in_mlp";
+      market_data_source: "binance_production_public_rest";
+      rest_base_url: "https://fapi.binance.com";
+      account_provider: "live_account";
+      executor: "live_order_executor";
+      ledger: "ledger";
+      live_exchange_authority: false;
+      order_submission_authority: false;
+      authority_status: "not_live";
+    };
+  };
   env_var_names: {
     rest_base_url: "OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL";
     api_key: "OUROBOROS_BINANCE_API_KEY";

@@ -97,16 +97,12 @@ Defaults:
 - Runtime persisted volume: `ouroboros-local_ouroboros-store`
 - Compose network: `ouroboros-local_ouroboros-local`
 
-Trading gateway environment variables bind the loaded Binance USD-M Futures profile, not the
-runtime behavior mode. Ouroboros has two deployment profiles: `test` for ongoing development and
-gateway validation, and `prod` for the real running system. Keep endpoint and key values separate
-by file: `.env.test` from [.env.test.example](.env.test.example) uses
-`OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL=https://demo-fapi.binance.com`, while `.env.prod`
-from [.env.prod.example](.env.prod.example) uses
-`OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL=https://fapi.binance.com`. Both profiles use the same
-credential variable names: `OUROBOROS_BINANCE_API_KEY` and `OUROBOROS_BINANCE_API_SECRET`.
-Backtest, paper, and live behavior are gateway/runtime policy branches in code, not environment
-mode variables. The current app still reports `not_live` and performs no live exchange calls.
+Trading gateway environment variables do not select runtime behavior or paper market endpoints. In
+MLP-01, runtime environments are `paper` and disabled `live`. Paper is pinned to Binance production
+public market data from `https://fapi.binance.com` with a fake account, fake executor, and fake
+Ledger. Demo/testnet URLs are test-only injected clients, not product runtime environments. Both
+profile examples keep the same credential variable names for future compatibility, but the current
+app reports `not_live`, does not require credentials for paper, and performs no live exchange calls.
 
 Compose validation covers package-level checks in a clean container image:
 

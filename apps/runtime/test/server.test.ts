@@ -48,7 +48,14 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
-      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      binancePublicMarketClient: binancePublicMarketClient({
+        markPrice: "65000.12340000",
+        indexPrice: "64995.00000000",
+        fundingRate: "0.00010000",
+        observedServerTime: 1778889601000,
+        markTime: 1778889600000
+      })
     });
     const health = await server.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
@@ -56,8 +63,10 @@ describe("runtime read-only API", () => {
       status: "ok",
       mode: "fixture_convenience_mode",
       trading_gateway_environment: {
+        runtime_environment: "paper",
+        runtime_environment_source: "mlp_policy",
         exchange_environment: "unbound",
-        exchange_environment_source: "environment_variables",
+        exchange_environment_source: "runtime_binding_policy",
         rest_base_url: null,
         authority_status: "not_live"
       }
@@ -71,12 +80,15 @@ describe("runtime read-only API", () => {
     expect(tradingGatewayEnvironment.json()).toMatchObject({
       trading_gateway_environment: {
         environment_kind: "trading_gateway_environment",
+        runtime_environment: "paper",
+        runtime_environment_source: "mlp_policy",
         exchange_environment: "unbound",
-        exchange_environment_source: "environment_variables",
+        exchange_environment_source: "runtime_binding_policy",
         credential_scope: "none",
         configuration_status: "configured",
         live_exchange_authority: false,
-        order_submission_authority: false
+        order_submission_authority: false,
+        live_disabled_reason: "live_gateway_not_enabled_in_mlp"
       }
     });
 
@@ -105,25 +117,31 @@ describe("runtime read-only API", () => {
         },
         {
           mode: "paper",
-          support_status: "planned",
+          support_status: "available",
           provider_contract: {
+            market_data: "realtime_market_data",
             account: "paper_account",
-            order_plane: "paper_order_sink"
+            order_plane: "paper_order_sink",
+            credentials_scope: "none_required"
           },
           authority: {
+            provider_may_submit_orders: false,
+            live_exchange_authority: false,
             status: "paper_only"
           }
         },
         {
           mode: "live",
-          support_status: "planned",
+          support_status: "disabled",
           provider_contract: {
             account: "live_account",
             order_plane: "gated_live_order_gateway",
             credentials_scope: "provider_side_only"
           },
           authority: {
-            status: "live_requires_gateway"
+            provider_may_submit_orders: false,
+            live_exchange_authority: false,
+            status: "live_disabled"
           }
         }
       ]
@@ -139,8 +157,8 @@ describe("runtime read-only API", () => {
           order_submission: "forbidden"
         },
         authority: {
-          live_exchange_authority: true,
-          status: "live_requires_gateway"
+          live_exchange_authority: false,
+          status: "live_disabled"
         }
       }
     });
@@ -200,7 +218,14 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
-      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      binancePublicMarketClient: binancePublicMarketClient({
+        markPrice: "65000.12340000",
+        indexPrice: "64995.00000000",
+        fundingRate: "0.00010000",
+        observedServerTime: 1778889601000,
+        markTime: 1778889600000
+      })
     });
 
     const surface = await server.inject({
@@ -243,7 +268,14 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
-      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      binancePublicMarketClient: binancePublicMarketClient({
+        markPrice: "65000.12340000",
+        indexPrice: "64995.00000000",
+        fundingRate: "0.00010000",
+        observedServerTime: 1778889601000,
+        markTime: 1778889600000
+      })
     });
 
     const surface = await server.inject({
@@ -266,8 +298,11 @@ describe("runtime read-only API", () => {
         funding_rate: "0.00010000",
         next_funding_time: "2026-05-16T08:00:00.000Z",
         server_time: "2026-05-16T00:00:01.000Z",
-        freshness: "stale",
-        liveness: "degraded"
+        freshness: "fresh",
+        liveness: "connected",
+        fixture_backed: false,
+        simulated: false,
+        authority_status: "read_only"
       })
     });
 
@@ -282,7 +317,7 @@ describe("runtime read-only API", () => {
         latest_public_market_liveness_surface: {
           surface_label: "Binance BTCUSDT public_market_liveness",
           symbol_status: "TRADING",
-          authority_status: "not_live"
+          authority_status: "read_only"
         }
       }
     });
@@ -290,7 +325,7 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
-  it("refreshes Binance BTCUSDT public market data through the SDK adapter when REST URL is configured", async () => {
+  it("refreshes Binance BTCUSDT public market data through the explicit public-market endpoint", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
@@ -305,6 +340,23 @@ describe("runtime read-only API", () => {
         observedServerTime: 1778889661000,
         markTime: 1778889660000
       })
+    });
+
+    const surface = await server.inject({
+      method: "GET",
+      url: `/api/trading-substrate/public-market/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
+    });
+    expect(surface.statusCode).toBe(200);
+    expect(surface.json()).toMatchObject({
+      refresh_status: "recorded",
+      surface: {
+        surface_label: "Binance BTCUSDT public_market_liveness",
+        mark_price: "65123.45000000",
+        source_kind: "binance_market_data_rest",
+        fixture_backed: false,
+        simulated: false,
+        authority_status: "read_only"
+      }
     });
 
     const detail = await server.inject({
@@ -329,27 +381,10 @@ describe("runtime read-only API", () => {
       }
     });
 
-    const surface = await server.inject({
-      method: "GET",
-      url: `/api/trading-substrate/public-market/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
-    });
-    expect(surface.statusCode).toBe(200);
-    expect(surface.json()).toMatchObject({
-      refresh_status: "recorded",
-      surface: {
-        surface_label: "Binance BTCUSDT public_market_liveness",
-        mark_price: "65123.45000000",
-        source_kind: "binance_market_data_rest",
-        fixture_backed: false,
-        simulated: false,
-        authority_status: "read_only"
-      }
-    });
-
     await server.close();
   });
 
-  it("does not refresh Binance public market data for unknown candidate inspect", async () => {
+  it("does not refresh Binance public market data during candidate inspect", async () => {
     let refreshCallCount = 0;
     const server = await buildServer({
       store: new LocalStore(tmpDir),
@@ -370,18 +405,28 @@ describe("runtime read-only API", () => {
         async checkServerTime() {
           refreshCallCount += 1;
           throw new Error("unexpected Binance public market refresh");
+        },
+        async klineCandlestickData() {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
         }
       }
     });
 
     const detail = await server.inject({
       method: "GET",
-      url: "/api/candidates/missing-candidate"
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
     });
-    expect(detail.statusCode).toBe(404);
+    expect(detail.statusCode).toBe(200);
     expect(detail.json()).toMatchObject({
-      error: "candidate_not_found",
-      candidate_id: "missing-candidate"
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_public_market_liveness_surface: {
+          source_kind: "fixture",
+          fixture_backed: true,
+          authority_status: "not_live"
+        }
+      }
     });
     expect(refreshCallCount).toBe(0);
 
@@ -1850,12 +1895,15 @@ describe("runtime read-only API", () => {
       },
       trading_gateway_environment: {
         environment_kind: "trading_gateway_environment",
+        runtime_environment: "paper",
+        runtime_environment_source: "mlp_policy",
         exchange_environment: "unbound",
-        exchange_environment_source: "environment_variables",
+        exchange_environment_source: "runtime_binding_policy",
         configuration_status: "configured",
         authority_status: "not_live",
         live_exchange_authority: false,
-        order_submission_authority: false
+        order_submission_authority: false,
+        live_disabled_reason: "live_gateway_not_enabled_in_mlp"
       },
       ledger: {
         ledger_kind: "ledger",
@@ -2052,10 +2100,30 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("rejects disabled live Gateway binding requests with the stable MLP reason", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/trading-runs`,
+      payload: { runtime_environment: "live" }
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "gateway_runtime_binding_disabled",
+      reason: "live_gateway_not_enabled_in_mlp",
+      runtime_environment: "live"
+    });
+
+    await server.close();
+  });
+
   it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      tradingResearchIterations: 1
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
 
     const first = await server.inject({
@@ -2275,7 +2343,8 @@ describe("runtime read-only API", () => {
   it("preserves source-to-next full-cycle lineage when running another cycle", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      tradingResearchIterations: 1
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
 
     const first = await server.inject({
@@ -2308,6 +2377,14 @@ describe("runtime read-only API", () => {
         ledger_chain_complete: true
       }
     });
+    expect(second.json().next_trading_system.candidate_id).not.toBe(
+      first.json().next_trading_system.candidate_id
+    );
+    expect(second.json().ledger.chain_count).toBe(1);
+    expect(first.json().ledger.chain_count).toBe(1);
+    expect(second.json().ledger.latest_order_request.order_request_id).not.toBe(
+      first.json().ledger.latest_order_request.order_request_id
+    );
 
     const secondCandidate = await server.inject({
       method: "GET",
@@ -2344,7 +2421,8 @@ describe("runtime read-only API", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
-      tradingResearchIterations: 1
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
     const sourceArtifactDir = path.join(tmpDir, "source-trading-system-artifact");
     await cp(path.join(process.cwd(), "artifacts/trading-system"), sourceArtifactDir, { recursive: true });
@@ -2416,7 +2494,8 @@ describe("runtime read-only API", () => {
   it("reports the backtest for the materialized best full-cycle artifact", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      tradingResearchIterations: 2
+      tradingResearchIterations: 2,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
 
     const response = await server.inject({
@@ -2442,7 +2521,8 @@ describe("runtime read-only API", () => {
   it("rejects unsupported paper order request choices on full-cycle agent runs", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
-      tradingResearchIterations: 1
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
 
     const response = await server.inject({
@@ -2459,11 +2539,44 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("returns a structured full-cycle failure when Binance paper market snapshot is unavailable", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: failingBinancePublicMarketClient()
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/full-cycle-runs`
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      error: "full_cycle_failed",
+      reason: "binance_public_market_snapshot_unavailable:binance public market unavailable",
+      full_cycle_lineage: {
+        handoff_status: "blocked",
+        blocked_stage: "paper_trading",
+        blocked_reason: "binance_public_market_snapshot_unavailable:binance public market unavailable",
+        source: {
+          trading_system_id: FIXTURE_CANDIDATE_ID,
+          system_code_ref: {
+            record_kind: "system_code",
+            id: FIXTURE_SYSTEM_CODE_ID
+          }
+        }
+      }
+    });
+
+    await server.close();
+  });
+
   it("does not materialize the next Trading System when paper Gateway validation rejects the order", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       tradingResearchAgentAdapter: new RejectedPaperOrderTradingResearchAgentAdapter(),
-      tradingResearchIterations: 1
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
 
     const response = await server.inject({
@@ -2500,7 +2613,8 @@ describe("runtime read-only API", () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
       tradingResearchAgentAdapter: new NoOrderRequestTradingResearchAgentAdapter(),
-      tradingResearchIterations: 1
+      tradingResearchIterations: 1,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
     });
 
     const response = await server.inject({
@@ -3654,8 +3768,29 @@ function binancePublicMarketClient(input: {
       return sdkResponse({
         serverTime: input.observedServerTime
       });
+    },
+    async klineCandlestickData(request: { symbol?: string; interval?: string; limit?: number }) {
+      expect(request).toEqual({ symbol: "BTCUSDT", interval: "1m", limit: 30 });
+      return sdkResponse([
+        [input.markTime - 300000, "64000", "64100", "63900", "64000", "10"],
+        [input.markTime - 240000, "64100", "64200", "64000", "64100", "10"],
+        [input.markTime - 180000, "64200", "64300", "64100", "64200", "10"],
+        [input.markTime - 120000, "64300", "64400", "64200", "64300", "10"],
+        [input.markTime - 60000, "64400", "64500", "64300", "64400", "10"],
+        [input.markTime, input.markPrice, input.markPrice, input.markPrice, input.markPrice, "10"]
+      ]);
     }
   };
+}
+
+function fixtureBinancePublicMarketClient() {
+  return binancePublicMarketClient({
+    markPrice: "65000.00000000",
+    indexPrice: "64995.00000000",
+    fundingRate: "0.00010000",
+    observedServerTime: 1778889601000,
+    markTime: 1778889600000
+  });
 }
 
 function sdkResponse<T>(payload: T) {
@@ -3675,6 +3810,9 @@ function failingBinancePublicMarketClient() {
       throw new Error("binance public market unavailable");
     },
     async checkServerTime() {
+      throw new Error("binance public market unavailable");
+    },
+    async klineCandlestickData() {
       throw new Error("binance public market unavailable");
     }
   };

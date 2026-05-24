@@ -1030,7 +1030,7 @@ export function CandidateDetail({
     orderFillSurface,
     replayRunDetail
   });
-  const exchangeEnvironment = tradingGatewayEnvironment?.exchange_environment ?? "testnet";
+  const runtimeEnvironment = tradingGatewayEnvironment?.runtime_environment ?? "paper";
   const marketFreshness = publicMarketSurface?.freshness ?? "no market data";
   const workspaceLabel = candidate.fixture_notice.mode === "fixture_convenience_mode"
     ? "Paper workspace"
@@ -1120,7 +1120,7 @@ export function CandidateDetail({
           <CardAction className="flex flex-wrap justify-end gap-2">
           <Badge variant="secondary">{formatAuthorityLabel(candidate.runtime.authority_status)}</Badge>
           <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
-          <Badge variant="secondary">{formatGatewayEnvironment(exchangeEnvironment)}</Badge>
+          <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
           <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
             {formatFreshnessLabel(marketFreshness)}
           </Badge>
@@ -1184,7 +1184,7 @@ export function CandidateDetail({
         <Badge variant="secondary">Paper mode</Badge>
         <Badge variant="secondary">No exchange order</Badge>
         <Badge variant="secondary">No API credentials</Badge>
-        <Badge variant="secondary">{formatGatewayEnvironment(exchangeEnvironment)}</Badge>
+        <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
         <span className="text-sm text-muted-foreground">{candidate.fixture_notice.statements[0]}</span>
         </CardContent>
       </Card>
@@ -2165,12 +2165,22 @@ function formatAuthorityLabel(value?: string): string {
   return value.replaceAll("_", " ");
 }
 
+function formatRuntimeEnvironment(value: string): string {
+  if (value === "paper") {
+    return "Paper Gateway";
+  }
+  if (value === "live") {
+    return "Live disabled";
+  }
+  return `${value.replaceAll("_", " ")} Gateway`;
+}
+
 function formatGatewayEnvironment(value: string): string {
   if (value === "testnet") {
-    return "Testnet gateway";
+    return "Test injection";
   }
   if (value === "mainnet") {
-    return "Mainnet gateway";
+    return "Production public";
   }
   if (value === "unbound") {
     return "Gateway locked";
@@ -2840,18 +2850,37 @@ export function TradingGatewayEnvironmentSection({
   return (
     <InfoSection
       title="Trading gateway environment"
-      summary={`${environment.exchange_environment} / ${environment.configuration_status}`}
+      summary={`${environment.runtime_environment} / ${environment.configuration_status}`}
       badge={environment.configuration_status}
     >
       <Field
+        label="Runtime binding"
+        value={`${environment.runtime_environment} / ${environment.runtime_environment_source}`}
+      />
+      <Field
         label="Exchange binding"
-        value={`${environment.exchange_environment} / ${environment.exchange_environment_source}`}
+        value={`${formatGatewayEnvironment(environment.exchange_environment)} / ${environment.exchange_environment_source}`}
       />
       <Field
         label="Configuration"
         value={`${environment.configuration_status} / ${environment.configuration_reason}`}
       />
       <Field label="REST base URL" value={environment.rest_base_url ?? "not_configured"} />
+      <Field
+        label="Paper binding"
+        value={[
+          environment.runtime_bindings.paper.market_data_source,
+          environment.runtime_bindings.paper.rest_base_url,
+          environment.runtime_bindings.paper.account_provider,
+          environment.runtime_bindings.paper.executor,
+          environment.runtime_bindings.paper.ledger,
+          environment.runtime_bindings.paper.authority_status
+        ].join(" / ")}
+      />
+      <Field
+        label="Live binding"
+        value={`${environment.runtime_bindings.live.status} / ${environment.runtime_bindings.live.disabled_reason}`}
+      />
       <Field label="Credential scope" value={environment.credential_scope} />
       <Field
         label="Credentials configured"

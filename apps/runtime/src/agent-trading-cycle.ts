@@ -12,9 +12,13 @@ import type {
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { LocalStore } from "@ouroboros/local-store";
-import { recordPaperExecutionResult } from "./paper-execution";
 import { safeId } from "./safe-id";
-import { validatePaperGatewayOrderRequest } from "./trading-gateway-validation";
+import {
+  createGatewayRuntimeBinding,
+  executeGatewayOrderRequest,
+  startPaperTradingApiProvider,
+  type GatewayRuntimeBinding
+} from "./trading-gateway-runtime-binding";
 import {
   HostTradingArtifactRunner,
   readTradingSystemManifest
@@ -22,10 +26,6 @@ import {
 import {
   FixtureTradingResearchAgentAdapter
 } from "./trading-research/agent-adapters";
-import {
-  defaultReplayTradingScenario,
-  startReplayTradingApiProvider
-} from "./trading-research/replay-trading-api-provider";
 import {
   runTradingResearchLoop
 } from "./trading-research/run-trading-research";
@@ -47,6 +47,7 @@ export interface RunAgentTradingCycleInput {
   sourceSystemId: string;
   sourceCandidateVersionId: string;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
+  gatewayRuntimeBinding?: GatewayRuntimeBinding;
   agentAdapter?: TradingResearchAgentAdapter;
   iterations?: number;
   repoRoot?: string;
@@ -113,6 +114,9 @@ export async function runAgentTradingCycle(
     safeId(input.sourceCandidateVersionId)
   ].join("-");
   const runRoot = path.join(input.store.root(), "agent-cycle-runs", sessionId);
+  const gatewayRuntimeBinding = input.gatewayRuntimeBinding ?? createGatewayRuntimeBinding({
+    environment: "paper"
+  });
   const artifactSourceDir = await sourceResearchArtifactDir({
     store: input.store,
     sourceSystemId: input.sourceSystemId,
@@ -148,9 +152,10 @@ export async function runAgentTradingCycle(
   const paperRun = await runPaperArtifact({
     artifactDir,
     outputDir: path.join(runRoot, "paper"),
-    manifestEntrypoint: manifest.entrypoint
+    manifestEntrypoint: manifest.entrypoint,
+    gatewayRuntimeBinding
   });
-  const paperLedger = paperLedgerResultFromRun(paperRun);
+  const paperLedger = await paperLedgerResultFromRun(paperRun, gatewayRuntimeBinding);
   const sourceTradingSystem = await input.store.getCandidate(input.sourceSystemId);
   const materialization = await input.store.materializeCandidate(materializationInput({
     sourceSystemId: input.sourceSystemId,
@@ -336,8 +341,12 @@ async function runPaperArtifact(input: {
   artifactDir: string;
   outputDir: string;
   manifestEntrypoint: string[];
+  gatewayRuntimeBinding: GatewayRuntimeBinding;
 }): Promise<ArtifactRunResult> {
-  const provider = await startReplayTradingApiProvider(defaultReplayTradingScenario);
+  const provider = await startPaperTradingApiProvider(input.gatewayRuntimeBinding).catch((error) => {
+    const reason = error instanceof Error ? error.message : "binance_public_market_unavailable";
+    throw new Error(`binance_public_market_snapshot_unavailable:${reason}`);
+  });
   try {
     return await new HostTradingArtifactRunner().run({
       artifact_dir: input.artifactDir,
@@ -498,7 +507,10 @@ function materializationInput(input: {
 
 type PaperLedgerResult = Pick<LedgerInput, "intent" | "gateway_result" | "execution_result">;
 
-function paperLedgerResultFromRun(run: ArtifactRunResult): PaperLedgerResult {
+async function paperLedgerResultFromRun(
+  run: ArtifactRunResult,
+  gatewayRuntimeBinding: GatewayRuntimeBinding
+): Promise<PaperLedgerResult> {
   const orderRequest = latestEvent<OrderRequest>(run.events, "order_request");
   if (!orderRequest) {
     throw new Error("agent_trading_cycle_missing_order_request");
@@ -509,22 +521,17 @@ function paperLedgerResultFromRun(run: ArtifactRunResult): PaperLedgerResult {
   const orderType = orderRequest.order_type === "market" || orderRequest.order_type === "limit"
     ? orderRequest.order_type
     : undefined;
-  const intent = {
+  const gatewayExecution = await executeGatewayOrderRequest(gatewayRuntimeBinding, {
     intent_kind: "place_order" as const,
     symbol: orderRequest.symbol,
     side,
     order_type: orderType,
     quantity: decimalString(orderRequest.quantity)
-  };
-  const gatewayResult = validatePaperGatewayOrderRequest(intent);
-  if (gatewayResult.decision_outcome === "rejected") {
+  });
+  if (gatewayExecution.gateway_result.decision_outcome === "rejected") {
     throw new Error("agent_trading_cycle_rejected_paper_order_request");
   }
-  return {
-    intent,
-    gateway_result: gatewayResult,
-    execution_result: recordPaperExecutionResult(gatewayResult)
-  };
+  return gatewayExecution;
 }
 
 function ledgerInputFromPaperResult(input: {

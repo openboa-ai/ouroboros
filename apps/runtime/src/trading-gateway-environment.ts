@@ -7,6 +7,7 @@ type EnvSource = Record<string, string | undefined>;
 
 export const BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL = "https://fapi.binance.com";
 export const BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL = "https://demo-fapi.binance.com";
+const LIVE_GATEWAY_DISABLED_REASON = "live_gateway_not_enabled_in_mlp";
 
 export const TRADING_GATEWAY_ENV_VAR_NAMES = {
   rest_base_url: "OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL",
@@ -17,7 +18,8 @@ export const TRADING_GATEWAY_ENV_VAR_NAMES = {
 export function loadTradingGatewayEnvironment(
   env: EnvSource = process.env
 ): TradingGatewayEnvironmentReadModel {
-  const restBaseUrl = envValue(env[TRADING_GATEWAY_ENV_VAR_NAMES.rest_base_url]);
+  const configuredRestBaseUrl = envValue(env[TRADING_GATEWAY_ENV_VAR_NAMES.rest_base_url]);
+  const restBaseUrl = null;
   const apiKeyConfigured = envValuePresent(env[TRADING_GATEWAY_ENV_VAR_NAMES.api_key]);
   const apiSecretConfigured = envValuePresent(env[TRADING_GATEWAY_ENV_VAR_NAMES.api_secret]);
   const credentialsPresent = apiKeyConfigured || apiSecretConfigured;
@@ -28,52 +30,72 @@ export function loadTradingGatewayEnvironment(
     venue: "binance_usd_m_futures",
     instrument: "BTCUSDT",
     product_category: "perpetual_futures",
-    exchange_environment: classifyExchangeEnvironment(restBaseUrl),
-    exchange_environment_source: "environment_variables",
+    runtime_environment: "paper",
+    runtime_environment_source: "mlp_policy",
+    exchange_environment: "unbound",
+    exchange_environment_source: "runtime_binding_policy",
     rest_base_url: restBaseUrl,
-    credential_scope: credentialsComplete ? "runtime_selected" : "none",
+    credential_scope: "none",
     credential_source: credentialsPresent ? "environment_variables" : "not_required",
     api_key_configured: apiKeyConfigured,
     api_secret_configured: apiSecretConfigured,
     configuration_status: configurationStatus({
-      restBaseUrl,
       apiKeyConfigured,
       apiSecretConfigured,
       credentialsPresent,
       credentialsComplete
     }),
     configuration_reason: configurationReason({
-      restBaseUrl,
       apiKeyConfigured,
       apiSecretConfigured,
-      credentialsPresent,
       credentialsComplete
     }),
     authority_status: "not_live",
     live_exchange_authority: false,
     order_submission_authority: false,
+    live_disabled_reason: LIVE_GATEWAY_DISABLED_REASON,
+    runtime_bindings: {
+      paper: {
+        status: "enabled",
+        market_data_source: "binance_production_public_rest",
+        rest_base_url: BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL,
+        account_provider: "fake_paper_account",
+        executor: "fake_paper_order_executor",
+        ledger: "fake_ledger",
+        live_exchange_authority: false,
+        order_submission_authority: false,
+        authority_status: "dry_run_only"
+      },
+      live: {
+        status: "disabled",
+        disabled_reason: LIVE_GATEWAY_DISABLED_REASON,
+        market_data_source: "binance_production_public_rest",
+        rest_base_url: BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL,
+        account_provider: "live_account",
+        executor: "live_order_executor",
+        ledger: "ledger",
+        live_exchange_authority: false,
+        order_submission_authority: false,
+        authority_status: "not_live"
+      }
+    },
     env_var_names: TRADING_GATEWAY_ENV_VAR_NAMES,
-    warnings: exchangeEnvironmentWarnings(restBaseUrl)
+    warnings: exchangeEnvironmentWarnings(configuredRestBaseUrl)
   };
 }
 
 function configurationStatus({
-  restBaseUrl,
   apiKeyConfigured,
   apiSecretConfigured,
   credentialsPresent,
   credentialsComplete
 }: {
-  restBaseUrl: string | null;
   apiKeyConfigured: boolean;
   apiSecretConfigured: boolean;
   credentialsPresent: boolean;
   credentialsComplete: boolean;
 }): TradingGatewayEnvironmentReadModel["configuration_status"] {
   if ((apiKeyConfigured && !apiSecretConfigured) || (!apiKeyConfigured && apiSecretConfigured)) {
-    return "blocked";
-  }
-  if (credentialsComplete && !restBaseUrl) {
     return "blocked";
   }
   if (credentialsPresent && !credentialsComplete) {
@@ -83,16 +105,12 @@ function configurationStatus({
 }
 
 function configurationReason({
-  restBaseUrl,
   apiKeyConfigured,
   apiSecretConfigured,
-  credentialsPresent,
   credentialsComplete
 }: {
-  restBaseUrl: string | null;
   apiKeyConfigured: boolean;
   apiSecretConfigured: boolean;
-  credentialsPresent: boolean;
   credentialsComplete: boolean;
 }): string {
   if (apiKeyConfigured && !apiSecretConfigured) {
@@ -101,16 +119,10 @@ function configurationReason({
   if (!apiKeyConfigured && apiSecretConfigured) {
     return "api_key_missing";
   }
-  if (credentialsComplete && !restBaseUrl) {
-    return "rest_base_url_missing";
+  if (credentialsComplete) {
+    return "credentials_configured_but_not_used_by_paper_runtime";
   }
-  if (restBaseUrl && credentialsComplete) {
-    return "rest_base_url_and_credentials_configured_for_runtime_selected_exchange_binding";
-  }
-  if (restBaseUrl) {
-    return "rest_base_url_configured_without_credentials";
-  }
-  return "exchange_binding_not_configured_until_gateway_uses_binance";
+  return "paper_runtime_uses_production_public_market_data";
 }
 
 function classifyExchangeEnvironment(restBaseUrl: string | null): TradingGatewayExchangeEnvironment {
@@ -126,10 +138,15 @@ function classifyExchangeEnvironment(restBaseUrl: string | null): TradingGateway
   return "custom";
 }
 
-function exchangeEnvironmentWarnings(restBaseUrl: string | null): string[] {
-  return restBaseUrl && classifyExchangeEnvironment(restBaseUrl) === "custom"
-    ? ["custom_rest_base_url"]
-    : [];
+function exchangeEnvironmentWarnings(configuredRestBaseUrl: string | null): string[] {
+  const warnings: string[] = [];
+  if (configuredRestBaseUrl && configuredRestBaseUrl !== BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL) {
+    warnings.push("rest_base_url_ignored_for_paper_runtime");
+  }
+  if (configuredRestBaseUrl && classifyExchangeEnvironment(configuredRestBaseUrl) === "custom") {
+    warnings.push("custom_rest_base_url");
+  }
+  return warnings;
 }
 
 function envValue(value: string | undefined): string | null {

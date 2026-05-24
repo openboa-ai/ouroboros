@@ -4,6 +4,7 @@ import {
   DerivativesTradingUsdsFutures
 } from "@binance/derivatives-trading-usds-futures";
 import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
+import type { MarketSnapshot } from "../trading-research/types";
 
 export interface BinanceRestResponse<T> {
   data(): Promise<T>;
@@ -15,6 +16,12 @@ export interface BinancePublicMarketLivenessClient {
     requestParameters?: { symbol?: string }
   ): Promise<BinanceRestResponse<BinanceMarkPricePayload | BinanceMarkPricePayload[]>>;
   checkServerTime(): Promise<BinanceRestResponse<BinanceServerTimePayload>>;
+}
+
+export interface BinancePublicMarketDataClient extends BinancePublicMarketLivenessClient {
+  klineCandlestickData(
+    requestParameters: { symbol: "BTCUSDT"; interval: "1m"; limit: 30 }
+  ): Promise<BinanceRestResponse<BinanceKlineCandlestickPayload>>;
 }
 
 export interface BinancePublicMarketAdapterOptions {
@@ -78,6 +85,10 @@ interface BinanceMarkPricePayload {
 interface BinanceServerTimePayload {
   serverTime?: number | bigint;
 }
+
+type BinanceKlineCandlestickPayload = BinanceKlineCandlestickItem[];
+
+type BinanceKlineCandlestickItem = Array<number | string>;
 
 const binanceUsdsFuturesConnectorTransport = {
   transport_kind: "official_binance_connector",
@@ -173,6 +184,55 @@ export async function readBinanceBtcUsdtPublicMarketLivenessSurface({
   };
 }
 
+export async function readBinanceBtcUsdtMarketSnapshot({
+  client,
+  observedAt
+}: {
+  client: BinancePublicMarketDataClient;
+  observedAt?: string;
+}): Promise<MarketSnapshot> {
+  const serverTime = await client.checkServerTime().then((response) => response.data());
+  const exchangeInfo = await client.exchangeInformation().then((response) => response.data());
+  const markPricePayload = await client.markPrice({ symbol: "BTCUSDT" }).then((response) => response.data());
+  const klinePayload = await client.klineCandlestickData({
+    symbol: "BTCUSDT",
+    interval: "1m",
+    limit: 30
+  }).then((response) => response.data());
+
+  const symbol = exchangeInfo.symbols?.find((candidate) => candidate.symbol === "BTCUSDT");
+  if (!symbol) {
+    throw new Error("Binance exchangeInformation response did not include BTCUSDT.");
+  }
+
+  const markPrice = normalizeMarkPricePayload(markPricePayload);
+  const closes = klinePayload
+    .map((item) => decimalNumber(item[4]))
+    .filter((value) => Number.isFinite(value));
+  if (closes.length < 2) {
+    throw new Error("Binance BTCUSDT kline response did not include enough close prices.");
+  }
+
+  const fastAverage = average(closes.slice(-Math.min(5, closes.length)));
+  const slowAverage = average(closes);
+  const observedEpochMs = observedAt
+    ? Date.parse(observedAt)
+    : requiredEpochMs(serverTime.serverTime ?? markPrice.time ?? exchangeInfo.serverTime, "server time");
+  if (!Number.isFinite(observedEpochMs)) {
+    throw new Error(`Invalid observedAt timestamp: ${observedAt}`);
+  }
+
+  return {
+    symbol: "BTCUSDT",
+    price: decimalNumber(requiredString(markPrice.markPrice, "mark price")),
+    moving_average_fast: roundMarketNumber(fastAverage),
+    moving_average_slow: roundMarketNumber(slowAverage),
+    volatility: roundMarketNumber(closeVolatility(closes)),
+    expected_direction: expectedDirection(fastAverage, slowAverage),
+    observed_at: epochMsToIso(observedEpochMs)
+  };
+}
+
 function normalizeMarkPricePayload(
   payload: BinanceMarkPricePayload | BinanceMarkPricePayload[]
 ): BinanceMarkPricePayload {
@@ -219,4 +279,48 @@ function requiredEpochMs(value: number | bigint | undefined, fieldName: string):
 
 function epochMsToIso(epochMs: number): string {
   return new Date(epochMs).toISOString();
+}
+
+function decimalNumber(value: number | string | undefined): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return Number(value);
+  }
+  return Number.NaN;
+}
+
+function average(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function closeVolatility(closes: number[]): number {
+  const returns = closes.slice(1).map((close, index) => {
+    const previous = closes[index];
+    return previous > 0 ? (close - previous) / previous : 0;
+  });
+  if (returns.length === 0) {
+    return 0;
+  }
+  const mean = average(returns);
+  return Math.sqrt(average(returns.map((value) => (value - mean) ** 2)));
+}
+
+function expectedDirection(
+  fastAverage: number,
+  slowAverage: number
+): MarketSnapshot["expected_direction"] {
+  const threshold = Math.max(1, slowAverage * 0.00005);
+  if (fastAverage > slowAverage + threshold) {
+    return "long";
+  }
+  if (fastAverage < slowAverage - threshold) {
+    return "short";
+  }
+  return "flat";
+}
+
+function roundMarketNumber(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
