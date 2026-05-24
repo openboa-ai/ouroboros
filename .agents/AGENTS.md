@@ -8,6 +8,21 @@ Skills live under [skills/](skills/) and are loaded only when the task calls for
 
 Keep three layers distinct: project truth, repo workflow, and skills. Use [skills/AGENTS.md](skills/AGENTS.md) as the routing registry.
 
+## Codex Capability Routing
+
+Treat always-on instructions, skills, plugins, subagents, hooks, and shell tools as separate
+capabilities:
+
+- Always-on instructions define durable repo-work policy.
+- Skills define small reusable workflows and load only when the task matches.
+- Plugins expose external apps, MCP servers, and workflow bundles; they do not own maintained truth.
+- Subagents are explicit read-heavy helpers for exploration or review, not autonomous owners.
+- Hooks are safety checks around tool use; final evidence still comes from validation and review.
+
+Route through the smallest capability that can produce the required evidence. Prefer read-only
+subagents for parallel discovery and review. Keep implementation ownership in the main worker
+unless a task explicitly delegates a bounded patch.
+
 ## Project Truth First Rule
 
 Default read order: root `AGENTS.md`, `README.md`, `LINEAR.md` if present, active issue/PR/project document references, nearest maintained repo docs needed for the task, then external references only when maintained sources are missing or stale.
