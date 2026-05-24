@@ -22,6 +22,28 @@ export interface BinancePublicMarketAdapterOptions {
   observedAt?: string;
 }
 
+export interface BinancePublicMarketSdkAdapterOptions {
+  restBaseUrl: string;
+  client?: BinancePublicMarketLivenessClient;
+}
+
+export class BinancePublicMarketSdkAdapter {
+  private readonly client: BinancePublicMarketLivenessClient;
+
+  constructor(options: BinancePublicMarketSdkAdapterOptions) {
+    this.client = options.client ?? createOfficialBinanceUsdsFuturesPublicMarketClient(options.restBaseUrl);
+  }
+
+  readBtcUsdtPublicMarketLivenessSurface(
+    observedAt = new Date().toISOString()
+  ): Promise<PublicMarketLivenessSurfaceRecord> {
+    return readBinanceBtcUsdtPublicMarketLivenessSurface({
+      client: this.client,
+      observedAt
+    });
+  }
+}
+
 interface BinanceExchangeInformationPayload {
   serverTime?: number | bigint;
   symbols?: BinanceExchangeInformationSymbol[];

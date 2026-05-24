@@ -58,6 +58,10 @@ import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
 import type { TradingArtifactRunnerKind } from "./trading-research/types";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
+import {
+  BinancePublicMarketSdkAdapter,
+  type BinancePublicMarketLivenessClient
+} from "./trading-substrate/binance-public-market-adapter";
 import { safeId } from "./safe-id";
 
 export interface BuildServerOptions {
@@ -69,6 +73,7 @@ export interface BuildServerOptions {
   promotedCandidateRoot?: string;
   tradingGatewayEnv?: Record<string, string | undefined>;
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
+  binancePublicMarketClient?: BinancePublicMarketLivenessClient;
 }
 
 interface CreateEvaluationRunBody {
@@ -291,6 +296,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
     }
 
+    const refresh = await refreshBinancePublicMarketSurface({
+      store,
+      tradingGatewayEnvironment,
+      client: options.binancePublicMarketClient
+    });
     const surface = await store.getLatestPublicMarketLivenessSurface({
       venue: "binance_usd_m_futures",
       instrument: "BTCUSDT"
@@ -302,7 +312,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         instrument
       });
     }
-    return { surface };
+    return {
+      refresh_status: refresh.status,
+      refresh_reason: refresh.reason,
+      surface
+    };
   });
 
   server.get<{
@@ -461,6 +475,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.get<{ Params: { candidate_id: string } }>(
     "/api/candidates/:candidate_id",
     async (request, reply) => {
+      await refreshBinancePublicMarketSurface({
+        store,
+        tradingGatewayEnvironment,
+        client: options.binancePublicMarketClient
+      });
       const candidate = await getCandidateReadModel(
         store,
         request.params.candidate_id,
@@ -1665,6 +1684,35 @@ function startPaperOrderRequest(body: StartTradingRunBody | undefined): PaperOrd
     return body.paper_order_request;
   }
   return undefined;
+}
+
+async function refreshBinancePublicMarketSurface(input: {
+  store: LocalStore;
+  tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
+  client?: BinancePublicMarketLivenessClient;
+}): Promise<{ status: "recorded" | "skipped" | "failed"; reason?: string }> {
+  const restBaseUrl = input.tradingGatewayEnvironment.rest_base_url;
+  if (!restBaseUrl) {
+    return {
+      status: "skipped",
+      reason: "rest_base_url_not_configured"
+    };
+  }
+
+  const adapter = new BinancePublicMarketSdkAdapter({
+    restBaseUrl,
+    client: input.client
+  });
+  try {
+    const surface = await adapter.readBtcUsdtPublicMarketLivenessSurface();
+    await input.store.recordPublicMarketLivenessSurface(surface);
+    return { status: "recorded" };
+  } catch (error) {
+    return {
+      status: "failed",
+      reason: error instanceof Error ? error.message : "binance_public_market_refresh_failed"
+    };
+  }
 }
 
 function latestSandboxOrderRequest(
