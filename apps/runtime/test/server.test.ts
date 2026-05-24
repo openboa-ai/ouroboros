@@ -21,6 +21,7 @@ import type {
   TradingRunRecord
 } from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
+import { BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL } from "../src/trading-gateway-environment";
 import type {
   CandidateEvaluationRequest,
   CandidateGenerationProviderResult,
@@ -278,6 +279,148 @@ describe("runtime read-only API", () => {
           symbol_status: "TRADING",
           authority_status: "not_live"
         }
+      }
+    });
+
+    await server.close();
+  });
+
+  it("refreshes Binance BTCUSDT public market data through the SDK adapter when REST URL is configured", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      tradingGatewayEnv: {
+        OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL: BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL
+      },
+      binancePublicMarketClient: binancePublicMarketClient({
+        markPrice: "65123.45000000",
+        indexPrice: "65120.00000000",
+        fundingRate: "0.00020000",
+        observedServerTime: 1778889661000,
+        markTime: 1778889660000
+      })
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_public_market_liveness_surface: {
+          mark_price: "65123.45000000",
+          index_price: "65120.00000000",
+          funding_rate: "0.00020000",
+          freshness: "fresh",
+          liveness: "connected",
+          source_kind: "binance_market_data_rest",
+          fixture_backed: false,
+          simulated: false,
+          authority_status: "read_only"
+        }
+      }
+    });
+
+    const surface = await server.inject({
+      method: "GET",
+      url: `/api/trading-substrate/public-market/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
+    });
+    expect(surface.statusCode).toBe(200);
+    expect(surface.json()).toMatchObject({
+      refresh_status: "recorded",
+      surface: {
+        surface_label: "Binance BTCUSDT public_market_liveness",
+        mark_price: "65123.45000000",
+        source_kind: "binance_market_data_rest",
+        fixture_backed: false,
+        simulated: false,
+        authority_status: "read_only"
+      }
+    });
+
+    await server.close();
+  });
+
+  it("does not refresh Binance public market data for unknown candidate inspect", async () => {
+    let refreshCallCount = 0;
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      tradingGatewayEnv: {
+        OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL: BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL
+      },
+      binancePublicMarketClient: {
+        async exchangeInformation() {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
+        },
+        async markPrice(_request?: { symbol?: string }) {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
+        },
+        async checkServerTime() {
+          refreshCallCount += 1;
+          throw new Error("unexpected Binance public market refresh");
+        }
+      }
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: "/api/candidates/missing-candidate"
+    });
+    expect(detail.statusCode).toBe(404);
+    expect(detail.json()).toMatchObject({
+      error: "candidate_not_found",
+      candidate_id: "missing-candidate"
+    });
+    expect(refreshCallCount).toBe(0);
+
+    await server.close();
+  });
+
+  it("keeps candidate inspect available when Binance public market refresh fails", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs"),
+      tradingGatewayEnv: {
+        OUROBOROS_BINANCE_USDM_FUTURES_REST_BASE_URL: BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL
+      },
+      binancePublicMarketClient: failingBinancePublicMarketClient()
+    });
+
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      trading_substrate: {
+        latest_public_market_liveness_surface: {
+          source_kind: "fixture",
+          fixture_backed: true,
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    const surface = await server.inject({
+      method: "GET",
+      url: `/api/trading-substrate/public-market/latest?venue=${BINANCE_BTCUSDT_QUERY.venue}&instrument=${BINANCE_BTCUSDT_QUERY.instrument}`
+    });
+    expect(surface.statusCode).toBe(200);
+    expect(surface.json()).toMatchObject({
+      refresh_status: "failed",
+      refresh_reason: "binance public market unavailable",
+      surface: {
+        source_kind: "fixture",
+        fixture_backed: true
       }
     });
 
@@ -3066,6 +3209,74 @@ function digestArtifactFiles(files: Array<{ relativePath: string; content: strin
     hash.update("\0");
   }
   return `sha256:${hash.digest("hex")}`;
+}
+
+function binancePublicMarketClient(input: {
+  markPrice: string;
+  indexPrice: string;
+  fundingRate: string;
+  observedServerTime: number;
+  markTime: number;
+}) {
+  return {
+    async exchangeInformation() {
+      return sdkResponse({
+        serverTime: input.observedServerTime,
+        symbols: [
+          {
+            symbol: "BTCUSDT",
+            contractType: "PERPETUAL",
+            status: "TRADING",
+            filters: [
+              { filterType: "PRICE_FILTER", tickSize: "0.10" },
+              { filterType: "LOT_SIZE", minQty: "0.001", stepSize: "0.001" },
+              { filterType: "MIN_NOTIONAL", notional: "100" }
+            ]
+          }
+        ]
+      });
+    },
+    async markPrice(request: { symbol?: string }) {
+      expect(request).toEqual({ symbol: "BTCUSDT" });
+      return sdkResponse({
+        symbol: "BTCUSDT",
+        markPrice: input.markPrice,
+        indexPrice: input.indexPrice,
+        estimatedSettlePrice: input.indexPrice,
+        lastFundingRate: input.fundingRate,
+        interestRate: "0.00010000",
+        nextFundingTime: 1778918400000,
+        time: input.markTime
+      });
+    },
+    async checkServerTime() {
+      return sdkResponse({
+        serverTime: input.observedServerTime
+      });
+    }
+  };
+}
+
+function sdkResponse<T>(payload: T) {
+  return {
+    async data() {
+      return payload;
+    }
+  };
+}
+
+function failingBinancePublicMarketClient() {
+  return {
+    async exchangeInformation() {
+      throw new Error("binance public market unavailable");
+    },
+    async markPrice() {
+      throw new Error("binance public market unavailable");
+    },
+    async checkServerTime() {
+      throw new Error("binance public market unavailable");
+    }
+  };
 }
 
 async function writeReplayRunRecord(
