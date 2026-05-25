@@ -1,5 +1,6 @@
 import type {
   ImprovementReadModel,
+  CandidateArenaReadModel,
   LedgerInput,
   LedgerReadModel,
   LedgerWriteOutcome,
@@ -94,6 +95,41 @@ export async function fetchTradingResearchRuntime(): Promise<TradingResearchRunt
   }
   const body = (await response.json()) as { trading_research_runtime: TradingResearchRuntimeReadModel };
   return body.trading_research_runtime;
+}
+
+export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidate-arena`);
+  if (!response.ok) {
+    throw new Error(`Failed to load Candidate Arena: ${response.status}`);
+  }
+  const body = (await response.json()) as { candidate_arena: CandidateArenaReadModel };
+  return body.candidate_arena;
+}
+
+export async function startCandidateArena(): Promise<CandidateArenaReadModel> {
+  return candidateArenaCommand("start");
+}
+
+export async function stopCandidateArena(): Promise<CandidateArenaReadModel> {
+  return candidateArenaCommand("stop");
+}
+
+export async function tickCandidateArena(): Promise<CandidateArenaReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidate-arena/tick`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`Failed to tick Candidate Arena: ${response.status}`);
+  }
+  const body = (await response.json()) as { arena: CandidateArenaReadModel };
+  return body.arena;
+}
+
+async function candidateArenaCommand(command: "start" | "stop"): Promise<CandidateArenaReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/candidate-arena/${command}`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`Failed to ${command} Candidate Arena: ${response.status}`);
+  }
+  const body = (await response.json()) as { candidate_arena: CandidateArenaReadModel };
+  return body.candidate_arena;
 }
 
 export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {

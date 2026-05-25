@@ -78,6 +78,7 @@ import type {
   CandidateIndexProjection,
   CandidateEvaluationErrorState,
   CandidateEvaluationReadModel,
+  CandidateArenaTickRecord,
   LedgerInput,
   LedgerSourceChainReadModel,
   LedgerSourceRecordsReadModel,
@@ -206,6 +207,7 @@ export type LocalStoreErrorCode =
   | "invalid_research_orchestration_run_input"
   | "invalid_experiment_run_input"
   | "invalid_trading_evaluation_result_input"
+  | "invalid_candidate_arena_tick_input"
   | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
   | "improvement_proposal_not_found"
@@ -283,6 +285,7 @@ type Collection =
   | "improvement-proposal-materialization-attempts"
   | "research-orchestration-runs"
   | "experiment-runs"
+  | "candidate-arena-ticks"
   | "trading-evaluation-results";
 
 interface FixtureItem {
@@ -1167,6 +1170,23 @@ export class LocalStore {
     return (await this.listResearchFindings()).filter(
       (finding) => finding.experiment_run_ref.id === researchExperimentId
     );
+  }
+
+  async recordCandidateArenaTick(tick: CandidateArenaTickRecord): Promise<CandidateArenaTickRecord> {
+    if (!isCandidateArenaTickRecord(tick)) {
+      throw new LocalStoreError(
+        "invalid_candidate_arena_tick_input",
+        "invalid Candidate Arena tick input",
+        { candidate_arena_tick_id: (tick as Partial<CandidateArenaTickRecord> | undefined)?.candidate_arena_tick_id }
+      );
+    }
+    await this.writeJson(this.itemPath("candidate-arena-ticks", tick.candidate_arena_tick_id), tick);
+    return tick;
+  }
+
+  async listCandidateArenaTicks(): Promise<CandidateArenaTickRecord[]> {
+    return (await this.readCollection<CandidateArenaTickRecord>("candidate-arena-ticks"))
+      .sort(compareCandidateArenaTicks);
   }
 
   async recordArtifactLineage(
@@ -4704,6 +4724,14 @@ function compareResearchFindings(a: ResearchFindingRecord, b: ResearchFindingRec
   return a.research_finding_id.localeCompare(b.research_finding_id);
 }
 
+function compareCandidateArenaTicks(a: CandidateArenaTickRecord, b: CandidateArenaTickRecord): number {
+  const timeCompare = b.completed_at.localeCompare(a.completed_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return b.candidate_arena_tick_id.localeCompare(a.candidate_arena_tick_id);
+}
+
 function compareArtifactLineages(
   a: ArtifactLineageRecord,
   b: ArtifactLineageRecord
@@ -5027,6 +5055,8 @@ function buildFullCycleLineageReadModel(input: {
     evidence: {
       evaluation_status: persisted.evaluation.status,
       evaluation_score: persisted.evaluation.score,
+      ...(persisted.evaluation.profit_loss ? { profit_loss: persisted.evaluation.profit_loss } : {}),
+      ...(persisted.evaluation.direction_kind ? { direction_kind: persisted.evaluation.direction_kind } : {}),
       trading_run_id: input.runtime.trading_run_id,
       gateway_result_outcome: input.ledger.latest_gateway_result?.decision_outcome ?? "missing",
       ledger_chain_complete: input.ledger.chain_complete
@@ -5459,6 +5489,27 @@ function isResearchFindingRecord(value: unknown): value is ResearchFindingRecord
   );
 }
 
+function isCandidateArenaTickRecord(value: unknown): value is CandidateArenaTickRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<CandidateArenaTickRecord>;
+  return (
+    raw.record_kind === "candidate_arena_tick" &&
+    raw.version === 1 &&
+    nonEmpty(raw.candidate_arena_tick_id) &&
+    nonEmpty(raw.tick_id) &&
+    nonEmpty(raw.started_at) &&
+    nonEmpty(raw.completed_at) &&
+    isCandidateArenaTickStatus(raw.status) &&
+    Array.isArray(raw.created_candidate_refs) &&
+    raw.created_candidate_refs.every((item) => isRef(item, "trading_system_candidate")) &&
+    Array.isArray(raw.direction_results) &&
+    raw.direction_results.every(isCandidateArenaTickDirectionResult) &&
+    raw.authority_status === "not_live"
+  );
+}
+
 function isArtifactLineageRecord(value: unknown): value is ArtifactLineageRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -5632,6 +5683,58 @@ function isResearchOrchestrationRunStatus(value: unknown): boolean {
 
 function isExperimentRunStatus(value: unknown): boolean {
   return value === "submitted" || value === "evaluated" || value === "failed" || value === "discarded";
+}
+
+function isCandidateArenaTickStatus(value: unknown): boolean {
+  return value === "completed" || value === "completed_with_errors" || value === "failed";
+}
+
+function isCandidateArenaDirectionResultStatus(value: unknown): boolean {
+  return value === "created" || value === "failed";
+}
+
+function isCandidateArenaResearchDirection(value: unknown): boolean {
+  return (
+    value === "trend_following" ||
+    value === "mean_reversion" ||
+    value === "volatility_regime" ||
+    value === "funding_aware_risk" ||
+    value === "liquidation_aware_risk" ||
+    value === "execution_cost_robustness" ||
+    value === "other"
+  );
+}
+
+function isCandidateArenaTickDirectionResult(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as {
+    direction_kind?: unknown;
+    status?: unknown;
+    candidate_id?: unknown;
+    finding?: unknown;
+    error?: unknown;
+    net_revenue_usdt?: unknown;
+  };
+  const hasCandidateId = raw.candidate_id === undefined || nonEmpty(raw.candidate_id);
+  const hasFinding = raw.finding === undefined || nonEmpty(raw.finding);
+  const hasError = raw.error === undefined || nonEmpty(raw.error);
+  const hasNetRevenue = raw.net_revenue_usdt === undefined ||
+    (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
+  return (
+    isCandidateArenaResearchDirection(raw.direction_kind) &&
+    isCandidateArenaDirectionResultStatus(raw.status) &&
+    hasCandidateId &&
+    hasFinding &&
+    hasError &&
+    hasNetRevenue &&
+    (
+      raw.status === "created"
+        ? nonEmpty(raw.candidate_id)
+        : nonEmpty(raw.error)
+    )
+  );
 }
 
 function isTradingEvaluationResultStatus(value: unknown): boolean {

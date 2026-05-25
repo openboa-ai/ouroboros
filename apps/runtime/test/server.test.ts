@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, FIXTURE_SYSTEM_CODE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
+import { CandidateArenaRunner, buildCandidateArenaReadModel, runCandidateArenaTick } from "../src/candidate-arena";
 import {
   BINANCE_BTCUSDT_QUERY,
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
@@ -2248,6 +2249,185 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("creates and ranks Candidate Arena candidates by net revenue", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchRuntimeConfig: {
+        default_agent: "fixture",
+        available_agents: ["fixture"],
+        iterations: 1,
+        codex: {
+          command: "codex",
+          timeout_ms: 30_000,
+          reasoning_effort: "low"
+        }
+      }
+    });
+
+    const tick = await server.inject({
+      method: "POST",
+      url: "/api/candidate-arena/tick"
+    });
+    expect(tick.statusCode).toBe(201);
+    expect(tick.json()).toMatchObject({
+      status: "completed",
+      created_candidate_count: 5,
+      arena: {
+        arena_kind: "candidate_arena",
+        runner_status: "stopped",
+        tick_count: 1,
+        authority_status: "not_live"
+      }
+    });
+
+    const arena = tick.json().arena;
+    expect(arena.latest_ticks).toHaveLength(1);
+    expect(arena.latest_ticks[0]).toMatchObject({
+      tick_id: "tick-1",
+      status: "completed",
+      created_candidate_ids: expect.arrayContaining(arena.leaderboard.map(
+        (entry: { candidate_id: string }) => entry.candidate_id
+      )),
+      authority_status: "not_live"
+    });
+    expect(arena.active_researchers.map((researcher: { direction_kind: string }) => researcher.direction_kind)).toEqual([
+      "trend_following",
+      "mean_reversion",
+      "volatility_regime",
+      "funding_aware_risk",
+      "execution_cost_robustness"
+    ]);
+    expect(arena.leaderboard).toHaveLength(5);
+    expect(arena.leaderboard[0]).toMatchObject({
+      rank: 1,
+      status: "accepted",
+      profit_loss: {
+        net_revenue_usdt: expect.any(Number),
+        net_return_pct: expect.any(Number)
+      }
+    });
+    expect(arena.leaderboard[0].profit_loss.net_revenue_usdt)
+      .toBeGreaterThanOrEqual(arena.leaderboard.at(-1).profit_loss.net_revenue_usdt);
+    expect(arena.leaderboard.some((entry: { profit_loss: { net_revenue_usdt: number } }) =>
+      entry.profit_loss.net_revenue_usdt < 0
+    )).toBe(true);
+
+    const fetched = await server.inject({
+      method: "GET",
+      url: "/api/candidate-arena"
+    });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json().candidate_arena.leaderboard.map((entry: { rank: number }) => entry.rank))
+      .toEqual([1, 2, 3, 4, 5]);
+    expect(fetched.json().candidate_arena.latest_ticks[0]).toMatchObject({
+      tick_id: "tick-1",
+      status: "completed"
+    });
+
+    await server.close();
+  });
+
+  it("persists Candidate Arena tick history while keeping successful directions when one researcher fails", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    let factoryCalls = 0;
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following", "mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => {
+        factoryCalls += 1;
+        return factoryCalls === 2
+          ? new ThrowingTradingResearchAgentAdapter()
+          : new ScriptedCodexTradingResearchAgentAdapter();
+      }
+    }, "stopped", 1);
+
+    expect(outcome).toMatchObject({
+      status: "completed",
+      created_candidate_count: 1,
+      created_candidate_ids: [expect.any(String)],
+      arena: {
+        latest_ticks: [
+          {
+            status: "completed_with_errors",
+            created_candidate_ids: [expect.any(String)],
+            direction_results: [
+              {
+                direction_kind: "trend_following",
+                status: "created",
+                candidate_id: expect.any(String)
+              },
+              {
+                direction_kind: "mean_reversion",
+                status: "failed",
+                error: "fixture_direction_failed"
+              }
+            ],
+            authority_status: "not_live"
+          }
+        ]
+      }
+    });
+    expect(outcome.arena.leaderboard).toHaveLength(1);
+    expect(outcome.arena.active_researchers.find(
+      (researcher) => researcher.direction_kind === "mean_reversion"
+    )?.status).toBe("failed");
+
+    const reloadedStore = new LocalStore(tmpDir);
+    await reloadedStore.initialize();
+    const reloadedArena = await buildCandidateArenaReadModel(reloadedStore, "stopped", 0);
+    expect(reloadedArena.latest_ticks[0]).toMatchObject({
+      status: "completed_with_errors",
+      created_candidate_ids: outcome.created_candidate_ids
+    });
+  });
+
+  it("starts and stops one in-memory Candidate Arena runner idempotently", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const firstStart = await server.inject({ method: "POST", url: "/api/candidate-arena/start" });
+    const secondStart = await server.inject({ method: "POST", url: "/api/candidate-arena/start" });
+    const stop = await server.inject({ method: "POST", url: "/api/candidate-arena/stop" });
+
+    expect(firstStart.statusCode).toBe(202);
+    expect(secondStart.statusCode).toBe(202);
+    expect(secondStart.json()).toMatchObject({
+      status: "already_running",
+      candidate_arena: {
+        runner_status: "running"
+      }
+    });
+    expect(stop.statusCode).toBe(202);
+    expect(stop.json()).toMatchObject({
+      status: "stopped",
+      candidate_arena: {
+        runner_status: "stopped"
+      }
+    });
+
+    await server.close();
+  });
+
+  it("stops the Candidate Arena runner before the next scheduled tick", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const runner = new CandidateArenaRunner({
+      store,
+      researchAgent: "fixture",
+      agentFactory: () => new ScriptedFixtureTradingResearchAgentAdapter()
+    }, 5);
+
+    expect(runner.start()).toBe("started");
+    expect(runner.stop()).toBe("stopped");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(runner.status()).toBe("stopped");
+    expect(runner.ticks()).toBe(0);
+    expect(await store.listCandidateArenaTicks()).toHaveLength(0);
+  });
+
   it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),
@@ -3678,6 +3858,19 @@ class ScriptedCodexTradingResearchAgentAdapter implements TradingResearchAgentAd
       summary: "Scripted Codex agent set RISK_FRACTION to 0.02.",
       changed_paths: ["run.py"]
     };
+  }
+}
+
+class ThrowingTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
+  readonly agent = {
+    id: "managed-agent-codex-trading-research-throws",
+    provider: "codex" as const,
+    model: "throwing-test-model",
+    permission_policy: "artifact_workspace_only" as const
+  };
+
+  async improveArtifact(): Promise<AgentEditResult> {
+    throw new Error("fixture_direction_failed");
   }
 }
 

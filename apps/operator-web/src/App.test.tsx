@@ -11,6 +11,7 @@ import type {
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
   LedgerSourceRecordsReadModel,
+  CandidateArenaReadModel,
   RunControlReadModel,
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -30,6 +31,7 @@ import {
 } from "../../../test/support/binance-no-authority";
 import {
   badgeVariant,
+  CandidateArenaPanel,
   CandidateDetail,
   CandidateSummaryRow,
   isPositiveRiskDecision,
@@ -67,6 +69,43 @@ describe("operator status helpers", () => {
 });
 
 describe("CandidateDetail", () => {
+  it("renders Candidate Arena leaderboard around net revenue without fixture controls", () => {
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={fixtureCandidateArena}
+        selectedCandidateId="candidate-profitable"
+        selectedCandidate={arenaSelectedCandidate()}
+        onStart={() => undefined}
+        onStop={() => undefined}
+        onTick={() => undefined}
+        onSelectCandidate={() => undefined}
+        onRunPaperEvidence={() => undefined}
+        actionPending={false}
+        runningPaperEvidence={false}
+      />
+    );
+
+    expect(html).toContain("Candidate Arena");
+    expect(html).toContain("running");
+    expect(html).toContain("Net revenue");
+    expect(html).toContain("Net return");
+    expect(html).toContain("trend_following");
+    expect(html).toContain("9.83 USDT");
+    expect(html).toContain("0.0983%");
+    expect(html).toContain("Start");
+    expect(html).toContain("Stop");
+    expect(html).toContain("Selected candidate");
+    expect(html).toContain("SystemCode");
+    expect(html).toContain("Evaluation");
+    expect(html).toContain("profit_loss");
+    expect(html).toContain("Lineage");
+    expect(html).toContain("Run paper evidence");
+    expect(html).toContain("Latest ticks");
+    expect(html).toContain("completed");
+    expect(html).not.toContain("Fixture");
+    expect(html).not.toContain("Research iterations");
+  });
+
   it("renders fixture labels and inspect sections without action controls", () => {
     const html = renderToStaticMarkup(<CandidateDetail candidate={fixtureCandidate} />);
 
@@ -1173,12 +1212,18 @@ describe("CandidateDetail", () => {
       />
     );
     const detailsHtml = renderToStaticMarkup(
-      <CandidateDetail activeView="details" candidate={candidate} />
+      <CandidateDetail
+        activeView="details"
+        candidate={candidate}
+        onRunFullCycle={() => undefined}
+        fullCycleMessage="full cycle completed: running"
+      />
     );
 
     expect(tradingHtml).toContain("BTCUSDT operator cockpit");
     expect(tradingHtml).toContain("Recommended action");
-    expect(tradingHtml).toContain("Run next cycle");
+    expect(tradingHtml).not.toContain("Run next cycle");
+    expect(tradingHtml).not.toContain("Research iterations");
     expect(tradingHtml).toContain("Trading cockpit");
     expect(tradingHtml).toContain("BTCUSDT futures chart");
     expect(tradingHtml).toContain("My assets");
@@ -1190,7 +1235,7 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("GatewayResult");
     expect(tradingHtml).toContain("ExecutionResult");
     expect(tradingHtml).toContain("Safety boundary");
-    expect(tradingHtml).toContain("full cycle completed: running");
+    expect(tradingHtml).not.toContain("full cycle completed: running");
     expect(tradingHtml).not.toContain("Research cycle");
 
     expect(researchHtml).toContain("Research");
@@ -1216,6 +1261,9 @@ describe("CandidateDetail", () => {
     expect(researchHtml).not.toContain("Trading cockpit");
 
     expect(detailsHtml).toContain("Details");
+    expect(detailsHtml).toContain("Full-cycle compatibility");
+    expect(detailsHtml).toContain("Run next cycle");
+    expect(detailsHtml).toContain("full cycle completed: running");
     expect(detailsHtml).toContain("Gateway");
     expect(detailsHtml).toContain("Trading System");
     expect(detailsHtml).toContain("System Code");
@@ -1231,13 +1279,13 @@ describe("CandidateDetail", () => {
     });
   });
 
-  it("renders Codex researcher selection for full-cycle operator runs", () => {
+  it("renders Codex researcher selection in full-cycle developer controls", () => {
     const candidate = {
       ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
     };
     const html = renderToStaticMarkup(
       <CandidateDetail
-        activeView="trading"
+        activeView="details"
         candidate={candidate}
         onRunFullCycle={() => undefined}
         tradingResearchRuntime={tradingResearchRuntimeFixture({
@@ -1257,13 +1305,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Run next cycle");
   });
 
-  it("disables full-cycle action when selected Codex researcher is unavailable", () => {
+  it("disables full-cycle developer action when selected Codex researcher is unavailable", () => {
     const candidate = {
       ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
     };
     const html = renderToStaticMarkup(
       <CandidateDetail
-        activeView="trading"
+        activeView="details"
         candidate={candidate}
         onRunFullCycle={() => undefined}
         tradingResearchRuntime={tradingResearchRuntimeFixture({
@@ -2841,6 +2889,101 @@ function tradingExecutionModes(): TradingSystemExecutionModeContractReadModel[] 
       forbidden_artifact_capabilities: forbiddenArtifactCapabilities
     }
   ];
+}
+
+const fixtureCandidateArena: CandidateArenaReadModel = {
+  arena_kind: "candidate_arena",
+  runner_status: "running",
+  tick_count: 1,
+  authority_status: "not_live",
+  active_researchers: [
+    {
+      researcher_id: "research-worker-trend-following",
+      direction_kind: "trend_following",
+      status: "active",
+      authority_status: "research_only"
+    }
+  ],
+  leaderboard: [
+    {
+      rank: 1,
+      candidate_id: "candidate-profitable",
+      display_name: "Arena trend Trading System",
+      direction_kind: "trend_following",
+      parent_candidate_id: "fixture-candidate-sealed-replay-001",
+      status: "accepted",
+      profit_loss: {
+        revenue_usdt: 10,
+        cost_usdt: 0.17,
+        net_revenue_usdt: 9.83,
+        net_return_pct: 0.0983
+      },
+      latest_finding: "Positive net revenue after costs.",
+      authority_status: "not_live"
+    }
+  ],
+  latest_candidates: [
+    {
+      candidate_id: "candidate-profitable",
+      display_name: "Arena trend Trading System",
+      direction_kind: "trend_following",
+      net_revenue_usdt: 9.83,
+      authority_status: "not_live"
+    }
+  ],
+  latest_ticks: [
+    {
+      tick_id: "tick-1",
+      started_at: "2026-05-24T00:00:00.000Z",
+      completed_at: "2026-05-24T00:00:01.000Z",
+      status: "completed",
+      created_candidate_ids: ["candidate-profitable"],
+      direction_results: [
+        {
+          direction_kind: "trend_following",
+          status: "created",
+          candidate_id: "candidate-profitable",
+          finding: "Positive net revenue after costs.",
+          net_revenue_usdt: 9.83
+        }
+      ],
+      authority_status: "not_live"
+    }
+  ],
+  live_disabled: true
+};
+
+function arenaSelectedCandidate(): CandidateInspectReadModel {
+  const candidate = candidateWithAgentCycleMaterialization(fixtureCandidate);
+  return {
+    ...candidate,
+    candidate_id: "candidate-profitable",
+    display_name: "Arena trend Trading System",
+    full_cycle_lineage: candidate.full_cycle_lineage
+      ? {
+          ...candidate.full_cycle_lineage,
+          generated: {
+            system_code_ref: { record_kind: "system_code", id: "system-code-arena-profitable" },
+            artifact_digest: "sha256:arena-profitable",
+            generated_by_agent: true
+          },
+          evidence: candidate.full_cycle_lineage.evidence
+            ? {
+                ...candidate.full_cycle_lineage.evidence,
+                evaluation_status: "accepted",
+                evaluation_score: 1,
+                profit_loss: {
+                  revenue_usdt: 10,
+                  cost_usdt: 0.17,
+                  net_revenue_usdt: 9.83,
+                  net_return_pct: 0.0983
+                },
+                direction_kind: "trend_following"
+              }
+            : undefined
+        }
+      : undefined
+  };
 }
 
 const fixtureCandidate: CandidateInspectReadModel = {

@@ -26,6 +26,12 @@ export const defaultReplayTradingScenario: ReplayTradingScenario = {
     max_position_notional: 350,
     max_risk_fraction: 0.03,
     target_risk_fraction: 0.02
+  },
+  outcome: {
+    exit_price: 60_900,
+    fee_bps: 4,
+    slippage_bps: 3,
+    funding_bps: 1
   }
 };
 
@@ -48,6 +54,12 @@ export const defaultReplayTradingScenarioSet: ReplayTradingScenario[] = [
       max_position_notional: 350,
       max_risk_fraction: 0.03,
       target_risk_fraction: 0
+    },
+    outcome: {
+      exit_price: 60_100,
+      fee_bps: 4,
+      slippage_bps: 3,
+      funding_bps: 1
     }
   }
 ];

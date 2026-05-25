@@ -145,7 +145,11 @@ export type ResearchDirectionKind =
   | "execution_cost_robustness"
   | "other";
 
-export type ResearchWorkerStatus = "active" | "retired";
+export type ResearchWorkerStatus = "active" | "failed" | "retired";
+
+export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "failed";
+
+export type CandidateArenaDirectionResultStatus = "created" | "failed";
 
 export type ExperimentRunStatus =
   | "submitted"
@@ -1472,6 +1476,13 @@ export interface TradingEvaluationScoreSummary {
   complexity_penalty: number;
 }
 
+export interface TradingProfitLossReadModel {
+  revenue_usdt: number;
+  cost_usdt: number;
+  net_revenue_usdt: number;
+  net_return_pct: number;
+}
+
 export interface TradingEvaluationResultRecord extends BaseRecord {
   record_kind: "trading_evaluation_result";
   trading_evaluation_result_id: string;
@@ -2218,7 +2229,79 @@ export interface CandidateMaterializationFullCycleLineageInput {
   evaluation: {
     status: string;
     score: number;
+    profit_loss?: TradingProfitLossReadModel;
+    direction_kind?: ResearchDirectionKind;
   };
+}
+
+export interface CandidateArenaResearcherReadModel {
+  researcher_id: string;
+  direction_kind: ResearchDirectionKind;
+  status: ResearchWorkerStatus;
+  authority_status: "research_only";
+}
+
+export interface CandidateArenaLeaderboardEntryReadModel {
+  rank: number;
+  candidate_id: string;
+  display_name: string;
+  direction_kind: ResearchDirectionKind;
+  parent_candidate_id?: string;
+  status: TradingEvaluationResultStatus;
+  profit_loss: TradingProfitLossReadModel;
+  latest_finding: string;
+  authority_status: "not_live";
+}
+
+export interface CandidateArenaLatestCandidateReadModel {
+  candidate_id: string;
+  display_name: string;
+  direction_kind: ResearchDirectionKind;
+  net_revenue_usdt: number;
+  authority_status: "not_live";
+}
+
+export interface CandidateArenaTickDirectionResultReadModel {
+  direction_kind: ResearchDirectionKind;
+  status: CandidateArenaDirectionResultStatus;
+  candidate_id?: string;
+  finding?: string;
+  error?: string;
+  net_revenue_usdt?: number;
+}
+
+export interface CandidateArenaTickReadModel {
+  tick_id: string;
+  started_at: string;
+  completed_at: string;
+  status: CandidateArenaTickStatus;
+  created_candidate_ids: string[];
+  direction_results: CandidateArenaTickDirectionResultReadModel[];
+  authority_status: "not_live";
+}
+
+export interface CandidateArenaTickRecord extends BaseRecord {
+  record_kind: "candidate_arena_tick";
+  candidate_arena_tick_id: string;
+  tick_id: string;
+  started_at: string;
+  completed_at: string;
+  status: CandidateArenaTickStatus;
+  created_candidate_refs: Ref[];
+  direction_results: CandidateArenaTickDirectionResultReadModel[];
+  authority_status: "not_live";
+}
+
+export interface CandidateArenaReadModel {
+  arena_kind: "candidate_arena";
+  runner_status: "running" | "stopped";
+  tick_count: number;
+  active_researchers: CandidateArenaResearcherReadModel[];
+  leaderboard: CandidateArenaLeaderboardEntryReadModel[];
+  latest_candidates: CandidateArenaLatestCandidateReadModel[];
+  latest_ticks: CandidateArenaTickReadModel[];
+  live_disabled: true;
+  authority_status: "not_live";
 }
 
 export interface CandidateMaterializationFailureInput {
@@ -2267,6 +2350,7 @@ export type FixtureRecord =
   | ExperimentRunRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
+  | CandidateArenaTickRecord
   | ResearchFindingRecord
   | ArtifactLineageRecord
   | ImprovementProposalRecord
@@ -3267,6 +3351,8 @@ export interface FullCycleLineageReadModel {
   evidence?: {
     evaluation_status: string;
     evaluation_score: number;
+    profit_loss?: TradingProfitLossReadModel;
+    direction_kind?: ResearchDirectionKind;
     trading_run_id: string;
     gateway_result_outcome: string;
     ledger_chain_complete: boolean;
