@@ -1212,15 +1212,16 @@ describe("runtime read-only API", () => {
       method: "POST",
       url: `/api/candidates/${candidateId}/replay-runs`,
       payload: {
-        run_id: "api-promoted-replay-run",
         runner_kind: "host_process"
       }
     });
     expect(created.statusCode, created.body).toBe(201);
+    const createdRunId = created.json().run.run_id;
+    expect(createdRunId).toMatch(/^replay-run-/);
     expect(created.json()).toMatchObject({
       candidate_id: candidateId,
       run: {
-        run_id: "api-promoted-replay-run",
+        run_id: createdRunId,
         candidate_id: candidateId,
         runner_kind: "host_process",
         status: "accepted",
@@ -1240,9 +1241,24 @@ describe("runtime read-only API", () => {
     });
     expect(replayRuns.statusCode).toBe(200);
     expect(replayRuns.json().runs[0]).toMatchObject({
-      run_id: "api-promoted-replay-run",
+      run_id: createdRunId,
       candidate_id: candidateId,
       authority_status: "not_live"
+    });
+
+    const clientRunIdRejected = await server.inject({
+      method: "POST",
+      url: `/api/candidates/${candidateId}/replay-runs`,
+      payload: {
+        run_id: "client-selected-run-id",
+        runner_kind: "host_process"
+      }
+    });
+    expect(clientRunIdRejected.statusCode).toBe(422);
+    expect(clientRunIdRejected.json()).toMatchObject({
+      error: "replay_run_rejected",
+      reason: "client_run_id_not_supported",
+      candidate_id: candidateId
     });
 
     const fixtureRejected = await server.inject({

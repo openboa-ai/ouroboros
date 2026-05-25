@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -197,7 +197,6 @@ interface RecordPrivateReadinessPostureBody {
 }
 
 interface CreateReplayRunBody {
-  run_id?: string;
   runner_kind?: string;
   scenario_ids?: unknown;
   timeout_ms?: unknown;
@@ -251,6 +250,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     max: 600,
     timeWindow: "1 minute"
   });
+  const filesystemReadRateLimit = {
+    config: {
+      rateLimit: {
+        max: 120,
+        timeWindow: "1 minute"
+      }
+    }
+  } as const;
 
   server.get("/health", async () => ({
     status: "ok",
@@ -737,6 +744,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
 
       const body = request.body ?? {};
+      if (hasRequestField(body, "run_id")) {
+        return reply.code(422).send({
+          error: "replay_run_rejected",
+          reason: "client_run_id_not_supported",
+          candidate_id: request.params.candidate_id
+        });
+      }
       const runnerKind = parseReplayRunRunnerKind(body.runner_kind);
       if (!runnerKind) {
         return reply.code(422).send({
@@ -769,21 +783,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id
         });
       }
-      const replayRunId = parseReplayRunId(body.run_id);
-      if (body.run_id !== undefined && !replayRunId) {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "invalid_run_id",
-          candidate_id: request.params.candidate_id
-        });
-      }
-
       try {
         const record = await runPromotedCandidateReplay({
           candidate_id: request.params.candidate_id,
           candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
           run_root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-          run_id: replayRunId,
+          run_id: createHttpReplayRunId(),
           runner_kind: runnerKind,
           scenario_ids: scenarioIds,
           timeout_ms: timeoutMs
@@ -1330,9 +1335,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   );
 
-  server.get("/api/candidate-materialization-attempts", async () => ({
-    attempts: await store.listCandidateMaterializationAttempts()
-  }));
+  server.get(
+    "/api/candidate-materialization-attempts",
+    filesystemReadRateLimit,
+    async () => ({
+      attempts: await store.listCandidateMaterializationAttempts()
+    })
+  );
 
   server.get<{ Params: { attempt_id: string } }>(
     "/api/candidate-materialization-attempts/:attempt_id",
@@ -1439,9 +1448,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   });
 
-  server.get("/api/sandboxes", async () => ({
-    sandboxes: await store.listSandboxes()
-  }));
+  server.get(
+    "/api/sandboxes",
+    filesystemReadRateLimit,
+    async () => ({
+      sandboxes: await store.listSandboxes()
+    })
+  );
 
   server.get<{ Params: { sandbox_id: string } }>(
     "/api/sandboxes/:sandbox_id",
@@ -2247,18 +2260,16 @@ function parseReplayRunScenarioIds(value: unknown): string[] | undefined {
   return value;
 }
 
-function parseReplayRunId(value: unknown): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "string" || !isPathSafeRouteId(value)) {
-    return undefined;
-  }
-  return value;
-}
-
 function parseRoutePathId(value: string): string | undefined {
   return isPathSafeRouteId(value) ? value : undefined;
+}
+
+function createHttpReplayRunId(): string {
+  return `replay-run-${randomUUID()}`;
+}
+
+function hasRequestField(body: object, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(body, field);
 }
 
 function parseOptionalPositiveInteger(value: unknown): number | undefined {
