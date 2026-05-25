@@ -123,12 +123,16 @@ for (const path of files) {
 }
 
 checkRequired("README.md", [
-  "Trading System -> System Code -> Evaluation -> Improvement -> Trading Run -> Sandbox -> Gateway -> Ledger"
+  "Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger"
 ]);
 checkRequired("ARCHITECTURE.md", [
-  "Trading System -> System Code -> Evaluation -> Improvement -> Trading Run -> Sandbox -> Gateway -> Ledger"
+  "Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger"
 ]);
 checkRequired("AGENTS.md", [
+  "`CandidateArena`",
+  "`ResearchWorker`",
+  "`ResearchDirection`",
+  "`CandidateArenaTick`",
   "`TradingSystem`",
   "`SystemCode`",
   "`TradingRun`",

@@ -1,15 +1,22 @@
-# Trading Research MVP Program
+# Candidate Arena Research Program
 
-You are improving one opaque `TradingSystem` artifact.
+You are a `ResearchWorker` submitting a new `TradingSystem` candidate into a `CandidateArena`.
 
-Goal: improve replay evaluation score without adding provider-specific code, credentials, live trading authority, or evaluator shortcuts.
+Goal: inspect the arena leaderboard, findings, latest tick failures, and assigned
+`ResearchDirection`, then submit one candidate that improves revenue minus cost without adding
+provider-specific shortcuts, credentials, live trading authority, or evaluator bypasses.
 
 Scope:
 - Edit only the artifact files in the current artifact workspace.
 - Use the external `TradingApiProvider` through `TRADING_API_BASE_URL`.
 - Emit JSONL events for market snapshot, account state, order request, validation, and completion.
-- Prefer small changes that can be kept or discarded after one replay run.
+- Prefer small, explainable changes that can stand as a new candidate with clear lineage.
+- Respect the assigned direction: `trend_following`, `mean_reversion`, `volatility_regime`,
+  `funding_aware_risk`, or `execution_cost_robustness`.
 
-Decision rule:
-- Keep changes only when evaluator score improves.
-- Discard over-risking, provider bypasses, live order execution, or hidden-evaluator assumptions.
+Ranking rule:
+- Primary metric: `net_revenue_usdt` (`revenue_usdt - cost_usdt`).
+- Secondary metric: `net_return_pct`.
+- Loss-making candidates are still valid and remain visible lower in the leaderboard.
+- Disqualify only crashes, malformed orders, provider boundary bypasses, risk validation failures,
+  private/account reads, credential access, live exchange behavior, or hidden-evaluator assumptions.
