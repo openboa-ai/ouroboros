@@ -5,8 +5,7 @@ import type {
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import {
-  evaluateSystemCodeForResearch,
-  runtimeTraceRefsFor
+  evaluateSystemCodeForResearch
 } from "../src/research-evaluation/system-code-research-submission";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
@@ -122,9 +121,4 @@ function fixtureTradingEvaluationTask(): TradingEvaluationTaskRecord {
     created_at: "2026-05-11T11:58:00.000Z",
     authority_status: "not_live"
   };
-}
-
-if (false) {
-  const refs = runtimeTraceRefsFor(sandboxSandbox());
-  void refs;
 }

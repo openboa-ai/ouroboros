@@ -176,8 +176,8 @@ export async function runPromotedCandidateReplay(
 
   const options = {
     candidateId: input.candidate_id,
-    candidateRoot: path.resolve(input.candidate_root ?? DEFAULT_CANDIDATE_ROOT),
-    runRoot: path.resolve(input.run_root ?? DEFAULT_RUN_ROOT),
+    candidateRoot: safeAbsoluteRoot(input.candidate_root ?? DEFAULT_CANDIDATE_ROOT),
+    runRoot: safeAbsoluteRoot(input.run_root ?? DEFAULT_RUN_ROOT),
     runId: input.run_id,
     runnerKind: input.runner_kind ?? "host_process",
     scenarioIds: input.scenario_ids ?? [],
@@ -190,8 +190,8 @@ export async function runPromotedCandidateReplay(
   const manifest = await readTradingSystemManifest(bundle.artifactDir);
   const scenarios = selectedScenarios(options.scenarioIds);
   const runId = options.runId ?? defaultRunId(options.candidateId, new Date());
-  const runDir = path.join(options.runRoot, runId);
-  const outputDir = path.join(runDir, "output");
+  const runDir = resolvePathInsideRoot(options.runRoot, [runId], "run_id");
+  const outputDir = resolvePathInsideRoot(runDir, ["output"], "output_dir");
   const startedAt = new Date().toISOString();
 
   const runner = artifactRunnerFor(options);
@@ -336,14 +336,14 @@ function parseArgs(rawArgs: string[]): CliOptions {
 }
 
 async function loadCandidateBundle(candidateRoot: string, candidateId: string): Promise<CandidateBundle> {
-  const candidateDir = path.join(candidateRoot, candidateId);
+  const candidateDir = resolvePathInsideRoot(candidateRoot, [candidateId], "candidate_id");
   if (!await directoryExists(candidateDir)) {
     throw new ReplayRunError(
       "candidate_not_found",
       "candidate bundle exists"
     );
   }
-  const artifactDir = path.join(candidateDir, "artifact");
+  const artifactDir = resolvePathInsideRoot(candidateDir, ["artifact"], "artifact_dir");
   if (!await directoryExists(artifactDir)) {
     throw new ReplayRunError(
       "candidate_artifact_missing",
@@ -352,9 +352,9 @@ async function loadCandidateBundle(candidateRoot: string, candidateId: string): 
   }
 
   try {
-    const candidate = await readJson(path.join(candidateDir, "candidate.json"));
-    const systemCode = await readJson(path.join(candidateDir, "system-code.json"));
-    const promotion = await readOptionalJson(path.join(candidateDir, "promotion.json"));
+    const candidate = await readJson(resolvePathInsideRoot(candidateDir, ["candidate.json"], "candidate_record"));
+    const systemCode = await readJson(resolvePathInsideRoot(candidateDir, ["system-code.json"], "system_code_record"));
+    const promotion = await readOptionalJson(resolvePathInsideRoot(candidateDir, ["promotion.json"], "promotion_record"));
     const artifactDigest = await artifactDigestFor(artifactDir);
     const declaredDigest = stringValue(systemCode.artifact_digest);
     if (declaredDigest && declaredDigest !== artifactDigest) {
@@ -511,8 +511,9 @@ async function directoryExists(pathname: string): Promise<boolean> {
 
 async function artifactDigestFor(artifactDir: string): Promise<string> {
   const hash = createHash("sha256");
-  for (const file of await listFiles(artifactDir)) {
-    const relativePath = path.relative(artifactDir, file).split(path.sep).join("/");
+  const safeArtifactDir = safeAbsoluteRoot(artifactDir);
+  for (const file of await listFiles(safeArtifactDir, safeArtifactDir)) {
+    const relativePath = path.relative(safeArtifactDir, file).split(path.sep).join("/");
     hash.update(relativePath);
     hash.update("\0");
     hash.update(await readFile(file));
@@ -521,13 +522,14 @@ async function artifactDigestFor(artifactDir: string): Promise<string> {
   return `sha256:${hash.digest("hex")}`;
 }
 
-async function listFiles(root: string): Promise<string[]> {
+async function listFiles(root: string, allowedRoot: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });
   const files: string[] = [];
   for (const entry of entries) {
-    const pathname = path.join(root, entry.name);
+    const pathname = resolvePathInsideRoot(root, [entry.name], "artifact_entry");
+    assertPathInsideRoot(allowedRoot, pathname, "artifact_entry");
     if (entry.isDirectory()) {
-      files.push(...await listFiles(pathname));
+      files.push(...await listFiles(pathname, allowedRoot));
     } else if (entry.isFile()) {
       files.push(pathname);
     }
@@ -599,6 +601,30 @@ function assertPathSafeId(value: string, label: string): void {
     throw new ReplayRunError(
       "invalid_path_safe_id",
       `${label} must be path-safe`,
+      1
+    );
+  }
+}
+
+function safeAbsoluteRoot(rootPath: string): string {
+  return path.resolve(rootPath);
+}
+
+function resolvePathInsideRoot(rootPath: string, segments: string[], label: string): string {
+  const safeRoot = safeAbsoluteRoot(rootPath);
+  const resolved = path.resolve(safeRoot, ...segments);
+  assertPathInsideRoot(safeRoot, resolved, label);
+  return resolved;
+}
+
+function assertPathInsideRoot(rootPath: string, pathname: string, label: string): void {
+  const safeRoot = safeAbsoluteRoot(rootPath);
+  const resolved = path.resolve(pathname);
+  const rootPrefix = safeRoot.endsWith(path.sep) ? safeRoot : `${safeRoot}${path.sep}`;
+  if (resolved !== safeRoot && !resolved.startsWith(rootPrefix)) {
+    throw new ReplayRunError(
+      "path_outside_root",
+      `${label} must stay under its configured root`,
       1
     );
   }

@@ -175,8 +175,8 @@ describe("Slice 4 run control MLP flow", () => {
       expect(html).toContain("allowed");
       expect(html).toContain("policy_allows_control");
       expect(html).toContain("runtime_lifecycle_transitioned");
-      expect(html).toContain(`run_control_command:${command.run_control_command_id.replace("run-control-command", "run-control-command")}`);
-      expect(html).toContain(`run_control_decision:${decision.run_control_decision_id.replace("run-control-decision", "run-control-decision")}`);
+      expect(html).toContain(`run_control_command:${command.run_control_command_id}`);
+      expect(html).toContain(`run_control_decision:${decision.run_control_decision_id}`);
       expect(html).toContain("Record pause");
       expect(html).toContain("control_only / audit_only / not_live");
       expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });

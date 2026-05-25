@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const repoRoot = process.cwd();
 const preflightOnly = process.argv.includes("--preflight-only");
@@ -35,7 +36,10 @@ Exit codes:
 }
 
 const evidencePath = process.env.OUROBOROS_SBX_EVIDENCE_PATH;
-const evidenceStream = evidencePath ? await teeProcessOutput(evidencePath) : undefined;
+if (evidencePath && process.env.OUROBOROS_SBX_EVIDENCE_CHILD !== "1") {
+  await runWithEvidenceTranscript(evidencePath);
+  process.exit(process.exitCode ?? 0);
+}
 const sbxPath = process.env.OUROBOROS_SBX_BIN ?? process.env.OUROBOROS_SDX_BIN ?? "sbx";
 const sbxHome = process.env.OUROBOROS_SBX_HOME;
 const port = Number(process.env.OUROBOROS_SBX_VALIDATE_PORT ?? 4174);
@@ -168,9 +172,6 @@ try {
   if (runtimeStoreRoot) {
     await rm(runtimeStoreRoot, { recursive: true, force: true });
   }
-  if (evidenceStream) {
-    await new Promise((resolve) => evidenceStream.end(resolve));
-  }
 }
 
 async function runPreflight() {
@@ -253,10 +254,11 @@ async function waitForRuntime() {
 
 async function api(method, route, payload) {
   section(`${method} ${route}`);
+  const hasPayload = payload !== undefined;
   const response = await fetch(`${runtimeUrl}${route}`, {
     method,
-    headers: payload ? { "content-type": "application/json" } : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
+    headers: hasPayload ? { "content-type": "application/json" } : undefined,
+    body: hasPayload ? JSON.stringify(payload) : undefined,
     signal: AbortSignal.timeout(commandTimeoutMs * 3 + 5_000)
   });
   const text = await response.text();
@@ -272,10 +274,11 @@ async function api(method, route, payload) {
 async function apiExpectStatus(label, method, route, payload, expectedStatus) {
   section(label);
   console.log(`${method} ${route}`);
+  const hasPayload = payload !== undefined;
   const response = await fetch(`${runtimeUrl}${route}`, {
     method,
-    headers: payload ? { "content-type": "application/json" } : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
+    headers: hasPayload ? { "content-type": "application/json" } : undefined,
+    body: hasPayload ? JSON.stringify(payload) : undefined,
     signal: AbortSignal.timeout(commandTimeoutMs + 5_000)
   });
   const text = await response.text();
@@ -336,19 +339,6 @@ function assertLifecycleStopped(label, sandbox) {
     failures.push(`${label} lifecycle ${sandbox.lifecycle_status}`);
     throw new Error(`${label} did not reach stopped lifecycle`);
   }
-}
-
-function assertSandboxHeartbeat(label, sandbox, sandboxId) {
-  const heartbeatLines = (sandbox?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line);
-  assertTextContainsHeartbeat(label, heartbeatLines.join("\n"), sandboxId);
-}
-
-function assertSandboxLogOutcome(label, outcome, sandboxId) {
-  const lines = [
-    ...(outcome?.logs ?? []).flatMap((log) => log.lines ?? []),
-    ...(outcome?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line)
-  ];
-  assertTextContainsHeartbeat(label, lines.join("\n"), sandboxId);
 }
 
 function assertTextContainsHeartbeat(label, text, sandboxId) {
@@ -673,18 +663,43 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function teeProcessOutput(outputPath) {
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  const stream = createWriteStream(outputPath, { flags: "w" });
-  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
-  const originalStderrWrite = process.stderr.write.bind(process.stderr);
-  process.stdout.write = (chunk, encoding, callback) => {
-    stream.write(chunk);
-    return originalStdoutWrite(chunk, encoding, callback);
-  };
-  process.stderr.write = (chunk, encoding, callback) => {
-    stream.write(chunk);
-    return originalStderrWrite(chunk, encoding, callback);
-  };
-  return stream;
+async function runWithEvidenceTranscript(outputPath) {
+  const absoluteOutputPath = path.resolve(outputPath);
+  await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
+  const stream = createWriteStream(absoluteOutputPath, { flags: "w" });
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      OUROBOROS_SBX_EVIDENCE_CHILD: "1"
+    },
+    stdio: ["inherit", "pipe", "pipe"]
+  });
+  child.stdout.on("data", (chunk) => writeEvidenceChunk(stream, process.stdout, chunk));
+  child.stderr.on("data", (chunk) => writeEvidenceChunk(stream, process.stderr, chunk));
+  const result = await new Promise((resolve) => {
+    child.on("error", (error) => {
+      resolve({ code: 1, signal: undefined, error });
+    });
+    child.on("close", (code, signal) => {
+      resolve({ code: code ?? 1, signal, error: undefined });
+    });
+  });
+  await new Promise((resolve) => stream.end(resolve));
+  if (result.error) {
+    console.error(`validation transcript child failed: ${result.error.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (result.signal) {
+    console.error(`validation transcript child exited with signal ${result.signal}`);
+    process.exitCode = 1;
+    return;
+  }
+  process.exitCode = result.code;
+}
+
+function writeEvidenceChunk(stream, output, chunk) {
+  stream.write(chunk);
+  output.write(chunk);
 }

@@ -163,9 +163,25 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
               "-w",
               input.artifact_dir,
               sandboxName,
-              "sh",
-              "-lc",
-              sandboxSidecarArtifactCommand(sidecar, providerBaseUrl, [command, ...args], eventsPath)
+              "python3",
+              sidecar.runnerScriptPath,
+              "--sidecar-script",
+              sidecar.scriptPath,
+              "--scenario",
+              sidecar.scenarioPath,
+              "--requests",
+              sidecar.requestsPath,
+              "--host",
+              "127.0.0.1",
+              "--port",
+              String(sidecar.port),
+              "--provider-base-url",
+              providerBaseUrl,
+              "--output-events",
+              eventsPath,
+              "--",
+              command,
+              ...args
             ]
           : [
               this.sbxPath,
@@ -267,16 +283,20 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       return undefined;
     }
     const port = sandboxProviderPort(input.output_dir);
-    const scriptPath = path.join(input.output_dir, "replay-provider-sidecar.py");
-    const scenarioPath = path.join(input.output_dir, "replay-provider-scenario.json");
-    const requestsPath = path.join(input.output_dir, "provider-requests.jsonl");
+    const outputRoot = safeAbsoluteRoot(input.output_dir);
+    const scriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-sidecar.py"], "sidecar_script");
+    const runnerScriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-runner.py"], "sidecar_runner");
+    const scenarioPath = resolvePathInsideRoot(outputRoot, ["replay-provider-scenario.json"], "sidecar_scenario");
+    const requestsPath = resolvePathInsideRoot(outputRoot, ["provider-requests.jsonl"], "sidecar_requests");
     await writeFile(scriptPath, sandboxReplayProviderScript(), "utf8");
+    await writeFile(runnerScriptPath, sandboxReplayProviderRunnerScript(), "utf8");
     await writeFile(scenarioPath, `${JSON.stringify(input.provider.scenario, null, 2)}\n`, "utf8");
     await rm(requestsPath, { force: true });
     return {
       baseUrl: `http://127.0.0.1:${port}`,
       port,
       scriptPath,
+      runnerScriptPath,
       scenarioPath,
       requestsPath
     };
@@ -297,6 +317,7 @@ interface SandboxReplayProviderSidecar {
   baseUrl: string;
   port: number;
   scriptPath: string;
+  runnerScriptPath: string;
   scenarioPath: string;
   requestsPath: string;
 }
@@ -318,8 +339,9 @@ export async function readTradingSystemManifest(artifactDir: string): Promise<Tr
 }
 
 async function prepareEventsPath(outputDir: string): Promise<string> {
-  await mkdir(outputDir, { recursive: true });
-  const eventsPath = path.join(outputDir, "events.jsonl");
+  const outputRoot = safeAbsoluteRoot(outputDir);
+  await mkdir(outputRoot, { recursive: true });
+  const eventsPath = resolvePathInsideRoot(outputRoot, ["events.jsonl"], "events_path");
   await rm(eventsPath, { force: true });
   return eventsPath;
 }
@@ -379,8 +401,21 @@ function runCommand(
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
     const [file, ...args] = command;
+    const commandFile = safeCommandFile(file);
+    if (!commandFile) {
+      resolve({
+        command,
+        exit_code: null,
+        error_message: "unsafe_command_file",
+        stdout: "",
+        stderr: "",
+        started_at: startedAt,
+        completed_at: new Date().toISOString()
+      });
+      return;
+    }
     execFile(
-      file,
+      commandFile,
       args,
       {
         encoding: "utf8",
@@ -419,49 +454,104 @@ function sandboxProviderPort(outputDir: string): number {
   return 30_000 + (Number.parseInt(digest, 16) % 20_000);
 }
 
-function sidecarReadinessProbe(baseUrl: string): string {
-  const healthUrl = `${baseUrl}/health`;
-  return `ready=0; for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do python3 -c "import urllib.request; urllib.request.urlopen('${healthUrl}', timeout=1).read()" && ready=1 && break; sleep 0.1; done; [ "$ready" = "1" ]`;
+function safeAbsoluteRoot(rootPath: string): string {
+  return path.resolve(rootPath);
 }
 
-function sandboxSidecarArtifactCommand(
-  sidecar: SandboxReplayProviderSidecar,
-  providerBaseUrl: string,
-  artifactCommand: string[],
-  eventsPath: string
-): string {
-  const providerCommand = shellJoin([
-    "python3",
-    sidecar.scriptPath,
-    "--scenario",
-    sidecar.scenarioPath,
-    "--requests",
-    sidecar.requestsPath,
-    "--host",
-    "127.0.0.1",
-    "--port",
-    String(sidecar.port)
-  ]);
-  const artifact = `TRADING_API_BASE_URL=${shellQuote(providerBaseUrl)} ${shellJoin([
-    ...artifactCommand,
-    "--output-events",
-    eventsPath
-  ])}`;
-  return [
-    `${providerCommand} & provider_pid=$!`,
-    "cleanup() { kill \"$provider_pid\" 2>/dev/null || true; wait \"$provider_pid\" 2>/dev/null || true; }",
-    "trap cleanup EXIT",
-    sidecarReadinessProbe(providerBaseUrl),
-    artifact
-  ].join("; ");
+function resolvePathInsideRoot(rootPath: string, segments: string[], label: string): string {
+  const safeRoot = safeAbsoluteRoot(rootPath);
+  const resolved = path.resolve(safeRoot, ...segments);
+  const rootPrefix = safeRoot.endsWith(path.sep) ? safeRoot : `${safeRoot}${path.sep}`;
+  if (resolved !== safeRoot && !resolved.startsWith(rootPrefix)) {
+    throw new Error(`${label} must stay under its configured root`);
+  }
+  return resolved;
 }
 
-function shellJoin(values: string[]): string {
-  return values.map(shellQuote).join(" ");
+function safeCommandFile(file: string | undefined): string | undefined {
+  if (!file || /[\0\r\n]/.test(file)) {
+    return undefined;
+  }
+  return file;
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
+function sandboxReplayProviderRunnerScript(): string {
+  return `#!/usr/bin/env python3
+import argparse
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sidecar-script", required=True)
+    parser.add_argument("--scenario", required=True)
+    parser.add_argument("--requests", required=True)
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--port", required=True)
+    parser.add_argument("--provider-base-url", required=True)
+    parser.add_argument("--output-events", required=True)
+    parser.add_argument("artifact_command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    if args.artifact_command and args.artifact_command[0] == "--":
+        args.artifact_command = args.artifact_command[1:]
+    if not args.artifact_command:
+        parser.error("missing artifact command")
+    return args
+
+
+def wait_for_sidecar(base_url):
+    health_url = base_url.rstrip("/") + "/health"
+    for _ in range(20):
+        try:
+            with urllib.request.urlopen(health_url, timeout=1) as response:
+                response.read()
+            return True
+        except Exception:
+            time.sleep(0.1)
+    return False
+
+
+def main():
+    args = parse_args()
+    provider = subprocess.Popen([
+        "python3",
+        args.sidecar_script,
+        "--scenario",
+        args.scenario,
+        "--requests",
+        args.requests,
+        "--host",
+        args.host,
+        "--port",
+        args.port,
+    ])
+    try:
+        if not wait_for_sidecar(args.provider_base_url):
+            return 70
+        env = os.environ.copy()
+        env["TRADING_API_BASE_URL"] = args.provider_base_url
+        artifact = subprocess.run(
+            [*args.artifact_command, "--output-events", args.output_events],
+            env=env,
+            check=False,
+        )
+        return artifact.returncode
+    finally:
+        provider.terminate()
+        try:
+            provider.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            provider.kill()
+            provider.wait()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+`;
 }
 
 function sandboxReplayProviderScript(): string {

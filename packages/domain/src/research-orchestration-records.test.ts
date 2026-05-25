@@ -362,7 +362,7 @@ function tradingEvaluationResult(
   };
 }
 
-if (false) {
+it("keeps research orchestration type boundaries checked", () => {
   const _proposalWithStrategyInternals = {
     ...artifactProposal({
       sourceFinding: researchFinding("finding", "next_artifact_hint"),
@@ -423,4 +423,4 @@ if (false) {
   void _proposalWithPaperAuthority;
   void _proposalWithCountedAuthority;
   void _runWithPromotionAuthority;
-}
+});
