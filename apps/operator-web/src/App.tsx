@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
+  CandidateArenaReadModel,
   CandidateEvaluationReadModel,
   CandidateEvidenceClassificationReadModel,
   CandidateInspectReadModel,
@@ -39,6 +40,10 @@ import {
   fetchTradingGatewayEnvironment,
   fetchTradingExecutionModeContracts,
   fetchTradingResearchRuntime,
+  fetchCandidateArena,
+  startCandidateArena as submitStartCandidateArena,
+  stopCandidateArena as submitStopCandidateArena,
+  tickCandidateArena as submitTickCandidateArena,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
@@ -110,6 +115,7 @@ interface AppState {
   executionModes: TradingSystemExecutionModeContractReadModel[];
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchRuntime?: TradingResearchRuntimeReadModel;
+  candidateArena?: CandidateArenaReadModel;
   selectedTradingResearchAgent: TradingResearchAgentSelection;
   tradingResearchIterations: number;
   selected?: CandidateInspectReadModel;
@@ -127,6 +133,9 @@ interface AppState {
   recordingRunControl: boolean;
   recordingPrivateReadinessPosture: boolean;
   runningCandidateReplay: boolean;
+  runningCandidateArenaAction: boolean;
+  candidateArenaMessage?: string;
+  candidateArenaError?: string;
   replayRunError?: string;
   replayRunMessage?: string;
   tradingRunError?: string;
@@ -158,7 +167,8 @@ export function App() {
     recordingImprovement: false,
     recordingRunControl: false,
     recordingPrivateReadinessPosture: false,
-    runningCandidateReplay: false
+    runningCandidateReplay: false,
+    runningCandidateArenaAction: false
   });
 
   useEffect(() => {
@@ -169,12 +179,14 @@ export function App() {
           candidates,
           executionModes,
           tradingGatewayEnvironment,
-          tradingResearchRuntime
+          tradingResearchRuntime,
+          candidateArena
         ] = await Promise.all([
           fetchCandidateSummaries(),
           fetchTradingExecutionModeContracts(),
           fetchTradingGatewayEnvironment(),
-          fetchTradingResearchRuntime()
+          fetchTradingResearchRuntime(),
+          fetchCandidateArena()
         ]);
         const first = candidates[0];
         const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
@@ -188,6 +200,7 @@ export function App() {
             executionModes,
             tradingGatewayEnvironment,
             tradingResearchRuntime,
+            candidateArena,
             selectedTradingResearchAgent: tradingResearchRuntime.default_agent,
             tradingResearchIterations: tradingResearchRuntime.iterations,
             selected,
@@ -203,7 +216,8 @@ export function App() {
             recordingImprovement: false,
             recordingRunControl: false,
             recordingPrivateReadinessPosture: false,
-            runningCandidateReplay: false
+            runningCandidateReplay: false,
+            runningCandidateArenaAction: false
           });
         }
       } catch (error) {
@@ -221,6 +235,7 @@ export function App() {
             recordingRunControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false,
+            runningCandidateArenaAction: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
         }
@@ -409,6 +424,59 @@ export function App() {
         ...current,
         runningFullCycle: false,
         fullCycleError: error instanceof Error ? error.message : "Unknown full cycle error"
+      }));
+    }
+  }
+
+  async function runCandidateArenaAction(action: "start" | "stop" | "tick") {
+    if (state.runningCandidateArenaAction) {
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      runningCandidateArenaAction: true,
+      candidateArenaError: undefined,
+      candidateArenaMessage: undefined
+    }));
+    try {
+      const candidateArena = action === "start"
+        ? await submitStartCandidateArena()
+        : action === "stop"
+          ? await submitStopCandidateArena()
+          : await submitTickCandidateArena();
+      const candidates = await fetchCandidateSummaries();
+      const selected = candidateArena.leaderboard[0]
+        ? await fetchCandidate(candidateArena.leaderboard[0].candidate_id)
+        : state.selected;
+      const replayRuns = selected ? await fetchReplayRunEvidence(selected.candidate_id) : state.replayRuns;
+      const replayRunSelection = selected
+        ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
+        : {
+            selectedReplayRunId: state.selectedReplayRunId,
+            replayRunDetail: state.replayRunDetail,
+            replayRunComparison: state.replayRunComparison,
+            replayRunComparisonBaselineId: state.replayRunComparisonBaselineId,
+            replayRunValidationState: state.replayRunValidationState
+          };
+      setState((current) => ({
+        ...current,
+        candidateArena,
+        candidates,
+        selected,
+        replayRuns,
+        selectedReplayRunId: replayRunSelection.selectedReplayRunId,
+        replayRunDetail: replayRunSelection.replayRunDetail,
+        replayRunComparison: replayRunSelection.replayRunComparison,
+        replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
+        replayRunValidationState: replayRunSelection.replayRunValidationState,
+        runningCandidateArenaAction: false,
+        candidateArenaMessage: `arena ${action}: ${candidateArena.runner_status}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningCandidateArenaAction: false,
+        candidateArenaError: error instanceof Error ? error.message : "Unknown Candidate Arena error"
       }));
     }
   }
@@ -690,6 +758,7 @@ export function App() {
                 onActiveViewChange={setOperatorView}
                 candidate={state.selected}
                 candidates={state.candidates}
+                candidateArena={state.candidateArena}
                 tradingGatewayEnvironment={state.tradingGatewayEnvironment}
                 tradingResearchRuntime={state.tradingResearchRuntime}
                 selectedTradingResearchAgent={state.selectedTradingResearchAgent}
@@ -701,7 +770,11 @@ export function App() {
                 replayRunComparisonBaselineId={state.replayRunComparisonBaselineId}
                 replayRunValidationState={state.replayRunValidationState}
                 executionModes={state.executionModes}
+                onSelectCandidate={(candidateId) => void selectCandidate(candidateId)}
                 onSelectReplayRun={(runId) => void selectReplayRun(runId)}
+                onStartCandidateArena={() => void runCandidateArenaAction("start")}
+                onStopCandidateArena={() => void runCandidateArenaAction("stop")}
+                onTickCandidateArena={() => void runCandidateArenaAction("tick")}
                 onSelectTradingResearchAgent={(agent) =>
                   setState((current) => ({
                     ...current,
@@ -741,6 +814,9 @@ export function App() {
                 recordingRunControl={state.recordingRunControl}
                 recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
                 runningCandidateReplay={state.runningCandidateReplay}
+                runningCandidateArenaAction={state.runningCandidateArenaAction}
+                candidateArenaMessage={state.candidateArenaMessage}
+                candidateArenaError={state.candidateArenaError}
                 replayRunError={state.replayRunError}
                 replayRunMessage={state.replayRunMessage}
                 fullCycleError={state.fullCycleError}
@@ -927,11 +1003,275 @@ function baselineRunIdForSelection(
   return runs.find((run) => run.run_id !== selectedRunId)?.run_id;
 }
 
+export function CandidateArenaPanel({
+  arena,
+  selectedCandidateId,
+  selectedCandidate,
+  onStart,
+  onStop,
+  onTick,
+  onSelectCandidate,
+  onRunPaperEvidence,
+  actionPending,
+  runningPaperEvidence = false,
+  message,
+  error
+}: {
+  arena: CandidateArenaReadModel;
+  selectedCandidateId?: string;
+  selectedCandidate?: CandidateInspectReadModel;
+  onStart?: () => void;
+  onStop?: () => void;
+  onTick?: () => void;
+  onSelectCandidate?: (candidateId: string) => void;
+  onRunPaperEvidence?: () => void;
+  actionPending: boolean;
+  runningPaperEvidence?: boolean;
+  message?: string;
+  error?: string;
+}) {
+  const leader = arena.leaderboard[0];
+  const selectedEntry = arena.leaderboard.find((entry) => entry.candidate_id === selectedCandidateId)
+    ?? leader;
+  const latestTick = arena.latest_ticks[0];
+  const selectedLineage = selectedCandidate?.full_cycle_lineage;
+  const selectedSystemCode = selectedCandidate?.system_code?.ref ?? selectedLineage?.generated?.system_code_ref;
+  return (
+    <Card aria-label="Candidate Arena">
+      <CardHeader>
+        <CardDescription>AAR researcher loop</CardDescription>
+        <CardTitle>Candidate Arena</CardTitle>
+        <CardDescription>
+          {leader
+            ? `${leader.display_name} leads by ${formatUsdt(leader.profit_loss.net_revenue_usdt)} net revenue.`
+            : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
+        </CardDescription>
+        <CardAction className="flex flex-wrap justify-end gap-2">
+          <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
+          <Badge variant="secondary">{arena.active_researchers.length} researchers</Badge>
+          <Badge variant="secondary">not_live</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={onStart} disabled={actionPending || !onStart}>
+            Start arena
+          </Button>
+          <Button type="button" onClick={onStop} disabled={actionPending || !onStop} variant="secondary">
+            Stop arena
+          </Button>
+          <Button type="button" onClick={onTick} disabled={actionPending || !onTick} variant="outline">
+            Run tick
+          </Button>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
+            <span className="text-xs font-medium text-muted-foreground">Runner</span>
+            <strong className="text-xl leading-tight">{arena.runner_status}</strong>
+            <span className="text-xs text-muted-foreground">{arena.tick_count} ticks</span>
+          </div>
+          <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
+            <span className="text-xs font-medium text-muted-foreground">Net revenue</span>
+            <strong className="text-xl leading-tight">{leader ? formatUsdt(leader.profit_loss.net_revenue_usdt) : "none"}</strong>
+            <span className="text-xs text-muted-foreground">revenue - cost</span>
+          </div>
+          <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
+            <span className="text-xs font-medium text-muted-foreground">Net return</span>
+            <strong className="text-xl leading-tight">{leader ? formatPercent(leader.profit_loss.net_return_pct) : "none"}</strong>
+            <span className="text-xs text-muted-foreground">secondary rank signal</span>
+          </div>
+        </div>
+        <div className="grid gap-2 overflow-x-auto" aria-label="Candidate Arena leaderboard">
+          <div className="grid min-w-[1040px] grid-cols-[56px_minmax(190px,1.45fr)_minmax(130px,1fr)_minmax(150px,1fr)_minmax(130px,0.9fr)_minmax(110px,0.8fr)_minmax(100px,0.7fr)_minmax(220px,1.4fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
+            <span>Rank</span>
+            <span>Candidate</span>
+            <span>Direction</span>
+            <span>Parent</span>
+            <span>Net revenue USDT</span>
+            <span>Net return %</span>
+            <span>Status</span>
+            <span>Latest finding</span>
+          </div>
+          {arena.leaderboard.map((entry) => (
+            <button
+              type="button"
+              key={entry.candidate_id}
+              onClick={() => onSelectCandidate?.(entry.candidate_id)}
+              aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
+              className={`grid min-w-[1040px] grid-cols-[56px_minmax(190px,1.45fr)_minmax(130px,1fr)_minmax(150px,1fr)_minmax(130px,0.9fr)_minmax(110px,0.8fr)_minmax(100px,0.7fr)_minmax(220px,1.4fr)] items-center gap-2 rounded-md p-2 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
+            >
+              <span>#{entry.rank}</span>
+              <strong className="break-words font-medium leading-snug">{entry.display_name}</strong>
+              <span className="break-words">{entry.direction_kind}</span>
+              <span className="break-words">{entry.parent_candidate_id ?? "none"}</span>
+              <span>{formatUsdt(entry.profit_loss.net_revenue_usdt)}</span>
+              <span>{formatPercent(entry.profit_loss.net_return_pct)}</span>
+              <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
+                {entry.status}
+              </Badge>
+              <span className="break-words text-muted-foreground">{entry.latest_finding}</span>
+            </button>
+          ))}
+        </div>
+        {selectedEntry && (
+          <section className="grid gap-3 rounded-md bg-muted/25 p-3" aria-label="Selected Candidate Arena candidate">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <h3 className="text-sm font-medium">Selected candidate</h3>
+                <p className="break-words text-sm text-muted-foreground">{selectedEntry.display_name}</p>
+              </div>
+              <Button
+                type="button"
+                onClick={onRunPaperEvidence}
+                disabled={!onRunPaperEvidence || runningPaperEvidence}
+                variant="secondary"
+              >
+                Run paper evidence
+              </Button>
+            </div>
+            <dl className="grid gap-2 md:grid-cols-4">
+              <Field label="Direction" value={selectedEntry.direction_kind} />
+              <Field label="Parent" value={selectedEntry.parent_candidate_id ?? "none"} />
+              <Field label="SystemCode" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
+              <Field
+                label="Evaluation"
+                value={selectedLineage?.evidence
+                  ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
+                  : selectedEntry.status}
+              />
+              <Field label="profit_loss" value={`${formatUsdt(selectedEntry.profit_loss.net_revenue_usdt)} / ${formatPercent(selectedEntry.profit_loss.net_return_pct)}`} />
+              <Field label="Latest finding" value={selectedEntry.latest_finding} />
+              <Field
+                label="Lineage"
+                value={selectedLineage?.source
+                  ? `${selectedLineage.source.trading_system_id} -> ${selectedEntry.candidate_id}`
+                  : `${selectedEntry.parent_candidate_id ?? "none"} -> ${selectedEntry.candidate_id}`}
+              />
+              <Field label="Authority" value={selectedEntry.authority_status} />
+            </dl>
+          </section>
+        )}
+        <section className="grid gap-2" aria-label="Candidate Arena latest ticks">
+          <h3 className="text-sm font-medium">Latest ticks</h3>
+          {latestTick ? (
+            <div className="grid gap-2 rounded-md bg-muted/25 p-3 text-sm md:grid-cols-[1fr_1fr_2fr]">
+              <Field label="Tick" value={latestTick.tick_id} />
+              <Field label="Status" value={latestTick.status} />
+              <Field
+                label="Researchers"
+                value={latestTick.direction_results.map((result) =>
+                  `${result.direction_kind}:${result.status}`
+                ).join(", ")}
+              />
+            </div>
+          ) : (
+            <div className="placeholder">No Candidate Arena ticks recorded.</div>
+          )}
+        </section>
+        {message && <div className="inline-status">{message}</div>}
+        {error && <div className="inline-status error">{error}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FullCycleDeveloperControls({
+  tradingResearchRuntime,
+  selectedTradingResearchAgent,
+  tradingResearchIterations,
+  selectedResearchAgent,
+  selectedResearchAgentBlocked,
+  runningFullCycle,
+  fullCycleMessage,
+  fullCycleError,
+  onSelectTradingResearchAgent,
+  onTradingResearchIterationsChange,
+  onRunFullCycle
+}: {
+  tradingResearchRuntime: TradingResearchRuntimeReadModel;
+  selectedTradingResearchAgent: TradingResearchAgentSelection;
+  tradingResearchIterations: number;
+  selectedResearchAgent?: TradingResearchRuntimeReadModel["agents"][number];
+  selectedResearchAgentBlocked: boolean;
+  runningFullCycle: boolean;
+  fullCycleMessage?: string;
+  fullCycleError?: string;
+  onSelectTradingResearchAgent?: (agent: TradingResearchAgentSelection) => void;
+  onTradingResearchIterationsChange?: (iterations: number) => void;
+  onRunFullCycle?: () => void;
+}) {
+  if (!onRunFullCycle) {
+    return null;
+  }
+  return (
+    <InfoSection
+      title="Full-cycle compatibility"
+      summary="Compatibility path for legacy full-cycle runs; Candidate Arena is the primary research workflow."
+      badge="developer"
+    >
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex h-10 items-center gap-1 rounded-md border bg-background px-1" aria-label="Researcher">
+            {tradingResearchRuntime.available_agents.map((agent) => (
+              <Button
+                key={agent}
+                type="button"
+                variant={selectedTradingResearchAgent === agent ? "default" : "ghost"}
+                size="sm"
+                onClick={() => onSelectTradingResearchAgent?.(agent)}
+                disabled={runningFullCycle}
+              >
+                {formatResearchAgentLabel(agent)}
+              </Button>
+            ))}
+          </div>
+          <Input
+            aria-label="Research iterations"
+            className="h-10 w-20"
+            min={1}
+            max={10}
+            type="number"
+            value={tradingResearchIterations}
+            onChange={(event) => {
+              const iterations = Number(event.target.value);
+              if (Number.isInteger(iterations) && iterations >= 1 && iterations <= 10) {
+                onTradingResearchIterationsChange?.(iterations);
+              }
+            }}
+            disabled={runningFullCycle}
+          />
+          <Button
+            type="button"
+            onClick={onRunFullCycle}
+            disabled={runningFullCycle || selectedResearchAgentBlocked}
+          >
+            {runningFullCycle ? "Running full cycle" : "Run next cycle"}
+          </Button>
+        </div>
+        {selectedResearchAgentBlocked && (
+          <p className="text-sm text-destructive">
+            {formatResearchAgentLabel(selectedTradingResearchAgent)} unavailable: {selectedResearchAgent?.failure_reason ?? "not installed"}
+          </p>
+        )}
+        {selectedResearchAgent && !selectedResearchAgentBlocked && (
+          <p className="text-sm text-muted-foreground">
+            {formatResearchAgentLabel(selectedTradingResearchAgent)} researcher ready
+            {selectedResearchAgent.version ? `: ${selectedResearchAgent.version}` : ""}
+          </p>
+        )}
+        {fullCycleMessage && <p className="text-sm text-muted-foreground">{fullCycleMessage}</p>}
+        {fullCycleError && <p className="text-sm text-destructive">{fullCycleError}</p>}
+      </div>
+    </InfoSection>
+  );
+}
+
 export function CandidateDetail({
   activeView = "details",
   onActiveViewChange,
   candidate,
   candidates = [],
+  candidateArena,
   tradingGatewayEnvironment,
   tradingResearchRuntime = defaultTradingResearchRuntime(),
   selectedTradingResearchAgent = tradingResearchRuntime.default_agent,
@@ -944,6 +1284,10 @@ export function CandidateDetail({
   replayRunValidationState,
   executionModes = [],
   onSelectReplayRun,
+  onSelectCandidate,
+  onStartCandidateArena,
+  onStopCandidateArena,
+  onTickCandidateArena,
   onSelectTradingResearchAgent,
   onTradingResearchIterationsChange,
   onRunCandidateReplay,
@@ -957,12 +1301,15 @@ export function CandidateDetail({
   onRecordPrivateReadinessPosture,
   runningFullCycle = false,
   runningCandidateReplay = false,
+  runningCandidateArenaAction = false,
   runningTradingRun = false,
   recordingImprovement = false,
   recordingRunControl = false,
   recordingPrivateReadinessPosture = false,
   replayRunError,
   replayRunMessage,
+  candidateArenaMessage,
+  candidateArenaError,
   fullCycleError,
   fullCycleMessage,
   lastFullCycle,
@@ -979,6 +1326,7 @@ export function CandidateDetail({
   onActiveViewChange?: (view: OperatorView) => void;
   candidate: CandidateInspectReadModel;
   candidates?: CandidateSummaryReadModel[];
+  candidateArena?: CandidateArenaReadModel;
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchRuntime?: TradingResearchRuntimeReadModel;
   selectedTradingResearchAgent?: TradingResearchAgentSelection;
@@ -991,6 +1339,10 @@ export function CandidateDetail({
   replayRunValidationState?: ReplayRunValidationStateReadModel;
   executionModes?: TradingSystemExecutionModeContractReadModel[];
   onSelectReplayRun?: (runId: string) => void;
+  onSelectCandidate?: (candidateId: string) => void;
+  onStartCandidateArena?: () => void;
+  onStopCandidateArena?: () => void;
+  onTickCandidateArena?: () => void;
   onSelectTradingResearchAgent?: (agent: TradingResearchAgentSelection) => void;
   onTradingResearchIterationsChange?: (iterations: number) => void;
   onRunCandidateReplay?: () => void;
@@ -1004,12 +1356,15 @@ export function CandidateDetail({
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   runningFullCycle?: boolean;
   runningCandidateReplay?: boolean;
+  runningCandidateArenaAction?: boolean;
   runningTradingRun?: boolean;
   recordingImprovement?: boolean;
   recordingRunControl?: boolean;
   recordingPrivateReadinessPosture?: boolean;
   replayRunError?: string;
   replayRunMessage?: string;
+  candidateArenaMessage?: string;
+  candidateArenaError?: string;
   fullCycleError?: string;
   fullCycleMessage?: string;
   lastFullCycle?: FullCycleOutcome;
@@ -1023,6 +1378,9 @@ export function CandidateDetail({
   privateReadinessPostureMessage?: string;
 }) {
   const ledger = candidate.ledger;
+  const selectedArenaEntry = candidateArena?.leaderboard.find((entry) => entry.candidate_id === candidate.candidate_id)
+    ?? candidateArena?.leaderboard[0];
+  const selectedArenaCandidate = selectedArenaEntry?.candidate_id === candidate.candidate_id ? candidate : undefined;
   const latestReplayRun = replayRuns[0];
   const publicMarketSurface = candidate.trading_substrate?.latest_public_market_liveness_surface ?? null;
   const orderFillSurface = candidate.trading_substrate?.latest_order_fill_surface ?? null;
@@ -1142,7 +1500,6 @@ export function CandidateDetail({
     (agent) => agent.agent === selectedTradingResearchAgent
   );
   const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
-  const runFullCycleDisabled = runningFullCycle || selectedResearchAgentBlocked;
 
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
@@ -1163,6 +1520,23 @@ export function CandidateDetail({
         </div>
 
         <TabsContent value="trading" className="flex flex-col gap-4">
+      {candidateArena && (
+        <CandidateArenaPanel
+          arena={candidateArena}
+          selectedCandidateId={selectedArenaEntry?.candidate_id}
+          selectedCandidate={selectedArenaCandidate}
+          onStart={onStartCandidateArena}
+          onStop={onStopCandidateArena}
+          onTick={onTickCandidateArena}
+          onSelectCandidate={(candidateId) => void onSelectCandidate?.(candidateId)}
+          onRunPaperEvidence={selectedArenaCandidate?.ledger ? onStartTradingRun : undefined}
+          actionPending={runningCandidateArenaAction}
+          runningPaperEvidence={runningTradingRun}
+          message={candidateArenaMessage}
+          error={candidateArenaError}
+        />
+      )}
+
       <Card aria-label="Operator decision bar">
         <CardHeader>
           <CardDescription>{workspaceLabel}</CardDescription>
@@ -1185,48 +1559,6 @@ export function CandidateDetail({
           </CardHeader>
         </Card>
         <div className="flex flex-wrap items-center gap-2">
-          {onRunFullCycle && (
-            <>
-              <div className="flex h-10 items-center gap-1 rounded-md border bg-background px-1" aria-label="Researcher">
-                {tradingResearchRuntime.available_agents.map((agent) => (
-                  <Button
-                    key={agent}
-                    type="button"
-                    variant={selectedTradingResearchAgent === agent ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => onSelectTradingResearchAgent?.(agent)}
-                    disabled={runningFullCycle}
-                  >
-                    {formatResearchAgentLabel(agent)}
-                  </Button>
-                ))}
-              </div>
-              <Input
-                aria-label="Research iterations"
-                className="h-10 w-20"
-                min={1}
-                max={10}
-                type="number"
-                value={tradingResearchIterations}
-                onChange={(event) => {
-                  const iterations = Number(event.target.value);
-                  if (Number.isInteger(iterations) && iterations >= 1 && iterations <= 10) {
-                    onTradingResearchIterationsChange?.(iterations);
-                  }
-                }}
-                disabled={runningFullCycle}
-              />
-            </>
-          )}
-          {onRunFullCycle && (
-            <Button
-              type="button"
-              onClick={onRunFullCycle}
-              disabled={runFullCycleDisabled}
-            >
-              {runningFullCycle ? "Running full cycle" : "Run next cycle"}
-            </Button>
-          )}
           {onObserveTradingRun && (
             <Button
               type="button"
@@ -1248,25 +1580,12 @@ export function CandidateDetail({
             </Button>
           )}
         </div>
-        {onRunFullCycle && selectedResearchAgentBlocked && (
-          <p className="text-sm text-destructive">
-            {formatResearchAgentLabel(selectedTradingResearchAgent)} unavailable: {selectedResearchAgent?.failure_reason ?? "not installed"}
-          </p>
-        )}
-        {onRunFullCycle && selectedResearchAgent && !selectedResearchAgentBlocked && (
-          <p className="text-sm text-muted-foreground">
-            {formatResearchAgentLabel(selectedTradingResearchAgent)} researcher ready
-            {selectedResearchAgent.version ? `: ${selectedResearchAgent.version}` : ""}
-          </p>
-        )}
         </CardContent>
       </Card>
 
-      {(fullCycleMessage || fullCycleError || tradingRunMessage || tradingRunError) && (
+      {(tradingRunMessage || tradingRunError) && (
         <Card aria-label="Operator messages">
           <CardContent className="grid gap-2">
-            {fullCycleMessage && <p className="text-sm text-muted-foreground">{fullCycleMessage}</p>}
-            {fullCycleError && <p className="text-sm text-destructive">{fullCycleError}</p>}
             {tradingRunMessage && <p className="text-sm text-muted-foreground">{tradingRunMessage}</p>}
             {tradingRunError && <p className="text-sm text-destructive">{tradingRunError}</p>}
           </CardContent>
@@ -1582,6 +1901,20 @@ export function CandidateDetail({
             runningCandidateReplay={runningCandidateReplay}
             replayRunError={replayRunError}
             replayRunMessage={replayRunMessage}
+          />
+
+          <FullCycleDeveloperControls
+            tradingResearchRuntime={tradingResearchRuntime}
+            selectedTradingResearchAgent={selectedTradingResearchAgent}
+            tradingResearchIterations={tradingResearchIterations}
+            selectedResearchAgent={selectedResearchAgent}
+            selectedResearchAgentBlocked={selectedResearchAgentBlocked}
+            runningFullCycle={runningFullCycle}
+            fullCycleMessage={fullCycleMessage}
+            fullCycleError={fullCycleError}
+            onSelectTradingResearchAgent={onSelectTradingResearchAgent}
+            onTradingResearchIterationsChange={onTradingResearchIterationsChange}
+            onRunFullCycle={onRunFullCycle}
           />
 
           <InfoSection
@@ -2174,6 +2507,20 @@ function findProfitMetric(detail?: ReplayRunDetailReadModel): ReplayRunMetricRea
 
 function formatScore(score: number): string {
   return score.toFixed(2);
+}
+
+function formatUsdt(value: number): string {
+  return `${value.toLocaleString("en-US", {
+    maximumFractionDigits: 6,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2
+  })} USDT`;
+}
+
+function formatPercent(value: number): string {
+  return `${value.toLocaleString("en-US", {
+    maximumFractionDigits: 6,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 4
+  })}%`;
 }
 
 function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): string {

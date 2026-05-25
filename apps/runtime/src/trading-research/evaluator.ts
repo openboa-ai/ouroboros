@@ -3,10 +3,22 @@ import type {
   OrderRequest,
   OrderValidationResult,
   TradingEvaluationMetric,
-  TradingEvaluationResult
+  TradingEvaluationResult,
+  TradingProfitLoss,
+  ReplayTradingScenario
 } from "./types";
 
-export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationResult {
+const ZERO_PROFIT_LOSS: TradingProfitLoss = {
+  revenue_usdt: 0,
+  cost_usdt: 0,
+  net_revenue_usdt: 0,
+  net_return_pct: 0
+};
+
+export function evaluateTradingRun(
+  run: ArtifactRunResult,
+  scenario?: ReplayTradingScenario
+): TradingEvaluationResult {
   if (run.status === "crashed") {
     return {
       status: "disqualified",
@@ -19,7 +31,8 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
         }
       ],
       summary: "Artifact crashed before producing a valid trading run.",
-      risk_decision: "no_order_request"
+      risk_decision: "no_order_request",
+      profit_loss: ZERO_PROFIT_LOSS
     };
   }
 
@@ -41,10 +54,12 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
         metric("order_request", 0, "missing order request event")
       ],
       summary: "Artifact did not emit an order request.",
-      risk_decision: "no_order_request"
+      risk_decision: "no_order_request",
+      profit_loss: ZERO_PROFIT_LOSS
     };
   }
 
+  const profitLoss = profitLossForOrder(orderIntent, validation, scenario);
   const directionMetric = signalDirectionMetric(market?.expected_direction, orderIntent.side);
   const providerBoundaryScore = usedProviderBoundary ? 0.2 : 0;
   const validationScore = validation?.accepted ? 0.15 : 0;
@@ -60,6 +75,7 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
     directionMetric.score +
     validationScore +
     riskScore +
+    profitScore(profitLoss) +
     explanationScore -
     complexityPenalty
   );
@@ -68,6 +84,7 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
   const metrics: TradingEvaluationMetric[] = [
     metric("provider_boundary", providerBoundaryScore, "market/account/order validation went through the external provider"),
     metric("signal_direction", directionMetric.score, directionMetric.detail),
+    metric("net_revenue", profitScore(profitLoss), `net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs`),
     metric("risk_fit", riskScore, "risk fraction closeness to the hidden replay target"),
     metric("pre_trade_validation", validationScore, validation?.reason ?? "missing validation"),
     metric("rationale", explanationScore, "order request includes a useful rationale")
@@ -81,9 +98,10 @@ export function evaluateTradingRun(run: ArtifactRunResult): TradingEvaluationRes
     score,
     metrics,
     summary: accepted
-      ? `Accepted order request with score ${score.toFixed(3)}.`
+      ? `Accepted order request with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs.`
       : `Rejected order request with score ${score.toFixed(3)}.`,
-    risk_decision: validation?.accepted ? "valid_order_request" : "invalid_order_request"
+    risk_decision: validation?.accepted ? "valid_order_request" : "invalid_order_request",
+    profit_loss: profitLoss
   };
 }
 
@@ -128,10 +146,50 @@ function riskFitScore(
   return clampScore(0.3 * Math.max(0, 1 - miss));
 }
 
+function profitLossForOrder(
+  order: OrderRequest,
+  validation: OrderValidationResult | undefined,
+  scenario: ReplayTradingScenario | undefined
+): TradingProfitLoss {
+  if (!scenario || !validation?.accepted || order.side === "hold" || order.order_type === "none") {
+    return ZERO_PROFIT_LOSS;
+  }
+  const quantity = Math.abs(order.quantity);
+  const entryPrice = scenario.market.price;
+  const exitPrice = scenario.outcome.exit_price;
+  const notional = validation.notional || quantity * entryPrice;
+  const revenue = order.side === "buy"
+    ? (exitPrice - entryPrice) * quantity
+    : (entryPrice - exitPrice) * quantity;
+  const costBps = scenario.outcome.fee_bps + scenario.outcome.slippage_bps + scenario.outcome.funding_bps;
+  const cost = notional * costBps / 10_000;
+  const netRevenue = revenue - cost;
+  const netReturn = scenario.account.equity > 0
+    ? netRevenue / scenario.account.equity * 100
+    : 0;
+  return {
+    revenue_usdt: round(revenue),
+    cost_usdt: round(cost),
+    net_revenue_usdt: round(netRevenue),
+    net_return_pct: round(netReturn)
+  };
+}
+
+function profitScore(profitLoss: TradingProfitLoss): number {
+  if (profitLoss.net_revenue_usdt < 0) {
+    return 0;
+  }
+  return 0.2;
+}
+
 function metric(name: string, score: number, detail: string): TradingEvaluationMetric {
   return { name, score: clampScore(score), detail };
 }
 
 function clampScore(score: number): number {
   return Math.round(Math.max(0, Math.min(1, score)) * 1_000) / 1_000;
+}
+
+function round(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }

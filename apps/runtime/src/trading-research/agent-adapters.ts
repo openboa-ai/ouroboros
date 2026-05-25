@@ -112,13 +112,15 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
     const notebook = await readFile(input.notebook_path, "utf8");
     const recentNotebook = summarizeNotebook(notebook);
     return [
-      "You are a Codex managed agent in the Ouroboros Trading research loop.",
+      "You are a Codex managed researcher submitting a new Ouroboros TradingSystem candidate into the Candidate Arena.",
+      "Read the compact arena context, the target research direction, and recent failures, then produce one new candidate artifact.",
       "Edit only files in the current trading system artifact directory.",
       "Do not add provider credentials, live trading authority, exchange-specific code, or hidden evaluator assumptions.",
       "The artifact must call the external TradingApiProvider through TRADING_API_BASE_URL.",
       "Make at most one small code edit, then stop. Do not run long tests or broad repository commands.",
-      "For the current replay proof, prefer the smallest risk-sizing improvement: if run.py has RISK_FRACTION below 0.02, set it to 0.02.",
-      "If run.py already has RISK_FRACTION = 0.02 or the notebook says best_score is 1, leave the artifact unchanged and stop.",
+      "The primary ranking metric is net_revenue_usdt (revenue - cost); net_return_pct is secondary.",
+      "Prefer a small direction-specific change that could improve net revenue after fee, slippage, and funding costs.",
+      "If the artifact already matches the requested direction and cannot be improved safely, leave it unchanged and stop.",
       `Iteration: ${input.iteration}`,
       `Previous best score: ${input.previous_best_score ?? "none"}`,
       "",
@@ -128,7 +130,10 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
       "Recent notebook summary:",
       recentNotebook,
       "",
-      "Task: make one small, testable improvement to this trading system artifact."
+      "Candidate Arena context:",
+      input.arena_context ?? "No arena context provided.",
+      "",
+      "Task: submit one small, testable TradingSystem candidate for the Candidate Arena."
     ].join("\n");
   }
 }

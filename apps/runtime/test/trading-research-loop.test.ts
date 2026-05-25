@@ -13,6 +13,10 @@ import {
   runTradingArtifact
 } from "../src/trading-research/artifact-runner";
 import { evaluateTradingRun } from "../src/trading-research/evaluator";
+import type {
+  ArtifactRunResult,
+  ReplayTradingScenario
+} from "../src/trading-research/types";
 import {
   defaultReplayTradingScenarioSet,
   startReplayTradingApiProvider
@@ -95,7 +99,7 @@ describe("Trading research research loop MVP", () => {
     expect(notebookSurface).toContain("provider_boundary");
     expect(notebookSurface).toContain("replay_set_average");
     expect(notebookSurface).not.toMatch(
-      /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|sealed-replay|venue/i
+      /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|sealed-replay|\bvenue\b/i
     );
   });
 
@@ -127,7 +131,7 @@ describe("Trading research research loop MVP", () => {
     ]);
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
-      score: 0.85,
+      score: 1,
       risk_decision: "valid_order_request"
     });
   });
@@ -160,7 +164,147 @@ describe("Trading research research loop MVP", () => {
     expect(evaluateTradingRun(run)).toMatchObject({
       status: "accepted",
       score: 1,
+      profit_loss: {
+        revenue_usdt: 0,
+        cost_usdt: 0,
+        net_revenue_usdt: 0,
+        net_return_pct: 0
+      },
       risk_decision: "valid_order_request"
+    });
+  });
+
+  it("scores accepted replay orders by revenue minus execution costs", () => {
+    const scenario: ReplayTradingScenario = {
+      id: "costed_long",
+      description: "Long replay with hidden exit and execution costs.",
+      market: {
+        symbol: "BTCUSDT",
+        price: 100,
+        moving_average_fast: 101,
+        moving_average_slow: 100,
+        volatility: 0.01,
+        expected_direction: "long",
+        observed_at: "2026-05-12T01:00:00.000Z"
+      },
+      account: {
+        equity: 10_000,
+        max_position_notional: 1_000,
+        max_risk_fraction: 0.2,
+        target_risk_fraction: 0.01
+      },
+      outcome: {
+        exit_price: 110,
+        fee_bps: 10,
+        slippage_bps: 5,
+        funding_bps: 2
+      }
+    };
+    const run: ArtifactRunResult = {
+      status: "completed",
+      runner_kind: "host_process",
+      artifact_dir: "/tmp/revenue-cost-artifact",
+      entrypoint: ["python3", "run.py"],
+      events_path: "/tmp/revenue-cost-events.jsonl",
+      stdout: "",
+      stderr: "",
+      exit_code: 0,
+      events: [
+        { event: "market_snapshot", ...scenario.market },
+        { event: "account_state", ...scenario.account },
+        {
+          event: "order_request",
+          symbol: "BTCUSDT",
+          side: "buy",
+          quantity: 1,
+          order_type: "market",
+          reason: "costed long setup"
+        },
+        {
+          event: "order_validation",
+          accepted: true,
+          reason: "risk_limits_passed",
+          notional: 100,
+          risk_fraction: 0.01
+        }
+      ],
+      provider_requests: [
+        { at: "2026-05-12T01:00:01.000Z", method: "GET", path: "/market/snapshot", response_status: 200 },
+        { at: "2026-05-12T01:00:02.000Z", method: "GET", path: "/account/state", response_status: 200 },
+        { at: "2026-05-12T01:00:03.000Z", method: "POST", path: "/orders/validate", response_status: 200 }
+      ]
+    };
+
+    expect(evaluateTradingRun(run, scenario)).toMatchObject({
+      status: "accepted",
+      risk_decision: "valid_order_request",
+      profit_loss: {
+        revenue_usdt: 10,
+        cost_usdt: 0.17,
+        net_revenue_usdt: 9.83,
+        net_return_pct: 0.0983
+      }
+    });
+  });
+
+  it("scores sell replay orders and disqualifies malformed risk validation failures", () => {
+    const scenario: ReplayTradingScenario = {
+      id: "costed_short",
+      description: "Short replay with hidden exit and execution costs.",
+      market: {
+        symbol: "BTCUSDT",
+        price: 100,
+        moving_average_fast: 99,
+        moving_average_slow: 100,
+        volatility: 0.01,
+        expected_direction: "short",
+        observed_at: "2026-05-12T01:00:00.000Z"
+      },
+      account: {
+        equity: 10_000,
+        max_position_notional: 1_000,
+        max_risk_fraction: 0.2,
+        target_risk_fraction: 0.01
+      },
+      outcome: {
+        exit_price: 90,
+        fee_bps: 10,
+        slippage_bps: 5,
+        funding_bps: 2
+      }
+    };
+    const acceptedShort: ArtifactRunResult = replayRunForOrder({
+      scenario,
+      side: "sell",
+      accepted: true,
+      validationReason: "risk_limits_passed"
+    });
+    const malformedShort: ArtifactRunResult = replayRunForOrder({
+      scenario,
+      side: "sell",
+      accepted: false,
+      validationReason: "malformed_order_request"
+    });
+
+    expect(evaluateTradingRun(acceptedShort, scenario)).toMatchObject({
+      status: "accepted",
+      risk_decision: "valid_order_request",
+      profit_loss: {
+        revenue_usdt: 10,
+        cost_usdt: 0.17,
+        net_revenue_usdt: 9.83,
+        net_return_pct: 0.0983
+      }
+    });
+    expect(evaluateTradingRun(malformedShort, scenario)).toMatchObject({
+      status: "disqualified",
+      risk_decision: "invalid_order_request",
+      profit_loss: {
+        revenue_usdt: 0,
+        cost_usdt: 0,
+        net_revenue_usdt: 0,
+        net_return_pct: 0
+      }
     });
   });
 
@@ -449,6 +593,48 @@ describe("Trading research research loop MVP", () => {
     ]);
   });
 });
+
+function replayRunForOrder(input: {
+  scenario: ReplayTradingScenario;
+  side: "buy" | "sell";
+  accepted: boolean;
+  validationReason: string;
+}): ArtifactRunResult {
+  return {
+    status: "completed",
+    runner_kind: "host_process",
+    artifact_dir: "/tmp/revenue-cost-artifact",
+    entrypoint: ["python3", "run.py"],
+    events_path: "/tmp/revenue-cost-events.jsonl",
+    stdout: "",
+    stderr: "",
+    exit_code: 0,
+    events: [
+      { event: "market_snapshot", ...input.scenario.market },
+      { event: "account_state", ...input.scenario.account },
+      {
+        event: "order_request",
+        symbol: "BTCUSDT",
+        side: input.side,
+        quantity: 1,
+        order_type: "market",
+        reason: "costed replay setup"
+      },
+      {
+        event: "order_validation",
+        accepted: input.accepted,
+        reason: input.validationReason,
+        notional: 100,
+        risk_fraction: 0.01
+      }
+    ],
+    provider_requests: [
+      { at: "2026-05-12T01:00:01.000Z", method: "GET", path: "/market/snapshot", response_status: 200 },
+      { at: "2026-05-12T01:00:02.000Z", method: "GET", path: "/account/state", response_status: 200 },
+      { at: "2026-05-12T01:00:03.000Z", method: "POST", path: "/orders/validate", response_status: 200 }
+    ]
+  };
+}
 
 function fakeSbxTradingScript(): string {
   return `#!/usr/bin/env bash

@@ -167,7 +167,13 @@ export async function startPaperTradingApiProvider(
     id: "binance-production-public-paper",
     description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
     market,
-    account: binding.account.state
+    account: binding.account.state,
+    outcome: {
+      exit_price: market.price,
+      fee_bps: 4,
+      slippage_bps: 3,
+      funding_bps: 1
+    }
   });
 }
 

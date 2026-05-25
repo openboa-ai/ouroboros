@@ -74,6 +74,10 @@ import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestr
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
 import { runAgentTradingCycle } from "./agent-trading-cycle";
 import {
+  buildCandidateArenaReadModel,
+  CandidateArenaRunner
+} from "./candidate-arena";
+import {
   BinancePublicMarketSdkAdapter,
   type BinancePublicMarketDataClient
 } from "./trading-substrate/binance-public-market-adapter";
@@ -93,6 +97,7 @@ export interface BuildServerOptions {
   tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
   tradingResearchProbeExecFile?: TradingResearchProbeExecFile;
   tradingResearchIterations?: number;
+  candidateArenaTickIntervalMs?: number;
   binancePublicMarketClient?: BinancePublicMarketDataClient;
 }
 
@@ -229,6 +234,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
       return createTradingResearchAgentAdapter(tradingResearchRuntimeConfig, agent);
     });
+  const candidateArenaRunner = new CandidateArenaRunner({
+    store,
+    researchAgent: tradingResearchRuntimeConfig.default_agent,
+    agentFactory: tradingResearchAgentFactory
+  }, options.candidateArenaTickIntervalMs);
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
     deterministic_test: providedSandboxAdapters?.deterministic_test
@@ -278,6 +288,43 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       options.tradingResearchProbeExecFile
     )
   }));
+
+  server.get("/api/candidate-arena", async () => ({
+    candidate_arena: await buildCandidateArenaReadModel(
+      store,
+      candidateArenaRunner.status(),
+      candidateArenaRunner.ticks()
+    )
+  }));
+
+  server.post("/api/candidate-arena/start", async (_request, reply) => {
+    const status = candidateArenaRunner.start();
+    return reply.code(202).send({
+      status,
+      candidate_arena: await buildCandidateArenaReadModel(
+        store,
+        candidateArenaRunner.status(),
+        candidateArenaRunner.ticks()
+      )
+    });
+  });
+
+  server.post("/api/candidate-arena/stop", async (_request, reply) => {
+    const status = candidateArenaRunner.stop();
+    return reply.code(202).send({
+      status,
+      candidate_arena: await buildCandidateArenaReadModel(
+        store,
+        candidateArenaRunner.status(),
+        candidateArenaRunner.ticks()
+      )
+    });
+  });
+
+  server.post("/api/candidate-arena/tick", async (_request, reply) => {
+    const outcome = await candidateArenaRunner.tick();
+    return reply.code(201).send(outcome);
+  });
 
   server.get("/api/trading-execution-modes", async () => ({
     modes: listTradingSystemExecutionModeContracts()

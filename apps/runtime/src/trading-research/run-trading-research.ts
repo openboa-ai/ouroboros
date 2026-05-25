@@ -23,6 +23,13 @@ import type {
   TradingResearchNotebookEntry
 } from "./types";
 
+const ZERO_PROFIT_LOSS = {
+  revenue_usdt: 0,
+  cost_usdt: 0,
+  net_revenue_usdt: 0,
+  net_return_pct: 0
+};
+
 export interface RunTradingResearchLoopInput {
   iterations?: number;
   mode?: TradingResearchMode;
@@ -35,6 +42,7 @@ export interface RunTradingResearchLoopInput {
   agent_adapter?: TradingResearchAgentAdapter;
   artifact_runner?: TradingArtifactRunner;
   artifact_runner_kind?: TradingArtifactRunnerKind;
+  arena_context?: string;
 }
 
 export async function runTradingResearchLoop(
@@ -87,7 +95,8 @@ export async function runTradingResearchLoop(
       program_path: programPath,
       notebook_path: notebookPath,
       iteration,
-      previous_best_score: Number.isFinite(bestScore) ? bestScore : undefined
+      previous_best_score: Number.isFinite(bestScore) ? bestScore : undefined,
+      arena_context: input.arena_context
     });
     if (agentResult.status === "failed") {
       const entry: TradingResearchNotebookEntry = {
@@ -115,7 +124,8 @@ export async function runTradingResearchLoop(
             }
           ],
           summary: "Agent failed before artifact execution.",
-          risk_decision: "no_order_request"
+          risk_decision: "no_order_request",
+          profit_loss: ZERO_PROFIT_LOSS
         }
       };
       notebook.entries.push(entry);

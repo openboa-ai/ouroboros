@@ -12,6 +12,7 @@ import type {
   TradingArtifactCommandEvidence,
   TradingArtifactCommandEvidenceSummary,
   TradingEvaluationResult,
+  TradingProfitLoss,
   TradingScenarioEvaluationResult,
   TradingSystemManifest
 } from "./types";
@@ -55,7 +56,7 @@ export async function runTradingReplaySet(
         provider,
         output_dir: resolvePathInsideRoot(outputRoot, [sanitizePathSegment(scenario.id)], "scenario_output_dir")
       });
-      const evaluation = evaluateTradingRun(run);
+      const evaluation = evaluateTradingRun(run, scenario);
       scenarioResults.push({
         scenario_id: scenario.id,
         runner_kind: run.runner_kind,
@@ -66,6 +67,7 @@ export async function runTradingReplaySet(
         metrics: evaluation.metrics,
         summary: evaluation.summary,
         risk_decision: evaluation.risk_decision,
+        profit_loss: evaluation.profit_loss,
         events_path: run.events_path,
         provider_request_count: run.provider_requests.length,
         runner_command_count: run.command_evidence?.length ?? 0,
@@ -107,6 +109,7 @@ function aggregateScenarioResults(
   const score = roundScore(
     scenarioResults.reduce((total, result) => total + result.score, 0) / scenarioCount
   );
+  const profitLoss = aggregateProfitLoss(scenarioResults.map((result) => result.profit_loss));
   const status = acceptedCount === scenarioCount ? "accepted" : "disqualified";
   const riskDecision = aggregateRiskDecision(scenarioResults);
 
@@ -123,13 +126,42 @@ function aggregateScenarioResults(
         name: "scenario_acceptance",
         score: roundScore(acceptedCount / scenarioCount),
         detail: `${acceptedCount}/${scenarioCount} replay scenarios accepted`
+      },
+      {
+        name: "net_revenue",
+        score: profitLoss.net_revenue_usdt > 0 ? 1 : 0,
+        detail: `aggregate net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs`
       }
     ],
     summary: status === "accepted"
-      ? `Accepted replay set with average score ${score.toFixed(3)} across ${scenarioCount} scenarios.`
-      : `Rejected replay set with average score ${score.toFixed(3)} across ${scenarioCount} scenarios.`,
+      ? `Accepted replay set with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs across ${scenarioCount} scenarios.`
+      : `Rejected replay set with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs across ${scenarioCount} scenarios.`,
     risk_decision: riskDecision,
+    profit_loss: profitLoss,
     scenario_results: scenarioResults
+  };
+}
+
+function aggregateProfitLoss(items: TradingProfitLoss[]): TradingProfitLoss {
+  const total = items.reduce(
+    (acc, item) => ({
+      revenue_usdt: acc.revenue_usdt + item.revenue_usdt,
+      cost_usdt: acc.cost_usdt + item.cost_usdt,
+      net_revenue_usdt: acc.net_revenue_usdt + item.net_revenue_usdt,
+      net_return_pct: acc.net_return_pct + item.net_return_pct
+    }),
+    {
+      revenue_usdt: 0,
+      cost_usdt: 0,
+      net_revenue_usdt: 0,
+      net_return_pct: 0
+    }
+  );
+  return {
+    revenue_usdt: roundProfit(total.revenue_usdt),
+    cost_usdt: roundProfit(total.cost_usdt),
+    net_revenue_usdt: roundProfit(total.net_revenue_usdt),
+    net_return_pct: roundProfit(total.net_return_pct)
   };
 }
 
@@ -188,6 +220,10 @@ function preview(value: string): string {
 
 function roundScore(score: number): number {
   return Math.round(Math.max(0, Math.min(1, score)) * 1_000) / 1_000;
+}
+
+function roundProfit(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function replayProviderOptionsFor(

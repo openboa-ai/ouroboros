@@ -29,6 +29,7 @@ export interface AgentEditInput {
   notebook_path: string;
   iteration: number;
   previous_best_score?: number;
+  arena_context?: string;
 }
 
 export interface AgentEditResult {
@@ -112,6 +113,14 @@ export interface ReplayTradingScenario {
   description: string;
   market: MarketSnapshot;
   account: AccountState;
+  outcome: ReplayTradingScenarioOutcome;
+}
+
+export interface ReplayTradingScenarioOutcome {
+  exit_price: number;
+  fee_bps: number;
+  slippage_bps: number;
+  funding_bps: number;
 }
 
 export interface ArtifactRunResult {
@@ -160,12 +169,20 @@ export interface TradingEvaluationMetric {
   detail: string;
 }
 
+export interface TradingProfitLoss {
+  revenue_usdt: number;
+  cost_usdt: number;
+  net_revenue_usdt: number;
+  net_return_pct: number;
+}
+
 export interface TradingEvaluationResult {
   status: TradingEvaluationStatus;
   score: number;
   metrics: TradingEvaluationMetric[];
   summary: string;
   risk_decision: TradingRiskDecision;
+  profit_loss: TradingProfitLoss;
   scenario_results?: TradingScenarioEvaluationResult[];
 }
 
@@ -179,6 +196,7 @@ export interface TradingScenarioEvaluationResult {
   metrics: TradingEvaluationMetric[];
   summary: string;
   risk_decision: TradingRiskDecision;
+  profit_loss: TradingProfitLoss;
   events_path: string;
   provider_request_count: number;
   runner_command_count: number;
