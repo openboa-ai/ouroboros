@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -95,17 +95,21 @@ async function readCandidates(rootPath) {
       continue;
     }
     const notebookPath = path.join(rootPath, entry.name, "notebook.json");
-    let notebookStat;
+    let notebookFile;
     try {
-      notebookStat = await stat(notebookPath);
+      notebookFile = await open(notebookPath, "r");
     } catch {
       continue;
     }
     let notebook;
+    let notebookStat;
     try {
-      notebook = JSON.parse(await readFile(notebookPath, "utf8"));
+      notebookStat = await notebookFile.stat();
+      notebook = JSON.parse(await notebookFile.readFile("utf8"));
     } catch {
       continue;
+    } finally {
+      await notebookFile.close();
     }
     candidates.push(await summarizeNotebook(notebook, notebookPath, notebookStat));
   }

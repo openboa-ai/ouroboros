@@ -74,7 +74,7 @@ interface RawReplayRunRecord {
 export async function listReplayRunEvidence(
   input: ListReplayRunEvidenceInput = {}
 ): Promise<ReplayRunEvidenceReadModel[]> {
-  const root = path.resolve(input.root ?? DEFAULT_REPLAY_RUN_ROOT);
+  const root = safeAbsoluteRoot(input.root ?? DEFAULT_REPLAY_RUN_ROOT);
   const limit = input.limit ?? 10;
   let entries;
   try {
@@ -91,8 +91,8 @@ export async function listReplayRunEvidence(
     if (!entry.isDirectory()) {
       continue;
     }
-    const runDir = path.join(root, entry.name);
-    const run = await readRunIfPresent(path.join(runDir, "run.json"), runDir);
+    const runDir = resolvePathInsideRoot(root, [entry.name], "run_dir");
+    const run = await readRunIfPresent(resolvePathInsideRoot(runDir, ["run.json"], "run_record"), runDir);
     if (!run || (input.candidate_id && run.candidate_id !== input.candidate_id)) {
       continue;
     }
@@ -110,9 +110,9 @@ export async function getReplayRunDetail(
   if (!isPathSafeId(input.run_id)) {
     return undefined;
   }
-  const root = path.resolve(input.root ?? DEFAULT_REPLAY_RUN_ROOT);
-  const runDir = path.join(root, input.run_id);
-  const run = await readRunDetailIfPresent(path.join(runDir, "run.json"), runDir);
+  const root = safeAbsoluteRoot(input.root ?? DEFAULT_REPLAY_RUN_ROOT);
+  const runDir = resolvePathInsideRoot(root, [input.run_id], "run_id");
+  const run = await readRunDetailIfPresent(resolvePathInsideRoot(runDir, ["run.json"], "run_record"), runDir);
   if (!run || run.candidate_id !== input.candidate_id) {
     return undefined;
   }
@@ -665,6 +665,20 @@ function booleanValue(value: unknown): boolean | undefined {
 
 function isPathSafeId(value: string): boolean {
   return /^[a-zA-Z0-9._:-]+$/.test(value) && !value.includes("..");
+}
+
+function safeAbsoluteRoot(rootPath: string): string {
+  return path.resolve(rootPath);
+}
+
+function resolvePathInsideRoot(rootPath: string, segments: string[], label: string): string {
+  const safeRoot = safeAbsoluteRoot(rootPath);
+  const resolved = path.resolve(safeRoot, ...segments);
+  const rootPrefix = safeRoot.endsWith(path.sep) ? safeRoot : `${safeRoot}${path.sep}`;
+  if (resolved !== safeRoot && !resolved.startsWith(rootPrefix)) {
+    throw new Error(`${label} must stay under its configured root`);
+  }
+  return resolved;
 }
 
 function stringValue(value: unknown): string | undefined {

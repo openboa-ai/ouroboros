@@ -253,10 +253,11 @@ async function waitForRuntime() {
 
 async function api(method, route, payload) {
   section(`${method} ${route}`);
+  const hasPayload = payload !== undefined;
   const response = await fetch(`${runtimeUrl}${route}`, {
     method,
-    headers: payload ? { "content-type": "application/json" } : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
+    headers: hasPayload ? { "content-type": "application/json" } : undefined,
+    body: hasPayload ? JSON.stringify(payload) : undefined,
     signal: AbortSignal.timeout(commandTimeoutMs * 3 + 5_000)
   });
   const text = await response.text();
@@ -272,10 +273,11 @@ async function api(method, route, payload) {
 async function apiExpectStatus(label, method, route, payload, expectedStatus) {
   section(label);
   console.log(`${method} ${route}`);
+  const hasPayload = payload !== undefined;
   const response = await fetch(`${runtimeUrl}${route}`, {
     method,
-    headers: payload ? { "content-type": "application/json" } : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
+    headers: hasPayload ? { "content-type": "application/json" } : undefined,
+    body: hasPayload ? JSON.stringify(payload) : undefined,
     signal: AbortSignal.timeout(commandTimeoutMs + 5_000)
   });
   const text = await response.text();
@@ -336,19 +338,6 @@ function assertLifecycleStopped(label, sandbox) {
     failures.push(`${label} lifecycle ${sandbox.lifecycle_status}`);
     throw new Error(`${label} did not reach stopped lifecycle`);
   }
-}
-
-function assertSandboxHeartbeat(label, sandbox, sandboxId) {
-  const heartbeatLines = (sandbox?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line);
-  assertTextContainsHeartbeat(label, heartbeatLines.join("\n"), sandboxId);
-}
-
-function assertSandboxLogOutcome(label, outcome, sandboxId) {
-  const lines = [
-    ...(outcome?.logs ?? []).flatMap((log) => log.lines ?? []),
-    ...(outcome?.heartbeats ?? []).map((heartbeat) => heartbeat.heartbeat_line)
-  ];
-  assertTextContainsHeartbeat(label, lines.join("\n"), sandboxId);
 }
 
 function assertTextContainsHeartbeat(label, text, sandboxId) {

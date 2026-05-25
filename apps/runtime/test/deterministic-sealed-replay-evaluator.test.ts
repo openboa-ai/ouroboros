@@ -124,7 +124,7 @@ function researchExperiment(
   };
 }
 
-if (false) {
+it("keeps sealed evaluator evidence input boundaries checked", () => {
   const evaluator = new DeterministicSealedReplayEvaluator();
   const task = fixtureTradingEvaluationTask();
   const experiment = researchExperiment("invalid-runtime-self-report", "artifact", task);
@@ -135,4 +135,4 @@ if (false) {
     // @ts-expect-error sealed evaluator submissions do not accept runtime-local self-report logs as evidence.
     runtime_log_lines: ["claimed pnl is high"]
   });
-}
+});

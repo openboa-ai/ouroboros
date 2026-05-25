@@ -254,7 +254,8 @@ describe("Trading research research loop MVP", () => {
     expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("rm --force ouro-s10-test-"))).toHaveLength(2);
-    expect(commands.join("\n")).toContain("TRADING_API_BASE_URL='http://127.0.0.1:");
+    expect(commands.join("\n")).toContain("replay-provider-runner.py --sidecar-script");
+    expect(commands.join("\n")).toContain("--provider-base-url http://127.0.0.1:");
     delete process.env.SBX_FAKE_COMMAND_LOG;
   });
 

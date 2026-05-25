@@ -175,7 +175,7 @@ describe("opaque system code and sandbox instance contracts", () => {
   });
 });
 
-if (false) {
+it("keeps SystemCode artifact type boundaries checked", () => {
   const _artifactWithRawSecrets = {
     record_kind: "system_code",
     version: 1,
@@ -218,4 +218,4 @@ if (false) {
 
   void _artifactWithRawSecrets;
   void _artifactWithStrategyInternals;
-}
+});

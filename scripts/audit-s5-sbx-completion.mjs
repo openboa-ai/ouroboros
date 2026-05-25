@@ -311,13 +311,6 @@ function assertSectionContains(value, sectionLabel, expectedValues) {
   }
 }
 
-function assertSectionMatches(value, sectionLabel, expectedPattern) {
-  const section = sectionText(value, sectionLabel);
-  if (!expectedPattern.test(section)) {
-    throw new IncompleteCheck(`missing ${expectedPattern.source} in transcript section: ${sectionLabel}`);
-  }
-}
-
 function assertSectionHasHeartbeatJson(value, sectionLabel, expectedInstanceId) {
   const section = sectionText(value, sectionLabel);
   for (const line of section.split("\n")) {

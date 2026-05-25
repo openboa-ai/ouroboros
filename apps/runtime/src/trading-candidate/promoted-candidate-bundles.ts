@@ -65,7 +65,11 @@ export async function listPromotedCandidateSummaries(
 export async function getPromotedCandidate(
   input: GetPromotedCandidateInput
 ): Promise<CandidateInspectReadModel | undefined> {
-  const bundle = await readPromotedCandidateBundle(path.join(resolveRoot(input.root), input.candidate_id));
+  if (!isPathSafeId(input.candidate_id)) {
+    return undefined;
+  }
+  const root = resolveRoot(input.root);
+  const bundle = await readPromotedCandidateBundle(resolvePathInsideRoot(root, [input.candidate_id], "candidate_id"));
   return bundle ? toInspectReadModel(bundle) : undefined;
 }
 
@@ -88,7 +92,7 @@ async function listPromotedCandidates(
     if (!entry.isDirectory()) {
       continue;
     }
-    const bundle = await readPromotedCandidateBundle(path.join(root, entry.name));
+    const bundle = await readPromotedCandidateBundle(resolvePathInsideRoot(root, [entry.name], "candidate_dir"));
     if (bundle) {
       candidates.push(toInspectReadModel(bundle));
     }
@@ -101,13 +105,13 @@ async function readPromotedCandidateBundle(
   bundleDir: string
 ): Promise<PromotedCandidateBundle | undefined> {
   const candidate = await readOptionalJson<TradingSystemCandidateRecord>(
-    path.join(bundleDir, "candidate.json")
+    resolvePathInsideRoot(bundleDir, ["candidate.json"], "candidate_record")
   );
   const version = await readOptionalJson<CandidateVersionRecord>(
-    path.join(bundleDir, "candidate-version.json")
+    resolvePathInsideRoot(bundleDir, ["candidate-version.json"], "candidate_version_record")
   );
   const systemCode = await readOptionalJson<SystemCodeRecord>(
-    path.join(bundleDir, "system-code.json")
+    resolvePathInsideRoot(bundleDir, ["system-code.json"], "system_code_record")
   );
   if (!candidate || !version || !systemCode) {
     return undefined;
@@ -117,7 +121,7 @@ async function readPromotedCandidateBundle(
   }
 
   const promotion = await readOptionalJson<PromotedCandidatePromotionRecord>(
-    path.join(bundleDir, "promotion.json")
+    resolvePathInsideRoot(bundleDir, ["promotion.json"], "promotion_record")
   );
   return {
     candidate,
@@ -413,6 +417,20 @@ function ref(recordKind: string, id: string): Ref {
 
 function resolveRoot(root?: string): string {
   return path.resolve(root ?? DEFAULT_PROMOTED_CANDIDATE_ROOT);
+}
+
+function resolvePathInsideRoot(rootPath: string, segments: string[], label: string): string {
+  const safeRoot = resolveRoot(rootPath);
+  const resolved = path.resolve(safeRoot, ...segments);
+  const rootPrefix = safeRoot.endsWith(path.sep) ? safeRoot : `${safeRoot}${path.sep}`;
+  if (resolved !== safeRoot && !resolved.startsWith(rootPrefix)) {
+    throw new Error(`${label} must stay under its configured root`);
+  }
+  return resolved;
+}
+
+function isPathSafeId(value: string): boolean {
+  return /^[a-zA-Z0-9._:-]+$/.test(value) && !value.includes("..");
 }
 
 function stringValue(value: unknown): string | undefined {

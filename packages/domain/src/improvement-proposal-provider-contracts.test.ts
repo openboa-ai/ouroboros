@@ -351,7 +351,7 @@ function fixtureTradingEvaluationTask(): TradingEvaluationTaskRecord {
   };
 }
 
-if (false) {
+it("keeps provider output type boundaries checked", () => {
   const _agentSpec: AgentSpecRecord = {
     record_kind: "agent_spec",
     version: 1,
@@ -373,4 +373,4 @@ if (false) {
 
   void _agentSpec;
   void _providerOutputWithDurableProposalTruth;
-}
+});

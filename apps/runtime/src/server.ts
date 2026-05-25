@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
   CandidateInspectReadModel,
@@ -200,9 +201,6 @@ interface CreateReplayRunBody {
   runner_kind?: string;
   scenario_ids?: unknown;
   timeout_ms?: unknown;
-  sbx_path?: string;
-  sbx_home?: string;
-  workspace_path?: string;
 }
 
 interface StartSandboxBody {
@@ -248,6 +246,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   await server.register(cors, {
     origin: true,
     methods: ["GET", "POST"]
+  });
+  await server.register(rateLimit, {
+    max: 600,
+    timeWindow: "1 minute"
   });
 
   server.get("/health", async () => ({
@@ -767,19 +769,24 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id
         });
       }
+      const replayRunId = parseReplayRunId(body.run_id);
+      if (body.run_id !== undefined && !replayRunId) {
+        return reply.code(422).send({
+          error: "replay_run_rejected",
+          reason: "invalid_run_id",
+          candidate_id: request.params.candidate_id
+        });
+      }
 
       try {
         const record = await runPromotedCandidateReplay({
           candidate_id: request.params.candidate_id,
           candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
           run_root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-          run_id: body.run_id,
+          run_id: replayRunId,
           runner_kind: runnerKind,
           scenario_ids: scenarioIds,
-          timeout_ms: timeoutMs,
-          sbx_path: body.sbx_path,
-          sbx_home: body.sbx_home,
-          workspace_path: body.workspace_path
+          timeout_ms: timeoutMs
         });
         return reply.code(201).send({
           candidate_id: request.params.candidate_id,
@@ -1028,23 +1035,30 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.post<{ Params: { system_id: string } }>(
     "/api/trading-systems/:system_id/improvements",
     async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.system_id);
+      const systemId = parseRoutePathId(request.params.system_id);
+      if (!systemId) {
+        return reply.code(400).send({
+          error: "invalid_system_id",
+          system_id: request.params.system_id
+        });
+      }
+      const candidate = await store.getCandidate(systemId);
       if (!candidate) {
         return reply.code(404).send({
           error: "trading_system_not_found",
-          system_id: request.params.system_id
+          system_id: systemId
         });
       }
 
       const candidateVersionId = candidate.candidate_version.candidate_version_id;
       const idempotencyKey = [
         "runtime-api-improvement",
-        request.params.system_id,
+        systemId,
         candidateVersionId
       ].join("-");
       const outcome = await recordFixtureImprovement({
         store,
-        systemId: request.params.system_id,
+        systemId,
         candidateVersionId,
         idempotencyKey
       });
@@ -1052,7 +1066,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         return reply.code(422).send({
           error: "improvement_failed",
           reason: outcome.failure_reason,
-          system_id: request.params.system_id,
+          system_id: systemId,
           candidate_version_id: candidateVersionId,
           idempotency_key: idempotencyKey
         });
@@ -1065,6 +1079,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
     "/api/trading-systems/:system_id/full-cycle-runs",
     async (request, reply) => {
+      const systemId = parseRoutePathId(request.params.system_id);
+      if (!systemId) {
+        return reply.code(400).send({
+          error: "invalid_system_id",
+          system_id: request.params.system_id
+        });
+      }
       const runtimeEnvironment = startRuntimeEnvironment(request.body);
       if (!runtimeEnvironment) {
         return reply.code(400).send({
@@ -1107,11 +1128,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         });
       }
 
-      const candidate = await store.getCandidate(request.params.system_id);
+      const candidate = await store.getCandidate(systemId);
       if (!candidate) {
         return reply.code(404).send({
           error: "trading_system_not_found",
-          system_id: request.params.system_id
+          system_id: systemId
         });
       }
 
@@ -1119,7 +1140,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       try {
         const outcome = await runAgentTradingCycle({
           store,
-          sourceSystemId: request.params.system_id,
+          sourceSystemId: systemId,
           sourceCandidateVersionId: candidateVersionId,
           tradingGatewayEnvironment,
           gatewayRuntimeBinding,
@@ -1132,7 +1153,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return reply.code(ledgerStatusCode(error.code)).send({
             error: "full_cycle_failed",
             reason: error.code,
-            system_id: request.params.system_id,
+            system_id: systemId,
             candidate_version_id: candidateVersionId,
             full_cycle_lineage: blockedFullCycleLineage({
               candidate,
@@ -1145,7 +1166,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return reply.code(422).send({
             error: "full_cycle_failed",
             reason: error.message,
-            system_id: request.params.system_id,
+            system_id: systemId,
             candidate_version_id: candidateVersionId,
             full_cycle_lineage: blockedFullCycleLineage({
               candidate,
@@ -1158,7 +1179,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return reply.code(422).send({
             error: "full_cycle_failed",
             reason: error.message,
-            system_id: request.params.system_id,
+            system_id: systemId,
             candidate_version_id: candidateVersionId,
             full_cycle_lineage: blockedFullCycleLineage({
               candidate,
@@ -2226,6 +2247,20 @@ function parseReplayRunScenarioIds(value: unknown): string[] | undefined {
   return value;
 }
 
+function parseReplayRunId(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !isPathSafeRouteId(value)) {
+    return undefined;
+  }
+  return value;
+}
+
+function parseRoutePathId(value: string): string | undefined {
+  return isPathSafeRouteId(value) ? value : undefined;
+}
+
 function parseOptionalPositiveInteger(value: unknown): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -2237,11 +2272,13 @@ function replayRunErrorStatus(error: ReplayRunError): 404 | 422 {
   return error.reason === "candidate_not_found" ? 404 : 422;
 }
 
+function isPathSafeRouteId(value: string): boolean {
+  return /^[a-zA-Z0-9._:-]+$/.test(value) && !value.includes("..");
+}
+
 function sandboxStatusCode(reason: string): 404 | 422 {
   return (
     reason === "system_code_not_found" ||
-    reason === "system_code_not_found" ||
-    reason === "sandbox_not_found" ||
     reason === "sandbox_not_found" ||
     reason === "runtime_not_found"
   ) ? 404 : 422;

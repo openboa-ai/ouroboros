@@ -593,7 +593,7 @@ export function App() {
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         recordingRunControl: false,
-        runtimeControlMessage: "Run control recorded"
+        runtimeControlMessage: `Run control ${outcome.status}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -5060,7 +5060,7 @@ function Placeholder({ item }: { item: PlaceholderSummary }) {
 }
 
 function formatRef(ref: { record_kind: string; id: string }) {
-  return `${canonicalRefKind(ref.record_kind)}:${canonicalRefId(ref.id)}`;
+  return `${canonicalRefKind(ref.record_kind)}:${ref.id}`;
 }
 
 function formatRefs(refs: Array<{ record_kind: string; id: string }>) {
@@ -5080,19 +5080,6 @@ function canonicalRefKind(recordKind: string): string {
     run_control_decision: "run_control_decision"
   };
   return canonicalKinds[recordKind] ?? recordKind;
-}
-
-function canonicalRefId(id: string): string {
-  return id
-    .replace(/^system-code/, "system-code")
-    .replace(/^trading-run/, "trading-run")
-    .replace(/^sandbox-placement/, "sandbox-placement")
-    .replace(/^sandbox/, "sandbox")
-    .replace(/^order-request/, "order-request")
-    .replace(/^gateway-result/, "gateway-result")
-    .replace(/^execution-result/, "execution-result")
-    .replace(/^run-control-command/, "run-control-command")
-    .replace(/^run-control-decision/, "run-control-decision");
 }
 
 function canonicalGatewayTrackingStep(step: string): string {

@@ -263,7 +263,7 @@ function fixtureTradingEvaluationTask(): TradingEvaluationTaskRecord {
   };
 }
 
-if (false) {
+it("keeps research evaluation type boundaries checked", () => {
   const _taskWithPaperAuthority = {
     record_kind: "trading_evaluation_task",
     version: 1,
@@ -347,4 +347,4 @@ if (false) {
   void _experimentWithStrategyInternals;
   void _experimentWithLiveAuthority;
   void _artifactWithNormalizedStrategy;
-}
+});

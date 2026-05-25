@@ -39,7 +39,8 @@ export async function runTradingReplaySet(
   }
 
   const artifactRunner = input.artifact_runner ?? new HostTradingArtifactRunner();
-  await mkdir(input.output_dir, { recursive: true });
+  const outputRoot = safeAbsoluteRoot(input.output_dir);
+  await mkdir(outputRoot, { recursive: true });
   const scenarioResults: TradingScenarioEvaluationResult[] = [];
 
   for (const scenario of scenarios) {
@@ -52,7 +53,7 @@ export async function runTradingReplaySet(
         artifact_dir: input.artifact_dir,
         manifest: input.manifest,
         provider,
-        output_dir: path.join(input.output_dir, sanitizePathSegment(scenario.id))
+        output_dir: resolvePathInsideRoot(outputRoot, [sanitizePathSegment(scenario.id)], "scenario_output_dir")
       });
       const evaluation = evaluateTradingRun(run);
       scenarioResults.push({
@@ -75,7 +76,7 @@ export async function runTradingReplaySet(
     }
   }
 
-  const eventsPath = path.join(input.output_dir, "replay-set.json");
+  const eventsPath = resolvePathInsideRoot(outputRoot, ["replay-set.json"], "replay_set_events");
   const evaluation = aggregateScenarioResults(scenarioResults);
   await writeFile(
     eventsPath,
@@ -146,6 +147,20 @@ function aggregateRiskDecision(
 
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function safeAbsoluteRoot(rootPath: string): string {
+  return path.resolve(rootPath);
+}
+
+function resolvePathInsideRoot(rootPath: string, segments: string[], label: string): string {
+  const safeRoot = safeAbsoluteRoot(rootPath);
+  const resolved = path.resolve(safeRoot, ...segments);
+  const rootPrefix = safeRoot.endsWith(path.sep) ? safeRoot : `${safeRoot}${path.sep}`;
+  if (resolved !== safeRoot && !resolved.startsWith(rootPrefix)) {
+    throw new Error(`${label} must stay under its configured root`);
+  }
+  return resolved;
 }
 
 function commandEvidenceSummaries(
