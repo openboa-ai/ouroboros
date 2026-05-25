@@ -742,13 +742,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate_id: request.params.candidate_id
         });
       }
+      const candidateId = candidate.candidate_id;
 
       const body = request.body ?? {};
       if (hasRequestField(body, "run_id")) {
         return reply.code(422).send({
           error: "replay_run_rejected",
           reason: "client_run_id_not_supported",
-          candidate_id: request.params.candidate_id
+          candidate_id: candidateId
         });
       }
       const runnerKind = parseReplayRunRunnerKind(body.runner_kind);
@@ -756,14 +757,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         return reply.code(422).send({
           error: "replay_run_rejected",
           reason: "invalid_runner_kind",
-          candidate_id: request.params.candidate_id
+          candidate_id: candidateId
         });
       }
       if (runnerKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
         return reply.code(422).send({
           error: "replay_run_rejected",
           reason: "docker_sandboxes_sbx_runtime_disabled",
-          candidate_id: request.params.candidate_id
+          candidate_id: candidateId
         });
       }
 
@@ -772,7 +773,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         return reply.code(422).send({
           error: "replay_run_rejected",
           reason: "invalid_scenario_ids",
-          candidate_id: request.params.candidate_id
+          candidate_id: candidateId
         });
       }
       const timeoutMs = parseOptionalPositiveInteger(body.timeout_ms);
@@ -780,12 +781,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         return reply.code(422).send({
           error: "replay_run_rejected",
           reason: "invalid_timeout_ms",
-          candidate_id: request.params.candidate_id
+          candidate_id: candidateId
         });
       }
       try {
         const record = await runPromotedCandidateReplay({
-          candidate_id: request.params.candidate_id,
+          candidate_id: candidateId,
           candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
           run_root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
           run_id: createHttpReplayRunId(),
@@ -794,7 +795,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           timeout_ms: timeoutMs
         });
         return reply.code(201).send({
-          candidate_id: request.params.candidate_id,
+          candidate_id: candidateId,
           run: replayRunEvidenceFromRecord(record)
         });
       } catch (error) {
@@ -802,7 +803,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return reply.code(replayRunErrorStatus(error)).send({
             error: "replay_run_failed",
             reason: error.reason,
-            candidate_id: request.params.candidate_id,
+            candidate_id: candidateId,
             message: error.message
           });
         }
