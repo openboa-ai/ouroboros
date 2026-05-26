@@ -106,6 +106,25 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("Research iterations");
   });
 
+  it("keeps selected arena candidate paper evidence available before Ledger exists", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={arenaSelectedCandidate()}
+        candidateArena={fixtureCandidateArena}
+        onSelectCandidate={() => undefined}
+        onStartTradingRun={() => undefined}
+        runningTradingRun={false}
+      />
+    );
+
+    expect(html).toContain("Selected candidate");
+    expect(html).toContain("Run paper evidence");
+    expect(html).toContain("Paper evidence");
+    expect(html).toContain("not run");
+    expect(html).not.toContain("Research iterations");
+  });
+
   it("renders fixture labels and inspect sections without action controls", () => {
     const html = renderToStaticMarkup(<CandidateDetail candidate={fixtureCandidate} />);
 
