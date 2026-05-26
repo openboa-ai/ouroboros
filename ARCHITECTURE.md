@@ -1,37 +1,43 @@
 # Architecture
 
-Ouroboros is organized around one trust sequence:
+Ouroboros is organized around the current Candidate Arena trust sequence:
 
 ```text
-TradingSystem
+CandidateArena
+-> TradingSystem candidates
 -> SystemCode
 -> Evaluation
--> Improvement
--> TradingRun
+-> selected TradingRun
 -> Sandbox
 -> Gateway
 -> Ledger
 ```
 
-Canonical naming surface: Trading System -> System Code -> Evaluation -> Improvement -> Trading Run -> Sandbox -> Gateway -> Ledger.
+Canonical naming surface: Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger.
+
+`Improvement` remains a compatibility/AAR lineage record, but the primary product loop is no
+longer one best artifact being improved in place. Researchers inspect arena state, submit new
+Trading System candidates, and the arena ranks candidates by `net_revenue_usdt` first and
+`net_return_pct` second. Paper `Gateway` and `Ledger` evidence belongs to the selected Trading Run
+stage, not to every candidate evaluation.
 
 This file is a compact development map. Linear Project Documents own the full architecture archive, active contracts, source synthesis, product brief, and historical decisions.
 
 ## Local Layers
 
-- `apps/runtime`: runtime server, candidate materialization, provider adapter seam, local execution, and API surfaces.
-- `apps/operator-web`: operator UI for inspecting and controlling local runtime state.
+- `apps/runtime`: runtime server, Candidate Arena runner, candidate materialization, provider adapter seam, local execution, and API surfaces.
+- `apps/operator-web`: operator UI for inspecting Candidate Arena state and selected-candidate paper evidence.
 - `packages/domain`: shared contracts and domain types.
 - `packages/local-store`: durable local filesystem store primitives.
 - `.agents`: repo-local coding-agent harness and reusable work skills.
 
 ## Current Development Boundary
 
-Preserve these separations: TradingSystem identity vs Evaluation evidence, Evaluation evidence vs
-Improvement or promotion decisions, TradingRun control vs OrderRequest generation, provider output
-as trace material rather than proof, and persistence with enough attribution to replay why state
-exists. Docker, Compose, Docker Sandboxes `sbx`, placement, adapter, and host paths stay below the
-Sandbox boundary.
+Preserve these separations: Candidate Arena state vs selected Trading Run execution, TradingSystem
+identity vs Evaluation evidence, Evaluation evidence vs promotion decisions, TradingRun control vs
+OrderRequest generation, provider output as trace material rather than proof, and persistence with
+enough attribution to replay why state exists. Docker, Compose, Docker Sandboxes `sbx`, placement,
+adapter, and host paths stay below the Sandbox boundary.
 
 ## Linear Architecture Sources
 

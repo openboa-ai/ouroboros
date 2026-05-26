@@ -18,6 +18,7 @@ Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clea
 | Evaluate | `ci-recovery` | local checks or remote CI fail and need root-cause routing |
 | Promote | `auto-promotion-protocol` | a frontier, branch, release, or PR needs a landing/readiness decision |
 | Persist | `llm-wiki` | durable source/project-document/project-memory writeback is needed |
+| Persist | `linear-graphql` | the `linear` skill has selected a Linear operation that should execute through repo-local GraphQL |
 | Clean | `auto-garbage-collection` | stale docs, duplicate memory, or old run notes block resumption |
 
 ## Phase Evidence
@@ -31,7 +32,9 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 3. If naming or taxonomy is the source of ambiguity, use `taxonomy-design`.
 4. If the task is already bounded, use the matching worker directly.
 5. Before stopping, decide `writeback_needed: yes/no`.
-6. If `writeback_needed: yes`, route to `llm-wiki`.
+6. If `writeback_needed: yes`, route to `llm-wiki`, load the authoritative system skill such as
+   `linear`, and execute Linear operations through the repo-local GraphQL path when Linear owns the
+   durable fact.
 
 ## Codex Feature Routing
 
@@ -70,7 +73,7 @@ Every `SKILL.md` must be a valid Agent Skill and stay cheap to discover.
 
 ## Mandatory llm-wiki Gate
 
-Use `llm-wiki` when durable product/design decisions, source interpretation, branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy, active/historical documentation boundary, read-path, or stale-term cleanup must survive chat.
+Use `llm-wiki` when durable product/design decisions, source interpretation, branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy, active/historical documentation boundary, read-path, or stale-term cleanup must survive chat. For Linear-owned facts, select the `linear` skill first and use `linear-graphql` as the repo-local execution path.
 
 ## Handoff Packet
 

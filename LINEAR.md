@@ -7,6 +7,8 @@ Linear is the Ouroboros source of truth for product, planning, project state, Pr
 - Repo-originated durable documentation changes go to Linear.
 - Linear content is not synced back into repo documentation.
 - The repo stays focused on implementation code, tests, validation, and minimal execution-facing instructions.
+- Linear writeback is mandatory for durable outcomes. Linear-related work must select the `linear`
+  skill first and execute Linear operations through the repo-local GraphQL path.
 
 ## Project
 
@@ -52,4 +54,20 @@ Linear is the Ouroboros source of truth for product, planning, project state, Pr
 
 ## Update Rule
 
-Update Linear first for durable product, architecture, source, service, or project-memory changes. Update repo docs only when local developer or agent execution would be wrong without the change.
+Update Linear first for durable product, architecture, source, service, or project-memory changes.
+Update repo docs only when local developer or agent execution would be wrong without the change.
+Every such repo-doc change must be paired with a Linear workpad, comment, project update, or
+Project Document update.
+
+Use the `linear` skill for Linear-related work. Execute the selected Linear operation through the
+repo-local GraphQL path:
+
+```bash
+npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
+npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
+```
+
+Both commands read `LINEAR_API_KEY` from the environment first, then local `.env`, and do not print
+the token. Their implementation lives in [.agents/skills/linear-graphql](.agents/skills/linear-graphql/SKILL.md)
+because this is agent operating support, not product runtime code. If GraphQL execution fails, leave
+the work blocked with the failing evidence instead of marking the task complete.

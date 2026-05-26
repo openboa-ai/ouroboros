@@ -27,6 +27,8 @@
     "audit:s9-codex-sdx-local": "OUROBOROS_SBX_HOME=${OUROBOROS_SBX_HOME:-/private/tmp/ouro-s5-sdx-home} OUROBOROS_SDX_BIN=${OUROBOROS_SDX_BIN:-./scripts/sdx-docker-sandboxes} node scripts/audit-s9-codex-sbx.mjs",
     "dev:runtime": "npm run dev -w @ouroboros/runtime",
     "dev:operator-web": "npm run dev -w @ouroboros/operator-web",
+    "linear:graphql": "node .agents/skills/linear-graphql/scripts/linear-graphql.mjs",
+    "linear:workpad": "node .agents/skills/linear-graphql/scripts/linear-workpad.mjs",
     "hooks:install": "bash scripts/install-git-hooks.sh",
     "check:naming": "node scripts/check-naming-surface.mjs",
     "test": "vitest run",

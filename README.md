@@ -1,6 +1,6 @@
 # Ouroboros
 
-Ouroboros is an automated weak-to-strong trading-system laboratory. Its first product proof is a single serious solo crypto operator evolving one agent-built `TradingSystem` through `SystemCode`, `Evaluation`, `Improvement`, `TradingRun`, `Sandbox`, `Gateway`, and `Ledger`.
+Ouroboros is an automated weak-to-strong trading-system laboratory. Its current product proof is a `CandidateArena` where researchers generate multiple agent-built `TradingSystem` candidates, rank them by revenue minus cost, and send only a selected candidate into paper `Gateway` and `Ledger` evidence.
 
 ## Source Of Truth
 
@@ -25,8 +25,8 @@ Long-form product, architecture, source, service, and project-memory material li
 
 ## Current Technical Shape
 
-- `apps/runtime` hosts the runtime API, candidate materialization, provider adapter seam, and local execution surfaces.
-- `apps/operator-web` hosts the operator-facing web surface.
+- `apps/runtime` hosts the runtime API, Candidate Arena runner, candidate materialization, provider adapter seam, and local execution surfaces.
+- `apps/operator-web` hosts the operator-facing Candidate Arena and paper evidence controls.
 - `packages/domain` owns shared domain contracts.
 - `packages/local-store` owns filesystem-backed local persistence.
 - `.agents` owns reusable agent operating skills for this repo.
@@ -36,15 +36,17 @@ Long-form product, architecture, source, service, and project-memory material li
 Use the same nouns in code, API, UI, and compact repo docs:
 
 ```text
-TradingSystem -> SystemCode -> Evaluation -> Improvement -> TradingRun -> Sandbox -> Gateway -> Ledger
+CandidateArena -> TradingSystem -> SystemCode -> Evaluation -> selected TradingRun -> Sandbox -> Gateway -> Ledger
 ```
 
-User-facing flow: Trading System -> System Code -> Evaluation -> Improvement -> Trading Run -> Sandbox -> Gateway -> Ledger.
+User-facing flow: Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger.
 
 `OrderRequest`, `GatewayResult`, and `ExecutionResult` are the Ledger chain. Docker, Compose,
 Docker Sandboxes `sbx`, placement, adapter, and host paths are implementation details under
 `Sandbox`, not product nouns. Older persisted names can appear only in compatibility reads or
 tests that prove old records still load.
+`Improvement` remains a compatibility/AAR lineage noun; new primary workflow language should use
+Candidate Arena, Trading System candidates, Evaluation, selected Trading Run, Gateway, and Ledger.
 
 ## Development Read Path
 
@@ -53,12 +55,16 @@ tests that prove old records still load.
 3. Read [AGENTS.md](AGENTS.md) for repo-specific agent policy.
 4. Read [ARCHITECTURE.md](ARCHITECTURE.md) for the compact local code map.
 5. Inspect only the code and tests relevant to the current issue.
+6. Write durable outcomes back to Linear through the `linear` skill and the repo-local GraphQL
+   execution commands below.
 
 ## Local Commands
 
 ```bash
 npm install
 npm run hooks:install
+npm run linear:graphql -- --query-file <path>
+npm run linear:workpad -- --issue OURO-158 --body-file <path>
 bash scripts/check-docs.sh
 npm run check:naming
 bash scripts/check-env-files.sh --tracked
@@ -67,6 +73,22 @@ git diff --check
 npm test
 npm run typecheck
 ```
+
+## Linear GraphQL
+
+Linear writeback is mandatory for durable outcomes. For Linear-related work, load the `linear`
+skill first because Linear owns product planning, execution state, comments, and durable project
+history. GraphQL is the main execution path for Linear operations in this repo:
+
+```bash
+npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
+npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
+```
+
+Both commands are thin npm wrappers around [.agents/skills/linear-graphql](.agents/skills/linear-graphql/SKILL.md).
+They read `LINEAR_API_KEY` from the environment first, then local `.env`, and never print the token.
+`linear:workpad` upserts one issue comment whose body starts with `## Codex Workpad`, so issue
+execution state stays in one durable comment instead of a stream of status comments.
 
 ## Local Runtime Stack
 
@@ -104,9 +126,27 @@ Ledger. Demo/testnet URLs are test-only injected clients, not product runtime en
 profile examples keep the same credential variable names for future compatibility, but the current
 app reports `not_live`, does not require credentials for paper, and performs no live exchange calls.
 
-Trading research can run from the CLI or the Operator web full-cycle action through the same
-researcher runtime config. Normal runtime startup defaults to Codex, while tests can still inject
-fixture adapters:
+Candidate Arena is the primary research loop. The runner creates candidates across research
+directions, records per-tick history, and ranks the leaderboard by `net_revenue_usdt` first and
+`net_return_pct` second. Loss-making candidates remain valid lower-ranked candidates unless they
+crash, submit malformed orders, bypass provider boundaries, fail risk validation, or attempt
+private/live behavior.
+
+```bash
+npm run trading:arena -- status
+npm run trading:arena -- tick
+npm run trading:arena -- start
+npm run trading:arena -- stop
+```
+
+The Operator web first screen is Candidate Arena: runner status, Start/Stop/Tick, active
+researchers, leaderboard, selected candidate detail, and selected-candidate paper evidence.
+Fixture controls, raw research iterations, and full-cycle compatibility stay in developer/detail
+surfaces.
+
+Trading research compatibility paths can still run from the CLI or Operator web full-cycle action
+through the same researcher runtime config. Normal runtime startup defaults to Codex, while tests
+can still inject fixture adapters:
 
 ```bash
 OUROBOROS_TRADING_RESEARCH_AGENT=codex
@@ -116,8 +156,8 @@ OUROBOROS_TRADING_RESEARCH_TIMEOUT_MS=120000
 OUROBOROS_TRADING_RESEARCH_ITERATIONS=1
 ```
 
-Use `npm run trading:research -- --agent codex` for CLI research runs, or select Codex in the
-Operator web full-cycle controls. `fixture` remains an explicit dev/test fallback only.
+Use `npm run trading:research -- --agent codex` only for compatibility research runs, or select
+Codex in the Operator web developer controls. `fixture` remains an explicit dev/test fallback only.
 
 Compose validation covers package-level checks in a clean container image:
 
@@ -363,4 +403,8 @@ npm run audit:s5-sdx-local:promotion -- --evidence .ouroboros/s5-sbx-evidence/va
 
 ## Documentation Policy
 
-Repo-originated durable product, architecture, source, service, or project-memory updates go to Linear. Linear content is not synced back into repo documentation. Update repo docs only when developer or agent execution would be wrong without the local hint.
+Repo-originated durable product, architecture, source, service, or project-memory updates must be
+written to Linear. Linear content is not copied back into repo documentation. Update repo docs only
+when developer or agent execution would be wrong without the local hint, and pair that change with a
+Linear workpad/comment/document update through the `linear` skill and the repo-local GraphQL
+execution path. If GraphQL execution fails, the work is blocked rather than complete.

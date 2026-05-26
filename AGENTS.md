@@ -27,9 +27,35 @@ truth.
 | Project-scoped subagents | Explicitly requested read-only exploration or review workers for parallel evidence gathering. |
 | Hooks | Local pre-tool and post-tool safety checks; Git hooks and CI remain the final guard. |
 
-Use plugins to access the authoritative system that owns the fact: Linear for project truth,
-GitHub for PR/CI/review evidence, OpenAI docs for Codex/OpenAI behavior, and browser tooling for
-rendered local UI evidence. Do not replace maintained project truth with chat memory.
+Use plugins and skills to access the authoritative system that owns the fact: Linear for project
+truth, GitHub for PR/CI/review evidence, OpenAI docs for Codex/OpenAI behavior, and browser tooling
+for rendered local UI evidence. Do not replace maintained project truth with chat memory.
+
+For any work that reads, creates, updates, comments on, audits, or writes back Linear issues,
+projects, documents, cycles, comments, or project updates, load and follow the `linear` skill first.
+Use it because Linear is the product and execution-state authority, and the skill defines the
+operating workflow: clarify the target issue/project/team, read before writing, confirm durable
+identifiers, batch related operations, and summarize the resulting Linear state with remaining
+blockers.
+
+The purpose of the `linear` skill is to keep planning and durable operating history in Linear while
+the repo remains the implementation surface. The method is: recover the active issue and project
+context, read the relevant project documents/comments/updates, decide the exact Linear operation,
+execute that operation through the repo-local GraphQL path, and report the exact Linear objects
+changed. Repo docs or chat memory must not become a substitute for that workflow.
+
+GraphQL is the main execution path for Linear operations in this repo. The `linear` skill owns the
+workflow and the `.agents/skills/linear-graphql` skill owns the repo-local execution helpers:
+
+```bash
+npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
+npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
+```
+
+The GraphQL path reads `LINEAR_API_KEY` from the environment first, then local `.env`; never print
+raw token values. Its implementation lives in `.agents/skills/linear-graphql` because it is agent
+operating support, not product runtime code. If GraphQL execution fails, report the work as blocked
+with the failing evidence.
 
 Use project-scoped subagents only when the task benefits from parallel read-only work, such as
 Linear context recovery, code path mapping, PR review, or UI reproduction. Subagents are advisory:
@@ -52,7 +78,9 @@ When the two disagree, stop and reconcile through Linear before extending local 
 5. Route work through `.agents/skills/AGENTS.md` when the task is multi-step or ambiguous.
 6. Keep implementation changes bounded to the active issue.
 7. Run the narrowest meaningful validation, then the repo's required checks.
-8. Write durable project outcomes back to Linear. Only update repo docs when developer execution would be wrong without the local change.
+8. Write durable project outcomes back to Linear through the `linear` skill and the repo-local
+   GraphQL execution path in `.agents/skills/linear-graphql`. Only update repo docs when developer
+   execution would be wrong without the local change, and pair that change with Linear writeback.
 
 ## Skill-First Gate
 
@@ -87,10 +115,14 @@ Canonical Ouroboros nouns for the current product surface:
 
 | Canonical noun | Meaning |
 | --- | --- |
+| `CandidateArena` | Research workflow where multiple TradingSystem candidates are generated, evaluated, ranked, and selected. |
+| `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
+| `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
+| `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |
-| `Evaluation` | Backtest or evaluation evidence. |
-| `Improvement` | AAR-inspired proposal, experiment, and evaluation flow. |
+| `Evaluation` | Backtest or evaluation evidence, ranked by `net_revenue_usdt` first and `net_return_pct` second. |
+| `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate the primary CandidateArena workflow. |
 | `TradingRun` | One execution session for a TradingSystem. |
 | `Sandbox` | Isolated execution boundary for a TradingRun. |
 | `Gateway` | Boundary that handles OrderRequest before exchange authority. |
