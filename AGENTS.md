@@ -14,6 +14,31 @@ Start every non-trivial task from:
 
 The repo is the implementation surface. Linear is the documentation and execution-state authority.
 
+## CandidateArena Core Doctrine
+
+Keep every non-trivial product, docs, source-ingestion, and implementation task tied to the core
+loop:
+
+```text
+problem
+-> parallel or iterative TradingSystem candidate generation
+-> external Evaluation
+-> leaderboard
+-> findings and lineage
+-> next generation
+-> selected candidate paper evidence
+```
+
+Researchers and LLM agents generate candidates; they do not grant authority. External Evaluation,
+provider/risk validation, and selected-candidate paper Gateway/Ledger evidence decide what counts.
+Failed or loss-making candidates remain useful arena memory unless they crash, submit malformed
+orders, bypass provider boundaries, fail risk validation, or attempt private/live behavior.
+
+Treat AAR, AlphaProof Nexus, and future research references as pressure toward this candidate
+population loop. If a proposed change does not strengthen CandidateArena generation, external
+Evaluation, leaderboard/finding/lineage memory, or selected paper evidence, treat it as scope
+expansion and reroute through Linear before implementation.
+
 ## Codex Operating Contract
 
 This repository uses Codex features as an operating system for quality, not as a second source of

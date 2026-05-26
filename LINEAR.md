@@ -9,19 +9,25 @@ Linear is the Ouroboros source of truth for product, planning, project state, Pr
 - The repo stays focused on implementation code, tests, validation, and minimal execution-facing instructions.
 - Linear writeback is mandatory for durable outcomes. Linear-related work must select the `linear`
   skill first and execute Linear operations through the repo-local GraphQL path.
+- Primary docs should keep agents focused on the CandidateArena loop: parallel or iterative
+  TradingSystem candidate generation, external Evaluation, leaderboard, findings/lineage, next
+  generation, and selected candidate paper evidence.
 
 ## Project
 
 - Ouroboros Project: https://linear.app/openboa/project/ouroboros-113fef53f6d1
 
-## Required Read Order
+## Primary Read Path
 
 - 00 Start Here - Ouroboros Documentation Index: https://linear.app/openboa/document/00-start-here-ouroboros-documentation-index-953f443725df
-- 01 Product Strategy - Thesis, Market, Metrics: https://linear.app/openboa/document/01-product-strategy-thesis-market-metrics-0b56a519c964
-- 02 MLP-01 Brief - Scope, JTBD, Cutline: https://linear.app/openboa/document/02-mlp-01-brief-scope-jtbd-cutline-b64af14949a6
-- 03 MLP-01 Release Plan - Milestones and Slices: https://linear.app/openboa/document/03-mlp-01-release-plan-milestones-and-slices-d3d83c35f208
 - 04 Execution Ledger - Active Frontier and Handoff: https://linear.app/openboa/document/04-execution-ledger-active-frontier-and-handoff-9e036cf84011
 - 05 Project Ledger - Frontier State and Run Packet: https://linear.app/openboa/document/05-project-ledger-frontier-state-and-run-packet-e3d192eb65b8
+- 35 Source Synthesis - Runtime, Evaluation, Product Postures: https://linear.app/openboa/document/35-source-synthesis-runtime-evaluation-product-postures-fd857d802e22
+- 38 Source Addendum - AlphaProof Nexus and Candidate Arena References: https://linear.app/openboa/document/38-source-addendum-alphaproof-nexus-and-candidate-arena-references-fa78e56e2ad2
+- the active Linear issue, comments, blockers, and linked PRs
+
+Use the taxonomy below only when a task needs deeper product, architecture, service, source, or
+archive context.
 
 ## Document Taxonomy
 
@@ -47,6 +53,7 @@ Linear is the Ouroboros source of truth for product, planning, project state, Pr
 - 34 Source Library - Google and Synthesis Inputs E: https://linear.app/openboa/document/34-source-library-google-and-synthesis-inputs-e-22de8a782cae
 - 35 Source Synthesis - Runtime, Evaluation, Product Postures: https://linear.app/openboa/document/35-source-synthesis-runtime-evaluation-product-postures-fd857d802e22
 - 37 Source Addendum - Trading Taxonomy References: https://linear.app/openboa/document/37-source-addendum-trading-taxonomy-references-33f2442f6588
+- 38 Source Addendum - AlphaProof Nexus and Candidate Arena References: https://linear.app/openboa/document/38-source-addendum-alphaproof-nexus-and-candidate-arena-references-fa78e56e2ad2
 - 40 Agent Operating Guide - Repo Harness and Skills: https://linear.app/openboa/document/40-agent-operating-guide-repo-harness-and-skills-7b1d4d884739
 - 50 Service Docs - Runtime, Operator, Policies: https://linear.app/openboa/document/50-service-docs-runtime-operator-policies-578ec402e4d8
 - 90-95 Architecture Archive documents: listed in the Documentation Index

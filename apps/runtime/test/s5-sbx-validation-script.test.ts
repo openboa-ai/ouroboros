@@ -253,7 +253,7 @@ describe("S5 sbx validation harness", () => {
     expect(result.stdout).toContain("PASS recovery help advertises approval and reset boundaries");
     expect(result.stdout).toContain("PASS completion audit help advertises real transcript boundary");
     expect(result.stdout).toContain("PASS blocker report help advertises local-only diagnostics");
-    expect(result.stdout).toContain("PASS README documents blocked-host support handoff");
+    expect(result.stdout).toContain("PASS README routes S5 runbooks to developer detail surfaces");
     expect(result.stdout).toContain("PASS local S5 evidence transcripts are ignored by git");
     expect(result.stdout).toContain("REAL_ENVIRONMENT_PROOF_REQUIRED npm run validate:s5-sbx");
     expect(result.stdout).toContain("AUDIT_IS_NOT_COMPLETION true");

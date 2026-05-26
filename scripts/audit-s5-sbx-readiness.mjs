@@ -175,42 +175,12 @@ await check("blocker report help advertises local-only diagnostics", async () =>
   assertIncludes(result.stdout, "sbx diagnose --upload");
 });
 
-await check("README documents blocked-host support handoff", async () => {
+await check("README routes S5 runbooks to developer detail surfaces", async () => {
   const readme = await readFile("README.md", "utf8");
-  assertIncludes(readme, "For a Docker support handoff");
-  assertIncludes(readme, "npm run validate:s5-sdx:preflight");
-  assertIncludes(readme, "npm run validate:s5-sdx");
-  assertIncludes(readme, "npm run login:s5-sdx-isolated");
-  assertIncludes(readme, "npm run resume:s5-sdx-isolated");
-  assertIncludes(readme, "npm run login:s5-sdx-local");
-  assertIncludes(readme, "npm run resume:s5-sdx-local");
-  assertIncludes(readme, "npm run recover:s5-sdx-daemon");
-  assertIncludes(readme, "npm run recover:s5-sdx-daemon:validate");
-  assertIncludes(readme, "OUROBOROS_SDX_BIN=./scripts/sdx-docker-sandboxes npm run validate:s5-sdx:preflight");
-  assertIncludes(readme, "OUROBOROS_SDX_BIN=/opt/homebrew/bin/sbx npm run validate:s5-sdx:preflight");
-  assertIncludes(readme, "OUROBOROS_SBX_HOME=/private/tmp/ouro-s5-sdx-home OUROBOROS_SDX_BIN=./scripts/sdx-docker-sandboxes");
-  assertIncludes(readme, "OUROBOROS_SBX_HOME=/private/tmp/ouro-s5-sdx-home OUROBOROS_SDX_BIN=./scripts/sdx-docker-sandboxes npm run login:s5-sdx-isolated");
-  assertIncludes(readme, "OUROBOROS_SBX_HOME=/private/tmp/ouro-s5-sdx-home OUROBOROS_SDX_BIN=./scripts/sdx-docker-sandboxes npm run resume:s5-sdx-isolated");
-  assertIncludes(readme, "npm run validate:s5-sdx-local:preflight");
-  assertIncludes(readme, "npm run audit:s5-sdx-local:promotion");
-  assertIncludes(readme, "OUROBOROS_SBX_HOME=/private/tmp/ouro-s5-sdx-home OUROBOROS_SDX_BIN=/opt/homebrew/bin/sbx");
-  assertIncludes(readme, "sbx diagnose --output github-issue");
-  assertIncludes(readme, "brew info docker/tap/sbx");
-  assertIncludes(readme, "brew info docker/tap/sbx@nightly");
-  assertIncludes(readme, "sbx ls --json");
-  assertIncludes(readme, "OUROBOROS_SDX_BIN");
-  assertIncludes(readme, "OUROBOROS_SBX_VALIDATE_NAME_SUFFIX");
-  assertIncludes(readme, "Hypervisor/libkrun access outside the Codex command sandbox");
-  assertIncludes(readme, "Operation not permitted");
-  assertIncludes(readme, "Starkit or non-Docker-Sandboxes `sdx`");
-  assertIncludes(readme, "npm run report:s5-sbx-blocker");
-  assertIncludes(readme, "--include-create-probe");
-  assertIncludes(readme, "OUROBOROS_ALLOW_SBX_CREATE_PROBE=1");
-  assertIncludes(readme, "not sandbox-state non-mutating");
-  assertIncludes(readme, "one uniquely named temporary sandbox");
-  assertIncludes(readme, "OUROBOROS_SBX_EVIDENCE_PATH=.ouroboros/s5-sbx-evidence/validate-<timestamp>-blocked.log npm run validate:s5-sbx");
-  assertIncludes(readme, "`sbx diagnose --upload`");
-  assertIncludes(readme, "should be a separate human decision");
+  assertIncludes(readme, "Runbooks for Docker Sandboxes `sbx`/`sdx`, S5 audits, recovery helpers");
+  assertIncludes(readme, "developer/detail surfaces");
+  assertIncludes(readme, "Use the relevant npm script `--help` output");
+  assertIncludes(readme, "Linear service docs");
 });
 
 await check("local S5 evidence transcripts are ignored by git", async () => {
