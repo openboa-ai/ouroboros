@@ -51,6 +51,7 @@ const ZERO_PROFIT_LOSS: TradingProfitLossReadModel = {
   net_revenue_usdt: 0,
   net_return_pct: 0
 };
+const arenaStoreMutationQueues = new WeakMap<LocalStore, Promise<unknown>>();
 
 export interface RunCandidateArenaTickInput {
   store: LocalStore;
@@ -95,6 +96,7 @@ export class CandidateArenaRunner {
       return "already_running";
     }
     this.running = true;
+    void this.tick().catch(() => undefined);
     this.loop();
     return "started";
   }
@@ -157,14 +159,23 @@ export async function runCandidateArenaTick(
   const createdCandidateIds: string[] = [];
   const directionResults: CandidateArenaTickDirectionResultReadModel[] = [];
 
-  for (const direction of directions) {
-    try {
-      const created = await runArenaDirection({
+  const settledDirections = await Promise.allSettled(
+    directions.map(async (direction) => ({
+      direction,
+      created: await runArenaDirection({
         ...input,
         source,
         direction,
         tickId
-      });
+      })
+    }))
+  );
+
+  for (let index = 0; index < settledDirections.length; index += 1) {
+    const direction = directions[index]!;
+    const settled = settledDirections[index]!;
+    if (settled.status === "fulfilled") {
+      const created = settled.value.created;
       createdCandidateIds.push(created.candidate_id);
       const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
       directionResults.push({
@@ -177,11 +188,11 @@ export async function runCandidateArenaTick(
         ),
         net_revenue_usdt: profitLoss.net_revenue_usdt
       });
-    } catch (error) {
+    } else {
       directionResults.push({
         direction_kind: direction,
         status: "failed",
-        error: conciseError(error),
+        error: conciseError(settled.reason),
         finding: `${directionLabel(direction)} researcher failed before candidate materialization.`
       });
     }
@@ -290,41 +301,50 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   }
   const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
   const manifest = await readTradingSystemManifest(artifactDir);
-  const systemCode = await recordArenaSystemCode({
-    store: input.store,
-    artifactDir,
-    sessionId,
-    manifestEntrypoint: manifest.entrypoint,
-    agent: adapter.agent
-  });
-  const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
-    source: input.source,
-    sourceSystemCodeRef: input.source.system_code?.ref,
-    systemCode,
-    evaluation: entry.evaluation,
-    direction: input.direction,
-    agent: adapter.agent,
-    sessionId
-  }));
-  if (materialized.status !== "materialized") {
-    throw new Error("candidate_arena_materialization_failed");
-  }
+  return withArenaStoreMutation(input.store, async () => {
+    const systemCode = await recordArenaSystemCode({
+      store: input.store,
+      artifactDir,
+      sessionId,
+      manifestEntrypoint: manifest.entrypoint,
+      agent: adapter.agent
+    });
+    const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
+      source: input.source,
+      sourceSystemCodeRef: input.source.system_code?.ref,
+      systemCode,
+      evaluation: entry.evaluation,
+      direction: input.direction,
+      agent: adapter.agent,
+      sessionId
+    }));
+    if (materialized.status !== "materialized") {
+      throw new Error("candidate_arena_materialization_failed");
+    }
 
-  await recordArenaResearchRecords({
-    store: input.store,
-    candidate: materialized.candidate,
-    source: input.source,
-    direction: input.direction,
-    evaluation: entry.evaluation,
-    systemCode,
-    sessionId
-  });
+    await recordArenaResearchRecords({
+      store: input.store,
+      candidate: materialized.candidate,
+      source: input.source,
+      direction: input.direction,
+      evaluation: entry.evaluation,
+      systemCode,
+      sessionId
+    });
 
-  const candidate = await input.store.getCandidate(materialized.candidate.candidate_id);
-  if (!candidate) {
-    throw new Error("candidate_arena_projection_failed");
-  }
-  return candidate;
+    const candidate = await input.store.getCandidate(materialized.candidate.candidate_id);
+    if (!candidate) {
+      throw new Error("candidate_arena_projection_failed");
+    }
+    return candidate;
+  });
+}
+
+async function withArenaStoreMutation<T>(store: LocalStore, task: () => Promise<T>): Promise<T> {
+  const previous = arenaStoreMutationQueues.get(store) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(task);
+  arenaStoreMutationQueues.set(store, current.catch(() => undefined));
+  return current;
 }
 
 class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResearchAgentAdapter {

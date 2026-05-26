@@ -2384,8 +2384,38 @@ describe("runtime read-only API", () => {
     });
   });
 
+  it("runs Candidate Arena research directions concurrently before recording outcomes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    let activeEdits = 0;
+    let maxActiveEdits = 0;
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following", "mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new ConcurrentScriptedTradingResearchAgentAdapter({
+        onEditStart() {
+          activeEdits += 1;
+          maxActiveEdits = Math.max(maxActiveEdits, activeEdits);
+        },
+        onEditEnd() {
+          activeEdits -= 1;
+        }
+      })
+    }, "stopped", 1);
+
+    expect(maxActiveEdits).toBeGreaterThan(1);
+    expect(outcome.created_candidate_count).toBe(2);
+    expect(outcome.arena.latest_ticks[0]).toMatchObject({
+      status: "completed",
+      created_candidate_ids: expect.arrayContaining(outcome.created_candidate_ids)
+    });
+  });
+
   it("starts and stops one in-memory Candidate Arena runner idempotently", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({ store });
 
     const firstStart = await server.inject({ method: "POST", url: "/api/candidate-arena/start" });
     const secondStart = await server.inject({ method: "POST", url: "/api/candidate-arena/start" });
@@ -2406,8 +2436,32 @@ describe("runtime read-only API", () => {
         runner_status: "stopped"
       }
     });
+    await waitForCondition(async () => (await store.listCandidateArenaTicks()).length === 1);
 
     await server.close();
+  });
+
+  it("starts the Candidate Arena runner by scheduling an immediate first tick", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const runner = new CandidateArenaRunner({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new ScriptedCodexTradingResearchAgentAdapter()
+    }, 30_000);
+
+    expect(runner.start()).toBe("started");
+    await waitForCondition(async () => (await store.listCandidateArenaTicks()).length === 1);
+
+    expect(runner.status()).toBe("running");
+    expect(runner.ticks()).toBe(1);
+    expect((await store.listCandidateArenaTicks())[0]).toMatchObject({
+      tick_id: "tick-1",
+      status: "completed",
+      authority_status: "not_live"
+    });
+    expect(runner.stop()).toBe("stopped");
   });
 
   it("stops the Candidate Arena runner before the next scheduled tick", async () => {
@@ -2415,17 +2469,115 @@ describe("runtime read-only API", () => {
     await store.initialize();
     const runner = new CandidateArenaRunner({
       store,
-      researchAgent: "fixture",
-      agentFactory: () => new ScriptedFixtureTradingResearchAgentAdapter()
-    }, 5);
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new ScriptedCodexTradingResearchAgentAdapter()
+    }, 1_000);
 
     expect(runner.start()).toBe("started");
+    await waitForCondition(async () => (await store.listCandidateArenaTicks()).length === 1);
     expect(runner.stop()).toBe("stopped");
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     expect(runner.status()).toBe("stopped");
-    expect(runner.ticks()).toBe(0);
-    expect(await store.listCandidateArenaTicks()).toHaveLength(0);
+    expect(runner.ticks()).toBe(1);
+    expect(await store.listCandidateArenaTicks()).toHaveLength(1);
+  });
+
+  it("records paper Gateway and Ledger evidence only after an arena candidate is selected", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
+    });
+
+    const tick = await server.inject({
+      method: "POST",
+      url: "/api/candidate-arena/tick"
+    });
+
+    expect(tick.statusCode).toBe(201);
+    expect(tick.json().created_candidate_count).toBeGreaterThan(0);
+    const candidateId = tick.json().created_candidate_ids[0] as string;
+
+    const beforeRun = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${candidateId}`
+    });
+    expect(beforeRun.statusCode).toBe(200);
+    expect(beforeRun.json().ledger).toMatchObject({
+      has_activity: false,
+      chain_count: 0
+    });
+
+    const run = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${candidateId}/trading-runs`
+    });
+
+    expect(run.statusCode, JSON.stringify(run.json())).toBe(201);
+    expect(run.json()).toMatchObject({
+      trading_run: {
+        authority_status: "not_live"
+      },
+      gateway_result: {
+        decision_outcome: "dry_run_only",
+        authority_status: "dry_run_only"
+      },
+      execution_result: {
+        status: "dry_run_recorded",
+        authority_status: "dry_run_only"
+      },
+      ledger: {
+        ledger_kind: "ledger",
+        chain_complete: true,
+        authority_status: "not_live"
+      },
+      trading_gateway_environment: {
+        authority_status: "not_live",
+        live_exchange_authority: false,
+        order_submission_authority: false
+      }
+    });
+
+    const afterRun = await server.inject({
+      method: "GET",
+      url: `/api/candidates/${candidateId}`
+    });
+    expect(afterRun.statusCode).toBe(200);
+    expect(afterRun.json()).toMatchObject({
+      ledger: {
+        latest_order_request: {
+          order_request_id: run.json().ledger.latest_order_request.order_request_id
+        },
+        latest_gateway_result: {
+          gateway_result_id: run.json().ledger.latest_gateway_result.gateway_result_id
+        },
+        latest_execution_result: {
+          execution_result_id: run.json().ledger.latest_execution_result.execution_result_id
+        }
+      },
+      runtime: {
+        authority_status: "not_live"
+      }
+    });
+
+    const arena = await server.inject({
+      method: "GET",
+      url: "/api/candidate-arena"
+    });
+    expect(arena.statusCode).toBe(200);
+    expect(arena.json().candidate_arena).toMatchObject({
+      authority_status: "not_live",
+      live_disabled: true,
+      leaderboard: expect.arrayContaining([
+        expect.objectContaining({
+          candidate_id: candidateId,
+          authority_status: "not_live"
+        })
+      ])
+    });
+
+    await server.close();
   });
 
   it("runs an agent-generated Trading System through backtest and paper trading in one visible cycle", async () => {
@@ -3861,6 +4013,25 @@ class ScriptedCodexTradingResearchAgentAdapter implements TradingResearchAgentAd
   }
 }
 
+class ConcurrentScriptedTradingResearchAgentAdapter extends ScriptedCodexTradingResearchAgentAdapter {
+  constructor(private readonly hooks: {
+    onEditStart: () => void;
+    onEditEnd: () => void;
+  }) {
+    super();
+  }
+
+  override async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    this.hooks.onEditStart();
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return await super.improveArtifact(input);
+    } finally {
+      this.hooks.onEditEnd();
+    }
+  }
+}
+
 class ThrowingTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
   readonly agent = {
     id: "managed-agent-codex-trading-research-throws",
@@ -3917,6 +4088,20 @@ class RejectedPaperOrderTradingResearchAgentAdapter implements TradingResearchAg
       changed_paths: ["run.py"]
     };
   }
+}
+
+async function waitForCondition(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 2_000
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("condition was not met before timeout");
 }
 
 async function writeStoreJson(value: unknown, ...segments: string[]): Promise<void> {

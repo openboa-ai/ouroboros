@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -242,7 +243,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
     deterministic_test: providedSandboxAdapters?.deterministic_test
-      ?? new DeterministicSandboxAdapter(),
+      ?? new DeterministicSandboxAdapter({
+        allowedArtifactRoots: [path.join(store.root(), "candidate-arena-runs")],
+        allowedCapabilityPolicyIds: ["candidate-arena-paper-system-code"]
+      }),
     docker_sandboxes_sbx: providedSandboxAdapters?.docker_sandboxes_sbx
       ?? new DockerSandboxesSbxSandboxAdapter()
   };

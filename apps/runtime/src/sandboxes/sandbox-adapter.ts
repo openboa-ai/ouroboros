@@ -74,6 +74,8 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     private readonly options: {
       commandTimeoutMs?: number;
       allowedSystemCodeIds?: readonly string[];
+      allowedArtifactRoots?: readonly string[];
+      allowedCapabilityPolicyIds?: readonly string[];
     } = {}
   ) {}
 
@@ -82,7 +84,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const intervalMs = input.interval_ms ?? 1_000;
     const placement = sandboxPlacement(input.sandbox_placement_id);
     const command = systemCodeCommand(input.artifact);
-    if (!isDeterministicFixtureSystemCode(input.artifact, command, this.allowedSystemCodeIds)) {
+    if (!isDeterministicRunnableSystemCode(input.artifact, command, {
+      allowedSystemCodeIds: this.allowedSystemCodeIds,
+      allowedArtifactRoots: this.allowedArtifactRoots,
+      allowedCapabilityPolicyIds: this.allowedCapabilityPolicyIds
+    })) {
       const rejectedResult = rejectedSystemCodeCommandResult(input.artifact, input.created_at);
       const commandEvidence = commandEvidenceRecord(input.instance_id, "reject-system-code", rejectedResult);
       return {
@@ -196,6 +202,14 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 
   private get allowedSystemCodeIds(): readonly string[] {
     return this.options.allowedSystemCodeIds ?? [DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID];
+  }
+
+  private get allowedArtifactRoots(): readonly string[] {
+    return this.options.allowedArtifactRoots ?? [];
+  }
+
+  private get allowedCapabilityPolicyIds(): readonly string[] {
+    return this.options.allowedCapabilityPolicyIds ?? [];
   }
 }
 
@@ -642,6 +656,19 @@ function artifactEntrypointPath(artifact: SystemCodeRecord): string {
   return artifact.entrypoint[0] ?? "/app/run";
 }
 
+function isDeterministicRunnableSystemCode(
+  artifact: SystemCodeRecord,
+  command: string[],
+  input: {
+    allowedSystemCodeIds: readonly string[];
+    allowedArtifactRoots: readonly string[];
+    allowedCapabilityPolicyIds: readonly string[];
+  }
+): boolean {
+  return isDeterministicFixtureSystemCode(artifact, command, input.allowedSystemCodeIds)
+    || isAllowedGeneratedPaperSystemCode(artifact, command, input);
+}
+
 function isDeterministicFixtureSystemCode(
   artifact: SystemCodeRecord,
   command: string[],
@@ -656,12 +683,47 @@ function isDeterministicFixtureSystemCode(
   );
 }
 
+function isAllowedGeneratedPaperSystemCode(
+  artifact: SystemCodeRecord,
+  command: string[],
+  input: {
+    allowedArtifactRoots: readonly string[];
+    allowedCapabilityPolicyIds: readonly string[];
+  }
+): boolean {
+  if (
+    artifact.artifact_kind !== "python_file" ||
+    artifact.runtime_kind !== "python" ||
+    !artifact.capability_policy_ref ||
+    !input.allowedCapabilityPolicyIds.includes(artifact.capability_policy_ref.id) ||
+    !isPythonGeneratedCommand(command)
+  ) {
+    return false;
+  }
+
+  const artifactPath = path.resolve(artifact.artifact_path);
+  return input.allowedArtifactRoots.some((root) => isPathWithin(artifactPath, root));
+}
+
 function isPythonFixtureCommand(command: string[]): boolean {
   return (
     command.length >= 2 &&
     (command[0] === "python" || command[0] === "python3") &&
     command[1] === DETERMINISTIC_FIXTURE_ARTIFACT_PATH
   );
+}
+
+function isPythonGeneratedCommand(command: string[]): boolean {
+  if (command.length < 2 || (command[0] !== "python" && command[0] !== "python3")) {
+    return false;
+  }
+  return path.resolve(command[1]!) === command[1];
+}
+
+function isPathWithin(filePath: string, root: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const relativePath = path.relative(resolvedRoot, filePath);
+  return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
 }
 
 function systemCodeCommand(artifact: SystemCodeRecord): string[] {
@@ -690,7 +752,7 @@ function rejectedSystemCodeCommandResult(
     exit_code: 2,
     stdout: "",
     stderr: [
-      "deterministic_test only executes fixture SystemCode",
+      "deterministic_test only executes fixture SystemCode or explicitly allowed generated paper SystemCode",
       `${DETERMINISTIC_FIXTURE_SYSTEM_CODE_ID}:${DETERMINISTIC_FIXTURE_ARTIFACT_PATH}`,
       `received ${artifact.system_code_id}:${artifactLocation}`
     ].join("\n"),

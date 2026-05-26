@@ -499,6 +499,7 @@ export function App() {
         paperOrderRequest === "rejected" ? { paper_order_request: paperOrderRequest } : {}
       );
       const selected = await fetchCandidate(candidate.candidate_id);
+      const candidateArena = await fetchCandidateArena();
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
@@ -508,6 +509,7 @@ export function App() {
       setState((current) => ({
         ...current,
         selected,
+        candidateArena,
         replayRuns,
         selectedReplayRunId: replayRunSelection.selectedReplayRunId,
         replayRunDetail: replayRunSelection.replayRunDetail,
@@ -1126,7 +1128,7 @@ export function CandidateArenaPanel({
                 disabled={!onRunPaperEvidence || runningPaperEvidence}
                 variant="secondary"
               >
-                Run paper evidence
+                {runningPaperEvidence ? "Running paper evidence" : "Run paper evidence"}
               </Button>
             </div>
             <dl className="grid gap-2 md:grid-cols-4">
@@ -1140,6 +1142,18 @@ export function CandidateArenaPanel({
                   : selectedEntry.status}
               />
               <Field label="profit_loss" value={`${formatUsdt(selectedEntry.profit_loss.net_revenue_usdt)} / ${formatPercent(selectedEntry.profit_loss.net_return_pct)}`} />
+              <Field
+                label="Paper evidence"
+                value={selectedCandidate?.ledger
+                  ? `${selectedCandidate.ledger.chain_count} Ledger chain${selectedCandidate.ledger.chain_count === 1 ? "" : "s"}`
+                  : "not run"}
+              />
+              <Field
+                label="TradingRun"
+                value={selectedCandidate?.trading_run?.lifecycle_status
+                  ?? selectedCandidate?.runtime.runtime_lifecycle_status
+                  ?? "not run"}
+              />
               <Field label="Latest finding" value={selectedEntry.latest_finding} />
               <Field
                 label="Lineage"
@@ -1529,11 +1543,11 @@ export function CandidateDetail({
           onStop={onStopCandidateArena}
           onTick={onTickCandidateArena}
           onSelectCandidate={(candidateId) => void onSelectCandidate?.(candidateId)}
-          onRunPaperEvidence={selectedArenaCandidate?.ledger ? onStartTradingRun : undefined}
+          onRunPaperEvidence={selectedArenaCandidate ? onStartTradingRun : undefined}
           actionPending={runningCandidateArenaAction}
           runningPaperEvidence={runningTradingRun}
-          message={candidateArenaMessage}
-          error={candidateArenaError}
+          message={tradingRunMessage ?? candidateArenaMessage}
+          error={tradingRunError ?? candidateArenaError}
         />
       )}
 
