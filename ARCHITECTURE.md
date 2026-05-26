@@ -1,12 +1,13 @@
 # Architecture
 
-Ouroboros is organized around the current Candidate Arena trust sequence:
+Ouroboros is organized around the Candidate Arena trust kernel:
 
 ```text
 CandidateArena
--> TradingSystem candidates
+-> parallel or iterative TradingSystem candidates
 -> SystemCode
 -> Evaluation
+-> leaderboard, findings, and lineage
 -> selected TradingRun
 -> Sandbox
 -> Gateway
@@ -15,11 +16,15 @@ CandidateArena
 
 Canonical naming surface: Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger.
 
-`Improvement` remains a compatibility/AAR lineage record, but the primary product loop is no
-longer one best artifact being improved in place. Researchers inspect arena state, submit new
-Trading System candidates, and the arena ranks candidates by `net_revenue_usdt` first and
-`net_return_pct` second. Paper `Gateway` and `Ledger` evidence belongs to the selected Trading Run
-stage, not to every candidate evaluation.
+Researchers and LLM agents are candidate generators. Evaluation is the authority boundary for
+candidate ranking, and paper `Gateway`/`Ledger` evidence belongs only to the selected Trading Run,
+not to every candidate. `Improvement` remains a compatibility/AAR lineage record; it must not pull
+the architecture back toward one best artifact being improved in place.
+
+Candidate generation may be parallel across `ResearchWorker` and `ResearchDirection` lanes or
+iterative across ticks. The architecture should preserve candidate population memory: losing
+candidates, failed directions, findings, parent links, and lineage are inputs to the next
+generation.
 
 This file is a compact development map. Linear Project Documents own the full architecture archive, active contracts, source synthesis, product brief, and historical decisions.
 
@@ -33,11 +38,11 @@ This file is a compact development map. Linear Project Documents own the full ar
 
 ## Current Development Boundary
 
-Preserve these separations: Candidate Arena state vs selected Trading Run execution, TradingSystem
-identity vs Evaluation evidence, Evaluation evidence vs promotion decisions, TradingRun control vs
-OrderRequest generation, provider output as trace material rather than proof, and persistence with
-enough attribution to replay why state exists. Docker, Compose, Docker Sandboxes `sbx`, placement,
-adapter, and host paths stay below the Sandbox boundary.
+Preserve these separations: Candidate Arena state vs selected Trading Run execution,
+TradingSystem identity vs Evaluation evidence, Evaluation evidence vs paper evidence, TradingRun
+control vs OrderRequest generation, provider output as trace material rather than proof, and
+persistence with enough attribution to replay why state exists. Docker, Compose, Docker Sandboxes
+`sbx`, placement, adapter, and host paths stay below the Sandbox boundary.
 
 ## Linear Architecture Sources
 
