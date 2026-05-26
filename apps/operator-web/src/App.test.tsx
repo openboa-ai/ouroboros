@@ -125,6 +125,77 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("Research iterations");
   });
 
+  it("treats an empty selected candidate Ledger as paper evidence not run", () => {
+    const selectedCandidate = arenaSelectedCandidate({
+      ledger: buildLedgerReadModel(emptyLedgerSourceRecords()),
+      runtime: {
+        ...arenaSelectedCandidate().runtime,
+        runtime_lifecycle_status: "registered"
+      },
+      trading_run: {
+        ref: { record_kind: "trading_run", id: "arena-trading-run-placeholder" },
+        stage: "paper",
+        lifecycle_status: "registered",
+        authority_status: "not_live"
+      }
+    });
+
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={fixtureCandidateArena}
+        selectedCandidateId="candidate-profitable"
+        selectedCandidate={selectedCandidate}
+        onStart={() => undefined}
+        onStop={() => undefined}
+        onTick={() => undefined}
+        onSelectCandidate={() => undefined}
+        onRunPaperEvidence={() => undefined}
+        actionPending={false}
+        runningPaperEvidence={false}
+      />
+    );
+
+    expect(html).toContain("Paper evidence");
+    expect(html).toMatch(/Paper evidence<\/dt><dd>not run<\/dd>/);
+    expect(html).toMatch(/TradingRun<\/dt><dd>not run<\/dd>/);
+    expect(html).not.toContain("0 Ledger chains");
+    expect(html).not.toMatch(/TradingRun<\/dt><dd>registered<\/dd>/);
+  });
+
+  it("shows selected candidate Ledger chain summary after paper evidence completes", () => {
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={fixtureCandidateArena}
+        selectedCandidateId="candidate-profitable"
+        selectedCandidate={arenaSelectedCandidate({
+          ledger: buildLedgerReadModel(ledgerSourceRecords()),
+          trading_run: {
+            ref: { record_kind: "trading_run", id: "arena-trading-run-complete" },
+            stage: "paper",
+            lifecycle_status: "stopped",
+            authority_status: "not_live"
+          }
+        })}
+        onStart={() => undefined}
+        onStop={() => undefined}
+        onTick={() => undefined}
+        onSelectCandidate={() => undefined}
+        onRunPaperEvidence={() => undefined}
+        actionPending={false}
+        runningPaperEvidence={false}
+      />
+    );
+
+    expect(html).toMatch(/Paper evidence<\/dt><dd>Ledger chain complete<\/dd>/);
+    expect(html).toMatch(/TradingRun<\/dt><dd>stopped<\/dd>/);
+    expect(html).toContain("OrderRequest");
+    expect(html).toContain("buy limit 0.001");
+    expect(html).toContain("GatewayResult");
+    expect(html).toContain("dry_run_only");
+    expect(html).toContain("ExecutionResult");
+    expect(html).toContain("dry_run_recorded");
+  });
+
   it("renders fixture labels and inspect sections without action controls", () => {
     const html = renderToStaticMarkup(<CandidateDetail candidate={fixtureCandidate} />);
 
@@ -2972,7 +3043,9 @@ const fixtureCandidateArena: CandidateArenaReadModel = {
   live_disabled: true
 };
 
-function arenaSelectedCandidate(): CandidateInspectReadModel {
+function arenaSelectedCandidate(
+  overrides: Partial<CandidateInspectReadModel> = {}
+): CandidateInspectReadModel {
   const candidate = candidateWithAgentCycleMaterialization(fixtureCandidate);
   return {
     ...candidate,
@@ -3001,7 +3074,38 @@ function arenaSelectedCandidate(): CandidateInspectReadModel {
               }
             : undefined
         }
-      : undefined
+      : undefined,
+    ...overrides
+  };
+}
+
+function emptyLedgerSourceRecords(): LedgerSourceRecordsReadModel {
+  return {
+    has_activity: false,
+    chain_complete: false,
+    chain_count: 0,
+    chains: [],
+    latest_order_request: null,
+    latest_gateway_result: null,
+    latest_execution_result: null,
+    order_request: {
+      ref: { record_kind: "order_request", id: "none" },
+      label: "Order request",
+      status: "not_submitted",
+      authority_status: "not_submitted"
+    },
+    gateway_result: {
+      ref: { record_kind: "gateway_result", id: "none" },
+      label: "Gateway result",
+      status: "not_evaluated",
+      authority_status: "not_live"
+    },
+    execution_result: {
+      ref: { record_kind: "execution_result", id: "none" },
+      label: "Execution result",
+      status: "not_submitted",
+      authority_status: "not_submitted"
+    }
   };
 }
 

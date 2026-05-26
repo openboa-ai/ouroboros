@@ -640,6 +640,12 @@ async function recordArenaResearchRecords(input: {
 
 async function arenaContext(store: LocalStore, direction: ResearchDirectionKind): Promise<string> {
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
+  const leaderboardCandidates = await Promise.all(
+    arena.leaderboard.slice(0, 8).map(async (entry) => ({
+      entry,
+      candidate: await store.getCandidate(entry.candidate_id)
+    }))
+  );
   return JSON.stringify({
     requested_direction: direction,
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
@@ -658,6 +664,32 @@ async function arenaContext(store: LocalStore, direction: ResearchDirectionKind)
         direction_kind: entry.direction_kind,
         net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
         finding: entry.latest_finding
+      })),
+    latest_findings: arena.leaderboard
+      .slice(0, 8)
+      .map((entry) => ({
+        candidate_id: entry.candidate_id,
+        direction_kind: entry.direction_kind,
+        net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+        finding: entry.latest_finding
+      })),
+    selected_paper_evidence: leaderboardCandidates
+      .filter(({ candidate }) => candidate?.ledger?.has_activity)
+      .map(({ entry, candidate }) => ({
+        candidate_id: entry.candidate_id,
+        direction_kind: entry.direction_kind,
+        net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+        ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
+        ledger_chain_count: candidate?.ledger?.chain_count ?? 0,
+        latest_order_request_id: candidate?.ledger?.latest_order_request?.order_request_id,
+        latest_order_request_side: candidate?.ledger?.latest_order_request?.side,
+        latest_order_request_type: candidate?.ledger?.latest_order_request?.order_type,
+        latest_gateway_outcome: candidate?.ledger?.latest_gateway_result?.decision_outcome,
+        latest_execution_status: candidate?.ledger?.latest_execution_result?.status,
+        trading_run_status: candidate?.trading_run?.lifecycle_status
+          ?? candidate?.runtime.runtime_lifecycle_status
+          ?? "recorded",
+        authority_status: "not_live"
       })),
     latest_tick_failures: arena.latest_ticks
       .flatMap((tick) => tick.direction_results

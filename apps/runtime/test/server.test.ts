@@ -2330,18 +2330,12 @@ describe("runtime read-only API", () => {
   it("persists Candidate Arena tick history while keeping successful directions when one researcher fails", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
-    let factoryCalls = 0;
 
     const outcome = await runCandidateArenaTick({
       store,
       directions: ["trend_following", "mean_reversion"],
       researchAgent: "codex",
-      agentFactory: () => {
-        factoryCalls += 1;
-        return factoryCalls === 2
-          ? new ThrowingTradingResearchAgentAdapter()
-          : new ScriptedCodexTradingResearchAgentAdapter();
-      }
+      agentFactory: () => new MeanReversionThrowingTradingResearchAgentAdapter()
     }, "stopped", 1);
 
     expect(outcome).toMatchObject({
@@ -2576,6 +2570,64 @@ describe("runtime read-only API", () => {
         })
       ])
     });
+
+    await server.close();
+  });
+
+  it("feeds selected paper evidence and findings into the next Candidate Arena research context", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const tick = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new ScriptedCodexTradingResearchAgentAdapter()
+    }, "stopped", 1);
+    expect(
+      tick.created_candidate_count,
+      JSON.stringify(tick.arena.latest_ticks[0]?.direction_results)
+    ).toBe(1);
+    const candidateId = tick.created_candidate_ids[0]!;
+
+    const server = await buildServer({
+      store,
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
+    });
+
+    const run = await server.inject({
+      method: "POST",
+      url: `/api/trading-systems/${candidateId}/trading-runs`
+    });
+    expect(run.statusCode, JSON.stringify(run.json())).toBe(201);
+    expect(run.json().ledger.chain_complete).toBe(true);
+
+    const capturingAdapter = new CapturingScriptedTradingResearchAgentAdapter();
+    const nextTick = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => capturingAdapter
+    }, "stopped", 2);
+
+    expect(nextTick.status).toBe("completed");
+    const context = JSON.parse(capturingAdapter.lastArenaContext ?? "{}");
+    expect(context.latest_findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        candidate_id: candidateId,
+        finding: expect.any(String)
+      })
+    ]));
+    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        candidate_id: candidateId,
+        ledger_chain_complete: true,
+        ledger_chain_count: 1,
+        latest_order_request_id: run.json().ledger.latest_order_request.order_request_id,
+        latest_gateway_outcome: "dry_run_only",
+        latest_execution_status: "dry_run_recorded",
+        authority_status: "not_live"
+      })
+    ]));
 
     await server.close();
   });
@@ -4013,6 +4065,15 @@ class ScriptedCodexTradingResearchAgentAdapter implements TradingResearchAgentAd
   }
 }
 
+class CapturingScriptedTradingResearchAgentAdapter extends ScriptedCodexTradingResearchAgentAdapter {
+  lastArenaContext?: string;
+
+  override async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    this.lastArenaContext = input.arena_context;
+    return super.improveArtifact(input);
+  }
+}
+
 class ConcurrentScriptedTradingResearchAgentAdapter extends ScriptedCodexTradingResearchAgentAdapter {
   constructor(private readonly hooks: {
     onEditStart: () => void;
@@ -4032,16 +4093,13 @@ class ConcurrentScriptedTradingResearchAgentAdapter extends ScriptedCodexTrading
   }
 }
 
-class ThrowingTradingResearchAgentAdapter implements TradingResearchAgentAdapter {
-  readonly agent = {
-    id: "managed-agent-codex-trading-research-throws",
-    provider: "codex" as const,
-    model: "throwing-test-model",
-    permission_policy: "artifact_workspace_only" as const
-  };
-
-  async improveArtifact(): Promise<AgentEditResult> {
-    throw new Error("fixture_direction_failed");
+class MeanReversionThrowingTradingResearchAgentAdapter extends ScriptedCodexTradingResearchAgentAdapter {
+  override async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const arenaContext = JSON.parse(input.arena_context ?? "{}") as { requested_direction?: string };
+    if (arenaContext.requested_direction === "mean_reversion") {
+      throw new Error("fixture_direction_failed");
+    }
+    return super.improveArtifact(input);
   }
 }
 

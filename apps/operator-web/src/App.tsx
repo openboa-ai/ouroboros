@@ -1038,6 +1038,12 @@ export function CandidateArenaPanel({
   const latestTick = arena.latest_ticks[0];
   const selectedLineage = selectedCandidate?.full_cycle_lineage;
   const selectedSystemCode = selectedCandidate?.system_code?.ref ?? selectedLineage?.generated?.system_code_ref;
+  const selectedLedger = selectedCandidate?.ledger;
+  const selectedPaperEvidenceStatus = formatSelectedPaperEvidenceStatus(selectedLedger, runningPaperEvidence);
+  const selectedTradingRunStatus = formatSelectedTradingRunStatus(selectedCandidate, runningPaperEvidence);
+  const selectedLedgerSummary = selectedLedger?.chain_count && selectedLedger.chain_count > 0
+    ? selectedLedger
+    : undefined;
   return (
     <Card aria-label="Candidate Arena">
       <CardHeader>
@@ -1084,7 +1090,7 @@ export function CandidateArenaPanel({
           </div>
         </div>
         <div className="grid gap-2 overflow-x-auto" aria-label="Candidate Arena leaderboard">
-          <div className="grid min-w-[1040px] grid-cols-[56px_minmax(190px,1.45fr)_minmax(130px,1fr)_minmax(150px,1fr)_minmax(130px,0.9fr)_minmax(110px,0.8fr)_minmax(100px,0.7fr)_minmax(220px,1.4fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
+          <div className="grid min-w-[980px] grid-cols-[44px_minmax(180px,1.25fr)_minmax(120px,0.85fr)_minmax(150px,0.9fr)_minmax(120px,0.75fr)_minmax(96px,0.65fr)_minmax(86px,0.6fr)_minmax(190px,1.35fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
             <span>Rank</span>
             <span>Candidate</span>
             <span>Direction</span>
@@ -1100,18 +1106,18 @@ export function CandidateArenaPanel({
               key={entry.candidate_id}
               onClick={() => onSelectCandidate?.(entry.candidate_id)}
               aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
-              className={`grid min-w-[1040px] grid-cols-[56px_minmax(190px,1.45fr)_minmax(130px,1fr)_minmax(150px,1fr)_minmax(130px,0.9fr)_minmax(110px,0.8fr)_minmax(100px,0.7fr)_minmax(220px,1.4fr)] items-center gap-2 rounded-md p-2 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
+              className={`grid min-w-[980px] grid-cols-[44px_minmax(180px,1.25fr)_minmax(120px,0.85fr)_minmax(150px,0.9fr)_minmax(120px,0.75fr)_minmax(96px,0.65fr)_minmax(86px,0.6fr)_minmax(190px,1.35fr)] items-center gap-2 rounded-md p-2 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
             >
               <span>#{entry.rank}</span>
               <strong className="break-words font-medium leading-snug">{entry.display_name}</strong>
-              <span className="break-words">{entry.direction_kind}</span>
-              <span className="break-words">{entry.parent_candidate_id ?? "none"}</span>
+              <span className="break-words leading-snug">{entry.direction_kind}</span>
+              <span className="break-words leading-snug">{entry.parent_candidate_id ?? "none"}</span>
               <span>{formatUsdt(entry.profit_loss.net_revenue_usdt)}</span>
               <span>{formatPercent(entry.profit_loss.net_return_pct)}</span>
               <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
                 {entry.status}
               </Badge>
-              <span className="break-words text-muted-foreground">{entry.latest_finding}</span>
+              <span className="break-words leading-snug text-muted-foreground">{entry.latest_finding}</span>
             </button>
           ))}
         </div>
@@ -1142,18 +1148,8 @@ export function CandidateArenaPanel({
                   : selectedEntry.status}
               />
               <Field label="profit_loss" value={`${formatUsdt(selectedEntry.profit_loss.net_revenue_usdt)} / ${formatPercent(selectedEntry.profit_loss.net_return_pct)}`} />
-              <Field
-                label="Paper evidence"
-                value={selectedCandidate?.ledger
-                  ? `${selectedCandidate.ledger.chain_count} Ledger chain${selectedCandidate.ledger.chain_count === 1 ? "" : "s"}`
-                  : "not run"}
-              />
-              <Field
-                label="TradingRun"
-                value={selectedCandidate?.trading_run?.lifecycle_status
-                  ?? selectedCandidate?.runtime.runtime_lifecycle_status
-                  ?? "not run"}
-              />
+              <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
+              <Field label="TradingRun" value={selectedTradingRunStatus} />
               <Field label="Latest finding" value={selectedEntry.latest_finding} />
               <Field
                 label="Lineage"
@@ -1162,6 +1158,24 @@ export function CandidateArenaPanel({
                   : `${selectedEntry.parent_candidate_id ?? "none"} -> ${selectedEntry.candidate_id}`}
               />
               <Field label="Authority" value={selectedEntry.authority_status} />
+              {selectedLedgerSummary?.latest_order_request && (
+                <Field
+                  label="OrderRequest"
+                  value={formatLedgerOrderRequestSummary(selectedLedgerSummary)}
+                />
+              )}
+              {selectedLedgerSummary?.latest_gateway_result && (
+                <Field
+                  label="GatewayResult"
+                  value={selectedLedgerSummary.latest_gateway_result.decision_outcome}
+                />
+              )}
+              {selectedLedgerSummary?.latest_execution_result && (
+                <Field
+                  label="ExecutionResult"
+                  value={selectedLedgerSummary.latest_execution_result.status}
+                />
+              )}
             </dl>
           </section>
         )}
@@ -1187,6 +1201,50 @@ export function CandidateArenaPanel({
       </CardContent>
     </Card>
   );
+}
+
+function formatSelectedPaperEvidenceStatus(
+  ledger: LedgerReadModel | undefined,
+  runningPaperEvidence = false
+): string {
+  if (runningPaperEvidence) {
+    return "running";
+  }
+  if (ledger?.chain_complete && ledger.chain_count > 0) {
+    return "Ledger chain complete";
+  }
+  if (ledger?.has_activity) {
+    return "failed";
+  }
+  return "not run";
+}
+
+function formatSelectedTradingRunStatus(
+  candidate: CandidateInspectReadModel | undefined,
+  runningPaperEvidence = false
+): string {
+  if (runningPaperEvidence) {
+    return "running";
+  }
+  const ledger = candidate?.ledger;
+  if (!ledger?.has_activity || ledger.chain_count === 0) {
+    return "not run";
+  }
+  return candidate?.trading_run?.lifecycle_status
+    ?? candidate?.runtime.runtime_lifecycle_status
+    ?? "recorded";
+}
+
+function formatLedgerOrderRequestSummary(ledger: LedgerReadModel): string {
+  const orderRequest = ledger.latest_order_request;
+  if (!orderRequest) {
+    return "none";
+  }
+  return [
+    orderRequest.side,
+    orderRequest.order_type,
+    orderRequest.quantity
+  ].filter(Boolean).join(" ") || orderRequest.status;
 }
 
 function FullCycleDeveloperControls({
