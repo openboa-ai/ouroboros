@@ -26,12 +26,19 @@ iterative across ticks. The architecture should preserve candidate population me
 candidates, failed directions, findings, parent links, and lineage are inputs to the next
 generation.
 
+Operator control is product-facing through Ouroboros commands, not provider commands. The CLI,
+Operator UI, and Ink TUI share `POST /api/commands` for actions and `GET /api/operator` for state.
+`AgentProfile` records own managed provider runtime directories such as `codex`, and the researcher
+stores a provider selection from the available managed providers. Codex is the implemented provider
+adapter today, while future providers such as Claude Code must remain behind the same adapter
+boundary.
+
 This file is a compact development map. Linear Project Documents own the full architecture archive, active contracts, source synthesis, product brief, and historical decisions.
 
 ## Local Layers
 
-- `apps/runtime`: runtime server, Candidate Arena runner, candidate materialization, provider adapter seam, local execution, and API surfaces.
-- `apps/operator-web`: operator UI for inspecting Candidate Arena state and selected-candidate paper evidence.
+- `apps/runtime`: runtime server, Ouroboros command endpoint, Operator read model, Candidate Arena runner, candidate materialization, managed agent profiles, provider adapter seam, local execution, and API surfaces.
+- `apps/operator-web`: operator UI for inspecting Candidate Arena state and selected-candidate paper evidence through the shared command/read-model contract.
 - `packages/domain`: shared contracts and domain types.
 - `packages/local-store`: durable local filesystem store primitives.
 - `.agents`: repo-local coding-agent harness and reusable work skills.

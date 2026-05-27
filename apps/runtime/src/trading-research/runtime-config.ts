@@ -47,7 +47,7 @@ export interface TradingResearchRuntimeReadModel {
 export type TradingResearchProbeExecFile = (
   file: string,
   args: string[],
-  options?: { cwd?: string; maxBuffer?: number; timeout?: number }
+  options?: { cwd?: string; maxBuffer?: number; timeout?: number; env?: NodeJS.ProcessEnv }
 ) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
 
 export interface LoadTradingResearchRuntimeConfigDefaults {
@@ -88,7 +88,8 @@ export function fixtureTradingResearchRuntimeConfig(): TradingResearchRuntimeCon
 
 export function createTradingResearchAgentAdapter(
   config: TradingResearchRuntimeConfig,
-  agent: TradingResearchRuntimeAgent = config.default_agent
+  agent: TradingResearchRuntimeAgent = config.default_agent,
+  options: { env?: NodeJS.ProcessEnv } = {}
 ): TradingResearchAgentAdapter {
   if (agent === "fixture") {
     return new FixtureTradingResearchAgentAdapter();
@@ -97,7 +98,8 @@ export function createTradingResearchAgentAdapter(
     command: config.codex.command,
     model: config.codex.model,
     timeout_ms: config.codex.timeout_ms,
-    reasoning_effort: config.codex.reasoning_effort
+    reasoning_effort: config.codex.reasoning_effort,
+    env: options.env
   });
 }
 

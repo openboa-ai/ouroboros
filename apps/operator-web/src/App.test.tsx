@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildLedgerReadModel } from "@ouroboros/domain";
 import type {
   ImprovementReadModel,
@@ -45,6 +45,9 @@ import {
   replayRunPayload,
   ledgerCommandPayload,
   runControlPausePayload,
+  fetchOperatorReadModel,
+  runCandidateArenaCommand,
+  runPaperEvidenceForCandidate,
   type FullCycleOutcome,
   type TradingResearchRuntimeReadModel
 } from "./api";
@@ -68,6 +71,102 @@ describe("operator status helpers", () => {
   });
 });
 
+describe("operator command API", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("dispatches arena actions through the shared command endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      command: {
+        command_kind: "arena.tick",
+        status: "succeeded"
+      },
+      operator: {
+        candidate_arena: fixtureCandidateArena
+      }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const arena = await runCandidateArenaCommand("tick");
+
+    expect(arena).toBe(fixtureCandidateArena);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:4173/api/commands",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command_kind: "arena.tick" })
+      }
+    );
+  });
+
+  it("dispatches selected candidate paper evidence through the shared command endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      command: {
+        command_kind: "candidate.paper_evidence.run",
+        status: "succeeded"
+      },
+      operator: {
+        selected_candidate_id: "candidate-profitable",
+        selected_candidate: arenaSelectedCandidate(),
+        selected_paper_evidence: {
+          status: "ledger_chain_complete",
+          ledger_chain_complete: true,
+          ledger_chain_count: 1,
+          authority_status: "not_live"
+        }
+      }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcome = await runPaperEvidenceForCandidate("candidate-profitable");
+
+    expect(outcome.selected_paper_evidence.status).toBe("ledger_chain_complete");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:4173/api/commands",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          command_kind: "candidate.paper_evidence.run",
+          payload: { candidate_id: "candidate-profitable" }
+        })
+      }
+    );
+  });
+
+  it("reads the shared operator model for UI state", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      operator: {
+        candidate_arena: fixtureCandidateArena,
+        selected_candidate_id: "candidate-profitable",
+        selected_candidate: arenaSelectedCandidate(),
+        selected_paper_evidence: {
+          status: "not_run",
+          ledger_chain_complete: false,
+          authority_status: "not_live"
+        },
+        researcher_provider: {
+          selected_provider: "fixture",
+          available_providers: ["codex", "fixture"],
+          authority_status: "research_only"
+        },
+        agent_profiles: [],
+        latest_commands: [],
+        authority_status: "not_live",
+        live_disabled: true
+      }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const operator = await fetchOperatorReadModel();
+
+    expect(operator.selected_candidate_id).toBe("candidate-profitable");
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:4173/api/operator");
+  });
+});
+
 describe("CandidateDetail", () => {
   it("renders Candidate Arena leaderboard around net revenue without fixture controls", () => {
     const html = renderToStaticMarkup(
@@ -75,6 +174,33 @@ describe("CandidateDetail", () => {
         arena={fixtureCandidateArena}
         selectedCandidateId="candidate-profitable"
         selectedCandidate={arenaSelectedCandidate()}
+        researcherProvider={{
+          selected_provider: "codex",
+          available_providers: ["codex", "fixture"],
+          authority_status: "research_only"
+        }}
+        agentProfiles={[{
+          profile_id: "codex",
+          label: "Codex",
+          provider: "codex",
+          status: "authenticated",
+          managed_home: "/tmp/ouroboros/agent-profiles/codex/home",
+          managed_provider_home: "/tmp/ouroboros/agent-profiles/codex/codex-home",
+          authority_status: "no_trading_authority"
+        }]}
+        latestCommands={[{
+          command_id: "command-1",
+          command_kind: "arena.tick",
+          status: "succeeded",
+          requested_at: "2026-05-27T00:00:00.000Z",
+          completed_at: "2026-05-27T00:00:01.000Z",
+          authority_status: "not_live"
+        }]}
+        selectedPaperEvidence={{
+          status: "not_run",
+          ledger_chain_complete: false,
+          authority_status: "not_live"
+        }}
         onStart={() => undefined}
         onStop={() => undefined}
         onTick={() => undefined}
@@ -86,6 +212,9 @@ describe("CandidateDetail", () => {
     );
 
     expect(html).toContain("Candidate Arena");
+    expect(html).toContain("Operator cockpit");
+    expect(html).toContain("Runtime command bar");
+    expect(html).toContain("Revenue-cost leaderboard");
     expect(html).toContain("running");
     expect(html).toContain("Net revenue");
     expect(html).toContain("Net return");
@@ -100,6 +229,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("profit_loss");
     expect(html).toContain("Lineage");
     expect(html).toContain("Run paper evidence");
+    expect(html).toContain("Agent providers");
+    expect(html).toContain("Codex");
+    expect(html).toContain("Command log");
+    expect(html).toContain("arena.tick");
     expect(html).toContain("Latest ticks");
     expect(html).toContain("completed");
     expect(html).not.toContain("Fixture");
@@ -156,10 +289,10 @@ describe("CandidateDetail", () => {
     );
 
     expect(html).toContain("Paper evidence");
-    expect(html).toMatch(/Paper evidence<\/dt><dd>not run<\/dd>/);
-    expect(html).toMatch(/TradingRun<\/dt><dd>not run<\/dd>/);
+    expect(html).toContain("not run");
+    expect(html).toContain("TradingRun");
     expect(html).not.toContain("0 Ledger chains");
-    expect(html).not.toMatch(/TradingRun<\/dt><dd>registered<\/dd>/);
+    expect(html).not.toContain("registered");
   });
 
   it("shows selected candidate Ledger chain summary after paper evidence completes", () => {
@@ -186,8 +319,10 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toMatch(/Paper evidence<\/dt><dd>Ledger chain complete<\/dd>/);
-    expect(html).toMatch(/TradingRun<\/dt><dd>stopped<\/dd>/);
+    expect(html).toContain("Paper evidence");
+    expect(html).toContain("Ledger chain complete");
+    expect(html).toContain("TradingRun");
+    expect(html).toContain("stopped");
     expect(html).toContain("OrderRequest");
     expect(html).toContain("buy limit 0.001");
     expect(html).toContain("GatewayResult");
@@ -3042,6 +3177,15 @@ const fixtureCandidateArena: CandidateArenaReadModel = {
   ],
   live_disabled: true
 };
+
+function jsonResponse(body: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => body,
+    text: async () => JSON.stringify(body)
+  } as Response;
+}
 
 function arenaSelectedCandidate(
   overrides: Partial<CandidateInspectReadModel> = {}

@@ -1,0 +1,496 @@
+import { fileURLToPath } from "node:url";
+import type {
+  AgentProfileProviderKind,
+  AgentProfileReadModel,
+  OperatorReadModel,
+  OuroborosCommandReadModel,
+  OuroborosCommandRequest
+} from "@ouroboros/domain";
+import { LocalStore } from "@ouroboros/local-store";
+import {
+  listAgentProfileReadModels,
+  parseAgentProfileId,
+  probeAgentProfile,
+  runAgentProfileDeviceLogin,
+  setupAgentProfile,
+  type AgentProfileExecFile,
+  type AgentProfileSpawnFile
+} from "./agent-profiles";
+
+const DEFAULT_RUNTIME_BASE_URL = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+
+type FetchLike = (
+  input: string | URL,
+  init?: RequestInit
+) => Promise<Response>;
+
+export interface OuroborosCliCommandMode {
+  mode: "command";
+  request: OuroborosCommandRequest;
+}
+
+export interface OuroborosCliServeMode {
+  mode: "serve";
+}
+
+export interface OuroborosCliTuiMode {
+  mode: "tui";
+}
+
+export interface OuroborosCliStatusMode {
+  mode: "status";
+}
+
+export interface OuroborosCliHelpMode {
+  mode: "help";
+}
+
+export interface OuroborosCliAgentMode {
+  mode: "agent";
+  action: "status" | "setup" | "login" | "probe";
+  provider: AgentProfileProviderKind;
+}
+
+export type OuroborosCliMode =
+  | OuroborosCliCommandMode
+  | OuroborosCliServeMode
+  | OuroborosCliTuiMode
+  | OuroborosCliStatusMode
+  | OuroborosCliHelpMode
+  | OuroborosCliAgentMode;
+
+type OuroborosCliOutputMode = "human" | "json";
+
+interface OuroborosCommandEndpointResponse {
+  command?: OuroborosCommandReadModel;
+  result?: unknown;
+  operator?: OperatorReadModel;
+  error?: string;
+  reason?: string;
+  system_id?: string;
+  candidate_id?: string;
+  required_command?: string;
+  message?: string;
+}
+
+export interface OuroborosCliResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export async function runOuroborosCli(
+  args: string[] = process.argv.slice(2),
+  deps: {
+    fetch?: FetchLike;
+    runtimeBaseUrl?: string;
+    storeRoot?: string;
+    profileExecFile?: AgentProfileExecFile;
+    profileSpawnFile?: AgentProfileSpawnFile;
+  } = {}
+): Promise<OuroborosCliResult> {
+  const globalOptions = parseGlobalOptions(args);
+  let parsed: OuroborosCliMode;
+  try {
+    parsed = parseOuroborosCliArgs(globalOptions.args);
+  } catch (error) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${error instanceof Error ? error.message : String(error)}\n`
+    };
+  }
+
+  if (parsed.mode === "serve") {
+    await import("./main");
+    return { exitCode: 0, stdout: "", stderr: "" };
+  }
+
+  if (parsed.mode === "help") {
+    return { exitCode: 0, stdout: `${usage()}\n`, stderr: "" };
+  }
+
+  if (parsed.mode === "tui") {
+    const tui = await import("./operator-tui");
+    await tui.runOperatorTui({
+      runtimeBaseUrl: deps.runtimeBaseUrl ?? DEFAULT_RUNTIME_BASE_URL,
+      fetch: deps.fetch ?? fetch
+    });
+    return { exitCode: 0, stdout: "", stderr: "" };
+  }
+
+  if (parsed.mode === "agent") {
+    try {
+      const store = new LocalStore(deps.storeRoot);
+      const result = await runLocalAgentCommand(parsed, {
+        store,
+        execFile: deps.profileExecFile,
+        spawnFile: deps.profileSpawnFile
+      });
+      return {
+        exitCode: 0,
+        stdout: `${formatCliPayload(result, globalOptions.outputMode, formatAgentCommandResult)}\n`,
+        stderr: ""
+      };
+    } catch (error) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: `${error instanceof Error ? error.message : String(error)}\n`
+      };
+    }
+  }
+
+  const runtimeBaseUrl = deps.runtimeBaseUrl ?? DEFAULT_RUNTIME_BASE_URL;
+  if (parsed.mode === "status") {
+    const operator = await fetchOperatorStatus(runtimeBaseUrl, deps.fetch ?? fetch);
+    if (operator.exitCode !== 0) {
+      return operator;
+    }
+    if (!operator.operator) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: "Ouroboros runtime did not return an operator read model.\n"
+      };
+    }
+    return {
+      exitCode: 0,
+      stdout: `${formatCliPayload(operator.operator, globalOptions.outputMode, formatOperatorSummary)}\n`,
+      stderr: ""
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await (deps.fetch ?? fetch)(`${runtimeBaseUrl}/api/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(commandRequestBody(parsed.request))
+    });
+  } catch (error) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${formatRuntimeFetchError(runtimeBaseUrl, error)}\n`
+    };
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${formatCommandHttpError(text)}\n`
+    };
+  }
+  const body = JSON.parse(text) as OuroborosCommandEndpointResponse;
+  return {
+    exitCode: 0,
+    stdout: `${formatCliPayload(body, globalOptions.outputMode, formatCommandResponse)}\n`,
+    stderr: ""
+  };
+}
+
+export function parseOuroborosCliArgs(args: string[]): OuroborosCliMode {
+  const [domain, action, subject, extra] = args;
+  if (domain === "help" || domain === "--help" || domain === "-h") {
+    return { mode: "help" };
+  }
+  if (!domain) {
+    throw new Error(usage());
+  }
+  if (domain === "runtime" && action === "serve" && subject === undefined) {
+    return { mode: "serve" };
+  }
+  if (domain === "tui" && action === undefined) {
+    return { mode: "tui" };
+  }
+  if (domain === "status" && action === undefined) {
+    return { mode: "status" };
+  }
+  if (domain === "arena" && isArenaAction(action) && subject === undefined) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: `arena.${action}`
+      }
+    };
+  }
+  if (domain === "candidate" && action === "select" && subject && extra === undefined) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "candidate.select",
+        payload: {
+          candidate_id: subject
+        }
+      }
+    };
+  }
+  if (domain === "candidate" && action === "evidence" && subject === "run" && extra) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "candidate.paper_evidence.run",
+        payload: {
+          candidate_id: extra
+        }
+      }
+    };
+  }
+  if (domain === "agent" && isAgentAction(action) && subject && extra === undefined) {
+    return {
+      mode: "agent",
+      action,
+      provider: normalizeAgentProvider(subject)
+    };
+  }
+  if (domain === "researcher" && action === "provider" && subject === "set" && extra) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "researcher.provider.select",
+        payload: {
+          provider: normalizeResearcherProvider(extra)
+        }
+      }
+    };
+  }
+  throw new Error(usage());
+}
+
+async function runLocalAgentCommand(
+  command: OuroborosCliAgentMode,
+  deps: {
+    store: LocalStore;
+    execFile?: AgentProfileExecFile;
+    spawnFile?: AgentProfileSpawnFile;
+  }
+): Promise<unknown> {
+  if (command.action === "status") {
+    const profiles = await listAgentProfileReadModels(deps.store);
+    return {
+      profile: profiles.find((profile) => profile.profile_id === command.provider)
+    };
+  }
+  if (command.action === "setup") {
+    return {
+      profile: await setupAgentProfile({
+        store: deps.store,
+        profileId: command.provider
+      })
+    };
+  }
+  if (command.action === "login") {
+    return {
+      profile: await runAgentProfileDeviceLogin({
+        store: deps.store,
+        profileId: command.provider,
+        spawnFile: deps.spawnFile
+      })
+    };
+  }
+  return {
+    profile: await probeAgentProfile({
+      store: deps.store,
+      profileId: command.provider,
+      execFile: deps.execFile
+    })
+  };
+}
+
+async function fetchOperatorStatus(
+  runtimeBaseUrl: string,
+  fetcher: FetchLike
+): Promise<OuroborosCliResult & { operator?: OperatorReadModel }> {
+  let response: Response;
+  try {
+    response = await fetcher(`${runtimeBaseUrl}/api/operator`);
+  } catch (error) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${formatRuntimeFetchError(runtimeBaseUrl, error)}\n`
+    };
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${formatCommandHttpError(text)}\n`
+    };
+  }
+  const body = JSON.parse(text) as { operator: OperatorReadModel };
+  return {
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+    operator: body.operator
+  };
+}
+
+function parseGlobalOptions(args: string[]): { args: string[]; outputMode: OuroborosCliOutputMode } {
+  return {
+    args: args.filter((arg) => arg !== "--json"),
+    outputMode: args.includes("--json") ? "json" : "human"
+  };
+}
+
+function commandRequestBody(request: OuroborosCommandRequest): OuroborosCommandRequest {
+  return request.payload
+    ? request
+    : { command_kind: request.command_kind };
+}
+
+function formatCliPayload<T>(
+  payload: T,
+  outputMode: OuroborosCliOutputMode,
+  humanFormatter: (payload: T) => string
+): string {
+  if (outputMode === "json") {
+    return JSON.stringify(payload, null, 2);
+  }
+  return humanFormatter(payload);
+}
+
+function formatCommandResponse(body: OuroborosCommandEndpointResponse): string {
+  const command = body.command;
+  const summary = command?.summary
+    ?? (command ? `${command.command_kind} ${command.status}.` : "Command completed.");
+  const lines = [`OK ${summary}`];
+  if (body.operator) {
+    lines.push("", formatOperatorSummary(body.operator));
+  }
+  return lines.join("\n");
+}
+
+function formatAgentCommandResult(result: unknown): string {
+  const profile = (result as { profile?: AgentProfileReadModel }).profile;
+  if (!profile) {
+    return "OK Agent provider command completed.";
+  }
+  return [
+    `OK Agent provider ${profile.provider}: ${profile.status}`,
+    `Profile: ${profile.profile_id}`,
+    `Managed home: ${profile.managed_home}`,
+    `Provider home: ${profile.managed_provider_home}`,
+    profile.version ? `Version: ${profile.version}` : undefined,
+    profile.failure_reason ? `Failure: ${profile.failure_reason}` : undefined,
+    `Authority: ${profile.authority_status}`
+  ].filter(Boolean).join("\n");
+}
+
+function formatOperatorSummary(operator: OperatorReadModel): string {
+  const arena = operator.candidate_arena;
+  const leader = arena.leaderboard[0];
+  const lastCommand = operator.latest_commands[0];
+  return [
+    "Ouroboros status",
+    `Arena: ${arena.runner_status} (${arena.tick_count} ticks, ${arena.leaderboard.length} candidates)`,
+    `Researcher provider: ${operator.researcher_provider.selected_provider} (available: ${operator.researcher_provider.available_providers.join(", ")})`,
+    `Live authority: ${operator.live_disabled ? "disabled" : "enabled"} / ${operator.authority_status}`,
+    leader
+      ? `Leader: #${leader.rank} ${leader.display_name} ${formatUsdt(leader.profit_loss.net_revenue_usdt)} (${formatPercent(leader.profit_loss.net_return_pct)})`
+      : "Leader: none",
+    `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
+    `Paper evidence: ${operator.selected_paper_evidence.status}`,
+    lastCommand
+      ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
+      : "Latest command: none"
+  ].join("\n");
+}
+
+function formatCommandHttpError(text: string): string {
+  try {
+    const body = JSON.parse(text) as OuroborosCommandEndpointResponse;
+    const paperEvidenceHint = body.error === "trading_run_failed"
+      ? "Next step: select an accepted candidate with runnable paper evidence, or run arena tick until one is available."
+      : undefined;
+    return [
+      `Ouroboros command failed: ${body.error ?? "unknown_error"}`,
+      body.reason ? `Reason: ${body.reason}` : undefined,
+      body.system_id ? `Candidate: ${body.system_id}` : body.candidate_id ? `Candidate: ${body.candidate_id}` : undefined,
+      body.required_command ? `Next step: ${body.required_command}` : undefined,
+      paperEvidenceHint,
+      body.message ? `Message: ${body.message}` : undefined
+    ].filter(Boolean).join("\n");
+  } catch {
+    return text;
+  }
+}
+
+function formatUsdt(value: number): string {
+  return `${value.toFixed(2)} USDT`;
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(4)}%`;
+}
+
+function formatRuntimeFetchError(runtimeBaseUrl: string, error: unknown): string {
+  const cause = error instanceof Error && "cause" in error
+    ? (error as Error & { cause?: unknown }).cause
+    : undefined;
+  const code = typeof cause === "object" && cause && "code" in cause
+    ? String((cause as { code?: unknown }).code)
+    : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  const suffix = code ? ` (${code})` : "";
+  return [
+    `Ouroboros runtime is not reachable at ${runtimeBaseUrl}${suffix}.`,
+    "Start it in another terminal with: ouroboros runtime serve",
+    `Original error: ${message}`
+  ].join("\n");
+}
+
+function isArenaAction(value: string | undefined): value is "status" | "start" | "stop" | "tick" {
+  return value === "status" || value === "start" || value === "stop" || value === "tick";
+}
+
+function isAgentAction(value: string | undefined): value is "status" | "setup" | "login" | "probe" {
+  return value === "status" || value === "setup" || value === "login" || value === "probe";
+}
+
+function normalizeAgentProvider(value: string): AgentProfileProviderKind {
+  const provider = parseAgentProfileId(value);
+  if (provider) {
+    return provider;
+  }
+  throw new Error(usage());
+}
+
+function normalizeResearcherProvider(value: string): "codex" | "fixture" {
+  const provider = parseAgentProfileId(value);
+  if (provider === "codex" || provider === "fixture") {
+    return provider;
+  }
+  throw new Error(usage());
+}
+
+function usage(): string {
+  return [
+    "Usage: ouroboros <command>",
+    "",
+    "Commands:",
+    "  ouroboros runtime serve",
+    "  ouroboros status [--json]",
+    "  ouroboros arena status|start|stop|tick",
+    "  ouroboros candidate select <candidate-id>",
+    "  ouroboros candidate evidence run <candidate-id>",
+    "  ouroboros agent status|setup|login|probe codex|fixture",
+    "  ouroboros researcher provider set codex|fixture",
+    "  ouroboros tui"
+  ].join("\n");
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const result = await runOuroborosCli();
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  process.exitCode = result.exitCode;
+}

@@ -52,6 +52,7 @@ import type {
   AccountPositionRiskMirrorSurfaceRecord,
   ImprovementReadModel,
   AgentEventRecord,
+  AgentProfileRecord,
   AgentRunRecord,
   AgentSessionRecord,
   ExperimentRunRecord,
@@ -115,9 +116,11 @@ import type {
   GatewayResultReason,
   HandsEnvironmentRecord,
   OrderFillSurfaceReadModel,
+  OuroborosCommandRecord,
   OrderFillSurfaceRecord,
   PrivateReadinessPostureReadModel,
   PrivateReadinessPostureRecord,
+  ResearcherProviderSelectionRecord,
   PrivateReadinessPostureWriteInput,
   PrivateReadinessPreflightSurfaceReadModel,
   PrivateReadinessPreflightSurfaceRecord,
@@ -255,6 +258,9 @@ type Collection =
   | "agent-sessions"
   | "agent-runs"
   | "agent-events"
+  | "agent-profiles"
+  | "researcher-provider-selections"
+  | "ouroboros-commands"
   | "provider-readiness-records"
   | "provider-probe-attempts"
   | "trading-runs"
@@ -1187,6 +1193,44 @@ export class LocalStore {
   async listCandidateArenaTicks(): Promise<CandidateArenaTickRecord[]> {
     return (await this.readCollection<CandidateArenaTickRecord>("candidate-arena-ticks"))
       .sort(compareCandidateArenaTicks);
+  }
+
+  async recordAgentProfile(profile: AgentProfileRecord): Promise<AgentProfileRecord> {
+    await this.writeJson(this.itemPath("agent-profiles", profile.agent_profile_id), profile);
+    return profile;
+  }
+
+  async getAgentProfile(profileId: string): Promise<AgentProfileRecord | undefined> {
+    return this.readOptionalRecord<AgentProfileRecord>("agent-profiles", profileId);
+  }
+
+  async listAgentProfiles(): Promise<AgentProfileRecord[]> {
+    return (await this.readCollection<AgentProfileRecord>("agent-profiles"))
+      .sort((a, b) => a.agent_profile_id.localeCompare(b.agent_profile_id));
+  }
+
+  async recordResearcherProviderSelection(
+    selection: ResearcherProviderSelectionRecord
+  ): Promise<ResearcherProviderSelectionRecord> {
+    await this.writeJson(
+      this.itemPath("researcher-provider-selections", selection.researcher_provider_selection_id),
+      selection
+    );
+    return selection;
+  }
+
+  async getResearcherProviderSelection(): Promise<ResearcherProviderSelectionRecord | undefined> {
+    return this.readOptionalRecord<ResearcherProviderSelectionRecord>("researcher-provider-selections", "researcher");
+  }
+
+  async recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord> {
+    await this.writeJson(this.itemPath("ouroboros-commands", command.ouroboros_command_id), command);
+    return command;
+  }
+
+  async listOuroborosCommands(): Promise<OuroborosCommandRecord[]> {
+    return (await this.readCollection<OuroborosCommandRecord>("ouroboros-commands"))
+      .sort((a, b) => b.completed_at.localeCompare(a.completed_at));
   }
 
   async recordArtifactLineage(
@@ -4142,6 +4186,8 @@ export class LocalStore {
   private async writeJson(filePath: string, value: unknown): Promise<void> {
     await mkdir(path.dirname(filePath), { recursive: true });
     const tmpPath = `${filePath}.tmp`;
+    // LocalStore writes validated records to encoded paths under storeRoot.
+    // codeql[js/http-to-file-access]
     await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
     await rename(tmpPath, filePath);
   }

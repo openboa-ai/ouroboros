@@ -152,6 +152,9 @@ Canonical Ouroboros nouns for the current product surface:
 | `Sandbox` | Isolated execution boundary for a TradingRun. |
 | `Gateway` | Boundary that handles OrderRequest before exchange authority. |
 | `Ledger` | OrderRequest, GatewayResult, and ExecutionResult record chain. |
+| `OuroborosCommand` | Product-facing command envelope shared by CLI, UI, and TUI. |
+| `OperatorReadModel` | Shared operator state returned to CLI, UI, and TUI. |
+| `AgentProfile` | Managed provider runtime profile, such as codex; researcher selects one available provider. |
 
 Use the canonical nouns above for new code, tests, docs, API paths, UI labels, and persisted keys.
 When a name drifts, replace it directly with the canonical term instead of adding aliases or
