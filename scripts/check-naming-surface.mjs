@@ -128,6 +128,61 @@ checkRequired("README.md", [
 checkRequired("ARCHITECTURE.md", [
   "Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger"
 ]);
+checkRequired("docs/project-direction.md", [
+  "CandidateArena",
+  "TradingSystem",
+  "Evaluation",
+  "parallel TradingSystem candidates",
+  "revenue - cost",
+  "Gateway",
+  "Ledger",
+  "GitHub repository on `main` is the source of truth"
+]);
+checkRequired("docs/ouroboros-doctrine.md", [
+  "CandidateArena",
+  "TradingSystem",
+  "TradingSystem may include an internal agent runtime",
+  "Researcher cannot grade",
+  "Gateway binding changes, TradingSystem identity does not",
+  "Candidate, Paper Evidence, and Live are separate states",
+  "Evaluation",
+  "Finding",
+  "Lineage",
+  "PaperEvidence",
+  "Gateway",
+  "Ledger",
+  "Ouroboros"
+]);
+checkRequired("docs/api-command-contract.md", [
+  "GET /api/operator",
+  "POST /api/commands",
+  "OuroborosCommand",
+  "OperatorReadModel",
+  "OUROBOROS_COMMAND_REGISTRY",
+  "arena.tick",
+  "candidate.select",
+  "candidate.paper_evidence.run"
+]);
+checkRequired("docs/naming-taxonomy.md", [
+  "`CandidateArena`",
+  "`ResearchWorker`",
+  "`ResearchDirection`",
+  "`CandidateArenaTick`",
+  "`TradingSystem`",
+  "internal agent runtime",
+  "`SystemCode`",
+  "`Evaluation`",
+  "`Finding`",
+  "`Lineage`",
+  "`PaperEvidence`",
+  "`TradingRun`",
+  "`Sandbox`",
+  "`Gateway`",
+  "`Ledger`",
+  "`OuroborosCommand`",
+  "`OperatorReadModel`",
+  "`AgentProfile`"
+]);
 checkRequired("AGENTS.md", [
   "`CandidateArena`",
   "`ResearchWorker`",
@@ -145,7 +200,10 @@ checkRequired("packages/domain/src/index.ts", [
   "export type SystemCodeRecord",
   "export interface SandboxIndexProjection",
   "export interface StartSandboxInput",
-  "export interface ImprovementReadModel"
+  "export interface ImprovementReadModel",
+  "export type OuroborosCommandKind",
+  "export const OUROBOROS_COMMAND_REGISTRY",
+  "export interface OperatorReadModel"
 ]);
 checkRequired("apps/runtime/src/server.ts", [
   "/api/trading-systems/:system_id/trading-runs",

@@ -180,7 +180,7 @@ await check("README routes S5 runbooks to developer detail surfaces", async () =
   assertIncludes(readme, "Runbooks for Docker Sandboxes `sbx`/`sdx`, S5 audits, recovery helpers");
   assertIncludes(readme, "developer/detail surfaces");
   assertIncludes(readme, "Use the relevant npm script `--help` output");
-  assertIncludes(readme, "Linear service docs");
+  assertIncludes(readme, "Linear workflow notes");
 });
 
 await check("local S5 evidence transcripts are ignored by git", async () => {

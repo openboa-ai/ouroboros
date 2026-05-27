@@ -1,43 +1,56 @@
 # Ouroboros
 
-Ouroboros is an automated weak-to-strong trading-system laboratory. Its core product is a
-`CandidateArena`: researchers generate many `TradingSystem` candidates in parallel or across
-iterations, external `Evaluation` ranks them by revenue minus cost, and only a selected candidate
-can move into paper `Gateway` and `Ledger` evidence.
+Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
+continuously improving AI agents to a hard, dynamic, outcome-gradable trading problem, then turns
+that external agent progress into parallel `TradingSystem` candidate search.
+
+AI agents improve over time. Trading is hard, dynamic, adversarial, and objectively scoreable by
+`revenue - cost`, return, costs, risk, and paper evidence. Ouroboros exists to make that combination
+compound: generate many candidates, evaluate externally, keep findings and lineage, and prove only
+the selected candidate.
 
 ## Core Doctrine
 
-The researcher is a candidate generator, not the authority.
+The researcher is a candidate generator, not the authority. Researcher cannot grade, candidate
+cannot grade itself, and selected paper evidence is proof gathering, not live promotion.
 
 ```text
-problem
--> parallel or iterative candidate generation
+parallel TradingSystem candidates
 -> external Evaluation
 -> leaderboard
 -> findings and lineage
 -> next generation
--> selected candidate paper evidence
+-> selected paper evidence
 ```
+
+`TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or
+an internal agent runtime, but it must emit bounded validated `OrderRequest`s and remain externally
+evaluated.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
 Evaluation, provider/risk validation, and paper-only Gateway/Ledger evidence after selection.
 Failures and losing candidates remain useful arena memory unless they crash, submit malformed
 orders, bypass provider boundaries, fail risk validation, or attempt private/live behavior.
 
+Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
+separate states; live authority remains disabled.
+
 ## Source Of Truth
 
-Linear owns product truth, planning, Project Documents, comments, project updates, and durable
-operating history. The repo owns implementation truth: code, tests, fixtures, validation scripts,
-package scripts, compact developer entry points, and repo-local agent instructions.
+The GitHub repository on `main` is the Ouroboros source of truth. Code, tests, validation scripts,
+root documentation, [docs](docs/project-direction.md), and `.agents` instructions define durable
+product, architecture, naming, API, and operating truth.
 
-Primary Linear surfaces:
+Linear is a workflow tool for issues, comments, scratchpads, project coordination, and historical
+progress notes. See [LINEAR.md](LINEAR.md) for how Linear work should reference repo truth.
 
-- Project: https://linear.app/openboa/project/ouroboros-113fef53f6d1
-- 00 Start Here - Ouroboros Documentation Index: https://linear.app/openboa/document/00-start-here-ouroboros-documentation-index-953f443725df
-- 35 Source Synthesis - Runtime, Evaluation, Product Postures: https://linear.app/openboa/document/35-source-synthesis-runtime-evaluation-product-postures-fd857d802e22
-- 38 Source Addendum - AlphaProof Nexus and Candidate Arena References: https://linear.app/openboa/document/38-source-addendum-alphaproof-nexus-and-candidate-arena-references-fa78e56e2ad2
+Canonical repo docs:
 
-See [LINEAR.md](LINEAR.md) for the full document map.
+- [Project Direction](docs/project-direction.md)
+- [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
+- [Architecture Governance](docs/architecture-governance.md)
+- [API And Command Contract](docs/api-command-contract.md)
+- [Naming Taxonomy](docs/naming-taxonomy.md)
 
 ## Canonical Flow
 
@@ -63,11 +76,11 @@ developer/detail surfaces. They must not replace the primary Candidate Arena wor
 - `packages/local-store`: filesystem-backed local store primitives.
 - `.agents`: repo-local skills and agent operating support.
 
-Architecture quality is enforced as a product constraint. New runtime work should follow
+Architecture quality is enforced as a product constraint. New runtime work follows
 Hexagonal/Clean/Layered Architecture, DDD vocabulary, and CQRS command/read separation. Use
 Strategy, Factory, Builder, Adapter, Decorator, Observer, Middleware, Registry, Plugin, and
-Dependency Injection only at the extension point they solve; see [ARCHITECTURE.md](ARCHITECTURE.md)
-for the decision matrix.
+Dependency Injection only at the extension point they solve; see
+[Architecture Governance](docs/architecture-governance.md) for the decision matrix.
 
 ## Primary Commands
 
@@ -100,7 +113,7 @@ The CLI, Operator UI, and Ink TUI all read `GET /api/operator` and mutate throug
 `AgentProfile` records. The agent setup surface is provider-scoped, and the researcher selects one
 available provider from that managed set; product-facing commands stay under the `ouroboros` noun.
 
-Use Linear GraphQL for mandatory Linear writeback:
+Use Linear GraphQL when a task needs Linear workflow writeback:
 
 ```bash
 npm run linear:graphql -- --query-file query.graphql --variables-file variables.json
@@ -109,14 +122,15 @@ npm run linear:workpad -- --issue OURO-158 --body-file workpad.md
 
 Both commands read `LINEAR_API_KEY` from the environment first, then local `.env`, and never print
 the token. Their implementation lives under [.agents/skills/linear-graphql](.agents/skills/linear-graphql/SKILL.md)
-because Linear access is agent operating support, not product runtime code.
+because Linear access is agent operating support, not product runtime code. Linear writeback must
+point back to repo truth rather than replacing it.
 
 ## Product Boundary
 
 MLP-01 is paper-only. Paper uses Binance production public market data with a fake account, fake
 executor, and fake Ledger. Live trading, private account reads, signed exchange requests,
 listenKey/user-data streams, leverage or margin mutation, and live orders remain disabled until a
-bounded Linear issue explicitly owns that authority step.
+future repo issue explicitly enables that authority.
 
 ## Validation
 
@@ -141,4 +155,4 @@ npm run build
 
 Runbooks for Docker Sandboxes `sbx`/`sdx`, S5 audits, recovery helpers, fixture compatibility, and
 full-cycle research are developer/detail surfaces. Use the relevant npm script `--help` output and
-Linear service docs when that work is explicitly in scope.
+Linear workflow notes when that work is explicitly in scope.
