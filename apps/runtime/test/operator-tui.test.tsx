@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToString } from "ink";
 import { describe, expect, it } from "vitest";
-import type { OperatorReadModel } from "@ouroboros/domain";
+import { OUROBOROS_COMMAND_DESCRIPTORS, type OperatorReadModel } from "@ouroboros/domain";
 import {
   OperatorTuiScreen,
   operatorTuiActionForInput,
@@ -34,6 +34,9 @@ describe("Operator TUI action console", () => {
     expect(operatorTuiActionForInput("s", {})).toBe("toggle_running");
     expect(operatorTuiActionForInput("e", {})).toBe("run_paper_evidence");
     expect(operatorTuiActionForInput("p", {})).toBe("toggle_provider");
+    expect(operatorTuiActionForInput("a", {})).toBe("setup_provider");
+    expect(operatorTuiActionForInput("l", {})).toBe("start_provider_login");
+    expect(operatorTuiActionForInput("v", {})).toBe("probe_provider");
     expect(operatorTuiActionForInput("", { upArrow: true })).toBe("select_previous");
     expect(operatorTuiActionForInput("", { downArrow: true })).toBe("select_next");
     expect(operatorTuiActionForInput("", { return: true })).toBe("select_current");
@@ -79,12 +82,25 @@ describe("Operator TUI action console", () => {
       command_kind: "researcher.provider.select",
       payload: { provider: "codex" }
     });
+    expect(operatorTuiCommandForAction("setup_provider", fixtureOperator(), 0)).toEqual({
+      command_kind: "agent_provider.setup",
+      payload: { provider: "fixture" }
+    });
+    expect(operatorTuiCommandForAction("start_provider_login", fixtureOperator(), 0)).toEqual({
+      command_kind: "agent_provider.login.start",
+      payload: { provider: "fixture" }
+    });
+    expect(operatorTuiCommandForAction("probe_provider", fixtureOperator(), 0)).toEqual({
+      command_kind: "agent_provider.probe",
+      payload: { provider: "fixture" }
+    });
   });
 });
 
 function fixtureOperator(): OperatorReadModel {
   return {
     operator_kind: "ouroboros_operator",
+    command_descriptors: OUROBOROS_COMMAND_DESCRIPTORS,
     candidate_arena: {
       arena_kind: "candidate_arena",
       runner_status: "running",

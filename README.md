@@ -53,11 +53,17 @@ developer/detail surfaces. They must not replace the primary Candidate Arena wor
 
 ## Repository Shape
 
-- `apps/runtime`: runtime API, Candidate Arena runner, candidate materialization, provider adapter seam, selected paper execution, and local persistence.
-- `apps/operator-web`: operator UI for Candidate Arena state, leaderboard, selected candidate detail, and selected-candidate paper evidence.
-- `packages/domain`: shared domain contracts.
+- `apps/runtime`: runtime API, controller/service boundary, Candidate Arena runner, candidate materialization, provider adapter seam, selected paper execution, and local persistence.
+- `apps/operator-web`: operator UI over the shared Operator read model and Ouroboros command endpoint.
+- `packages/domain`: shared domain contracts, including the Operator command descriptors used by CLI, TUI, and Web UI.
 - `packages/local-store`: filesystem-backed local store primitives.
 - `.agents`: repo-local skills and agent operating support.
+
+Architecture quality is enforced as a product constraint. New runtime work should follow
+Hexagonal/Clean/Layered Architecture, DDD vocabulary, and CQRS command/read separation. Use
+Strategy, Factory, Builder, Adapter, Decorator, Observer, Middleware, Registry, Plugin, and
+Dependency Injection only at the extension point they solve; see [ARCHITECTURE.md](ARCHITECTURE.md)
+for the decision matrix.
 
 ## Primary Commands
 
@@ -114,6 +120,7 @@ Before a PR is ready:
 
 ```bash
 bash scripts/check-docs.sh
+npm run check:architecture
 npm run check:naming
 bash scripts/check-env-files.sh --tracked
 bash scripts/check-secrets.sh

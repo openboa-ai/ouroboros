@@ -2366,6 +2366,145 @@ export type OuroborosCommandKind =
   | "agent_provider.probe"
   | "researcher.provider.select";
 
+export type OuroborosCommandGroup =
+  | "arena"
+  | "candidate"
+  | "agent_provider"
+  | "researcher";
+
+export type OuroborosCommandAvailability =
+  | "controller"
+  | "local_cli_required";
+
+export interface OuroborosCommandDescriptor {
+  command_kind: OuroborosCommandKind;
+  group: OuroborosCommandGroup;
+  label: string;
+  availability: OuroborosCommandAvailability;
+  requires_candidate_id: boolean;
+  authority_status: "not_live" | "research_only" | "no_trading_authority";
+}
+
+export const OUROBOROS_COMMAND_KINDS = [
+  "arena.status",
+  "arena.start",
+  "arena.stop",
+  "arena.tick",
+  "candidate.select",
+  "candidate.paper_evidence.run",
+  "agent_provider.status",
+  "agent_provider.setup",
+  "agent_provider.login.start",
+  "agent_provider.probe",
+  "researcher.provider.select"
+] as const satisfies readonly OuroborosCommandKind[];
+
+export const OUROBOROS_COMMAND_DESCRIPTORS = [
+  {
+    command_kind: "arena.status",
+    group: "arena",
+    label: "Read arena status",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "arena.start",
+    group: "arena",
+    label: "Start arena loop",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "arena.stop",
+    group: "arena",
+    label: "Stop arena loop",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "arena.tick",
+    group: "arena",
+    label: "Run one research tick",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "candidate.select",
+    group: "candidate",
+    label: "Select candidate",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "candidate.paper_evidence.run",
+    group: "candidate",
+    label: "Run selected paper evidence",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "agent_provider.status",
+    group: "agent_provider",
+    label: "Read agent provider status",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "no_trading_authority"
+  },
+  {
+    command_kind: "agent_provider.setup",
+    group: "agent_provider",
+    label: "Set up managed agent provider",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "no_trading_authority"
+  },
+  {
+    command_kind: "agent_provider.login.start",
+    group: "agent_provider",
+    label: "Start managed agent login",
+    availability: "local_cli_required",
+    requires_candidate_id: false,
+    authority_status: "no_trading_authority"
+  },
+  {
+    command_kind: "agent_provider.probe",
+    group: "agent_provider",
+    label: "Probe managed agent provider",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "no_trading_authority"
+  },
+  {
+    command_kind: "researcher.provider.select",
+    group: "researcher",
+    label: "Select researcher provider",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "research_only"
+  }
+] as const satisfies readonly OuroborosCommandDescriptor[];
+
+export const OUROBOROS_COMMAND_REGISTRY = Object.fromEntries(
+  OUROBOROS_COMMAND_DESCRIPTORS.map((descriptor) => [descriptor.command_kind, descriptor])
+) as Record<OuroborosCommandKind, OuroborosCommandDescriptor>;
+
+export function isOuroborosCommandKind(value: unknown): value is OuroborosCommandKind {
+  return typeof value === "string"
+    && value in OUROBOROS_COMMAND_REGISTRY;
+}
+
+export function getOuroborosCommandDescriptor(
+  commandKind: OuroborosCommandKind
+): OuroborosCommandDescriptor {
+  return OUROBOROS_COMMAND_REGISTRY[commandKind];
+}
+
 export type OuroborosCommandStatus = "succeeded" | "failed";
 
 export interface OuroborosCommandRequest {
@@ -2419,6 +2558,7 @@ export interface SelectedPaperEvidenceReadModel {
 
 export interface OperatorReadModel {
   operator_kind: "ouroboros_operator";
+  command_descriptors: readonly OuroborosCommandDescriptor[];
   candidate_arena: CandidateArenaReadModel;
   selected_candidate_id: string | null;
   selected_candidate: CandidateInspectReadModel | null;

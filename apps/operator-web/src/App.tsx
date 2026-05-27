@@ -31,6 +31,7 @@ import type {
   OperatorReadModel,
   ResearcherProviderReadModel,
   AgentProfileReadModel,
+  AgentProfileProviderKind,
   OuroborosCommandReadModel,
   SelectedPaperEvidenceReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -54,8 +55,12 @@ import {
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
+  probeAgentProvider as submitProbeAgentProvider,
   runPaperEvidenceForCandidate as submitPaperEvidenceForCandidate,
   runFullCycle as submitFullCycle,
+  selectResearcherProvider as submitSelectResearcherProvider,
+  setupAgentProvider as submitSetupAgentProvider,
+  startAgentProviderLogin as submitStartAgentProviderLogin,
   observeTradingRun as submitObserveTradingRun,
   runReplay as submitReplayRun,
   startTradingRun as submitTradingRun,
@@ -499,6 +504,43 @@ export function App() {
     }
   }
 
+  async function runAgentProviderAction(
+    action: "setup" | "probe" | "login" | "select",
+    provider: AgentProfileProviderKind
+  ) {
+    if (state.runningCandidateArenaAction) {
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      runningCandidateArenaAction: true,
+      candidateArenaError: undefined,
+      candidateArenaMessage: undefined
+    }));
+    try {
+      const operator = action === "setup"
+        ? await submitSetupAgentProvider(provider)
+        : action === "probe"
+          ? await submitProbeAgentProvider(provider)
+          : action === "login"
+            ? await submitStartAgentProviderLogin(provider)
+            : await submitSelectResearcherProvider(selectableResearcherProvider(provider));
+      setState((current) => ({
+        ...current,
+        operator,
+        candidateArena: operator.candidate_arena,
+        runningCandidateArenaAction: false,
+        candidateArenaMessage: `agent provider ${action}: ${provider}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningCandidateArenaAction: false,
+        candidateArenaError: error instanceof Error ? error.message : "Unknown agent provider error"
+      }));
+    }
+  }
+
   async function startTradingRun(paperOrderRequest?: PaperOrderRequestSelection) {
     const candidate = state.selected;
     if (!candidate || state.runningTradingRun) {
@@ -799,6 +841,10 @@ export function App() {
                 onStartCandidateArena={() => void runCandidateArenaAction("start")}
                 onStopCandidateArena={() => void runCandidateArenaAction("stop")}
                 onTickCandidateArena={() => void runCandidateArenaAction("tick")}
+                onSetupAgentProvider={(provider) => void runAgentProviderAction("setup", provider)}
+                onProbeAgentProvider={(provider) => void runAgentProviderAction("probe", provider)}
+                onStartAgentProviderLogin={(provider) => void runAgentProviderAction("login", provider)}
+                onSelectResearcherProvider={(provider) => void runAgentProviderAction("select", provider)}
                 onSelectTradingResearchAgent={(agent) =>
                   setState((current) => ({
                     ...current,
@@ -1040,6 +1086,10 @@ export function CandidateArenaPanel({
   onTick,
   onSelectCandidate,
   onRunPaperEvidence,
+  onSetupAgentProvider,
+  onProbeAgentProvider,
+  onStartAgentProviderLogin,
+  onSelectResearcherProvider,
   actionPending,
   runningPaperEvidence = false,
   message,
@@ -1057,6 +1107,10 @@ export function CandidateArenaPanel({
   onTick?: () => void;
   onSelectCandidate?: (candidateId: string) => void;
   onRunPaperEvidence?: () => void;
+  onSetupAgentProvider?: (provider: AgentProfileProviderKind) => void;
+  onProbeAgentProvider?: (provider: AgentProfileProviderKind) => void;
+  onStartAgentProviderLogin?: (provider: AgentProfileProviderKind) => void;
+  onSelectResearcherProvider?: (provider: "codex" | "fixture") => void;
   actionPending: boolean;
   runningPaperEvidence?: boolean;
   message?: string;
@@ -1078,6 +1132,7 @@ export function CandidateArenaPanel({
   const selectedLedgerSummary = selectedLedger?.chain_count && selectedLedger.chain_count > 0
     ? selectedLedger
     : undefined;
+  const selectedProvider = researcherProvider?.selected_provider;
   return (
     <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
       <CardHeader>
@@ -1236,6 +1291,51 @@ export function CandidateArenaPanel({
           <h3 className="text-sm font-medium">Agent providers</h3>
           <Field label="Researcher" value={researcherProvider?.selected_provider ?? "not selected"} />
           <Field label="Available" value={researcherProvider?.available_providers.join(", ") ?? "unknown"} />
+          <div className="flex flex-wrap gap-2">
+            {researcherProvider?.available_providers.map((provider) => (
+              <Button
+                key={provider}
+                type="button"
+                variant={provider === selectedProvider ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => isSelectableResearcherProvider(provider)
+                  ? onSelectResearcherProvider?.(provider)
+                  : undefined}
+                disabled={actionPending || !onSelectResearcherProvider || !isSelectableResearcherProvider(provider)}
+              >
+                {provider}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => selectedProvider ? onSetupAgentProvider?.(selectedProvider) : undefined}
+              disabled={actionPending || !selectedProvider || !onSetupAgentProvider}
+            >
+              Setup
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => selectedProvider ? onProbeAgentProvider?.(selectedProvider) : undefined}
+              disabled={actionPending || !selectedProvider || !onProbeAgentProvider}
+            >
+              Probe
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => selectedProvider ? onStartAgentProviderLogin?.(selectedProvider) : undefined}
+              disabled={actionPending || !selectedProvider || !onStartAgentProviderLogin}
+            >
+              Login
+            </Button>
+          </div>
           {agentProfiles.slice(0, 3).map((profile) => (
             <Field
               key={profile.profile_id}
@@ -1450,6 +1550,10 @@ export function CandidateDetail({
   onStartCandidateArena,
   onStopCandidateArena,
   onTickCandidateArena,
+  onSetupAgentProvider,
+  onProbeAgentProvider,
+  onStartAgentProviderLogin,
+  onSelectResearcherProvider,
   onSelectTradingResearchAgent,
   onTradingResearchIterationsChange,
   onRunCandidateReplay,
@@ -1506,6 +1610,10 @@ export function CandidateDetail({
   onStartCandidateArena?: () => void;
   onStopCandidateArena?: () => void;
   onTickCandidateArena?: () => void;
+  onSetupAgentProvider?: (provider: AgentProfileProviderKind) => void;
+  onProbeAgentProvider?: (provider: AgentProfileProviderKind) => void;
+  onStartAgentProviderLogin?: (provider: AgentProfileProviderKind) => void;
+  onSelectResearcherProvider?: (provider: "codex" | "fixture") => void;
   onSelectTradingResearchAgent?: (agent: TradingResearchAgentSelection) => void;
   onTradingResearchIterationsChange?: (iterations: number) => void;
   onRunCandidateReplay?: () => void;
@@ -1697,6 +1805,10 @@ export function CandidateDetail({
           onTick={onTickCandidateArena}
           onSelectCandidate={(candidateId) => void onSelectCandidate?.(candidateId)}
           onRunPaperEvidence={selectedArenaCandidate ? onStartTradingRun : undefined}
+          onSetupAgentProvider={onSetupAgentProvider}
+          onProbeAgentProvider={onProbeAgentProvider}
+          onStartAgentProviderLogin={onStartAgentProviderLogin}
+          onSelectResearcherProvider={onSelectResearcherProvider}
           actionPending={runningCandidateArenaAction}
           runningPaperEvidence={runningTradingRun}
           message={tradingRunMessage ?? candidateArenaMessage}
@@ -2375,6 +2487,19 @@ function providerKindLabel(providerKind?: string): string {
     return "fixture";
   }
   return providerKind ?? "agent";
+}
+
+function isSelectableResearcherProvider(
+  provider: AgentProfileProviderKind
+): provider is "codex" | "fixture" {
+  return provider === "codex" || provider === "fixture";
+}
+
+function selectableResearcherProvider(provider: AgentProfileProviderKind): "codex" | "fixture" {
+  if (isSelectableResearcherProvider(provider)) {
+    return provider;
+  }
+  throw new Error(`Researcher provider ${provider} is not supported yet.`);
 }
 
 function OperatorMetricCard({

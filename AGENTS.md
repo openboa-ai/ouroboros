@@ -176,6 +176,31 @@ At external API, persisted-schema, fixture, or connector boundaries, preserve of
 
 Project-specific taxonomy truth currently starts from the Linear document `37 Source Addendum - Trading Taxonomy References` and the active Linear issue that owns the change.
 
+## Architecture Pattern Selection
+
+Use Hexagonal Architecture, Clean Architecture, Layered Architecture, Domain-Driven Design, and
+CQRS as the default design frame for new runtime work. Apply patterns as design tools, not as
+decoration:
+
+| Pattern | Use when |
+| --- | --- |
+| Strategy | selecting an algorithm, scoring policy, ranking rule, or risk rule |
+| Factory | choosing provider, exchange, sandbox, runner, or adapter implementation |
+| Builder | assembling read models, prompt context, Ledger summaries, or command responses |
+| Adapter | integrating external tools, vendor SDKs, subprocesses, stores, or exchanges |
+| Decorator | wrapping a port with timeout, retry, logging, audit, metrics, or authority guards |
+| Observer | reacting to application events such as tick completion or evidence recording |
+| Middleware | transport or command-envelope validation, shaping, rate limits, or error mapping |
+| Registry | publishing discoverable command, provider, plugin, or handler catalogs |
+| Plugin | adding packaged provider/exchange/evaluator/sandbox capabilities behind descriptors |
+| Dependency Injection | wiring concrete adapters into services from a composition root |
+
+Interfaces call controllers. Controllers validate and dispatch only. Services orchestrate use cases
+through domain contracts and ports. Adapters implement ports. UI, CLI, and TUI must use the shared
+Operator read model and Ouroboros command surface instead of importing runtime internals. If a new
+feature touches a public command, provider, exchange, or evidence boundary, update the registry or
+port first and document the chosen pattern in the PR or Linear workpad.
+
 ## Validation
 
 Before a PR is ready for merge, collect all of the following evidence unless the active issue
@@ -183,6 +208,7 @@ explicitly narrows the scope:
 
 ```bash
 bash scripts/check-docs.sh
+npm run check:architecture
 npm run check:naming
 bash scripts/check-env-files.sh --tracked
 bash scripts/check-secrets.sh

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { OperatorReadModel } from "@ouroboros/domain";
+import { OUROBOROS_COMMAND_DESCRIPTORS, type OperatorReadModel } from "@ouroboros/domain";
 import { parseOuroborosCliArgs, runOuroborosCli } from "../src/ouroboros-cli";
 
 let tmpDir: string;
@@ -334,6 +334,7 @@ function fixtureOperator(
 ): OperatorReadModel {
   return {
     operator_kind: "ouroboros_operator",
+    command_descriptors: OUROBOROS_COMMAND_DESCRIPTORS,
     candidate_arena: {
       arena_kind: "candidate_arena",
       runner_status: "running",
