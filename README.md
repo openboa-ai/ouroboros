@@ -61,8 +61,8 @@ Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Tradi
 ```
 
 `OrderRequest`, `GatewayResult`, and `ExecutionResult` are the Ledger chain. `Improvement`,
-full-cycle research, fixtures, Docker Sandboxes, Compose, host paths, and compatibility scripts are
-developer/detail surfaces. They must not replace the primary Candidate Arena workflow.
+full-cycle research, fixtures, Docker Sandboxes, Compose, and host paths are developer/detail
+surfaces. They must not replace the primary Candidate Arena workflow.
 
 ## Repository Shape
 

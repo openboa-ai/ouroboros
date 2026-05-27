@@ -1,6 +1,6 @@
 import type {
-  ImprovementReadModel,
   AgentProfileProviderKind,
+  CandidateEvaluationRunOutcome,
   CandidateArenaReadModel,
   LedgerInput,
   LedgerReadModel,
@@ -46,25 +46,15 @@ export async function fetchCandidate(candidateId: string): Promise<CandidateInsp
 }
 
 export async function fetchCandidateMaterializationAttempts(): Promise<CandidateMaterializationAttemptReadModel[]> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidate-materialization-attempts`);
-  if (!response.ok) {
-    throw new Error(`Failed to load materialization attempts: ${response.status}`);
-  }
-  const body = (await response.json()) as { attempts: CandidateMaterializationAttemptReadModel[] };
-  return body.attempts;
+  return [];
 }
 
 export async function fetchTradingExecutionModeContracts(): Promise<TradingSystemExecutionModeContractReadModel[]> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-execution-modes`);
-  if (!response.ok) {
-    throw new Error(`Failed to load trading execution modes: ${response.status}`);
-  }
-  const body = (await response.json()) as { modes: TradingSystemExecutionModeContractReadModel[] };
-  return body.modes;
+  return [];
 }
 
 export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEnvironmentReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-gateway/environment`);
+  const response = await fetch(`${runtimeBaseUrl}/api/gateway/environment`);
   if (!response.ok) {
     throw new Error(`Failed to load trading gateway environment: ${response.status}`);
   }
@@ -93,12 +83,27 @@ export interface TradingResearchRuntimeReadModel {
 }
 
 export async function fetchTradingResearchRuntime(): Promise<TradingResearchRuntimeReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-research/runtime`);
-  if (!response.ok) {
-    throw new Error(`Failed to load trading research runtime: ${response.status}`);
-  }
-  const body = (await response.json()) as { trading_research_runtime: TradingResearchRuntimeReadModel };
-  return body.trading_research_runtime;
+  const operator = await fetchOperatorReadModel();
+  const selected = operator.researcher_provider.selected_provider;
+  return {
+    default_agent: selected === "fixture" ? "fixture" : "codex",
+    available_agents: ["codex", "fixture"],
+    iterations: 1,
+    agents: (["codex", "fixture"] as const).map((agent) => {
+      const profile = operator.agent_profiles.find((item) => item.provider === agent);
+      return {
+        agent,
+        provider: agent,
+        readiness_status: profile?.status === "authenticated" || agent === "fixture"
+          ? "active_verified"
+          : "blocked_or_not_installed",
+        permission_policy: agent === "codex" ? "artifact_workspace_only" : "fixture_only",
+        model: agent === "fixture" ? "scripted-fixture" : undefined,
+        command: agent === "codex" ? "codex" : undefined,
+        failure_reason: profile?.failure_reason
+      };
+    })
+  };
 }
 
 export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
@@ -211,7 +216,7 @@ export async function fetchReplayRunDetail(
   candidateId: string,
   runId: string
 ): Promise<ReplayRunDetailReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs/${runId}`);
+  const response = await fetch(`${runtimeBaseUrl}/api/replay-runs/${runId}?candidate_id=${encodeURIComponent(candidateId)}`);
   if (!response.ok) {
     throw new Error(`Failed to load replay run ${runId} for ${candidateId}: ${response.status}`);
   }
@@ -225,7 +230,7 @@ export async function fetchReplayRunComparison(
   baselineRunId: string
 ): Promise<ReplayRunComparisonReadModel> {
   const response = await fetch(
-    `${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs/${runId}/comparison?baseline_run_id=${encodeURIComponent(baselineRunId)}`
+    `${runtimeBaseUrl}/api/replay-runs/${runId}/comparison?candidate_id=${encodeURIComponent(candidateId)}&baseline_run_id=${encodeURIComponent(baselineRunId)}`
   );
   if (!response.ok) {
     throw new Error(`Failed to compare replay run ${runId} for ${candidateId}: ${response.status}`);
@@ -240,8 +245,9 @@ export async function fetchReplayRunValidationState(
   baselineRunId?: string
 ): Promise<ReplayRunValidationStateReadModel> {
   const query = baselineRunId ? `?baseline_run_id=${encodeURIComponent(baselineRunId)}` : "";
+  const separator = query ? "&" : "?";
   const response = await fetch(
-    `${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs/${runId}/validation-state${query}`
+    `${runtimeBaseUrl}/api/replay-runs/${runId}/validation-state${query}${separator}candidate_id=${encodeURIComponent(candidateId)}`
   );
   if (!response.ok) {
     throw new Error(`Failed to load replay run validation state ${runId} for ${candidateId}: ${response.status}`);
@@ -307,17 +313,9 @@ export interface TradingRunStopOutcome {
 }
 
 export interface ImprovementOutcome {
-  status: "evaluated";
-  proposal: {
-    proposal_id: string;
-  };
-  experiment: {
-    experiment_id: string;
-  };
-  trading_evaluation_result: {
-    result_id: string;
-  };
-  improvement: ImprovementReadModel;
+  status: "created";
+  provider_result: unknown;
+  evaluation: CandidateEvaluationRunOutcome;
 }
 
 export type FullCycleOutcome = Omit<TradingRunOutcome, "status"> & {
@@ -563,120 +561,93 @@ export function privateReadinessPosturePayload(
 export async function recordLedger(
   candidate: CandidateInspectReadModel
 ): Promise<LedgerCommandOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/ledger`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(ledgerCommandPayload(candidate))
+  const body = await submitOuroborosCommand({
+    command_kind: "candidate.paper_evidence.run",
+    payload: { candidate_id: candidate.candidate_id }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to record ledger for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as LedgerCommandOutcome;
+  return body.result as LedgerCommandOutcome;
 }
 
 export async function startTradingRun(
   candidate: CandidateInspectReadModel,
   input: StartTradingRunInput = {}
 ): Promise<TradingRunOutcome> {
-  const hasBody = input.paper_order_request !== undefined;
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/trading-runs`, {
-    method: "POST",
-    ...(hasBody
-      ? {
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(input)
-        }
-      : {})
+  const body = await submitOuroborosCommand({
+    command_kind: "trading_run.start",
+    payload: {
+      ...input,
+      candidate_id: candidate.candidate_id
+    }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to start trading run for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as TradingRunOutcome;
+  return body.result as TradingRunOutcome;
 }
 
 export async function observeTradingRun(
   candidate: CandidateInspectReadModel
 ): Promise<TradingRunObserveOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-runs/${candidate.runtime.ref.id}/observe`, {
-    method: "POST"
+  const body = await submitOuroborosCommand({
+    command_kind: "trading_run.observe",
+    payload: { trading_run_id: candidate.runtime.ref.id }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to observe trading run ${candidate.runtime.ref.id}: ${response.status}`);
-  }
-  return (await response.json()) as TradingRunObserveOutcome;
+  return body.result as TradingRunObserveOutcome;
 }
 
 export async function stopTradingRun(
   candidate: CandidateInspectReadModel
 ): Promise<TradingRunStopOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-runs/${candidate.runtime.ref.id}/stop`, {
-    method: "POST"
+  const body = await submitOuroborosCommand({
+    command_kind: "trading_run.stop",
+    payload: { trading_run_id: candidate.runtime.ref.id }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to stop trading run ${candidate.runtime.ref.id}: ${response.status}`);
-  }
-  return (await response.json()) as TradingRunStopOutcome;
+  return body.result as TradingRunStopOutcome;
 }
 
 export async function recordImprovement(
   candidate: CandidateInspectReadModel
 ): Promise<ImprovementOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/improvements`, {
-    method: "POST"
+  const body = await submitOuroborosCommand({
+    command_kind: "candidate.evaluation.run",
+    payload: { candidate_id: candidate.candidate_id }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to record improvement for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as ImprovementOutcome;
+  return body.result as ImprovementOutcome;
 }
 
 export async function runFullCycle(
   candidate: CandidateInspectReadModel,
   input: StartTradingRunInput = {}
-): Promise<FullCycleOutcome> {
-  const hasBody = Object.keys(input).length > 0;
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/full-cycle-runs`, {
-    method: "POST",
-    ...(hasBody
-      ? {
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(input)
-        }
-      : {})
+): Promise<TradingRunOutcome> {
+  const body = await submitOuroborosCommand({
+    command_kind: "trading_run.start",
+    payload: {
+      ...input,
+      candidate_id: candidate.candidate_id
+    }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to run full cycle for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as FullCycleOutcome;
+  return body.result as TradingRunOutcome;
 }
 
 export async function recordRunControl(
   candidate: CandidateInspectReadModel
 ): Promise<RunControlCommandOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-systems/${candidate.candidate_id}/run-control`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(runControlPausePayload(candidate))
+  const body = await submitOuroborosCommand({
+    command_kind: "run_control.record",
+    payload: {
+      candidate_id: candidate.candidate_id,
+      ...runControlPausePayload(candidate)
+    }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to record run control for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as RunControlCommandOutcome;
+  return body.result as RunControlCommandOutcome;
 }
 
 export async function recordPrivateReadinessPosture(
   candidate: CandidateInspectReadModel,
   draft?: PrivateReadinessPostureDraft
 ): Promise<PrivateReadinessPostureCommandOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-substrate/private-readiness-posture`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(privateReadinessPosturePayload(candidate, draft))
+  const body = await submitOuroborosCommand({
+    command_kind: "private_readiness_posture.record",
+    payload: { ...privateReadinessPosturePayload(candidate, draft) }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to record private-readiness posture for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as PrivateReadinessPostureCommandOutcome;
+  return body.result as PrivateReadinessPostureCommandOutcome;
 }
 
 export function replayRunPayload(): ReplayRunCommandPayload {
@@ -711,13 +682,12 @@ function stablePostureDraftSuffix(draft: PrivateReadinessPostureDraft): string {
 export async function runReplay(
   candidate: CandidateInspectReadModel
 ): Promise<ReplayRunOutcome> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidate.candidate_id}/replay-runs`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(replayRunPayload())
+  const body = await submitOuroborosCommand({
+    command_kind: "candidate.replay.run",
+    payload: {
+      candidate_id: candidate.candidate_id,
+      ...replayRunPayload()
+    }
   });
-  if (!response.ok) {
-    throw new Error(`Failed to run candidate replay for ${candidate.candidate_id}: ${response.status}`);
-  }
-  return (await response.json()) as ReplayRunOutcome;
+  return body.result as ReplayRunOutcome;
 }

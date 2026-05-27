@@ -5,15 +5,15 @@ import type {
   ImprovementProposalProviderProbeResult,
   Ref
 } from "@ouroboros/domain";
-import { LocalStore } from "@ouroboros/local-store";
-import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
-import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "../ports/provider-ports";
+import type { OuroborosStorePort } from "../ports/store-ports";
 import {
   runCodexImprovementProposalDryRun,
   seedCodexImprovementProposalDryRunFindings,
   type CodexImprovementProposalDryRunInput,
   type CodexImprovementProposalDryRunOutcome
 } from "./codex-improvement-proposal-dry-run";
+import { FixtureImprovementProposalProviderAdapter } from "./fixture-improvement-proposal-provider";
 
 export interface CodexImprovementProposalDryRunAuditInput extends Omit<
   CodexImprovementProposalDryRunInput,
@@ -51,7 +51,10 @@ export interface CodexImprovementProposalDryRunAuditOutcome {
 export async function runCodexImprovementProposalDryRunAudit(
   input: CodexImprovementProposalDryRunAuditInput = {}
 ): Promise<CodexImprovementProposalDryRunAuditOutcome> {
-  const store = input.store ?? new LocalStore(input.store_root);
+  const store = input.store;
+  if (!store) {
+    throw new Error("store_port_required");
+  }
   if (input.initialize_store ?? true) {
     await store.initialize();
   }
@@ -59,14 +62,7 @@ export async function runCodexImprovementProposalDryRunAudit(
     await seedCodexImprovementProposalDryRunFindings(store, input.created_at);
   }
 
-  const providerAdapter = input.provider_adapter ?? new CodexCliImprovementProposalProviderAdapter({
-    workingDirectory: input.working_directory,
-    outputPath: input.output_path,
-    schemaPath: input.schema_path,
-    command: input.codex_command,
-    model: input.codex_model,
-    timeoutMs: input.codex_timeout_ms
-  });
+  const providerAdapter = input.provider_adapter ?? new FixtureImprovementProposalProviderAdapter();
 
   const before = await snapshotStore(store);
   const probe = await probeImprovementProposalProvider(providerAdapter);
@@ -107,7 +103,7 @@ async function probeImprovementProposalProvider(
   };
 }
 
-async function snapshotStore(store: LocalStore): Promise<CodexImprovementProposalStoreSnapshot> {
+async function snapshotStore(store: OuroborosStorePort): Promise<CodexImprovementProposalStoreSnapshot> {
   const root = store.root();
   return {
     improvement_proposal_materialization_attempts: await countCollectionItems(root, "improvement-proposal-materialization-attempts"),

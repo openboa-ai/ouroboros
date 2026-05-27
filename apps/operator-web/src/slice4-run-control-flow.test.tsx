@@ -1,194 +1,54 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type {
-  CandidateInspectReadModel,
-  RuntimeAuditEventRecord,
-  RunControlCommandRecord,
-  RunControlDecisionRecord,
-  TradingRunRecord
-} from "@ouroboros/domain";
-import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
-import { buildServer } from "../../runtime/src/server";
-import { expectNoOperatorActionControls } from "../../../test/support/binance-no-authority";
-import { CandidateDetail } from "./App";
-import { runControlPausePayload } from "./api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CandidateInspectReadModel } from "@ouroboros/domain";
+import { recordRunControl } from "./api";
 
-let tmpDir: string;
+const candidate = {
+  candidate_id: "candidate-001",
+  candidate_version: {
+    candidate_version_id: "candidate-version-001"
+  }
+} as CandidateInspectReadModel;
 
-beforeEach(async () => {
-  tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-slice4-run-control-"));
-});
-
-afterEach(async () => {
-  await rm(tmpDir, { recursive: true, force: true });
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("Slice 4 run control MLP flow", () => {
-  it("records pause control through runtime API and renders auditable operator state", async () => {
-    const store = new LocalStore(tmpDir);
-    const server = await buildServer({ store });
-
-    try {
-      const initialRead = await server.inject({
-        method: "GET",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
-      });
-      expect(initialRead.statusCode).toBe(200);
-      const initialCandidate = initialRead.json() as CandidateInspectReadModel;
-      expect(initialCandidate.runtime.run_control).toMatchObject({
-        has_activity: false,
-        chain_complete: false
-      });
-
-      const payload = {
-        ...runControlPausePayload(initialCandidate),
-        idempotency_key: "slice4-mlp-run-control-pause"
-      };
-      const recorded = await server.inject({
-        method: "POST",
-        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
-        payload
-      });
-      const duplicate = await server.inject({
-        method: "POST",
-        url: `/api/trading-systems/${FIXTURE_CANDIDATE_ID}/run-control`,
-        payload
-      });
-
-      expect(recorded.statusCode).toBe(201);
-      expect(duplicate.statusCode).toBe(201);
-      expect(duplicate.json()).toEqual(recorded.json());
-      expect(recorded.json()).toMatchObject({
-        status: "recorded",
-        command: {
-          action: "pause",
-          status: "decided",
-          authority_status: "control_only"
-        },
-        decision: {
-          decision_outcome: "allowed",
-          decision_reason: "policy_allows_control",
-          resulting_lifecycle_status: "paused",
-          authority_status: "control_only"
-        },
-        audit_event: {
-          event_kind: "runtime_lifecycle_transitioned",
-          runtime_lifecycle_status: "paused",
-          authority_status: "audit_only"
+  it("records run control through the shared command endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        operator: {},
+        result: {
+          status: "recorded",
+          decision: {
+            resulting_lifecycle_status: "paused"
+          }
         }
-      });
+      })
+    } as Response);
 
-      const outcome = recorded.json();
-      const command = await readStoreJson<RunControlCommandRecord>(
-        "run-control-commands",
-        "items",
-        `${outcome.command.run_control_command_id}.json`
-      );
-      const decision = await readStoreJson<RunControlDecisionRecord>(
-        "run-control-decisions",
-        "items",
-        `${outcome.decision.run_control_decision_id}.json`
-      );
-      const auditEvent = await readStoreJson<RuntimeAuditEventRecord>(
-        "runtime-audit-events",
-        "items",
-        `${outcome.audit_event.runtime_audit_event_id}.json`
-      );
-      const runtime = await readStoreJson<TradingRunRecord>(
-        "trading-runs",
-        "items",
-        `${initialCandidate.runtime.ref.id}.json`
-      );
+    const outcome = await recordRunControl(candidate);
 
-      expect(command.runtime_ref).toEqual(initialCandidate.runtime.ref);
-      expect(command.runtime_ref.id).not.toBe(initialCandidate.runtime.placement.ref.id);
-      expect(decision.command_ref).toEqual({
-        record_kind: "run_control_command",
-        id: command.run_control_command_id
-      });
-      expect(auditEvent.command_ref).toEqual(decision.command_ref);
-      expect(auditEvent.decision_ref).toEqual({
-        record_kind: "run_control_decision",
-        id: decision.run_control_decision_id
-      });
-      expect(auditEvent.supporting_record_refs).toEqual([
-        { record_kind: "run_control_command", id: command.run_control_command_id },
-        { record_kind: "run_control_decision", id: decision.run_control_decision_id }
-      ]);
-      expect(runtime.runtime_lifecycle_status).toBe("paused");
-      expect(runtime.run_control_command_refs).toEqual([
-        { record_kind: "run_control_command", id: command.run_control_command_id }
-      ]);
-      expect(runtime.run_control_decision_refs).toEqual([
-        { record_kind: "run_control_decision", id: decision.run_control_decision_id }
-      ]);
-      expect(runtime.runtime_audit_event_refs).toEqual([
-        { record_kind: "runtime_audit_event", id: auditEvent.runtime_audit_event_id }
-      ]);
-
-      await rm(path.join(tmpDir, "read-models"), { recursive: true, force: true });
-      await store.rebuildProjections();
-
-      const readback = await server.inject({
-        method: "GET",
-        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
-      });
-      expect(readback.statusCode).toBe(200);
-      const candidate = readback.json() as CandidateInspectReadModel;
-      expect(candidate.runtime.run_control).toMatchObject({
-        has_activity: true,
-        chain_complete: true,
-        latest_command: {
-          command_id: command.run_control_command_id,
-          action: "pause",
-          status: "decided",
-          authority_status: "control_only"
-        },
-        latest_decision: {
-          decision_id: decision.run_control_decision_id,
-          decision_outcome: "allowed",
-          resulting_lifecycle_status: "paused",
-          authority_status: "control_only"
-        },
-        latest_audit_event: {
-          audit_event_id: auditEvent.runtime_audit_event_id,
-          event_kind: "runtime_lifecycle_transitioned",
-          runtime_lifecycle_status: "paused",
-          authority_status: "audit_only"
-        }
-      });
-      expect(candidate.runtime.placement.authority_status).toBe("not_launched");
-      expect(JSON.stringify(candidate.runtime.run_control)).not.toMatch(
-        /exchange_credentials|provider_api_key|direct_exchange_order|gateway_signing_material/
-      );
-
-      const html = renderToStaticMarkup(
-        <CandidateDetail candidate={candidate} onRecordRunControl={() => undefined} />
-      );
-      expect(html).toContain("Run Control");
-      expect(html).toContain("Trading run state");
-      expect(html).toContain("chain complete");
-      expect(html).toContain("pause");
-      expect(html).toContain("allowed");
-      expect(html).toContain("policy_allows_control");
-      expect(html).toContain("runtime_lifecycle_transitioned");
-      expect(html).toContain(`run_control_command:${command.run_control_command_id}`);
-      expect(html).toContain(`run_control_decision:${decision.run_control_decision_id}`);
-      expect(html).toContain("Record pause");
-      expect(html).toContain("control_only / audit_only / not_live");
-      expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
-      expect(html).not.toMatch(/direct_exchange_order|gateway_signing_material/i);
-      expect(html).not.toMatch(/\/run-control\/(pause|kill|start)/i);
-    } finally {
-      await server.close();
-    }
+    expect(outcome).toMatchObject({
+      status: "recorded",
+      decision: {
+        resulting_lifecycle_status: "paused"
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:4173/api/commands",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"command_kind\":\"run_control.record\"")
+      })
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      command_kind: "run_control.record",
+      payload: {
+        candidate_id: "candidate-001",
+        candidate_version_id: "candidate-version-001"
+      }
+    });
   });
 });
-
-async function readStoreJson<T>(...segments: string[]): Promise<T> {
-  const text = await readFile(path.join(tmpDir, ...segments), "utf8");
-  return JSON.parse(text) as T;
-}

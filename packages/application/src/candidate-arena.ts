@@ -20,8 +20,10 @@ import type {
   TradingEvaluationResultRecord,
   TradingProfitLossReadModel
 } from "@ouroboros/domain";
-import type { LocalStore } from "@ouroboros/local-store";
-import { FIXTURE_CANDIDATE_ID } from "@ouroboros/local-store";
+import {
+  FIXTURE_CANDIDATE_ID,
+  type OuroborosStorePort
+} from "./ports/store-ports";
 import { safeId } from "./safe-id";
 import { readTradingSystemManifest } from "./trading-research/artifact-runner";
 import { FixtureTradingResearchAgentAdapter } from "./trading-research/agent-adapters";
@@ -51,10 +53,10 @@ const ZERO_PROFIT_LOSS: TradingProfitLossReadModel = {
   net_revenue_usdt: 0,
   net_return_pct: 0
 };
-const arenaStoreMutationQueues = new WeakMap<LocalStore, Promise<unknown>>();
+const arenaStoreMutationQueues = new WeakMap<OuroborosStorePort, Promise<unknown>>();
 
 export interface RunCandidateArenaTickInput {
-  store: LocalStore;
+  store: OuroborosStorePort;
   sourceSystemId?: string;
   sourceCandidateVersionId?: string;
   directions?: ResearchDirectionKind[];
@@ -229,7 +231,7 @@ export async function runCandidateArenaTick(
 }
 
 export async function buildCandidateArenaReadModel(
-  store: LocalStore,
+  store: OuroborosStorePort,
   runnerStatus: "running" | "stopped",
   tickCount: number
 ): Promise<CandidateArenaReadModel> {
@@ -351,7 +353,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   });
 }
 
-async function withArenaStoreMutation<T>(store: LocalStore, task: () => Promise<T>): Promise<T> {
+async function withArenaStoreMutation<T>(store: OuroborosStorePort, task: () => Promise<T>): Promise<T> {
   const previous = arenaStoreMutationQueues.get(store) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(task);
   arenaStoreMutationQueues.set(store, current.catch(() => undefined));
@@ -408,7 +410,7 @@ function editForDirection(source: string, direction: ResearchDirectionKind): str
 }
 
 async function sourceCandidate(
-  store: LocalStore,
+  store: OuroborosStorePort,
   sourceSystemId = FIXTURE_CANDIDATE_ID,
   sourceCandidateVersionId?: string
 ): Promise<CandidateInspectReadModel> {
@@ -423,7 +425,7 @@ async function sourceCandidate(
 }
 
 async function sourceResearchArtifactDir(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   source: CandidateInspectReadModel;
   repoRoot: string;
 }): Promise<string> {
@@ -453,7 +455,7 @@ async function sourceResearchArtifactDir(input: {
 }
 
 async function recordArenaSystemCode(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   artifactDir: string;
   sessionId: string;
   manifestEntrypoint: string[];
@@ -560,7 +562,7 @@ function arenaMaterializationInput(input: {
 }
 
 async function recordArenaResearchRecords(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   candidate: CandidateInspectReadModel;
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
@@ -649,7 +651,7 @@ async function recordArenaResearchRecords(input: {
   await input.store.recordArtifactLineage(lineage);
 }
 
-async function arenaContext(store: LocalStore, direction: ResearchDirectionKind): Promise<string> {
+async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
   const leaderboardCandidates = await Promise.all(
     arena.leaderboard.slice(0, 8).map(async (entry) => ({

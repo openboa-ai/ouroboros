@@ -4,13 +4,13 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { LocalStore } from "@ouroboros/local-store";
-import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
-import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "../ports/provider-ports";
+import type { OuroborosStorePort } from "../ports/store-ports";
 import {
   planImprovementProposalFromLocalStore,
   type PlanImprovementProposalFromLocalStoreOutcome
 } from "./local-store-proposal-loop";
+import { FixtureImprovementProposalProviderAdapter } from "./fixture-improvement-proposal-provider";
 
 export const codexImprovementProposalDryRunFixtureIds = {
   task: "trading-evaluation-task-codex-research-dry-run-001",
@@ -22,7 +22,7 @@ export const codexImprovementProposalDryRunFixtureIds = {
 
 export interface CodexImprovementProposalDryRunInput {
   store_root?: string;
-  store?: LocalStore;
+  store?: OuroborosStorePort;
   provider_adapter?: ImprovementProposalProviderAdapter;
   parent_system_code_ref?: Ref;
   idempotency_key?: string;
@@ -54,7 +54,15 @@ export type CodexImprovementProposalDryRunOutcome =
 export async function runCodexImprovementProposalDryRun(
   input: CodexImprovementProposalDryRunInput = {}
 ): Promise<CodexImprovementProposalDryRunOutcome> {
-  const store = input.store ?? new LocalStore(input.store_root);
+  const store = input.store;
+  if (!store) {
+    return {
+      status: "failed",
+      store_root: input.store_root ?? "",
+      idempotency_key: input.idempotency_key ?? "codex-improvement-proposal-dry-run",
+      failure_reason: "store_port_required"
+    };
+  }
   if (input.initialize_store ?? true) {
     await store.initialize();
   }
@@ -63,14 +71,7 @@ export async function runCodexImprovementProposalDryRun(
   }
 
   const idempotencyKey = input.idempotency_key ?? "codex-improvement-proposal-dry-run";
-  const providerAdapter = input.provider_adapter ?? new CodexCliImprovementProposalProviderAdapter({
-    workingDirectory: input.working_directory,
-    outputPath: input.output_path,
-    schemaPath: input.schema_path,
-    command: input.codex_command,
-    model: input.codex_model,
-    timeoutMs: input.codex_timeout_ms
-  });
+  const providerAdapter = input.provider_adapter ?? new FixtureImprovementProposalProviderAdapter();
 
   try {
     const outcome = await planImprovementProposalFromLocalStore({
@@ -98,7 +99,7 @@ export async function runCodexImprovementProposalDryRun(
 }
 
 export async function seedCodexImprovementProposalDryRunFindings(
-  store: LocalStore,
+  store: OuroborosStorePort,
   createdAt = "2026-05-12T00:00:00.000Z"
 ): Promise<void> {
   const existingFindings = await store.listResearchFindings();

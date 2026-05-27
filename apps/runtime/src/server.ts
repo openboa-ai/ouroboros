@@ -9,7 +9,6 @@ import type {
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
   LedgerInput,
-  OuroborosCommandRequest,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
@@ -21,13 +20,8 @@ import type {
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "@ouroboros/application/candidate-evaluation";
-import { runCandidateGeneration } from "@ouroboros/application/candidate-materialization";
-import { CodexCliProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-provider";
 import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/providers/fixture-evaluation-provider";
-import type {
-  EvaluationProviderAdapter,
-  RuntimeProviderAdapter
-} from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import type { EvaluationProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
@@ -53,10 +47,6 @@ import {
   type ReplayRunRecord
 } from "@ouroboros/application/trading-candidate/run-replay";
 import {
-  getTradingSystemExecutionModeContract,
-  listTradingSystemExecutionModeContracts
-} from "@ouroboros/application/trading-execution-mode-contracts";
-import {
   createGatewayRuntimeBinding,
   executeGatewayOrderRequest,
   LIVE_GATEWAY_DISABLED_REASON,
@@ -67,8 +57,6 @@ import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "@ou
 import {
   createTradingResearchAgentAdapter,
   fixtureTradingResearchRuntimeConfig,
-  probeTradingResearchRuntimeConfig,
-  type TradingResearchProbeExecFile,
   type TradingResearchRuntimeAgent,
   type TradingResearchRuntimeConfig
 } from "@ouroboros/application/trading-research/runtime-config";
@@ -76,13 +64,7 @@ import {
   managedAgentProfileEnv,
   type AgentProfileExecFile
 } from "@ouroboros/application/agent-profiles";
-import { runCodexImprovementProposalEvaluationDryRun } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-evaluation-dry-run";
-import { FixtureImprovementProposalProviderAdapter } from "@ouroboros/application/research-orchestration/fixture-improvement-proposal-provider";
-import { runAgentTradingCycle } from "@ouroboros/application/agent-trading-cycle";
-import {
-  buildCandidateArenaReadModel,
-  CandidateArenaRunner
-} from "@ouroboros/application/candidate-arena";
+import { CandidateArenaRunner } from "@ouroboros/application/candidate-arena";
 import { createOperatorController } from "@ouroboros/application/controllers/operator-controller";
 import {
   isTradingResearchRuntimeAgent,
@@ -93,10 +75,12 @@ import {
   type BinancePublicMarketDataClient
 } from "@ouroboros/adapters/trading-substrate/binance-public-market-adapter";
 import { safeId } from "@ouroboros/application/safe-id";
+import { registerCoreControllerRoutes } from "./controllers/core-controller";
+import { registerResourceControllerRoutes } from "./controllers/resource-controller";
+import { registerRuntimeRouteModules } from "./controllers/route-registry";
 
 export interface BuildServerOptions {
   store?: LocalStore;
-  providerAdapter?: RuntimeProviderAdapter;
   evaluationProviderAdapter?: EvaluationProviderAdapter;
   sandboxAdapters?: Partial<Record<SandboxAdapterKind, SandboxAdapter>>;
   replayRunRoot?: string;
@@ -106,9 +90,7 @@ export interface BuildServerOptions {
   tradingResearchAgentAdapter?: TradingResearchAgentAdapter;
   tradingResearchAgentFactory?: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
   tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
-  tradingResearchProbeExecFile?: TradingResearchProbeExecFile;
   agentProfileExecFile?: AgentProfileExecFile;
-  tradingResearchIterations?: number;
   candidateArenaTickIntervalMs?: number;
   binancePublicMarketClient?: BinancePublicMarketDataClient;
 }
@@ -118,32 +100,6 @@ interface CreateEvaluationRunBody {
   idempotency_key?: string;
   stage?: string;
   execution_mode?: EvaluationExecutionMode;
-}
-
-interface RecordLedgerBody {
-  candidate_version_id?: string;
-  runtime_id?: string;
-  idempotency_key?: string;
-  intent?: {
-    intent_kind?: string;
-    side?: string;
-    order_type?: string;
-    quantity?: string;
-    limit_price?: string;
-  };
-  gateway_result?: {
-    decision_outcome?: string;
-    decision_reason?: string;
-    policy_ref?: Ref;
-  };
-  execution_result?: {
-    execution_mode?: string;
-    status?: string;
-    result_reason?: string;
-    trace_ref?: Ref;
-    completed_at?: string;
-  };
-  created_at?: string;
 }
 
 interface StartTradingRunBody {
@@ -231,9 +187,13 @@ interface StartSandboxBody {
   created_at?: string;
 }
 
+interface RuntimeControllerResponse {
+  statusCode: number;
+  body: Record<string, unknown>;
+}
+
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const store = options.store ?? new LocalStore();
-  const providerAdapter = options.providerAdapter ?? new CodexCliProviderAdapter();
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
@@ -301,263 +261,420 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
   } as const;
 
-  server.get("/health", async () => ({
-    status: "ok",
-    service: "ouroboros-runtime",
-    mode: "fixture_convenience_mode",
-    store_root: store.root(),
-    trading_gateway_environment: tradingGatewayEnvironment,
-    projections: "rebuilt_from_authoritative_item_files"
-  }));
+  async function runCandidateEvaluationCommand(
+    candidateId: string,
+    payload: unknown
+  ): Promise<RuntimeControllerResponse> {
+    const candidate = await store.getCandidate(candidateId);
+    if (!candidate) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "candidate_not_found",
+          candidate_id: candidateId
+        }
+      };
+    }
 
-  server.get("/api/trading-gateway/environment", async () => ({
-    trading_gateway_environment: tradingGatewayEnvironment
-  }));
+    const body = (payload ?? {}) as CreateEvaluationRunBody;
+    if (body.stage !== undefined && body.stage !== "backtest") {
+      return {
+        statusCode: 422,
+        body: {
+          error: "evaluation_run_failed",
+          reason: "unsupported_evaluation_stage",
+          candidate_id: candidateId
+        }
+      };
+    }
 
-  server.get("/api/trading-research/runtime", async () => ({
-    trading_research_runtime: await probeTradingResearchRuntimeConfig(
-      tradingResearchRuntimeConfig,
-      options.tradingResearchProbeExecFile
-    )
-  }));
+    const candidateVersionId = body.candidate_version_id ?? candidate.candidate_version.candidate_version_id;
+    const requestedExecutionMode = body.execution_mode ?? "host_local";
+    const idempotencyKey = body.idempotency_key
+      ?? `runtime-api-evaluation-${candidateId}-${candidateVersionId}-backtest-${requestedExecutionMode}`;
+    const stableRequestId = safeRouteId(`${candidateId}-${candidateVersionId}-${idempotencyKey}`);
+    const outcome = await runCandidateEvaluation(store, evaluationProviderAdapter, {
+      candidate_id: candidateId,
+      candidate_version_id: candidateVersionId,
+      idempotency_key: idempotencyKey,
+      stage_binding_ref: {
+        record_kind: "stage_binding",
+        id: `stage-binding-api-evaluation-${stableRequestId}`
+      },
+      trace_id: `trace-api-evaluation-${stableRequestId}`,
+      execution_mode: requestedExecutionMode
+    });
 
-  const operatorService = new OperatorService({
-    store,
-    candidateArenaRunner,
-    agentProfileExecFile: options.agentProfileExecFile,
-    paperEvidenceAdapter: {
-      run: async (candidateId) => {
-        const response = await server.inject({
-          method: "POST",
-          url: `/api/trading-systems/${encodeURIComponent(candidateId)}/trading-runs`
-        });
+    if (outcome.status === "failed") {
+      const statusCode = outcome.failure_reason === "candidate_not_found" ? 404 : 422;
+      return {
+        statusCode,
+        body: {
+          error: statusCode === 404 ? "candidate_not_found" : "evaluation_run_failed",
+          reason: outcome.failure_reason,
+          candidate_id: candidateId,
+          candidate_version_id: candidateVersionId,
+          idempotency_key: idempotencyKey
+        }
+      };
+    }
+
+    return { statusCode: 201, body: outcome };
+  }
+
+  async function runCandidateReplayCommand(
+    candidateId: string,
+    payload: unknown
+  ): Promise<RuntimeControllerResponse> {
+    const candidate = await getCandidateReadModel(
+      store,
+      candidateId,
+      options.promotedCandidateRoot,
+      options.replayRunRoot
+    );
+    if (!candidate) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "candidate_not_found",
+          candidate_id: candidateId
+        }
+      };
+    }
+    if (candidate.fixture_notice.mode !== "local_promoted_candidate_bundle") {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_rejected",
+          reason: "promoted_candidate_bundle_required",
+          candidate_id: candidateId
+        }
+      };
+    }
+
+    const body = (payload ?? {}) as CreateReplayRunBody;
+    if (hasRequestField(body, "run_id")) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_rejected",
+          reason: "client_run_id_not_supported",
+          candidate_id: candidateId
+        }
+      };
+    }
+    const runnerKind = parseReplayRunRunnerKind(body.runner_kind);
+    if (!runnerKind) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_rejected",
+          reason: "invalid_runner_kind",
+          candidate_id: candidateId
+        }
+      };
+    }
+    if (runnerKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_rejected",
+          reason: "docker_sandboxes_sbx_runtime_disabled",
+          candidate_id: candidateId
+        }
+      };
+    }
+
+    const scenarioIds = parseReplayRunScenarioIds(body.scenario_ids);
+    if (!scenarioIds) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_rejected",
+          reason: "invalid_scenario_ids",
+          candidate_id: candidateId
+        }
+      };
+    }
+    const timeoutMs = parseOptionalPositiveInteger(body.timeout_ms);
+    if (body.timeout_ms !== undefined && timeoutMs === undefined) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_rejected",
+          reason: "invalid_timeout_ms",
+          candidate_id: candidateId
+        }
+      };
+    }
+
+    try {
+      const record = await runPromotedCandidateReplay({
+        candidate_id: candidateId,
+        candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
+        run_root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
+        run_id: createHttpReplayRunId(),
+        runner_kind: runnerKind,
+        scenario_ids: scenarioIds,
+        timeout_ms: timeoutMs
+      });
+      return {
+        statusCode: 201,
+        body: {
+          candidate_id: candidateId,
+          run: replayRunEvidenceFromRecord(record)
+        }
+      };
+    } catch (error) {
+      if (error instanceof ReplayRunError) {
         return {
-          statusCode: response.statusCode,
-          body: response.json()
+          statusCode: replayRunErrorStatus(error),
+          body: {
+            error: "replay_run_failed",
+            reason: error.reason,
+            candidate_id: candidateId,
+            message: error.message
+          }
         };
       }
+      throw error;
     }
-  });
-  const operatorController = createOperatorController(operatorService);
+  }
 
-  server.get(
-    "/api/operator",
-    filesystemReadRateLimit,
-    async () => ({
-      operator: await operatorController.readOperator()
-    })
-  );
-
-  server.post<{ Body: OuroborosCommandRequest }>("/api/commands", commandMutationRateLimit, async (request, reply) => {
-    const response = await operatorController.dispatchCommand(request.body);
-    return reply.code(response.statusCode).send(response.body);
-  });
-
-  server.get("/api/candidate-arena", async () => ({
-    candidate_arena: await buildCandidateArenaReadModel(
-      store,
-      candidateArenaRunner.status(),
-      candidateArenaRunner.ticks()
-    )
-  }));
-
-  server.post("/api/candidate-arena/start", async (_request, reply) => {
-    const status = candidateArenaRunner.start();
-    return reply.code(202).send({
-      status,
-      candidate_arena: await buildCandidateArenaReadModel(
-        store,
-        candidateArenaRunner.status(),
-        candidateArenaRunner.ticks()
-      )
+  async function startTradingRunCommand(
+    candidateId: string,
+    payload: unknown
+  ): Promise<RuntimeControllerResponse> {
+    const body = payload as StartTradingRunBody | undefined;
+    const runtimeEnvironment = startRuntimeEnvironment(body);
+    if (!runtimeEnvironment) {
+      return {
+        statusCode: 400,
+        body: {
+          error: "invalid_runtime_environment",
+          allowed_values: ["paper", "live"]
+        }
+      };
+    }
+    const gatewayRuntimeBinding = createGatewayRuntimeBinding({
+      environment: runtimeEnvironment,
+      marketDataClient: options.binancePublicMarketClient
     });
-  });
+    if (gatewayRuntimeBinding.status === "disabled") {
+      return {
+        statusCode: 422,
+        body: {
+          error: "gateway_runtime_binding_disabled",
+          reason: gatewayRuntimeBinding.disabled_reason ?? LIVE_GATEWAY_DISABLED_REASON,
+          runtime_environment: gatewayRuntimeBinding.environment
+        }
+      };
+    }
 
-  server.post("/api/candidate-arena/stop", async (_request, reply) => {
-    const status = candidateArenaRunner.stop();
-    return reply.code(202).send({
-      status,
-      candidate_arena: await buildCandidateArenaReadModel(
+    const paperOrderRequest = startPaperOrderRequest(body);
+    if (!paperOrderRequest) {
+      return {
+        statusCode: 400,
+        body: {
+          error: "invalid_paper_order_request",
+          allowed_values: ["valid", "rejected"]
+        }
+      };
+    }
+
+    const candidate = await store.getCandidate(candidateId);
+    if (!candidate) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "trading_system_not_found",
+          system_id: candidateId
+        }
+      };
+    }
+
+    const candidateVersionId = candidate.candidate_version.candidate_version_id;
+    const tradingRunId = candidate.runtime.ref.id;
+    try {
+      const outcome = await startFixtureTradingRun({
         store,
-        candidateArenaRunner.status(),
-        candidateArenaRunner.ticks()
-      )
-    });
-  });
+        sandboxAdapter: sandboxAdapters.deterministic_test,
+        candidate,
+        systemId: candidateId,
+        tradingRunId,
+        candidateVersionId,
+        paperOrderRequest,
+        tradingGatewayEnvironment,
+        gatewayRuntimeBinding
+      });
 
-  server.post("/api/candidate-arena/tick", async (_request, reply) => {
-    const outcome = await candidateArenaRunner.tick();
-    return reply.code(201).send(outcome);
-  });
-
-  server.get("/api/trading-execution-modes", async () => ({
-    modes: listTradingSystemExecutionModeContracts()
-  }));
-
-  server.get<{ Params: { mode: string } }>(
-    "/api/trading-execution-modes/:mode",
-    async (request, reply) => {
-      const mode = getTradingSystemExecutionModeContract(request.params.mode);
-      if (!mode) {
-        return reply.code(404).send({
-          error: "trading_execution_mode_not_found",
-          mode: request.params.mode
-        });
+      return { statusCode: 201, body: outcome };
+    } catch (error) {
+      if (error instanceof LocalStoreError) {
+        return {
+          statusCode: ledgerStatusCode(error.code),
+          body: {
+            error: "trading_run_failed",
+            reason: error.code,
+            system_id: candidateId,
+            candidate_version_id: candidateVersionId
+          }
+        };
       }
-      return { mode };
+      throw error;
     }
-  );
+  }
 
-  server.get<{
-    Querystring: {
-      venue?: string;
-      instrument?: string;
-    };
-  }>("/api/trading-substrate/order-fill/latest", async (request, reply) => {
-    const venue = request.query.venue ?? "binance_usd_m_futures";
-    const instrument = request.query.instrument ?? "BTCUSDT";
-    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
-      return reply.code(404).send({
-        error: "order_fill_surface_not_found",
-        venue,
-        instrument
-      });
-    }
-
-    const surface = await store.getLatestOrderFillSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
-    });
-    if (!surface) {
-      return reply.code(404).send({
-        error: "order_fill_surface_not_found",
-        venue,
-        instrument
-      });
-    }
-    return { surface };
-  });
-
-  server.get<{
-    Querystring: {
-      venue?: string;
-      instrument?: string;
-    };
-  }>("/api/trading-substrate/public-market/latest", async (request, reply) => {
-    const venue = request.query.venue ?? "binance_usd_m_futures";
-    const instrument = request.query.instrument ?? "BTCUSDT";
-    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
-      return reply.code(404).send({
-        error: "public_market_liveness_surface_not_found",
-        venue,
-        instrument
-      });
-    }
-
-    const refresh = await refreshBinancePublicMarketSurface({
-      store,
-      tradingGatewayEnvironment,
-      client: options.binancePublicMarketClient
-    });
-    const surface = await store.getLatestPublicMarketLivenessSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
-    });
-    if (!surface) {
-      return reply.code(404).send({
-        error: "public_market_liveness_surface_not_found",
-        venue,
-        instrument
-      });
+  async function observeTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
+    const response = await tradingRunResponse(store, tradingRunId);
+    if (!response) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "trading_run_not_found",
+          trading_run_id: tradingRunId
+        }
+      };
     }
     return {
-      refresh_status: refresh.status,
-      refresh_reason: refresh.reason,
-      surface
+      statusCode: 200,
+      body: {
+        status: "observed",
+        ...response
+      }
     };
-  });
+  }
 
-  server.get<{
-    Querystring: {
-      venue?: string;
-      instrument?: string;
-    };
-  }>("/api/trading-substrate/private-readiness/latest", async (request, reply) => {
-    const venue = request.query.venue ?? "binance_usd_m_futures";
-    const instrument = request.query.instrument ?? "BTCUSDT";
-    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
-      return reply.code(404).send({
-        error: "private_readiness_preflight_surface_not_found",
-        venue,
-        instrument
-      });
+  async function stopTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
+    const candidate = await store.getCandidateForTradingRun(tradingRunId);
+    if (!candidate) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "trading_run_not_found",
+          trading_run_id: tradingRunId
+        }
+      };
     }
-
-    const surface = await store.getLatestPrivateReadinessPreflightSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
+    const candidateVersionId = candidate.candidate_version.candidate_version_id;
+    await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+      idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
+      candidateId: candidate.candidate_id,
+      candidateVersionId,
+      tradingRunId,
+      action: "stop",
+      lifecycleStatus: "stopped",
+      actorId: "runtime-api",
+      reasonSummary: "Operator requested trading run stop.",
+      message: "Trading run stop recorded."
+    }));
+    await stopLinkedTradingRunSandbox({
+      store,
+      sandboxAdapters,
+      tradingRunId
     });
-    if (!surface) {
-      return reply.code(404).send({
-        error: "private_readiness_preflight_surface_not_found",
-        venue,
-        instrument
-      });
-    }
-    return { surface };
-  });
 
-  server.get<{
-    Querystring: {
-      venue?: string;
-      instrument?: string;
+    const response = await tradingRunResponse(store, tradingRunId);
+    return {
+      statusCode: 201,
+      body: {
+        status: "stopped",
+        ...response
+      }
     };
-  }>("/api/trading-substrate/private-readiness-posture/latest", async (request, reply) => {
-    const venue = request.query.venue ?? "binance_usd_m_futures";
-    const instrument = request.query.instrument ?? "BTCUSDT";
-    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
-      return reply.code(404).send({
-        error: "private_readiness_posture_not_found",
-        venue,
-        instrument
-      });
+  }
+
+  async function recordRunControlCommand(
+    candidateId: string,
+    payload: unknown
+  ): Promise<RuntimeControllerResponse> {
+    const candidate = await store.getCandidate(candidateId);
+    if (!candidate) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "trading_system_not_found",
+          system_id: candidateId
+        }
+      };
     }
 
-    const posture = await store.getLatestPrivateReadinessPosture({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
-    });
-    if (!posture) {
-      return reply.code(404).send({
-        error: "private_readiness_posture_not_found",
-        venue,
-        instrument
-      });
+    const body = (payload ?? {}) as RecordRunControlBody;
+    if (!isRunControlRequestComplete(body)) {
+      return {
+        statusCode: 422,
+        body: runtimeControlError({
+          reason: "invalid_run_control_request",
+          candidateId,
+          candidateVersionId: body.candidate_version_id,
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
-    return { posture };
-  });
 
-  server.post<{
-    Body: RecordPrivateReadinessPostureBody;
-  }>("/api/trading-substrate/private-readiness-posture", async (request, reply) => {
-    const body = request.body ?? {};
+    try {
+      const outcome = await store.recordRunControlAudit({
+        idempotency_key: body.idempotency_key,
+        candidate_id: candidateId,
+        candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
+        runtime_id: body.runtime_id,
+        command: body.command,
+        decision: body.decision,
+        audit_event: body.audit_event,
+        created_at: body.created_at
+      } as RunControlAuditInput);
+
+      return {
+        statusCode: 201,
+        body: {
+          status: "recorded",
+          ...outcome
+        }
+      };
+    } catch (error) {
+      if (error instanceof LocalStoreError) {
+        return {
+          statusCode: runtimeControlStatusCode(error.code),
+          body: runtimeControlError({
+            reason: error.code,
+            candidateId,
+            candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
+            idempotencyKey: body.idempotency_key
+          })
+        };
+      }
+      throw error;
+    }
+  }
+
+  async function recordPrivateReadinessPostureCommand(payload: unknown): Promise<RuntimeControllerResponse> {
+    const body = (payload ?? {}) as RecordPrivateReadinessPostureBody;
     if (hasForbiddenPrivateReadinessPostureMaterial(body)) {
-      return reply.code(422).send(privateReadinessPostureError({
-        reason: "raw_secret_material_forbidden",
-        idempotencyKey: body.idempotency_key
-      }));
+      return {
+        statusCode: 422,
+        body: privateReadinessPostureError({
+          reason: "raw_secret_material_forbidden",
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
     if (!isSupportedPrivateReadinessPostureScope(body)) {
-      return reply.code(422).send(privateReadinessPostureError({
-        reason: "unsupported_private_readiness_posture_scope",
-        idempotencyKey: body.idempotency_key
-      }));
+      return {
+        statusCode: 422,
+        body: privateReadinessPostureError({
+          reason: "unsupported_private_readiness_posture_scope",
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
     if (!isPrivateReadinessPostureRequestComplete(body)) {
-      return reply.code(422).send(privateReadinessPostureError({
-        reason: "invalid_private_readiness_posture_request",
-        idempotencyKey: body.idempotency_key
-      }));
+      return {
+        statusCode: 422,
+        body: privateReadinessPostureError({
+          reason: "invalid_private_readiness_posture_request",
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
 
     try {
@@ -577,950 +694,84 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         observed_at: body.observed_at
       } satisfies PrivateReadinessPostureWriteInput);
 
-      return reply.code(201).send({
-        status: "recorded",
-        posture
-      });
-    } catch (error) {
-      if (error instanceof LocalStoreError) {
-        return reply.code(422).send(privateReadinessPostureError({
-          reason: error.code,
-          idempotencyKey: body.idempotency_key
-        }));
-      }
-      throw error;
-    }
-  });
-
-  server.get<{
-    Querystring: {
-      venue?: string;
-      instrument?: string;
-    };
-  }>("/api/trading-substrate/account-position-risk/latest", async (request, reply) => {
-    const venue = request.query.venue ?? "binance_usd_m_futures";
-    const instrument = request.query.instrument ?? "BTCUSDT";
-    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
-      return reply.code(404).send({
-        error: "account_position_risk_mirror_surface_not_found",
-        venue,
-        instrument
-      });
-    }
-
-    const surface = await store.getLatestAccountPositionRiskMirrorSurface({
-      venue: "binance_usd_m_futures",
-      instrument: "BTCUSDT"
-    });
-    if (!surface) {
-      return reply.code(404).send({
-        error: "account_position_risk_mirror_surface_not_found",
-        venue,
-        instrument
-      });
-    }
-    return { surface };
-  });
-
-  server.get("/api/candidates", async () => ({
-    candidates: await listCandidateSummaries(
-      store,
-      options.promotedCandidateRoot,
-      options.replayRunRoot
-    )
-  }));
-
-  server.get<{ Params: { candidate_id: string } }>(
-    "/api/candidates/:candidate_id",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-      return await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      ) ?? candidate;
-    }
-  );
-
-  server.get<{ Params: { candidate_id: string } }>(
-    "/api/candidates/:candidate_id/evaluation-runs",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-
       return {
-        candidate_id: request.params.candidate_id,
-        evaluation_runs: await store.listCandidateEvaluationRuns(request.params.candidate_id)
-      };
-    }
-  );
-
-  server.get<{ Params: { candidate_id: string }; Querystring: { limit?: string } }>(
-    "/api/candidates/:candidate_id/replay-runs",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-
-      return {
-        candidate_id: request.params.candidate_id,
-        runs: await listReplayRunEvidence({
-          root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-          candidate_id: request.params.candidate_id,
-          limit: parseLimit(request.query.limit)
-        })
-      };
-    }
-  );
-
-  server.get<{
-    Params: { candidate_id: string; run_id: string };
-    Querystring: { baseline_run_id?: string };
-  }>(
-    "/api/candidates/:candidate_id/replay-runs/:run_id/validation-state",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-
-      const validationState = await getReplayRunValidationState({
-        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-        candidate_id: request.params.candidate_id,
-        run_id: request.params.run_id,
-        baseline_run_id: request.query.baseline_run_id
-      });
-      if (!validationState) {
-        return reply.code(404).send({
-          error: "replay_run_validation_state_not_found",
-          candidate_id: request.params.candidate_id,
-          run_id: request.params.run_id,
-          baseline_run_id: request.query.baseline_run_id
-        });
-      }
-
-      return {
-        candidate_id: request.params.candidate_id,
-        validation_state: validationState
-      };
-    }
-  );
-
-  server.get<{
-    Params: { candidate_id: string; run_id: string };
-    Querystring: { baseline_run_id?: string };
-  }>(
-    "/api/candidates/:candidate_id/replay-runs/:run_id/comparison",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-
-      if (!request.query.baseline_run_id) {
-        return reply.code(422).send({
-          error: "replay_run_comparison_rejected",
-          reason: "missing_baseline_run_id",
-          candidate_id: request.params.candidate_id,
-          run_id: request.params.run_id
-        });
-      }
-
-      const comparison = await getReplayRunComparison({
-        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-        candidate_id: request.params.candidate_id,
-        run_id: request.params.run_id,
-        baseline_run_id: request.query.baseline_run_id
-      });
-      if (!comparison) {
-        return reply.code(404).send({
-          error: "replay_run_comparison_not_found",
-          candidate_id: request.params.candidate_id,
-          run_id: request.params.run_id,
-          baseline_run_id: request.query.baseline_run_id
-        });
-      }
-
-      return {
-        candidate_id: request.params.candidate_id,
-        comparison
-      };
-    }
-  );
-
-  server.get<{ Params: { candidate_id: string; run_id: string } }>(
-    "/api/candidates/:candidate_id/replay-runs/:run_id",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-
-      const run = await getReplayRunDetail({
-        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-        candidate_id: request.params.candidate_id,
-        run_id: request.params.run_id
-      });
-      if (!run) {
-        return reply.code(404).send({
-          error: "replay_run_not_found",
-          candidate_id: request.params.candidate_id,
-          run_id: request.params.run_id
-        });
-      }
-
-      return {
-        candidate_id: request.params.candidate_id,
-        run
-      };
-    }
-  );
-
-  server.post<{ Params: { candidate_id: string }; Body: CreateReplayRunBody }>(
-    "/api/candidates/:candidate_id/replay-runs",
-    async (request, reply) => {
-      const candidate = await getCandidateReadModel(
-        store,
-        request.params.candidate_id,
-        options.promotedCandidateRoot,
-        options.replayRunRoot
-      );
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "candidate_not_found",
-          candidate_id: request.params.candidate_id
-        });
-      }
-      if (candidate.fixture_notice.mode !== "local_promoted_candidate_bundle") {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "promoted_candidate_bundle_required",
-          candidate_id: request.params.candidate_id
-        });
-      }
-      const candidateId = candidate.candidate_id;
-
-      const body = request.body ?? {};
-      if (hasRequestField(body, "run_id")) {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "client_run_id_not_supported",
-          candidate_id: candidateId
-        });
-      }
-      const runnerKind = parseReplayRunRunnerKind(body.runner_kind);
-      if (!runnerKind) {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "invalid_runner_kind",
-          candidate_id: candidateId
-        });
-      }
-      if (runnerKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "docker_sandboxes_sbx_runtime_disabled",
-          candidate_id: candidateId
-        });
-      }
-
-      const scenarioIds = parseReplayRunScenarioIds(body.scenario_ids);
-      if (!scenarioIds) {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "invalid_scenario_ids",
-          candidate_id: candidateId
-        });
-      }
-      const timeoutMs = parseOptionalPositiveInteger(body.timeout_ms);
-      if (body.timeout_ms !== undefined && timeoutMs === undefined) {
-        return reply.code(422).send({
-          error: "replay_run_rejected",
-          reason: "invalid_timeout_ms",
-          candidate_id: candidateId
-        });
-      }
-      try {
-        const record = await runPromotedCandidateReplay({
-          candidate_id: candidateId,
-          candidate_root: options.promotedCandidateRoot ?? DEFAULT_PROMOTED_CANDIDATE_ROOT,
-          run_root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-          run_id: createHttpReplayRunId(),
-          runner_kind: runnerKind,
-          scenario_ids: scenarioIds,
-          timeout_ms: timeoutMs
-        });
-        return reply.code(201).send({
-          candidate_id: candidateId,
-          run: replayRunEvidenceFromRecord(record)
-        });
-      } catch (error) {
-        if (error instanceof ReplayRunError) {
-          return reply.code(replayRunErrorStatus(error)).send({
-            error: "replay_run_failed",
-            reason: error.reason,
-            candidate_id: candidateId,
-            message: error.message
-          });
+        statusCode: 201,
+        body: {
+          status: "recorded",
+          posture
         }
-        throw error;
-      }
-    }
-  );
-
-  server.get<{ Querystring: { candidate_id?: string; limit?: string } }>(
-    "/api/replay-runs",
-    async (request) => ({
-      candidate_id: request.query.candidate_id,
-      runs: await listReplayRunEvidence({
-        root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
-        candidate_id: request.query.candidate_id,
-        limit: parseLimit(request.query.limit)
-      })
-    })
-  );
-
-  server.get<{ Params: { system_id: string } }>(
-    "/api/trading-systems/:system_id/ledger",
-    async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.system_id);
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "trading_system_not_found",
-          system_id: request.params.system_id
-        });
-      }
-
-      return {
-        system_id: request.params.system_id,
-        trading_run_id: candidate.runtime.ref.id,
-        ledger: candidate.ledger
       };
-    }
-  );
-
-  server.post<{
-    Params: { system_id: string };
-    Body: RecordLedgerBody;
-  }>("/api/trading-systems/:system_id/ledger", async (request, reply) => {
-    const candidate = await store.getCandidate(request.params.system_id);
-    if (!candidate) {
-      return reply.code(404).send({
-        error: "trading_system_not_found",
-        system_id: request.params.system_id
-      });
-    }
-
-    const body = request.body ?? {};
-    if (!isLedgerRequestComplete(body)) {
-      return reply.code(422).send(ledgerError({
-        reason: "invalid_ledger_request",
-        candidateId: request.params.system_id,
-        candidateVersionId: body.candidate_version_id,
-        idempotencyKey: body.idempotency_key
-      }));
-    }
-
-    try {
-      await store.recordLedger({
-        idempotency_key: body.idempotency_key,
-        candidate_id: request.params.system_id,
-        candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
-        runtime_id: body.runtime_id,
-        intent: body.intent,
-        gateway_result: body.gateway_result,
-        execution_result: body.execution_result,
-        created_at: body.created_at
-      } as LedgerInput);
-      const updatedCandidate = await store.getCandidate(request.params.system_id);
-      if (!updatedCandidate?.ledger) {
-        throw new Error("ledger was not projected after ledger write");
-      }
-
-      return reply.code(201).send({
-        status: "recorded",
-        system_id: request.params.system_id,
-        trading_run_id: updatedCandidate.runtime.ref.id,
-        order_request: updatedCandidate.ledger.latest_order_request,
-        gateway_result: updatedCandidate.ledger.latest_gateway_result,
-        execution_result: updatedCandidate.ledger.latest_execution_result,
-        ledger: updatedCandidate.ledger
-      });
     } catch (error) {
       if (error instanceof LocalStoreError) {
-        return reply.code(ledgerStatusCode(error.code)).send(ledgerError({
-          reason: error.code,
-          candidateId: request.params.system_id,
-          candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
-          idempotencyKey: body.idempotency_key
-        }));
-      }
-      throw error;
-    }
-  });
-
-  server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
-    "/api/trading-systems/:system_id/trading-runs",
-    async (request, reply) => {
-      const runtimeEnvironment = startRuntimeEnvironment(request.body);
-      if (!runtimeEnvironment) {
-        return reply.code(400).send({
-          error: "invalid_runtime_environment",
-          allowed_values: ["paper", "live"]
-        });
-      }
-      const gatewayRuntimeBinding = createGatewayRuntimeBinding({
-        environment: runtimeEnvironment,
-        marketDataClient: options.binancePublicMarketClient
-      });
-      if (gatewayRuntimeBinding.status === "disabled") {
-        return reply.code(422).send({
-          error: "gateway_runtime_binding_disabled",
-          reason: gatewayRuntimeBinding.disabled_reason ?? LIVE_GATEWAY_DISABLED_REASON,
-          runtime_environment: gatewayRuntimeBinding.environment
-        });
-      }
-
-      const paperOrderRequest = startPaperOrderRequest(request.body);
-      if (!paperOrderRequest) {
-        return reply.code(400).send({
-          error: "invalid_paper_order_request",
-          allowed_values: ["valid", "rejected"]
-        });
-      }
-
-      const candidate = await store.getCandidate(request.params.system_id);
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "trading_system_not_found",
-          system_id: request.params.system_id
-        });
-      }
-
-      const candidateVersionId = candidate.candidate_version.candidate_version_id;
-      const tradingRunId = candidate.runtime.ref.id;
-      try {
-        const outcome = await startFixtureTradingRun({
-          store,
-          sandboxAdapter: sandboxAdapters.deterministic_test,
-          candidate,
-          systemId: request.params.system_id,
-          tradingRunId,
-          candidateVersionId,
-          paperOrderRequest,
-          tradingGatewayEnvironment,
-          gatewayRuntimeBinding
-        });
-
-        return reply.code(201).send(outcome);
-      } catch (error) {
-        if (error instanceof LocalStoreError) {
-          return reply.code(ledgerStatusCode(error.code)).send({
-            error: "trading_run_failed",
+        return {
+          statusCode: 422,
+          body: privateReadinessPostureError({
             reason: error.code,
-            system_id: request.params.system_id,
-            candidate_version_id: candidateVersionId
-          });
-        }
-        throw error;
-      }
-    }
-  );
-
-  server.get<{ Params: { run_id: string } }>(
-    "/api/trading-runs/:run_id",
-    async (request, reply) => {
-      const response = await tradingRunResponse(store, request.params.run_id);
-      if (!response) {
-        return reply.code(404).send({
-          error: "trading_run_not_found",
-          trading_run_id: request.params.run_id
-        });
-      }
-      return response;
-    }
-  );
-
-  server.post<{ Params: { run_id: string } }>(
-    "/api/trading-runs/:run_id/observe",
-    async (request, reply) => {
-      const response = await tradingRunResponse(store, request.params.run_id);
-      if (!response) {
-        return reply.code(404).send({
-          error: "trading_run_not_found",
-          trading_run_id: request.params.run_id
-        });
-      }
-      return {
-        status: "observed",
-        ...response
-      };
-    }
-  );
-
-  server.post<{ Params: { run_id: string } }>(
-    "/api/trading-runs/:run_id/stop",
-    async (request, reply) => {
-      const candidate = await store.getCandidateForTradingRun(request.params.run_id);
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "trading_run_not_found",
-          trading_run_id: request.params.run_id
-        });
-      }
-      const candidateVersionId = candidate.candidate_version.candidate_version_id;
-      await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-        idempotencyKey: `trading-run-stop:${request.params.run_id}:${candidateVersionId}`,
-        candidateId: candidate.candidate_id,
-        candidateVersionId,
-        tradingRunId: request.params.run_id,
-        action: "stop",
-        lifecycleStatus: "stopped",
-        actorId: "runtime-api",
-        reasonSummary: "Operator requested trading run stop.",
-        message: "Trading run stop recorded."
-      }));
-      await stopLinkedTradingRunSandbox({
-        store,
-        sandboxAdapters,
-        tradingRunId: request.params.run_id
-      });
-
-      const response = await tradingRunResponse(store, request.params.run_id);
-      return reply.code(201).send({
-        status: "stopped",
-        ...response
-      });
-    }
-  );
-
-  server.post<{ Params: { system_id: string } }>(
-    "/api/trading-systems/:system_id/improvements",
-    async (request, reply) => {
-      const systemId = parseRoutePathId(request.params.system_id);
-      if (!systemId) {
-        return reply.code(400).send({
-          error: "invalid_system_id",
-          system_id: request.params.system_id
-        });
-      }
-      const candidate = await store.getCandidate(systemId);
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "trading_system_not_found",
-          system_id: systemId
-        });
-      }
-
-      const candidateVersionId = candidate.candidate_version.candidate_version_id;
-      const idempotencyKey = [
-        "runtime-api-improvement",
-        systemId,
-        candidateVersionId
-      ].join("-");
-      const outcome = await recordFixtureImprovement({
-        store,
-        systemId,
-        candidateVersionId,
-        idempotencyKey
-      });
-      if (outcome.status === "failed") {
-        return reply.code(422).send({
-          error: "improvement_failed",
-          reason: outcome.failure_reason,
-          system_id: systemId,
-          candidate_version_id: candidateVersionId,
-          idempotency_key: idempotencyKey
-        });
-      }
-
-      return reply.code(201).send(outcome);
-    }
-  );
-
-  server.post<{ Params: { system_id: string }; Body: StartTradingRunBody }>(
-    "/api/trading-systems/:system_id/full-cycle-runs",
-    async (request, reply) => {
-      const systemId = parseRoutePathId(request.params.system_id);
-      if (!systemId) {
-        return reply.code(400).send({
-          error: "invalid_system_id",
-          system_id: request.params.system_id
-        });
-      }
-      const runtimeEnvironment = startRuntimeEnvironment(request.body);
-      if (!runtimeEnvironment) {
-        return reply.code(400).send({
-          error: "invalid_runtime_environment",
-          allowed_values: ["paper", "live"]
-        });
-      }
-      const gatewayRuntimeBinding = createGatewayRuntimeBinding({
-        environment: runtimeEnvironment,
-        marketDataClient: options.binancePublicMarketClient
-      });
-      if (gatewayRuntimeBinding.status === "disabled") {
-        return reply.code(422).send({
-          error: "gateway_runtime_binding_disabled",
-          reason: gatewayRuntimeBinding.disabled_reason ?? LIVE_GATEWAY_DISABLED_REASON,
-          runtime_environment: gatewayRuntimeBinding.environment
-        });
-      }
-
-      const paperOrderRequest = startPaperOrderRequest(request.body);
-      if (!paperOrderRequest || paperOrderRequest !== "valid") {
-        return reply.code(400).send({
-          error: "invalid_paper_order_request",
-          allowed_values: ["valid"]
-        });
-      }
-
-      const researchAgent = startTradingResearchAgent(request.body);
-      if (researchAgent === "invalid") {
-        return reply.code(400).send({
-          error: "invalid_research_agent",
-          allowed_values: ["codex", "fixture"]
-        });
-      }
-      const researchIterations = startTradingResearchIterations(request.body);
-      if (researchIterations === "invalid") {
-        return reply.code(400).send({
-          error: "invalid_research_iterations",
-          allowed_range: "1..10"
-        });
-      }
-
-      const candidate = await store.getCandidate(systemId);
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "trading_system_not_found",
-          system_id: systemId
-        });
-      }
-
-      const candidateVersionId = candidate.candidate_version.candidate_version_id;
-      try {
-        const outcome = await runAgentTradingCycle({
-          store,
-          sourceSystemId: systemId,
-          sourceCandidateVersionId: candidateVersionId,
-          tradingGatewayEnvironment,
-          gatewayRuntimeBinding,
-          agentAdapter: tradingResearchAgentFactory(researchAgent ?? tradingResearchRuntimeConfig.default_agent),
-          iterations: researchIterations ?? options.tradingResearchIterations ?? tradingResearchRuntimeConfig.iterations
-        });
-        return reply.code(201).send(outcome);
-      } catch (error) {
-        if (error instanceof LocalStoreError) {
-          return reply.code(ledgerStatusCode(error.code)).send({
-            error: "full_cycle_failed",
-            reason: error.code,
-            system_id: systemId,
-            candidate_version_id: candidateVersionId,
-            full_cycle_lineage: blockedFullCycleLineage({
-              candidate,
-              candidateVersionId,
-              reason: error.code
-            })
-          });
-        }
-        if (error instanceof Error && error.message.startsWith("agent_trading_cycle_")) {
-          return reply.code(422).send({
-            error: "full_cycle_failed",
-            reason: error.message,
-            system_id: systemId,
-            candidate_version_id: candidateVersionId,
-            full_cycle_lineage: blockedFullCycleLineage({
-              candidate,
-              candidateVersionId,
-              reason: error.message
-            })
-          });
-        }
-        if (error instanceof Error && error.message.startsWith("binance_public_market_")) {
-          return reply.code(422).send({
-            error: "full_cycle_failed",
-            reason: error.message,
-            system_id: systemId,
-            candidate_version_id: candidateVersionId,
-            full_cycle_lineage: blockedFullCycleLineage({
-              candidate,
-              candidateVersionId,
-              reason: error.message
-            })
-          });
-        }
-        throw error;
-      }
-    }
-  );
-
-  server.get<{ Params: { system_id: string } }>(
-    "/api/trading-systems/:system_id/run-control",
-    async (request, reply) => {
-      const candidate = await store.getCandidate(request.params.system_id);
-      if (!candidate) {
-        return reply.code(404).send({
-          error: "trading_system_not_found",
-          system_id: request.params.system_id
-        });
-      }
-
-      return {
-        system_id: request.params.system_id,
-        runtime_id: candidate.runtime.ref.id,
-        run_control: candidate.runtime.run_control
-      };
-    }
-  );
-
-  server.post<{
-    Params: { system_id: string };
-    Body: RecordRunControlBody;
-  }>("/api/trading-systems/:system_id/run-control", async (request, reply) => {
-    const candidate = await store.getCandidate(request.params.system_id);
-    if (!candidate) {
-      return reply.code(404).send({
-        error: "trading_system_not_found",
-        system_id: request.params.system_id
-      });
-    }
-
-    const body = request.body ?? {};
-    if (!isRunControlRequestComplete(body)) {
-      return reply.code(422).send(runtimeControlError({
-        reason: "invalid_run_control_request",
-        candidateId: request.params.system_id,
-        candidateVersionId: body.candidate_version_id,
-        idempotencyKey: body.idempotency_key
-      }));
-    }
-
-    try {
-      const outcome = await store.recordRunControlAudit({
-        idempotency_key: body.idempotency_key,
-        candidate_id: request.params.system_id,
-        candidate_version_id: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
-        runtime_id: body.runtime_id,
-        command: body.command,
-        decision: body.decision,
-        audit_event: body.audit_event,
-        created_at: body.created_at
-      } as RunControlAuditInput);
-
-      return reply.code(201).send({
-        status: "recorded",
-        ...outcome
-      });
-    } catch (error) {
-      if (error instanceof LocalStoreError) {
-        return reply.code(runtimeControlStatusCode(error.code)).send(runtimeControlError({
-          reason: error.code,
-          candidateId: request.params.system_id,
-          candidateVersionId: body.candidate_version_id ?? candidate.candidate_version.candidate_version_id,
-          idempotencyKey: body.idempotency_key
-        }));
+            idempotencyKey: body.idempotency_key
+          })
+        };
       }
       throw error;
     }
-  });
+  }
 
-  server.post<{
-    Params: { candidate_id: string };
-    Body: CreateEvaluationRunBody;
-  }>("/api/candidates/:candidate_id/evaluation-runs", async (request, reply) => {
-    const candidate = await store.getCandidate(request.params.candidate_id);
-    if (!candidate) {
-      return reply.code(404).send({
-        error: "candidate_not_found",
-        candidate_id: request.params.candidate_id
-      });
-    }
-
-    const body = request.body ?? {};
-    if (body.stage !== undefined && body.stage !== "backtest") {
-      return reply.code(422).send({
-        error: "evaluation_run_failed",
-        reason: "unsupported_evaluation_stage",
-        candidate_id: request.params.candidate_id
-      });
-    }
-
-    const candidateVersionId = body.candidate_version_id ?? candidate.candidate_version.candidate_version_id;
-    const requestedExecutionMode = body.execution_mode ?? "host_local";
-    const idempotencyKey = body.idempotency_key
-      ?? `runtime-api-evaluation-${request.params.candidate_id}-${candidateVersionId}-backtest-${requestedExecutionMode}`;
-    const stableRequestId = safeRouteId(`${request.params.candidate_id}-${candidateVersionId}-${idempotencyKey}`);
-    const outcome = await runCandidateEvaluation(store, evaluationProviderAdapter, {
-      candidate_id: request.params.candidate_id,
-      candidate_version_id: candidateVersionId,
-      idempotency_key: idempotencyKey,
-      stage_binding_ref: {
-        record_kind: "stage_binding",
-        id: `stage-binding-api-evaluation-${stableRequestId}`
-      },
-      trace_id: `trace-api-evaluation-${stableRequestId}`,
-      execution_mode: requestedExecutionMode
-    });
-
-    if (outcome.status === "failed") {
-      const statusCode = outcome.failure_reason === "candidate_not_found" ? 404 : 422;
-      const error = statusCode === 404 ? "candidate_not_found" : "evaluation_run_failed";
-      return reply.code(statusCode).send({
-        error,
-        reason: outcome.failure_reason,
-        candidate_id: request.params.candidate_id,
-        candidate_version_id: candidateVersionId,
-        idempotency_key: idempotencyKey
-      });
-    }
-
-    return reply.code(201).send(outcome);
-  });
-
-  server.get<{ Params: { evaluation_run_id: string } }>(
-    "/api/evaluation-runs/:evaluation_run_id",
-    async (request, reply) => {
-      const evaluationRun = await store.getCandidateEvaluationRun(request.params.evaluation_run_id);
-      if (!evaluationRun) {
-        return reply.code(404).send({
-          error: "evaluation_run_not_found",
-          evaluation_run_id: request.params.evaluation_run_id
-        });
-      }
-      return evaluationRun;
-    }
-  );
-
-  server.get(
-    "/api/candidate-materialization-attempts",
-    filesystemReadRateLimit,
-    async () => ({
-      attempts: await store.listCandidateMaterializationAttempts()
-    })
-  );
-
-  server.get<{ Params: { attempt_id: string } }>(
-    "/api/candidate-materialization-attempts/:attempt_id",
-    async (request, reply) => {
-      const attempt = await store.getCandidateMaterializationAttempt(request.params.attempt_id);
-      if (!attempt) {
-        return reply.code(404).send({
-          error: "candidate_materialization_attempt_not_found",
-          attempt_id: request.params.attempt_id
-        });
-      }
-      return attempt;
-    }
-  );
-
-  server.post<{ Body: { prompt?: string } }>("/api/candidate-generation-runs", async (request, reply) => {
-    const outcome = await runCandidateGeneration(store, providerAdapter, {
-      prompt: request.body?.prompt ?? "Create one MLP-01 generic trading-system candidate."
-    });
-    if (outcome.status === "failed") {
-      return reply.code(422).send(outcome);
-    }
-    return reply.code(201).send(outcome);
-  });
-
-  server.post<{ Body: StartSandboxBody }>("/api/sandboxes", async (request, reply) => {
-    const body = request.body ?? {};
+  async function startSandboxCommand(payload: unknown): Promise<RuntimeControllerResponse> {
+    const body = (payload ?? {}) as StartSandboxBody;
     const rawSecretPath = rawSecretMaterialPath(body);
     if (rawSecretPath) {
-      return reply.code(422).send(sandboxError({
-        reason: "raw_secret_material_rejected",
-        idempotencyKey: body.idempotency_key,
-        detail: rawSecretPath
-      }));
+      return {
+        statusCode: 422,
+        body: sandboxError({
+          reason: "raw_secret_material_rejected",
+          idempotencyKey: body.idempotency_key,
+          detail: rawSecretPath
+        })
+      };
     }
 
     const adapterKind = parseSandboxAdapterKind(body.adapter_kind);
     if (!adapterKind) {
-      return reply.code(422).send(sandboxError({
-        reason: "invalid_sandbox_adapter",
-        idempotencyKey: body.idempotency_key
-      }));
+      return {
+        statusCode: 422,
+        body: sandboxError({
+          reason: "invalid_sandbox_adapter",
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
     if (adapterKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
-      return reply.code(422).send(sandboxError({
-        reason: "docker_sandboxes_sbx_runtime_disabled",
-        idempotencyKey: body.idempotency_key
-      }));
+      return {
+        statusCode: 422,
+        body: sandboxError({
+          reason: "docker_sandboxes_sbx_runtime_disabled",
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
     if (
       (body.test_ticks !== undefined && !isNonNegativeInteger(body.test_ticks)) ||
       (body.interval_ms !== undefined && !isPositiveInteger(body.interval_ms))
     ) {
-      return reply.code(422).send(sandboxError({
-        reason: "invalid_sandbox_input",
-        idempotencyKey: body.idempotency_key
-      }));
+      return {
+        statusCode: 422,
+        body: sandboxError({
+          reason: "invalid_sandbox_input",
+          idempotencyKey: body.idempotency_key
+        })
+      };
     }
 
     const systemCodeId = body.system_code_id ?? FIXTURE_SYSTEM_CODE_ID;
     const artifact = await store.getSystemCode(systemCodeId);
     if (!artifact) {
-      return reply.code(404).send(sandboxError({
-        reason: "system_code_not_found",
-        idempotencyKey: body.idempotency_key,
-        systemCodeId
-      }));
+      return {
+        statusCode: 404,
+        body: sandboxError({
+          reason: "system_code_not_found",
+          idempotencyKey: body.idempotency_key,
+          systemCodeId
+        })
+      };
     }
 
     const createdAt = body.created_at ?? new Date().toISOString();
@@ -1544,119 +795,471 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       });
       const outcome = await store.recordSandboxStart(adapterResult);
       const lifecycleStatus = outcome.sandbox.lifecycle_status;
-      return reply.code(201).send({
-        status: lifecycleStatus === "running" ? "started" : lifecycleStatus,
-        ...outcome
-      });
+      return {
+        statusCode: 201,
+        body: {
+          status: lifecycleStatus === "running" ? "started" : lifecycleStatus,
+          ...outcome
+        }
+      };
     } catch (error) {
       if (error instanceof LocalStoreError) {
-        return reply.code(sandboxStatusCode(error.code)).send(sandboxError({
-          reason: error.code,
-          idempotencyKey,
-          systemCodeId
-        }));
+        return {
+          statusCode: sandboxStatusCode(error.code),
+          body: sandboxError({
+            reason: error.code,
+            idempotencyKey,
+            systemCodeId
+          })
+        };
       }
       throw error;
     }
-  });
+  }
 
-  server.get(
-    "/api/sandboxes",
-    filesystemReadRateLimit,
-    async () => ({
-      sandboxes: await store.listSandboxes()
-    })
-  );
-
-  server.get<{ Params: { sandbox_id: string } }>(
-    "/api/sandboxes/:sandbox_id",
-    async (request, reply) => {
-      const sandbox = await store.getSandbox(request.params.sandbox_id);
-      if (!sandbox) {
-        return reply.code(404).send(sandboxError({
+  async function stopSandboxCommand(sandboxId: string): Promise<RuntimeControllerResponse> {
+    const sandbox = await store.getSandbox(sandboxId);
+    if (!sandbox) {
+      return {
+        statusCode: 404,
+        body: sandboxError({
           reason: "sandbox_not_found",
-          sandboxId: request.params.sandbox_id
-        }));
-      }
-      if (shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
-        const observations = await sandboxAdapters[sandbox.adapter_kind]
-          .getArtifactInstanceStatus(sandbox);
-        if (
-          observations.lifecycle_status ||
-          observations.logs?.length ||
-          observations.heartbeats?.length ||
-          observations.command_evidence?.length
-        ) {
-          await store.recordSandboxObservations(sandbox.sandbox_id, observations);
-          return await store.getSandbox(sandbox.sandbox_id);
-        }
-      }
-      return sandbox;
+          sandboxId
+        })
+      };
     }
-  );
+    if (!shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+      return {
+        statusCode: 200,
+        body: {
+          status: sandbox.lifecycle_status,
+          sandbox
+        }
+      };
+    }
 
-  server.get<{ Params: { sandbox_id: string } }>(
-    "/api/sandboxes/:sandbox_id/logs",
-    async (request, reply) => {
-      const sandbox = await store.getSandbox(request.params.sandbox_id);
-      if (!sandbox) {
-        return reply.code(404).send(sandboxError({
-          reason: "sandbox_not_found",
-          sandboxId: request.params.sandbox_id
-        }));
+    const observations = await sandboxAdapters[sandbox.adapter_kind]
+      .stopArtifactInstance(sandbox);
+    const outcome = await store.stopSandbox(
+      {
+        sandbox_id: sandbox.sandbox_id,
+        stopped_at: observations.stopped_at,
+        removed_at: observations.removed_at
+      },
+      observations
+    );
+    return {
+      statusCode: 200,
+      body: {
+        status: outcome.sandbox.lifecycle_status,
+        ...outcome
       }
-      if (!shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
-        return {
+    };
+  }
+
+  async function readOrderFillLatest(query: {
+    venue?: string;
+    instrument?: string;
+  }): Promise<RuntimeControllerResponse> {
+    const venue = query.venue ?? "binance_usd_m_futures";
+    const instrument = query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return { statusCode: 404, body: { error: "order_fill_surface_not_found", venue, instrument } };
+    }
+
+    const surface = await store.getLatestOrderFillSurface({ venue, instrument });
+    if (!surface) {
+      return { statusCode: 404, body: { error: "order_fill_surface_not_found", venue, instrument } };
+    }
+    return { statusCode: 200, body: { surface } };
+  }
+
+  async function readPublicMarketLatest(query: {
+    venue?: string;
+    instrument?: string;
+  }): Promise<RuntimeControllerResponse> {
+    const venue = query.venue ?? "binance_usd_m_futures";
+    const instrument = query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return { statusCode: 404, body: { error: "public_market_liveness_surface_not_found", venue, instrument } };
+    }
+
+    const refresh = await refreshBinancePublicMarketSurface({
+      store,
+      tradingGatewayEnvironment,
+      client: options.binancePublicMarketClient
+    });
+    const surface = await store.getLatestPublicMarketLivenessSurface({ venue, instrument });
+    if (!surface) {
+      return { statusCode: 404, body: { error: "public_market_liveness_surface_not_found", venue, instrument } };
+    }
+    return {
+      statusCode: 200,
+      body: {
+        refresh_status: refresh.status,
+        refresh_reason: refresh.reason,
+        surface
+      }
+    };
+  }
+
+  async function readPrivateReadinessLatest(query: {
+    venue?: string;
+    instrument?: string;
+  }): Promise<RuntimeControllerResponse> {
+    const venue = query.venue ?? "binance_usd_m_futures";
+    const instrument = query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return { statusCode: 404, body: { error: "private_readiness_preflight_surface_not_found", venue, instrument } };
+    }
+
+    const surface = await store.getLatestPrivateReadinessPreflightSurface({ venue, instrument });
+    if (!surface) {
+      return { statusCode: 404, body: { error: "private_readiness_preflight_surface_not_found", venue, instrument } };
+    }
+    return { statusCode: 200, body: { surface } };
+  }
+
+  async function readPrivateReadinessPostureLatest(query: {
+    venue?: string;
+    instrument?: string;
+  }): Promise<RuntimeControllerResponse> {
+    const venue = query.venue ?? "binance_usd_m_futures";
+    const instrument = query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return { statusCode: 404, body: { error: "private_readiness_posture_not_found", venue, instrument } };
+    }
+
+    const posture = await store.getLatestPrivateReadinessPosture({ venue, instrument });
+    if (!posture) {
+      return { statusCode: 404, body: { error: "private_readiness_posture_not_found", venue, instrument } };
+    }
+    return { statusCode: 200, body: { posture } };
+  }
+
+  async function readAccountPositionRiskLatest(query: {
+    venue?: string;
+    instrument?: string;
+  }): Promise<RuntimeControllerResponse> {
+    const venue = query.venue ?? "binance_usd_m_futures";
+    const instrument = query.instrument ?? "BTCUSDT";
+    if (venue !== "binance_usd_m_futures" || instrument !== "BTCUSDT") {
+      return { statusCode: 404, body: { error: "account_position_risk_mirror_surface_not_found", venue, instrument } };
+    }
+
+    const surface = await store.getLatestAccountPositionRiskMirrorSurface({ venue, instrument });
+    if (!surface) {
+      return { statusCode: 404, body: { error: "account_position_risk_mirror_surface_not_found", venue, instrument } };
+    }
+    return { statusCode: 200, body: { surface } };
+  }
+
+  async function listCandidatesResource(): Promise<RuntimeControllerResponse> {
+    return {
+      statusCode: 200,
+      body: {
+        candidates: await listCandidateSummaries(
+          store,
+          options.promotedCandidateRoot,
+          options.replayRunRoot
+        )
+      }
+    };
+  }
+
+  async function getCandidateResource(candidateId: string): Promise<RuntimeControllerResponse> {
+    const candidate = await getCandidateReadModel(
+      store,
+      candidateId,
+      options.promotedCandidateRoot,
+      options.replayRunRoot
+    );
+    if (!candidate) {
+      return { statusCode: 404, body: { error: "candidate_not_found", candidate_id: candidateId } };
+    }
+    return { statusCode: 200, body: candidate as unknown as Record<string, unknown> };
+  }
+
+  async function listCandidateEvaluationsResource(candidateId: string): Promise<RuntimeControllerResponse> {
+    const candidate = await getCandidateReadModel(
+      store,
+      candidateId,
+      options.promotedCandidateRoot,
+      options.replayRunRoot
+    );
+    if (!candidate) {
+      return { statusCode: 404, body: { error: "candidate_not_found", candidate_id: candidateId } };
+    }
+
+    return {
+      statusCode: 200,
+      body: {
+        candidate_id: candidateId,
+        evaluations: await store.listCandidateEvaluationRuns(candidateId)
+      }
+    };
+  }
+
+  async function listCandidateReplayRunsResource(
+    candidateId: string,
+    query: { limit?: string }
+  ): Promise<RuntimeControllerResponse> {
+    const candidate = await getCandidateReadModel(
+      store,
+      candidateId,
+      options.promotedCandidateRoot,
+      options.replayRunRoot
+    );
+    if (!candidate) {
+      return { statusCode: 404, body: { error: "candidate_not_found", candidate_id: candidateId } };
+    }
+
+    return {
+      statusCode: 200,
+      body: {
+        candidate_id: candidateId,
+        runs: await listReplayRunEvidence({
+          root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
+          candidate_id: candidateId,
+          limit: parseLimit(query.limit)
+        })
+      }
+    };
+  }
+
+  async function getReplayRunResource(
+    runId: string,
+    query: { candidate_id?: string }
+  ): Promise<RuntimeControllerResponse> {
+    const candidateId = query.candidate_id;
+    if (!candidateId) {
+      return {
+        statusCode: 422,
+        body: { error: "replay_run_rejected", reason: "missing_candidate_id", run_id: runId }
+      };
+    }
+    const run = await getReplayRunDetail({
+      root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
+      candidate_id: candidateId,
+      run_id: runId
+    });
+    if (!run) {
+      return { statusCode: 404, body: { error: "replay_run_not_found", candidate_id: candidateId, run_id: runId } };
+    }
+    return { statusCode: 200, body: { candidate_id: candidateId, run } };
+  }
+
+  async function getReplayRunValidationStateResource(
+    runId: string,
+    query: { candidate_id?: string; baseline_run_id?: string }
+  ): Promise<RuntimeControllerResponse> {
+    const candidateId = query.candidate_id;
+    if (!candidateId) {
+      return {
+        statusCode: 422,
+        body: { error: "replay_run_validation_state_rejected", reason: "missing_candidate_id", run_id: runId }
+      };
+    }
+    const validationState = await getReplayRunValidationState({
+      root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
+      candidate_id: candidateId,
+      run_id: runId,
+      baseline_run_id: query.baseline_run_id
+    });
+    if (!validationState) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "replay_run_validation_state_not_found",
+          candidate_id: candidateId,
+          run_id: runId,
+          baseline_run_id: query.baseline_run_id
+        }
+      };
+    }
+    return { statusCode: 200, body: { candidate_id: candidateId, validation_state: validationState } };
+  }
+
+  async function getReplayRunComparisonResource(
+    runId: string,
+    query: { candidate_id?: string; baseline_run_id?: string }
+  ): Promise<RuntimeControllerResponse> {
+    const candidateId = query.candidate_id;
+    if (!candidateId || !query.baseline_run_id) {
+      return {
+        statusCode: 422,
+        body: {
+          error: "replay_run_comparison_rejected",
+          reason: !candidateId ? "missing_candidate_id" : "missing_baseline_run_id",
+          run_id: runId
+        }
+      };
+    }
+    const comparison = await getReplayRunComparison({
+      root: options.replayRunRoot ?? DEFAULT_REPLAY_RUN_ROOT,
+      candidate_id: candidateId,
+      run_id: runId,
+      baseline_run_id: query.baseline_run_id
+    });
+    if (!comparison) {
+      return {
+        statusCode: 404,
+        body: {
+          error: "replay_run_comparison_not_found",
+          candidate_id: candidateId,
+          run_id: runId,
+          baseline_run_id: query.baseline_run_id
+        }
+      };
+    }
+    return { statusCode: 200, body: { candidate_id: candidateId, comparison } };
+  }
+
+  async function getTradingRunResource(runId: string): Promise<RuntimeControllerResponse> {
+    const response = await tradingRunResponse(store, runId);
+    if (!response) {
+      return { statusCode: 404, body: { error: "trading_run_not_found", trading_run_id: runId } };
+    }
+    return { statusCode: 200, body: response };
+  }
+
+  async function getEvaluationResource(evaluationId: string): Promise<RuntimeControllerResponse> {
+    const evaluationRun = await store.getCandidateEvaluationRun(evaluationId);
+    if (!evaluationRun) {
+      return { statusCode: 404, body: { error: "evaluation_not_found", evaluation_id: evaluationId } };
+    }
+    return { statusCode: 200, body: evaluationRun as unknown as Record<string, unknown> };
+  }
+
+  async function listSandboxesResource(): Promise<RuntimeControllerResponse> {
+    return { statusCode: 200, body: { sandboxes: await store.listSandboxes() } };
+  }
+
+  async function getSandboxResource(sandboxId: string): Promise<RuntimeControllerResponse> {
+    const sandbox = await store.getSandbox(sandboxId);
+    if (!sandbox) {
+      return { statusCode: 404, body: sandboxError({ reason: "sandbox_not_found", sandboxId }) };
+    }
+    if (shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+      const observations = await sandboxAdapters[sandbox.adapter_kind]
+        .getArtifactInstanceStatus(sandbox);
+      if (
+        observations.lifecycle_status ||
+        observations.logs?.length ||
+        observations.heartbeats?.length ||
+        observations.command_evidence?.length
+      ) {
+        await store.recordSandboxObservations(sandbox.sandbox_id, observations);
+        const refreshed = await store.getSandbox(sandbox.sandbox_id);
+        return { statusCode: 200, body: refreshed as unknown as Record<string, unknown> };
+      }
+    }
+    return { statusCode: 200, body: sandbox as unknown as Record<string, unknown> };
+  }
+
+  async function getSandboxLogsResource(sandboxId: string): Promise<RuntimeControllerResponse> {
+    const sandbox = await store.getSandbox(sandboxId);
+    if (!sandbox) {
+      return { statusCode: 404, body: sandboxError({ reason: "sandbox_not_found", sandboxId }) };
+    }
+    if (!shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+      return {
+        statusCode: 200,
+        body: {
           sandbox,
           logs: sandbox.logs,
           heartbeats: sandbox.heartbeats,
           command_evidence: sandbox.command_evidence
-        };
-      }
-
-      const observations = await sandboxAdapters[sandbox.adapter_kind]
-        .getArtifactInstanceLogs(sandbox);
-      const outcome = await store.recordSandboxObservations(
-        sandbox.sandbox_id,
-        observations
-      );
-      return outcome;
-    }
-  );
-
-  server.post<{ Params: { sandbox_id: string } }>(
-    "/api/sandboxes/:sandbox_id/stop",
-    async (request, reply) => {
-      const sandbox = await store.getSandbox(request.params.sandbox_id);
-      if (!sandbox) {
-        return reply.code(404).send(sandboxError({
-          reason: "sandbox_not_found",
-          sandboxId: request.params.sandbox_id
-        }));
-      }
-      if (!shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
-        return {
-          status: sandbox.lifecycle_status,
-          sandbox
-        };
-      }
-
-      const observations = await sandboxAdapters[sandbox.adapter_kind]
-        .stopArtifactInstance(sandbox);
-      const outcome = await store.stopSandbox(
-        {
-          sandbox_id: sandbox.sandbox_id,
-          stopped_at: observations.stopped_at,
-          removed_at: observations.removed_at
-        },
-        observations
-      );
-      return {
-        status: outcome.sandbox.lifecycle_status,
-        ...outcome
+        }
       };
     }
-  );
+
+    const observations = await sandboxAdapters[sandbox.adapter_kind]
+      .getArtifactInstanceLogs(sandbox);
+    const outcome = await store.recordSandboxObservations(
+      sandbox.sandbox_id,
+      observations
+    );
+    return { statusCode: 200, body: outcome as unknown as Record<string, unknown> };
+  }
+
+  const operatorService = new OperatorService({
+    store,
+    candidateArenaRunner,
+    agentProfileExecFile: options.agentProfileExecFile,
+    paperEvidenceAdapter: {
+      run: async (candidateId) => startTradingRunCommand(candidateId, {})
+    },
+    mutationPort: {
+      run: async (commandKind, payload) => {
+        if (commandKind === "candidate.evaluation.run") {
+          return runCandidateEvaluationCommand(commandPayloadId(payload, "candidate_id"), payload);
+        }
+        if (commandKind === "candidate.replay.run") {
+          return runCandidateReplayCommand(commandPayloadId(payload, "candidate_id"), payload);
+        }
+        if (commandKind === "trading_run.start") {
+          return startTradingRunCommand(commandPayloadId(payload, "candidate_id"), payload);
+        }
+        if (commandKind === "trading_run.observe") {
+          return observeTradingRunCommand(commandPayloadId(payload, "trading_run_id"));
+        }
+        if (commandKind === "trading_run.stop") {
+          return stopTradingRunCommand(commandPayloadId(payload, "trading_run_id"));
+        }
+        if (commandKind === "run_control.record") {
+          return recordRunControlCommand(commandPayloadId(payload, "candidate_id"), payload);
+        }
+        if (commandKind === "private_readiness_posture.record") {
+          return recordPrivateReadinessPostureCommand(payload);
+        }
+        if (commandKind === "sandbox.start") {
+          return startSandboxCommand(payload);
+        }
+        if (commandKind === "sandbox.stop") {
+          return stopSandboxCommand(commandPayloadId(payload, "sandbox_id"));
+        }
+        return {
+          statusCode: 501,
+          body: {
+            error: "operator_mutation_not_supported",
+            command_kind: commandKind
+          }
+        };
+      }
+    }
+  });
+  const operatorController = createOperatorController(operatorService);
+
+  await registerRuntimeRouteModules(server, [
+    registerCoreControllerRoutes({
+      operatorController,
+      tradingGatewayEnvironment,
+      storeRoot: store.root(),
+      filesystemReadRateLimit,
+      commandMutationRateLimit
+    }),
+    registerResourceControllerRoutes({
+      filesystemReadRateLimit,
+      readOrderFillLatest,
+      readPublicMarketLatest,
+      readPrivateReadinessLatest,
+      readPrivateReadinessPostureLatest,
+      readAccountPositionRiskLatest,
+      listCandidates: listCandidatesResource,
+      getCandidate: getCandidateResource,
+      listCandidateEvaluations: listCandidateEvaluationsResource,
+      listCandidateReplayRuns: listCandidateReplayRunsResource,
+      getReplayRun: getReplayRunResource,
+      getReplayRunValidationState: getReplayRunValidationStateResource,
+      getReplayRunComparison: getReplayRunComparisonResource,
+      getTradingRun: getTradingRunResource,
+      getEvaluation: getEvaluationResource,
+      listSandboxes: listSandboxesResource,
+      getSandbox: getSandboxResource,
+      getSandboxLogs: getSandboxLogsResource
+    })
+  ]);
 
   return server;
 }
@@ -1682,6 +1285,14 @@ async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
     sandbox: candidate?.runtime.sandbox,
     transcript: candidate?.runtime.transcript
   };
+}
+
+function commandPayloadId(payload: Record<string, unknown> | undefined, key: string): string {
+  const value = payload?.[key];
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  throw new Error(`missing_command_payload_${key}`);
 }
 
 async function startFixtureTradingRun(input: {
@@ -1735,51 +1346,6 @@ async function startFixtureTradingRun(input: {
     gateway_result: response.ledger.latest_gateway_result,
     execution_result: response.ledger.latest_execution_result,
     trading_gateway_environment: input.tradingGatewayEnvironment
-  } as const;
-}
-
-async function recordFixtureImprovement(input: {
-  store: LocalStore;
-  systemId: string;
-  candidateVersionId: string;
-  idempotencyKey: string;
-}) {
-  const outcome = await runCodexImprovementProposalEvaluationDryRun({
-    store: input.store,
-    initialize_store: false,
-    provider_adapter: new FixtureImprovementProposalProviderAdapter(),
-    parent_system_code_ref: {
-      record_kind: "system_code",
-      id: FIXTURE_SYSTEM_CODE_ID
-    },
-    idempotency_key: input.idempotencyKey,
-    created_at: "2026-05-18T00:00:00.000Z",
-    submitted_at: "2026-05-18T00:00:00.000Z"
-  });
-  if (outcome.status === "failed") {
-    return {
-      status: "failed",
-      idempotency_key: input.idempotencyKey,
-      failure_reason: outcome.failure_reason
-    } as const;
-  }
-
-  await input.store.rebuildProjections();
-  const updatedCandidate = await input.store.getCandidate(input.systemId);
-  if (!updatedCandidate?.improvement) {
-    throw new Error("improvement was not projected after improvement write");
-  }
-
-  return {
-    status: "evaluated",
-    idempotency_key: input.idempotencyKey,
-    proposal: outcome.proposal.proposal,
-    system_code: outcome.proposal.system_code,
-    lineage: outcome.proposal.lineage,
-    orchestration_run: outcome.proposal.run,
-    experiment: outcome.experiment,
-    trading_evaluation_result: outcome.evaluation_result,
-    improvement: updatedCandidate.improvement
   } as const;
 }
 
@@ -1895,68 +1461,6 @@ function startRuntimeEnvironment(body: StartTradingRunBody | undefined): Trading
     return body.runtime_environment;
   }
   return undefined;
-}
-
-function startTradingResearchAgent(
-  body: StartTradingRunBody | undefined
-): TradingResearchRuntimeAgent | "invalid" | undefined {
-  if (!body?.research_agent) {
-    return undefined;
-  }
-  if (body.research_agent === "codex" || body.research_agent === "fixture") {
-    return body.research_agent;
-  }
-  return "invalid";
-}
-
-function startTradingResearchIterations(body: StartTradingRunBody | undefined): number | "invalid" | undefined {
-  if (body?.research_iterations === undefined) {
-    return undefined;
-  }
-  const iterations = Number(body.research_iterations);
-  if (Number.isInteger(iterations) && iterations >= 1 && iterations <= 10) {
-    return iterations;
-  }
-  return "invalid";
-}
-
-function blockedFullCycleLineage(input: {
-  candidate: CandidateInspectReadModel;
-  candidateVersionId: string;
-  reason: string;
-}) {
-  return {
-    handoff_status: "blocked" as const,
-    blocked_stage: fullCycleBlockedStage(input.reason),
-    blocked_reason: input.reason,
-    source: {
-      trading_system_id: input.candidate.candidate_id,
-      candidate_version_id: input.candidateVersionId,
-      system_code_ref: input.candidate.system_code?.ref
-    }
-  };
-}
-
-function fullCycleBlockedStage(reason: string): string {
-  if (reason.includes("rejected_paper_order_request")) {
-    return "paper_gateway";
-  }
-  if (reason.includes("missing_order_request")) {
-    return "paper_trading";
-  }
-  if (reason.includes("binance_public_market_snapshot")) {
-    return "paper_trading";
-  }
-  if (reason.includes("source_system_code") || reason.includes("source_artifact")) {
-    return "source_system_code";
-  }
-  if (reason.includes("agent_failed") || reason.includes("no_research_entry")) {
-    return "agent_research";
-  }
-  if (reason.includes("materialization") || reason.includes("projection")) {
-    return "materialization";
-  }
-  return "full_cycle";
 }
 
 async function refreshBinancePublicMarketSurface(input: {
@@ -2124,33 +1628,8 @@ function safeRouteId(value: string): string {
   return `${prefix}-${digest}`;
 }
 
-function isLedgerRequestComplete(
-  body: RecordLedgerBody
-): body is RecordLedgerBody & {
-  idempotency_key: string;
-  intent: LedgerInput["intent"];
-  gateway_result: LedgerInput["gateway_result"];
-} {
-  return Boolean(body.idempotency_key && body.intent && body.gateway_result);
-}
-
 function ledgerStatusCode(reason: string): 404 | 422 {
   return reason === "candidate_not_found" ? 404 : 422;
-}
-
-function ledgerError(input: {
-  reason: string;
-  candidateId: string;
-  candidateVersionId?: string;
-  idempotencyKey?: string;
-}) {
-  return {
-    error: "ledger_record_failed",
-    reason: input.reason,
-    system_id: input.candidateId,
-    candidate_version_id: input.candidateVersionId,
-    idempotency_key: input.idempotencyKey
-  };
 }
 
 function isRunControlRequestComplete(
@@ -2372,10 +1851,6 @@ function parseReplayRunScenarioIds(value: unknown): string[] | undefined {
   return value;
 }
 
-function parseRoutePathId(value: string): string | undefined {
-  return isPathSafeRouteId(value) ? value : undefined;
-}
-
 function createHttpReplayRunId(): string {
   return `replay-run-${randomUUID()}`;
 }
@@ -2393,10 +1868,6 @@ function parseOptionalPositiveInteger(value: unknown): number | undefined {
 
 function replayRunErrorStatus(error: ReplayRunError): 404 | 422 {
   return error.reason === "candidate_not_found" ? 404 : 422;
-}
-
-function isPathSafeRouteId(value: string): boolean {
-  return /^[a-zA-Z0-9._:-]+$/.test(value) && !value.includes("..");
 }
 
 function sandboxStatusCode(reason: string): 404 | 422 {

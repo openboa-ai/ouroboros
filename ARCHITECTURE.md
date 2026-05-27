@@ -41,8 +41,8 @@ Runtime implementation follows a physical controller/service/adapter split:
   CandidateArena use cases, read-model builders, and ports.
 - `packages/adapters`: concrete implementations for Codex, fixtures, Binance public market data,
   Sandboxes, subprocess execution, and other outer systems.
-- `apps/runtime`: Fastify composition root and HTTP route registration. It wires concrete adapters
-  into application controllers and keeps compatibility routes delegating through the same services.
+- `apps/runtime`: Fastify composition root plus controller route modules. It wires concrete
+  adapters into application controllers; product mutations enter through `POST /api/commands`.
 - `apps/cli`, `apps/operator-tui`, and `apps/operator-web`: operator interfaces over the same
   command descriptors, `GET /api/operator`, and `POST /api/commands`. CLI-only local operations use
   the local Ouroboros controller rather than importing provider implementations.

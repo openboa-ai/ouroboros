@@ -415,7 +415,7 @@ export function App() {
         research_agent: state.selectedTradingResearchAgent,
         research_iterations: state.tradingResearchIterations
       });
-      const selected = await fetchCandidate(outcome.next_trading_system.candidate_id);
+      const selected = await fetchCandidate(candidate.candidate_id);
       const candidates = await fetchCandidateSummaries();
       const replayRuns = await fetchReplayRunEvidence(selected.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
@@ -434,8 +434,7 @@ export function App() {
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         runningFullCycle: false,
-        lastFullCycle: outcome,
-        fullCycleMessage: `agent generated ${outcome.next_trading_system.display_name}: backtest ${outcome.backtest.score.toFixed(3)}, paper ${outcome.trading_run.lifecycle_status ?? "running"}`
+        fullCycleMessage: `paper evidence recorded: ${outcome.trading_run.lifecycle_status ?? "running"}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -684,7 +683,7 @@ export function App() {
         replayRunComparisonBaselineId: replayRunSelection.replayRunComparisonBaselineId,
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         recordingImprovement: false,
-        improvementMessage: `evaluation recorded: ${outcome.trading_evaluation_result.result_id}`
+        improvementMessage: `evaluation recorded: ${outcome.evaluation.evaluation_run.evaluation_run_record_id}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -1466,8 +1465,8 @@ function FullCycleDeveloperControls({
   }
   return (
     <InfoSection
-      title="Full-cycle compatibility"
-      summary="Compatibility path for legacy full-cycle runs; Candidate Arena is the primary research workflow."
+      title="Agent cycle controls"
+      summary="Developer controls for a selected candidate paper run; Candidate Arena is the primary research workflow."
       badge="developer"
     >
       <div className="grid gap-3">

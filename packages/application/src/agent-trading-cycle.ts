@@ -11,7 +11,7 @@ import type {
   SystemCodeRecord,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
-import type { LocalStore } from "@ouroboros/local-store";
+import type { OuroborosStorePort } from "./ports/store-ports";
 import { safeId } from "./safe-id";
 import {
   createGatewayRuntimeBinding,
@@ -43,7 +43,7 @@ import type {
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 export interface RunAgentTradingCycleInput {
-  store: LocalStore;
+  store: OuroborosStorePort;
   sourceSystemId: string;
   sourceCandidateVersionId: string;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
@@ -302,7 +302,7 @@ function materializedResearchEntry(
 }
 
 async function registerSystemCode(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   artifactDir: string;
   sessionId: string;
   manifestEntrypoint: string[];
@@ -366,7 +366,7 @@ async function runPaperArtifact(input: {
 }
 
 async function sourceResearchArtifactDir(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   sourceSystemId: string;
   sourceCandidateVersionId: string;
   repoRoot: string;

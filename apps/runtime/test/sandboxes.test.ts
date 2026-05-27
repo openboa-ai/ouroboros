@@ -78,24 +78,15 @@ describe("sandbox API", () => {
       "sandbox-clock-b"
     ]);
 
-    const firstStop = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes/sandbox-clock-a/stop"
-    });
+    const firstStop = await stopSandboxCommand(server, "sandbox-clock-a");
     expect(firstStop.statusCode).toBe(200);
     expect(firstStop.json().sandbox.lifecycle_status).toBe("stopped");
 
-    const firstStopAgain = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes/sandbox-clock-a/stop"
-    });
+    const firstStopAgain = await stopSandboxCommand(server, "sandbox-clock-a");
     expect(firstStopAgain.statusCode).toBe(200);
     expect(firstStopAgain.json().sandbox.lifecycle_status).toBe("stopped");
 
-    const secondStop = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes/sandbox-clock-b/stop"
-    });
+    const secondStop = await stopSandboxCommand(server, "sandbox-clock-b");
     expect(secondStop.statusCode).toBe(200);
     expect(secondStop.json().sandbox.lifecycle_status).toBe("stopped");
 
@@ -197,19 +188,15 @@ describe("sandbox API", () => {
     });
     const server = await buildServer({ store });
 
-    const response = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes",
-      payload: {
-        idempotency_key: "sandbox-reject-non-fixture",
-        sandbox_id: "sandbox-reject-non-fixture",
-        sandbox_name: "ouro-reject-non-fixture",
-        system_code_id: "system-code-non-fixture-network-001",
-        created_at: "2026-05-21T00:00:00.000Z"
-      }
+    const response = await startSandboxCommand(server, {
+      idempotency_key: "sandbox-reject-non-fixture",
+      sandbox_id: "sandbox-reject-non-fixture",
+      sandbox_name: "ouro-reject-non-fixture",
+      system_code_id: "system-code-non-fixture-network-001",
+      created_at: "2026-05-21T00:00:00.000Z"
     });
 
-    expect(response.statusCode).toBe(201);
+    expect(response.statusCode).toBe(200);
     expect(response.json().status).toBe("failed");
     expect(response.json().sandbox.lifecycle_status).toBe("failed");
     expect(response.json().sandbox.logs).toHaveLength(0);
@@ -229,14 +216,10 @@ describe("sandbox API", () => {
   it("rejects raw secret material in sandbox requests", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
-    const response = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes",
-      payload: {
-        idempotency_key: "sandbox-with-secret",
-        raw_secret_values: {
-          exchange_token: "do-not-store"
-        }
+    const response = await startSandboxCommand(server, {
+      idempotency_key: "sandbox-with-secret",
+      raw_secret_values: {
+        exchange_token: "do-not-store"
       }
     });
 
@@ -255,13 +238,9 @@ describe("sandbox API", () => {
     delete process.env.OUROBOROS_SANDBOX_ADAPTER;
     try {
       const server = await buildServer({ store: new LocalStore(tmpDir) });
-      const response = await server.inject({
-        method: "POST",
-        url: "/api/sandboxes",
-        payload: {
-          idempotency_key: "sandbox-sbx-disabled",
-          adapter_kind: "docker_sandboxes_sbx"
-        }
+      const response = await startSandboxCommand(server, {
+        idempotency_key: "sandbox-sbx-disabled",
+        adapter_kind: "docker_sandboxes_sbx"
       });
 
       expect(response.statusCode).toBe(422);
@@ -289,19 +268,15 @@ describe("sandbox API", () => {
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     try {
       const server = await buildServer({ store: new LocalStore(tmpDir) });
-      const response = await server.inject({
-        method: "POST",
-        url: "/api/sandboxes",
-        payload: {
-          idempotency_key: "sandbox-sdx-api-rejected",
-          adapter_kind: "docker_sandboxes_sbx",
-          sandbox_id: "sandbox-sdx-api-rejected",
-          sandbox_name: "ouro-s5-clock-sdx-api-rejected",
-          trading_run_id: "fixture-trading-run-001"
-        }
+      const response = await startSandboxCommand(server, {
+        idempotency_key: "sandbox-sdx-api-rejected",
+        adapter_kind: "docker_sandboxes_sbx",
+        sandbox_id: "sandbox-sdx-api-rejected",
+        sandbox_name: "ouro-s5-clock-sdx-api-rejected",
+        trading_run_id: "fixture-trading-run-001"
       });
 
-      expect(response.statusCode).toBe(201);
+      expect(response.statusCode).toBe(200);
       expect(response.json().status).toBe("failed");
       expect(response.json().sandbox.lifecycle_status).toBe("failed");
       expect(response.json().sandbox.command_evidence).toHaveLength(1);
@@ -334,19 +309,15 @@ describe("sandbox API", () => {
     try {
       const store = new LocalStore(tmpDir);
       const server = await buildServer({ store });
-      const start = await server.inject({
-        method: "POST",
-        url: "/api/sandboxes",
-        payload: {
-          idempotency_key: "sandbox-real-adapter-evidence",
-          adapter_kind: "docker_sandboxes_sbx",
-          sandbox_id: "sandbox-real-adapter-evidence",
-          sandbox_name: "ouro-s5-clock-real-adapter-evidence",
-          trading_run_id: "fixture-trading-run-001",
-          interval_ms: 1
-        }
+      const start = await startSandboxCommand(server, {
+        idempotency_key: "sandbox-real-adapter-evidence",
+        adapter_kind: "docker_sandboxes_sbx",
+        sandbox_id: "sandbox-real-adapter-evidence",
+        sandbox_name: "ouro-s5-clock-real-adapter-evidence",
+        trading_run_id: "fixture-trading-run-001",
+        interval_ms: 1
       });
-      expect(start.statusCode).toBe(201);
+      expect(start.statusCode).toBe(200);
       expect(start.json().sandbox.lifecycle_status).toBe("running");
 
       for (let index = 0; index < 2; index += 1) {
@@ -420,10 +391,7 @@ describe("sandbox API", () => {
       sandbox_name: "ouro-s5-clock-stop-fails",
       created_at: "2026-05-10T00:00:00.000Z"
     });
-    const stop = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes/sandbox-stop-fails/stop"
-    });
+    const stop = await stopSandboxCommand(server, "sandbox-stop-fails");
 
     expect(stop.statusCode).toBe(200);
     expect(stop.json().status).toBe("failed");
@@ -467,10 +435,7 @@ describe("sandbox API", () => {
       sandbox_name: "ouro-s5-clock-stopped-terminal",
       created_at: "2026-05-10T00:00:00.000Z"
     });
-    const stop = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes/sandbox-stopped-terminal/stop"
-    });
+    const stop = await stopSandboxCommand(server, "sandbox-stopped-terminal");
     expect(stop.statusCode).toBe(200);
     expect(stop.json().sandbox.lifecycle_status).toBe("stopped");
 
@@ -529,18 +494,14 @@ describe("sandbox API", () => {
       }
     });
 
-    const response = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes",
-      payload: {
-        idempotency_key: "sandbox-start-fails",
-        sandbox_id: "sandbox-start-fails",
-        sandbox_name: "ouro-s5-clock-start-fails",
-        trading_run_id: "fixture-trading-run-001"
-      }
+    const response = await startSandboxCommand(server, {
+      idempotency_key: "sandbox-start-fails",
+      sandbox_id: "sandbox-start-fails",
+      sandbox_name: "ouro-s5-clock-start-fails",
+      trading_run_id: "fixture-trading-run-001"
     });
 
-    expect(response.statusCode).toBe(201);
+    expect(response.statusCode).toBe(200);
     expect(response.json().status).toBe("failed");
     expect(response.json().sandbox.lifecycle_status).toBe("failed");
     expect(response.json().sandbox.started_at).toBeUndefined();
@@ -553,10 +514,7 @@ describe("sandbox API", () => {
     expect(status.json().lifecycle_status).toBe("failed");
     expect(statusCallCount).toBe(0);
 
-    const stop = await server.inject({
-      method: "POST",
-      url: "/api/sandboxes/sandbox-start-fails/stop"
-    });
+    const stop = await stopSandboxCommand(server, "sandbox-start-fails");
     expect(stop.statusCode).toBe(200);
     expect(stop.json().status).toBe("failed");
     expect(stop.json().sandbox.lifecycle_status).toBe("failed");
@@ -582,18 +540,55 @@ async function startClockSandbox(
     interval_ms?: number;
   }
 ) {
-  const response = await server.inject({
-    method: "POST",
-    url: "/api/sandboxes",
-    payload: {
-      ...input,
-      trading_run_id: "fixture-trading-run-001",
-      test_ticks: 2,
-      interval_ms: input.interval_ms ?? 1
-    }
+  const response = await startSandboxCommand(server, {
+    ...input,
+    trading_run_id: "fixture-trading-run-001",
+    test_ticks: 2,
+    interval_ms: input.interval_ms ?? 1
   });
-  expect(response.statusCode).toBe(201);
+  expect(response.statusCode).toBe(200);
   return response.json();
+}
+
+async function startSandboxCommand(
+  server: Awaited<ReturnType<typeof buildServer>>,
+  payload: Record<string, unknown>
+) {
+  return commandResultResponse(await server.inject({
+    method: "POST",
+    url: "/api/commands",
+    payload: {
+      command_kind: "sandbox.start",
+      payload
+    }
+  }));
+}
+
+async function stopSandboxCommand(
+  server: Awaited<ReturnType<typeof buildServer>>,
+  sandboxId: string
+) {
+  return commandResultResponse(await server.inject({
+    method: "POST",
+    url: "/api/commands",
+    payload: {
+      command_kind: "sandbox.stop",
+      payload: {
+        sandbox_id: sandboxId
+      }
+    }
+  }));
+}
+
+function commandResultResponse(response: Awaited<ReturnType<Awaited<ReturnType<typeof buildServer>>["inject"]>>) {
+  return {
+    statusCode: response.statusCode,
+    body: response.body,
+    json: () => {
+      const body = response.json();
+      return body.result ?? body;
+    }
+  };
 }
 
 function restoreEnv(name: string, value: string | undefined): void {

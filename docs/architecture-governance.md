@@ -13,8 +13,8 @@ Architecture patterns are subordinate to that loop.
   builders, and product controllers.
 - `packages/adapters`: concrete Codex, fixture, Binance public market, Sandbox, subprocess, store,
   and other outer-system implementations.
-- `apps/runtime`: Fastify HTTP composition root and route registration. It wires concrete adapters
-  into application controllers and keeps compatibility routes delegating to the same services.
+- `apps/runtime`: Fastify HTTP composition root plus controller route modules. It wires concrete
+  adapters into application controllers; product mutations enter through `POST /api/commands`.
 - `apps/cli`, `apps/operator-tui`, and `apps/operator-web`: user interfaces over the same command
   and read-model contracts. They must not import concrete provider, exchange, sandbox, or store
   implementations.

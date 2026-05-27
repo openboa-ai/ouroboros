@@ -8,7 +8,7 @@ import type {
   AgentProfileReadModel,
   AgentProfileRecord
 } from "@ouroboros/domain";
-import type { LocalStore } from "@ouroboros/local-store";
+import type { OuroborosStorePort } from "./ports/store-ports";
 
 const execFileAsync = promisify(execFile);
 
@@ -61,7 +61,7 @@ export function parseAgentProfileProvider(value: unknown): AgentProfileProviderK
   return undefined;
 }
 
-export function managedAgentProfileEnv(store: LocalStore, profileId: AgentProfileId): NodeJS.ProcessEnv {
+export function managedAgentProfileEnv(store: OuroborosStorePort, profileId: AgentProfileId): NodeJS.ProcessEnv {
   const paths = managedAgentProfilePaths(store, profileId);
   return {
     CODEX_HOME: paths.managed_provider_home,
@@ -69,7 +69,7 @@ export function managedAgentProfileEnv(store: LocalStore, profileId: AgentProfil
   };
 }
 
-export async function listAgentProfileReadModels(store: LocalStore): Promise<AgentProfileReadModel[]> {
+export async function listAgentProfileReadModels(store: OuroborosStorePort): Promise<AgentProfileReadModel[]> {
   const profiles = new Map((await store.listAgentProfiles()).map((profile) => [profile.agent_profile_id, profile]));
   return AGENT_PROFILE_IDS.map((profileId) => toAgentProfileReadModel(
     profiles.get(profileId) ?? defaultAgentProfileRecord(store, profileId, "not_configured")
@@ -77,7 +77,7 @@ export async function listAgentProfileReadModels(store: LocalStore): Promise<Age
 }
 
 export async function setupAgentProfile(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   profileId: AgentProfileId;
 }): Promise<AgentProfileReadModel> {
   if (input.profileId === "claude_code") {
@@ -94,7 +94,7 @@ export async function setupAgentProfile(input: {
 }
 
 export async function startAgentProfileLogin(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   profileId: AgentProfileId;
   execFile?: AgentProfileExecFile;
 }): Promise<AgentProfileReadModel> {
@@ -133,7 +133,7 @@ export async function startAgentProfileLogin(input: {
 }
 
 export async function runAgentProfileDeviceLogin(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   profileId: AgentProfileId;
   spawnFile?: AgentProfileSpawnFile;
 }): Promise<AgentProfileReadModel> {
@@ -173,7 +173,7 @@ export async function runAgentProfileDeviceLogin(input: {
 }
 
 export async function probeAgentProfile(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   profileId: AgentProfileId;
   execFile?: AgentProfileExecFile;
 }): Promise<AgentProfileReadModel> {
@@ -234,7 +234,7 @@ export function toAgentProfileReadModel(profile: AgentProfileRecord): AgentProfi
 }
 
 function defaultAgentProfileRecord(
-  store: LocalStore,
+  store: OuroborosStorePort,
   profileId: AgentProfileId,
   status: AgentProfileRecord["status"]
 ): AgentProfileRecord {
@@ -256,7 +256,7 @@ function defaultAgentProfileRecord(
   };
 }
 
-function managedAgentProfilePaths(store: LocalStore, profileId: AgentProfileId): {
+function managedAgentProfilePaths(store: OuroborosStorePort, profileId: AgentProfileId): {
   managed_home: string;
   managed_provider_home: string;
 } {
@@ -277,7 +277,7 @@ function agentProfileLabel(profileId: AgentProfileId): string {
 }
 
 async function ensureConfiguredProfile(
-  store: LocalStore,
+  store: OuroborosStorePort,
   profileId: AgentProfileId
 ): Promise<AgentProfileRecord> {
   const profile = await store.getAgentProfile(profileId);

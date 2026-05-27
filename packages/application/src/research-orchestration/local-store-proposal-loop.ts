@@ -8,12 +8,12 @@ import type {
   SystemCodeRecord,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import type { LocalStore } from "@ouroboros/local-store";
-import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "../ports/provider-ports";
+import type { OuroborosStorePort } from "../ports/store-ports";
 import { FixtureImprovementProposalProviderAdapter } from "./fixture-improvement-proposal-provider";
 
 export interface PlanImprovementProposalFromLocalStoreInput {
-  store: LocalStore;
+  store: OuroborosStorePort;
   task: TradingEvaluationTaskRecord;
   provider_adapter?: ImprovementProposalProviderAdapter;
   parent_system_code_ref?: Ref;
@@ -71,7 +71,7 @@ export async function planImprovementProposalFromLocalStore(
     created_at: input.created_at
   });
   if (materialized.status === "failed") {
-    throw new Error(materialized.attempt.failure_reason ?? "improvement_proposal_materialization_failed");
+    throw new Error(materialized.attempt?.failure_reason ?? "improvement_proposal_materialization_failed");
   }
 
   const sourceFinding = findingForRef(findings, providerResult.output.source_finding_refs[0]);

@@ -181,6 +181,29 @@ requireText("packages/application/src/controllers/local-ouroboros-controller.ts"
   "dispatchAgentProviderCommand"
 ]);
 
+requireText("apps/runtime/src/controllers/route-registry.ts", [
+  "registerRuntimeRouteModules",
+  "RuntimeRouteModule"
+]);
+
+requireText("apps/runtime/src/controllers/core-controller.ts", [
+  "registerCoreControllerRoutes",
+  "/api/commands"
+]);
+
+requireText("apps/runtime/src/controllers/resource-controller.ts", [
+  "registerResourceControllerRoutes",
+  "/api/candidates",
+  "/api/sandboxes"
+]);
+
+{
+  const runtimeServer = read("apps/runtime/src/server.ts");
+  if (/server\.(get|post|put|patch|delete)\s*(<|\()/m.test(runtimeServer)) {
+    fail("apps/runtime/src/server.ts: route registration must live in apps/runtime/src/controllers route modules");
+  }
+}
+
 const bannedControllerImports = [
   "@ouroboros/local-store",
   "../agent-profiles",
@@ -210,6 +233,26 @@ const domainBannedImports = [
   "ink",
   "@binance/"
 ];
+
+const applicationBannedImports = [
+  "@ouroboros/adapters",
+  "@ouroboros/local-store",
+  "fastify",
+  "react",
+  "ink",
+  "@binance/"
+];
+
+for (const file of listFiles("packages/application/src").filter((item) =>
+  item.endsWith(".ts") && !item.includes(".test.")
+)) {
+  const body = importSpecifiers(read(file)).join("\n");
+  for (const banned of applicationBannedImports) {
+    if (body.includes(banned)) {
+      fail(`${file}: application imports outer implementation boundary ${JSON.stringify(banned)}`);
+    }
+  }
+}
 
 for (const file of listFiles("packages/domain/src").filter((item) => item.endsWith(".ts"))) {
   const body = importSpecifiers(read(file)).join("\n");

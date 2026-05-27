@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ImprovementProposalProviderOutput, Ref } from "@ouroboros/domain";
+import { LocalStore } from "@ouroboros/local-store";
 import { runCodexImprovementProposalDryRunAudit } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run-audit";
 import { codexImprovementProposalDryRunFixtureIds } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run";
 import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
@@ -40,7 +41,12 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     );
 
     const audit = await runCodexImprovementProposalDryRunAudit({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
+      provider_adapter: new CodexCliImprovementProposalProviderAdapter({
+        workingDirectory: tmpDir,
+        command: fakeCodex
+      }),
       working_directory: tmpDir,
       codex_command: fakeCodex,
       idempotency_key: "codex-research-audit-subprocess-success",
@@ -83,6 +89,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     });
 
     const audit = await runCodexImprovementProposalDryRunAudit({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-audit-success",
@@ -124,6 +131,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     });
 
     const audit = await runCodexImprovementProposalDryRunAudit({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-audit-missing",
@@ -168,6 +176,7 @@ writeFileSync(outputPath, ${JSON.stringify(JSON.stringify(providerOutput()))});
     });
 
     const audit = await runCodexImprovementProposalDryRunAudit({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-audit-invalid",
