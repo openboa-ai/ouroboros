@@ -2304,6 +2304,132 @@ export interface CandidateArenaReadModel {
   authority_status: "not_live";
 }
 
+export type AgentProfileProviderKind = "codex" | "fixture" | "claude_code";
+export type AgentProfileId = AgentProfileProviderKind;
+export type AgentProfileStatus =
+  | "not_configured"
+  | "configured"
+  | "login_required"
+  | "authenticated"
+  | "unavailable"
+  | "unsupported";
+
+export interface AgentProfileRecord extends BaseRecord {
+  record_kind: "agent_profile";
+  agent_profile_id: AgentProfileId;
+  provider: AgentProfileProviderKind;
+  managed_home: string;
+  managed_provider_home: string;
+  status: AgentProfileStatus;
+  provider_version?: string;
+  failure_reason?: string;
+  updated_at: string;
+  authority_status: "no_trading_authority";
+}
+
+export interface AgentProfileReadModel {
+  profile_id: AgentProfileId;
+  label: string;
+  provider: AgentProfileProviderKind;
+  status: AgentProfileStatus;
+  managed_home: string;
+  managed_provider_home: string;
+  version?: string;
+  failure_reason?: string;
+  authority_status: "no_trading_authority";
+}
+
+export interface ResearcherProviderSelectionRecord extends BaseRecord {
+  record_kind: "researcher_provider_selection";
+  researcher_provider_selection_id: "researcher";
+  selected_provider: AgentProfileProviderKind;
+  updated_at: string;
+  authority_status: "research_only";
+}
+
+export interface ResearcherProviderReadModel {
+  selected_provider: AgentProfileProviderKind;
+  available_providers: AgentProfileProviderKind[];
+  authority_status: "research_only";
+}
+
+export type OuroborosCommandKind =
+  | "arena.status"
+  | "arena.start"
+  | "arena.stop"
+  | "arena.tick"
+  | "candidate.select"
+  | "candidate.paper_evidence.run"
+  | "agent_provider.status"
+  | "agent_provider.setup"
+  | "agent_provider.login.start"
+  | "agent_provider.probe"
+  | "researcher.provider.select";
+
+export type OuroborosCommandStatus = "succeeded" | "failed";
+
+export interface OuroborosCommandRequest {
+  command_kind: OuroborosCommandKind;
+  request_id?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface OuroborosCommandReadModel {
+  command_id: string;
+  command_kind: OuroborosCommandKind;
+  request_id?: string;
+  status: OuroborosCommandStatus;
+  requested_at: string;
+  completed_at: string;
+  error?: string;
+  summary?: string;
+  authority_status: "not_live";
+}
+
+export interface OuroborosCommandRecord extends BaseRecord {
+  record_kind: "ouroboros_command";
+  ouroboros_command_id: string;
+  command_kind: OuroborosCommandKind;
+  request_id?: string;
+  status: OuroborosCommandStatus;
+  requested_at: string;
+  completed_at: string;
+  error?: string;
+  summary?: string;
+  authority_status: "not_live";
+}
+
+export type SelectedPaperEvidenceStatus =
+  | "not_run"
+  | "running"
+  | "ledger_chain_complete"
+  | "failed";
+
+export interface SelectedPaperEvidenceReadModel {
+  status: SelectedPaperEvidenceStatus;
+  ledger_chain_complete: boolean;
+  ledger_chain_count?: number;
+  latest_order_request_id?: string;
+  latest_gateway_outcome?: string;
+  latest_execution_status?: string;
+  trading_run_status?: string;
+  failure_reason?: string;
+  authority_status: "not_live";
+}
+
+export interface OperatorReadModel {
+  operator_kind: "ouroboros_operator";
+  candidate_arena: CandidateArenaReadModel;
+  selected_candidate_id: string | null;
+  selected_candidate: CandidateInspectReadModel | null;
+  selected_paper_evidence: SelectedPaperEvidenceReadModel;
+  researcher_provider: ResearcherProviderReadModel;
+  agent_profiles: AgentProfileReadModel[];
+  latest_commands: OuroborosCommandReadModel[];
+  live_disabled: true;
+  authority_status: "not_live";
+}
+
 export interface CandidateMaterializationFailureInput {
   idempotency_key: string;
   provider_kind: ProviderKind;
@@ -2351,6 +2477,9 @@ export type FixtureRecord =
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
   | CandidateArenaTickRecord
+  | AgentProfileRecord
+  | ResearcherProviderSelectionRecord
+  | OuroborosCommandRecord
   | ResearchFindingRecord
   | ArtifactLineageRecord
   | ImprovementProposalRecord

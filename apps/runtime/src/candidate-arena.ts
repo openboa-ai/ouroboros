@@ -79,7 +79,7 @@ export class CandidateArenaRunner {
   private activeTick?: Promise<CandidateArenaTickOutcome>;
 
   constructor(
-    private readonly input: Omit<RunCandidateArenaTickInput, "tickId">,
+    private input: Omit<RunCandidateArenaTickInput, "tickId">,
     private readonly intervalMs = 10_000
   ) {}
 
@@ -89,6 +89,17 @@ export class CandidateArenaRunner {
 
   ticks(): number {
     return this.tickCount;
+  }
+
+  researchAgent(): TradingResearchRuntimeAgent {
+    return this.input.researchAgent;
+  }
+
+  setResearchAgent(agent: TradingResearchRuntimeAgent): void {
+    this.input = {
+      ...this.input,
+      researchAgent: agent
+    };
   }
 
   start(): "started" | "already_running" {

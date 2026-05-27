@@ -65,18 +65,30 @@ Run local services:
 
 ```bash
 npm install
-npm run dev:runtime
+ouroboros runtime serve
 npm run dev:operator-web
 ```
 
-Operate the Candidate Arena:
+Operate the product loop through the Ouroboros command surface:
 
 ```bash
-npm run trading:arena -- status
-npm run trading:arena -- tick
-npm run trading:arena -- start
-npm run trading:arena -- stop
+ouroboros arena status
+ouroboros arena tick
+ouroboros arena start
+ouroboros arena stop
+ouroboros candidate select <candidate-id>
+ouroboros candidate evidence run <candidate-id>
+ouroboros agent setup codex
+ouroboros agent login codex
+ouroboros agent probe codex
+ouroboros researcher provider set codex
+ouroboros tui
 ```
+
+The CLI, Operator UI, and Ink TUI all read `GET /api/operator` and mutate through
+`POST /api/commands`. Adapter names such as Codex are internal provider settings on managed
+`AgentProfile` records. The agent setup surface is provider-scoped, and the researcher selects one
+available provider from that managed set; product-facing commands stay under the `ouroboros` noun.
 
 Use Linear GraphQL for mandatory Linear writeback:
 

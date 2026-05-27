@@ -13,7 +13,13 @@ import type {
 type ExecFileRunner = (
   file: string,
   args: string[],
-  options?: { cwd?: string; maxBuffer?: number; timeout?: number; stdin?: string }
+  options?: {
+    cwd?: string;
+    maxBuffer?: number;
+    timeout?: number;
+    stdin?: string;
+    env?: NodeJS.ProcessEnv;
+  }
 ) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
 
 export interface CodexTradingResearchAgentOptions {
@@ -21,6 +27,7 @@ export interface CodexTradingResearchAgentOptions {
   command?: string;
   timeout_ms?: number;
   reasoning_effort?: "low" | "medium" | "high" | "xhigh";
+  env?: NodeJS.ProcessEnv;
   execFile?: ExecFileRunner;
 }
 
@@ -29,6 +36,7 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
   private readonly command: string;
   private readonly timeoutMs: number;
   private readonly reasoningEffort: "low" | "medium" | "high" | "xhigh";
+  private readonly env?: NodeJS.ProcessEnv;
   private readonly execFile: ExecFileRunner;
 
   constructor(options: CodexTradingResearchAgentOptions = {}) {
@@ -41,6 +49,7 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
     this.command = options.command ?? "codex";
     this.timeoutMs = options.timeout_ms ?? 120_000;
     this.reasoningEffort = options.reasoning_effort ?? "low";
+    this.env = options.env;
     this.execFile = options.execFile ?? defaultExecFileRunner;
   }
 
@@ -53,7 +62,8 @@ export class CodexTradingResearchAgentAdapter implements TradingResearchAgentAda
         cwd: input.artifact_dir,
         timeout: this.timeoutMs,
         maxBuffer: 10 * 1024 * 1024,
-        stdin: prompt
+        stdin: prompt,
+        env: this.env
       });
       const after = await editableArtifactSnapshot(input.artifact_dir);
       const changedPaths = changedEditablePaths(before, after);
@@ -181,6 +191,10 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: options.cwd,
+      env: {
+        ...process.env,
+        ...options.env
+      },
       stdio: ["pipe", "pipe", "pipe"]
     });
     const stdout: Buffer[] = [];

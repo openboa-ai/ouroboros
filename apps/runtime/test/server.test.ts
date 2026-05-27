@@ -2327,6 +2327,396 @@ describe("runtime read-only API", () => {
     await server.close();
   });
 
+  it("runs Candidate Arena actions through the shared Ouroboros command endpoint and operator read model", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      tradingResearchRuntimeConfig: {
+        default_agent: "fixture",
+        available_agents: ["fixture"],
+        iterations: 1,
+        codex: {
+          command: "codex",
+          timeout_ms: 30_000,
+          reasoning_effort: "low"
+        }
+      },
+      binancePublicMarketClient: fixtureBinancePublicMarketClient()
+    });
+
+    const initialOperator = await server.inject({
+      method: "GET",
+      url: "/api/operator"
+    });
+    expect(initialOperator.statusCode).toBe(200);
+    expect(initialOperator.json()).toMatchObject({
+      operator: {
+        candidate_arena: {
+          runner_status: "stopped",
+          tick_count: 0,
+          authority_status: "not_live"
+        },
+        selected_candidate_id: null,
+        selected_candidate: null,
+        selected_paper_evidence: {
+          status: "not_run",
+          authority_status: "not_live"
+        },
+        researcher_provider: {
+          selected_provider: "fixture",
+          available_providers: expect.arrayContaining(["fixture", "codex"])
+        },
+        agent_profiles: expect.arrayContaining([
+          expect.objectContaining({
+            profile_id: "codex",
+            provider: "codex",
+            status: "not_configured"
+          }),
+          expect.objectContaining({
+            profile_id: "fixture",
+            provider: "fixture",
+            status: "authenticated"
+          })
+        ]),
+        latest_commands: []
+      }
+    });
+
+    const tick = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: { command_kind: "arena.tick" }
+    });
+    expect(tick.statusCode, JSON.stringify(tick.json())).toBe(200);
+    expect(tick.json()).toMatchObject({
+      command: {
+        command_kind: "arena.tick",
+        status: "succeeded"
+      },
+      result: {
+        created_candidate_count: 5,
+        arena: {
+          tick_count: 1,
+          authority_status: "not_live"
+        }
+      },
+      operator: {
+        candidate_arena: {
+          tick_count: 1
+        }
+      }
+    });
+
+    const candidateId = tick.json().result.created_candidate_ids[0] as string;
+    const selected = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "candidate.select",
+        payload: { candidate_id: candidateId }
+      }
+    });
+    expect(selected.statusCode, JSON.stringify(selected.json())).toBe(200);
+    expect(selected.json()).toMatchObject({
+      command: {
+        command_kind: "candidate.select",
+        status: "succeeded"
+      },
+      operator: {
+        selected_candidate_id: candidateId,
+        selected_candidate: {
+          candidate_id: candidateId
+        },
+        selected_paper_evidence: {
+          status: "not_run",
+          ledger_chain_complete: false,
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    const paperEvidence = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "candidate.paper_evidence.run",
+        payload: { candidate_id: candidateId }
+      }
+    });
+    expect(paperEvidence.statusCode, JSON.stringify(paperEvidence.json())).toBe(200);
+    expect(paperEvidence.json()).toMatchObject({
+      command: {
+        command_kind: "candidate.paper_evidence.run",
+        status: "succeeded"
+      },
+      operator: {
+        selected_candidate_id: candidateId,
+        selected_paper_evidence: {
+          status: "ledger_chain_complete",
+          ledger_chain_complete: true,
+          ledger_chain_count: 1,
+          latest_gateway_outcome: "dry_run_only",
+          latest_execution_status: "dry_run_recorded",
+          authority_status: "not_live"
+        }
+      }
+    });
+
+    const operator = await server.inject({
+      method: "GET",
+      url: "/api/operator"
+    });
+    expect(operator.statusCode).toBe(200);
+    expect(operator.json().operator.latest_commands.map(
+      (command: { command_kind: string }) => command.command_kind
+    )).toEqual([
+      "candidate.paper_evidence.run",
+      "candidate.select",
+      "arena.tick"
+    ]);
+
+    await server.close();
+  });
+
+  it("sets up and probes managed Codex agent profiles without using the host Codex home", async () => {
+    const execCalls: Array<{
+      file: string;
+      args: string[];
+      env?: NodeJS.ProcessEnv;
+    }> = [];
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      agentProfileExecFile: async (file, args, options) => {
+        execCalls.push({ file, args, env: options?.env });
+        return {
+          stdout: args.includes("--version") ? "codex 1.2.3\n" : "Logged in as managed researcher\n",
+          stderr: ""
+        };
+      }
+    });
+
+    const setup = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "codex" }
+      }
+    });
+    expect(setup.statusCode, JSON.stringify(setup.json())).toBe(200);
+    expect(setup.json()).toMatchObject({
+      command: {
+        command_kind: "agent_provider.setup",
+        status: "succeeded"
+      },
+      result: {
+        profile: {
+          profile_id: "codex",
+          provider: "codex",
+          status: "configured"
+        }
+      }
+    });
+
+    const probe = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "codex" }
+      }
+    });
+    expect(probe.statusCode, JSON.stringify(probe.json())).toBe(200);
+    expect(probe.json()).toMatchObject({
+      command: {
+        command_kind: "agent_provider.probe",
+        status: "succeeded"
+      },
+      result: {
+        profile: {
+          profile_id: "codex",
+          provider: "codex",
+          status: "authenticated",
+          version: "codex 1.2.3"
+        }
+      }
+    });
+    expect(execCalls).toEqual([
+      expect.objectContaining({
+        file: "codex",
+        args: ["--version"],
+        env: expect.objectContaining({
+          CODEX_HOME: path.join(tmpDir, "agent-profiles", "codex", "codex-home"),
+          HOME: path.join(tmpDir, "agent-profiles", "codex", "home")
+        })
+      }),
+      expect.objectContaining({
+        file: "codex",
+        args: ["login", "status"],
+        env: expect.objectContaining({
+          CODEX_HOME: path.join(tmpDir, "agent-profiles", "codex", "codex-home"),
+          HOME: path.join(tmpDir, "agent-profiles", "codex", "home")
+        })
+      })
+    ]);
+    expect(execCalls.every((call) => call.env?.CODEX_HOME !== process.env.CODEX_HOME)).toBe(true);
+
+    await server.close();
+  });
+
+  it("keeps managed agent login local to the CLI instead of exposing it through commands", async () => {
+    const execCalls: string[] = [];
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      agentProfileExecFile: async (file, args) => {
+        execCalls.push(`${file} ${args.join(" ")}`);
+        return {
+          stdout: "",
+          stderr: ""
+        };
+      }
+    });
+
+    const login = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "agent_provider.login.start",
+        payload: { provider: "codex" }
+      }
+    });
+
+    expect(login.statusCode).toBe(403);
+    expect(login.json()).toMatchObject({
+      error: "agent_provider_login_requires_local_cli",
+      provider: "codex",
+      required_command: "ouroboros agent login codex",
+      command: {
+        command_kind: "agent_provider.login.start",
+        status: "failed"
+      }
+    });
+    expect(execCalls).toEqual([]);
+
+    await server.close();
+  });
+
+  it("rejects future agent providers explicitly instead of treating them as Codex", async () => {
+    const server = await buildServer({
+      store: new LocalStore(tmpDir)
+    });
+
+    const setup = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "agent_provider.setup",
+        payload: {
+          provider: "claude_code"
+        }
+      }
+    });
+    expect(setup.statusCode).toBe(422);
+    expect(setup.json()).toMatchObject({
+      error: "unsupported_agent_provider",
+      provider: "claude_code",
+      supported_providers: ["codex", "fixture"]
+    });
+
+    await server.close();
+  });
+
+  it("lets the researcher select one authenticated provider from available agent providers", async () => {
+    const selectedAgents: string[] = [];
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      agentProfileExecFile: async (_file, args) => ({
+        stdout: args.includes("--version") ? "codex 1.2.3\n" : "Logged in as managed researcher\n",
+        stderr: ""
+      }),
+      tradingResearchRuntimeConfig: {
+        default_agent: "fixture",
+        available_agents: ["codex", "fixture"],
+        iterations: 1,
+        codex: {
+          command: "codex",
+          timeout_ms: 30_000,
+          reasoning_effort: "low"
+        }
+      },
+      tradingResearchAgentFactory: (agent) => {
+        selectedAgents.push(agent);
+        return new ScriptedCodexTradingResearchAgentAdapter();
+      }
+    });
+
+    const setup = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "codex" }
+      }
+    });
+    expect(setup.statusCode).toBe(200);
+
+    const selectBeforeAuth = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "codex" }
+      }
+    });
+    expect(selectBeforeAuth.statusCode).toBe(409);
+    expect(selectBeforeAuth.json()).toMatchObject({
+      error: "agent_provider_not_authenticated",
+      provider: "codex",
+      profile_status: "configured",
+      required_command: "ouroboros agent login codex"
+    });
+
+    const probe = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "codex" }
+      }
+    });
+    expect(probe.statusCode, JSON.stringify(probe.json())).toBe(200);
+
+    const select = await server.inject({
+      method: "POST",
+      url: "/api/commands",
+      payload: {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "codex" }
+      }
+    });
+    expect(select.statusCode, JSON.stringify(select.json())).toBe(200);
+    expect(select.json()).toMatchObject({
+      command: {
+        command_kind: "researcher.provider.select",
+        status: "succeeded"
+      },
+      operator: {
+        researcher_provider: {
+          selected_provider: "codex",
+          available_providers: expect.arrayContaining(["codex", "fixture"])
+        }
+      }
+    });
+
+    const tick = await server.inject({
+      method: "POST",
+      url: "/api/candidate-arena/tick"
+    });
+    expect(tick.statusCode).toBe(201);
+    expect(selectedAgents).toContain("codex");
+
+    await server.close();
+  });
+
   it("persists Candidate Arena tick history while keeping successful directions when one researcher fails", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

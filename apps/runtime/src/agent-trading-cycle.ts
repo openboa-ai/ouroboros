@@ -576,7 +576,7 @@ function providerKind(provider: ManagedResearchAgent["provider"]): CandidateMate
   if (provider === "codex") {
     return "codex_cli";
   }
-  if (provider === "claude") {
+  if (provider === "claude_code") {
     return "claude_code";
   }
   return "fixture_only";

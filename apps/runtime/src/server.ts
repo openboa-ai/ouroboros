@@ -4,13 +4,20 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
+  AgentProfileProviderKind,
   CandidateInspectReadModel,
   CandidateSummaryReadModel,
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
   LedgerInput,
+  OperatorReadModel,
+  OuroborosCommandKind,
+  OuroborosCommandReadModel,
+  OuroborosCommandRecord,
+  OuroborosCommandRequest,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
+  ResearcherProviderReadModel,
   Ref,
   RunControlAuditInput,
   SandboxAdapterKind,
@@ -71,6 +78,15 @@ import {
   type TradingResearchRuntimeAgent,
   type TradingResearchRuntimeConfig
 } from "./trading-research/runtime-config";
+import {
+  listAgentProfileReadModels,
+  managedAgentProfileEnv,
+  parseAgentProfileProvider,
+  probeAgentProfile,
+  setupAgentProfile,
+  UnsupportedAgentProviderError,
+  type AgentProfileExecFile
+} from "./agent-profiles";
 import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
 import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
 import { runAgentTradingCycle } from "./agent-trading-cycle";
@@ -97,6 +113,7 @@ export interface BuildServerOptions {
   tradingResearchAgentFactory?: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
   tradingResearchRuntimeConfig?: TradingResearchRuntimeConfig;
   tradingResearchProbeExecFile?: TradingResearchProbeExecFile;
+  agentProfileExecFile?: AgentProfileExecFile;
   tradingResearchIterations?: number;
   candidateArenaTickIntervalMs?: number;
   binancePublicMarketClient?: BinancePublicMarketDataClient;
@@ -233,7 +250,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       if (options.tradingResearchAgentAdapter && options.tradingResearchAgentAdapter.agent.provider === agent) {
         return options.tradingResearchAgentAdapter;
       }
-      return createTradingResearchAgentAdapter(tradingResearchRuntimeConfig, agent);
+      return createTradingResearchAgentAdapter(tradingResearchRuntimeConfig, agent, {
+        env: agent === "codex" ? managedAgentProfileEnv(store, "codex") : undefined
+      });
     });
   const candidateArenaRunner = new CandidateArenaRunner({
     store,
@@ -251,6 +270,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ?? new DockerSandboxesSbxSandboxAdapter()
   };
   await store.initialize();
+  const persistedResearcherProvider = await store.getResearcherProviderSelection();
+  if (
+    persistedResearcherProvider
+    && isTradingResearchRuntimeAgent(persistedResearcherProvider.selected_provider)
+  ) {
+    candidateArenaRunner.setResearchAgent(persistedResearcherProvider.selected_provider);
+  }
 
   const server = Fastify({
     logger: false
@@ -268,6 +294,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     config: {
       rateLimit: {
         max: 120,
+        timeWindow: "1 minute"
+      }
+    }
+  } as const;
+  const commandMutationRateLimit = {
+    config: {
+      rateLimit: {
+        max: 60,
         timeWindow: "1 minute"
       }
     }
@@ -292,6 +326,295 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       options.tradingResearchProbeExecFile
     )
   }));
+
+  let selectedCandidateId: string | undefined;
+
+  const buildResearcherProviderReadModelForServer = async (): Promise<ResearcherProviderReadModel> => {
+    const selection = await store.getResearcherProviderSelection();
+    const selectedProvider = isTradingResearchRuntimeAgent(selection?.selected_provider)
+      ? selection.selected_provider
+      : candidateArenaRunner.researchAgent();
+    return {
+      selected_provider: selectedProvider,
+      available_providers: ["codex", "fixture"],
+      authority_status: "research_only"
+    };
+  };
+
+  const buildOperatorReadModelForServer = async (): Promise<OperatorReadModel> => {
+    const arena = await buildCandidateArenaReadModel(
+      store,
+      candidateArenaRunner.status(),
+      candidateArenaRunner.ticks()
+    );
+    const selectedCandidate = selectedCandidateId
+      ? await store.getCandidate(selectedCandidateId)
+      : undefined;
+    if (selectedCandidateId && !selectedCandidate) {
+      selectedCandidateId = undefined;
+    }
+    const latestCommands = (await store.listOuroborosCommands())
+      .slice(0, 8)
+      .map(toOuroborosCommandReadModel);
+    return {
+      operator_kind: "ouroboros_operator",
+      candidate_arena: arena,
+      selected_candidate_id: selectedCandidate?.candidate_id ?? null,
+      selected_candidate: selectedCandidate ?? null,
+      selected_paper_evidence: selectedPaperEvidence(selectedCandidate),
+      researcher_provider: await buildResearcherProviderReadModelForServer(),
+      agent_profiles: await listAgentProfileReadModels(store),
+      latest_commands: latestCommands,
+      live_disabled: true,
+      authority_status: "not_live"
+    };
+  };
+
+  const recordCommand = async (input: {
+    commandKind: OuroborosCommandKind;
+    requestId?: string;
+    status: "succeeded" | "failed";
+    requestedAt: string;
+    summary?: string;
+    error?: string;
+  }): Promise<OuroborosCommandReadModel> => {
+    const completedAt = new Date().toISOString();
+    const record: OuroborosCommandRecord = {
+      record_kind: "ouroboros_command",
+      version: 1,
+      ouroboros_command_id: [
+        "ouroboros-command",
+        safeId(input.commandKind),
+        safeId(input.requestId ?? randomUUID())
+      ].join("-"),
+      command_kind: input.commandKind,
+      request_id: input.requestId,
+      status: input.status,
+      requested_at: input.requestedAt,
+      completed_at: completedAt,
+      summary: input.summary,
+      error: input.error,
+      authority_status: "not_live"
+    };
+    return toOuroborosCommandReadModel(await store.recordOuroborosCommand(record));
+  };
+
+  const executeOuroborosCommand = async (
+    commandKind: OuroborosCommandKind,
+    payload: Record<string, unknown> | undefined
+  ): Promise<{ result: unknown; summary?: string }> => {
+    if (commandKind === "arena.status") {
+      return {
+        result: {
+          arena: await buildCandidateArenaReadModel(
+            store,
+            candidateArenaRunner.status(),
+            candidateArenaRunner.ticks()
+          )
+        },
+        summary: "Candidate Arena status read."
+      };
+    }
+    if (commandKind === "arena.start") {
+      const status = candidateArenaRunner.start();
+      return {
+        result: {
+          status,
+          candidate_arena: await buildCandidateArenaReadModel(
+            store,
+            candidateArenaRunner.status(),
+            candidateArenaRunner.ticks()
+          )
+        },
+        summary: `Candidate Arena ${status}.`
+      };
+    }
+    if (commandKind === "arena.stop") {
+      const status = candidateArenaRunner.stop();
+      return {
+        result: {
+          status,
+          candidate_arena: await buildCandidateArenaReadModel(
+            store,
+            candidateArenaRunner.status(),
+            candidateArenaRunner.ticks()
+          )
+        },
+        summary: `Candidate Arena ${status}.`
+      };
+    }
+    if (commandKind === "arena.tick") {
+      const outcome = await candidateArenaRunner.tick();
+      return {
+        result: outcome,
+        summary: `Candidate Arena tick created ${outcome.created_candidate_count} candidates.`
+      };
+    }
+    if (commandKind === "candidate.select") {
+      const candidateId = parseCommandCandidateId(payload);
+      const candidate = await store.getCandidate(candidateId);
+      if (!candidate) {
+        throw new CommandHttpError(404, "candidate_not_found", { candidate_id: candidateId });
+      }
+      selectedCandidateId = candidateId;
+      return {
+        result: { candidate },
+        summary: `Selected candidate ${candidateId}.`
+      };
+    }
+    if (commandKind === "candidate.paper_evidence.run") {
+      const candidateId = parseCommandCandidateId(payload);
+      const candidate = await store.getCandidate(candidateId);
+      if (!candidate) {
+        throw new CommandHttpError(404, "candidate_not_found", { candidate_id: candidateId });
+      }
+      selectedCandidateId = candidateId;
+      const response = await server.inject({
+        method: "POST",
+        url: `/api/trading-systems/${encodeURIComponent(candidateId)}/trading-runs`
+      });
+      const body = response.json();
+      if (response.statusCode >= 400) {
+        throw new CommandHttpError(response.statusCode, "paper_evidence_failed", body);
+      }
+      return {
+        result: body,
+        summary: `Paper evidence recorded for ${candidateId}.`
+      };
+    }
+    if (commandKind === "agent_provider.status") {
+      const provider = optionalCommandProvider(payload);
+      const profiles = await listAgentProfileReadModels(store);
+      return {
+        result: provider
+          ? { profile: profiles.find((profile) => profile.profile_id === provider) }
+          : { profiles },
+        summary: "Agent provider status read."
+      };
+    }
+    if (commandKind === "agent_provider.setup") {
+      const provider = requiredCommandProvider(payload);
+      const profile = await setupAgentProfile({ store, profileId: provider });
+      return {
+        result: { profile },
+        summary: `Agent provider ${provider} configured.`
+      };
+    }
+    if (commandKind === "agent_provider.login.start") {
+      const provider = requiredCommandProvider(payload);
+      throw new CommandHttpError(403, "agent_provider_login_requires_local_cli", {
+        provider,
+        required_command: `ouroboros agent login ${provider}`
+      });
+    }
+    if (commandKind === "agent_provider.probe") {
+      const provider = requiredCommandProvider(payload);
+      const profile = await probeAgentProfile({
+        store,
+        profileId: provider,
+        execFile: options.agentProfileExecFile
+      });
+      return {
+        result: { profile },
+        summary: `Agent provider ${provider} probed.`
+      };
+    }
+    if (commandKind === "researcher.provider.select") {
+      const provider = requiredResearcherProvider(payload);
+      const profiles = await listAgentProfileReadModels(store);
+      const profile = profiles.find((item) => item.profile_id === provider);
+      if (!profile || profile.status === "not_configured" || profile.status === "unsupported") {
+        throw new CommandHttpError(409, "agent_provider_not_configured", {
+          provider,
+          required_command: `ouroboros agent setup ${provider}`
+        });
+      }
+      if (profile.status !== "authenticated") {
+        throw new CommandHttpError(409, "agent_provider_not_authenticated", {
+          provider,
+          profile_status: profile.status,
+          required_command: `ouroboros agent login ${provider}`
+        });
+      }
+      const selected = await store.recordResearcherProviderSelection({
+        record_kind: "researcher_provider_selection",
+        version: 1,
+        researcher_provider_selection_id: "researcher",
+        selected_provider: provider,
+        updated_at: new Date().toISOString(),
+        authority_status: "research_only"
+      });
+      candidateArenaRunner.setResearchAgent(provider);
+      return {
+        result: {
+          researcher_provider: await buildResearcherProviderReadModelForServer(),
+          selection: selected
+        },
+        summary: `Researcher provider selected: ${provider}.`
+      };
+    }
+    throw new CommandHttpError(400, "invalid_command_kind", { command_kind: commandKind });
+  };
+
+  server.get(
+    "/api/operator",
+    filesystemReadRateLimit,
+    async () => ({
+      operator: await buildOperatorReadModelForServer()
+    })
+  );
+
+  server.post<{ Body: OuroborosCommandRequest }>("/api/commands", commandMutationRateLimit, async (request, reply) => {
+    const commandKind = parseOuroborosCommandKind(request.body?.command_kind);
+    if (!commandKind) {
+      return reply.code(400).send({
+        error: "invalid_command_kind",
+        allowed_values: OUROBOROS_COMMAND_KINDS
+      });
+    }
+    const requestedAt = new Date().toISOString();
+    try {
+      const { result, summary } = await executeOuroborosCommand(commandKind, request.body?.payload);
+      const command = await recordCommand({
+        commandKind,
+        requestId: request.body?.request_id,
+        status: "succeeded",
+        requestedAt,
+        summary
+      });
+      return reply.code(200).send({
+        command,
+        result,
+        operator: await buildOperatorReadModelForServer()
+      });
+    } catch (error) {
+      if (error instanceof UnsupportedAgentProviderError) {
+        return reply.code(422).send({
+          error: "unsupported_agent_provider",
+          provider: error.provider,
+          supported_providers: ["codex", "fixture"]
+        });
+      }
+      const commandError = error instanceof CommandHttpError
+        ? error
+        : new CommandHttpError(500, "command_failed", {
+            message: error instanceof Error ? error.message : String(error)
+          });
+      const command = await recordCommand({
+        commandKind,
+        requestId: request.body?.request_id,
+        status: "failed",
+        requestedAt,
+        error: commandError.error
+      });
+      return reply.code(commandError.statusCode).send({
+        command,
+        error: commandError.error,
+        ...commandError.details,
+        operator: await buildOperatorReadModelForServer()
+      });
+    }
+  });
 
   server.get("/api/candidate-arena", async () => ({
     candidate_arena: await buildCandidateArenaReadModel(
@@ -1858,6 +2181,122 @@ function startTradingResearchIterations(body: StartTradingRunBody | undefined): 
     return iterations;
   }
   return "invalid";
+}
+
+const OUROBOROS_COMMAND_KINDS: OuroborosCommandKind[] = [
+  "arena.status",
+  "arena.start",
+  "arena.stop",
+  "arena.tick",
+  "candidate.select",
+  "candidate.paper_evidence.run",
+  "agent_provider.status",
+  "agent_provider.setup",
+  "agent_provider.login.start",
+  "agent_provider.probe",
+  "researcher.provider.select"
+];
+
+class CommandHttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly error: string,
+    readonly details: Record<string, unknown> = {}
+  ) {
+    super(error);
+    this.name = "CommandHttpError";
+  }
+}
+
+function parseOuroborosCommandKind(value: unknown): OuroborosCommandKind | undefined {
+  return typeof value === "string" && OUROBOROS_COMMAND_KINDS.includes(value as OuroborosCommandKind)
+    ? value as OuroborosCommandKind
+    : undefined;
+}
+
+function parseCommandCandidateId(payload: Record<string, unknown> | undefined): string {
+  const candidateId = payload?.candidate_id;
+  if (typeof candidateId === "string" && candidateId.trim()) {
+    return candidateId;
+  }
+  throw new CommandHttpError(400, "invalid_candidate_id", {
+    required_payload: { candidate_id: "string" }
+  });
+}
+
+function optionalCommandProvider(payload: Record<string, unknown> | undefined): AgentProfileProviderKind | undefined {
+  if (!payload || payload.provider === undefined) {
+    return undefined;
+  }
+  const provider = parseAgentProfileProvider(payload?.provider);
+  if (provider) {
+    return provider;
+  }
+  throw new CommandHttpError(400, "invalid_agent_provider", {
+    allowed_values: ["codex", "fixture", "claude_code"]
+  });
+}
+
+function requiredCommandProvider(payload: Record<string, unknown> | undefined): AgentProfileProviderKind {
+  const provider = optionalCommandProvider(payload);
+  if (provider) {
+    return provider;
+  }
+  throw new CommandHttpError(400, "invalid_agent_provider", {
+    allowed_values: ["codex", "fixture", "claude_code"]
+  });
+}
+
+function requiredResearcherProvider(payload: Record<string, unknown> | undefined): TradingResearchRuntimeAgent {
+  const provider = requiredCommandProvider(payload);
+  if (isTradingResearchRuntimeAgent(provider)) {
+    return provider;
+  }
+  throw new CommandHttpError(422, "unsupported_researcher_provider", {
+    provider,
+    supported_providers: ["codex", "fixture"]
+  });
+}
+
+function isTradingResearchRuntimeAgent(value: unknown): value is TradingResearchRuntimeAgent {
+  return value === "codex" || value === "fixture";
+}
+
+function toOuroborosCommandReadModel(record: OuroborosCommandRecord): OuroborosCommandReadModel {
+  return {
+    command_id: record.ouroboros_command_id,
+    command_kind: record.command_kind,
+    request_id: record.request_id,
+    status: record.status,
+    requested_at: record.requested_at,
+    completed_at: record.completed_at,
+    error: record.error,
+    summary: record.summary,
+    authority_status: "not_live"
+  };
+}
+
+function selectedPaperEvidence(candidate: CandidateInspectReadModel | undefined): OperatorReadModel["selected_paper_evidence"] {
+  const ledger = candidate?.ledger;
+  if (!candidate || !ledger?.has_activity) {
+    return {
+      status: "not_run",
+      ledger_chain_complete: false,
+      authority_status: "not_live"
+    };
+  }
+  return {
+    status: ledger.chain_complete ? "ledger_chain_complete" : "failed",
+    ledger_chain_complete: ledger.chain_complete,
+    ledger_chain_count: ledger.chain_count,
+    latest_order_request_id: ledger.latest_order_request?.order_request_id,
+    latest_gateway_outcome: ledger.latest_gateway_result?.decision_outcome,
+    latest_execution_status: ledger.latest_execution_result?.status,
+    trading_run_status: candidate.trading_run?.lifecycle_status
+      ?? candidate.runtime.runtime_lifecycle_status,
+    failure_reason: ledger.chain_complete ? undefined : "ledger_chain_incomplete",
+    authority_status: "not_live"
+  };
 }
 
 function blockedFullCycleLineage(input: {

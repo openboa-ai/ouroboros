@@ -4,6 +4,9 @@ import type {
   LedgerInput,
   LedgerReadModel,
   LedgerWriteOutcome,
+  OperatorReadModel,
+  OuroborosCommandKind,
+  OuroborosCommandRequest,
   ReplayRunComparisonReadModel,
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
@@ -98,38 +101,68 @@ export async function fetchTradingResearchRuntime(): Promise<TradingResearchRunt
 }
 
 export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidate-arena`);
+  const operator = await fetchOperatorReadModel();
+  return operator.candidate_arena;
+}
+
+export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
+  const response = await fetch(`${runtimeBaseUrl}/api/operator`);
   if (!response.ok) {
-    throw new Error(`Failed to load Candidate Arena: ${response.status}`);
+    throw new Error(`Failed to load Ouroboros operator: ${response.status}`);
   }
-  const body = (await response.json()) as { candidate_arena: CandidateArenaReadModel };
-  return body.candidate_arena;
+  const body = (await response.json()) as { operator: OperatorReadModel };
+  return body.operator;
 }
 
 export async function startCandidateArena(): Promise<CandidateArenaReadModel> {
-  return candidateArenaCommand("start");
+  return runCandidateArenaCommand("start");
 }
 
 export async function stopCandidateArena(): Promise<CandidateArenaReadModel> {
-  return candidateArenaCommand("stop");
+  return runCandidateArenaCommand("stop");
 }
 
 export async function tickCandidateArena(): Promise<CandidateArenaReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidate-arena/tick`, { method: "POST" });
-  if (!response.ok) {
-    throw new Error(`Failed to tick Candidate Arena: ${response.status}`);
-  }
-  const body = (await response.json()) as { arena: CandidateArenaReadModel };
-  return body.arena;
+  return runCandidateArenaCommand("tick");
 }
 
-async function candidateArenaCommand(command: "start" | "stop"): Promise<CandidateArenaReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidate-arena/${command}`, { method: "POST" });
+export async function runCandidateArenaCommand(
+  command: "status" | "start" | "stop" | "tick"
+): Promise<CandidateArenaReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: `arena.${command}` as OuroborosCommandKind
+  });
+  return body.operator.candidate_arena;
+}
+
+export async function selectCandidateForOperator(candidateId: string): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "candidate.select",
+    payload: { candidate_id: candidateId }
+  });
+  return body.operator;
+}
+
+export async function runPaperEvidenceForCandidate(candidateId: string): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "candidate.paper_evidence.run",
+    payload: { candidate_id: candidateId }
+  });
+  return body.operator;
+}
+
+async function submitOuroborosCommand(
+  request: OuroborosCommandRequest
+): Promise<{ operator: OperatorReadModel; result?: unknown }> {
+  const response = await fetch(`${runtimeBaseUrl}/api/commands`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request.payload ? request : { command_kind: request.command_kind })
+  });
   if (!response.ok) {
-    throw new Error(`Failed to ${command} Candidate Arena: ${response.status}`);
+    throw new Error(`Failed to run Ouroboros command ${request.command_kind}: ${response.status}`);
   }
-  const body = (await response.json()) as { candidate_arena: CandidateArenaReadModel };
-  return body.candidate_arena;
+  return (await response.json()) as { operator: OperatorReadModel; result?: unknown };
 }
 
 export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {
@@ -264,7 +297,7 @@ export type FullCycleOutcome = Omit<TradingRunOutcome, "status"> & {
     notebook_path: string;
     agent: {
       id: string;
-      provider: "codex" | "claude" | "fixture";
+      provider: "codex" | "claude_code" | "fixture";
       model?: string;
       permission_policy: "artifact_workspace_only" | "fixture_only";
     };

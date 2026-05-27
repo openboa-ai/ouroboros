@@ -1,4 +1,4 @@
-export type TradingResearchAgentProvider = "codex" | "claude" | "fixture";
+export type TradingResearchAgentProvider = "codex" | "claude_code" | "fixture";
 
 export type TradingResearchMode = "replay";
 

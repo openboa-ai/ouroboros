@@ -28,6 +28,11 @@ import type {
   TradingGatewayEnvironmentReadModel,
   ImprovementReadModel,
   LedgerReadModel,
+  OperatorReadModel,
+  ResearcherProviderReadModel,
+  AgentProfileReadModel,
+  OuroborosCommandReadModel,
+  SelectedPaperEvidenceReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
 import {
@@ -41,12 +46,15 @@ import {
   fetchTradingExecutionModeContracts,
   fetchTradingResearchRuntime,
   fetchCandidateArena,
+  fetchOperatorReadModel,
+  selectCandidateForOperator,
   startCandidateArena as submitStartCandidateArena,
   stopCandidateArena as submitStopCandidateArena,
   tickCandidateArena as submitTickCandidateArena,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
+  runPaperEvidenceForCandidate as submitPaperEvidenceForCandidate,
   runFullCycle as submitFullCycle,
   observeTradingRun as submitObserveTradingRun,
   runReplay as submitReplayRun,
@@ -115,6 +123,7 @@ interface AppState {
   executionModes: TradingSystemExecutionModeContractReadModel[];
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchRuntime?: TradingResearchRuntimeReadModel;
+  operator?: OperatorReadModel;
   candidateArena?: CandidateArenaReadModel;
   selectedTradingResearchAgent: TradingResearchAgentSelection;
   tradingResearchIterations: number;
@@ -180,16 +189,16 @@ export function App() {
           executionModes,
           tradingGatewayEnvironment,
           tradingResearchRuntime,
-          candidateArena
+          operator
         ] = await Promise.all([
           fetchCandidateSummaries(),
           fetchTradingExecutionModeContracts(),
           fetchTradingGatewayEnvironment(),
           fetchTradingResearchRuntime(),
-          fetchCandidateArena()
+          fetchOperatorReadModel()
         ]);
         const first = candidates[0];
-        const selected = first ? await fetchCandidate(first.candidate_id) : undefined;
+        const selected = operator.selected_candidate ?? (first ? await fetchCandidate(first.candidate_id) : undefined);
         const replayRuns = selected ? await fetchReplayRunEvidence(selected.candidate_id) : [];
         const replayRunSelection = selected
           ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
@@ -200,7 +209,8 @@ export function App() {
             executionModes,
             tradingGatewayEnvironment,
             tradingResearchRuntime,
-            candidateArena,
+            operator,
+            candidateArena: operator.candidate_arena,
             selectedTradingResearchAgent: tradingResearchRuntime.default_agent,
             tradingResearchIterations: tradingResearchRuntime.iterations,
             selected,
@@ -265,11 +275,14 @@ export function App() {
       replayRunMessage: undefined
     }));
     try {
-      const selected = await fetchCandidate(candidateId);
-      const replayRuns = await fetchReplayRunEvidence(candidateId);
-      const replayRunSelection = await fetchReplayRunSelection(candidateId, replayRuns);
+      const operator = await selectCandidateForOperator(candidateId);
+      const selected = operator.selected_candidate ?? await fetchCandidate(candidateId);
+      const replayRuns = await fetchReplayRunEvidence(selected.candidate_id);
+      const replayRunSelection = await fetchReplayRunSelection(selected.candidate_id, replayRuns);
       setState((current) => ({
         ...current,
+        operator,
+        candidateArena: operator.candidate_arena,
         selected,
         replayRuns,
         selectedReplayRunId: replayRunSelection.selectedReplayRunId,
@@ -439,15 +452,19 @@ export function App() {
       candidateArenaMessage: undefined
     }));
     try {
-      const candidateArena = action === "start"
-        ? await submitStartCandidateArena()
-        : action === "stop"
-          ? await submitStopCandidateArena()
-          : await submitTickCandidateArena();
+      if (action === "start") {
+        await submitStartCandidateArena();
+      } else if (action === "stop") {
+        await submitStopCandidateArena();
+      } else {
+        await submitTickCandidateArena();
+      }
+      const operator = await fetchOperatorReadModel();
+      const candidateArena = operator.candidate_arena;
       const candidates = await fetchCandidateSummaries();
-      const selected = candidateArena.leaderboard[0]
+      const selected = operator.selected_candidate ?? (candidateArena.leaderboard[0]
         ? await fetchCandidate(candidateArena.leaderboard[0].candidate_id)
-        : state.selected;
+        : state.selected);
       const replayRuns = selected ? await fetchReplayRunEvidence(selected.candidate_id) : state.replayRuns;
       const replayRunSelection = selected
         ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
@@ -460,6 +477,7 @@ export function App() {
           };
       setState((current) => ({
         ...current,
+        operator,
         candidateArena,
         candidates,
         selected,
@@ -494,12 +512,14 @@ export function App() {
       tradingRunMessage: undefined
     }));
     try {
-      const outcome = await submitTradingRun(
-        candidate,
-        paperOrderRequest === "rejected" ? { paper_order_request: paperOrderRequest } : {}
-      );
-      const selected = await fetchCandidate(candidate.candidate_id);
-      const candidateArena = await fetchCandidateArena();
+      const operator = paperOrderRequest === "rejected"
+        ? undefined
+        : await submitPaperEvidenceForCandidate(candidate.candidate_id);
+      const outcome = paperOrderRequest === "rejected"
+        ? await submitTradingRun(candidate, { paper_order_request: paperOrderRequest })
+        : undefined;
+      const selected = operator?.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      const candidateArena = operator?.candidate_arena ?? await fetchCandidateArena();
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
@@ -508,6 +528,7 @@ export function App() {
       );
       setState((current) => ({
         ...current,
+        operator: operator ?? current.operator,
         selected,
         candidateArena,
         replayRuns,
@@ -518,8 +539,8 @@ export function App() {
         replayRunValidationState: replayRunSelection.replayRunValidationState,
         runningTradingRun: false,
         tradingRunMessage: paperOrderRequest === "rejected"
-          ? `rejected paper order: ${outcome.execution_result?.status ?? "blocked"}`
-          : `started: ${outcome.trading_run.lifecycle_status ?? "running"}`
+          ? `rejected paper order: ${outcome?.execution_result?.status ?? "blocked"}`
+          : `paper evidence: ${operator?.selected_paper_evidence.status ?? "recorded"}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -760,6 +781,7 @@ export function App() {
                 onActiveViewChange={setOperatorView}
                 candidate={state.selected}
                 candidates={state.candidates}
+                operator={state.operator}
                 candidateArena={state.candidateArena}
                 tradingGatewayEnvironment={state.tradingGatewayEnvironment}
                 tradingResearchRuntime={state.tradingResearchRuntime}
@@ -1009,6 +1031,10 @@ export function CandidateArenaPanel({
   arena,
   selectedCandidateId,
   selectedCandidate,
+  researcherProvider,
+  agentProfiles = [],
+  latestCommands = [],
+  selectedPaperEvidence,
   onStart,
   onStop,
   onTick,
@@ -1022,6 +1048,10 @@ export function CandidateArenaPanel({
   arena: CandidateArenaReadModel;
   selectedCandidateId?: string;
   selectedCandidate?: CandidateInspectReadModel;
+  researcherProvider?: ResearcherProviderReadModel;
+  agentProfiles?: AgentProfileReadModel[];
+  latestCommands?: OuroborosCommandReadModel[];
+  selectedPaperEvidence?: SelectedPaperEvidenceReadModel;
   onStart?: () => void;
   onStop?: () => void;
   onTick?: () => void;
@@ -1039,15 +1069,19 @@ export function CandidateArenaPanel({
   const selectedLineage = selectedCandidate?.full_cycle_lineage;
   const selectedSystemCode = selectedCandidate?.system_code?.ref ?? selectedLineage?.generated?.system_code_ref;
   const selectedLedger = selectedCandidate?.ledger;
-  const selectedPaperEvidenceStatus = formatSelectedPaperEvidenceStatus(selectedLedger, runningPaperEvidence);
+  const selectedPaperEvidenceStatus = runningPaperEvidence
+    ? "running"
+    : selectedPaperEvidence
+      ? formatPaperEvidenceStatusLabel(selectedPaperEvidence.status)
+      : formatSelectedPaperEvidenceStatus(selectedLedger, runningPaperEvidence);
   const selectedTradingRunStatus = formatSelectedTradingRunStatus(selectedCandidate, runningPaperEvidence);
   const selectedLedgerSummary = selectedLedger?.chain_count && selectedLedger.chain_count > 0
     ? selectedLedger
     : undefined;
   return (
-    <Card aria-label="Candidate Arena">
+    <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
       <CardHeader>
-        <CardDescription>AAR researcher loop</CardDescription>
+        <CardDescription>Operator cockpit</CardDescription>
         <CardTitle>Candidate Arena</CardTitle>
         <CardDescription>
           {leader
@@ -1056,12 +1090,19 @@ export function CandidateArenaPanel({
         </CardDescription>
         <CardAction className="flex flex-wrap justify-end gap-2">
           <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
-          <Badge variant="secondary">{arena.active_researchers.length} researchers</Badge>
+          <Badge variant="secondary">{researcherProvider?.selected_provider ?? "provider pending"}</Badge>
           <Badge variant="secondary">not_live</Badge>
         </CardAction>
       </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="flex flex-wrap gap-2">
+      <CardContent className="grid gap-4">
+        <section className="grid gap-3 rounded-md bg-muted/20 p-3 md:grid-cols-[1fr_auto]" aria-label="Arena command bar">
+          <div className="grid gap-1">
+            <strong className="text-sm">Runtime command bar</strong>
+            <span className="text-xs text-muted-foreground">
+              {`Provider ${researcherProvider?.selected_provider ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 md:justify-end">
           <Button type="button" onClick={onStart} disabled={actionPending || !onStart}>
             Start arena
           </Button>
@@ -1071,7 +1112,8 @@ export function CandidateArenaPanel({
           <Button type="button" onClick={onTick} disabled={actionPending || !onTick} variant="outline">
             Run tick
           </Button>
-        </div>
+          </div>
+        </section>
         <div className="grid gap-2 md:grid-cols-3">
           <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
             <span className="text-xs font-medium text-muted-foreground">Runner</span>
@@ -1089,7 +1131,12 @@ export function CandidateArenaPanel({
             <span className="text-xs text-muted-foreground">secondary rank signal</span>
           </div>
         </div>
-        <div className="grid gap-2 overflow-x-auto" aria-label="Candidate Arena leaderboard">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
+        <section className="grid content-start gap-2 overflow-x-auto" aria-label="Candidate Arena leaderboard">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Revenue-cost leaderboard</h3>
+            <span className="text-xs text-muted-foreground">primary rank: net_revenue_usdt</span>
+          </div>
           <div className="grid min-w-[980px] grid-cols-[44px_minmax(180px,1.25fr)_minmax(120px,0.85fr)_minmax(150px,0.9fr)_minmax(120px,0.75fr)_minmax(96px,0.65fr)_minmax(86px,0.6fr)_minmax(190px,1.35fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
             <span>Rank</span>
             <span>Candidate</span>
@@ -1120,7 +1167,13 @@ export function CandidateArenaPanel({
               <span className="break-words leading-snug text-muted-foreground">{entry.latest_finding}</span>
             </button>
           ))}
-        </div>
+          {!arena.leaderboard.length && (
+            <div className="placeholder min-w-[640px]">
+              No candidates yet. Run tick to generate the first TradingSystem candidates.
+            </div>
+          )}
+        </section>
+        <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
         {selectedEntry && (
           <section className="grid gap-3 rounded-md bg-muted/25 p-3" aria-label="Selected Candidate Arena candidate">
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -1137,7 +1190,7 @@ export function CandidateArenaPanel({
                 {runningPaperEvidence ? "Running paper evidence" : "Run paper evidence"}
               </Button>
             </div>
-            <dl className="grid gap-2 md:grid-cols-4">
+            <dl className="grid gap-2 sm:grid-cols-2">
               <Field label="Direction" value={selectedEntry.direction_kind} />
               <Field label="Parent" value={selectedEntry.parent_candidate_id ?? "none"} />
               <Field label="SystemCode" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
@@ -1179,6 +1232,30 @@ export function CandidateArenaPanel({
             </dl>
           </section>
         )}
+        <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Agent provider status">
+          <h3 className="text-sm font-medium">Agent providers</h3>
+          <Field label="Researcher" value={researcherProvider?.selected_provider ?? "not selected"} />
+          <Field label="Available" value={researcherProvider?.available_providers.join(", ") ?? "unknown"} />
+          {agentProfiles.slice(0, 3).map((profile) => (
+            <Field
+              key={profile.profile_id}
+              label={profile.label}
+              value={`${profile.status} / ${profile.provider}`}
+            />
+          ))}
+        </section>
+        <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Command log">
+          <h3 className="text-sm font-medium">Command log</h3>
+          {latestCommands.length
+            ? latestCommands.slice(0, 5).map((command) => (
+                <Field
+                  key={command.command_id}
+                  label={command.command_kind}
+                  value={command.status}
+                />
+              ))
+            : <p className="text-sm text-muted-foreground">No commands recorded.</p>}
+        </section>
         <section className="grid gap-2" aria-label="Candidate Arena latest ticks">
           <h3 className="text-sm font-medium">Latest ticks</h3>
           {latestTick ? (
@@ -1196,6 +1273,8 @@ export function CandidateArenaPanel({
             <div className="placeholder">No Candidate Arena ticks recorded.</div>
           )}
         </section>
+        </aside>
+        </div>
         {message && <div className="inline-status">{message}</div>}
         {error && <div className="inline-status error">{error}</div>}
       </CardContent>
@@ -1217,6 +1296,16 @@ function formatSelectedPaperEvidenceStatus(
     return "failed";
   }
   return "not run";
+}
+
+function formatPaperEvidenceStatusLabel(status: SelectedPaperEvidenceReadModel["status"]): string {
+  if (status === "ledger_chain_complete") {
+    return "Ledger chain complete";
+  }
+  if (status === "not_run") {
+    return "not run";
+  }
+  return status;
 }
 
 function formatSelectedTradingRunStatus(
@@ -1343,6 +1432,7 @@ export function CandidateDetail({
   onActiveViewChange,
   candidate,
   candidates = [],
+  operator,
   candidateArena,
   tradingGatewayEnvironment,
   tradingResearchRuntime = defaultTradingResearchRuntime(),
@@ -1398,6 +1488,7 @@ export function CandidateDetail({
   onActiveViewChange?: (view: OperatorView) => void;
   candidate: CandidateInspectReadModel;
   candidates?: CandidateSummaryReadModel[];
+  operator?: OperatorReadModel;
   candidateArena?: CandidateArenaReadModel;
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
   tradingResearchRuntime?: TradingResearchRuntimeReadModel;
@@ -1597,6 +1688,10 @@ export function CandidateDetail({
           arena={candidateArena}
           selectedCandidateId={selectedArenaEntry?.candidate_id}
           selectedCandidate={selectedArenaCandidate}
+          researcherProvider={operator?.researcher_provider}
+          agentProfiles={operator?.agent_profiles}
+          latestCommands={operator?.latest_commands}
+          selectedPaperEvidence={operator?.selected_paper_evidence}
           onStart={onStartCandidateArena}
           onStop={onStopCandidateArena}
           onTick={onTickCandidateArena}
@@ -5461,9 +5556,9 @@ function statusTokens(normalizedValue: string): string[] {
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="field">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
+    <div className="grid min-w-0 gap-1 rounded-md bg-background/35 p-2">
+      <dt className="text-[11px] font-medium uppercase text-muted-foreground">{label}</dt>
+      <dd className="break-words text-sm leading-snug">{value}</dd>
     </div>
   );
 }
