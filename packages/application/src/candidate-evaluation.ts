@@ -10,7 +10,7 @@ import type {
   EvaluationProviderAdapter,
   EvaluationProviderFailureReason,
   EvaluationProviderResult
-} from "./providers/runtime-provider-adapter";
+} from "@ouroboros/adapters/providers/runtime-provider-adapter";
 
 export type CandidateEvaluationFailureReason =
   | EvaluationProviderFailureReason

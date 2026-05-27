@@ -6,25 +6,25 @@ import {
   CodexTradingResearchAgentAdapter,
   FixtureTradingResearchAgentAdapter,
   NoopTradingResearchAgentAdapter
-} from "../src/trading-research/agent-adapters";
+} from "@ouroboros/application/trading-research/agent-adapters";
 import {
   DockerSandboxesSbxTradingArtifactRunner,
   readTradingSystemManifest,
   runTradingArtifact
-} from "../src/trading-research/artifact-runner";
-import { evaluateTradingRun } from "../src/trading-research/evaluator";
+} from "@ouroboros/application/trading-research/artifact-runner";
+import { evaluateTradingRun } from "@ouroboros/application/trading-research/evaluator";
 import type {
   ArtifactRunResult,
   ReplayTradingScenario
-} from "../src/trading-research/types";
+} from "@ouroboros/application/trading-research/types";
 import {
   defaultReplayTradingScenarioSet,
   startReplayTradingApiProvider
-} from "../src/trading-research/replay-trading-api-provider";
+} from "@ouroboros/application/trading-research/replay-trading-api-provider";
 import {
   readNotebook,
   runTradingResearchLoop
-} from "../src/trading-research/run-trading-research";
+} from "@ouroboros/application/trading-research/run-trading-research";
 
 let tmpDir: string;
 

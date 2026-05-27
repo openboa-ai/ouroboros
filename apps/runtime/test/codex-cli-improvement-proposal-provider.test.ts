@@ -9,7 +9,7 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

@@ -8,14 +8,11 @@ import type {
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
-  listAgentProfileReadModels,
   parseAgentProfileId,
-  probeAgentProfile,
-  runAgentProfileDeviceLogin,
-  setupAgentProfile,
   type AgentProfileExecFile,
   type AgentProfileSpawnFile
-} from "./agent-profiles";
+} from "@ouroboros/application/agent-profiles";
+import { createLocalOuroborosController } from "@ouroboros/application/controllers/local-ouroboros-controller";
 
 const DEFAULT_RUNTIME_BASE_URL = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
 
@@ -102,7 +99,7 @@ export async function runOuroborosCli(
   }
 
   if (parsed.mode === "serve") {
-    await import("./main");
+    await import("../../runtime/src/main");
     return { exitCode: 0, stdout: "", stderr: "" };
   }
 
@@ -111,7 +108,7 @@ export async function runOuroborosCli(
   }
 
   if (parsed.mode === "tui") {
-    const tui = await import("./operator-tui");
+    const tui = await import("@ouroboros/operator-tui");
     await tui.runOperatorTui({
       runtimeBaseUrl: deps.runtimeBaseUrl ?? DEFAULT_RUNTIME_BASE_URL,
       fetch: deps.fetch ?? fetch
@@ -122,11 +119,12 @@ export async function runOuroborosCli(
   if (parsed.mode === "agent") {
     try {
       const store = new LocalStore(deps.storeRoot);
-      const result = await runLocalAgentCommand(parsed, {
+      const controller = createLocalOuroborosController({
         store,
         execFile: deps.profileExecFile,
         spawnFile: deps.profileSpawnFile
       });
+      const result = await controller.dispatchAgentProviderCommand(parsed);
       return {
         exitCode: 0,
         stdout: `${formatCliPayload(result, globalOptions.outputMode, formatAgentCommandResult)}\n`,
@@ -257,46 +255,6 @@ export function parseOuroborosCliArgs(args: string[]): OuroborosCliMode {
     };
   }
   throw new Error(usage());
-}
-
-async function runLocalAgentCommand(
-  command: OuroborosCliAgentMode,
-  deps: {
-    store: LocalStore;
-    execFile?: AgentProfileExecFile;
-    spawnFile?: AgentProfileSpawnFile;
-  }
-): Promise<unknown> {
-  if (command.action === "status") {
-    const profiles = await listAgentProfileReadModels(deps.store);
-    return {
-      profile: profiles.find((profile) => profile.profile_id === command.provider)
-    };
-  }
-  if (command.action === "setup") {
-    return {
-      profile: await setupAgentProfile({
-        store: deps.store,
-        profileId: command.provider
-      })
-    };
-  }
-  if (command.action === "login") {
-    return {
-      profile: await runAgentProfileDeviceLogin({
-        store: deps.store,
-        profileId: command.provider,
-        spawnFile: deps.spawnFile
-      })
-    };
-  }
-  return {
-    profile: await probeAgentProfile({
-      store: deps.store,
-      profileId: command.provider,
-      execFile: deps.execFile
-    })
-  };
 }
 
 async function fetchOperatorStatus(

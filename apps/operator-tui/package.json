@@ -1,0 +1,21 @@
+{
+  "name": "@ouroboros/operator-tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/operator-tui.tsx",
+      "import": "./src/operator-tui.tsx"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ouroboros/domain": "0.0.0",
+    "ink": "^7.0.4",
+    "react": "^19.2.1"
+  }
+}

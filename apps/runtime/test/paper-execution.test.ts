@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recordPaperExecutionResult } from "../src/paper-execution";
+import { recordPaperExecutionResult } from "@ouroboros/application/paper-execution";
 
 describe("paper execution result", () => {
   it("records a dry-run Gateway result without exchange authority", () => {

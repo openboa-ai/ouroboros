@@ -9,7 +9,7 @@ import type {
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import type { LocalStore } from "@ouroboros/local-store";
-import type { ImprovementProposalProviderAdapter } from "../providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
 import { FixtureImprovementProposalProviderAdapter } from "./fixture-improvement-proposal-provider";
 
 export interface PlanImprovementProposalFromLocalStoreInput {

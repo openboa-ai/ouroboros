@@ -1,0 +1,22 @@
+{
+  "name": "@ouroboros/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/ouroboros-cli.ts",
+      "import": "./src/ouroboros-cli.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ouroboros/application": "0.0.0",
+    "@ouroboros/domain": "0.0.0",
+    "@ouroboros/local-store": "0.0.0",
+    "@ouroboros/operator-tui": "0.0.0"
+  }
+}

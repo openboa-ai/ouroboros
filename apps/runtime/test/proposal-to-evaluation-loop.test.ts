@@ -12,11 +12,11 @@ import type {
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { FixtureImprovementProposalProviderAdapter } from "../src/research-orchestration/fixture-improvement-proposal-provider";
-import { planImprovementProposalFromLocalStore } from "../src/research-orchestration/local-store-proposal-loop";
-import { evaluateSystemCodeForResearch } from "../src/research-evaluation/system-code-research-submission";
-import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
-import type { ImprovementProposalProviderAdapter } from "../src/providers/runtime-provider-adapter";
+import { FixtureImprovementProposalProviderAdapter } from "@ouroboros/application/research-orchestration/fixture-improvement-proposal-provider";
+import { planImprovementProposalFromLocalStore } from "@ouroboros/application/research-orchestration/local-store-proposal-loop";
+import { evaluateSystemCodeForResearch } from "@ouroboros/application/research-evaluation/system-code-research-submission";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
+import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

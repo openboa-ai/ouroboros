@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, FIXTURE_SYSTEM_CODE_ID, LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
-import { CandidateArenaRunner, buildCandidateArenaReadModel, runCandidateArenaTick } from "../src/candidate-arena";
+import { CandidateArenaRunner, buildCandidateArenaReadModel, runCandidateArenaTick } from "@ouroboros/application/candidate-arena";
 import {
   BINANCE_BTCUSDT_QUERY,
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
@@ -22,19 +22,19 @@ import type {
   TradingRunRecord
 } from "@ouroboros/domain";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
-import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
-import { BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL } from "../src/trading-gateway-environment";
+import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/providers/fixture-evaluation-provider";
+import { BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL } from "@ouroboros/application/trading-gateway-environment";
 import type {
   CandidateEvaluationRequest,
   CandidateGenerationProviderResult,
   RuntimeProviderAdapter
-} from "../src/providers/runtime-provider-adapter";
+} from "@ouroboros/adapters/providers/runtime-provider-adapter";
 import type {
   AgentEditInput,
   AgentEditResult,
   TradingResearchAgentAdapter
-} from "../src/trading-research/types";
-import type { TradingResearchRuntimeAgent } from "../src/trading-research/runtime-config";
+} from "@ouroboros/application/trading-research/types";
+import type { TradingResearchRuntimeAgent } from "@ouroboros/application/trading-research/runtime-config";
 
 let tmpDir: string;
 

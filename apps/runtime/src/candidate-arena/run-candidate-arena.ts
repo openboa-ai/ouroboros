@@ -1,4 +1,4 @@
-import { runOuroborosCli } from "../ouroboros-cli";
+import { runOuroborosCli } from "@ouroboros/cli";
 
 type ArenaCommand = "status" | "start" | "stop" | "tick";
 

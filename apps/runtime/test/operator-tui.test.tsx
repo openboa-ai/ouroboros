@@ -6,7 +6,7 @@ import {
   OperatorTuiScreen,
   operatorTuiActionForInput,
   operatorTuiCommandForAction
-} from "../src/operator-tui";
+} from "@ouroboros/operator-tui";
 
 describe("Operator TUI action console", () => {
   it("renders status, leaderboard, selected candidate, provider, and command log", () => {

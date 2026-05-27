@@ -18,7 +18,7 @@ import { expectNoOperatorActionControls } from "../../../test/support/binance-no
 import type {
   CandidateGenerationProviderResult,
   RuntimeProviderAdapter
-} from "../../runtime/src/providers/runtime-provider-adapter";
+} from "@ouroboros/adapters/providers/runtime-provider-adapter";
 import { CandidateDetail } from "./App";
 
 let tmpDir: string;

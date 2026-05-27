@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OUROBOROS_COMMAND_DESCRIPTORS, type OperatorReadModel } from "@ouroboros/domain";
-import { parseOuroborosCliArgs, runOuroborosCli } from "../src/ouroboros-cli";
+import { parseOuroborosCliArgs, runOuroborosCli } from "@ouroboros/cli";
 
 let tmpDir: string;
 

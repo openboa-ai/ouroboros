@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readBinanceBtcUsdtPublicMarketLivenessSurface } from "../src/trading-substrate/binance-public-market-adapter";
+import { readBinanceBtcUsdtPublicMarketLivenessSurface } from "@ouroboros/adapters/trading-substrate/binance-public-market-adapter";
 
 describe("Binance public market liveness adapter", () => {
   it("normalizes official connector market data into a no-authority BTCUSDT substrate surface", async () => {

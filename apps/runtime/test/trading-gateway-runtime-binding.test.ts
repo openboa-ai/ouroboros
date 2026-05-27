@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL
-} from "../src/trading-gateway-environment";
+} from "@ouroboros/application/trading-gateway-environment";
 import {
   createGatewayRuntimeBinding,
   executeGatewayOrderRequest,
   LIVE_GATEWAY_DISABLED_REASON
-} from "../src/trading-gateway-runtime-binding";
+} from "@ouroboros/application/trading-gateway-runtime-binding";
 
 describe("Gateway runtime binding", () => {
   it("binds paper to Binance production public market data and fake account/execution/Ledger", async () => {

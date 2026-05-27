@@ -34,6 +34,18 @@ function listFiles(dir) {
     });
 }
 
+function importLines(body) {
+  return body
+    .split("\n")
+    .filter((line) => /^\s*(import|export)\s/.test(line));
+}
+
+function importSpecifiers(body) {
+  return importLines(body)
+    .map((line) => line.match(/from\s+["']([^"']+)["']/)?.[1] ?? line.match(/import\s+["']([^"']+)["']/)?.[1])
+    .filter(Boolean);
+}
+
 requireText("ARCHITECTURE.md", [
   "Hexagonal Architecture",
   "Clean Architecture",
@@ -66,15 +78,36 @@ requireText("packages/domain/src/index.ts", [
   "command_descriptors: readonly OuroborosCommandDescriptor[]"
 ]);
 
-requireText("apps/runtime/src/services/operator-service.ts", [
+requireText("packages/application/package.json", [
+  "\"name\": \"@ouroboros/application\""
+]);
+
+requireText("packages/adapters/package.json", [
+  "\"name\": \"@ouroboros/adapters\""
+]);
+
+requireText("apps/cli/package.json", [
+  "\"name\": \"@ouroboros/cli\""
+]);
+
+requireText("apps/operator-tui/package.json", [
+  "\"name\": \"@ouroboros/operator-tui\""
+]);
+
+requireText("packages/application/src/operator-service.ts", [
   "OperatorCommandHandlerRegistry",
   "SelectedCandidatePaperEvidencePort",
   "commandHandlers()"
 ]);
 
-requireText("apps/runtime/src/ports/operator-ports.ts", [
+requireText("packages/application/src/ports/operator-ports.ts", [
   "OperatorCommandHandlerRegistry",
   "SelectedCandidatePaperEvidencePort"
+]);
+
+requireText("packages/application/src/controllers/local-ouroboros-controller.ts", [
+  "createLocalOuroborosController",
+  "dispatchAgentProviderCommand"
 ]);
 
 const bannedControllerImports = [
@@ -93,6 +126,64 @@ for (const file of listFiles("apps/runtime/src/controllers").filter((item) => it
     if (body.includes(banned)) {
       fail(`${file}: controller imports implementation boundary ${JSON.stringify(banned)}`);
     }
+  }
+}
+
+const domainBannedImports = [
+  "@ouroboros/application",
+  "@ouroboros/adapters",
+  "@ouroboros/local-store",
+  "apps/",
+  "fastify",
+  "react",
+  "ink",
+  "@binance/"
+];
+
+for (const file of listFiles("packages/domain/src").filter((item) => item.endsWith(".ts"))) {
+  const body = importSpecifiers(read(file)).join("\n");
+  for (const banned of domainBannedImports) {
+    if (body.includes(banned)) {
+      fail(`${file}: domain imports outer layer ${JSON.stringify(banned)}`);
+    }
+  }
+}
+
+const interfaceBannedImports = [
+  "@ouroboros/adapters",
+  "@ouroboros/local-store",
+  "@binance/"
+];
+
+for (const dir of ["apps/operator-web/src", "apps/operator-tui/src"]) {
+  for (const file of listFiles(dir).filter((item) =>
+    (item.endsWith(".ts") || item.endsWith(".tsx")) && !item.includes(".test.")
+  )) {
+    const body = importSpecifiers(read(file)).join("\n");
+    for (const banned of interfaceBannedImports) {
+      if (body.includes(banned)) {
+        fail(`${file}: interface imports implementation boundary ${JSON.stringify(banned)}`);
+      }
+    }
+  }
+}
+
+const cliBody = read("apps/cli/src/ouroboros-cli.ts");
+for (const banned of ["@ouroboros/adapters", "@binance/"]) {
+  if (cliBody.includes(banned)) {
+    fail(`apps/cli/src/ouroboros-cli.ts: CLI imports implementation boundary ${JSON.stringify(banned)}`);
+  }
+}
+
+for (const expected of [
+  "packages/application/src/controllers/operator-controller.ts",
+  "packages/application/src/operator-service.ts",
+  "packages/adapters/src/providers/codex-cli-provider.ts",
+  "apps/cli/src/ouroboros-cli.ts",
+  "apps/operator-tui/src/operator-tui.tsx"
+]) {
+  if (!existsSync(path.join(root, expected))) {
+    fail(`missing layered architecture file: ${expected}`);
   }
 }
 

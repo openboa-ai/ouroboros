@@ -20,20 +20,20 @@ import type {
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
-import { runCandidateEvaluation } from "./candidate-evaluation";
-import { runCandidateGeneration } from "./candidate-materialization";
-import { CodexCliProviderAdapter } from "./providers/codex-cli-provider";
-import { FixtureEvaluationProviderAdapter } from "./providers/fixture-evaluation-provider";
+import { runCandidateEvaluation } from "@ouroboros/application/candidate-evaluation";
+import { runCandidateGeneration } from "@ouroboros/application/candidate-materialization";
+import { CodexCliProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-provider";
+import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/providers/fixture-evaluation-provider";
 import type {
   EvaluationProviderAdapter,
   RuntimeProviderAdapter
-} from "./providers/runtime-provider-adapter";
+} from "@ouroboros/adapters/providers/runtime-provider-adapter";
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
   type PaperOrderRequestFixture,
   type SandboxAdapter
-} from "./sandboxes/sandbox-adapter";
+} from "@ouroboros/adapters/sandboxes/sandbox-adapter";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
   getCandidateLatestValidationState,
@@ -41,29 +41,29 @@ import {
   getReplayRunDetail,
   getReplayRunValidationState,
   listReplayRunEvidence
-} from "./trading-candidate/replay-run-ledger";
+} from "@ouroboros/application/trading-candidate/replay-run-ledger";
 import {
   DEFAULT_PROMOTED_CANDIDATE_ROOT,
   getPromotedCandidate,
   listPromotedCandidateSummaries
-} from "./trading-candidate/promoted-candidate-bundles";
+} from "@ouroboros/application/trading-candidate/promoted-candidate-bundles";
 import {
   ReplayRunError,
   runPromotedCandidateReplay,
   type ReplayRunRecord
-} from "./trading-candidate/run-replay";
+} from "@ouroboros/application/trading-candidate/run-replay";
 import {
   getTradingSystemExecutionModeContract,
   listTradingSystemExecutionModeContracts
-} from "./trading-execution-mode-contracts";
+} from "@ouroboros/application/trading-execution-mode-contracts";
 import {
   createGatewayRuntimeBinding,
   executeGatewayOrderRequest,
   LIVE_GATEWAY_DISABLED_REASON,
   type GatewayRuntimeBinding
-} from "./trading-gateway-runtime-binding";
-import { loadTradingGatewayEnvironment } from "./trading-gateway-environment";
-import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "./trading-research/types";
+} from "@ouroboros/application/trading-gateway-runtime-binding";
+import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading-gateway-environment";
+import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "@ouroboros/application/trading-research/types";
 import {
   createTradingResearchAgentAdapter,
   fixtureTradingResearchRuntimeConfig,
@@ -71,28 +71,28 @@ import {
   type TradingResearchProbeExecFile,
   type TradingResearchRuntimeAgent,
   type TradingResearchRuntimeConfig
-} from "./trading-research/runtime-config";
+} from "@ouroboros/application/trading-research/runtime-config";
 import {
   managedAgentProfileEnv,
   type AgentProfileExecFile
-} from "./agent-profiles";
-import { runCodexImprovementProposalEvaluationDryRun } from "./research-orchestration/codex-improvement-proposal-evaluation-dry-run";
-import { FixtureImprovementProposalProviderAdapter } from "./research-orchestration/fixture-improvement-proposal-provider";
-import { runAgentTradingCycle } from "./agent-trading-cycle";
+} from "@ouroboros/application/agent-profiles";
+import { runCodexImprovementProposalEvaluationDryRun } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-evaluation-dry-run";
+import { FixtureImprovementProposalProviderAdapter } from "@ouroboros/application/research-orchestration/fixture-improvement-proposal-provider";
+import { runAgentTradingCycle } from "@ouroboros/application/agent-trading-cycle";
 import {
   buildCandidateArenaReadModel,
   CandidateArenaRunner
-} from "./candidate-arena";
-import { createOperatorController } from "./controllers/operator-controller";
+} from "@ouroboros/application/candidate-arena";
+import { createOperatorController } from "@ouroboros/application/controllers/operator-controller";
 import {
   isTradingResearchRuntimeAgent,
   OperatorService
-} from "./services/operator-service";
+} from "@ouroboros/application/operator-service";
 import {
   BinancePublicMarketSdkAdapter,
   type BinancePublicMarketDataClient
-} from "./trading-substrate/binance-public-market-adapter";
-import { safeId } from "./safe-id";
+} from "@ouroboros/adapters/trading-substrate/binance-public-market-adapter";
+import { safeId } from "@ouroboros/application/safe-id";
 
 export interface BuildServerOptions {
   store?: LocalStore;

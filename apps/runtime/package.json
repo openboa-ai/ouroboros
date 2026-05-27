@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "research:proposal:codex": "tsx src/research-orchestration/run-codex-improvement-proposal.ts",
-    "research:proposal:codex:audit": "tsx src/research-orchestration/run-codex-improvement-proposal-audit.ts",
-    "trading:research": "tsx src/trading-research/run-trading-research.ts",
+    "research:proposal:codex": "tsx ../../packages/application/src/research-orchestration/run-codex-improvement-proposal.ts",
+    "research:proposal:codex:audit": "tsx ../../packages/application/src/research-orchestration/run-codex-improvement-proposal-audit.ts",
+    "trading:research": "tsx ../../packages/application/src/trading-research/run-trading-research.ts",
     "build": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
@@ -15,6 +15,8 @@
   "dependencies": {
     "@binance/derivatives-trading-usds-futures": "^29.0.0",
     "@fastify/cors": "^11.1.0",
+    "@ouroboros/adapters": "0.0.0",
+    "@ouroboros/application": "0.0.0",
     "@ouroboros/domain": "0.0.0",
     "@ouroboros/local-store": "0.0.0",
     "fastify": "^5.6.2",
