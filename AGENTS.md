@@ -2,17 +2,20 @@
 
 ## Canonical Sources
 
-Linear is the source of truth for Ouroboros product, planning, project state, documentation, comments, project updates, and durable operating history.
+The GitHub repository on `main` is the source of truth for Ouroboros product, architecture,
+naming, API contracts, runtime behavior, tests, validation, and agent operating policy.
 
 Start every non-trivial task from:
 
-1. the active Linear issue, milestone, blockers, comments, and project updates
-2. the Ouroboros Linear project: https://linear.app/openboa/project/ouroboros-113fef53f6d1
-3. the Linear Documentation Index: https://linear.app/openboa/document/ouroboros-documentation-index-953f443725df
-4. [LINEAR.md](LINEAR.md), which maps the Project Documents
-5. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
+1. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
+2. [Project Direction](docs/project-direction.md)
+3. [Architecture Governance](docs/architecture-governance.md)
+4. [API And Command Contract](docs/api-command-contract.md)
+5. [Naming Taxonomy](docs/naming-taxonomy.md)
+6. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
 
-The repo is the implementation surface. Linear is the documentation and execution-state authority.
+Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
+it must point back to repo truth instead of replacing it.
 
 ## CandidateArena Core Doctrine
 
@@ -52,22 +55,21 @@ truth.
 | Project-scoped subagents | Explicitly requested read-only exploration or review workers for parallel evidence gathering. |
 | Hooks | Local pre-tool and post-tool safety checks; Git hooks and CI remain the final guard. |
 
-Use plugins and skills to access the authoritative system that owns the fact: Linear for project
-truth, GitHub for PR/CI/review evidence, OpenAI docs for Codex/OpenAI behavior, and browser tooling
-for rendered local UI evidence. Do not replace maintained project truth with chat memory.
+Use plugins and skills to access the system that owns each workflow fact: GitHub for repo,
+PR/CI/review evidence, Linear for issue workflow notes, OpenAI docs for Codex/OpenAI behavior, and
+browser tooling for rendered local UI evidence. Do not replace repo truth with chat memory.
 
 For any work that reads, creates, updates, comments on, audits, or writes back Linear issues,
 projects, documents, cycles, comments, or project updates, load and follow the `linear` skill first.
-Use it because Linear is the product and execution-state authority, and the skill defines the
-operating workflow: clarify the target issue/project/team, read before writing, confirm durable
-identifiers, batch related operations, and summarize the resulting Linear state with remaining
+Use it because Linear workflow needs explicit target issue/project/team context, read-before-write
+discipline, durable identifiers, related-operation batching, and a clear summary of remaining
 blockers.
 
-The purpose of the `linear` skill is to keep planning and durable operating history in Linear while
-the repo remains the implementation surface. The method is: recover the active issue and project
-context, read the relevant project documents/comments/updates, decide the exact Linear operation,
-execute that operation through the repo-local GraphQL path, and report the exact Linear objects
-changed. Repo docs or chat memory must not become a substitute for that workflow.
+The purpose of the `linear` skill is to keep issue workflow notes connected to repo truth. The
+method is: recover the active issue and project context, read relevant comments/updates, decide the
+exact Linear operation, execute that operation through the repo-local GraphQL path, and report the
+exact Linear objects changed. Linear comments and chat memory must not become substitutes for repo
+docs, code, tests, and validation.
 
 GraphQL is the main execution path for Linear operations in this repo. The `linear` skill owns the
 workflow and the `.agents/skills/linear-graphql` skill owns the repo-local execution helpers:
@@ -88,30 +90,36 @@ the main Codex worker remains responsible for the final patch, validation, and w
 
 ## Repository Responsibility
 
-The repo owns implementation truth: code, tests, fixtures, local validation scripts, compact developer-facing repo docs, executable agent instructions, and review evidence.
+The repo owns durable truth: code, tests, fixtures, local validation scripts, compact
+developer-facing docs, executable agent instructions, architecture policy, naming policy, API
+contracts, and review evidence.
 
-Linear owns project truth: Initiative, Project, Milestone, Cycle, Issue, comments, project updates, Project Documents, product brief, PRD, roadmap, source synthesis, architecture archive, active frontier ledger, and durable project outcomes.
+Linear owns workflow coordination: issues, comments, scratchpads, project boards, cycles, project
+updates, and handoff notes that point back to repo truth.
 
-When the two disagree, stop and reconcile through Linear before extending local repo docs.
+When the two disagree, reconcile by updating or linking back to the repo source of truth. Do not
+promote Linear scratchpad text above repo code, tests, and docs.
 
 ## Agent Workflow
 
 1. Recover the current branch, issue, dirty state, and nearest validation evidence.
-2. Read the active Linear frontier first: `04`, then `05`, then the active issue or project update.
-3. Read the relevant architecture, contract, source, and service documents through [LINEAR.md](LINEAR.md).
-4. Read this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`.
+2. Read this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and the relevant
+   docs under [docs](docs/project-direction.md).
+3. Read [LINEAR.md](LINEAR.md) and active Linear issue notes only when the task needs workflow
+   context or writeback.
+4. Read `.agents/skills/AGENTS.md`.
 5. Route work through `.agents/skills/AGENTS.md` when the task is multi-step or ambiguous.
-6. Keep implementation changes bounded to the active issue.
+6. Keep implementation changes bounded to the active repo issue, task, or approved plan.
 7. Run the narrowest meaningful validation, then the repo's required checks.
-8. Write durable project outcomes back to Linear through the `linear` skill and the repo-local
-   GraphQL execution path in `.agents/skills/linear-graphql`. Only update repo docs when developer
-   execution would be wrong without the local change, and pair that change with Linear writeback.
+8. Keep durable outcomes in repo code, tests, docs, and validation. Write Linear progress notes
+   through the `linear` skill and repo-local GraphQL path only when issue workflow needs it.
 
 ## Skill-First Gate
 
 Use `.agents/skills/AGENTS.md` before routing multi-step repo work. Keep `project-context`, `llm-wiki`, `writeback_needed`, `superpowers:using-superpowers`, and Skill-First Gate active.
 
-`llm-wiki` remains the durable-writeback skill name for compatibility, but its target is now Linear Project Documents, Linear comments, Linear project updates, or the minimal repo docs listed above.
+`llm-wiki` remains the durable-writeback skill name for compatibility, but its target is now repo
+docs, repo policy, or workflow notes that point back to repo truth.
 
 Default skill routing:
 
@@ -124,17 +132,21 @@ Default skill routing:
 | Implement one approved docs, code, config, or CI change | `auto-coding` |
 | Review scenarios, regressions, risks, or acceptance | `auto-qa` |
 | Decide PR readiness, landing, or reroute | `auto-promotion-protocol` |
-| Update Linear durable truth or project-document memory | `llm-wiki` |
+| Update repo durable truth or workflow memory | `llm-wiki` |
 | Design durable vocabulary or schema names | `taxonomy-design` |
 
 When an external Superpowers skill is available, use it as process support behind the same
-repo-local ownership model. Project truth still comes from Linear and this repo.
+repo-local ownership model. Project truth comes from this repo; workflow context can come from
+Linear when relevant.
 
 ## Taxonomy and Naming
 
 For durable domain names, schema families, public/persisted keys, or naming cleanup, use `.agents/skills/taxonomy-design` before implementation.
 
-Ouroboros taxonomy should be maintained as vocabulary guidance, not as a mechanical blocklist. Prefer compact canonical nouns plus explicit fields for product scope, authority, source/provenance, lifecycle, audience, and compatibility. Do not add naming/audit blockers unless an active Linear issue explicitly asks for enforcement.
+Ouroboros taxonomy should be maintained as vocabulary guidance, not as a mechanical blocklist.
+Prefer compact canonical nouns plus explicit fields for product scope, authority,
+source/provenance, lifecycle, audience, and compatibility. Do not add naming/audit blockers unless
+a repo issue explicitly asks for enforcement.
 
 Canonical Ouroboros nouns for the current product surface:
 
@@ -168,13 +180,16 @@ Use the most authoritative vocabulary source for each domain before inventing pr
 
 1. Agent, harness, AI, model, tool, MCP, guardrail, eval, trace, workflow, and memory terms should follow OpenAI and Claude/Anthropic terminology when those products have established names. Treat frontier product language as de facto standard vocabulary before coining local synonyms.
 2. Bitcoin perpetual futures and trading substrate terms should follow Binance USD-M Futures terminology for `BTCUSDT`, including account, asset, balance, position, position side, order, trade, user data stream, listenKey, margin, leverage, mark price, liquidation price, notional, `USER_DATA`, and `TRADE`.
-3. Planning and execution-state terms should follow Linear when the concept is a Linear issue, project, initiative, milestone, cycle, document, comment, status update, or project update.
-4. Other concepts should use conventional engineering, product, finance, and trading terms where they exist.
-5. Coin an Ouroboros-specific term only when the project introduces a genuinely new concept or no standard term fits. Record that decision in Linear.
+3. Planning and execution-state terms should follow GitHub when the concept is a repository,
+branch, commit, pull request, workflow, check, or review state.
+4. Linear terms should be used only when the concept is a Linear issue, project, milestone, cycle,
+document, comment, status update, or project update.
+5. Other concepts should use conventional engineering, product, finance, and trading terms where they exist.
+6. Coin an Ouroboros-specific term only when the project introduces a genuinely new concept or no standard term fits. Record that decision in repo docs and tests.
 
 At external API, persisted-schema, fixture, or connector boundaries, preserve official spelling and casing unless a compatibility layer explicitly maps it. Internal aliases can be clearer, but they must name the source term they represent.
 
-Project-specific taxonomy truth currently starts from the Linear document `37 Source Addendum - Trading Taxonomy References` and the active Linear issue that owns the change.
+Project-specific taxonomy truth starts from [Naming Taxonomy](docs/naming-taxonomy.md).
 
 ## Architecture Pattern Selection
 
@@ -204,7 +219,7 @@ system integrations belong in `packages/adapters`. UI, CLI, and TUI must use the
 read model and Ouroboros command surface, or the local Ouroboros controller for CLI-only local
 operations, instead of importing runtime internals. If a new feature touches a public command,
 provider, exchange, or evidence boundary, update the registry or port first and document the chosen
-pattern in the PR or Linear workpad.
+pattern in the PR or repo docs when it changes durable architecture.
 
 ## Validation
 
@@ -222,6 +237,5 @@ git diff --check
 
 For implementation changes, also run the relevant package tests and type checks.
 For PR completion, wait for GitHub CI and Codex review. If review leaves actionable comments, fix
-or explicitly reroute them before merge. After merge, write the durable outcome to Linear when the
-change affects project state, operating policy, source interpretation, architecture, CI evidence,
-or the active frontier.
+or explicitly reroute them before merge. After merge, update Linear only when issue workflow needs a
+progress note; durable truth remains in the merged repo state.

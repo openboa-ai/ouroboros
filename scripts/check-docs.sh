@@ -9,6 +9,13 @@ import re, subprocess, sys, tomllib
 def fail(msg): print(msg, file=sys.stderr); sys.exit(1)
 tracked = [Path(x) for x in subprocess.check_output(["git", "ls-files"], text=True).splitlines() if x]
 active = [Path(p) for p in ["AGENTS.md", "README.md", "ARCHITECTURE.md", "LINEAR.md", ".agents/AGENTS.md", ".agents/skills/AGENTS.md"]]
+active += [Path(p) for p in [
+  "docs/project-direction.md",
+  "docs/ouroboros-doctrine.md",
+  "docs/architecture-governance.md",
+  "docs/api-command-contract.md",
+  "docs/naming-taxonomy.md"
+]]
 active += sorted(Path(".agents/skills").glob("*/SKILL.md"))
 active += sorted((Path(".agents/skills") / ("llm-"+"wiki") / "references").glob("*.md"))
 def text(path): return path.read_text(encoding="utf-8", errors="ignore")
@@ -23,10 +30,10 @@ for path in tracked:
 if problems: fail("Whitespace check failed:\n"+"\n".join(problems[:200]))
 missing=[str(p) for p in active[:6] if not p.exists()]
 if missing: fail("Required minimal repo docs missing: "+", ".join(missing))
-removed=[Path("wiki"), Path("docs"), Path("knowledge"+"-index.md"), Path("knowledge"+"-log.md")]
+removed=[Path("wiki"), Path("knowledge"+"-index.md"), Path("knowledge"+"-log.md")]
 present=[str(p) for p in removed if p.exists()]
 if present: fail("Migrated long-form docs should not remain in repo: "+", ".join(present))
-forbidden=["wiki"+"/", "docs"+"/", "knowledge"+"-index", "knowledge"+"-log", "Mir"+"ror", "linear"+" -> "+"repo", "Linear"+" -> "+"repo"]
+forbidden=["wiki"+"/", "knowledge"+"-index", "knowledge"+"-log", "Mir"+"ror", "linear"+" -> "+"repo", "Linear"+" -> "+"repo"]
 hits=[]
 for path in active:
   if not path.exists(): continue
@@ -35,9 +42,9 @@ for path in active:
       if term in body: hits.append(f"{path}: {term}")
 if hits: fail("Active documents/scripts still reference migrated local documents or old flow:\n"+"\n".join(hits[:200]))
 body=text(Path("LINEAR.md"))
-required=["00 Start Here - Ouroboros Documentation Index", "01 Product Strategy - Thesis, Market, Metrics", "02 MLP-01 Brief - Scope, JTBD, Cutline", "03 MLP-01 Release Plan - Milestones and Slices", "04 Execution Ledger - Active Frontier and Handoff", "05 Project Ledger - Frontier State and Run Packet", "20 Architecture Baseline", "24 Architecture Contracts", "30 Source Library", "35 Source Synthesis", "40 Agent Operating Guide", "50 Service Docs", "linear.app/openboa/project/ouroboros"]
+required=["Linear Workflow Guide", "GitHub repository on `main` is the source of truth", "README.md", "Project Direction", "Architecture Governance", "API And Command Contract", "Naming Taxonomy", "00 Start Here - Ouroboros Documentation Index", "01 Product Strategy - Thesis, Market, Metrics", "02 MLP-01 Brief - Scope, JTBD, Cutline", "03 MLP-01 Release Plan - Milestones and Slices", "04 Execution Ledger - Active Frontier and Handoff", "05 Project Ledger - Frontier State and Run Packet", "20 Architecture Baseline", "24 Architecture Contracts", "30 Source Library", "35 Source Synthesis", "40 Agent Operating Guide", "50 Service Docs", "linear.app/openboa/project/ouroboros"]
 miss=[x for x in required if x not in body]
-if miss: fail("Linear source map missing terms: "+", ".join(miss))
+if miss: fail("Linear workflow guide missing terms: "+", ".join(miss))
 link_re=re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 broken=[]; checked=0
 for path in active:
@@ -202,6 +209,22 @@ if agent_errors: fail("Codex custom agent check failed:\n"+"\n".join(agent_error
 corpus="\n".join(text(p) for p in [Path("AGENTS.md"), Path(".agents/AGENTS.md"), Path(".agents/skills/AGENTS.md")] if p.exists())
 for term in ["llm-wiki", "writeback_needed", "project-context", ".agents/skills/AGENTS.md", "superpowers:using-superpowers", "Skill-First Gate"]:
   if term not in corpus: fail("Skill routing terms missing: "+term)
+doctrine_required=[
+  "outcome-gradable",
+  "parallel TradingSystem candidates",
+  "external Evaluation",
+  "revenue - cost",
+  "selected paper evidence",
+  "AI agents improve over time",
+  "Researcher cannot grade",
+  "TradingSystem may include an internal agent runtime",
+  "Gateway binding changes, TradingSystem identity does not",
+  "Candidate, Paper Evidence, and Live are separate states"
+]
+doctrine_corpus="\n".join(text(p) for p in [Path("README.md"), Path("docs/project-direction.md"), Path("docs/ouroboros-doctrine.md")] if p.exists())
+missing_doctrine=[term for term in doctrine_required if term not in doctrine_corpus]
+if missing_doctrine:
+  fail("Doctrine docs missing required terms: "+", ".join(missing_doctrine))
 retired_project_suffix="kai"+"ros"
 retired_project_terms=["auto"+retired_project_suffix, "Auto"+retired_project_suffix.capitalize()]
 retired_runtime_terms=["Trader"+"System", "Runtime"+"Control", "Runtime"+"Placement"]

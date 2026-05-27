@@ -64,6 +64,62 @@ requireText("ARCHITECTURE.md", [
   "Dependency Injection"
 ]);
 
+requireText("docs/project-direction.md", [
+  "GitHub repository on `main` is the source of truth",
+  "outcome-gradable",
+  "CandidateArena",
+  "parallel TradingSystem candidates",
+  "selected candidate paper evidence",
+  "Live trading, private account reads"
+]);
+
+requireText("docs/ouroboros-doctrine.md", [
+  "AI agents improve over time",
+  "outcome-gradable",
+  "parallel TradingSystem candidates",
+  "external Evaluation",
+  "revenue - cost",
+  "selected paper evidence",
+  "TradingSystem may include an internal agent runtime",
+  "Researcher cannot grade",
+  "Gateway binding changes, TradingSystem identity does not",
+  "Candidate, Paper Evidence, and Live are separate states",
+  "Reference Lineage"
+]);
+
+requireText("docs/architecture-governance.md", [
+  "Domain -> Application -> Adapters -> Controllers -> Interfaces",
+  "Hexagonal Architecture",
+  "Clean Architecture",
+  "Layered Architecture",
+  "Domain-Driven Design",
+  "CQRS",
+  "Strategy",
+  "Factory",
+  "Builder",
+  "Adapter",
+  "Decorator",
+  "Observer",
+  "Middleware",
+  "Registry",
+  "Plugin",
+  "Dependency Injection"
+]);
+
+requireText("docs/api-command-contract.md", [
+  "GET /api/operator",
+  "POST /api/commands",
+  "OUROBOROS_COMMAND_REGISTRY",
+  "OperatorReadModel"
+]);
+
+requireText("docs/naming-taxonomy.md", [
+  "Canonical Nouns",
+  "`CandidateArena`",
+  "`OuroborosCommand`",
+  "`OperatorReadModel`"
+]);
+
 requireText("AGENTS.md", [
   "Architecture Pattern Selection",
   "Interfaces call controllers",
@@ -71,6 +127,21 @@ requireText("AGENTS.md", [
   "Services orchestrate use cases",
   "Adapters implement ports"
 ]);
+
+for (const file of ["AGENTS.md", "README.md", "ARCHITECTURE.md", "LINEAR.md"]) {
+  const body = read(file);
+  for (const retired of [
+    "Linear is the source of truth",
+    "Linear owns product truth",
+    "Linear owns project truth",
+    "Linear Project Documents own",
+    "Linear is the documentation and execution-state authority"
+  ]) {
+    if (body.includes(retired)) {
+      fail(`${file}: retired Linear authority wording ${JSON.stringify(retired)}`);
+    }
+  }
+}
 
 requireText("packages/domain/src/index.ts", [
   "export const OUROBOROS_COMMAND_REGISTRY",

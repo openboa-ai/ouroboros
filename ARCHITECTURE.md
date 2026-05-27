@@ -83,7 +83,10 @@ When adding a feature, choose the smallest pattern that solves the concrete exte
 add a pattern because it is available. If a feature changes a public command, provider, exchange,
 or evidence boundary, update the registry/port first, then implement the adapter or service.
 
-This file is a compact development map. Linear Project Documents own the full architecture archive, active contracts, source synthesis, product brief, and historical decisions.
+This file is a compact development map. The canonical architecture contract lives in
+[Architecture Governance](docs/architecture-governance.md), with API naming in
+[API And Command Contract](docs/api-command-contract.md) and vocabulary in
+[Naming Taxonomy](docs/naming-taxonomy.md).
 
 ## Local Layers
 
@@ -105,15 +108,12 @@ control vs OrderRequest generation, provider output as trace material rather tha
 persistence with enough attribution to replay why state exists. Docker, Compose, Docker Sandboxes
 `sbx`, placement, adapter, and host paths stay below the Sandbox boundary.
 
-## Linear Architecture Sources
+## Repo Architecture Sources
 
-- 20 Architecture Baseline - System Map and Runtime Model: https://linear.app/openboa/document/architecture-active-baseline-mirror-01-ff4804a6d25c
-- 21 Architecture Baseline - Agent, Control, Evaluation: https://linear.app/openboa/document/architecture-active-baseline-mirror-02-41c1aaff0f8f
-- 22 Architecture Baseline - Foundation and Trading Substrate: https://linear.app/openboa/document/architecture-active-baseline-mirror-03-31ac0895169f
-- 23 Architecture Decisions - ADRs: https://linear.app/openboa/document/architecture-adr-mirror-b516f7432828
-- 24 Architecture Contracts - Core Through Evidence: https://linear.app/openboa/document/architecture-specs-mirror-01-d18b7d17d45d
-- 25 Architecture Contracts - Promotion Through Substrate: https://linear.app/openboa/document/architecture-specs-mirror-02-e71a72691597
-- 26 Architecture Contracts - Index and Remaining Specs: https://linear.app/openboa/document/architecture-specs-mirror-03-6136fc24c533
+- [Project Direction](docs/project-direction.md)
+- [Architecture Governance](docs/architecture-governance.md)
+- [API And Command Contract](docs/api-command-contract.md)
+- [Naming Taxonomy](docs/naming-taxonomy.md)
 
 ## Validation Surface
 

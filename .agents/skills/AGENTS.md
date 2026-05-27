@@ -32,9 +32,9 @@ Recover produces state evidence. Context names pages read. Execute produces diff
 3. If naming or taxonomy is the source of ambiguity, use `taxonomy-design`.
 4. If the task is already bounded, use the matching worker directly.
 5. Before stopping, decide `writeback_needed: yes/no`.
-6. If `writeback_needed: yes`, route to `llm-wiki`, load the authoritative system skill such as
-   `linear`, and execute Linear operations through the repo-local GraphQL path when Linear owns the
-   durable fact.
+6. If `writeback_needed: yes`, route to `llm-wiki`. Durable facts should be written to repo docs,
+   tests, or policy first; use workflow tools such as Linear only to record issue progress and link
+   back to repo truth.
 
 ## Codex Feature Routing
 
@@ -58,7 +58,8 @@ This is the registry-level Skill-First Gate. `superpowers:using-superpowers` map
 
 ## PR-Unit Conductor Mode
 
-When a repo has a project state document, `auto-project` uses it as the first operational state source after branch status. Product docs own product truth. Architecture docs own design truth. Skills own workflow, not truth.
+When a repo has a project state document, `auto-project` uses it after branch status. Repo product
+docs own product truth. Repo architecture docs own design truth. Skills own workflow, not truth.
 
 ## Skill Quality Standard
 
@@ -69,11 +70,11 @@ Every `SKILL.md` must be a valid Agent Skill and stay cheap to discover.
 - Keep `description` under 1024 characters, start it with `Use when`, and describe user intent, trigger context, and ownership boundary. Prefer one precise sentence over a generic capability summary.
 - Quote frontmatter values that contain YAML-sensitive punctuation such as `: `.
 - Keep the body focused on `Role`, `Workflow`, `Required Output`, `Handoff`, and `Hard Boundaries`. Put detailed examples or long references in one-hop `references/` files and say exactly when to read them.
-- Keep each skill generic. Skills must not embed project-specific product truth; read root `AGENTS.md`, `README.md`, `LINEAR.md`, and maintained project documents for project context.
+- Keep each skill generic. Skills must not embed project-specific product truth; read root `AGENTS.md`, `README.md`, `LINEAR.md`, and maintained repo docs for project context.
 
 ## Mandatory llm-wiki Gate
 
-Use `llm-wiki` when durable product/design decisions, source interpretation, branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy, active/historical documentation boundary, read-path, or stale-term cleanup must survive chat. For Linear-owned facts, select the `linear` skill first and use `linear-graphql` as the repo-local execution path.
+Use `llm-wiki` when durable product/design decisions, source interpretation, branch/task/PR/run/release outcome, CI or QA result, skill routing, harness policy, active/historical documentation boundary, read-path, or stale-term cleanup must survive chat. For issue workflow notes, select the relevant tracker skill and use the repo-local execution path when available.
 
 ## Handoff Packet
 
