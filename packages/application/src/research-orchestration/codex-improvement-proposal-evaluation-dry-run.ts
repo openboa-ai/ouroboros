@@ -4,16 +4,13 @@ import type {
   SandboxRecord,
   TradingEvaluationResultRecord
 } from "@ouroboros/domain";
-import { LocalStore } from "@ouroboros/local-store";
 import {
   evaluateSystemCodeForResearch,
   type SystemCodeResearchEvaluationOutcome
 } from "../research-evaluation/system-code-research-submission";
 import { safeId } from "../safe-id";
-import {
-  DeterministicSandboxAdapter,
-  type SandboxAdapter
-} from "@ouroboros/adapters/sandboxes/sandbox-adapter";
+import type { SandboxAdapterPort } from "../ports/sandbox-ports";
+import type { OuroborosStorePort } from "../ports/store-ports";
 import {
   codexImprovementProposalDryRunTask,
   runCodexImprovementProposalDryRun,
@@ -23,7 +20,7 @@ import {
 import type { PlanImprovementProposalFromLocalStoreOutcome } from "./local-store-proposal-loop";
 
 export interface CodexImprovementProposalEvaluationDryRunInput extends CodexImprovementProposalDryRunInput {
-  runtime_adapter?: SandboxAdapter;
+  runtime_adapter?: SandboxAdapterPort;
   sandbox_id?: string;
   sandbox_name?: string;
   sandbox_placement_id?: string;
@@ -59,11 +56,19 @@ export type CodexImprovementProposalEvaluationDryRunOutcome =
 export async function runCodexImprovementProposalEvaluationDryRun(
   input: CodexImprovementProposalEvaluationDryRunInput = {}
 ): Promise<CodexImprovementProposalEvaluationDryRunOutcome> {
-  const store = input.store ?? new LocalStore(input.store_root);
+  const store = input.store;
   const idempotencyKey = input.idempotency_key ?? "codex-improvement-proposal-evaluation-dry-run";
   const createdAt = input.created_at ?? new Date().toISOString();
   const submittedAt = input.submitted_at ?? createdAt;
   const suffix = safeId(idempotencyKey);
+  if (!store) {
+    return {
+      status: "failed",
+      store_root: input.store_root ?? "",
+      idempotency_key: idempotencyKey,
+      failure_reason: "store_port_required"
+    };
+  }
 
   const proposalDryRun = await runCodexImprovementProposalDryRun({
     ...input,
@@ -81,9 +86,16 @@ export async function runCodexImprovementProposalEvaluationDryRun(
     };
   }
 
-  const runtimeAdapter = input.runtime_adapter ?? new DeterministicSandboxAdapter({
-    allowedSystemCodeIds: [proposalDryRun.outcome.system_code.system_code_id]
-  });
+  const runtimeAdapter = input.runtime_adapter;
+  if (!runtimeAdapter) {
+    return {
+      status: "failed",
+      store_root: store.root(),
+      idempotency_key: idempotencyKey,
+      failure_reason: "sandbox_adapter_port_required",
+      proposal_dry_run: proposalDryRun
+    };
+  }
   const runtimeStart = await runtimeAdapter.startArtifactInstance({
     artifact: proposalDryRun.outcome.system_code,
     instance_id: input.sandbox_id ?? `sandbox-codex-research-${suffix}`,
@@ -142,7 +154,7 @@ export async function runCodexImprovementProposalEvaluationDryRun(
 }
 
 async function persistEvaluationOutcome(
-  store: LocalStore,
+  store: OuroborosStorePort,
   outcome: SystemCodeResearchEvaluationOutcome
 ): Promise<void> {
   await store.recordExperimentRun(outcome.experiment);

@@ -55,6 +55,5 @@ disabled until a future repo issue explicitly enables that authority.
 - Do not move back to improving one best artifact in place.
 - Do not treat provider output, generated comments, or candidate self-report as proof.
 - Do not add new strategy families just to make the leaderboard look richer.
-- Do not expose fixture, full-cycle, or replay-only compatibility controls as the primary product
-  workflow.
+- Do not expose fixture, full-cycle, or replay-only controls as the primary product workflow.
 - Do not enable live/private Binance authority in CandidateArena work.

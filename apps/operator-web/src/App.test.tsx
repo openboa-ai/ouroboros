@@ -1546,7 +1546,7 @@ describe("CandidateDetail", () => {
     expect(researchHtml).not.toContain("Trading cockpit");
 
     expect(detailsHtml).toContain("Details");
-    expect(detailsHtml).toContain("Full-cycle compatibility");
+    expect(detailsHtml).toContain("Agent cycle controls");
     expect(detailsHtml).toContain("Run next cycle");
     expect(detailsHtml).toContain("full cycle completed: running");
     expect(detailsHtml).toContain("Gateway");

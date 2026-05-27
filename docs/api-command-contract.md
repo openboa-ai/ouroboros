@@ -5,7 +5,7 @@ The primary operator contract is shared by CLI, TUI, Web UI, and runtime HTTP:
 - `GET /api/operator`
 - `POST /api/commands`
 
-Compatibility routes can remain, but new product-facing actions must use the command contract.
+Mutation aliases are not product API. Product-facing actions use the command contract.
 Commands are operator controls over the doctrine, not provider commands.
 
 ## Command Authority
@@ -18,9 +18,13 @@ Current command groups:
 
 - `arena`: status, start, stop, tick. `arena.tick` is one research round: candidate generation,
   external Evaluation, leaderboard update, findings, and lineage.
-- `candidate`: select, run selected paper evidence. `candidate.select` chooses one candidate for
-  proof, and `candidate.paper_evidence.run` creates paper Gateway/Ledger evidence for that selected
-  candidate only.
+- `candidate`: select, run selected paper evidence, run candidate evaluation, run candidate replay.
+  `candidate.select` chooses one candidate for proof, and `candidate.paper_evidence.run` creates
+  paper Gateway/Ledger evidence for that selected candidate only.
+- `trading_run`: start, observe, stop paper trading runs through command dispatch.
+- `run_control`: record lifecycle control decisions and audit evidence.
+- `trading_substrate`: record private-readiness posture without enabling private/live authority.
+- `sandbox`: start or stop sandbox execution through command dispatch.
 - `agent_provider`: managed provider status, setup, login start, probe
 - `researcher`: researcher provider selection
 
@@ -36,11 +40,38 @@ login, or exchange behavior.
 Candidate, Paper Evidence, and Live are separate states in every operator surface. `Run paper
 evidence` is proof gathering, not live promotion.
 
-## Compatibility Policy
+## Resource Reads
 
-Existing compatibility routes remain available while they delegate to the same application services
-or command/query controllers. Compatibility is allowed for older scripts and tests, not as a reason
-to add new primary workflows outside `/api/operator` and `/api/commands`.
+Resource controllers are read-only projections. They expose detail screens and developer evidence
+without creating candidates, paper evidence, provider login, sandbox mutation, or exchange behavior.
+
+Canonical resource reads:
+
+- `GET /api/candidates`
+- `GET /api/candidates/:candidate_id`
+- `GET /api/candidates/:candidate_id/evaluations`
+- `GET /api/evaluations/:evaluation_id`
+- `GET /api/candidates/:candidate_id/replay-runs`
+- `GET /api/replay-runs/:run_id`
+- `GET /api/replay-runs/:run_id/validation-state`
+- `GET /api/replay-runs/:run_id/comparison`
+- `GET /api/trading-runs/:trading_run_id`
+- `GET /api/sandboxes`
+- `GET /api/sandboxes/:sandbox_id`
+- `GET /api/sandboxes/:sandbox_id/logs`
+- `GET /api/gateway/environment`
+- `GET /api/trading-substrate/order-fill/latest`
+- `GET /api/trading-substrate/public-market/latest`
+- `GET /api/trading-substrate/private-readiness/latest`
+- `GET /api/trading-substrate/private-readiness-posture/latest`
+- `GET /api/trading-substrate/account-position-risk/latest`
+
+## Removed Routes
+
+Removed primary routes such as `/api/candidate-arena*`, `/api/trading-systems/*`,
+`/api/candidate-generation-runs`, and `/api/candidate-materialization-attempts` are not product
+contracts. Repo-owned interfaces must use mutations through `/api/commands` and reads through the
+resource controllers above.
 
 The product-facing command name is `ouroboros`. Adapter names such as Codex, fixture, Binance, or
 future Claude Code remain provider settings or implementation details unless the domain registry

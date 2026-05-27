@@ -91,7 +91,7 @@ try {
     await verifyRawSecretRejection();
 
     cleanupSandboxNames.add(sandboxA);
-    const startA = await api("POST", "/api/sandboxes", {
+    const startA = await commandApi("sandbox.start", {
       idempotency_key: sandboxA,
       adapter_kind: "docker_sandboxes_sbx",
       system_code_id: artifactId,
@@ -106,7 +106,7 @@ try {
     assertLifecycleRunning("runtime API start A", startA.sandbox);
 
     cleanupSandboxNames.add(sandboxB);
-    const startB = await api("POST", "/api/sandboxes", {
+    const startB = await commandApi("sandbox.start", {
       idempotency_key: sandboxB,
       adapter_kind: "docker_sandboxes_sbx",
       system_code_id: artifactId,
@@ -133,11 +133,15 @@ try {
     const logsB = await waitForRuntimeLogsHeartbeat("runtime API logs B", instanceB);
     printJson("runtime API logs B", logsB);
 
-    const stopA = await api("POST", `/api/sandboxes/${instanceA}/stop`);
+    const stopA = await commandApi("sandbox.stop", {
+      sandbox_id: instanceA
+    });
     printJson("runtime API stop A response", stopA);
     printCommandEvidence("runtime API stop A command evidence", stopA.sandbox.command_evidence);
     assertLifecycleStopped("runtime API stop A", stopA.sandbox);
-    const stopB = await api("POST", `/api/sandboxes/${instanceB}/stop`);
+    const stopB = await commandApi("sandbox.stop", {
+      sandbox_id: instanceB
+    });
     printJson("runtime API stop B response", stopB);
     printCommandEvidence("runtime API stop B command evidence", stopB.sandbox.command_evidence);
     assertLifecycleStopped("runtime API stop B", stopB.sandbox);
@@ -292,11 +296,26 @@ async function apiExpectStatus(label, method, route, payload, expectedStatus) {
   return json;
 }
 
+async function commandApi(commandKind, payload) {
+  const response = await api("POST", "/api/commands", {
+    command_kind: commandKind,
+    payload
+  });
+  return response.result ?? response;
+}
+
+async function commandApiExpectStatus(label, commandKind, payload, expectedStatus) {
+  const response = await apiExpectStatus(label, "POST", "/api/commands", {
+    command_kind: commandKind,
+    payload
+  }, expectedStatus);
+  return response.result ?? response;
+}
+
 async function verifyRawSecretRejection() {
-  const response = await apiExpectStatus(
+  const response = await commandApiExpectStatus(
     "runtime API raw secret rejection probe",
-    "POST",
-    "/api/sandboxes",
+    "sandbox.start",
     {
       ["idempotency_" + "key"]: "ouro-s5-raw-secret-rejection",
       adapter_kind: "docker_sandboxes_sbx",

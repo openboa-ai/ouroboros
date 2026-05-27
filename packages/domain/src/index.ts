@@ -2360,6 +2360,15 @@ export type OuroborosCommandKind =
   | "arena.tick"
   | "candidate.select"
   | "candidate.paper_evidence.run"
+  | "candidate.evaluation.run"
+  | "candidate.replay.run"
+  | "trading_run.start"
+  | "trading_run.observe"
+  | "trading_run.stop"
+  | "run_control.record"
+  | "private_readiness_posture.record"
+  | "sandbox.start"
+  | "sandbox.stop"
   | "agent_provider.status"
   | "agent_provider.setup"
   | "agent_provider.login.start"
@@ -2369,6 +2378,10 @@ export type OuroborosCommandKind =
 export type OuroborosCommandGroup =
   | "arena"
   | "candidate"
+  | "trading_run"
+  | "run_control"
+  | "trading_substrate"
+  | "sandbox"
   | "agent_provider"
   | "researcher";
 
@@ -2392,6 +2405,15 @@ export const OUROBOROS_COMMAND_KINDS = [
   "arena.tick",
   "candidate.select",
   "candidate.paper_evidence.run",
+  "candidate.evaluation.run",
+  "candidate.replay.run",
+  "trading_run.start",
+  "trading_run.observe",
+  "trading_run.stop",
+  "run_control.record",
+  "private_readiness_posture.record",
+  "sandbox.start",
+  "sandbox.stop",
   "agent_provider.status",
   "agent_provider.setup",
   "agent_provider.login.start",
@@ -2446,6 +2468,78 @@ export const OUROBOROS_COMMAND_DESCRIPTORS = [
     label: "Run selected paper evidence",
     availability: "controller",
     requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "candidate.evaluation.run",
+    group: "candidate",
+    label: "Run candidate evaluation",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "candidate.replay.run",
+    group: "candidate",
+    label: "Run candidate replay",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "trading_run.start",
+    group: "trading_run",
+    label: "Start paper trading run",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "trading_run.observe",
+    group: "trading_run",
+    label: "Observe trading run",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "trading_run.stop",
+    group: "trading_run",
+    label: "Stop trading run",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "run_control.record",
+    group: "run_control",
+    label: "Record run control",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "private_readiness_posture.record",
+    group: "trading_substrate",
+    label: "Record private readiness posture",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "sandbox.start",
+    group: "sandbox",
+    label: "Start sandbox",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "sandbox.stop",
+    group: "sandbox",
+    label: "Stop sandbox",
+    availability: "controller",
+    requires_candidate_id: false,
     authority_status: "not_live"
   },
   {

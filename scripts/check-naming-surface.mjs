@@ -205,14 +205,29 @@ checkRequired("packages/domain/src/index.ts", [
   "export const OUROBOROS_COMMAND_REGISTRY",
   "export interface OperatorReadModel"
 ]);
-checkRequired("apps/runtime/src/server.ts", [
-  "/api/trading-systems/:system_id/trading-runs",
+checkRequired("apps/runtime/src/controllers/core-controller.ts", [
+  "/api/operator",
+  "/api/commands",
+  "/api/gateway/environment"
+]);
+checkRequired("apps/runtime/src/controllers/resource-controller.ts", [
+  "/api/candidates",
+  "/api/candidates/:candidate_id",
+  "/api/candidates/:candidate_id/evaluations",
+  "/api/evaluations/:evaluation_id",
+  "/api/candidates/:candidate_id/replay-runs",
+  "/api/replay-runs/:run_id",
+  "/api/replay-runs/:run_id/validation-state",
+  "/api/replay-runs/:run_id/comparison",
   "/api/trading-runs/:run_id",
-  "/api/trading-runs/:run_id/observe",
-  "/api/trading-runs/:run_id/stop",
-  "/api/trading-systems/:system_id/improvements",
-  "/api/trading-systems/:system_id/run-control",
-  "/api/sandboxes"
+  "/api/sandboxes",
+  "/api/sandboxes/:sandbox_id",
+  "/api/sandboxes/:sandbox_id/logs",
+  "/api/trading-substrate/order-fill/latest",
+  "/api/trading-substrate/public-market/latest",
+  "/api/trading-substrate/private-readiness/latest",
+  "/api/trading-substrate/private-readiness-posture/latest",
+  "/api/trading-substrate/account-position-risk/latest"
 ]);
 checkRequired("apps/operator-web/src/App.tsx", [
   "Start trading run",

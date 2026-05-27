@@ -9,7 +9,6 @@ import {
   type OuroborosCommandRecord,
   type ResearcherProviderReadModel
 } from "@ouroboros/domain";
-import type { LocalStore } from "@ouroboros/local-store";
 import {
   listAgentProfileReadModels,
   parseAgentProfileProvider,
@@ -22,8 +21,10 @@ import { buildCandidateArenaReadModel, type CandidateArenaRunner } from "./candi
 import type {
   OperatorCommandExecution,
   OperatorCommandHandlerRegistry,
+  OperatorMutationPort,
   SelectedCandidatePaperEvidencePort
 } from "./ports/operator-ports";
+import type { OuroborosStorePort } from "./ports/store-ports";
 import { safeId } from "./safe-id";
 import type { TradingResearchRuntimeAgent } from "./trading-research/runtime-config";
 
@@ -39,9 +40,10 @@ export class OperatorCommandError extends Error {
 }
 
 export interface OperatorServiceOptions {
-  store: LocalStore;
+  store: OuroborosStorePort;
   candidateArenaRunner: CandidateArenaRunner;
   paperEvidenceAdapter: SelectedCandidatePaperEvidencePort;
+  mutationPort?: OperatorMutationPort;
   agentProfileExecFile?: AgentProfileExecFile;
 }
 
@@ -203,6 +205,15 @@ export class OperatorService {
           summary: `Paper evidence recorded for ${candidateId}.`
         };
       },
+      "candidate.evaluation.run": (payload) => this.executeMutationPort("candidate.evaluation.run", payload),
+      "candidate.replay.run": (payload) => this.executeMutationPort("candidate.replay.run", payload),
+      "trading_run.start": (payload) => this.executeMutationPort("trading_run.start", payload),
+      "trading_run.observe": (payload) => this.executeMutationPort("trading_run.observe", payload),
+      "trading_run.stop": (payload) => this.executeMutationPort("trading_run.stop", payload),
+      "run_control.record": (payload) => this.executeMutationPort("run_control.record", payload),
+      "private_readiness_posture.record": (payload) => this.executeMutationPort("private_readiness_posture.record", payload),
+      "sandbox.start": (payload) => this.executeMutationPort("sandbox.start", payload),
+      "sandbox.stop": (payload) => this.executeMutationPort("sandbox.stop", payload),
       "agent_provider.status": async (payload) => {
         const provider = optionalCommandProvider(payload);
         const profiles = await listAgentProfileReadModels(this.options.store);
@@ -278,6 +289,23 @@ export class OperatorService {
           summary: `Researcher provider selected: ${provider}.`
         };
       }
+    };
+  }
+
+  private async executeMutationPort(
+    commandKind: OuroborosCommandKind,
+    payload: Record<string, unknown> | undefined
+  ): Promise<OperatorCommandExecution> {
+    if (!this.options.mutationPort) {
+      throw new OperatorCommandError(501, "operator_mutation_not_configured", { command_kind: commandKind });
+    }
+    const response = await this.options.mutationPort.run(commandKind, payload);
+    if (response.statusCode >= 400) {
+      throw new OperatorCommandError(response.statusCode, "operator_mutation_failed", response.body);
+    }
+    return {
+      result: response.body,
+      summary: `${commandKind} completed.`
     };
   }
 }

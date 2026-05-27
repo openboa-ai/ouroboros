@@ -1466,8 +1466,8 @@ function FullCycleDeveloperControls({
   }
   return (
     <InfoSection
-      title="Full-cycle compatibility"
-      summary="Compatibility path for legacy full-cycle runs; Candidate Arena is the primary research workflow."
+      title="Agent cycle controls"
+      summary="Developer controls for a selected candidate paper run; Candidate Arena is the primary research workflow."
       badge="developer"
     >
       <div className="grid gap-3">

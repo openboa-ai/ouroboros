@@ -8,6 +8,8 @@ import {
   codexImprovementProposalDryRunFixtureIds
 } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run";
 import { runCodexImprovementProposalEvaluationDryRun } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-evaluation-dry-run";
+import { DeterministicSandboxAdapter } from "@ouroboros/adapters/sandboxes/sandbox-adapter";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
@@ -27,7 +29,17 @@ describe("Codex research proposal evaluation dry-run", () => {
     await writeFakeCodex(fakeCodex);
 
     const outcome = await runCodexImprovementProposalEvaluationDryRun({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
+      provider_adapter: new CodexCliImprovementProposalProviderAdapter({
+        workingDirectory: tmpDir,
+        command: fakeCodex
+      }),
+      runtime_adapter: new DeterministicSandboxAdapter({
+        allowedSystemCodeIds: ["research-system-code-proposal-0eafd77ae629bb67"],
+        allowedArtifactRoots: [process.cwd()],
+        allowedCapabilityPolicyIds: ["provider-improvement-proposal"]
+      }),
       working_directory: tmpDir,
       codex_command: fakeCodex,
       idempotency_key: "codex-research-evaluation-success",
@@ -37,9 +49,8 @@ describe("Codex research proposal evaluation dry-run", () => {
       runtime_interval_ms: 500
     });
 
-    expect(outcome.status).toBe("evaluated");
     if (outcome.status !== "evaluated") {
-      throw new Error("expected evaluated Codex research proposal dry-run");
+      throw new Error(`expected evaluated Codex research proposal dry-run: ${JSON.stringify(outcome)}`);
     }
 
     expect(outcome.proposal.proposal.authority_status).toBe("proposal_only");

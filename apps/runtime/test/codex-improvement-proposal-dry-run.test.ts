@@ -40,6 +40,7 @@ describe("Codex research proposal dry-run command runner", () => {
     });
 
     const outcome = await runCodexImprovementProposalDryRun({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-dry-run-command-success",
@@ -93,6 +94,7 @@ describe("Codex research proposal dry-run command runner", () => {
     });
 
     const outcome = await runCodexImprovementProposalDryRun({
+      store: new LocalStore(tmpDir),
       store_root: tmpDir,
       provider_adapter: providerAdapter,
       idempotency_key: "codex-research-dry-run-command-missing",

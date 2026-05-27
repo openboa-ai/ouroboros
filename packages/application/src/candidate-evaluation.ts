@@ -1,20 +1,19 @@
 import type { CandidateEvaluationRunOutcome } from "@ouroboros/domain";
 import {
   candidateEvaluationRunRecordId,
-  LocalStoreError,
-  type LocalStore,
-  type LocalStoreErrorCode
-} from "@ouroboros/local-store";
+  isStoreErrorLike,
+  type OuroborosStorePort
+} from "./ports/store-ports";
 import type {
   CandidateEvaluationRequest,
   EvaluationProviderAdapter,
   EvaluationProviderFailureReason,
   EvaluationProviderResult
-} from "@ouroboros/adapters/providers/runtime-provider-adapter";
+} from "./ports/provider-ports";
 
 export type CandidateEvaluationFailureReason =
   | EvaluationProviderFailureReason
-  | LocalStoreErrorCode
+  | string
   | "evaluation_store_failed";
 
 export type CandidateEvaluationRuntimeOutcome =
@@ -38,7 +37,7 @@ export type CandidateEvaluationRuntimeOutcome =
     };
 
 export async function runCandidateEvaluation(
-  store: LocalStore,
+  store: OuroborosStorePort,
   evaluationProviderAdapter: EvaluationProviderAdapter,
   request: CandidateEvaluationRequest
 ): Promise<CandidateEvaluationRuntimeOutcome> {
@@ -97,7 +96,7 @@ export async function runCandidateEvaluation(
       evaluation
     };
   } catch (error) {
-    if (error instanceof LocalStoreError) {
+    if (isStoreErrorLike(error)) {
       return {
         status: "failed",
         failure_reason: error.code,

@@ -20,3 +20,10 @@ export interface SelectedCandidatePaperEvidencePort {
     body: Record<string, unknown>;
   }>;
 }
+
+export interface OperatorMutationPort {
+  run(commandKind: OuroborosCommandKind, payload: Record<string, unknown> | undefined): Promise<{
+    statusCode: number;
+    body: Record<string, unknown>;
+  }>;
+}

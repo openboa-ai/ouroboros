@@ -5,7 +5,7 @@ import type {
   ImprovementProposalProviderResult,
   Ref
 } from "@ouroboros/domain";
-import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "../ports/provider-ports";
 import { safeId } from "../safe-id";
 import { DeterministicImprovementProposalPlanner } from "./deterministic-proposal-planner";
 
