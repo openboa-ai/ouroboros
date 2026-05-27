@@ -21,6 +21,7 @@ import type {
   RunControlAuditInput,
   TradingRunRecord
 } from "@ouroboros/domain";
+import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
 import { FixtureEvaluationProviderAdapter } from "../src/providers/fixture-evaluation-provider";
 import { BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL } from "../src/trading-gateway-environment";
 import type {
@@ -2350,6 +2351,11 @@ describe("runtime read-only API", () => {
     expect(initialOperator.statusCode).toBe(200);
     expect(initialOperator.json()).toMatchObject({
       operator: {
+        command_descriptors: expect.arrayContaining(
+          OUROBOROS_COMMAND_KINDS.map((commandKind) => expect.objectContaining({
+            command_kind: commandKind
+          }))
+        ),
         candidate_arena: {
           runner_status: "stopped",
           tick_count: 0,

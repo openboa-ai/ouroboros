@@ -1,5 +1,6 @@
 import type {
   ImprovementReadModel,
+  AgentProfileProviderKind,
   CandidateArenaReadModel,
   LedgerInput,
   LedgerReadModel,
@@ -151,7 +152,39 @@ export async function runPaperEvidenceForCandidate(candidateId: string): Promise
   return body.operator;
 }
 
-async function submitOuroborosCommand(
+export async function setupAgentProvider(provider: AgentProfileProviderKind): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "agent_provider.setup",
+    payload: { provider }
+  });
+  return body.operator;
+}
+
+export async function probeAgentProvider(provider: AgentProfileProviderKind): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "agent_provider.probe",
+    payload: { provider }
+  });
+  return body.operator;
+}
+
+export async function startAgentProviderLogin(provider: AgentProfileProviderKind): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "agent_provider.login.start",
+    payload: { provider }
+  });
+  return body.operator;
+}
+
+export async function selectResearcherProvider(provider: "codex" | "fixture"): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "researcher.provider.select",
+    payload: { provider }
+  });
+  return body.operator;
+}
+
+export async function submitOuroborosCommand(
   request: OuroborosCommandRequest
 ): Promise<{ operator: OperatorReadModel; result?: unknown }> {
   const response = await fetch(`${runtimeBaseUrl}/api/commands`, {

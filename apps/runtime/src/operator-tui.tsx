@@ -20,6 +20,9 @@ export type OperatorTuiAction =
   | "select_current"
   | "run_paper_evidence"
   | "toggle_provider"
+  | "setup_provider"
+  | "start_provider_login"
+  | "probe_provider"
   | "quit";
 
 export async function runOperatorTui(input: {
@@ -151,7 +154,7 @@ export function OperatorTuiScreen(props: {
           {`Researcher provider: ${props.operator.researcher_provider.selected_provider} / available ${props.operator.researcher_provider.available_providers.join(", ")}`}
         </Text>
         <Text>{`Authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
-        <Text dimColor>Keys: r refresh, t tick, s start/stop, up/down move, enter select, e evidence, p provider, q quit</Text>
+        <Text dimColor>Keys: r refresh, t tick, s start/stop, up/down move, enter select, e evidence, p provider, a setup, l login, v probe, q quit</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Leaderboard</Text>
@@ -217,6 +220,15 @@ export function operatorTuiActionForInput(
   if (input === "p") {
     return "toggle_provider";
   }
+  if (input === "a") {
+    return "setup_provider";
+  }
+  if (input === "l") {
+    return "start_provider_login";
+  }
+  if (input === "v") {
+    return "probe_provider";
+  }
   if (key.upArrow) {
     return "select_previous";
   }
@@ -265,6 +277,24 @@ export function operatorTuiCommandForAction(
         provider: selected === "codex" ? "fixture" : "codex"
       }
     };
+  }
+  if (action === "setup_provider") {
+    const provider = operator?.researcher_provider.selected_provider;
+    return provider
+      ? { command_kind: "agent_provider.setup", payload: { provider } }
+      : undefined;
+  }
+  if (action === "start_provider_login") {
+    const provider = operator?.researcher_provider.selected_provider;
+    return provider
+      ? { command_kind: "agent_provider.login.start", payload: { provider } }
+      : undefined;
+  }
+  if (action === "probe_provider") {
+    const provider = operator?.researcher_provider.selected_provider;
+    return provider
+      ? { command_kind: "agent_provider.probe", payload: { provider } }
+      : undefined;
   }
   return undefined;
 }

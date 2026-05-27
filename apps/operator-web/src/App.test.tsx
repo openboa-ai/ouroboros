@@ -48,6 +48,10 @@ import {
   fetchOperatorReadModel,
   runCandidateArenaCommand,
   runPaperEvidenceForCandidate,
+  probeAgentProvider,
+  selectResearcherProvider,
+  setupAgentProvider,
+  submitOuroborosCommand,
   type FullCycleOutcome,
   type TradingResearchRuntimeReadModel
 } from "./api";
@@ -133,6 +137,62 @@ describe("operator command API", () => {
           payload: { candidate_id: "candidate-profitable" }
         })
       }
+    );
+  });
+
+  it("exposes provider and researcher actions through the same command endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      command: {
+        command_kind: "agent_provider.setup",
+        status: "succeeded"
+      },
+      operator: {
+        candidate_arena: fixtureCandidateArena
+      }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await setupAgentProvider("codex");
+    await probeAgentProvider("codex");
+    await selectResearcherProvider("fixture");
+    await submitOuroborosCommand({ command_kind: "agent_provider.status" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:4173/api/commands",
+      expect.objectContaining({
+        body: JSON.stringify({
+          command_kind: "agent_provider.setup",
+          payload: { provider: "codex" }
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:4173/api/commands",
+      expect.objectContaining({
+        body: JSON.stringify({
+          command_kind: "agent_provider.probe",
+          payload: { provider: "codex" }
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://127.0.0.1:4173/api/commands",
+      expect.objectContaining({
+        body: JSON.stringify({
+          command_kind: "researcher.provider.select",
+          payload: { provider: "fixture" }
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://127.0.0.1:4173/api/commands",
+      expect.objectContaining({
+        body: JSON.stringify({ command_kind: "agent_provider.status" })
+      })
     );
   });
 
