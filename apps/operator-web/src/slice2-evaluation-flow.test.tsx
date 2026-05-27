@@ -17,7 +17,7 @@ describe("Slice 2 evaluation flow", () => {
       json: async () => ({
         operator: {},
         result: {
-          status: "evaluated",
+          status: "created",
           evaluation: {
             evaluation_run: {
               evaluation_run_record_id: "evaluation-run-001"
@@ -30,7 +30,7 @@ describe("Slice 2 evaluation flow", () => {
     const outcome = await recordImprovement(candidate);
 
     expect(outcome).toMatchObject({
-      status: "evaluated",
+      status: "created",
       evaluation: {
         evaluation_run: {
           evaluation_run_record_id: "evaluation-run-001"

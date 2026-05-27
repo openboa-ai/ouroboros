@@ -1,6 +1,6 @@
 import type {
-  ImprovementReadModel,
   AgentProfileProviderKind,
+  CandidateEvaluationRunOutcome,
   CandidateArenaReadModel,
   LedgerInput,
   LedgerReadModel,
@@ -313,17 +313,9 @@ export interface TradingRunStopOutcome {
 }
 
 export interface ImprovementOutcome {
-  status: "evaluated";
-  proposal: {
-    proposal_id: string;
-  };
-  experiment: {
-    experiment_id: string;
-  };
-  trading_evaluation_result: {
-    result_id: string;
-  };
-  improvement: ImprovementReadModel;
+  status: "created";
+  provider_result: unknown;
+  evaluation: CandidateEvaluationRunOutcome;
 }
 
 export type FullCycleOutcome = Omit<TradingRunOutcome, "status"> & {
@@ -623,7 +615,7 @@ export async function recordImprovement(
 export async function runFullCycle(
   candidate: CandidateInspectReadModel,
   input: StartTradingRunInput = {}
-): Promise<FullCycleOutcome> {
+): Promise<TradingRunOutcome> {
   const body = await submitOuroborosCommand({
     command_kind: "trading_run.start",
     payload: {
@@ -631,7 +623,7 @@ export async function runFullCycle(
       candidate_id: candidate.candidate_id
     }
   });
-  return body.result as FullCycleOutcome;
+  return body.result as TradingRunOutcome;
 }
 
 export async function recordRunControl(
