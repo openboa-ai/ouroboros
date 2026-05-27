@@ -13,7 +13,7 @@ import { safeId } from "../safe-id";
 import {
   DeterministicSandboxAdapter,
   type SandboxAdapter
-} from "../sandboxes/sandbox-adapter";
+} from "@ouroboros/adapters/sandboxes/sandbox-adapter";
 import {
   codexImprovementProposalDryRunTask,
   runCodexImprovementProposalDryRun,

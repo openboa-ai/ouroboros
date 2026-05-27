@@ -17,15 +17,15 @@ import {
   setupAgentProfile,
   UnsupportedAgentProviderError,
   type AgentProfileExecFile
-} from "../agent-profiles";
-import { buildCandidateArenaReadModel, type CandidateArenaRunner } from "../candidate-arena";
+} from "./agent-profiles";
+import { buildCandidateArenaReadModel, type CandidateArenaRunner } from "./candidate-arena";
 import type {
   OperatorCommandExecution,
   OperatorCommandHandlerRegistry,
   SelectedCandidatePaperEvidencePort
-} from "../ports/operator-ports";
-import { safeId } from "../safe-id";
-import type { TradingResearchRuntimeAgent } from "../trading-research/runtime-config";
+} from "./ports/operator-ports";
+import { safeId } from "./safe-id";
+import type { TradingResearchRuntimeAgent } from "./trading-research/runtime-config";
 
 export class OperatorCommandError extends Error {
   constructor(

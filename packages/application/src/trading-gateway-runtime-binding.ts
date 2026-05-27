@@ -17,7 +17,7 @@ import {
   createOfficialBinanceUsdsFuturesPublicMarketClient,
   readBinanceBtcUsdtMarketSnapshot,
   type BinancePublicMarketDataClient
-} from "./trading-substrate/binance-public-market-adapter";
+} from "@ouroboros/adapters/trading-substrate/binance-public-market-adapter";
 import {
   type PaperGatewayOrderRequest,
   validatePaperGatewayOrderRequest

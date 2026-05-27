@@ -6,7 +6,7 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { FixtureImprovementProposalProviderAdapter } from "../src/research-orchestration/fixture-improvement-proposal-provider";
+import { FixtureImprovementProposalProviderAdapter } from "@ouroboros/application/research-orchestration/fixture-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

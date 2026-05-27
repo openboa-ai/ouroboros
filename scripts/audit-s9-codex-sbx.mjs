@@ -47,12 +47,12 @@ const checks = [];
 
 await check("required S9 Codex research files exist", async () => {
   await assertFilesExist([
-    "apps/runtime/src/research-orchestration/codex-improvement-proposal-dry-run.ts",
-    "apps/runtime/src/research-orchestration/codex-improvement-proposal-dry-run-audit.ts",
-    "apps/runtime/src/research-orchestration/codex-improvement-proposal-evaluation-dry-run.ts",
-    "apps/runtime/src/research-orchestration/run-codex-improvement-proposal.ts",
-    "apps/runtime/src/research-orchestration/run-codex-improvement-proposal-audit.ts",
-    "apps/runtime/src/providers/codex-cli-improvement-proposal-provider.ts",
+    "packages/application/src/research-orchestration/codex-improvement-proposal-dry-run.ts",
+    "packages/application/src/research-orchestration/codex-improvement-proposal-dry-run-audit.ts",
+    "packages/application/src/research-orchestration/codex-improvement-proposal-evaluation-dry-run.ts",
+    "packages/application/src/research-orchestration/run-codex-improvement-proposal.ts",
+    "packages/application/src/research-orchestration/run-codex-improvement-proposal-audit.ts",
+    "packages/adapters/src/providers/codex-cli-improvement-proposal-provider.ts",
     "apps/runtime/test/codex-improvement-proposal-dry-run-audit.test.ts",
     "apps/runtime/test/codex-improvement-proposal-evaluation-dry-run.test.ts",
     "scripts/validate-s5-sbx-runtime.mjs",

@@ -6,8 +6,8 @@ import type {
   Ref
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { CodexCliImprovementProposalProviderAdapter } from "../providers/codex-cli-improvement-proposal-provider";
-import type { ImprovementProposalProviderAdapter } from "../providers/runtime-provider-adapter";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
+import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
 import {
   runCodexImprovementProposalDryRun,
   seedCodexImprovementProposalDryRunFindings,

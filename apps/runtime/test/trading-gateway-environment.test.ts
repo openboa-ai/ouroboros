@@ -3,7 +3,7 @@ import {
   BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL,
   BINANCE_USDM_FUTURES_TESTNET_REST_BASE_URL,
   loadTradingGatewayEnvironment
-} from "../src/trading-gateway-environment";
+} from "@ouroboros/application/trading-gateway-environment";
 
 describe("trading gateway environment", () => {
   it("defaults paper to Binance production public market data without a runtime mode env var", () => {

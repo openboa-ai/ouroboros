@@ -53,9 +53,13 @@ developer/detail surfaces. They must not replace the primary Candidate Arena wor
 
 ## Repository Shape
 
-- `apps/runtime`: runtime API, controller/service boundary, Candidate Arena runner, candidate materialization, provider adapter seam, selected paper execution, and local persistence.
+- `apps/runtime`: Fastify composition root and HTTP route/controller registration.
+- `apps/cli`: `ouroboros` command-line interface over the shared command/read contracts.
+- `apps/operator-tui`: Ink action console over the shared Operator read model and command endpoint.
 - `apps/operator-web`: operator UI over the shared Operator read model and Ouroboros command endpoint.
 - `packages/domain`: shared domain contracts, including the Operator command descriptors used by CLI, TUI, and Web UI.
+- `packages/application`: command controllers, application services, Candidate Arena use cases, read-model builders, and ports.
+- `packages/adapters`: Codex, fixture, Binance public market, Sandbox, and other concrete adapter implementations.
 - `packages/local-store`: filesystem-backed local store primitives.
 - `.agents`: repo-local skills and agent operating support.
 

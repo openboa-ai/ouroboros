@@ -33,18 +33,19 @@ stores a provider selection from the available managed providers. Codex is the i
 adapter today, while future providers such as Claude Code must remain behind the same adapter
 boundary.
 
-Runtime implementation follows a controller/service/adapter split:
+Runtime implementation follows a physical controller/service/adapter split:
 
-- `controllers`: product-facing command/read entrypoints. HTTP routes, CLI, TUI, and Web UI must
-  reach runtime behavior through this contract, not by importing service or adapter internals.
-- `services`: application use cases such as Operator read-model assembly, command dispatch,
-  command recording, researcher-provider selection, and selected-candidate paper evidence.
-- `adapters` and ports: provider, exchange, sandbox, execution, and persistence implementations.
-  Codex, Binance public market data, paper execution, and future providers must stay below this
-  boundary.
-- `interfaces`: CLI, Ink TUI, and Web UI are operator interfaces over the same command descriptors,
-  `GET /api/operator`, and `POST /api/commands`. New capabilities should first update the shared
-  command contract, then expose the same action across all operator interfaces.
+- `packages/domain`: domain records, read models, command descriptors, and vocabulary. It must not
+  import application, adapters, runtime, UI, vendor SDKs, or persistence implementations.
+- `packages/application`: product controllers, command dispatch, application services,
+  CandidateArena use cases, read-model builders, and ports.
+- `packages/adapters`: concrete implementations for Codex, fixtures, Binance public market data,
+  Sandboxes, subprocess execution, and other outer systems.
+- `apps/runtime`: Fastify composition root and HTTP route registration. It wires concrete adapters
+  into application controllers and keeps compatibility routes delegating through the same services.
+- `apps/cli`, `apps/operator-tui`, and `apps/operator-web`: operator interfaces over the same
+  command descriptors, `GET /api/operator`, and `POST /api/commands`. CLI-only local operations use
+  the local Ouroboros controller rather than importing provider implementations.
 
 ## Architecture Pattern Guide
 
@@ -86,9 +87,13 @@ This file is a compact development map. Linear Project Documents own the full ar
 
 ## Local Layers
 
-- `apps/runtime`: runtime server, Ouroboros command endpoint, Operator read model, Candidate Arena runner, candidate materialization, managed agent profiles, provider adapter seam, local execution, and API surfaces.
+- `apps/runtime`: Fastify runtime server and HTTP composition root.
+- `apps/cli`: installable `ouroboros` command-line interface.
+- `apps/operator-tui`: Ink action console for the same Operator read model and commands.
 - `apps/operator-web`: operator UI for inspecting Candidate Arena state and selected-candidate paper evidence through the shared command/read-model contract.
 - `packages/domain`: shared contracts and domain types.
+- `packages/application`: command/query controllers, services, use cases, ports, and read-model builders.
+- `packages/adapters`: concrete provider, exchange, sandbox, subprocess, and fixture adapters.
 - `packages/local-store`: durable local filesystem store primitives.
 - `.agents`: repo-local coding-agent harness and reusable work skills.
 

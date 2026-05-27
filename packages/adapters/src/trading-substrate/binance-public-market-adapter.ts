@@ -4,7 +4,7 @@ import {
   DerivativesTradingUsdsFutures
 } from "@binance/derivatives-trading-usds-futures";
 import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
-import type { MarketSnapshot } from "../trading-research/types";
+import type { MarketSnapshot } from "@ouroboros/application/trading-research/types";
 
 export interface BinanceRestResponse<T> {
   data(): Promise<T>;

@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ImprovementProposalProviderOutput, Ref } from "@ouroboros/domain";
-import { runCodexImprovementProposalDryRunAudit } from "../src/research-orchestration/codex-improvement-proposal-dry-run-audit";
-import { codexImprovementProposalDryRunFixtureIds } from "../src/research-orchestration/codex-improvement-proposal-dry-run";
-import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
+import { runCodexImprovementProposalDryRunAudit } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run-audit";
+import { codexImprovementProposalDryRunFixtureIds } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

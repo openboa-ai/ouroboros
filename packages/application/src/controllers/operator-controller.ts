@@ -4,7 +4,7 @@ import {
   type OperatorReadModel,
   type OuroborosCommandRequest
 } from "@ouroboros/domain";
-import { OperatorCommandError, type OperatorService } from "../services/operator-service";
+import { OperatorCommandError, type OperatorService } from "../operator-service";
 
 export interface OperatorControllerResponse {
   statusCode: number;

@@ -5,7 +5,7 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { DeterministicImprovementProposalPlanner } from "../src/research-orchestration/deterministic-proposal-planner";
+import { DeterministicImprovementProposalPlanner } from "@ouroboros/application/research-orchestration/deterministic-proposal-planner";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

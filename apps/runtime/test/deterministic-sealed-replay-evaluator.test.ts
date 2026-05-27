@@ -4,7 +4,7 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import { DeterministicSealedReplayEvaluator } from "../src/research-evaluation/deterministic-sealed-replay-evaluator";
+import { DeterministicSealedReplayEvaluator } from "@ouroboros/application/research-evaluation/deterministic-sealed-replay-evaluator";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

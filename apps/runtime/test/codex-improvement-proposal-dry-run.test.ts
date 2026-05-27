@@ -7,8 +7,8 @@ import { LocalStore } from "@ouroboros/local-store";
 import {
   codexImprovementProposalDryRunFixtureIds,
   runCodexImprovementProposalDryRun
-} from "../src/research-orchestration/codex-improvement-proposal-dry-run";
-import { CodexCliImprovementProposalProviderAdapter } from "../src/providers/codex-cli-improvement-proposal-provider";
+} from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

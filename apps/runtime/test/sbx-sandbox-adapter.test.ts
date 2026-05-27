@@ -4,7 +4,7 @@ import path from "node:path";
 import { createFixtureRecords, FIXTURE_SYSTEM_CODE_ID } from "@ouroboros/local-store";
 import type { SystemCodeRecord } from "@ouroboros/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DockerSandboxesSbxSandboxAdapter } from "../src/sandboxes/sandbox-adapter";
+import { DockerSandboxesSbxSandboxAdapter } from "@ouroboros/adapters/sandboxes/sandbox-adapter";
 
 let tmpDir: string;
 

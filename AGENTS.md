@@ -196,10 +196,15 @@ decoration:
 | Dependency Injection | wiring concrete adapters into services from a composition root |
 
 Interfaces call controllers. Controllers validate and dispatch only. Services orchestrate use cases
-through domain contracts and ports. Adapters implement ports. UI, CLI, and TUI must use the shared
-Operator read model and Ouroboros command surface instead of importing runtime internals. If a new
-feature touches a public command, provider, exchange, or evidence boundary, update the registry or
-port first and document the chosen pattern in the PR or Linear workpad.
+through domain contracts and ports. Adapters implement ports. `apps/runtime` is the HTTP composition
+root, `apps/cli` is the command-line interface, `apps/operator-tui` is the Ink interface, and
+`apps/operator-web` is the Web interface. Shared command/query behavior belongs in
+`packages/application`; concrete Codex, Binance, Sandbox, fixture, subprocess, and other outer
+system integrations belong in `packages/adapters`. UI, CLI, and TUI must use the shared Operator
+read model and Ouroboros command surface, or the local Ouroboros controller for CLI-only local
+operations, instead of importing runtime internals. If a new feature touches a public command,
+provider, exchange, or evidence boundary, update the registry or port first and document the chosen
+pattern in the PR or Linear workpad.
 
 ## Validation
 
