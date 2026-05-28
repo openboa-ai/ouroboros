@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
-import { runCandidateEvaluation } from "@ouroboros/application/candidate-evaluation";
-import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/providers/fixture-evaluation-provider";
-import type { CandidateEvaluationRequest } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
+import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
+import type { CandidateEvaluationRequest } from "@ouroboros/application/ports/provider";
 
 let tmpDir: string;
 

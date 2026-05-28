@@ -19,6 +19,27 @@ Architecture patterns are subordinate to that loop.
   and read-model contracts. They must not import concrete provider, exchange, sandbox, or store
   implementations.
 
+## Directory Cohesion
+
+Repository structure should make the boundary visible without forcing another abstraction layer.
+Use directories when a repeated prefix is carrying ownership:
+
+- `packages/application/src/agent/*`: managed agent profiles and agent-facing product cycles.
+- `packages/application/src/candidate/*`: CandidateArena, candidate evaluation, and materialization
+  use cases.
+- `packages/application/src/research/*`: research orchestration and sealed evaluation helpers.
+- `packages/application/src/trading/*`: TradingSystem execution, replay, gateway, and research
+  application logic.
+- `packages/adapters/src/codex/*`, `binance/*`, `fixture/*`, `sandbox/*`: concrete outside-system
+  adapters grouped by the thing they integrate with.
+- `apps/runtime/src/controllers/*`: HTTP request validation and response mapping.
+- `apps/runtime/src/registry/*`: route-module registration.
+
+Kebab-case is allowed for a leaf operation name such as `runtime-binding.ts`, but repeated
+prefix-heavy files should be folded into a tree. Do not add a new service or port only to satisfy
+the directory shape; move code first, then introduce an abstraction only when a real extension
+point exists.
+
 ## Design Frame
 
 Use Hexagonal Architecture, Clean Architecture, Layered Architecture, Domain-Driven Design, and

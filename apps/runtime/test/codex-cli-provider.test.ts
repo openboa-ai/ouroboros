@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CandidateMaterializationInput } from "@ouroboros/domain";
-import { CodexCliProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-provider";
+import { CodexCliProviderAdapter } from "@ouroboros/adapters/codex/cli-provider";
 
 let tmpDir: string;
 

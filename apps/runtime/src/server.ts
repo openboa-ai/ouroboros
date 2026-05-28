@@ -19,15 +19,15 @@ import type {
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
-import { runCandidateEvaluation } from "@ouroboros/application/candidate-evaluation";
-import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/providers/fixture-evaluation-provider";
-import type { EvaluationProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
+import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
+import type { EvaluationProviderAdapter } from "@ouroboros/application/ports/provider";
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
   type PaperOrderRequestFixture,
   type SandboxAdapter
-} from "@ouroboros/adapters/sandboxes/sandbox-adapter";
+} from "@ouroboros/adapters/sandbox/adapter";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
   getCandidateLatestValidationState,
@@ -35,49 +35,49 @@ import {
   getReplayRunDetail,
   getReplayRunValidationState,
   listReplayRunEvidence
-} from "@ouroboros/application/trading-candidate/replay-run-ledger";
+} from "@ouroboros/application/trading/candidate/replay-run-ledger";
 import {
   DEFAULT_PROMOTED_CANDIDATE_ROOT,
   getPromotedCandidate,
   listPromotedCandidateSummaries
-} from "@ouroboros/application/trading-candidate/promoted-candidate-bundles";
+} from "@ouroboros/application/trading/candidate/promoted-candidate-bundles";
 import {
   ReplayRunError,
   runPromotedCandidateReplay,
   type ReplayRunRecord
-} from "@ouroboros/application/trading-candidate/run-replay";
+} from "@ouroboros/application/trading/candidate/run-replay";
 import {
   createGatewayRuntimeBinding,
   executeGatewayOrderRequest,
   LIVE_GATEWAY_DISABLED_REASON,
   type GatewayRuntimeBinding
-} from "@ouroboros/application/trading-gateway-runtime-binding";
-import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading-gateway-environment";
-import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "@ouroboros/application/trading-research/types";
+} from "@ouroboros/application/trading/gateway/runtime-binding";
+import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/gateway/environment";
+import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "@ouroboros/application/trading/research/types";
 import {
   createTradingResearchAgentAdapter,
   fixtureTradingResearchRuntimeConfig,
   type TradingResearchRuntimeAgent,
   type TradingResearchRuntimeConfig
-} from "@ouroboros/application/trading-research/runtime-config";
+} from "@ouroboros/application/trading/research/runtime-config";
 import {
   managedAgentProfileEnv,
   type AgentProfileExecFile
-} from "@ouroboros/application/agent-profiles";
-import { CandidateArenaRunner } from "@ouroboros/application/candidate-arena";
-import { createOperatorController } from "@ouroboros/application/controllers/operator-controller";
+} from "@ouroboros/application/agent/profiles";
+import { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
+import { createOperatorController } from "@ouroboros/application/controllers/operator";
 import {
   isTradingResearchRuntimeAgent,
   OperatorService
-} from "@ouroboros/application/operator-service";
+} from "@ouroboros/application/services/operator";
 import {
   BinancePublicMarketSdkAdapter,
   type BinancePublicMarketDataClient
-} from "@ouroboros/adapters/trading-substrate/binance-public-market-adapter";
+} from "@ouroboros/adapters/binance/public-market-adapter";
 import { safeId } from "@ouroboros/application/safe-id";
-import { registerCoreControllerRoutes } from "./controllers/core-controller";
-import { registerResourceControllerRoutes } from "./controllers/resource-controller";
-import { registerRuntimeRouteModules } from "./controllers/route-registry";
+import { registerCoreControllerRoutes } from "./controllers/core";
+import { registerResourceControllerRoutes } from "./controllers/resources";
+import { registerRuntimeRouteModules } from "./registry/routes";
 
 export interface BuildServerOptions {
   store?: LocalStore;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validatePaperGatewayOrderRequest } from "@ouroboros/application/trading-gateway-validation";
+import { validatePaperGatewayOrderRequest } from "@ouroboros/application/trading/gateway/validation";
 
 describe("paper Gateway validation", () => {
   it("allows the fixture BTCUSDT paper order as dry-run only", () => {

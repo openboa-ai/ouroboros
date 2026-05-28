@@ -13,7 +13,7 @@ import { LocalStore } from "@ouroboros/local-store";
 import {
   evaluateSystemCodeForResearch,
   type SystemCodeResearchEvaluationOutcome
-} from "@ouroboros/application/research-evaluation/system-code-research-submission";
+} from "@ouroboros/application/research/evaluation/system-code-research-submission";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

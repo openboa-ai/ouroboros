@@ -9,7 +9,7 @@ import type {
   Ref,
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
-import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import type { ImprovementProposalProviderAdapter } from "@ouroboros/application/ports/provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

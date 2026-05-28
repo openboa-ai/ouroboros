@@ -205,12 +205,12 @@ checkRequired("packages/domain/src/index.ts", [
   "export const OUROBOROS_COMMAND_REGISTRY",
   "export interface OperatorReadModel"
 ]);
-checkRequired("apps/runtime/src/controllers/core-controller.ts", [
+checkRequired("apps/runtime/src/controllers/core.ts", [
   "/api/operator",
   "/api/commands",
   "/api/gateway/environment"
 ]);
-checkRequired("apps/runtime/src/controllers/resource-controller.ts", [
+checkRequired("apps/runtime/src/controllers/resources.ts", [
   "/api/candidates",
   "/api/candidates/:candidate_id",
   "/api/candidates/:candidate_id/evaluations",
