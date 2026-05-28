@@ -40,7 +40,7 @@ import type {
   TradingResearchNotebookEntry
 } from "../trading/research/types";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 export interface RunAgentTradingCycleInput {
   store: OuroborosStorePort;

@@ -51,6 +51,7 @@ Canonical repo docs:
 - [Architecture Governance](docs/architecture-governance.md)
 - [API And Command Contract](docs/api-command-contract.md)
 - [Interface Parity](docs/interface-parity.md)
+- [Product Loop Smoke](docs/product-loop-smoke.md)
 - [Naming Taxonomy](docs/naming-taxonomy.md)
 
 ## Canonical Flow
