@@ -21,6 +21,7 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Ouroboros Action Console");
     expect(output).toContain("Arena: running / ticks 3");
     expect(output).toContain("Researcher provider: fixture");
+    expect(output).toContain("Agent profile: Fixture / authenticated");
     expect(output).toContain("> #1 candidate-profitable");
     expect(output).toContain("Paper evidence: ledger_chain_complete");
     expect(output).toContain("Codex: configured");
@@ -149,6 +150,15 @@ function fixtureOperator(): OperatorReadModel {
         status: "configured",
         managed_home: "/tmp/ouroboros/agent-profiles/codex/home",
         managed_provider_home: "/tmp/ouroboros/agent-profiles/codex/codex-home",
+        authority_status: "no_trading_authority"
+      },
+      {
+        profile_id: "fixture",
+        label: "Fixture",
+        provider: "fixture",
+        status: "authenticated",
+        managed_home: "/tmp/ouroboros/agent-profiles/fixture/home",
+        managed_provider_home: "/tmp/ouroboros/agent-profiles/fixture/codex-home",
         authority_status: "no_trading_authority"
       }
     ],

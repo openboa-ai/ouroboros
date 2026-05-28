@@ -144,6 +144,7 @@ export class OperatorService {
         summary: "Candidate Arena status read."
       }),
       "arena.start": async () => {
+        await this.requireResearcherProviderReady();
         const status = this.options.candidateArenaRunner.start();
         return {
           result: {
@@ -172,6 +173,7 @@ export class OperatorService {
         };
       },
       "arena.tick": async () => {
+        await this.requireResearcherProviderReady();
         const outcome = await this.options.candidateArenaRunner.tick();
         return {
           result: outcome,
@@ -291,6 +293,29 @@ export class OperatorService {
         };
       }
     };
+  }
+
+  private async requireResearcherProviderReady(): Promise<void> {
+    const provider = (await this.readResearcherProvider()).selected_provider;
+    if (provider === "fixture") {
+      return;
+    }
+    const profile = (await listAgentProfileReadModels(this.options.store))
+      .find((item) => item.profile_id === provider);
+    if (!profile || profile.status === "not_configured" || profile.status === "unsupported") {
+      throw new OperatorCommandError(409, "agent_provider_not_configured", {
+        provider,
+        profile_status: profile?.status ?? "not_configured",
+        required_command: `ouroboros agent setup ${provider}`
+      });
+    }
+    if (profile.status !== "authenticated") {
+      throw new OperatorCommandError(409, "agent_provider_not_authenticated", {
+        provider,
+        profile_status: profile.status,
+        required_command: `ouroboros agent login ${provider}`
+      });
+    }
   }
 
   private async executeMutationPort(

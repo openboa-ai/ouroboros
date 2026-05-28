@@ -194,6 +194,7 @@ export async function runCandidateArenaTick(
       directionResults.push({
         direction_kind: direction,
         status: "created",
+        agent_provider: input.researchAgent,
         candidate_id: created.candidate_id,
         finding: findingSummaryForProfitLoss(
           profitLoss,
@@ -205,6 +206,7 @@ export async function runCandidateArenaTick(
       directionResults.push({
         direction_kind: direction,
         status: "failed",
+        agent_provider: input.researchAgent,
         error: conciseError(settled.reason),
         finding: `${directionLabel(direction)} researcher failed before candidate materialization.`
       });

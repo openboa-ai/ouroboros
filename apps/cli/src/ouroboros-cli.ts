@@ -343,10 +343,17 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
   const arena = operator.candidate_arena;
   const leader = arena.leaderboard[0];
   const lastCommand = operator.latest_commands[0];
+  const selectedProfile = operator.agent_profiles.find((profile) =>
+    profile.profile_id === operator.researcher_provider.selected_provider
+  );
+  const selectedProfileNextStep = selectedProfile ? agentProfileNextStep(selectedProfile) : undefined;
   return [
     "Ouroboros status",
     `Arena: ${arena.runner_status} (${arena.tick_count} ticks, ${arena.leaderboard.length} candidates)`,
     `Researcher provider: ${operator.researcher_provider.selected_provider} (available: ${operator.researcher_provider.available_providers.join(", ")})`,
+    selectedProfile
+      ? `Agent profile: ${selectedProfile.label} ${selectedProfile.status}${selectedProfileNextStep ? `; next: ${selectedProfileNextStep}` : ""}`
+      : undefined,
     `Live authority: ${operator.live_disabled ? "disabled" : "enabled"} / ${operator.authority_status}`,
     leader
       ? `Leader: #${leader.rank} ${leader.display_name} ${formatUsdt(leader.profit_loss.net_revenue_usdt)} (${formatPercent(leader.profit_loss.net_return_pct)})`
@@ -356,7 +363,17 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     lastCommand
       ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
       : "Latest command: none"
-  ].join("\n");
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function agentProfileNextStep(profile: AgentProfileReadModel): string | undefined {
+  if (profile.status === "not_configured") {
+    return `ouroboros agent setup ${profile.provider}`;
+  }
+  if (profile.status === "configured" || profile.status === "login_required" || profile.status === "unavailable") {
+    return `ouroboros agent login ${profile.provider}`;
+  }
+  return undefined;
 }
 
 function formatCommandHttpError(text: string): string {

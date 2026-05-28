@@ -2238,6 +2238,8 @@ export interface CandidateArenaResearcherReadModel {
   researcher_id: string;
   direction_kind: ResearchDirectionKind;
   status: ResearchWorkerStatus;
+  agent_provider?: AgentProfileProviderKind;
+  agent_model?: string;
   authority_status: "research_only";
 }
 
@@ -2264,6 +2266,8 @@ export interface CandidateArenaLatestCandidateReadModel {
 export interface CandidateArenaTickDirectionResultReadModel {
   direction_kind: ResearchDirectionKind;
   status: CandidateArenaDirectionResultStatus;
+  agent_provider?: AgentProfileProviderKind;
+  agent_model?: string;
   candidate_id?: string;
   finding?: string;
   error?: string;

@@ -56,7 +56,7 @@ import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/ga
 import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "@ouroboros/application/trading/research/types";
 import {
   createTradingResearchAgentAdapter,
-  fixtureTradingResearchRuntimeConfig,
+  loadTradingResearchRuntimeConfig,
   type TradingResearchRuntimeAgent,
   type TradingResearchRuntimeConfig
 } from "@ouroboros/application/trading/research/runtime-config";
@@ -198,7 +198,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
   const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
-    ?? fixtureTradingResearchRuntimeConfig();
+    ?? loadTradingResearchRuntimeConfig();
   const tradingResearchAgentFactory = options.tradingResearchAgentFactory
     ?? ((agent: TradingResearchRuntimeAgent) => {
       if (options.tradingResearchAgentAdapter && options.tradingResearchAgentAdapter.agent.provider === agent) {

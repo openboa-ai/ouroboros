@@ -1132,6 +1132,7 @@ export function CandidateArenaPanel({
     ? selectedLedger
     : undefined;
   const selectedProvider = researcherProvider?.selected_provider;
+  const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   return (
     <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
       <CardHeader className="gap-3">
@@ -1157,7 +1158,7 @@ export function CandidateArenaPanel({
           <div className="grid gap-1">
             <strong className="text-sm">Runtime command bar</strong>
             <span className="text-xs text-muted-foreground">
-              {`Provider ${researcherProvider?.selected_provider ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
+              {`Provider ${researcherProvider?.selected_provider ?? "unknown"} ${selectedAgentProfile?.status ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
             </span>
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
@@ -1325,7 +1326,11 @@ export function CandidateArenaPanel({
         <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Agent provider status">
           <h3 className="text-sm font-medium">Agent providers</h3>
           <Field label="Researcher" value={researcherProvider?.selected_provider ?? "not selected"} />
+          <Field label="Selected status" value={selectedAgentProfile?.status ?? "missing"} />
           <Field label="Available" value={researcherProvider?.available_providers.join(", ") ?? "unknown"} />
+          {selectedAgentProfile?.failure_reason && (
+            <Field label="Failure" value={selectedAgentProfile.failure_reason} />
+          )}
           <div className="flex flex-wrap gap-2">
             {researcherProvider?.available_providers.map((provider) => (
               <Button
