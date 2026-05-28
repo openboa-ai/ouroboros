@@ -1134,19 +1134,23 @@ export function CandidateArenaPanel({
   const selectedProvider = researcherProvider?.selected_provider;
   return (
     <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
-      <CardHeader>
-        <CardDescription>Operator cockpit</CardDescription>
-        <CardTitle>Candidate Arena</CardTitle>
-        <CardDescription>
-          {leader
-            ? `${leader.display_name} leads by ${formatUsdt(leader.profit_loss.net_revenue_usdt)} net revenue.`
-            : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
-        </CardDescription>
-        <CardAction className="flex flex-wrap justify-end gap-2">
-          <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
-          <Badge variant="secondary">{researcherProvider?.selected_provider ?? "provider pending"}</Badge>
-          <Badge variant="secondary">not_live</Badge>
-        </CardAction>
+      <CardHeader className="gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <CardDescription>Operator cockpit</CardDescription>
+            <CardTitle>Candidate Arena</CardTitle>
+            <CardDescription>
+              {leader
+                ? `${leader.display_name} leads by ${formatUsdt(leader.profit_loss.net_revenue_usdt)} net revenue.`
+                : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end" aria-label="Candidate Arena authority summary">
+            <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
+            <Badge variant="secondary">{researcherProvider?.selected_provider ?? "provider pending"}</Badge>
+            <Badge variant="secondary">not_live</Badge>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="grid gap-4">
         <section className="grid gap-3 rounded-md bg-muted/20 p-3 md:grid-cols-[1fr_auto]" aria-label="Arena command bar">
@@ -1186,43 +1190,75 @@ export function CandidateArenaPanel({
           </div>
         </div>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
-        <section className="grid content-start gap-2 overflow-x-auto" aria-label="Candidate Arena leaderboard">
-          <div className="flex items-center justify-between gap-2">
+        <section className="grid content-start gap-2" aria-label="Candidate Arena leaderboard">
+          <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
             <h3 className="text-sm font-medium">Revenue-cost leaderboard</h3>
             <span className="text-xs text-muted-foreground">primary rank: net_revenue_usdt</span>
           </div>
-          <div className="grid min-w-[980px] grid-cols-[44px_minmax(180px,1.25fr)_minmax(120px,0.85fr)_minmax(150px,0.9fr)_minmax(120px,0.75fr)_minmax(96px,0.65fr)_minmax(86px,0.6fr)_minmax(190px,1.35fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
-            <span>Rank</span>
-            <span>Candidate</span>
-            <span>Direction</span>
-            <span>Parent</span>
-            <span>Net revenue USDT</span>
-            <span>Net return %</span>
-            <span>Status</span>
-            <span>Latest finding</span>
+          <div className="grid gap-2 lg:hidden">
+            {arena.leaderboard.map((entry) => (
+              <button
+                type="button"
+                key={entry.candidate_id}
+                onClick={() => onSelectCandidate?.(entry.candidate_id)}
+                aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
+                className={`grid gap-3 rounded-md p-3 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
+              >
+                <div className="grid gap-2 sm:flex sm:items-start sm:justify-between sm:gap-3">
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium text-muted-foreground">#{entry.rank}</span>
+                    <strong className="block break-words leading-snug">{entry.display_name}</strong>
+                  </div>
+                  <Badge className="w-fit" variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
+                    {entry.status}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Net revenue" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
+                  <Field label="Net return" value={formatPercent(entry.profit_loss.net_return_pct)} />
+                  <Field label="Direction" value={entry.direction_kind} />
+                  <Field label="Parent" value={entry.parent_candidate_id ?? "none"} />
+                </div>
+                <p className="break-words text-xs text-muted-foreground">{entry.latest_finding}</p>
+              </button>
+            ))}
           </div>
-          {arena.leaderboard.map((entry) => (
-            <button
-              type="button"
-              key={entry.candidate_id}
-              onClick={() => onSelectCandidate?.(entry.candidate_id)}
-              aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
-              className={`grid min-w-[980px] grid-cols-[44px_minmax(180px,1.25fr)_minmax(120px,0.85fr)_minmax(150px,0.9fr)_minmax(120px,0.75fr)_minmax(96px,0.65fr)_minmax(86px,0.6fr)_minmax(190px,1.35fr)] items-center gap-2 rounded-md p-2 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
-            >
-              <span>#{entry.rank}</span>
-              <strong className="break-words font-medium leading-snug">{entry.display_name}</strong>
-              <span className="break-words leading-snug">{entry.direction_kind}</span>
-              <span className="break-words leading-snug">{entry.parent_candidate_id ?? "none"}</span>
-              <span>{formatUsdt(entry.profit_loss.net_revenue_usdt)}</span>
-              <span>{formatPercent(entry.profit_loss.net_return_pct)}</span>
-              <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
-                {entry.status}
-              </Badge>
-              <span className="break-words leading-snug text-muted-foreground">{entry.latest_finding}</span>
-            </button>
-          ))}
+          <div className="hidden lg:grid lg:gap-2">
+            <div className="grid grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
+              <span>Rank</span>
+              <span>Candidate</span>
+              <span>Direction</span>
+              <span>Net revenue</span>
+            </div>
+            {arena.leaderboard.map((entry) => (
+              <button
+                type="button"
+                key={entry.candidate_id}
+                onClick={() => onSelectCandidate?.(entry.candidate_id)}
+                aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
+                className={`grid grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] items-start gap-2 rounded-md p-2 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
+              >
+                <span>#{entry.rank}</span>
+                <span className="grid gap-1">
+                  <strong className="break-words font-medium leading-snug">{entry.display_name}</strong>
+                  <span className="break-words text-xs text-muted-foreground">
+                    {`parent ${entry.parent_candidate_id ?? "none"}`}
+                  </span>
+                  <span className="break-words text-xs text-muted-foreground">{entry.latest_finding}</span>
+                </span>
+                <span className="break-words leading-snug">{entry.direction_kind}</span>
+                <span className="grid gap-1">
+                  <strong>{formatUsdt(entry.profit_loss.net_revenue_usdt)}</strong>
+                  <span className="text-xs text-muted-foreground">{formatPercent(entry.profit_loss.net_return_pct)}</span>
+                  <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
+                    {entry.status}
+                  </Badge>
+                </span>
+              </button>
+            ))}
+          </div>
           {!arena.leaderboard.length && (
-            <div className="placeholder min-w-[640px]">
+            <div className="placeholder lg:min-w-[640px]">
               No candidates yet. Run tick to generate the first TradingSystem candidates.
             </div>
           )}
