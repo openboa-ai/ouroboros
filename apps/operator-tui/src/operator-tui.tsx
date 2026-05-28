@@ -141,6 +141,9 @@ export function OperatorTuiScreen(props: {
   const leader = props.operator.candidate_arena.leaderboard[0];
   const selectedEntry = props.operator.candidate_arena.leaderboard[props.cursor] ?? leader;
   const selectedCandidateId = props.operator.selected_candidate_id ?? selectedEntry?.candidate_id;
+  const selectedProfile = props.operator.agent_profiles.find((profile) =>
+    profile.profile_id === props.operator.researcher_provider.selected_provider
+  );
   const visibleLeaderboard = visibleLeaderboardWindow(
     props.operator.candidate_arena.leaderboard,
     props.cursor
@@ -152,6 +155,9 @@ export function OperatorTuiScreen(props: {
         <Text>{`Arena: ${props.operator.candidate_arena.runner_status} / ticks ${props.operator.candidate_arena.tick_count}`}</Text>
         <Text>
           {`Researcher provider: ${props.operator.researcher_provider.selected_provider} / available ${props.operator.researcher_provider.available_providers.join(", ")}`}
+        </Text>
+        <Text>
+          {`Agent profile: ${selectedProfile?.label ?? "unknown"} / ${selectedProfile?.status ?? "missing"}`}
         </Text>
         <Text>{`Authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
         <Text dimColor>Keys: r refresh, t tick, s start/stop, up/down move, enter select, e evidence, p provider, a setup, l login, v probe, q quit</Text>

@@ -198,9 +198,36 @@ export async function submitOuroborosCommand(
     body: JSON.stringify(request.payload ? request : { command_kind: request.command_kind })
   });
   if (!response.ok) {
-    throw new Error(`Failed to run Ouroboros command ${request.command_kind}: ${response.status}`);
+    const text = await response.text();
+    throw new Error(formatOuroborosCommandError(request.command_kind, response.status, text));
   }
   return (await response.json()) as { operator: OperatorReadModel; result?: unknown };
+}
+
+function formatOuroborosCommandError(
+  commandKind: OuroborosCommandKind,
+  status: number,
+  text: string
+): string {
+  try {
+    const body = JSON.parse(text) as {
+      error?: string;
+      reason?: string;
+      required_command?: string;
+      candidate_id?: string;
+      system_id?: string;
+      message?: string;
+    };
+    return [
+      `Ouroboros command ${commandKind} failed: ${body.error ?? status}`,
+      body.reason ? `Reason: ${body.reason}` : undefined,
+      body.candidate_id || body.system_id ? `Candidate: ${body.candidate_id ?? body.system_id}` : undefined,
+      body.required_command ? `Next step: ${body.required_command}` : undefined,
+      body.message
+    ].filter(Boolean).join("\n");
+  } catch {
+    return `Failed to run Ouroboros command ${commandKind}: ${status}`;
+  }
 }
 
 export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {

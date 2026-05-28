@@ -209,6 +209,21 @@ describe("operator command API", () => {
     );
   });
 
+  it("surfaces command API next steps without hiding provider readiness failures", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({
+        error: "agent_provider_not_authenticated",
+        required_command: "ouroboros agent login codex"
+      })
+    } as Response));
+
+    await expect(submitOuroborosCommand({ command_kind: "arena.tick" })).rejects.toThrow(
+      /Ouroboros command arena\.tick failed: agent_provider_not_authenticated\nNext step: ouroboros agent login codex/
+    );
+  });
+
   it("keeps Web UI product loop wrappers aligned with the domain product loop command set", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetchMock = vi.fn(async (url, init) => {
