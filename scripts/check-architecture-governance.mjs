@@ -110,7 +110,20 @@ requireText("docs/api-command-contract.md", [
   "GET /api/operator",
   "POST /api/commands",
   "OUROBOROS_COMMAND_REGISTRY",
+  "OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS",
   "OperatorReadModel"
+]);
+
+requireText("docs/interface-parity.md", [
+  "CLI",
+  "TUI",
+  "Web UI",
+  "GET /api/operator",
+  "POST /api/commands",
+  "OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS",
+  "agent setup|login|probe|status",
+  "local controller",
+  "Candidate, Paper Evidence, and Live remain visibly separate states"
 ]);
 
 requireText("docs/naming-taxonomy.md", [
@@ -145,6 +158,7 @@ for (const file of ["AGENTS.md", "README.md", "ARCHITECTURE.md", "LINEAR.md"]) {
 
 requireText("packages/domain/src/index.ts", [
   "export const OUROBOROS_COMMAND_REGISTRY",
+  "export const OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS",
   "export function getOuroborosCommandDescriptor",
   "command_descriptors: readonly OuroborosCommandDescriptor[]"
 ]);

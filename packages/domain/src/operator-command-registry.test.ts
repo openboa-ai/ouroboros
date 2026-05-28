@@ -4,6 +4,7 @@ import {
   isOuroborosCommandKind,
   OUROBOROS_COMMAND_DESCRIPTORS,
   OUROBOROS_COMMAND_KINDS,
+  OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS,
   OUROBOROS_COMMAND_REGISTRY
 } from "./index";
 
@@ -23,5 +24,27 @@ describe("Ouroboros command registry", () => {
   it("validates command kinds through the shared registry", () => {
     expect(isOuroborosCommandKind("arena.tick")).toBe(true);
     expect(isOuroborosCommandKind("codex.runtime.setup")).toBe(false);
+  });
+
+  it("keeps the product loop command subset explicit and non-live", () => {
+    expect(OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS).toEqual([
+      "arena.status",
+      "arena.start",
+      "arena.stop",
+      "arena.tick",
+      "candidate.select",
+      "candidate.paper_evidence.run",
+      "agent_provider.status",
+      "agent_provider.setup",
+      "agent_provider.login.start",
+      "agent_provider.probe",
+      "researcher.provider.select"
+    ]);
+
+    for (const commandKind of OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS) {
+      const descriptor = getOuroborosCommandDescriptor(commandKind);
+      expect(OUROBOROS_COMMAND_KINDS).toContain(commandKind);
+      expect(descriptor.authority_status).not.toBe("live");
+    }
   });
 });

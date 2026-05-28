@@ -14,6 +14,10 @@ Commands are operator controls over the doctrine, not provider commands.
 `OuroborosCommandKind`, and `OUROBOROS_COMMAND_REGISTRY`. UI, CLI, TUI, and route code must not
 invent mutation names outside that registry.
 
+`OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS` marks the subset that CLI, TUI, and Web UI must keep as one
+operator loop. See [Interface Parity](interface-parity.md) for the shared UX contract and the CLI
+local controller exception for managed agent setup/login/probe.
+
 Current command groups:
 
 - `arena`: status, start, stop, tick. `arena.tick` is one research round: candidate generation,
