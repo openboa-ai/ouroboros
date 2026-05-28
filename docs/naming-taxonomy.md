@@ -14,7 +14,9 @@ that pack every axis into one identifier.
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
-| `Evaluation` | Backtest or evaluation evidence, ranked by `net_revenue_usdt` first and `net_return_pct` second. |
+| `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
+| `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
+| `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
 | `Lineage` | Parent, direction, evaluation, finding, and evidence chain that explains why a candidate exists. |
 | `PaperEvidence` | Selected-candidate proof from the paper TradingRun, Gateway, and Ledger path. |
@@ -55,7 +57,8 @@ standard term fits. Record that decision in repo docs and tests.
   layer explicitly maps it.
 - Do not expose provider commands as product commands. Use `ouroboros` commands and provider
   selection fields.
-- Do not call candidate output proof. Evaluation and selected PaperEvidence/Ledger evidence are proof.
+- Do not call candidate output proof. ResearchPreflight is not final authority; selected continuous
+  PaperTradingEvaluation and Ledger evidence are proof.
 - Do not imply TradingSystem is only code. It may include an internal agent runtime, but it must
   emit bounded validated OrderRequests.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.

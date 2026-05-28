@@ -14,23 +14,30 @@ the selected candidate.
 The researcher is a candidate generator, not the authority. Researcher cannot grade, candidate
 cannot grade itself, and selected paper evidence is proof gathering, not live promotion.
 
+Replay and backtest are research tools, not final evaluation authority. They belong inside the
+candidate creation stage as fast ways to explore, sanity-check, and reject weak ideas. The primary
+product score must come from continuous paper trading: selected candidates run against live public
+market data with fake account, fake execution, and fake Ledger, and are judged by accumulated
+`revenue - cost` over time.
+
 ```text
 parallel TradingSystem candidates
--> external Evaluation
+-> research-time replay/backtest preflight
 -> leaderboard
 -> findings and lineage
 -> next generation
--> selected paper evidence
+-> selected continuous paper trading evaluation
 ```
 
 `TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or
 an internal agent runtime, but it must emit bounded validated `OrderRequest`s and remain externally
-evaluated.
+evaluated in paper before it earns authority.
 
 The authority boundary is outside the candidate. A candidate is accepted or rejected by external
-Evaluation, provider/risk validation, and paper-only Gateway/Ledger evidence after selection.
-Failures and losing candidates remain useful arena memory unless they crash, submit malformed
-orders, bypass provider boundaries, fail risk validation, or attempt private/live behavior.
+paper trading performance, provider/risk validation, and paper-only Gateway/Ledger evidence after
+selection. Failures and losing candidates remain useful arena memory unless they crash, submit
+malformed orders, bypass provider boundaries, fail risk validation, or attempt private/live
+behavior.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.
@@ -59,7 +66,7 @@ Canonical repo docs:
 Use the same nouns in code, API, UI, issues, and compact docs:
 
 ```text
-Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger
+Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger
 ```
 
 `OrderRequest`, `GatewayResult`, and `ExecutionResult` are the Ledger chain. `Improvement`,

@@ -123,15 +123,16 @@ for (const path of files) {
 }
 
 checkRequired("README.md", [
-  "Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger"
+  "Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger"
 ]);
 checkRequired("ARCHITECTURE.md", [
-  "Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger"
+  "Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger"
 ]);
 checkRequired("docs/project-direction.md", [
   "CandidateArena",
   "TradingSystem",
-  "Evaluation",
+  "ResearchPreflight",
+  "PaperTradingEvaluation",
   "parallel TradingSystem candidates",
   "revenue - cost",
   "Gateway",
@@ -145,7 +146,8 @@ checkRequired("docs/ouroboros-doctrine.md", [
   "Researcher cannot grade",
   "Gateway binding changes, TradingSystem identity does not",
   "Candidate, Paper Evidence, and Live are separate states",
-  "Evaluation",
+  "ResearchPreflight",
+  "PaperTradingEvaluation",
   "Finding",
   "Lineage",
   "PaperEvidence",
@@ -171,6 +173,8 @@ checkRequired("docs/naming-taxonomy.md", [
   "`TradingSystem`",
   "internal agent runtime",
   "`SystemCode`",
+  "`ResearchPreflight`",
+  "`PaperTradingEvaluation`",
   "`Evaluation`",
   "`Finding`",
   "`Lineage`",

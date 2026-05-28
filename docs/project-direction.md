@@ -3,10 +3,15 @@
 Ouroboros is an automated weak-to-strong trading-system laboratory. It connects improving AI agents
 to a hard, dynamic, outcome-gradable trading problem where `revenue - cost` is a clear score. The
 product center is the `CandidateArena`: researchers generate parallel TradingSystem candidates,
-external `Evaluation` ranks them, findings and lineage feed the next generation, and only a
-selected candidate can move into paper `Gateway` and `Ledger` evidence.
+research-time replay/backtest helps create and preflight them, findings and lineage feed the next
+generation, and only selected candidates can move into continuous paper trading `Gateway` and
+`Ledger` evidence.
 
 Read [Ouroboros Doctrine](ouroboros-doctrine.md) for the full product thesis.
+
+Two names keep the evaluation boundary stable: `ResearchPreflight` is replay, backtest, or
+simulation inside candidate creation; `PaperTradingEvaluation` is selected-candidate continuous
+paper trading over live public market data.
 
 ## Source Of Truth
 
@@ -22,22 +27,28 @@ authority.
 
 ```text
 parallel TradingSystem candidates
--> external Evaluation
+-> research-time replay/backtest preflight
 -> leaderboard
 -> findings and lineage
 -> next generation
--> selected candidate paper evidence
+-> selected candidate continuous paper trading evaluation
 ```
 
-Researchers and LLM agents generate candidates; they do not grant authority. External Evaluation,
-provider and risk validation, and selected-candidate paper Gateway/Ledger evidence decide what
-counts. Loss-making candidates remain useful arena memory unless they crash, submit malformed
-orders, bypass provider boundaries, fail risk validation, or attempt private/live behavior.
+Researchers and LLM agents generate candidates; they do not grant authority. Replay/backtest is a
+research tool, not final evaluation authority. It can help researchers create, compare, and reject
+ideas before a candidate enters paper, but it must not become the product leaderboard authority for
+living agent-based systems.
+
+Continuous paper trading is the evaluation authority. Selected candidates run against live public
+market data through fake account, fake executor, Gateway, and Ledger. Their accumulated
+`revenue - cost`, risk behavior, and Ledger evidence decide what counts. Loss-making candidates
+remain useful arena memory unless they crash, submit malformed orders, bypass provider boundaries,
+fail risk validation, or attempt private/live behavior.
 
 AI agents improve over time. Codex, Claude Code, Gemini-powered agents, and future providers should
 plug into the same loop as replaceable research labor rather than changing the product doctrine.
-The stable contract is candidate generation, external Evaluation, findings/lineage memory, and
-selected paper evidence.
+The stable contract is candidate generation, research-time preflight, findings/lineage memory, and
+selected continuous paper trading evidence.
 
 TradingSystem may include an internal agent runtime, model calls, tools, deterministic code, rules,
 and execution logic. Researcher cannot grade, candidate cannot grade itself, and Gateway binding
