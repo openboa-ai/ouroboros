@@ -8,7 +8,8 @@ status
 -> arena tick
 -> leaderboard
 -> select candidate
--> run paper evidence
+-> start paper trading
+-> observe paper trading
 -> evidence readback
 ```
 
@@ -24,16 +25,18 @@ same `OperatorReadModel`.
 
 ## Acceptance
 
-- `ouroboros status` shows the stopped arena, no selected candidate, paper evidence `not_run`, and
-  live authority disabled.
+- `ouroboros status` shows the stopped arena, no selected candidate, `PaperTradingEvaluation`
+  `not_started`, paper evidence `not_run`, and live authority disabled.
 - The fixture provider can be set up, probed, and selected as the researcher provider.
 - `ouroboros arena tick` creates multiple candidates and the leaderboard is sorted by
   `net_revenue_usdt`.
-- `ouroboros candidate select <candidate-id>` makes the candidate explicit while paper evidence is
-  still `not_run`.
-- `ouroboros candidate evidence run <candidate-id>` records selected paper Gateway/Ledger evidence.
+- `ouroboros candidate select <candidate-id>` makes the candidate explicit while paper trading is
+  still `not_started`.
+- `ouroboros candidate paper start <candidate-id>` starts selected continuous paper trading.
+- `ouroboros trading-run observe <trading-run-id>` appends another paper observation and Ledger
+  chain while the run is active.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
-  `ledger_chain_complete`.
+  `PaperTradingEvaluation`, observation count, and `ledger_chain_complete`.
 - Live/private Binance authority stays disabled throughout the loop.
 
 ## Manual Check
@@ -49,7 +52,8 @@ ouroboros researcher provider set fixture
 ouroboros arena tick
 ouroboros status --json
 ouroboros candidate select <candidate-id>
-ouroboros candidate evidence run <candidate-id>
+ouroboros candidate paper start <candidate-id>
+ouroboros trading-run observe <trading-run-id>
 ouroboros status
 ouroboros tui
 ```

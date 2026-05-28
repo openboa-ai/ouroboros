@@ -16,7 +16,9 @@ describe("operator interface parity", () => {
       "arena.stop",
       "arena.tick",
       "candidate.select",
-      "candidate.paper_evidence.run",
+      "trading_run.start",
+      "trading_run.observe",
+      "trading_run.stop",
       "agent_provider.status",
       "agent_provider.setup",
       "agent_provider.login.start",
@@ -42,10 +44,24 @@ describe("operator interface parity", () => {
         }
       },
       {
-        args: ["candidate", "evidence", "run", "candidate-profitable"],
+        args: ["candidate", "paper", "start", "candidate-profitable"],
         request: {
-          command_kind: "candidate.paper_evidence.run",
+          command_kind: "trading_run.start",
           payload: { candidate_id: "candidate-profitable" }
+        }
+      },
+      {
+        args: ["trading-run", "observe", "trading-run-candidate-profitable"],
+        request: {
+          command_kind: "trading_run.observe",
+          payload: { trading_run_id: "trading-run-candidate-profitable" }
+        }
+      },
+      {
+        args: ["trading-run", "stop", "trading-run-candidate-profitable"],
+        request: {
+          command_kind: "trading_run.stop",
+          payload: { trading_run_id: "trading-run-candidate-profitable" }
         }
       },
       {
@@ -121,9 +137,17 @@ describe("operator interface parity", () => {
       command_kind: "candidate.select",
       payload: { candidate_id: "candidate-profitable" }
     });
-    expect(operatorTuiCommandForAction("run_paper_evidence", runningOperator, 0)).toEqual({
-      command_kind: "candidate.paper_evidence.run",
+    expect(operatorTuiCommandForAction("start_paper_trading", runningOperator, 0)).toEqual({
+      command_kind: "trading_run.start",
       payload: { candidate_id: "candidate-profitable" }
+    });
+    expect(operatorTuiCommandForAction("observe_paper_trading", runningOperator, 0)).toEqual({
+      command_kind: "trading_run.observe",
+      payload: { trading_run_id: "trading-run-candidate-profitable" }
+    });
+    expect(operatorTuiCommandForAction("stop_paper_trading", runningOperator, 0)).toEqual({
+      command_kind: "trading_run.stop",
+      payload: { trading_run_id: "trading-run-candidate-profitable" }
     });
     expect(operatorTuiCommandForAction("toggle_provider", runningOperator, 0)).toEqual({
       command_kind: "researcher.provider.select",
@@ -201,6 +225,27 @@ function fixtureOperator(): OperatorReadModel {
       ledger_chain_count: 1,
       latest_gateway_outcome: "dry_run_only",
       latest_execution_status: "dry_run_recorded",
+      authority_status: "not_live"
+    },
+    selected_paper_trading_evaluation: {
+      evaluation_kind: "paper_trading_evaluation",
+      status: "running",
+      trading_run_id: "trading-run-candidate-profitable",
+      trading_run_status: "running",
+      observation_count: 1,
+      ledger_chain_complete: true,
+      profit_loss: {
+        revenue_usdt: 5,
+        cost_usdt: 0.048,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952
+      },
+      latest_gateway_outcome: "dry_run_only",
+      latest_execution_status: "dry_run_recorded",
+      market_data_source: "binance_production_public_rest",
+      account_provider: "fake_paper_account",
+      executor: "fake_paper_order_executor",
+      score_source: "paper_gateway_ledger",
       authority_status: "not_live"
     },
     researcher_provider: {

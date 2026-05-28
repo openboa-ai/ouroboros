@@ -2431,7 +2431,9 @@ export const OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS = [
   "arena.stop",
   "arena.tick",
   "candidate.select",
-  "candidate.paper_evidence.run",
+  "trading_run.start",
+  "trading_run.observe",
+  "trading_run.stop",
   "agent_provider.status",
   "agent_provider.setup",
   "agent_provider.login.start",
@@ -2486,7 +2488,7 @@ export const OUROBOROS_COMMAND_DESCRIPTORS = [
   {
     command_kind: "candidate.paper_evidence.run",
     group: "candidate",
-    label: "Run selected paper evidence",
+    label: "Run selected paper evidence readback",
     availability: "controller",
     requires_candidate_id: true,
     authority_status: "not_live"
@@ -2671,6 +2673,30 @@ export interface SelectedPaperEvidenceReadModel {
   authority_status: "not_live";
 }
 
+export type PaperTradingEvaluationStatus =
+  | "not_started"
+  | "running"
+  | "stopped"
+  | "failed";
+
+export interface PaperTradingEvaluationReadModel {
+  evaluation_kind: "paper_trading_evaluation";
+  status: PaperTradingEvaluationStatus;
+  trading_run_id?: string;
+  trading_run_status?: TradingRunLifecycleStatus;
+  observation_count: number;
+  ledger_chain_complete: boolean;
+  profit_loss: TradingProfitLossReadModel;
+  latest_order_request_id?: string;
+  latest_gateway_outcome?: string;
+  latest_execution_status?: string;
+  market_data_source: "binance_production_public_rest";
+  account_provider: "fake_paper_account";
+  executor: "fake_paper_order_executor";
+  score_source: "paper_gateway_ledger";
+  authority_status: "not_live";
+}
+
 export interface OperatorReadModel {
   operator_kind: "ouroboros_operator";
   command_descriptors: readonly OuroborosCommandDescriptor[];
@@ -2678,6 +2704,7 @@ export interface OperatorReadModel {
   selected_candidate_id: string | null;
   selected_candidate: CandidateInspectReadModel | null;
   selected_paper_evidence: SelectedPaperEvidenceReadModel;
+  selected_paper_trading_evaluation: PaperTradingEvaluationReadModel;
   researcher_provider: ResearcherProviderReadModel;
   agent_profiles: AgentProfileReadModel[];
   latest_commands: OuroborosCommandReadModel[];

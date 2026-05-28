@@ -1,9 +1,9 @@
 # Architecture Governance
 
 Ouroboros uses Domain -> Application -> Adapters -> Controllers -> Interfaces as the physical
-architecture shape. The product doctrine stays simple: generate many candidates, evaluate
-externally, keep memory, repeat, and prove only the selected candidate with paper evidence.
-Architecture patterns are subordinate to that loop.
+architecture shape. The product doctrine stays simple: generate many candidates, preflight quickly,
+paper trade selected candidates continuously, keep memory, repeat, and read Ledger evidence from the
+selected `PaperTradingEvaluation`. Architecture patterns are subordinate to that loop.
 
 ## Layer Rules
 

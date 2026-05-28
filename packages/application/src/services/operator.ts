@@ -75,6 +75,7 @@ export class OperatorService {
       selected_candidate_id: selectedCandidate?.candidate_id ?? null,
       selected_candidate: selectedCandidate ?? null,
       selected_paper_evidence: selectedPaperEvidence(selectedCandidate),
+      selected_paper_trading_evaluation: selectedPaperTradingEvaluation(selectedCandidate),
       researcher_provider: await this.readResearcherProvider(),
       agent_profiles: await listAgentProfileReadModels(this.options.store),
       latest_commands: latestCommands,
@@ -210,7 +211,10 @@ export class OperatorService {
       },
       "candidate.evaluation.run": (payload) => this.executeMutationPort("candidate.evaluation.run", payload),
       "candidate.replay.run": (payload) => this.executeMutationPort("candidate.replay.run", payload),
-      "trading_run.start": (payload) => this.executeMutationPort("trading_run.start", payload),
+      "trading_run.start": async (payload) => {
+        this.selectedCandidateId = parseCommandCandidateId(payload);
+        return this.executeMutationPort("trading_run.start", payload);
+      },
       "trading_run.observe": (payload) => this.executeMutationPort("trading_run.observe", payload),
       "trading_run.stop": (payload) => this.executeMutationPort("trading_run.stop", payload),
       "run_control.record": (payload) => this.executeMutationPort("run_control.record", payload),
@@ -435,4 +439,138 @@ export function selectedPaperEvidence(
     failure_reason: ledger.chain_complete ? undefined : "ledger_chain_incomplete",
     authority_status: "not_live"
   };
+}
+
+export function selectedPaperTradingEvaluation(
+  candidate: CandidateInspectReadModel | undefined
+): OperatorReadModel["selected_paper_trading_evaluation"] {
+  if (!candidate) {
+    return paperTradingEvaluationReadModel({
+      status: "not_started",
+      observationCount: 0,
+      ledgerChainComplete: false,
+      profitLoss: zeroProfitLoss()
+    });
+  }
+
+  const ledger = candidate.ledger;
+  const tradingRunStatus = candidate.trading_run?.lifecycle_status;
+  const status = paperTradingEvaluationStatus(tradingRunStatus, ledger?.has_activity ?? false);
+  return paperTradingEvaluationReadModel({
+    status,
+    tradingRunId: candidate.trading_run?.ref.id,
+    tradingRunStatus,
+    observationCount: ledger?.chain_count ?? 0,
+    ledgerChainComplete: ledger?.chain_complete ?? false,
+    profitLoss: paperTradingProfitLoss(candidate),
+    latestOrderRequestId: ledger?.latest_order_request?.order_request_id,
+    latestGatewayOutcome: ledger?.latest_gateway_result?.decision_outcome,
+    latestExecutionStatus: ledger?.latest_execution_result?.status
+  });
+}
+
+function paperTradingEvaluationStatus(
+  tradingRunStatus: string | undefined,
+  hasLedgerActivity: boolean
+): OperatorReadModel["selected_paper_trading_evaluation"]["status"] {
+  if (tradingRunStatus === "running" || tradingRunStatus === "starting") {
+    return "running";
+  }
+  if (tradingRunStatus === "stopped" || tradingRunStatus === "stopping" || tradingRunStatus === "paused") {
+    return "stopped";
+  }
+  if (tradingRunStatus === "failed" || tradingRunStatus === "killed" || tradingRunStatus === "human_review_required") {
+    return "failed";
+  }
+  return hasLedgerActivity ? "stopped" : "not_started";
+}
+
+function paperTradingProfitLoss(
+  candidate: CandidateInspectReadModel
+): OperatorReadModel["selected_paper_trading_evaluation"]["profit_loss"] {
+  const latestMarkPrice = parseFiniteNumber(
+    candidate.trading_substrate?.latest_public_market_liveness_surface?.mark_price
+  );
+  const totals = (candidate.ledger?.chains ?? [])
+    .filter((chain) =>
+      chain.chain_complete &&
+      chain.gateway_result?.decision_outcome === "dry_run_only" &&
+      chain.execution_result?.status === "dry_run_recorded"
+    )
+    .reduce((acc, chain) => {
+      const quantity = parseFiniteNumber(chain.order_request.quantity);
+      const entryPrice = parseFiniteNumber(chain.order_request.limit_price) ?? latestMarkPrice;
+      if (!quantity || !entryPrice || !chain.order_request.side) {
+        return acc;
+      }
+      const currentPrice = latestMarkPrice ?? entryPrice;
+      const revenue = chain.order_request.side === "sell"
+        ? (entryPrice - currentPrice) * quantity
+        : (currentPrice - entryPrice) * quantity;
+      const notional = Math.abs(quantity * entryPrice);
+      const cost = notional * 8 / 10_000;
+      return {
+        revenue_usdt: acc.revenue_usdt + revenue,
+        cost_usdt: acc.cost_usdt + cost,
+        net_revenue_usdt: acc.net_revenue_usdt + revenue - cost,
+        net_return_pct: acc.net_return_pct
+      };
+    }, zeroProfitLoss());
+  return {
+    revenue_usdt: roundProfit(totals.revenue_usdt),
+    cost_usdt: roundProfit(totals.cost_usdt),
+    net_revenue_usdt: roundProfit(totals.net_revenue_usdt),
+    net_return_pct: roundProfit(totals.net_revenue_usdt / 10_000 * 100)
+  };
+}
+
+function paperTradingEvaluationReadModel(input: {
+  status: OperatorReadModel["selected_paper_trading_evaluation"]["status"];
+  tradingRunId?: string;
+  tradingRunStatus?: OperatorReadModel["selected_paper_trading_evaluation"]["trading_run_status"];
+  observationCount: number;
+  ledgerChainComplete: boolean;
+  profitLoss: OperatorReadModel["selected_paper_trading_evaluation"]["profit_loss"];
+  latestOrderRequestId?: string;
+  latestGatewayOutcome?: string;
+  latestExecutionStatus?: string;
+}): OperatorReadModel["selected_paper_trading_evaluation"] {
+  return {
+    evaluation_kind: "paper_trading_evaluation",
+    status: input.status,
+    trading_run_id: input.tradingRunId,
+    trading_run_status: input.tradingRunStatus,
+    observation_count: input.observationCount,
+    ledger_chain_complete: input.ledgerChainComplete,
+    profit_loss: input.profitLoss,
+    latest_order_request_id: input.latestOrderRequestId,
+    latest_gateway_outcome: input.latestGatewayOutcome,
+    latest_execution_status: input.latestExecutionStatus,
+    market_data_source: "binance_production_public_rest",
+    account_provider: "fake_paper_account",
+    executor: "fake_paper_order_executor",
+    score_source: "paper_gateway_ledger",
+    authority_status: "not_live"
+  };
+}
+
+function zeroProfitLoss() {
+  return {
+    revenue_usdt: 0,
+    cost_usdt: 0,
+    net_revenue_usdt: 0,
+    net_return_pct: 0
+  };
+}
+
+function parseFiniteNumber(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function roundProfit(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }

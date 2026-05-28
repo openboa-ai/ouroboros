@@ -23,9 +23,9 @@ Current command groups:
 - `arena`: status, start, stop, tick. `arena.tick` is one research round: candidate generation,
   research-time replay/backtest preflight, leaderboard update, findings, and lineage. It is not
   continuous paper trading and must not be treated as final evaluation authority.
-- `candidate`: select, run selected paper evidence, run candidate evaluation, run candidate replay.
-  `candidate.select` chooses one candidate for proof, and `candidate.paper_evidence.run` is the
-  current proof command for selected-candidate paper Gateway/Ledger evidence.
+- `candidate`: select, run candidate evaluation, run candidate replay, and compatibility paper
+  evidence readback. `candidate.select` chooses one candidate for proof; primary paper evaluation
+  starts through `trading_run.start`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
@@ -38,15 +38,17 @@ Current command groups:
 ## Read Model Authority
 
 `OperatorReadModel` is the shared operator state for all user surfaces. It must show the
-CandidateArena status, leaderboard, selected candidate, paper evidence summary, agent/provider
-status, latest ticks, latest candidates, latest command results, and authority flags.
+CandidateArena status, leaderboard, selected candidate, `PaperTradingEvaluation`, paper evidence
+readback, agent/provider status, latest ticks, latest candidates, latest command results, and
+authority flags.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
 
 Candidate, Paper Evidence, Paper Trading, and Live are separate states in every operator surface.
-Replay/backtest is a research tool, not final evaluation authority. `Run paper evidence` is current
-proof gathering; the product direction is selected continuous paper trading, not live promotion.
+Replay/backtest is a research tool, not final evaluation authority. `trading_run.start`,
+`trading_run.observe`, and `trading_run.stop` operate the selected candidate's continuous paper
+trading evaluation; paper evidence is Ledger readback, not live promotion.
 
 ## Resource Reads
 

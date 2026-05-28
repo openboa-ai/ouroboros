@@ -18,7 +18,9 @@ All three surfaces read the same state from `GET /api/operator`. Product loop mu
 - `arena.stop`
 - `arena.tick`
 - `candidate.select`
-- `candidate.paper_evidence.run`
+- `trading_run.start`
+- `trading_run.observe`
+- `trading_run.stop`
 - `agent_provider.status`
 - `agent_provider.setup`
 - `agent_provider.login.start`
@@ -34,7 +36,9 @@ status
 -> start/tick
 -> leaderboard
 -> select candidate
--> run paper evidence
+-> start paper trading
+-> observe paper score
+-> stop paper trading
 -> evidence readback
 ```
 
@@ -54,5 +58,8 @@ instead of falling back to host-local provider state.
 
 ## Boundary
 
-Interface parity does not change authority. Candidate, Paper Evidence, and Live remain visibly separate states. `candidate.paper_evidence.run` gathers selected paper Gateway/Ledger proof only.
-Live/private Binance authority remains disabled.
+Interface parity does not change authority. Candidate, Paper Evidence, and Live remain visibly separate states.
+Paper Trading is the continuous selected-candidate evaluation state between candidate selection and any
+future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
+control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
+promotion. Live/private Binance authority remains disabled.

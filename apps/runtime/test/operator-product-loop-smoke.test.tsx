@@ -41,6 +41,7 @@ describe("operator product loop smoke", () => {
       expect(initialStatus.stdout).toContain("Arena: stopped");
       expect(initialStatus.stdout).toContain("Selected candidate: none");
       expect(initialStatus.stdout).toContain("Paper evidence: not_run");
+      expect(initialStatus.stdout).toContain("PaperTradingEvaluation: not_started");
       expect(initialStatus.stdout).toContain("Live authority: disabled / not_live");
 
       await postCommand(server, {
@@ -106,13 +107,20 @@ describe("operator product loop smoke", () => {
       });
 
       const evidence = await runOuroborosCli(
-        ["candidate", "evidence", "run", leader.candidate_id, "--json"],
+        ["candidate", "paper", "start", leader.candidate_id, "--json"],
         { runtimeBaseUrl, fetch: fetcher }
       );
       expect(evidence.exitCode, evidence.stderr).toBe(0);
       const evidenceBody = JSON.parse(evidence.stdout) as { operator: OperatorReadModel };
       expect(evidenceBody.operator).toMatchObject({
         selected_candidate_id: leader.candidate_id,
+        selected_paper_trading_evaluation: {
+          evaluation_kind: "paper_trading_evaluation",
+          status: "running",
+          observation_count: 1,
+          ledger_chain_complete: true,
+          authority_status: "not_live"
+        },
         selected_paper_evidence: {
           status: "ledger_chain_complete",
           ledger_chain_complete: true,
@@ -123,6 +131,21 @@ describe("operator product loop smoke", () => {
           authority_status: "not_live"
         },
         live_disabled: true,
+        authority_status: "not_live"
+      });
+
+      const tradingRunId = evidenceBody.operator.selected_paper_trading_evaluation.trading_run_id;
+      expect(tradingRunId).toEqual(expect.any(String));
+      const observed = await runOuroborosCli(
+        ["trading-run", "observe", tradingRunId!, "--json"],
+        { runtimeBaseUrl, fetch: fetcher }
+      );
+      expect(observed.exitCode, observed.stderr).toBe(0);
+      const observedBody = JSON.parse(observed.stdout) as { operator: OperatorReadModel };
+      expect(observedBody.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        observation_count: 2,
+        ledger_chain_complete: true,
         authority_status: "not_live"
       });
 
@@ -140,11 +163,18 @@ describe("operator product loop smoke", () => {
         latest_execution_status: "dry_run_recorded",
         authority_status: "not_live"
       });
+      expect(finalOperator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        observation_count: 2,
+        ledger_chain_complete: true,
+        authority_status: "not_live"
+      });
       expect(finalOperator.latest_commands.map((command) => command.command_kind)).toEqual(
         expect.arrayContaining([
           "arena.tick",
           "candidate.select",
-          "candidate.paper_evidence.run",
+          "trading_run.start",
+          "trading_run.observe",
           "researcher.provider.select"
         ])
       );
@@ -163,6 +193,12 @@ describe("operator product loop smoke", () => {
             ledger_chain_complete: true,
             latest_gateway_outcome: "dry_run_only",
             latest_execution_status: "dry_run_recorded",
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: {
+            status: "running",
+            observation_count: 2,
+            ledger_chain_complete: true,
             authority_status: "not_live"
           }
         });
@@ -195,9 +231,9 @@ describe("operator product loop smoke", () => {
       expect(tui).toContain("Researcher provider: fixture");
       expect(tui).toContain("Authority: not_live / live disabled");
       expect(tui).toContain(`Selected Candidate\n${leader.candidate_id}`);
-      expect(tui).toContain("Paper evidence: ledger_chain_complete");
+      expect(tui).toContain("PaperTradingEvaluation: running");
       expect(tui).toContain("Ledger chain: complete");
-      expect(tui).toContain("candidate.paper_evidence.run: succeeded");
+      expect(tui).toContain("trading_run.observe: succeeded");
     } finally {
       await server.close();
     }

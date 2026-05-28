@@ -52,6 +52,9 @@ import {
   selectCandidateForOperator,
   selectResearcherProvider,
   setupAgentProvider,
+  observeTradingRun,
+  startTradingRun,
+  stopTradingRun,
   startAgentProviderLogin,
   submitOuroborosCommand,
   type FullCycleOutcome,
@@ -121,7 +124,8 @@ describe("operator command API", () => {
           ledger_chain_complete: true,
           ledger_chain_count: 1,
           authority_status: "not_live"
-        }
+        },
+        selected_paper_trading_evaluation: paperTradingEvaluationFixture()
       }
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -239,6 +243,11 @@ describe("operator command API", () => {
               ledger_chain_complete: false,
               authority_status: "not_live"
             },
+            selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+              status: "not_started",
+              observation_count: 0,
+              ledger_chain_complete: false
+            }),
             researcher_provider: {
               selected_provider: "fixture",
               available_providers: ["codex", "fixture"],
@@ -266,6 +275,11 @@ describe("operator command API", () => {
             ledger_chain_complete: false,
             authority_status: "not_live"
           },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+            status: "not_started",
+            observation_count: 0,
+            ledger_chain_complete: false
+          }),
           researcher_provider: {
             selected_provider: "fixture",
             available_providers: ["codex", "fixture"],
@@ -286,7 +300,9 @@ describe("operator command API", () => {
     await runCandidateArenaCommand("stop");
     await runCandidateArenaCommand("tick");
     await selectCandidateForOperator("candidate-profitable");
-    await runPaperEvidenceForCandidate("candidate-profitable");
+    await startTradingRun(arenaSelectedCandidate());
+    await observeTradingRun(arenaSelectedCandidate());
+    await stopTradingRun(arenaSelectedCandidate());
     await submitOuroborosCommand({ command_kind: "agent_provider.status" });
     await setupAgentProvider("codex");
     await startAgentProviderLogin("codex");
@@ -299,7 +315,9 @@ describe("operator command API", () => {
       "arena.stop",
       "arena.tick",
       "candidate.select",
-      "candidate.paper_evidence.run",
+      "trading_run.start",
+      "trading_run.observe",
+      "trading_run.stop",
       "agent_provider.status",
       "agent_provider.setup",
       "agent_provider.login.start",
@@ -311,7 +329,7 @@ describe("operator command API", () => {
       init: undefined
     });
     expect(calls.slice(1).map((call) => call.url)).toEqual(Array.from(
-      { length: 11 },
+      { length: 13 },
       () => "http://127.0.0.1:4173/api/commands"
     ));
     expect(calls.slice(1).map((call) => JSON.parse(String(call.init?.body)))).toEqual([
@@ -324,8 +342,16 @@ describe("operator command API", () => {
         payload: { candidate_id: "candidate-profitable" }
       },
       {
-        command_kind: "candidate.paper_evidence.run",
+        command_kind: "trading_run.start",
         payload: { candidate_id: "candidate-profitable" }
+      },
+      {
+        command_kind: "trading_run.observe",
+        payload: { trading_run_id: "fixture-runtime" }
+      },
+      {
+        command_kind: "trading_run.stop",
+        payload: { trading_run_id: "fixture-runtime" }
       },
       { command_kind: "agent_provider.status" },
       {
@@ -358,6 +384,11 @@ describe("operator command API", () => {
           ledger_chain_complete: false,
           authority_status: "not_live"
         },
+        selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+          status: "not_started",
+          observation_count: 0,
+          ledger_chain_complete: false
+        }),
         researcher_provider: {
           selected_provider: "fixture",
           available_providers: ["codex", "fixture"],
@@ -416,9 +447,9 @@ describe("CandidateDetail", () => {
         onStop={() => undefined}
         onTick={() => undefined}
         onSelectCandidate={() => undefined}
-        onRunPaperEvidence={() => undefined}
+        onStartPaperTrading={() => undefined}
         actionPending={false}
-        runningPaperEvidence={false}
+        runningPaperTrading={false}
       />
     );
 
@@ -439,7 +470,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evaluation");
     expect(html).toContain("profit_loss");
     expect(html).toContain("Lineage");
-    expect(html).toContain("Run paper evidence");
+    expect(html).toContain("Start paper trading");
     expect(html).toContain("Agent providers");
     expect(html).toContain("Codex");
     expect(html).toContain("Command log");
@@ -463,9 +494,9 @@ describe("CandidateDetail", () => {
     );
 
     expect(html).toContain("Selected candidate");
-    expect(html).toContain("Run paper evidence");
-    expect(html).toContain("Paper evidence");
-    expect(html).toContain("not run");
+    expect(html).toContain("Start paper trading");
+    expect(html).toContain("PaperTradingEvaluation");
+    expect(html).toContain("not_started");
     expect(html).not.toContain("Research iterations");
   });
 
@@ -493,13 +524,13 @@ describe("CandidateDetail", () => {
         onStop={() => undefined}
         onTick={() => undefined}
         onSelectCandidate={() => undefined}
-        onRunPaperEvidence={() => undefined}
+        onStartPaperTrading={() => undefined}
         actionPending={false}
-        runningPaperEvidence={false}
+        runningPaperTrading={false}
       />
     );
 
-    expect(html).toContain("Paper evidence");
+    expect(html).toContain("PaperTradingEvaluation");
     expect(html).toContain("not run");
     expect(html).toContain("TradingRun");
     expect(html).not.toContain("0 Ledger chains");
@@ -524,13 +555,13 @@ describe("CandidateDetail", () => {
         onStop={() => undefined}
         onTick={() => undefined}
         onSelectCandidate={() => undefined}
-        onRunPaperEvidence={() => undefined}
+        onStartPaperTrading={() => undefined}
         actionPending={false}
-        runningPaperEvidence={false}
+        runningPaperTrading={false}
       />
     );
 
-    expect(html).toContain("Paper evidence");
+    expect(html).toContain("PaperTradingEvaluation");
     expect(html).toContain("Ledger chain complete");
     expect(html).toContain("TradingRun");
     expect(html).toContain("stopped");
@@ -3396,6 +3427,32 @@ function jsonResponse(body: unknown): Response {
     json: async () => body,
     text: async () => JSON.stringify(body)
   } as Response;
+}
+
+function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    evaluation_kind: "paper_trading_evaluation",
+    status: "running",
+    trading_run_id: "trading-run-candidate-profitable",
+    trading_run_status: "running",
+    observation_count: 1,
+    ledger_chain_complete: true,
+    profit_loss: {
+      revenue_usdt: 5,
+      cost_usdt: 0.048,
+      net_revenue_usdt: 4.952,
+      net_return_pct: 0.04952
+    },
+    latest_order_request_id: "order-request-001",
+    latest_gateway_outcome: "dry_run_only",
+    latest_execution_status: "dry_run_recorded",
+    market_data_source: "binance_production_public_rest",
+    account_provider: "fake_paper_account",
+    executor: "fake_paper_order_executor",
+    score_source: "paper_gateway_ledger",
+    authority_status: "not_live",
+    ...overrides
+  } as const;
 }
 
 function arenaSelectedCandidate(

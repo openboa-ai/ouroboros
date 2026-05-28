@@ -98,6 +98,7 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Arena: running (3 ticks, 1 candidates)");
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
     expect(result.stdout).toContain("Paper evidence: ledger_chain_complete");
+    expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
   });
 
   it("returns operator status JSON for automation", async () => {
@@ -313,6 +314,36 @@ describe("ouroboros CLI", () => {
     });
   });
 
+  it("maps selected candidate paper trading commands to the command endpoint", () => {
+    expect(parseOuroborosCliArgs(["candidate", "paper", "start", "candidate-alpha"])).toEqual({
+      mode: "command",
+      request: {
+        command_kind: "trading_run.start",
+        payload: {
+          candidate_id: "candidate-alpha"
+        }
+      }
+    });
+    expect(parseOuroborosCliArgs(["trading-run", "observe", "trading-run-alpha"])).toEqual({
+      mode: "command",
+      request: {
+        command_kind: "trading_run.observe",
+        payload: {
+          trading_run_id: "trading-run-alpha"
+        }
+      }
+    });
+    expect(parseOuroborosCliArgs(["trading-run", "stop", "trading-run-alpha"])).toEqual({
+      mode: "command",
+      request: {
+        command_kind: "trading_run.stop",
+        payload: {
+          trading_run_id: "trading-run-alpha"
+        }
+      }
+    });
+  });
+
   it("keeps the Ink TUI on the shared operator read model path", () => {
     expect(parseOuroborosCliArgs(["tui"])).toEqual({
       mode: "tui"
@@ -378,6 +409,27 @@ function fixtureOperator(
       ledger_chain_count: 1,
       latest_gateway_outcome: "dry_run_only",
       latest_execution_status: "dry_run_recorded",
+      authority_status: "not_live"
+    },
+    selected_paper_trading_evaluation: {
+      evaluation_kind: "paper_trading_evaluation",
+      status: "running",
+      trading_run_id: "trading-run-candidate-profitable",
+      trading_run_status: "running",
+      observation_count: 1,
+      ledger_chain_complete: true,
+      profit_loss: {
+        revenue_usdt: 5,
+        cost_usdt: 0.048,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952
+      },
+      latest_gateway_outcome: "dry_run_only",
+      latest_execution_status: "dry_run_recorded",
+      market_data_source: "binance_production_public_rest",
+      account_provider: "fake_paper_account",
+      executor: "fake_paper_order_executor",
+      score_source: "paper_gateway_ledger",
       authority_status: "not_live"
     },
     researcher_provider: {
