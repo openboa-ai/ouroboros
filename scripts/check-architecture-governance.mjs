@@ -69,7 +69,7 @@ requireText("docs/project-direction.md", [
   "outcome-gradable",
   "CandidateArena",
   "parallel TradingSystem candidates",
-  "selected candidate paper evidence",
+  "selected candidate continuous paper trading evaluation",
   "Live trading, private account reads"
 ]);
 
@@ -77,13 +77,15 @@ requireText("docs/ouroboros-doctrine.md", [
   "AI agents improve over time",
   "outcome-gradable",
   "parallel TradingSystem candidates",
-  "external Evaluation",
+  "continuous paper trading evaluation",
   "revenue - cost",
   "selected paper evidence",
   "TradingSystem may include an internal agent runtime",
   "Researcher cannot grade",
   "Gateway binding changes, TradingSystem identity does not",
   "Candidate, Paper Evidence, and Live are separate states",
+  "Replay/backtest is a research tool, not final evaluation authority",
+  "Continuous paper trading is the evaluation authority",
   "Reference Lineage"
 ]);
 

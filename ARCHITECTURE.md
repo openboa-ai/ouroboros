@@ -6,20 +6,20 @@ Ouroboros is organized around the Candidate Arena trust kernel:
 CandidateArena
 -> parallel or iterative TradingSystem candidates
 -> SystemCode
--> Evaluation
+-> research-time replay/backtest preflight
 -> leaderboard, findings, and lineage
--> selected TradingRun
--> Sandbox
+-> selected continuous Paper Trading
 -> Gateway
 -> Ledger
 ```
 
-Canonical naming surface: Candidate Arena -> Trading System -> System Code -> Evaluation -> selected Trading Run -> Sandbox -> Gateway -> Ledger.
+Canonical naming surface: Candidate Arena -> Trading System -> System Code -> research preflight -> selected Paper Trading -> Gateway -> Ledger.
 
-Researchers and LLM agents are candidate generators. Evaluation is the authority boundary for
-candidate ranking, and paper `Gateway`/`Ledger` evidence belongs only to the selected Trading Run,
-not to every candidate. `Improvement` remains a compatibility/AAR lineage record; it must not pull
-the architecture back toward one best artifact being improved in place.
+Researchers and LLM agents are candidate generators. Replay/backtest is a research tool, not final
+evaluation authority. Continuous paper trading is the evaluation authority for candidate ranking,
+and paper `Gateway`/`Ledger` evidence belongs only to selected Trading Runs, not to every candidate.
+`Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
+toward one best artifact being improved in place.
 
 Candidate generation may be parallel across `ResearchWorker` and `ResearchDirection` lanes or
 iterative across ticks. The architecture should preserve candidate population memory: losing
@@ -114,10 +114,11 @@ This file is a compact development map. The canonical architecture contract live
 ## Current Development Boundary
 
 Preserve these separations: Candidate Arena state vs selected Trading Run execution,
-TradingSystem identity vs Evaluation evidence, Evaluation evidence vs paper evidence, TradingRun
-control vs OrderRequest generation, provider output as trace material rather than proof, and
-persistence with enough attribution to replay why state exists. Docker, Compose, Docker Sandboxes
-`sbx`, placement, adapter, and host paths stay below the Sandbox boundary.
+TradingSystem identity vs ResearchPreflight evidence, research-time replay/backtest vs continuous
+paper trading evaluation, TradingRun control vs OrderRequest generation, provider output as trace
+material rather than proof, and persistence with enough attribution to replay why state exists.
+Docker, Compose, Docker Sandboxes `sbx`, placement, adapter, and host paths stay below the Sandbox
+boundary.
 
 ## Repo Architecture Sources
 

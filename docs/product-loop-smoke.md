@@ -12,6 +12,11 @@ status
 -> evidence readback
 ```
 
+This smoke is a proof-path check, not final product evaluation. Replay/backtest belongs inside
+candidate creation and research preflight. The product evaluation authority is selected continuous
+paper trading, where Ledger evidence accumulates over time against live public market data with
+fake account and fake execution.
+
 The automated smoke test is
 `apps/runtime/test/operator-product-loop-smoke.test.tsx`. It builds the runtime in-process, connects
 the `ouroboros` CLI fetch path to that runtime, runs the product loop, and renders the TUI from the

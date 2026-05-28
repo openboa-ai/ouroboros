@@ -21,11 +21,14 @@ local controller exception for managed agent setup/login/probe.
 Current command groups:
 
 - `arena`: status, start, stop, tick. `arena.tick` is one research round: candidate generation,
-  external Evaluation, leaderboard update, findings, and lineage.
+  research-time replay/backtest preflight, leaderboard update, findings, and lineage. It is not
+  continuous paper trading and must not be treated as final evaluation authority.
 - `candidate`: select, run selected paper evidence, run candidate evaluation, run candidate replay.
-  `candidate.select` chooses one candidate for proof, and `candidate.paper_evidence.run` creates
-  paper Gateway/Ledger evidence for that selected candidate only.
-- `trading_run`: start, observe, stop paper trading runs through command dispatch.
+  `candidate.select` chooses one candidate for proof, and `candidate.paper_evidence.run` is the
+  current proof command for selected-candidate paper Gateway/Ledger evidence.
+- `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
+  evaluation authority belongs here: selected candidates must accumulate continuous paper trading
+  `revenue - cost` over time before their performance counts as product evidence.
 - `run_control`: record lifecycle control decisions and audit evidence.
 - `trading_substrate`: record private-readiness posture without enabling private/live authority.
 - `sandbox`: start or stop sandbox execution through command dispatch.
@@ -41,8 +44,9 @@ status, latest ticks, latest candidates, latest command results, and authority f
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
 
-Candidate, Paper Evidence, and Live are separate states in every operator surface. `Run paper
-evidence` is proof gathering, not live promotion.
+Candidate, Paper Evidence, Paper Trading, and Live are separate states in every operator surface.
+Replay/backtest is a research tool, not final evaluation authority. `Run paper evidence` is current
+proof gathering; the product direction is selected continuous paper trading, not live promotion.
 
 ## Resource Reads
 

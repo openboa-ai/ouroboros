@@ -212,14 +212,16 @@ for term in ["llm-wiki", "writeback_needed", "project-context", ".agents/skills/
 doctrine_required=[
   "outcome-gradable",
   "parallel TradingSystem candidates",
-  "external Evaluation",
+  "continuous paper trading evaluation",
   "revenue - cost",
   "selected paper evidence",
   "AI agents improve over time",
   "Researcher cannot grade",
   "TradingSystem may include an internal agent runtime",
   "Gateway binding changes, TradingSystem identity does not",
-  "Candidate, Paper Evidence, and Live are separate states"
+  "Candidate, Paper Evidence, and Live are separate states",
+  "Replay/backtest is a research tool, not final evaluation authority",
+  "Continuous paper trading is the evaluation authority"
 ]
 doctrine_corpus="\n".join(text(p) for p in [Path("README.md"), Path("docs/project-direction.md"), Path("docs/ouroboros-doctrine.md")] if p.exists())
 missing_doctrine=[term for term in doctrine_required if term not in doctrine_corpus]

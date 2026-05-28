@@ -2,16 +2,21 @@
 
 Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
 continuously improving external AI agents to an outcome-gradable trading problem, then forces their
-ideas through `CandidateArena` search, external Evaluation, and selected paper evidence.
+ideas through `CandidateArena` search, research-time preflight, and selected continuous paper
+trading evaluation.
 
 ```text
 parallel TradingSystem candidates
--> external Evaluation
+-> research-time replay/backtest preflight
 -> leaderboard
 -> findings and lineage
 -> next generation
--> selected paper evidence
+-> selected continuous paper trading evaluation
 ```
+
+Name the boundary plainly: `ResearchPreflight` is replay, backtest, or simulation used while
+creating candidates; `PaperTradingEvaluation` is selected-candidate paper trading over live public
+market data, scored by accumulated `revenue - cost`.
 
 ## Doctrine Tree
 
@@ -24,13 +29,16 @@ parallel TradingSystem candidates
 2. Problem Lens
    - Choose problems that are hard, dynamic, adversarial, and objectively gradable.
    - Trading fits because market behavior changes, but candidate output can still be scored by
-     `revenue - cost`, `net_revenue_usdt`, return, costs, risk, and paper evidence.
+     `revenue - cost`, `net_revenue_usdt`, return, costs, risk, and continuous paper evidence.
    - A hard problem with a clear score is where agent hill-climbing can compound.
 
 3. Method
    - Generate many candidates, not one best bot.
-   - Evaluate externally, rank on a leaderboard, preserve `Finding` records and lineage, then feed that
-     memory into the next generation.
+   - Use replay, backtest, and simulation as research-time tools for candidate creation, sanity
+     checks, and preflight rejection.
+   - Rank by selected-candidate paper trading performance once a candidate enters the paper
+     runtime. Preserve `Finding` records and lineage, then feed that memory into the next
+     generation.
    - Losing candidates are still useful unless they crash, are malformed, fail risk validation,
      bypass provider boundaries, or attempt private/live behavior.
 
@@ -45,8 +53,12 @@ parallel TradingSystem candidates
    - Researcher can generate candidates.
    - Researcher cannot grade.
    - Candidate cannot grade itself.
-   - External Evaluation is sealed from candidate self-report, generated comments, and provider
-     optimism.
+   - Replay/backtest is a research tool, not final evaluation authority.
+   - Continuous paper trading is the evaluation authority for the product loop because living
+     TradingSystems may use current market state, news, social data, tools, and internal agents that
+     old static data cannot faithfully grade.
+   - Paper evaluation is sealed from candidate self-report, generated comments, provider optimism,
+     and hidden authority.
 
 6. Promotion Boundary
    - Gateway binding changes, TradingSystem identity does not.
@@ -57,19 +69,21 @@ parallel TradingSystem candidates
 
 7. UX Boundary
    - Candidate, Paper Evidence, and Live are separate states.
-   - Candidate means evaluated artifact with no execution authority.
-   - `PaperEvidence` means selected-candidate proof through fake account, fake executor, Gateway, and
-     Ledger.
+   - Candidate means generated artifact or executable system with no execution authority.
+   - `PaperEvidence` means selected-candidate proof through continuous fake account, fake executor,
+     Gateway, and Ledger.
+   - The selected paper evidence state is a visible readback of paper Ledger proof, not the whole
+     evaluation loop and not live promotion.
    - Live means real authority and is outside the current product boundary.
-   - `Run paper evidence` is proof gathering, not live promotion.
+   - `Start paper trading` is proof gathering, not live promotion.
 
 8. Non-Negotiables
    - Do not collapse the arena into one-best-artifact editing.
    - Do not treat generated code, model output, or provider self-report as proof.
-   - Do not hide Evaluation behind UI optimism.
+   - Do not treat replay/backtest results as final trading performance.
    - Do not imply paper success grants live authority.
-   - Do not let architecture patterns obscure the simple loop: generate many, evaluate externally,
-     keep memory, repeat.
+   - Do not let architecture patterns obscure the simple loop: generate many, preflight quickly,
+     paper trade selected candidates continuously, keep memory, repeat.
 
 ## Reference Lineage
 
@@ -80,7 +94,7 @@ parallel TradingSystem candidates
 | AlphaProof Nexus | unreliable generation made useful by verification and search |
 | Weak-to-strong | stronger capability elicited through scalable evaluation |
 | Codex, Claude Code, Gemini agents | external improving agent labor |
-| Ouroboros | apply the pattern to trading, where `revenue - cost` is the score |
+| Ouroboros | apply the pattern to trading, where continuous paper `revenue - cost` is the score |
 
 ## References
 
