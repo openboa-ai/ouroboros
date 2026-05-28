@@ -50,6 +50,7 @@ Canonical repo docs:
 - [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
 - [Architecture Governance](docs/architecture-governance.md)
 - [API And Command Contract](docs/api-command-contract.md)
+- [Interface Parity](docs/interface-parity.md)
 - [Naming Taxonomy](docs/naming-taxonomy.md)
 
 ## Canonical Flow

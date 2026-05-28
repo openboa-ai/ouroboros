@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildLedgerReadModel } from "@ouroboros/domain";
+import { buildLedgerReadModel, OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS } from "@ouroboros/domain";
 import type {
   ImprovementReadModel,
   CandidateEvaluationReadModel,
@@ -49,8 +49,10 @@ import {
   runCandidateArenaCommand,
   runPaperEvidenceForCandidate,
   probeAgentProvider,
+  selectCandidateForOperator,
   selectResearcherProvider,
   setupAgentProvider,
+  startAgentProviderLogin,
   submitOuroborosCommand,
   type FullCycleOutcome,
   type TradingResearchRuntimeReadModel
@@ -154,6 +156,7 @@ describe("operator command API", () => {
 
     await setupAgentProvider("codex");
     await probeAgentProvider("codex");
+    await startAgentProviderLogin("codex");
     await selectResearcherProvider("fixture");
     await submitOuroborosCommand({ command_kind: "agent_provider.status" });
 
@@ -182,8 +185,8 @@ describe("operator command API", () => {
       "http://127.0.0.1:4173/api/commands",
       expect.objectContaining({
         body: JSON.stringify({
-          command_kind: "researcher.provider.select",
-          payload: { provider: "fixture" }
+          command_kind: "agent_provider.login.start",
+          payload: { provider: "codex" }
         })
       })
     );
@@ -191,9 +194,142 @@ describe("operator command API", () => {
       4,
       "http://127.0.0.1:4173/api/commands",
       expect.objectContaining({
+        body: JSON.stringify({
+          command_kind: "researcher.provider.select",
+          payload: { provider: "fixture" }
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://127.0.0.1:4173/api/commands",
+      expect.objectContaining({
         body: JSON.stringify({ command_kind: "agent_provider.status" })
       })
     );
+  });
+
+  it("keeps Web UI product loop wrappers aligned with the domain product loop command set", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/api/operator")) {
+        return jsonResponse({
+          operator: {
+            candidate_arena: fixtureCandidateArena,
+            selected_candidate_id: "candidate-profitable",
+            selected_candidate: arenaSelectedCandidate(),
+            selected_paper_evidence: {
+              status: "not_run",
+              ledger_chain_complete: false,
+              authority_status: "not_live"
+            },
+            researcher_provider: {
+              selected_provider: "fixture",
+              available_providers: ["codex", "fixture"],
+              authority_status: "research_only"
+            },
+            agent_profiles: [],
+            latest_commands: [],
+            authority_status: "not_live",
+            live_disabled: true
+          }
+        });
+      }
+      const request = JSON.parse(String(init?.body));
+      return jsonResponse({
+        command: {
+          command_kind: request.command_kind,
+          status: "succeeded"
+        },
+        operator: {
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: "candidate-profitable",
+          selected_candidate: arenaSelectedCandidate(),
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false,
+            authority_status: "not_live"
+          },
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          authority_status: "not_live",
+          live_disabled: true
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchOperatorReadModel();
+    await runCandidateArenaCommand("status");
+    await runCandidateArenaCommand("start");
+    await runCandidateArenaCommand("stop");
+    await runCandidateArenaCommand("tick");
+    await selectCandidateForOperator("candidate-profitable");
+    await runPaperEvidenceForCandidate("candidate-profitable");
+    await submitOuroborosCommand({ command_kind: "agent_provider.status" });
+    await setupAgentProvider("codex");
+    await startAgentProviderLogin("codex");
+    await probeAgentProvider("codex");
+    await selectResearcherProvider("fixture");
+
+    expect(OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS).toEqual([
+      "arena.status",
+      "arena.start",
+      "arena.stop",
+      "arena.tick",
+      "candidate.select",
+      "candidate.paper_evidence.run",
+      "agent_provider.status",
+      "agent_provider.setup",
+      "agent_provider.login.start",
+      "agent_provider.probe",
+      "researcher.provider.select"
+    ]);
+    expect(calls[0]).toEqual({
+      url: "http://127.0.0.1:4173/api/operator",
+      init: undefined
+    });
+    expect(calls.slice(1).map((call) => call.url)).toEqual(Array.from(
+      { length: 11 },
+      () => "http://127.0.0.1:4173/api/commands"
+    ));
+    expect(calls.slice(1).map((call) => JSON.parse(String(call.init?.body)))).toEqual([
+      { command_kind: "arena.status" },
+      { command_kind: "arena.start" },
+      { command_kind: "arena.stop" },
+      { command_kind: "arena.tick" },
+      {
+        command_kind: "candidate.select",
+        payload: { candidate_id: "candidate-profitable" }
+      },
+      {
+        command_kind: "candidate.paper_evidence.run",
+        payload: { candidate_id: "candidate-profitable" }
+      },
+      { command_kind: "agent_provider.status" },
+      {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "codex" }
+      },
+      {
+        command_kind: "agent_provider.login.start",
+        payload: { provider: "codex" }
+      },
+      {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "codex" }
+      },
+      {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      }
+    ]);
   });
 
   it("reads the shared operator model for UI state", async () => {

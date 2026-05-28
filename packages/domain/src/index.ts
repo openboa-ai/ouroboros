@@ -2421,6 +2421,23 @@ export const OUROBOROS_COMMAND_KINDS = [
   "researcher.provider.select"
 ] as const satisfies readonly OuroborosCommandKind[];
 
+export const OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS = [
+  "arena.status",
+  "arena.start",
+  "arena.stop",
+  "arena.tick",
+  "candidate.select",
+  "candidate.paper_evidence.run",
+  "agent_provider.status",
+  "agent_provider.setup",
+  "agent_provider.login.start",
+  "agent_provider.probe",
+  "researcher.provider.select"
+] as const satisfies readonly OuroborosCommandKind[];
+
+export type OuroborosProductLoopCommandKind =
+  typeof OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS[number];
+
 export const OUROBOROS_COMMAND_DESCRIPTORS = [
   {
     command_kind: "arena.status",
