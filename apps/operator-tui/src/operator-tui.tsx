@@ -18,7 +18,9 @@ export type OperatorTuiAction =
   | "select_previous"
   | "select_next"
   | "select_current"
-  | "run_paper_evidence"
+  | "start_paper_trading"
+  | "observe_paper_trading"
+  | "stop_paper_trading"
   | "toggle_provider"
   | "setup_provider"
   | "start_provider_login"
@@ -160,7 +162,7 @@ export function OperatorTuiScreen(props: {
           {`Agent profile: ${selectedProfile?.label ?? "unknown"} / ${selectedProfile?.status ?? "missing"}`}
         </Text>
         <Text>{`Authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
-        <Text dimColor>Keys: r refresh, t tick, s start/stop, up/down move, enter select, e evidence, p provider, a setup, l login, v probe, q quit</Text>
+        <Text dimColor>Keys: r refresh, t tick, s arena, up/down move, enter select, e paper start, o observe, x stop, p provider, a setup, l login, v probe, q quit</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Leaderboard</Text>
@@ -180,8 +182,11 @@ export function OperatorTuiScreen(props: {
       <Box flexDirection="column">
         <Text bold>Selected Candidate</Text>
         <Text>{selectedCandidateId ?? "none"}</Text>
-        <Text>{`Paper evidence: ${props.operator.selected_paper_evidence.status}`}</Text>
-        <Text>{`Ledger chain: ${props.operator.selected_paper_evidence.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
+        <Text>{`PaperTradingEvaluation: ${props.operator.selected_paper_trading_evaluation.status}`}</Text>
+        <Text>
+          {`Paper score: ${props.operator.selected_paper_trading_evaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${props.operator.selected_paper_trading_evaluation.observation_count}`}
+        </Text>
+        <Text>{`Ledger chain: ${props.operator.selected_paper_trading_evaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Agent Providers</Text>
@@ -223,7 +228,13 @@ export function operatorTuiActionForInput(
     return "toggle_running";
   }
   if (input === "e") {
-    return "run_paper_evidence";
+    return "start_paper_trading";
+  }
+  if (input === "o") {
+    return "observe_paper_trading";
+  }
+  if (input === "x") {
+    return "stop_paper_trading";
   }
   if (input === "p") {
     return "toggle_provider";
@@ -270,11 +281,23 @@ export function operatorTuiCommandForAction(
       ? { command_kind: "candidate.select", payload: { candidate_id: candidateId } }
       : undefined;
   }
-  if (action === "run_paper_evidence") {
+  if (action === "start_paper_trading") {
     const candidateId = operator?.selected_candidate_id
       ?? operator?.candidate_arena.leaderboard[cursor]?.candidate_id;
     return candidateId
-      ? { command_kind: "candidate.paper_evidence.run", payload: { candidate_id: candidateId } }
+      ? { command_kind: "trading_run.start", payload: { candidate_id: candidateId } }
+      : undefined;
+  }
+  if (action === "observe_paper_trading") {
+    const tradingRunId = operator?.selected_paper_trading_evaluation.trading_run_id;
+    return tradingRunId
+      ? { command_kind: "trading_run.observe", payload: { trading_run_id: tradingRunId } }
+      : undefined;
+  }
+  if (action === "stop_paper_trading") {
+    const tradingRunId = operator?.selected_paper_trading_evaluation.trading_run_id;
+    return tradingRunId
+      ? { command_kind: "trading_run.stop", payload: { trading_run_id: tradingRunId } }
       : undefined;
   }
   if (action === "toggle_provider") {

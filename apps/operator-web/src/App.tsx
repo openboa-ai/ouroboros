@@ -29,6 +29,7 @@ import type {
   ImprovementReadModel,
   LedgerReadModel,
   OperatorReadModel,
+  PaperTradingEvaluationReadModel,
   ResearcherProviderReadModel,
   AgentProfileReadModel,
   AgentProfileProviderKind,
@@ -56,7 +57,6 @@ import {
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
   probeAgentProvider as submitProbeAgentProvider,
-  runPaperEvidenceForCandidate as submitPaperEvidenceForCandidate,
   runFullCycle as submitFullCycle,
   selectResearcherProvider as submitSelectResearcherProvider,
   setupAgentProvider as submitSetupAgentProvider,
@@ -553,14 +553,10 @@ export function App() {
       tradingRunMessage: undefined
     }));
     try {
-      const operator = paperOrderRequest === "rejected"
-        ? undefined
-        : await submitPaperEvidenceForCandidate(candidate.candidate_id);
-      const outcome = paperOrderRequest === "rejected"
-        ? await submitTradingRun(candidate, { paper_order_request: paperOrderRequest })
-        : undefined;
-      const selected = operator?.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
-      const candidateArena = operator?.candidate_arena ?? await fetchCandidateArena();
+      const outcome = await submitTradingRun(candidate, { paper_order_request: paperOrderRequest });
+      const operator = await fetchOperatorReadModel();
+      const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      const candidateArena = operator.candidate_arena;
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
         candidate.candidate_id,
@@ -569,7 +565,7 @@ export function App() {
       );
       setState((current) => ({
         ...current,
-        operator: operator ?? current.operator,
+        operator,
         selected,
         candidateArena,
         replayRuns,
@@ -581,7 +577,7 @@ export function App() {
         runningTradingRun: false,
         tradingRunMessage: paperOrderRequest === "rejected"
           ? `rejected paper order: ${outcome?.execution_result?.status ?? "blocked"}`
-          : `paper evidence: ${operator?.selected_paper_evidence.status ?? "recorded"}`
+          : `paper trading: ${operator.selected_paper_trading_evaluation.status}`
       }));
     } catch (error) {
       setState((current) => ({
@@ -606,12 +602,15 @@ export function App() {
     }));
     try {
       const outcome = await submitObserveTradingRun(candidate);
-      const selected = await fetchCandidate(candidate.candidate_id);
+      const operator = await fetchOperatorReadModel();
+      const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
       setState((current) => ({
         ...current,
+        operator,
+        candidateArena: operator.candidate_arena,
         selected,
         runningTradingRun: false,
-        tradingRunMessage: `observed: ${outcome.trading_run.lifecycle_status ?? "unknown"}`
+        tradingRunMessage: `observed: ${outcome.trading_run.lifecycle_status ?? "unknown"} / ${operator.selected_paper_trading_evaluation.observation_count} observations`
       }));
     } catch (error) {
       setState((current) => ({
@@ -636,9 +635,12 @@ export function App() {
     }));
     try {
       const outcome = await submitStopTradingRun(candidate);
-      const selected = await fetchCandidate(candidate.candidate_id);
+      const operator = await fetchOperatorReadModel();
+      const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
       setState((current) => ({
         ...current,
+        operator,
+        candidateArena: operator.candidate_arena,
         selected,
         runningTradingRun: false,
         tradingRunMessage: `stopped: ${outcome.trading_run.lifecycle_status ?? "stopped"}`
@@ -1080,17 +1082,18 @@ export function CandidateArenaPanel({
   agentProfiles = [],
   latestCommands = [],
   selectedPaperEvidence,
+  selectedPaperTradingEvaluation,
   onStart,
   onStop,
   onTick,
   onSelectCandidate,
-  onRunPaperEvidence,
+  onStartPaperTrading,
   onSetupAgentProvider,
   onProbeAgentProvider,
   onStartAgentProviderLogin,
   onSelectResearcherProvider,
   actionPending,
-  runningPaperEvidence = false,
+  runningPaperTrading = false,
   message,
   error
 }: {
@@ -1101,17 +1104,18 @@ export function CandidateArenaPanel({
   agentProfiles?: AgentProfileReadModel[];
   latestCommands?: OuroborosCommandReadModel[];
   selectedPaperEvidence?: SelectedPaperEvidenceReadModel;
+  selectedPaperTradingEvaluation?: PaperTradingEvaluationReadModel;
   onStart?: () => void;
   onStop?: () => void;
   onTick?: () => void;
   onSelectCandidate?: (candidateId: string) => void;
-  onRunPaperEvidence?: () => void;
+  onStartPaperTrading?: () => void;
   onSetupAgentProvider?: (provider: AgentProfileProviderKind) => void;
   onProbeAgentProvider?: (provider: AgentProfileProviderKind) => void;
   onStartAgentProviderLogin?: (provider: AgentProfileProviderKind) => void;
   onSelectResearcherProvider?: (provider: "codex" | "fixture") => void;
   actionPending: boolean;
-  runningPaperEvidence?: boolean;
+  runningPaperTrading?: boolean;
   message?: string;
   error?: string;
 }) {
@@ -1122,12 +1126,13 @@ export function CandidateArenaPanel({
   const selectedLineage = selectedCandidate?.full_cycle_lineage;
   const selectedSystemCode = selectedCandidate?.system_code?.ref ?? selectedLineage?.generated?.system_code_ref;
   const selectedLedger = selectedCandidate?.ledger;
-  const selectedPaperEvidenceStatus = runningPaperEvidence
+  const selectedPaperEvaluationStatus = runningPaperTrading
     ? "running"
-    : selectedPaperEvidence
-      ? formatPaperEvidenceStatusLabel(selectedPaperEvidence.status)
-      : formatSelectedPaperEvidenceStatus(selectedLedger, runningPaperEvidence);
-  const selectedTradingRunStatus = formatSelectedTradingRunStatus(selectedCandidate, runningPaperEvidence);
+    : selectedPaperTradingEvaluation?.status ?? "not_started";
+  const selectedPaperEvidenceStatus = selectedPaperEvidence
+    ? formatPaperEvidenceStatusLabel(selectedPaperEvidence.status)
+    : formatSelectedPaperEvidenceStatus(selectedLedger, runningPaperTrading);
+  const selectedTradingRunStatus = formatSelectedTradingRunStatus(selectedCandidate, runningPaperTrading);
   const selectedLedgerSummary = selectedLedger?.chain_count && selectedLedger.chain_count > 0
     ? selectedLedger
     : undefined;
@@ -1274,11 +1279,11 @@ export function CandidateArenaPanel({
               </div>
               <Button
                 type="button"
-                onClick={onRunPaperEvidence}
-                disabled={!onRunPaperEvidence || runningPaperEvidence}
+                onClick={onStartPaperTrading}
+                disabled={!onStartPaperTrading || runningPaperTrading}
                 variant="secondary"
               >
-                {runningPaperEvidence ? "Running paper evidence" : "Run paper evidence"}
+                {runningPaperTrading ? "Starting paper trading" : "Start paper trading"}
               </Button>
             </div>
             <dl className="grid gap-2 sm:grid-cols-2">
@@ -1292,6 +1297,13 @@ export function CandidateArenaPanel({
                   : selectedEntry.status}
               />
               <Field label="profit_loss" value={`${formatUsdt(selectedEntry.profit_loss.net_revenue_usdt)} / ${formatPercent(selectedEntry.profit_loss.net_return_pct)}`} />
+              <Field label="PaperTradingEvaluation" value={selectedPaperEvaluationStatus} />
+              <Field
+                label="Paper score"
+                value={selectedPaperTradingEvaluation
+                  ? `${formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)} / ${selectedPaperTradingEvaluation.observation_count} observations`
+                  : "not started"}
+              />
               <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
               <Field label="TradingRun" value={selectedTradingRunStatus} />
               <Field label="Latest finding" value={selectedEntry.latest_finding} />
@@ -1840,17 +1852,18 @@ export function CandidateDetail({
           agentProfiles={operator?.agent_profiles}
           latestCommands={operator?.latest_commands}
           selectedPaperEvidence={operator?.selected_paper_evidence}
+          selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
           onStart={onStartCandidateArena}
           onStop={onStopCandidateArena}
           onTick={onTickCandidateArena}
           onSelectCandidate={(candidateId) => void onSelectCandidate?.(candidateId)}
-          onRunPaperEvidence={selectedArenaCandidate ? onStartTradingRun : undefined}
+          onStartPaperTrading={selectedArenaCandidate ? onStartTradingRun : undefined}
           onSetupAgentProvider={onSetupAgentProvider}
           onProbeAgentProvider={onProbeAgentProvider}
           onStartAgentProviderLogin={onStartAgentProviderLogin}
           onSelectResearcherProvider={onSelectResearcherProvider}
           actionPending={runningCandidateArenaAction}
-          runningPaperEvidence={runningTradingRun}
+          runningPaperTrading={runningTradingRun}
           message={tradingRunMessage ?? candidateArenaMessage}
           error={tradingRunError ?? candidateArenaError}
         />

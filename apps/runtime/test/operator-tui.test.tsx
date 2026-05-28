@@ -23,7 +23,8 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Researcher provider: fixture");
     expect(output).toContain("Agent profile: Fixture / authenticated");
     expect(output).toContain("> #1 candidate-profitable");
-    expect(output).toContain("Paper evidence: ledger_chain_complete");
+    expect(output).toContain("PaperTradingEvaluation: running");
+    expect(output).toContain("Paper score: 4.95 USDT / observations 1");
     expect(output).toContain("Codex: configured");
     expect(output).toContain("arena.tick: succeeded");
     expect(output).toContain("Keys: r refresh");
@@ -33,7 +34,9 @@ describe("Operator TUI action console", () => {
     expect(operatorTuiActionForInput("r", {})).toBe("refresh");
     expect(operatorTuiActionForInput("t", {})).toBe("tick");
     expect(operatorTuiActionForInput("s", {})).toBe("toggle_running");
-    expect(operatorTuiActionForInput("e", {})).toBe("run_paper_evidence");
+    expect(operatorTuiActionForInput("e", {})).toBe("start_paper_trading");
+    expect(operatorTuiActionForInput("o", {})).toBe("observe_paper_trading");
+    expect(operatorTuiActionForInput("x", {})).toBe("stop_paper_trading");
     expect(operatorTuiActionForInput("p", {})).toBe("toggle_provider");
     expect(operatorTuiActionForInput("a", {})).toBe("setup_provider");
     expect(operatorTuiActionForInput("l", {})).toBe("start_provider_login");
@@ -75,9 +78,17 @@ describe("Operator TUI action console", () => {
       command_kind: "candidate.select",
       payload: { candidate_id: "candidate-profitable" }
     });
-    expect(operatorTuiCommandForAction("run_paper_evidence", fixtureOperator(), 0)).toEqual({
-      command_kind: "candidate.paper_evidence.run",
+    expect(operatorTuiCommandForAction("start_paper_trading", fixtureOperator(), 0)).toEqual({
+      command_kind: "trading_run.start",
       payload: { candidate_id: "candidate-profitable" }
+    });
+    expect(operatorTuiCommandForAction("observe_paper_trading", fixtureOperator(), 0)).toEqual({
+      command_kind: "trading_run.observe",
+      payload: { trading_run_id: "trading-run-candidate-profitable" }
+    });
+    expect(operatorTuiCommandForAction("stop_paper_trading", fixtureOperator(), 0)).toEqual({
+      command_kind: "trading_run.stop",
+      payload: { trading_run_id: "trading-run-candidate-profitable" }
     });
     expect(operatorTuiCommandForAction("toggle_provider", fixtureOperator(), 0)).toEqual({
       command_kind: "researcher.provider.select",
@@ -135,6 +146,27 @@ function fixtureOperator(): OperatorReadModel {
       status: "ledger_chain_complete",
       ledger_chain_complete: true,
       ledger_chain_count: 1,
+      authority_status: "not_live"
+    },
+    selected_paper_trading_evaluation: {
+      evaluation_kind: "paper_trading_evaluation",
+      status: "running",
+      trading_run_id: "trading-run-candidate-profitable",
+      trading_run_status: "running",
+      observation_count: 1,
+      ledger_chain_complete: true,
+      profit_loss: {
+        revenue_usdt: 5,
+        cost_usdt: 0.048,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952
+      },
+      latest_gateway_outcome: "dry_run_only",
+      latest_execution_status: "dry_run_recorded",
+      market_data_source: "binance_production_public_rest",
+      account_provider: "fake_paper_account",
+      executor: "fake_paper_order_executor",
+      score_source: "paper_gateway_ledger",
       authority_status: "not_live"
     },
     researcher_provider: {

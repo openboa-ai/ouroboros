@@ -526,6 +526,19 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   }
 
   async function observeTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
+    const candidate = await store.getCandidateForTradingRun(tradingRunId);
+    if (candidate?.runtime.runtime_lifecycle_status === "running") {
+      await recordPaperTradingObservationSample({
+        store,
+        candidate,
+        tradingRunId,
+        gatewayRuntimeBinding: createGatewayRuntimeBinding({
+          environment: "paper",
+          marketDataClient: options.binancePublicMarketClient
+        })
+      });
+    }
+
     const response = await tradingRunResponse(store, tradingRunId);
     if (!response) {
       return {
@@ -1320,7 +1333,9 @@ async function startFixtureTradingRun(input: {
     candidateVersionId: input.candidateVersionId,
     tradingRunId: input.tradingRunId,
     paperOrderRequest: input.paperOrderRequest,
-    gatewayRuntimeBinding: input.gatewayRuntimeBinding
+    gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+    sampleId: "start",
+    observedAt: new Date().toISOString()
   }));
   await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
     idempotencyKey: `trading-run-start:${input.paperOrderRequest}:${input.tradingRunId}:${input.candidateVersionId}`,
@@ -1347,6 +1362,41 @@ async function startFixtureTradingRun(input: {
     execution_result: response.ledger.latest_execution_result,
     trading_gateway_environment: input.tradingGatewayEnvironment
   } as const;
+}
+
+async function recordPaperTradingObservationSample(input: {
+  store: LocalStore;
+  candidate: CandidateInspectReadModel;
+  tradingRunId: string;
+  gatewayRuntimeBinding: GatewayRuntimeBinding;
+}) {
+  const sandbox = input.candidate.runtime.sandbox;
+  if (!sandbox) {
+    return;
+  }
+  const candidateVersionId = input.candidate.candidate_version.candidate_version_id;
+  const nextObservation = (input.candidate.ledger?.chain_count ?? 0) + 1;
+  await input.store.recordLedger(await ledgerInputFromSandboxOutput({
+    sandbox,
+    candidateId: input.candidate.candidate_id,
+    candidateVersionId,
+    tradingRunId: input.tradingRunId,
+    paperOrderRequest: "valid",
+    gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+    sampleId: `observe-${nextObservation}`,
+    observedAt: new Date().toISOString()
+  }));
+  await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+    idempotencyKey: `trading-run-observe:${input.tradingRunId}:${candidateVersionId}:${nextObservation}`,
+    candidateId: input.candidate.candidate_id,
+    candidateVersionId,
+    tradingRunId: input.tradingRunId,
+    action: "inspect",
+    lifecycleStatus: "running",
+    actorId: "runtime-api",
+    reasonSummary: "Operator observed continuous paper Trading Run.",
+    message: "Paper TradingEvaluation observation recorded."
+  }));
 }
 
 async function ensureTradingRunSandbox(input: {
@@ -1415,6 +1465,8 @@ async function ledgerInputFromSandboxOutput(input: {
   tradingRunId: string;
   paperOrderRequest: PaperOrderRequestFixture;
   gatewayRuntimeBinding: GatewayRuntimeBinding;
+  sampleId?: string;
+  observedAt?: string;
 }): Promise<LedgerInput> {
   const orderRequest = latestSandboxOrderRequest(input.sandbox);
   if (!orderRequest) {
@@ -1429,6 +1481,7 @@ async function ledgerInputFromSandboxOutput(input: {
   return {
     idempotency_key: [
       "trading-run",
+      input.sampleId ?? "sample",
       input.paperOrderRequest,
       input.candidateId,
       input.candidateVersionId
@@ -1439,7 +1492,7 @@ async function ledgerInputFromSandboxOutput(input: {
     intent: gatewayExecution.intent,
     gateway_result: gatewayExecution.gateway_result,
     execution_result: gatewayExecution.execution_result,
-    created_at: orderRequest.at
+    created_at: input.observedAt ?? orderRequest.at
   };
 }
 
@@ -1577,7 +1630,7 @@ function tradingRunLifecycleAuditInput(input: {
   candidateId: string;
   candidateVersionId: string;
   tradingRunId: string;
-  action: "start" | "stop";
+  action: RunControlAuditInput["command"]["action"];
   lifecycleStatus: "running" | "stopped";
   actorId: string;
   reasonSummary: string;

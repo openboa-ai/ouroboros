@@ -236,6 +236,39 @@ export function parseOuroborosCliArgs(args: string[]): OuroborosCliMode {
       }
     };
   }
+  if (domain === "candidate" && action === "paper" && subject === "start" && extra) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "trading_run.start",
+        payload: {
+          candidate_id: extra
+        }
+      }
+    };
+  }
+  if (domain === "trading-run" && action === "observe" && subject && extra === undefined) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "trading_run.observe",
+        payload: {
+          trading_run_id: subject
+        }
+      }
+    };
+  }
+  if (domain === "trading-run" && action === "stop" && subject && extra === undefined) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "trading_run.stop",
+        payload: {
+          trading_run_id: subject
+        }
+      }
+    };
+  }
   if (domain === "agent" && isAgentAction(action) && subject && extra === undefined) {
     return {
       mode: "agent",
@@ -360,6 +393,7 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       : "Leader: none",
     `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
+    `PaperTradingEvaluation: ${operator.selected_paper_trading_evaluation.status} (${operator.selected_paper_trading_evaluation.observation_count} observations, ${formatUsdt(operator.selected_paper_trading_evaluation.profit_loss.net_revenue_usdt)})`,
     lastCommand
       ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
       : "Latest command: none"
@@ -452,7 +486,9 @@ function usage(): string {
     "  ouroboros status [--json]",
     "  ouroboros arena status|start|stop|tick",
     "  ouroboros candidate select <candidate-id>",
+    "  ouroboros candidate paper start <candidate-id>",
     "  ouroboros candidate evidence run <candidate-id>",
+    "  ouroboros trading-run observe|stop <trading-run-id>",
     "  ouroboros agent status|setup|login|probe codex|fixture",
     "  ouroboros researcher provider set codex|fixture",
     "  ouroboros tui"

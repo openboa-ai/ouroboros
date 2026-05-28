@@ -152,6 +152,11 @@ describe("runtime canonical operator API", () => {
           selected_paper_evidence: {
             status: "not_run",
             authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: {
+            status: "not_started",
+            observation_count: 0,
+            authority_status: "not_live"
           }
         }
       });
@@ -160,18 +165,24 @@ describe("runtime canonical operator API", () => {
         method: "POST",
         url: "/api/commands",
         payload: {
-          command_kind: "candidate.paper_evidence.run",
+          command_kind: "trading_run.start",
           payload: { candidate_id: FIXTURE_CANDIDATE_ID }
         }
       });
       expect(evidence.statusCode, evidence.body).toBe(200);
       expect(evidence.json()).toMatchObject({
         command: {
-          command_kind: "candidate.paper_evidence.run",
+          command_kind: "trading_run.start",
           status: "succeeded"
         },
         operator: {
           selected_candidate_id: FIXTURE_CANDIDATE_ID,
+          selected_paper_trading_evaluation: {
+            status: "running",
+            observation_count: 1,
+            ledger_chain_complete: true,
+            authority_status: "not_live"
+          },
           selected_paper_evidence: {
             status: "ledger_chain_complete",
             ledger_chain_complete: true,

@@ -104,7 +104,7 @@ This file is a compact development map. The canonical architecture contract live
 - `apps/runtime`: Fastify runtime server and HTTP composition root.
 - `apps/cli`: installable `ouroboros` command-line interface.
 - `apps/operator-tui`: Ink action console for the same Operator read model and commands.
-- `apps/operator-web`: operator UI for inspecting Candidate Arena state and selected-candidate paper evidence through the shared command/read-model contract.
+- `apps/operator-web`: operator UI for inspecting Candidate Arena state, selected-candidate `PaperTradingEvaluation`, and paper Ledger evidence through the shared command/read-model contract.
 - `packages/domain`: shared contracts and domain types.
 - `packages/application`: command/query controllers, services, use cases, ports, and read-model builders.
 - `packages/adapters`: concrete provider, exchange, sandbox, subprocess, and fixture adapters.

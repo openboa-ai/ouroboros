@@ -163,7 +163,9 @@ checkRequired("docs/api-command-contract.md", [
   "OUROBOROS_COMMAND_REGISTRY",
   "arena.tick",
   "candidate.select",
-  "candidate.paper_evidence.run"
+  "trading_run.start",
+  "trading_run.observe",
+  "trading_run.stop"
 ]);
 checkRequired("docs/naming-taxonomy.md", [
   "`CandidateArena`",
