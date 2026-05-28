@@ -58,10 +58,11 @@ export class OperatorService {
       this.options.candidateArenaRunner.status(),
       this.options.candidateArenaRunner.ticks()
     );
-    const selectedCandidate = this.selectedCandidateId
-      ? await this.options.store.getCandidate(this.selectedCandidateId)
+    const candidateId = this.selectedCandidateId ?? arena.leaderboard[0]?.candidate_id;
+    const selectedCandidate = candidateId
+      ? await this.options.store.getCandidate(candidateId)
       : undefined;
-    if (this.selectedCandidateId && !selectedCandidate) {
+    if (this.selectedCandidateId && candidateId === this.selectedCandidateId && !selectedCandidate) {
       this.selectedCandidateId = undefined;
     }
     const latestCommands = (await this.options.store.listOuroborosCommands())

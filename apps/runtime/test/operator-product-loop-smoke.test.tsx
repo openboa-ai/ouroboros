@@ -149,6 +149,27 @@ describe("operator product loop smoke", () => {
         ])
       );
 
+      const restartedServer = await buildServer({ store: new LocalStore(tmpDir) });
+      try {
+        const restartedOperator = await restartedServer.inject({
+          method: "GET",
+          url: "/api/operator"
+        });
+        expect(restartedOperator.statusCode, restartedOperator.body).toBe(200);
+        expect(restartedOperator.json().operator).toMatchObject({
+          selected_candidate_id: leader.candidate_id,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            latest_gateway_outcome: "dry_run_only",
+            latest_execution_status: "dry_run_recorded",
+            authority_status: "not_live"
+          }
+        });
+      } finally {
+        await restartedServer.close();
+      }
+
       const candidate = await server.inject({
         method: "GET",
         url: `/api/candidates/${leader.candidate_id}`

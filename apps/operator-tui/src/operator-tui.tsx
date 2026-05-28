@@ -160,12 +160,14 @@ export function OperatorTuiScreen(props: {
         <Text bold>Leaderboard</Text>
         {props.operator.candidate_arena.leaderboard.length
           ? visibleLeaderboard.map(({ entry, index }) => (
-              <Text
-                key={entry.candidate_id}
-                color={index === props.cursor ? "yellow" : undefined}
-              >
-                {`${index === props.cursor ? ">" : " "} #${entry.rank} ${entry.display_name} ${entry.direction_kind} ${entry.profit_loss.net_revenue_usdt.toFixed(2)} USDT ${entry.status}`}
-              </Text>
+              <Box key={entry.candidate_id} flexDirection="column">
+                <Text color={index === props.cursor ? "yellow" : undefined}>
+                  {`${index === props.cursor ? ">" : " "} #${entry.rank} ${entry.display_name}`}
+                </Text>
+                <Text dimColor>
+                  {`   ${entry.direction_kind} | net ${entry.profit_loss.net_revenue_usdt.toFixed(2)} USDT | ${entry.status}`}
+                </Text>
+              </Box>
             ))
           : <Text>No candidates yet. Press t to run a tick.</Text>}
       </Box>
