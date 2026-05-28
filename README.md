@@ -71,8 +71,8 @@ surfaces. They must not replace the primary Candidate Arena workflow.
 - `apps/operator-tui`: Ink action console over the shared Operator read model and command endpoint.
 - `apps/operator-web`: operator UI over the shared Operator read model and Ouroboros command endpoint.
 - `packages/domain`: shared domain contracts, including the Operator command descriptors used by CLI, TUI, and Web UI.
-- `packages/application`: command controllers, application services, Candidate Arena use cases, read-model builders, and ports.
-- `packages/adapters`: Codex, fixture, Binance public market, Sandbox, and other concrete adapter implementations.
+- `packages/application`: command controllers, application services, Candidate Arena use cases, read-model builders, and ports, organized by product domain such as `agent/`, `candidate/`, `research/`, and `trading/`.
+- `packages/adapters`: concrete outside-system integrations grouped by boundary, such as `codex/`, `binance/`, `fixture/`, and `sandbox/`.
 - `packages/local-store`: filesystem-backed local store primitives.
 - `.agents`: repo-local skills and agent operating support.
 

@@ -7,7 +7,7 @@ import { buildServer } from "../src/server";
 import {
   DeterministicSandboxAdapter,
   type SandboxAdapter
-} from "@ouroboros/adapters/sandboxes/sandbox-adapter";
+} from "@ouroboros/adapters/sandbox/adapter";
 
 let tmpDir: string;
 

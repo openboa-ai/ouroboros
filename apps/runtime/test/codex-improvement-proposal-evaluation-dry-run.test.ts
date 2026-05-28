@@ -6,10 +6,10 @@ import type { ImprovementProposalProviderOutput, Ref } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
   codexImprovementProposalDryRunFixtureIds
-} from "@ouroboros/application/research-orchestration/codex-improvement-proposal-dry-run";
-import { runCodexImprovementProposalEvaluationDryRun } from "@ouroboros/application/research-orchestration/codex-improvement-proposal-evaluation-dry-run";
-import { DeterministicSandboxAdapter } from "@ouroboros/adapters/sandboxes/sandbox-adapter";
-import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/codex-cli-improvement-proposal-provider";
+} from "@ouroboros/application/research/orchestration/codex-improvement-proposal-dry-run";
+import { runCodexImprovementProposalEvaluationDryRun } from "@ouroboros/application/research/orchestration/codex-improvement-proposal-evaluation-dry-run";
+import { DeterministicSandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
+import { CodexCliImprovementProposalProviderAdapter } from "@ouroboros/adapters/codex/improvement-proposal-provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 

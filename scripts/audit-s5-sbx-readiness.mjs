@@ -32,7 +32,7 @@ await check("required S5 artifact/runtime files exist", async () => {
     "packages/domain/src/index.ts",
     "packages/domain/src/system-code-sandbox-records.test.ts",
     "fixtures/trading-systems/clock.py",
-    "packages/adapters/src/sandboxes/sandbox-adapter.ts",
+    "packages/adapters/src/sandbox/adapter.ts",
     "apps/runtime/test/clock-artifact.test.ts",
     "apps/runtime/test/sandboxes.test.ts",
     "apps/runtime/test/sbx-sandbox-adapter.test.ts",

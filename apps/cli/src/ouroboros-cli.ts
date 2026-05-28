@@ -11,8 +11,8 @@ import {
   parseAgentProfileId,
   type AgentProfileExecFile,
   type AgentProfileSpawnFile
-} from "@ouroboros/application/agent-profiles";
-import { createLocalOuroborosController } from "@ouroboros/application/controllers/local-ouroboros-controller";
+} from "@ouroboros/application/agent/profiles";
+import { createLocalOuroborosController } from "@ouroboros/application/controllers/local-ouroboros";
 
 const DEFAULT_RUNTIME_BASE_URL = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
 

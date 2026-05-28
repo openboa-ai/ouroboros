@@ -47,6 +47,17 @@ Runtime implementation follows a physical controller/service/adapter split:
   command descriptors, `GET /api/operator`, and `POST /api/commands`. CLI-only local operations use
   the local Ouroboros controller rather than importing provider implementations.
 
+Directory shape should reveal ownership before a developer opens a file. Prefer nested directories
+when several names share a durable prefix: use `agent/profiles.ts`, `agent/trading-cycle.ts`,
+`candidate/arena.ts`, `trading/gateway/runtime-binding.ts`, or `research/orchestration/*` instead
+of long flat `agent-*`, `candidate-*`, or `trading-*` runs. Kebab-case is still fine for a leaf file
+or route name when it names one operation; it should not replace a visible tree.
+
+Adapters are grouped by the external system or concrete implementation boundary they attach:
+`packages/adapters/src/codex/*`, `binance/*`, `fixture/*`, and `sandbox/*`. Ouroboros product logic
+belongs in `packages/application`; adapter folders should only translate between application ports
+and outside systems.
+
 ## Architecture Pattern Guide
 
 Ouroboros uses Hexagonal Architecture, Clean Architecture, Layered Architecture, Domain-Driven

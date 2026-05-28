@@ -165,33 +165,33 @@ requireText("apps/operator-tui/package.json", [
   "\"name\": \"@ouroboros/operator-tui\""
 ]);
 
-requireText("packages/application/src/operator-service.ts", [
+requireText("packages/application/src/services/operator.ts", [
   "OperatorCommandHandlerRegistry",
   "SelectedCandidatePaperEvidencePort",
   "commandHandlers()"
 ]);
 
-requireText("packages/application/src/ports/operator-ports.ts", [
+requireText("packages/application/src/ports/operator.ts", [
   "OperatorCommandHandlerRegistry",
   "SelectedCandidatePaperEvidencePort"
 ]);
 
-requireText("packages/application/src/controllers/local-ouroboros-controller.ts", [
+requireText("packages/application/src/controllers/local-ouroboros.ts", [
   "createLocalOuroborosController",
   "dispatchAgentProviderCommand"
 ]);
 
-requireText("apps/runtime/src/controllers/route-registry.ts", [
+requireText("apps/runtime/src/registry/routes.ts", [
   "registerRuntimeRouteModules",
   "RuntimeRouteModule"
 ]);
 
-requireText("apps/runtime/src/controllers/core-controller.ts", [
+requireText("apps/runtime/src/controllers/core.ts", [
   "registerCoreControllerRoutes",
   "/api/commands"
 ]);
 
-requireText("apps/runtime/src/controllers/resource-controller.ts", [
+requireText("apps/runtime/src/controllers/resources.ts", [
   "registerResourceControllerRoutes",
   "/api/candidates",
   "/api/sandboxes"
@@ -206,9 +206,15 @@ requireText("apps/runtime/src/controllers/resource-controller.ts", [
 
 const bannedControllerImports = [
   "@ouroboros/local-store",
-  "../agent-profiles",
+  "../agent/",
+  "../binance/",
+  "../codex/",
+  "../fixture/",
+  "../provider/",
   "../providers/",
+  "../sandbox/",
   "../sandboxes/",
+  "../trading/",
   "../trading-research/",
   "../trading-substrate/",
   "../trading-gateway"
@@ -290,9 +296,9 @@ for (const banned of ["@ouroboros/adapters", "@binance/"]) {
 }
 
 for (const expected of [
-  "packages/application/src/controllers/operator-controller.ts",
-  "packages/application/src/operator-service.ts",
-  "packages/adapters/src/providers/codex-cli-provider.ts",
+  "packages/application/src/controllers/operator.ts",
+  "packages/application/src/services/operator.ts",
+  "packages/adapters/src/codex/cli-provider.ts",
   "apps/cli/src/ouroboros-cli.ts",
   "apps/operator-tui/src/operator-tui.tsx"
 ]) {

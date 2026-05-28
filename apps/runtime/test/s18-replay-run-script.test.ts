@@ -172,7 +172,7 @@ describe("S18 Trading replay run scripts", () => {
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
 
     expect(packageJson.scripts["trading:replay:run"])
-      .toBe("tsx packages/application/src/trading-candidate/run-replay.ts");
+      .toBe("tsx packages/application/src/trading/candidate/run-replay.ts");
     expect(packageJson.scripts["trading:replay:ledger"])
       .toBe("node scripts/trading-replay-run-ledger.mjs");
   });

@@ -10,8 +10,8 @@ import type {
   TradingEvaluationTaskRecord
 } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
-import { planImprovementProposalFromLocalStore } from "@ouroboros/application/research-orchestration/local-store-proposal-loop";
-import type { ImprovementProposalProviderAdapter } from "@ouroboros/adapters/providers/runtime-provider-adapter";
+import { planImprovementProposalFromLocalStore } from "@ouroboros/application/research/orchestration/local-store-proposal-loop";
+import type { ImprovementProposalProviderAdapter } from "@ouroboros/application/ports/provider";
 
 const ref = (record_kind: string, id: string): Ref => ({ record_kind, id });
 
