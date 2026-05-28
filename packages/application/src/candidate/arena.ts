@@ -37,7 +37,7 @@ import type {
 } from "../trading/research/types";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 export const DEFAULT_ARENA_DIRECTIONS: ResearchDirectionKind[] = [
   "trend_following",
