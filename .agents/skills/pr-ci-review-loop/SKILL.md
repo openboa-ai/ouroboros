@@ -45,6 +45,9 @@ implementation; it keeps one branch moving through validation, review, bounded f
 - Read inline comments by interpolating the actual PR number:
   `gh api repos/{owner}/{repo}/pulls/<pr-number>/comments --paginate`.
 - Treat review as current only when the review commit or comment `commit_id` matches `headRefOid`.
+- If a fresh automated review was requested with `@codex review`, record the requested `headRefOid`;
+  a later top-level reviewer response counts as current only if the PR head still equals that
+  requested head.
 - Treat "no current-head review yet" as pending, not clean. If the review is stale after the initial
   wait, request a fresh automated review and keep polling. If review remains unavailable, reroute to
   `auto-promotion-protocol`; do not merge merely because CI is green and comments are momentarily
