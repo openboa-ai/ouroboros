@@ -2071,26 +2071,34 @@ function tradingSystemEventsFromCandidate(
   if (!sandbox) {
     return [];
   }
-  return sandbox.logs.flatMap((log) =>
+  const events = sandbox.logs.flatMap((log) =>
     log.lines.map((line, index) => parseTradingSystemEvent(line, {
-      logId: log.log_ref.id,
+      sandboxId: sandbox.sandbox_id,
       lineIndex: index,
       fallbackObservedAt: log.captured_at
     }))
   ).filter((event): event is ParsedTradingSystemEvent => Boolean(event));
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (seen.has(event.event_id)) {
+      return false;
+    }
+    seen.add(event.event_id);
+    return true;
+  });
 }
 
 function parseTradingSystemEvent(
   line: string,
   input: {
-    logId: string;
+    sandboxId: string;
     lineIndex: number;
     fallbackObservedAt?: string;
   }
 ): ParsedTradingSystemEvent | undefined {
   try {
     const value = JSON.parse(line) as Record<string, unknown>;
-    const eventId = stableTradingSystemEventId(value.event_id, line, input.logId, input.lineIndex);
+    const eventId = stableTradingSystemEventId(value.event_id, line, input.sandboxId, input.lineIndex);
     const observedAt = typeof value.at === "string"
       ? value.at
       : input.fallbackObservedAt ?? new Date().toISOString();
@@ -2145,14 +2153,14 @@ function parseTradingSystemEvent(
 function stableTradingSystemEventId(
   explicitEventId: unknown,
   line: string,
-  logId: string,
+  sandboxId: string,
   lineIndex: number
 ): string {
   if (typeof explicitEventId === "string" && explicitEventId.trim()) {
     return explicitEventId;
   }
   return `trading-system-event-${createHash("sha256")
-    .update(`${logId}:${lineIndex}:${line}`)
+    .update(`${sandboxId}:${lineIndex}:${line}`)
     .digest("hex")
     .slice(0, 20)}`;
 }
