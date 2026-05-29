@@ -21,18 +21,30 @@ implementation; it keeps one branch moving through validation, review, bounded f
    required check is complete.
 5. Inspect failing checks through `ci-recovery`; fix only in-scope failures, rerun the narrowest
    relevant local validation, commit, push, and restart the loop from the new head.
-6. Inspect current-head review comments, inline comments, CodeQL/GitHub Advanced Security alerts,
+6. After CI is green, wait for a current-head review freshness signal before merging. Poll PR
+   reviews and inline comments until the configured automated reviewer or a human reviewer has
+   reviewed the latest commit, or until an explicit user-approved timeout is reached.
+7. Inspect current-head review comments, inline comments, CodeQL/GitHub Advanced Security alerts,
    and human comments. Treat old-head comments as historical unless they still apply to the latest
    diff.
-7. For actionable current-head comments, route a bounded patch through `auto-coding`, rerun local
+8. For actionable current-head comments, route a bounded patch through `auto-coding`, rerun local
    validation, commit, push, and restart the CI/review loop from the new head.
-8. Continue until current-head CI is green, actionable current-head comments are handled or
-   explicitly rerouted, and mergeability is clean.
-9. Merge only when the user has explicitly granted landing authority with wording such as "merge if
+9. Continue until current-head CI is green, current-head review freshness is satisfied, actionable
+   current-head comments are handled or explicitly rerouted, and mergeability is clean.
+10. Merge only when the user has explicitly granted landing authority with wording such as "merge if
    clean" or "merge when there are no issues".
-10. Prefer `gh pr merge --squash --delete-branch`. If local worktree state blocks the command,
+11. Prefer `gh pr merge --squash --delete-branch`. If local worktree state blocks the command,
     verify whether the remote PR merged anyway, then separately handle branch cleanup and report the
     exact final state.
+
+## Review Freshness Gate
+
+- Read `headRefOid` with `gh pr view --json headRefOid,reviews,comments`.
+- Read inline comments with `gh api repos/{owner}/{repo}/pulls/{pr}/comments --paginate`.
+- Treat review as current only when the review commit or comment `commit_id` matches `headRefOid`.
+- Treat "no current-head review yet" as pending, not clean. Keep polling or reroute to
+  `auto-promotion-protocol`; do not merge merely because CI is green and comments are momentarily
+  empty.
 
 ## Required Output
 
@@ -40,7 +52,7 @@ implementation; it keeps one branch moving through validation, review, bounded f
 - branch, PR URL, and latest head commit
 - local validation commands and results
 - latest CI status tied to the current head
-- latest review/comment status tied to the current head
+- review freshness signal and latest review/comment status tied to the current head
 - fixes made, commits pushed, or reroute decisions
 - merge status and merge commit when merged
 - branch cleanup status
@@ -59,6 +71,8 @@ to the repo's durable writeback skill.
 
 - Do not merge without explicit landing authority.
 - Do not trust stale CI, stale review, or comments from an older head as current promotion evidence.
+- Do not merge immediately after CI turns green when expected automated review has not reported on
+  the current head yet.
 - Do not broaden the implementation scope while fixing CI or review comments.
 - Do not hide failing checks, pending reviews, merge conflicts, or unavailable permissions.
 - Do not treat an opened PR as sufficient evidence; current-head checks and review status must be
