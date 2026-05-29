@@ -218,6 +218,35 @@ describe("PaperTradingEngine", () => {
     });
   });
 
+  it("does not fill market orders from stale public bookTicker evidence", () => {
+    const checkpoint = applyPaperTradingCheckpoint({
+      previous: initialPaperTradingEngineState(),
+      marketPrice: 60_000,
+      observedAt: "2026-05-16T00:00:03.000Z",
+      publicExecutionSnapshot: publicExecutionSnapshot({
+        askPrice: "60001",
+        bidPrice: "59999",
+        bookTickerEventTime: "2026-05-16T00:00:02.999Z",
+        trades: []
+      }),
+      events: [orderRequestEvent({
+        eventId: "event-market-stale-book",
+        orderType: "market",
+        quantity: "0.001"
+      })]
+    });
+
+    expect(checkpoint.account.position).toMatchObject({
+      side: "flat",
+      quantity: "0"
+    });
+    expect(checkpoint.openOrders).toMatchObject([{
+      status: "open",
+      remaining_quantity: "0.001"
+    }]);
+    expect(checkpoint.latestFill).toBeUndefined();
+  });
+
   it("caps market order fills to the quoted public book quantity", () => {
     const partial = applyPaperTradingCheckpoint({
       previous: initialPaperTradingEngineState(),
@@ -427,6 +456,7 @@ function publicExecutionSnapshot(input: {
   askQuantity?: string;
   bidPrice?: string;
   bidQuantity?: string;
+  bookTickerEventTime?: string;
 }): PaperTradingPublicExecutionSnapshotSummary {
   return {
     symbol: "BTCUSDT",
@@ -438,7 +468,7 @@ function publicExecutionSnapshot(input: {
       bid_quantity: input.bidQuantity ?? "1.000",
       ask_price: input.askPrice ?? "60001",
       ask_quantity: input.askQuantity ?? "1.000",
-      event_time: "2026-05-16T00:00:02.000Z"
+      event_time: input.bookTickerEventTime ?? "2026-05-16T00:00:03.500Z"
     },
     agg_trades: input.trades,
     authority_status: "read_only"

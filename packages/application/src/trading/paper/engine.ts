@@ -256,6 +256,11 @@ function fillOpenOrders(
         updatedOrders.push(order);
         continue;
       }
+      const tickerTime = ticker.event_time ?? publicExecution.observed_at;
+      if (!tradeCanFillOrderAfterCreation(tickerTime, order.created_at)) {
+        updatedOrders.push(order);
+        continue;
+      }
       const fillPrice = parseDecimal(order.side === "buy" ? ticker.ask_price : ticker.bid_price);
       const topQuantity = parseDecimal(order.side === "buy" ? ticker.ask_quantity : ticker.bid_quantity);
       const fillQuantity = Math.min(parseDecimal(order.remaining_quantity), topQuantity);
@@ -267,7 +272,7 @@ function fillOpenOrders(
         price: fillPrice,
         quantity: fillQuantity,
         remainingQuantityBeforeFill: parseDecimal(order.remaining_quantity),
-        tradeTime: ticker.event_time ?? publicExecution.observed_at,
+        tradeTime: tickerTime,
         sourceTradeId: `${publicExecution.stream_marker}:bookTicker`
       });
       updatedOrders.push(updatedOrderAfterFill(order, fillPrice, fillQuantity, observedAt));
