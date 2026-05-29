@@ -10,6 +10,8 @@ import type {
   EvaluationExecutionMode,
   LedgerInput,
   LedgerWriteOutcome,
+  PaperTradingDecisionOrderRequestSummary,
+  PaperTradingDecisionSummary,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
   PrivateReadinessPolicyGateInput,
@@ -57,7 +59,11 @@ import {
   type GatewayRuntimeBinding
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/gateway/environment";
-import type { TradingArtifactRunnerKind, TradingResearchAgentAdapter } from "@ouroboros/application/trading/research/types";
+import type {
+  MarketSnapshot,
+  TradingArtifactRunnerKind,
+  TradingResearchAgentAdapter
+} from "@ouroboros/application/trading/research/types";
 import {
   createTradingResearchAgentAdapter,
   loadTradingResearchRuntimeConfig,
@@ -84,6 +90,7 @@ import {
   scorePaperLedgerChain,
   zeroPaperTradingProfitLoss
 } from "@ouroboros/application/trading/paper/evaluation";
+import { decidePaperTradingObservation } from "@ouroboros/application/trading/paper/runtime-protocol";
 import { safeId } from "@ouroboros/application/safe-id";
 import { PaperTradingEvaluationRunner } from "./paper/evaluation-runner";
 import { registerCoreControllerRoutes } from "./controllers/core";
@@ -563,15 +570,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
         tradingRunId,
         gatewayRuntimeBinding,
-        appendLedger: false,
+        appendLedger: true,
         intervalMs: paperTradingEvaluationIntervalMs
       });
       schedulePaperTradingEvaluation(tradingRunId);
+      const response = await tradingRunResponse(store, tradingRunId);
 
       return {
         statusCode: 201,
         body: {
           ...outcome,
+          ...response,
+          order_request: response?.ledger?.latest_order_request,
+          gateway_result: response?.ledger?.latest_gateway_result,
+          execution_result: response?.ledger?.latest_execution_result,
           paper_trading_evaluation: paperTradingEvaluation.evaluation,
           paper_trading_observation: paperTradingEvaluation.observation,
           runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
@@ -710,15 +722,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       .then((surface) => store.recordPublicMarketLivenessSurface(surface))
       .catch(() => undefined);
 
+    const sequence = baseEvaluation.observation_count + 1;
     let ledgerOutcome: LedgerWriteOutcome | undefined;
+    let decision: PaperTradingDecisionSummary | undefined;
     if (input.appendLedger) {
       const refreshedCandidate = await refreshPaperTradingSandbox(candidateBefore);
-      ledgerOutcome = await recordPaperTradingObservationSample({
+      const decisionOutcome = await recordPaperTradingObservationDecision({
         store,
         candidate: refreshedCandidate,
         tradingRunId: input.tradingRunId,
-        gatewayRuntimeBinding: input.gatewayRuntimeBinding
+        gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+        sequence,
+        market
       });
+      ledgerOutcome = decisionOutcome.ledgerOutcome;
+      decision = decisionOutcome.decision;
     }
     const candidateAfterLedger = await store.getCandidateForTradingRun(input.tradingRunId);
     const latestChain = ledgerOutcome
@@ -738,10 +756,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const observation = paperTradingObservationRecord({
       candidate: candidateAfterLedger ?? candidateBefore,
       evaluation: baseEvaluation,
-      sequence: baseEvaluation.observation_count + 1,
+      sequence,
       status: hasLedger ? "recorded" : "no_order",
       observedAt,
       marketSnapshot: marketSnapshotSummary(market),
+      decision,
       ledgerRef: latestChain ? { record_kind: "ledger_chain", id: latestChain.chain_id } : undefined,
       scoreDelta,
       cumulativeScore
@@ -1553,7 +1572,7 @@ async function startFixtureTradingRun(input: {
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
   gatewayRuntimeBinding: GatewayRuntimeBinding;
 }) {
-  const sandbox = await ensureTradingRunSandbox({
+  await ensureTradingRunSandbox({
     store: input.store,
     sandboxAdapter: input.sandboxAdapter,
     candidate: input.candidate,
@@ -1561,16 +1580,6 @@ async function startFixtureTradingRun(input: {
     candidateVersionId: input.candidateVersionId,
     paperOrderRequest: input.paperOrderRequest
   });
-  await input.store.recordLedger(await ledgerInputFromSandboxOutput({
-    sandbox,
-    candidateId: input.systemId,
-    candidateVersionId: input.candidateVersionId,
-    tradingRunId: input.tradingRunId,
-    paperOrderRequest: input.paperOrderRequest,
-    gatewayRuntimeBinding: input.gatewayRuntimeBinding,
-    sampleId: "start",
-    observedAt: new Date().toISOString()
-  }));
   await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
     idempotencyKey: `trading-run-start:${input.paperOrderRequest}:${input.tradingRunId}:${input.candidateVersionId}`,
     candidateId: input.systemId,
@@ -1584,49 +1593,91 @@ async function startFixtureTradingRun(input: {
   }));
 
   const response = await tradingRunResponse(input.store, input.tradingRunId);
-  if (!response?.ledger) {
-    throw new Error("trading run response was not projected after start");
-  }
 
   return {
     status: "started",
     ...response,
-    order_request: response.ledger.latest_order_request,
-    gateway_result: response.ledger.latest_gateway_result,
-    execution_result: response.ledger.latest_execution_result,
     trading_gateway_environment: input.tradingGatewayEnvironment
   } as const;
 }
 
-async function recordPaperTradingObservationSample(input: {
+async function recordPaperTradingObservationDecision(input: {
   store: LocalStore;
   candidate: CandidateInspectReadModel;
   tradingRunId: string;
   gatewayRuntimeBinding: GatewayRuntimeBinding;
-}): Promise<LedgerWriteOutcome | undefined> {
+  sequence: number;
+  market: MarketSnapshot;
+}): Promise<{
+  decision: PaperTradingDecisionSummary;
+  ledgerOutcome?: LedgerWriteOutcome;
+}> {
   const sandbox = input.candidate.runtime.sandbox;
-  if (!sandbox) {
-    return undefined;
-  }
-  if (!latestSandboxOrderRequest(sandbox)) {
-    return undefined;
-  }
   const candidateVersionId = input.candidate.candidate_version.candidate_version_id;
-  const nextObservation = (input.candidate.ledger?.chain_count ?? 0) + 1;
-  const ledger = await input.store.recordLedger(await ledgerInputFromSandboxOutput({
-    sandbox,
+  if (!sandbox) {
+    await recordPaperTradingObservationAudit({
+      store: input.store,
+      candidate: input.candidate,
+      candidateVersionId,
+      tradingRunId: input.tradingRunId,
+      sequence: input.sequence
+    });
+    return {
+      decision: {
+        decision_kind: "hold",
+        source_kind: "trading_system_decision",
+        reason: "trading_system_decision_unavailable",
+        observed_at: input.market.observed_at,
+        authority_status: "trace_only"
+      }
+    };
+  }
+  const decision = decidePaperTradingObservation({
+    sequence: input.sequence,
+    marketSnapshot: input.market,
+    paperOrderRequestMode: sandboxPaperOrderRequestMode(sandbox)
+  });
+  if (decision.decision_kind === "hold") {
+    await recordPaperTradingObservationAudit({
+      store: input.store,
+      candidate: input.candidate,
+      candidateVersionId,
+      tradingRunId: input.tradingRunId,
+      sequence: input.sequence
+    });
+    return { decision: decision.summary };
+  }
+  const ledger = await input.store.recordLedger(await ledgerInputFromTradingSystemDecision({
     candidateId: input.candidate.candidate_id,
     candidateVersionId,
     tradingRunId: input.tradingRunId,
-    paperOrderRequest: "valid",
+    paperOrderRequest: decision.order_request.quantity === "0" ? "rejected" : "valid",
     gatewayRuntimeBinding: input.gatewayRuntimeBinding,
-    sampleId: `observe-${nextObservation}`,
-    observedAt: new Date().toISOString()
+    orderRequest: decision.order_request,
+    sampleId: `observe-${input.sequence}`,
+    observedAt: input.market.observed_at
   }));
-  await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-    idempotencyKey: `trading-run-observe:${input.tradingRunId}:${candidateVersionId}:${nextObservation}`,
-    candidateId: input.candidate.candidate_id,
+  await recordPaperTradingObservationAudit({
+    store: input.store,
+    candidate: input.candidate,
     candidateVersionId,
+    tradingRunId: input.tradingRunId,
+    sequence: input.sequence
+  });
+  return { decision: decision.summary, ledgerOutcome: ledger };
+}
+
+async function recordPaperTradingObservationAudit(input: {
+  store: LocalStore;
+  candidate: CandidateInspectReadModel;
+  candidateVersionId: string;
+  tradingRunId: string;
+  sequence: number;
+}): Promise<void> {
+  await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+    idempotencyKey: `trading-run-observe:${input.tradingRunId}:${input.candidateVersionId}:${input.sequence}`,
+    candidateId: input.candidate.candidate_id,
+    candidateVersionId: input.candidateVersionId,
     tradingRunId: input.tradingRunId,
     action: "inspect",
     lifecycleStatus: "running",
@@ -1634,7 +1685,6 @@ async function recordPaperTradingObservationSample(input: {
     reasonSummary: "Operator observed continuous paper Trading Run.",
     message: "Paper TradingEvaluation observation recorded."
   }));
-  return ledger;
 }
 
 function paperTradingEvaluationRecord(input: {
@@ -1689,6 +1739,7 @@ function paperTradingObservationRecord(input: {
   status: PaperTradingObservationRecord["status"];
   observedAt: string;
   marketSnapshot?: PaperTradingObservationRecord["market_snapshot"];
+  decision?: PaperTradingObservationRecord["decision"];
   ledgerRef?: Ref;
   scoreDelta: PaperTradingObservationRecord["score_delta"];
   cumulativeScore: PaperTradingObservationRecord["cumulative_score"];
@@ -1716,6 +1767,7 @@ function paperTradingObservationRecord(input: {
     status: input.status,
     observed_at: input.observedAt,
     market_snapshot: input.marketSnapshot,
+    decision: input.decision,
     ledger_ref: input.ledgerRef,
     score_delta: input.scoreDelta,
     cumulative_score: input.cumulativeScore,
@@ -1783,25 +1835,17 @@ interface SandboxOrderRequestEvent {
   at?: string;
 }
 
-async function ledgerInputFromSandboxOutput(input: {
-  sandbox: SandboxDetailReadModel;
+async function ledgerInputFromTradingSystemDecision(input: {
   candidateId: string;
   candidateVersionId: string;
   tradingRunId: string;
   paperOrderRequest: PaperOrderRequestFixture;
   gatewayRuntimeBinding: GatewayRuntimeBinding;
+  orderRequest: PaperTradingDecisionOrderRequestSummary;
   sampleId?: string;
   observedAt?: string;
 }): Promise<LedgerInput> {
-  const orderRequest = latestSandboxOrderRequest(input.sandbox);
-  if (!orderRequest) {
-    throw new LocalStoreError(
-      "invalid_ledger_input",
-      `sandbox ${input.sandbox.sandbox_id} did not emit an order_request event`,
-      { sandbox_id: input.sandbox.sandbox_id, runtime_id: input.tradingRunId }
-    );
-  }
-  const gatewayExecution = await executeGatewayOrderRequest(input.gatewayRuntimeBinding, orderRequest);
+  const gatewayExecution = await executeGatewayOrderRequest(input.gatewayRuntimeBinding, input.orderRequest);
 
   return {
     idempotency_key: [
@@ -1817,7 +1861,7 @@ async function ledgerInputFromSandboxOutput(input: {
     intent: gatewayExecution.intent,
     gateway_result: gatewayExecution.gateway_result,
     execution_result: gatewayExecution.execution_result,
-    created_at: input.observedAt ?? orderRequest.at
+    created_at: input.observedAt
   };
 }
 
@@ -1864,6 +1908,15 @@ function latestSandboxOrderRequest(
     .flatMap((log) => log.lines.map(parseSandboxOrderRequestEvent))
     .filter((event): event is SandboxOrderRequestEvent => Boolean(event))
     .at(-1);
+}
+
+function sandboxPaperOrderRequestMode(
+  sandbox: SandboxDetailReadModel | undefined
+): PaperOrderRequestFixture {
+  if (!sandbox) {
+    return "valid";
+  }
+  return latestSandboxOrderRequest(sandbox)?.quantity === "0" ? "rejected" : "valid";
 }
 
 function parseSandboxOrderRequestEvent(line: string): SandboxOrderRequestEvent | undefined {

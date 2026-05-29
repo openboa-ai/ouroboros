@@ -59,6 +59,8 @@ market data, scored by accumulated `revenue - cost`.
      old static data cannot faithfully grade.
    - Binance public market data enters through the Gateway `MarketDataPort`, not through the
      TradingSystem. The observation records the market snapshot used for score and Ledger evidence.
+   - Every paper observation is a fresh decision cycle: market snapshot in, `OrderRequest` or
+     `hold` out, Gateway validation next, Ledger evidence only if an order request exists.
    - Paper evaluation is sealed from candidate self-report, generated comments, provider optimism,
      and hidden authority.
 

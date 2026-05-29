@@ -132,6 +132,11 @@ describe("operator product loop smoke", () => {
             source_kind: "binance_production_public_rest",
             authority_status: "read_only"
           },
+          latest_decision: {
+            decision_kind: "order_request",
+            source_kind: "trading_system_decision",
+            authority_status: "trace_only"
+          },
           authority_status: "not_live"
         },
         selected_paper_evidence: {
@@ -192,6 +197,10 @@ describe("operator product loop smoke", () => {
           symbol: "BTCUSDT",
           authority_status: "read_only"
         },
+        latest_decision: {
+          decision_kind: "order_request",
+          authority_status: "trace_only"
+        },
         authority_status: "not_live"
       });
       expect(finalOperator.latest_commands.map((command) => command.command_kind)).toEqual(
@@ -228,6 +237,10 @@ describe("operator product loop smoke", () => {
             runner_active: false,
             observation_count: 2,
             ledger_chain_complete: true,
+            latest_decision: {
+              decision_kind: "order_request",
+              authority_status: "trace_only"
+            },
             authority_status: "not_live"
           }
         });
@@ -284,6 +297,7 @@ describe("operator product loop smoke", () => {
       expect(tui).toContain("Authority: not_live / live disabled");
       expect(tui).toContain(`Selected Candidate\n${leader.candidate_id}`);
       expect(tui).toContain("PaperTradingEvaluation: running");
+      expect(tui).toContain("Decision: order_request");
       expect(tui).toContain("Ledger chain: complete");
       expect(tui).toContain("trading_run.observe: succeeded");
     } finally {

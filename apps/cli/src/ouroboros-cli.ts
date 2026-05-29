@@ -382,6 +382,7 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
   const selectedProfileNextStep = selectedProfile ? agentProfileNextStep(selectedProfile) : undefined;
   const paper = operator.selected_paper_trading_evaluation;
   const market = paper.latest_market_snapshot;
+  const decision = paper.latest_decision;
   return [
     "Ouroboros status",
     `Arena: ${arena.runner_status} (${arena.tick_count} ticks, ${arena.leaderboard.length} candidates)`,
@@ -400,11 +401,30 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
       : undefined,
+    decision ? `Paper decision: ${formatPaperDecision(decision)}` : undefined,
     paper.latest_failure_reason ? `Paper failure: ${paper.latest_failure_reason}` : undefined,
     lastCommand
       ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
       : "Latest command: none"
   ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function formatPaperDecision(
+  decision: OperatorReadModel["selected_paper_trading_evaluation"]["latest_decision"]
+): string {
+  if (!decision) {
+    return "none";
+  }
+  if (decision.decision_kind !== "order_request" || !decision.order_request) {
+    return `${decision.decision_kind} (${decision.reason})`;
+  }
+  return [
+    "order_request",
+    `${decision.order_request.side} ${decision.order_request.order_type}`,
+    decision.order_request.quantity,
+    decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined,
+    `(${decision.reason})`
+  ].filter(Boolean).join(" ");
 }
 
 function agentProfileNextStep(profile: AgentProfileReadModel): string | undefined {

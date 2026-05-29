@@ -27,6 +27,7 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Runner: active / next 2026-05-16T00:01:03.000Z");
     expect(output).toContain("Paper score: 4.95 USDT / observations 1");
     expect(output).toContain("Market: BTCUSDT 65000.00 @ 2026-05-16T00:00:03.000Z");
+    expect(output).toContain("Decision: order_request buy limit 0.001 @ 65000");
     expect(output).toContain("Codex: configured");
     expect(output).toContain("arena.tick: succeeded");
     expect(output).toContain("Keys: r refresh");
@@ -177,6 +178,21 @@ function fixtureOperator(): OperatorReadModel {
         observed_at: "2026-05-16T00:00:03.000Z",
         source_kind: "binance_production_public_rest",
         authority_status: "read_only"
+      },
+      latest_decision: {
+        decision_kind: "order_request",
+        source_kind: "trading_system_decision",
+        reason: "long_market_snapshot",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        order_request: {
+          intent_kind: "place_order",
+          symbol: "BTCUSDT",
+          side: "buy",
+          order_type: "limit",
+          quantity: "0.001",
+          limit_price: "65000"
+        },
+        authority_status: "trace_only"
       },
       market_data_source: "binance_production_public_rest",
       account_provider: "fake_paper_account",

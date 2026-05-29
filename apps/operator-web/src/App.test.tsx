@@ -474,6 +474,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("active / next");
     expect(html).toContain("Market snapshot");
     expect(html).toContain("BTCUSDT");
+    expect(html).toContain("Paper decision");
+    expect(html).toContain("order_request buy limit 0.001 @ 65000");
     expect(html).toContain("Lineage");
     expect(html).toContain("Start paper trading");
     expect(html).toContain("Agent providers");
@@ -3464,6 +3466,21 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
       observed_at: "2026-05-16T00:00:03.000Z",
       source_kind: "binance_production_public_rest",
       authority_status: "read_only"
+    },
+    latest_decision: {
+      decision_kind: "order_request",
+      source_kind: "trading_system_decision",
+      reason: "long_market_snapshot",
+      observed_at: "2026-05-16T00:00:03.000Z",
+      order_request: {
+        intent_kind: "place_order",
+        symbol: "BTCUSDT",
+        side: "buy",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: "65000"
+      },
+      authority_status: "trace_only"
     },
     market_data_source: "binance_production_public_rest",
     account_provider: "fake_paper_account",

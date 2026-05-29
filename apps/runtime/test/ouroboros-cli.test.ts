@@ -101,6 +101,7 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
     expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
+    expect(result.stdout).toContain("Paper decision: order_request buy limit 0.001 @ 65000 (long_market_snapshot)");
   });
 
   it("returns operator status JSON for automation", async () => {
@@ -441,6 +442,21 @@ function fixtureOperator(
         observed_at: "2026-05-16T00:00:03.000Z",
         source_kind: "binance_production_public_rest",
         authority_status: "read_only"
+      },
+      latest_decision: {
+        decision_kind: "order_request",
+        source_kind: "trading_system_decision",
+        reason: "long_market_snapshot",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        order_request: {
+          intent_kind: "place_order",
+          symbol: "BTCUSDT",
+          side: "buy",
+          order_type: "limit",
+          quantity: "0.001",
+          limit_price: "65000"
+        },
+        authority_status: "trace_only"
       },
       market_data_source: "binance_production_public_rest",
       account_provider: "fake_paper_account",

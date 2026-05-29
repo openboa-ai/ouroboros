@@ -1514,6 +1514,26 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
 
 export type PaperTradingObservationStatus = "recorded" | "no_order" | "failed";
 
+export type PaperTradingDecisionKind = "order_request" | "hold" | "error";
+
+export interface PaperTradingDecisionOrderRequestSummary {
+  intent_kind: "place_order";
+  symbol: "BTCUSDT";
+  side: "buy" | "sell";
+  order_type: "market" | "limit";
+  quantity: string;
+  limit_price?: string;
+}
+
+export interface PaperTradingDecisionSummary {
+  decision_kind: PaperTradingDecisionKind;
+  source_kind: "trading_system_decision";
+  reason: string;
+  observed_at: string;
+  order_request?: PaperTradingDecisionOrderRequestSummary;
+  authority_status: "trace_only";
+}
+
 export interface PaperTradingEvaluationRecord extends BaseRecord {
   record_kind: "paper_trading_evaluation";
   paper_trading_evaluation_id: string;
@@ -1543,6 +1563,7 @@ export interface PaperTradingObservationRecord extends BaseRecord {
   status: PaperTradingObservationStatus;
   observed_at: string;
   market_snapshot?: PaperTradingMarketSnapshotSummary;
+  decision?: PaperTradingDecisionSummary;
   ledger_ref?: Ref;
   score_delta: TradingProfitLossReadModel;
   cumulative_score: TradingProfitLossReadModel;
@@ -2747,6 +2768,7 @@ export interface PaperTradingEvaluationReadModel {
   ledger_chain_complete: boolean;
   profit_loss: TradingProfitLossReadModel;
   latest_market_snapshot?: PaperTradingMarketSnapshotSummary;
+  latest_decision?: PaperTradingDecisionSummary;
   latest_order_request_id?: string;
   latest_gateway_outcome?: string;
   latest_execution_status?: string;
