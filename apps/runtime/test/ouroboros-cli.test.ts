@@ -99,6 +99,8 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
     expect(result.stdout).toContain("Paper evidence: ledger_chain_complete");
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
+    expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
+    expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
   });
 
   it("returns operator status JSON for automation", async () => {
@@ -416,6 +418,9 @@ function fixtureOperator(
       status: "running",
       trading_run_id: "trading-run-candidate-profitable",
       trading_run_status: "running",
+      runner_active: true,
+      interval_ms: 60_000,
+      next_observation_at: "2026-05-16T00:01:03.000Z",
       observation_count: 1,
       ledger_chain_complete: true,
       profit_loss: {
@@ -426,6 +431,17 @@ function fixtureOperator(
       },
       latest_gateway_outcome: "dry_run_only",
       latest_execution_status: "dry_run_recorded",
+      latest_market_snapshot: {
+        symbol: "BTCUSDT",
+        price: 65_000,
+        moving_average_fast: 65_025,
+        moving_average_slow: 64_975,
+        volatility: 0.001,
+        expected_direction: "long",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        source_kind: "binance_production_public_rest",
+        authority_status: "read_only"
+      },
       market_data_source: "binance_production_public_rest",
       account_provider: "fake_paper_account",
       executor: "fake_paper_order_executor",

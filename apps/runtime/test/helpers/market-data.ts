@@ -1,0 +1,92 @@
+import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
+import type { MarketSnapshot } from "@ouroboros/application/trading/research/types";
+import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
+
+export function fakeGatewayMarketDataPort(input: {
+  price?: number;
+  observedAt?: string;
+  failMarketSnapshot?: boolean;
+} = {}): GatewayMarketDataPort {
+  const price = input.price ?? 65_000;
+  const observedAt = input.observedAt ?? "2026-05-16T00:00:03.000Z";
+  return {
+    provider_kind: "binance_production_public_market_data",
+    source_kind: "binance_production_public_rest",
+    rest_base_url: "https://fapi.binance.com",
+    required_endpoints: [
+      "/fapi/v1/time",
+      "/fapi/v1/exchangeInfo",
+      "/fapi/v1/premiumIndex?symbol=BTCUSDT",
+      "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30"
+    ],
+    authority_status: "read_only",
+    async readMarketSnapshot(request = {}): Promise<MarketSnapshot> {
+      if (input.failMarketSnapshot) {
+        throw new Error("fake market data unavailable");
+      }
+      return {
+        symbol: "BTCUSDT",
+        price,
+        moving_average_fast: price + 25,
+        moving_average_slow: price - 25,
+        volatility: 0.001,
+        expected_direction: "long",
+        observed_at: request.observedAt ?? observedAt
+      };
+    },
+    async readPublicMarketLivenessSurface(request = {}): Promise<PublicMarketLivenessSurfaceRecord> {
+      const now = request.observedAt ?? observedAt;
+      return {
+        record_kind: "public_market_liveness_surface",
+        version: 1,
+        public_market_liveness_surface_id: `fake-binance-btcusdt-public-market-liveness-${Date.parse(now)}`,
+        surface_family: "public_market_liveness",
+        venue: "binance_usd_m_futures",
+        instrument: "BTCUSDT",
+        product_category: "perpetual_futures",
+        symbol_status: "TRADING",
+        contract_type: "PERPETUAL",
+        price_tick_size: "0.10",
+        quantity_step_size: "0.001",
+        min_quantity: "0.001",
+        min_notional: "100",
+        mark_price: String(price),
+        index_price: String(price - 5),
+        estimated_settle_price: String(price - 10),
+        funding_rate: "0.00010000",
+        interest_rate: "0.00010000",
+        next_funding_time: "2026-05-16T08:00:00.000Z",
+        server_time: now,
+        source_timestamp: now,
+        observed_at: now,
+        updated_at: now,
+        freshness: "fresh",
+        liveness: "connected",
+        source_kind: "binance_market_data_rest",
+        source_ref: {
+          record_kind: "binance_rest_endpoint",
+          id: "fake-fapi-v1-exchangeInfo-premiumIndex-time"
+        },
+        transport: {
+          transport_kind: "official_binance_connector",
+          repository: "binance/binance-connector-js",
+          package_name: "@binance/derivatives-trading-usds-futures",
+          api_family: "derivatives_trading_usds_futures",
+          supported_endpoints: ["rest_api", "websocket_api", "websocket_streams"],
+          production_base_url: "https://fapi.binance.com",
+          testnet_base_url: "https://demo-fapi.binance.com",
+          integration_role: "transport_only",
+          authority_status: "not_live"
+        },
+        fixture_backed: false,
+        simulated: false,
+        no_authority: {
+          live_exchange: false,
+          order_submission: false,
+          credentials: false
+        },
+        authority_status: "read_only"
+      };
+    }
+  };
+}

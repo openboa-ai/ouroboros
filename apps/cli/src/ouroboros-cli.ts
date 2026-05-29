@@ -380,6 +380,8 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     profile.profile_id === operator.researcher_provider.selected_provider
   );
   const selectedProfileNextStep = selectedProfile ? agentProfileNextStep(selectedProfile) : undefined;
+  const paper = operator.selected_paper_trading_evaluation;
+  const market = paper.latest_market_snapshot;
   return [
     "Ouroboros status",
     `Arena: ${arena.runner_status} (${arena.tick_count} ticks, ${arena.leaderboard.length} candidates)`,
@@ -393,7 +395,12 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       : "Leader: none",
     `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
-    `PaperTradingEvaluation: ${operator.selected_paper_trading_evaluation.status} (${operator.selected_paper_trading_evaluation.observation_count} observations, ${formatUsdt(operator.selected_paper_trading_evaluation.profit_loss.net_revenue_usdt)})`,
+    `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
+    `Paper runner: ${paper.runner_active ? "active" : "stopped"}${paper.interval_ms ? ` / interval ${paper.interval_ms}ms` : ""}${paper.next_observation_at ? ` / next ${paper.next_observation_at}` : ""}`,
+    market
+      ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
+      : undefined,
+    paper.latest_failure_reason ? `Paper failure: ${paper.latest_failure_reason}` : undefined,
     lastCommand
       ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
       : "Latest command: none"

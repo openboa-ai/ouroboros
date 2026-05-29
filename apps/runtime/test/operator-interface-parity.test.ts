@@ -232,6 +232,7 @@ function fixtureOperator(): OperatorReadModel {
       status: "running",
       trading_run_id: "trading-run-candidate-profitable",
       trading_run_status: "running",
+      runner_active: true,
       observation_count: 1,
       ledger_chain_complete: true,
       profit_loss: {

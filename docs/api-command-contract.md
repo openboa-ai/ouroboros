@@ -39,7 +39,8 @@ Current command groups:
 
 `OperatorReadModel` is the shared operator state for all user surfaces. It must show the
 CandidateArena status, leaderboard, selected candidate, `PaperTradingEvaluation`, paper evidence
-readback, agent/provider status, latest ticks, latest candidates, latest command results, and
+readback, runner active status, interval, next observation time, latest market snapshot, latest
+paper failure, agent/provider status, latest ticks, latest candidates, latest command results, and
 authority flags.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
@@ -48,7 +49,8 @@ login, or exchange behavior.
 Candidate, Paper Evidence, Paper Trading, and Live are separate states in every operator surface.
 Replay/backtest is a research tool, not final evaluation authority. `trading_run.start`,
 `trading_run.observe`, and `trading_run.stop` operate the selected candidate's continuous paper
-trading evaluation; paper evidence is Ledger readback, not live promotion.
+trading evaluation through the Gateway and `MarketDataPort`; paper evidence is Ledger readback, not
+live promotion.
 
 ## Resource Reads
 

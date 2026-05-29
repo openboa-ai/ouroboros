@@ -443,6 +443,7 @@ describe("CandidateDetail", () => {
           ledger_chain_complete: false,
           authority_status: "not_live"
         }}
+        selectedPaperTradingEvaluation={paperTradingEvaluationFixture()}
         onStart={() => undefined}
         onStop={() => undefined}
         onTick={() => undefined}
@@ -469,6 +470,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("SystemCode");
     expect(html).toContain("Evaluation");
     expect(html).toContain("profit_loss");
+    expect(html).toContain("Paper runner");
+    expect(html).toContain("active / next");
+    expect(html).toContain("Market snapshot");
+    expect(html).toContain("BTCUSDT");
     expect(html).toContain("Lineage");
     expect(html).toContain("Start paper trading");
     expect(html).toContain("Agent providers");
@@ -3435,6 +3440,9 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
     status: "running",
     trading_run_id: "trading-run-candidate-profitable",
     trading_run_status: "running",
+    runner_active: true,
+    interval_ms: 60_000,
+    next_observation_at: "2026-05-16T00:01:03.000Z",
     observation_count: 1,
     ledger_chain_complete: true,
     profit_loss: {
@@ -3446,6 +3454,17 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
     latest_order_request_id: "order-request-001",
     latest_gateway_outcome: "dry_run_only",
     latest_execution_status: "dry_run_recorded",
+    latest_market_snapshot: {
+      symbol: "BTCUSDT",
+      price: 65_000,
+      moving_average_fast: 65_025,
+      moving_average_slow: 64_975,
+      volatility: 0.001,
+      expected_direction: "long",
+      observed_at: "2026-05-16T00:00:03.000Z",
+      source_kind: "binance_production_public_rest",
+      authority_status: "read_only"
+    },
     market_data_source: "binance_production_public_rest",
     account_provider: "fake_paper_account",
     executor: "fake_paper_order_executor",

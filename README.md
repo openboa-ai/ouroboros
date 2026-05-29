@@ -109,7 +109,9 @@ ouroboros arena tick
 ouroboros arena start
 ouroboros arena stop
 ouroboros candidate select <candidate-id>
-ouroboros candidate evidence run <candidate-id>
+ouroboros candidate paper start <candidate-id>
+ouroboros trading-run observe <trading-run-id>
+ouroboros trading-run stop <trading-run-id>
 ouroboros agent setup codex
 ouroboros agent login codex
 ouroboros agent probe codex
@@ -136,8 +138,11 @@ point back to repo truth rather than replacing it.
 
 ## Product Boundary
 
-MLP-01 is paper-only. Paper uses Binance production public market data with a fake account, fake
-executor, and fake Ledger. Live trading, private account reads, signed exchange requests,
+MLP-01 is paper-only. Paper uses Binance production public market data through the Gateway-owned
+`MarketDataPort` with a fake account, fake executor, and fake Ledger. Binance never attaches
+directly to a `TradingSystem`; the `TradingSystem` emits validated `OrderRequest`s and the Gateway
+owns market data reads, cache, validation, execution routing, and evidence. Live trading, private
+account reads, signed exchange requests,
 listenKey/user-data streams, leverage or margin mutation, and live orders remain disabled until a
 future repo issue explicitly enables that authority.
 

@@ -656,10 +656,21 @@ async function recordArenaResearchRecords(input: {
 async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
   const leaderboardCandidates = await Promise.all(
-    arena.leaderboard.slice(0, 8).map(async (entry) => ({
-      entry,
-      candidate: await store.getCandidate(entry.candidate_id)
-    }))
+    arena.leaderboard.slice(0, 8).map(async (entry) => {
+      const candidate = await store.getCandidate(entry.candidate_id);
+      const paperEvaluation = candidate
+        ? await store.getLatestPaperTradingEvaluationForCandidate(candidate.candidate_id)
+        : undefined;
+      const paperObservations = paperEvaluation
+        ? await store.listPaperTradingObservations(paperEvaluation.paper_trading_evaluation_id)
+        : [];
+      return {
+        entry,
+        candidate,
+        paperEvaluation,
+        paperObservations
+      };
+    })
   );
   return JSON.stringify({
     requested_direction: direction,
@@ -689,11 +700,24 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         finding: entry.latest_finding
       })),
     selected_paper_evidence: leaderboardCandidates
-      .filter(({ candidate }) => candidate?.ledger?.has_activity)
-      .map(({ entry, candidate }) => ({
+      .filter(({ candidate, paperEvaluation }) => candidate?.ledger?.has_activity || paperEvaluation)
+      .map(({ entry, candidate, paperEvaluation, paperObservations }) => ({
         candidate_id: entry.candidate_id,
         direction_kind: entry.direction_kind,
         net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+        paper_trading_status: paperEvaluation?.status,
+        paper_observation_count: paperEvaluation?.observation_count ?? 0,
+        paper_score: paperEvaluation?.latest_score,
+        latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
+        latest_paper_failure: paperEvaluation?.latest_failure_reason,
+        failed_observations: paperObservations
+          .filter((observation) => observation.status === "failed")
+          .slice(-3)
+          .map((observation) => ({
+            sequence: observation.sequence,
+            observed_at: observation.observed_at,
+            failure_reason: observation.failure_reason
+          })),
         ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
         ledger_chain_count: candidate?.ledger?.chain_count ?? 0,
         latest_order_request_id: candidate?.ledger?.latest_order_request?.order_request_id,

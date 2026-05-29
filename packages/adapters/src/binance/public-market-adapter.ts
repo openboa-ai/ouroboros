@@ -4,6 +4,8 @@ import {
   DerivativesTradingUsdsFutures
 } from "@binance/derivatives-trading-usds-futures";
 import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
+import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
+import { PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { MarketSnapshot } from "@ouroboros/application/trading/research/types";
 
 export interface BinanceRestResponse<T> {
@@ -31,14 +33,39 @@ export interface BinancePublicMarketAdapterOptions {
 
 export interface BinancePublicMarketSdkAdapterOptions {
   restBaseUrl: string;
-  client?: BinancePublicMarketLivenessClient;
+  client?: BinancePublicMarketDataClient;
+  cache?: BinancePublicMarketCacheOptions | false;
 }
 
-export class BinancePublicMarketSdkAdapter {
-  private readonly client: BinancePublicMarketLivenessClient;
+export interface BinancePublicMarketCacheOptions {
+  exchangeInfoTtlMs?: number;
+  serverTimeTtlMs?: number;
+  markPriceTtlMs?: number;
+  klinesTtlMs?: number;
+  now?: () => number;
+}
+
+export const DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS = {
+  exchangeInfoTtlMs: 60 * 60 * 1_000,
+  serverTimeTtlMs: 5_000,
+  markPriceTtlMs: 5_000,
+  klinesTtlMs: 30_000
+} as const;
+
+export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
+  readonly provider_kind = "binance_production_public_market_data" as const;
+  readonly source_kind = "binance_production_public_rest" as const;
+  readonly required_endpoints = PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS;
+  readonly authority_status = "read_only" as const;
+  private readonly client: BinancePublicMarketDataClient;
+  readonly rest_base_url: string;
 
   constructor(options: BinancePublicMarketSdkAdapterOptions) {
-    this.client = options.client ?? createOfficialBinanceUsdsFuturesPublicMarketClient(options.restBaseUrl);
+    this.rest_base_url = options.restBaseUrl;
+    const client = options.client ?? createOfficialBinanceUsdsFuturesPublicMarketClient(options.restBaseUrl);
+    this.client = options.cache === false
+      ? client
+      : new CachedBinancePublicMarketDataClient(client, options.cache);
   }
 
   readBtcUsdtPublicMarketLivenessSurface(
@@ -47,6 +74,17 @@ export class BinancePublicMarketSdkAdapter {
     return readBinanceBtcUsdtPublicMarketLivenessSurface({
       client: this.client,
       observedAt
+    });
+  }
+
+  readPublicMarketLivenessSurface(input: { observedAt?: string } = {}): Promise<PublicMarketLivenessSurfaceRecord> {
+    return this.readBtcUsdtPublicMarketLivenessSurface(input.observedAt);
+  }
+
+  readMarketSnapshot(input: { observedAt?: string } = {}): Promise<MarketSnapshot> {
+    return readBinanceBtcUsdtMarketSnapshot({
+      client: this.client,
+      observedAt: input.observedAt
     });
   }
 }
@@ -102,9 +140,97 @@ const binanceUsdsFuturesConnectorTransport = {
   authority_status: "not_live"
 } as const;
 
+class CachedBinancePublicMarketDataClient implements BinancePublicMarketDataClient {
+  private readonly cache = new Map<string, { expiresAt: number; payload: unknown }>();
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly ttl: Required<Omit<BinancePublicMarketCacheOptions, "now">>;
+  private readonly now: () => number;
+
+  constructor(
+    private readonly client: BinancePublicMarketDataClient,
+    options: BinancePublicMarketCacheOptions = {}
+  ) {
+    this.ttl = {
+      exchangeInfoTtlMs: options.exchangeInfoTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.exchangeInfoTtlMs,
+      serverTimeTtlMs: options.serverTimeTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.serverTimeTtlMs,
+      markPriceTtlMs: options.markPriceTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.markPriceTtlMs,
+      klinesTtlMs: options.klinesTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.klinesTtlMs
+    };
+    this.now = options.now ?? Date.now;
+  }
+
+  checkServerTime(): Promise<BinanceRestResponse<BinanceServerTimePayload>> {
+    return this.cached("time", this.ttl.serverTimeTtlMs, () => this.client.checkServerTime());
+  }
+
+  exchangeInformation(): Promise<BinanceRestResponse<BinanceExchangeInformationPayload>> {
+    return this.cached("exchange-info", this.ttl.exchangeInfoTtlMs, () => this.client.exchangeInformation());
+  }
+
+  markPrice(
+    requestParameters?: { symbol?: string }
+  ): Promise<BinanceRestResponse<BinanceMarkPricePayload | BinanceMarkPricePayload[]>> {
+    return this.cached(
+      `mark-price:${requestParameters?.symbol ?? "all"}`,
+      this.ttl.markPriceTtlMs,
+      () => this.client.markPrice(requestParameters)
+    );
+  }
+
+  klineCandlestickData(
+    requestParameters: { symbol: "BTCUSDT"; interval: "1m"; limit: 30 }
+  ): Promise<BinanceRestResponse<BinanceKlineCandlestickPayload>> {
+    return this.cached(
+      `klines:${requestParameters.symbol}:${requestParameters.interval}:${requestParameters.limit}`,
+      this.ttl.klinesTtlMs,
+      () => this.client.klineCandlestickData(requestParameters)
+    );
+  }
+
+  private async cached<T>(
+    key: string,
+    ttlMs: number,
+    load: () => Promise<BinanceRestResponse<T>>
+  ): Promise<BinanceRestResponse<T>> {
+    const cached = this.cache.get(key);
+    const now = this.now();
+    if (cached && cached.expiresAt > now) {
+      return responseFromPayload(cached.payload as T);
+    }
+
+    const existing = this.inFlight.get(key) as Promise<T> | undefined;
+    if (existing) {
+      return responseFromPayload(await existing);
+    }
+
+    const request = load()
+      .then((response) => response.data())
+      .then((payload) => {
+        this.cache.set(key, {
+          payload,
+          expiresAt: this.now() + ttlMs
+        });
+        return payload;
+      })
+      .finally(() => {
+        this.inFlight.delete(key);
+      });
+    this.inFlight.set(key, request);
+    return responseFromPayload(await request);
+  }
+}
+
+function responseFromPayload<T>(payload: T): BinanceRestResponse<T> {
+  return {
+    async data() {
+      return payload;
+    }
+  };
+}
+
 export function createOfficialBinanceUsdsFuturesPublicMarketClient(
   basePath = DERIVATIVES_TRADING_USDS_FUTURES_REST_API_PROD_URL
-): BinancePublicMarketLivenessClient {
+): BinancePublicMarketDataClient {
   // The official package type requires credentials globally, but these public REST calls do not.
   const publicRestConfiguration = {
     configurationRestAPI: {
@@ -112,7 +238,7 @@ export function createOfficialBinanceUsdsFuturesPublicMarketClient(
     }
   } as unknown as ConfigurationDerivativesTradingUsdsFutures;
   const client = new DerivativesTradingUsdsFutures(publicRestConfiguration);
-  return client.restAPI;
+  return client.restAPI as BinancePublicMarketDataClient;
 }
 
 export async function readBinanceBtcUsdtPublicMarketLivenessSurface({

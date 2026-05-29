@@ -24,6 +24,7 @@ that pack every axis into one identifier.
 | `TradingRun` | One execution session for a TradingSystem. |
 | `Sandbox` | Isolated execution boundary for a TradingRun. |
 | `Gateway` | Boundary that handles OrderRequest before exchange authority. |
+| `MarketDataPort` | Gateway-owned public market data boundary; Binance is one adapter behind this port. |
 | `Ledger` | OrderRequest, GatewayResult, and ExecutionResult record chain. |
 | `OuroborosCommand` | Product-facing command envelope shared by CLI, UI, and TUI. |
 | `OperatorReadModel` | Shared operator state returned to CLI, UI, and TUI. |
@@ -61,5 +62,7 @@ standard term fits. Record that decision in repo docs and tests.
   PaperTradingEvaluation and Ledger evidence are proof.
 - Do not imply TradingSystem is only code. It may include an internal agent runtime, but it must
   emit bounded validated OrderRequests.
+- Do not attach Binance directly to TradingSystem. Public market data goes through Gateway
+  `MarketDataPort`; private/live Binance authority remains outside the product loop.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.
 - Do not widen `scripts/check-naming-surface.mjs` allowlists to avoid a vocabulary decision.

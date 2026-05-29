@@ -40,10 +40,14 @@ ideas before a candidate enters paper, but it must not become the product leader
 living agent-based systems.
 
 Continuous paper trading is the evaluation authority. Selected candidates run against live public
-market data through fake account, fake executor, Gateway, and Ledger. Their accumulated
-`revenue - cost`, risk behavior, and Ledger evidence decide what counts. Loss-making candidates
-remain useful arena memory unless they crash, submit malformed orders, bypass provider boundaries,
-fail risk validation, or attempt private/live behavior.
+market data through the Gateway-owned `MarketDataPort`, fake account, fake executor, and Ledger.
+Binance attaches behind the Gateway market data boundary, not inside a `TradingSystem`. The Gateway
+can cache public exchangeInfo, server time, premium/mark price, and klines, and each observation
+records the market snapshot it used as evidence. Operator surfaces expose the latest market snapshot
+with the continuous paper score. Accumulated `revenue - cost`, risk behavior, and
+Ledger evidence decide what counts. Loss-making candidates remain useful arena memory unless they
+crash, submit malformed orders, bypass provider boundaries, fail risk validation, or attempt
+private/live behavior.
 
 AI agents improve over time. Codex, Claude Code, Gemini-powered agents, and future providers should
 plug into the same loop as replaceable research labor rather than changing the product doctrine.
@@ -56,10 +60,12 @@ changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live ar
 
 ## Product Boundary
 
-MLP-01 is paper-only. Paper execution reads Binance production public market data while using a
-fake account, fake executor, and fake Ledger. Live trading, private account reads, signed exchange
-requests, listenKey or user-data streams, leverage or margin mutation, and live orders remain
-disabled until a future repo issue explicitly enables that authority.
+MLP-01 is paper-only. Paper execution reads Binance production public market data only through
+`MarketDataPort` while using a fake account, fake executor, and fake Ledger. Live trading, private
+account reads, signed exchange requests, listenKey or user-data streams, leverage or margin
+mutation, and live orders remain disabled until a future repo issue explicitly enables that
+authority. In short: Live trading, private account reads, and signed requests stay outside this
+frontier.
 
 ## Non-Goals
 

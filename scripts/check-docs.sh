@@ -221,7 +221,9 @@ doctrine_required=[
   "Gateway binding changes, TradingSystem identity does not",
   "Candidate, Paper Evidence, and Live are separate states",
   "Replay/backtest is a research tool, not final evaluation authority",
-  "Continuous paper trading is the evaluation authority"
+  "Continuous paper trading is the evaluation authority",
+  "Gateway `MarketDataPort`",
+  "latest market snapshot"
 ]
 doctrine_corpus="\n".join(text(p) for p in [Path("README.md"), Path("docs/project-direction.md"), Path("docs/ouroboros-doctrine.md")] if p.exists())
 missing_doctrine=[term for term in doctrine_required if term not in doctrine_corpus]

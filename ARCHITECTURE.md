@@ -58,6 +58,11 @@ Adapters are grouped by the external system or concrete implementation boundary 
 belongs in `packages/application`; adapter folders should only translate between application ports
 and outside systems.
 
+Binance public market data is one of those adapter boundaries. Application Gateway code depends on
+`GatewayMarketDataPort` / `MarketDataPort`; concrete REST/SDK/fetch behavior, TTL cache, and
+in-flight public read sharing belong in `packages/adapters/src/binance/*`. `TradingSystem`
+candidates emit `OrderRequest`s and never attach directly to Binance.
+
 ## Architecture Pattern Guide
 
 Ouroboros uses Hexagonal Architecture, Clean Architecture, Layered Architecture, Domain-Driven

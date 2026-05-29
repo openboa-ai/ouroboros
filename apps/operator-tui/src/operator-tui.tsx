@@ -146,6 +146,8 @@ export function OperatorTuiScreen(props: {
   const selectedProfile = props.operator.agent_profiles.find((profile) =>
     profile.profile_id === props.operator.researcher_provider.selected_provider
   );
+  const paperEvaluation = props.operator.selected_paper_trading_evaluation;
+  const marketSnapshot = paperEvaluation.latest_market_snapshot;
   const visibleLeaderboard = visibleLeaderboardWindow(
     props.operator.candidate_arena.leaderboard,
     props.cursor
@@ -182,11 +184,15 @@ export function OperatorTuiScreen(props: {
       <Box flexDirection="column">
         <Text bold>Selected Candidate</Text>
         <Text>{selectedCandidateId ?? "none"}</Text>
-        <Text>{`PaperTradingEvaluation: ${props.operator.selected_paper_trading_evaluation.status}`}</Text>
+        <Text>{`PaperTradingEvaluation: ${paperEvaluation.status}`}</Text>
         <Text>
-          {`Paper score: ${props.operator.selected_paper_trading_evaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${props.operator.selected_paper_trading_evaluation.observation_count}`}
+          {`Runner: ${paperEvaluation.runner_active ? "active" : "stopped"}${paperEvaluation.next_observation_at ? ` / next ${paperEvaluation.next_observation_at}` : ""}`}
         </Text>
-        <Text>{`Ledger chain: ${props.operator.selected_paper_trading_evaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
+        <Text>
+          {`Paper score: ${paperEvaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${paperEvaluation.observation_count}`}
+        </Text>
+        <Text>{`Market: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
+        <Text>{`Ledger chain: ${paperEvaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Agent Providers</Text>

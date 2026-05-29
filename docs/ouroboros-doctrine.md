@@ -57,6 +57,8 @@ market data, scored by accumulated `revenue - cost`.
    - Continuous paper trading is the evaluation authority for the product loop because living
      TradingSystems may use current market state, news, social data, tools, and internal agents that
      old static data cannot faithfully grade.
+   - Binance public market data enters through the Gateway `MarketDataPort`, not through the
+     TradingSystem. The observation records the market snapshot used for score and Ledger evidence.
    - Paper evaluation is sealed from candidate self-report, generated comments, provider optimism,
      and hidden authority.
 
