@@ -232,13 +232,13 @@ Before a PR is ready for merge, collect all of the following evidence unless the
 explicitly narrows the scope:
 
 ```bash
-bash scripts/check-docs.sh
-npm run check:architecture
-npm run check:naming
-bash scripts/check-env-files.sh --tracked
-bash scripts/check-secrets.sh
-git diff --check
+npm run check:repo-guards
 ```
+
+`check:repo-guards` is the local parity gate for docs, architecture, naming, tracked env files,
+full git secret scanning, GitHub workflow pin/permission policy, npm install-script allowlisting,
+and whitespace. GitHub CI must also keep Gitleaks, CodeQL, and Dependency Review green. Dependency
+Review blocks moderate, high, and critical dependency vulnerabilities.
 
 For implementation changes, also run the relevant package tests and type checks.
 For PR completion, wait for GitHub CI and Codex review. If review leaves actionable comments, fix

@@ -23,14 +23,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
 
       - name: Install gitleaks
         env:
@@ -48,28 +57,20 @@ jobs:
           tar -xzf "${archive}" -C "${RUNNER_TEMP}/gitleaks-bin" gitleaks
           echo "${RUNNER_TEMP}/gitleaks-bin" >> "${GITHUB_PATH}"
 
-      - name: Check docs design baseline
-        run: bash scripts/check-docs.sh
-
-      - name: Check environment files
-        run: bash scripts/check-env-files.sh --tracked
-
-      - name: Check secrets
-        run: bash scripts/check-secrets.sh --git
-
-      - name: Check diff whitespace
-        run: git diff --check
+      - name: Run repo guard suite
+        run: npm run check:repo-guards
 
   node-quality:
     name: node-quality
+    needs: repository-guards
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "24"
           cache: npm
