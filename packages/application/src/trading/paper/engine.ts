@@ -266,6 +266,7 @@ function fillOpenOrders(
       next = applyFill(next, order, {
         price: fillPrice,
         quantity: fillQuantity,
+        remainingQuantityBeforeFill: parseDecimal(order.remaining_quantity),
         tradeTime: ticker.event_time ?? publicExecution.observed_at,
         sourceTradeId: `${publicExecution.stream_marker}:bookTicker`
       });
@@ -306,13 +307,14 @@ function fillOpenOrders(
       next = applyFill(next, order, {
         price: tradePrice,
         quantity: fillQuantity,
+        remainingQuantityBeforeFill: remaining,
         tradeTime: trade.trade_time,
         sourceTradeId: trade.trade_id
       });
       remaining -= fillQuantity;
       cumulative += fillQuantity;
       weightedNotional += tradePrice * fillQuantity;
-      status = remaining <= 0 ? "filled" : "partially_filled";
+      status = remaining <= 1e-12 ? "filled" : "partially_filled";
     }
     updatedOrders.push({
       ...order,
@@ -365,7 +367,13 @@ function updatedOrderAfterFill(
 function applyFill(
   state: MutablePaperState,
   order: PaperTradingOrderSummary,
-  fill: { price: number; quantity: number; tradeTime: string; sourceTradeId?: string }
+  fill: {
+    price: number;
+    quantity: number;
+    remainingQuantityBeforeFill: number;
+    tradeTime: string;
+    sourceTradeId?: string;
+  }
 ): MutablePaperState {
   if (fill.quantity <= 0 || fill.price <= 0) {
     return state;
@@ -384,7 +392,7 @@ function applyFill(
   const latestFill: PaperTradingFillSummary = {
     fill_id: `paper-fill-${safeSummaryId(order.order_id)}-${safeSummaryId(fill.sourceTradeId ?? fill.tradeTime)}`,
     order_id: order.order_id,
-    fill_status: Math.abs(parseDecimal(order.remaining_quantity) - fill.quantity) <= 1e-12
+    fill_status: Math.abs(fill.remainingQuantityBeforeFill - fill.quantity) <= 1e-12
       ? "filled"
       : "partially_filled",
     fill_price: formatDecimal(fill.price),

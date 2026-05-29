@@ -289,6 +289,42 @@ describe("PaperTradingEngine", () => {
     expect(filled.processedPublicTradeIds).toEqual(["agg-shared-liquidity"]);
   });
 
+  it("reports filled status when one limit order completes across multiple public trades in one checkpoint", () => {
+    const filled = applyPaperTradingCheckpoint({
+      previous: initialPaperTradingEngineState(),
+      marketPrice: 60_000,
+      observedAt: "2026-05-16T00:00:03.000Z",
+      publicExecutionSnapshot: publicExecutionSnapshot({
+        trades: [
+          {
+            trade_id: "agg-same-order-partial",
+            price: "60000",
+            quantity: "0.0004",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          },
+          {
+            trade_id: "agg-same-order-final",
+            price: "60000",
+            quantity: "0.0006",
+            trade_time: "2026-05-16T00:00:03.600Z"
+          }
+        ]
+      }),
+      events: [orderRequestEvent({
+        eventId: "event-multi-trade-complete",
+        quantity: "0.001",
+        limitPrice: "60000"
+      })]
+    });
+
+    expect(filled.openOrders).toEqual([]);
+    expect(filled.latestFill).toMatchObject({
+      fill_status: "filled",
+      fill_quantity: "0.0006",
+      source_trade_id: "agg-same-order-final"
+    });
+  });
+
   it("restores short position sign when marking an existing paper position", () => {
     const short = applyPaperTradingCheckpoint({
       previous: initialPaperTradingEngineState(),
