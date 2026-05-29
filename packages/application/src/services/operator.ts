@@ -497,6 +497,7 @@ export function selectedPaperTradingEvaluation(
       ledgerChainComplete: ledger?.chain_complete ?? false,
       profitLoss: evaluation.latest_score,
       latestMarketSnapshot: latestObservation?.market_snapshot,
+      latestDecision: latestObservation?.decision,
       latestOrderRequestId: ledger?.latest_order_request?.order_request_id,
       latestGatewayOutcome: ledger?.latest_gateway_result?.decision_outcome,
       latestExecutionStatus: ledger?.latest_execution_result?.status,
@@ -592,6 +593,7 @@ function paperTradingEvaluationReadModel(input: {
   ledgerChainComplete: boolean;
   profitLoss: OperatorReadModel["selected_paper_trading_evaluation"]["profit_loss"];
   latestMarketSnapshot?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_market_snapshot"];
+  latestDecision?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_decision"];
   latestOrderRequestId?: string;
   latestGatewayOutcome?: string;
   latestExecutionStatus?: string;
@@ -615,6 +617,7 @@ function paperTradingEvaluationReadModel(input: {
     ledger_chain_complete: input.ledgerChainComplete,
     profit_loss: input.profitLoss,
     latest_market_snapshot: input.latestMarketSnapshot,
+    latest_decision: input.latestDecision,
     latest_order_request_id: input.latestOrderRequestId,
     latest_gateway_outcome: input.latestGatewayOutcome,
     latest_execution_status: input.latestExecutionStatus,

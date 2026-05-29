@@ -1137,6 +1137,7 @@ export function CandidateArenaPanel({
     ? selectedLedger
     : undefined;
   const selectedPaperMarketSnapshot = selectedPaperTradingEvaluation?.latest_market_snapshot;
+  const selectedPaperDecision = selectedPaperTradingEvaluation?.latest_decision;
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   return (
@@ -1316,6 +1317,10 @@ export function CandidateArenaPanel({
                 value={selectedPaperMarketSnapshot
                   ? `${selectedPaperMarketSnapshot.symbol} ${formatUsdt(selectedPaperMarketSnapshot.price)} @ ${formatCompactDateTime(selectedPaperMarketSnapshot.observed_at)}`
                   : "not observed"}
+              />
+              <Field
+                label="Paper decision"
+                value={formatPaperDecisionSummary(selectedPaperDecision)}
               />
               {selectedPaperTradingEvaluation?.latest_failure_reason && (
                 <Field label="Paper failure" value={selectedPaperTradingEvaluation.latest_failure_reason} />
@@ -1502,6 +1507,24 @@ function formatLedgerOrderRequestSummary(ledger: LedgerReadModel): string {
     orderRequest.order_type,
     orderRequest.quantity
   ].filter(Boolean).join(" ") || orderRequest.status;
+}
+
+function formatPaperDecisionSummary(
+  decision: PaperTradingEvaluationReadModel["latest_decision"]
+): string {
+  if (!decision) {
+    return "not observed";
+  }
+  if (decision.decision_kind !== "order_request" || !decision.order_request) {
+    return `${decision.decision_kind} (${decision.reason})`;
+  }
+  return [
+    "order_request",
+    decision.order_request.side,
+    decision.order_request.order_type,
+    decision.order_request.quantity,
+    decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined
+  ].filter(Boolean).join(" ");
 }
 
 function FullCycleDeveloperControls({

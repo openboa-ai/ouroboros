@@ -44,7 +44,10 @@ market data through the Gateway-owned `MarketDataPort`, fake account, fake execu
 Binance attaches behind the Gateway market data boundary, not inside a `TradingSystem`. The Gateway
 can cache public exchangeInfo, server time, premium/mark price, and klines, and each observation
 records the market snapshot it used as evidence. Operator surfaces expose the latest market snapshot
-with the continuous paper score. Accumulated `revenue - cost`, risk behavior, and
+with the continuous paper score. Each observation passes that snapshot into the selected
+`TradingSystem`, which must emit either a bounded `OrderRequest` or an explicit `hold`; Gateway
+validation and fake paper execution are the only path to Ledger evidence. Accumulated
+`revenue - cost`, risk behavior, and
 Ledger evidence decide what counts. Loss-making candidates remain useful arena memory unless they
 crash, submit malformed orders, bypass provider boundaries, fail risk validation, or attempt
 private/live behavior.

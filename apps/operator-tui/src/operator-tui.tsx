@@ -148,6 +148,7 @@ export function OperatorTuiScreen(props: {
   );
   const paperEvaluation = props.operator.selected_paper_trading_evaluation;
   const marketSnapshot = paperEvaluation.latest_market_snapshot;
+  const paperDecision = paperEvaluation.latest_decision;
   const visibleLeaderboard = visibleLeaderboardWindow(
     props.operator.candidate_arena.leaderboard,
     props.cursor
@@ -192,6 +193,7 @@ export function OperatorTuiScreen(props: {
           {`Paper score: ${paperEvaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${paperEvaluation.observation_count}`}
         </Text>
         <Text>{`Market: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
+        <Text>{`Decision: ${formatPaperDecision(paperDecision)}`}</Text>
         <Text>{`Ledger chain: ${paperEvaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
       </Box>
       <Box flexDirection="column">
@@ -215,6 +217,23 @@ export function OperatorTuiScreen(props: {
       {props.message && <Text color="green">{props.message}</Text>}
     </Box>
   );
+}
+
+function formatPaperDecision(
+  decision: OperatorReadModel["selected_paper_trading_evaluation"]["latest_decision"]
+): string {
+  if (!decision) {
+    return "not observed";
+  }
+  if (decision.decision_kind !== "order_request" || !decision.order_request) {
+    return `${decision.decision_kind} (${decision.reason})`;
+  }
+  return [
+    "order_request",
+    `${decision.order_request.side} ${decision.order_request.order_type}`,
+    decision.order_request.quantity,
+    decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined
+  ].filter(Boolean).join(" ");
 }
 
 export function operatorTuiActionForInput(

@@ -39,6 +39,11 @@ selection. Failures and losing candidates remain useful arena memory unless they
 malformed orders, bypass provider boundaries, fail risk validation, or attempt private/live
 behavior.
 
+Each paper observation is a fresh runtime decision. The Gateway reads a public market snapshot,
+passes that observation input to the selected `TradingSystem`, accepts either `OrderRequest` or
+`hold`, and only then records Gateway/Ledger evidence. Reusing old sandbox output is not paper
+trading evaluation.
+
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.
 

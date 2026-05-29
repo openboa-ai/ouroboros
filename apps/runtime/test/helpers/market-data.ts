@@ -5,10 +5,12 @@ import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
 export function fakeGatewayMarketDataPort(input: {
   price?: number;
   observedAt?: string;
+  snapshots?: Array<Partial<MarketSnapshot>>;
   failMarketSnapshot?: boolean;
 } = {}): GatewayMarketDataPort {
   const price = input.price ?? 65_000;
   const observedAt = input.observedAt ?? "2026-05-16T00:00:03.000Z";
+  let snapshotIndex = 0;
   return {
     provider_kind: "binance_production_public_market_data",
     source_kind: "binance_production_public_rest",
@@ -24,14 +26,17 @@ export function fakeGatewayMarketDataPort(input: {
       if (input.failMarketSnapshot) {
         throw new Error("fake market data unavailable");
       }
+      const snapshot = input.snapshots?.[Math.min(snapshotIndex, input.snapshots.length - 1)] ?? {};
+      snapshotIndex += 1;
+      const snapshotPrice = snapshot.price ?? price;
       return {
-        symbol: "BTCUSDT",
-        price,
-        moving_average_fast: price + 25,
-        moving_average_slow: price - 25,
-        volatility: 0.001,
-        expected_direction: "long",
-        observed_at: request.observedAt ?? observedAt
+        symbol: snapshot.symbol ?? "BTCUSDT",
+        price: snapshotPrice,
+        moving_average_fast: snapshot.moving_average_fast ?? snapshotPrice + 25,
+        moving_average_slow: snapshot.moving_average_slow ?? snapshotPrice - 25,
+        volatility: snapshot.volatility ?? 0.001,
+        expected_direction: snapshot.expected_direction ?? "long",
+        observed_at: request.observedAt ?? snapshot.observed_at ?? observedAt
       };
     },
     async readPublicMarketLivenessSurface(request = {}): Promise<PublicMarketLivenessSurfaceRecord> {

@@ -29,6 +29,8 @@ Current command groups:
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
+  `trading_run.observe` is one market snapshot -> TradingSystem decision -> Gateway validation ->
+  Ledger/hold -> score update cycle.
 - `run_control`: record lifecycle control decisions and audit evidence.
 - `trading_substrate`: record private-readiness posture without enabling private/live authority.
 - `sandbox`: start or stop sandbox execution through command dispatch.
@@ -41,7 +43,7 @@ Current command groups:
 CandidateArena status, leaderboard, selected candidate, `PaperTradingEvaluation`, paper evidence
 readback, runner active status, interval, next observation time, latest market snapshot, latest
 paper failure, agent/provider status, latest ticks, latest candidates, latest command results, and
-authority flags.
+latest TradingSystem paper decision, and authority flags.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.

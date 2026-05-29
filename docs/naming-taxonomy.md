@@ -16,6 +16,7 @@ that pack every axis into one identifier.
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
+| `TradingSystemDecision` | Per-observation `OrderRequest` or `hold` emitted by a selected TradingSystem after it receives a market snapshot. |
 | `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
 | `Lineage` | Parent, direction, evaluation, finding, and evidence chain that explains why a candidate exists. |
@@ -62,6 +63,8 @@ standard term fits. Record that decision in repo docs and tests.
   PaperTradingEvaluation and Ledger evidence are proof.
 - Do not imply TradingSystem is only code. It may include an internal agent runtime, but it must
   emit bounded validated OrderRequests.
+- Do not reuse old sandbox output as a fresh paper decision. Each paper observation needs current
+  market input and a new TradingSystemDecision.
 - Do not attach Binance directly to TradingSystem. Public market data goes through Gateway
   `MarketDataPort`; private/live Binance authority remains outside the product loop.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.
