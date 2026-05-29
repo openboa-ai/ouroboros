@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
 import { buildServer } from "../src/server";
@@ -211,10 +212,17 @@ describe("runtime canonical operator API", () => {
     }
   });
 
-  it("records a fresh TradingSystem paper decision from each market snapshot observation", async () => {
+  it("consumes TradingSystem order events once and records fake account state", async () => {
     const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
     const server = await buildServer({
       store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
+      },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
           {
@@ -228,6 +236,21 @@ describe("runtime canonical operator API", () => {
             moving_average_fast: 66_025,
             moving_average_slow: 65_975,
             observed_at: "2026-05-16T00:01:03.000Z"
+          }
+        ],
+        executionSnapshots: [
+          {
+            observed_at: "2026-05-16T00:00:03.000Z",
+            agg_trades: [{
+              trade_id: "agg-60000-001",
+              price: "60000",
+              quantity: "0.001",
+              trade_time: "2026-05-16T00:00:03.500Z"
+            }]
+          },
+          {
+            observed_at: "2026-05-16T00:01:03.000Z",
+            agg_trades: []
           }
         ]
       }),
@@ -264,9 +287,22 @@ describe("runtime canonical operator API", () => {
               decision_kind: "order_request",
               order_request: {
                 side: "buy",
-                limit_price: "65000"
+                limit_price: "60000"
               },
               authority_status: "trace_only"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0.001",
+                side: "long",
+                average_entry_price: "60000"
+              },
+              open_order_count: 0
+            },
+            latest_fill: {
+              fill_status: "filled",
+              fill_price: "60000",
+              fill_quantity: "0.001"
             }
           }
         }
@@ -290,12 +326,18 @@ describe("runtime canonical operator API", () => {
               price: 66_000
             },
             latest_decision: {
-              decision_kind: "order_request",
-              order_request: {
-                side: "buy",
-                limit_price: "66000"
-              },
+              decision_kind: "hold",
+              reason: "no_new_trading_system_event",
               authority_status: "trace_only"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0.001",
+                side: "long",
+                average_entry_price: "60000",
+                mark_price: "66000"
+              },
+              open_order_count: 0
             }
           }
         }
@@ -303,6 +345,7 @@ describe("runtime canonical operator API", () => {
 
       const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
         decision?: {
           decision_kind: string;
           order_request?: {
@@ -310,28 +353,369 @@ describe("runtime canonical operator API", () => {
           };
         };
         ledger_ref?: { id: string };
+        processed_trading_system_event_ids?: string[];
+        paper_account_snapshot?: {
+          position: {
+            quantity: string;
+            side: string;
+          };
+        };
       }>;
       expect(observations).toHaveLength(2);
-      expect(observations[0]?.decision?.order_request?.limit_price).toBe("65000");
-      expect(observations[1]?.decision?.order_request?.limit_price).toBe("66000");
-      expect(observations[0]?.ledger_ref?.id).not.toBe(observations[1]?.ledger_ref?.id);
+      expect(observations[0]?.decision?.order_request?.limit_price).toBe("60000");
+      expect(observations[0]?.paper_account_snapshot?.position).toMatchObject({
+        quantity: "0.001",
+        side: "long"
+      });
+      expect(observations[0]?.processed_trading_system_event_ids).toHaveLength(1);
+      expect(observations[1]?.status).toBe("no_order");
+      expect(observations[1]?.decision?.decision_kind).toBe("hold");
+      expect(observations[1]?.ledger_ref).toBeUndefined();
+      expect(observations[1]?.processed_trading_system_event_ids).toEqual(
+        observations[0]?.processed_trading_system_event_ids
+      );
     } finally {
       await server.close();
     }
   });
 
-  it("records hold decisions as valid no-order paper observations without Ledger writes", async () => {
+  it("does not replay the same TradingSystem log line when sandbox log refs change", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
+      },
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            moving_average_fast: 65_025,
+            moving_average_slow: 64_975,
+            observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          {
+            price: 66_000,
+            moving_average_fast: 66_025,
+            moving_average_slow: 65_975,
+            observed_at: "2026-05-16T00:01:03.000Z"
+          }
+        ],
+        executionSnapshots: [
+          {
+            observed_at: "2026-05-16T00:00:03.000Z",
+            agg_trades: [{
+              trade_id: "agg-first-fill",
+              price: "60000",
+              quantity: "0.001",
+              trade_time: "2026-05-16T00:00:03.500Z"
+            }]
+          },
+          {
+            observed_at: "2026-05-16T00:01:03.000Z",
+            agg_trades: [{
+              trade_id: "agg-would-fill-replayed-order",
+              price: "60000",
+              quantity: "0.001",
+              trade_time: "2026-05-16T00:01:03.500Z"
+            }]
+          }
+        ]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+
+      const tradingRunId = started.json().operator.selected_paper_trading_evaluation.trading_run_id;
+      const observed = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: { trading_run_id: tradingRunId }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+      expect(observed.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            observation_count: 2,
+            latest_decision: {
+              decision_kind: "hold",
+              reason: "no_new_trading_system_event"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0.001",
+                side: "long"
+              }
+            }
+          }
+        }
+      });
+      const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
+        processed_trading_system_event_ids?: string[];
+      }>;
+      expect(observations).toHaveLength(2);
+      expect(observations[1]?.status).toBe("no_order");
+      expect(observations[1]?.processed_trading_system_event_ids).toEqual(
+        observations[0]?.processed_trading_system_event_ids
+      );
+
+      const candidate = await server.inject({
+        method: "GET",
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      });
+      expect(candidate.statusCode, candidate.body).toBe(200);
+      expect(candidate.json().ledger.chains).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("records residual bookTicker-only market fills as paper observations", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      orderType: "market",
+      quantity: "0.001"
+    });
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
+      },
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            moving_average_fast: 65_025,
+            moving_average_slow: 64_975,
+            observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          {
+            price: 66_000,
+            moving_average_fast: 66_025,
+            moving_average_slow: 65_975,
+            observed_at: "2026-05-16T00:01:03.000Z"
+          }
+        ],
+        executionSnapshots: [
+          {
+            observed_at: "2026-05-16T00:00:03.000Z",
+            book_ticker: {
+              bid_price: "64999",
+              bid_quantity: "1.000",
+              ask_price: "65001",
+              ask_quantity: "0.0004",
+              event_time: "2026-05-16T00:00:03.500Z"
+            }
+          },
+          {
+            observed_at: "2026-05-16T00:01:03.000Z",
+            book_ticker: {
+              bid_price: "65999",
+              bid_quantity: "1.000",
+              ask_price: "66001",
+              ask_quantity: "0.0006",
+              event_time: "2026-05-16T00:01:03.500Z"
+            }
+          }
+        ]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      const tradingRunId = started.json().operator.selected_paper_trading_evaluation.trading_run_id;
+      const observed = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: { trading_run_id: tradingRunId }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+
+      const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
+        latest_fill?: unknown;
+        paper_account_snapshot?: {
+          position: { quantity: string };
+        };
+      }>;
+      expect(observations).toHaveLength(2);
+      expect(observations[1]?.status, JSON.stringify(observations, null, 2)).toBe("recorded");
+      expect(observations[1]?.paper_account_snapshot?.position.quantity).toBe("0.001");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("applies cancel-only TradingSystem events without requiring public fill evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
+    const cancelLine = paperCancelOrderLine("2026-05-16T00:01:03.000Z");
+    const marketDataPort = fakeGatewayMarketDataPort({
+      snapshots: [
+        {
+          price: 65_000,
+          moving_average_fast: 65_025,
+          moving_average_slow: 64_975,
+          observed_at: "2026-05-16T00:00:03.000Z"
+        },
+        {
+          price: 66_000,
+          moving_average_fast: 66_025,
+          moving_average_slow: 65_975,
+          observed_at: "2026-05-16T00:01:03.000Z"
+        }
+      ],
+      executionSnapshots: [{
+        observed_at: "2026-05-16T00:00:03.000Z",
+        agg_trades: []
+      }]
+    });
+    const originalExecutionSnapshot = marketDataPort.readPublicExecutionSnapshot.bind(marketDataPort);
+    let executionSnapshotReadCount = 0;
+    marketDataPort.readPublicExecutionSnapshot = async (request) => {
+      executionSnapshotReadCount += 1;
+      if (executionSnapshotReadCount > 1) {
+        throw new Error("cancel-only checkpoint should not read public execution stream");
+      }
+      return originalExecutionSnapshot(request);
+    };
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: runningOrderThenCancelLogSandboxAdapter(orderLine, cancelLine)
+      },
+      marketDataPort,
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(started.json().operator.selected_paper_trading_evaluation.open_orders).toHaveLength(1);
+
+      const tradingRunId = started.json().operator.selected_paper_trading_evaluation.trading_run_id;
+      const observed = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: { trading_run_id: tradingRunId }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+      expect(executionSnapshotReadCount).toBe(1);
+      expect(observed.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            status: "running",
+            observation_count: 2,
+            latest_decision: {
+              decision_kind: "cancel_order"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0",
+                side: "flat"
+              },
+              open_order_count: 0
+            },
+            open_orders: []
+          }
+        }
+      });
+
+      const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
+        decision?: { decision_kind: string };
+        open_orders?: unknown[];
+        public_execution_snapshot?: unknown;
+      }>;
+      expect(observations).toHaveLength(2);
+      expect(observations[1]).toMatchObject({
+        status: "recorded",
+        decision: { decision_kind: "cancel_order" },
+        open_orders: []
+      });
+      expect(observations[1]?.public_execution_snapshot).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails observation when public execution stream evidence is unavailable and leaves events retryable", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
       marketDataPort: fakeGatewayMarketDataPort({
-        snapshots: [{
-          price: 65_000,
-          moving_average_fast: 65_000,
-          moving_average_slow: 65_000,
-          expected_direction: "flat",
-          observed_at: "2026-05-16T00:00:03.000Z"
-        }]
+        failPublicExecutionSnapshot: true
       })
     });
 
@@ -356,20 +740,18 @@ describe("runtime canonical operator API", () => {
       expect(started.json()).toMatchObject({
         operator: {
           selected_paper_evidence: {
-            status: "not_run",
-            ledger_chain_complete: false
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true
           },
           selected_paper_trading_evaluation: {
+            status: "failed",
             observation_count: 1,
-            ledger_chain_complete: false,
-            profit_loss: {
-              net_revenue_usdt: 0
-            },
+            ledger_chain_complete: true,
             latest_decision: {
-              decision_kind: "hold",
-              reason: "flat_market_snapshot",
+              decision_kind: "order_request",
               authority_status: "trace_only"
-            }
+            },
+            latest_failure_reason: "fake public execution stream unavailable"
           }
         }
       });
@@ -377,14 +759,87 @@ describe("runtime canonical operator API", () => {
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
         status: string;
         decision?: { decision_kind: string };
-        ledger_ref?: { id: string };
+        failure_reason?: string;
+        processed_trading_system_event_ids?: string[];
       }>;
       expect(observations).toHaveLength(1);
       expect(observations[0]).toMatchObject({
-        status: "no_order",
-        decision: { decision_kind: "hold" }
+        status: "failed",
+        decision: { decision_kind: "order_request" },
+        failure_reason: "fake public execution stream unavailable",
+        processed_trading_system_event_ids: []
       });
-      expect(observations[0]?.ledger_ref).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("records risk-rejected TradingSystem orders without fake account mutation", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      marketDataPort: fakeGatewayMarketDataPort({
+        failPublicExecutionSnapshot: true
+      })
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: {
+            candidate_id: FIXTURE_CANDIDATE_ID,
+            paper_order_request: "rejected"
+          }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(started.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            observation_count: 1,
+            latest_gateway_outcome: "rejected",
+            latest_execution_status: "blocked",
+            paper_account_snapshot: {
+              equity_usdt: "10000",
+              position: {
+                side: "flat",
+                quantity: "0"
+              },
+              open_order_count: 0
+            }
+          }
+        }
+      });
+      const evaluationId = started.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        processed_trading_system_event_ids?: string[];
+        paper_account_snapshot?: {
+          equity_usdt: string;
+          position: {
+            side: string;
+            quantity: string;
+          };
+        };
+      }>;
+      expect(observations[0]?.processed_trading_system_event_ids).toHaveLength(1);
+      expect(observations[0]?.paper_account_snapshot).toMatchObject({
+        equity_usdt: "10000",
+        position: {
+          side: "flat",
+          quantity: "0"
+        }
+      });
     } finally {
       await server.close();
     }
@@ -430,3 +885,180 @@ describe("runtime canonical operator API", () => {
     }
   });
 });
+
+function paperOrderRequestLine(input: {
+  at: string;
+  quantity: string;
+  orderType?: "limit" | "market";
+}): string {
+  const orderType = input.orderType ?? "limit";
+  return JSON.stringify({
+    at: input.at,
+    authority_status: "trace_only",
+    event: "order_request",
+    instance_id: "paper-runtime-fixture",
+    intent_kind: "place_order",
+    ...(orderType === "limit" ? { limit_price: "60000" } : {}),
+    order_type: orderType,
+    quantity: input.quantity,
+    side: "buy",
+    symbol: "BTCUSDT"
+  });
+}
+
+function paperCancelOrderLine(at: string): string {
+  return JSON.stringify({
+    at,
+    authority_status: "trace_only",
+    event: "cancel_order",
+    event_id: "paper-runtime-cancel-open-order",
+    instance_id: "paper-runtime-fixture",
+    reason: "operator_stop_loss"
+  });
+}
+
+function runningDuplicateLogSandboxAdapter(orderLine: string): SandboxAdapter {
+  let refreshCount = 0;
+  return {
+    kind: "deterministic_test",
+    async startArtifactInstance(input) {
+      const sandboxRef = { record_kind: "sandbox", id: input.instance_id };
+      const placementRef = { record_kind: "sandbox_placement", id: input.sandbox_placement_id };
+      const capturedAt = input.created_at;
+      return {
+        placement: {
+          record_kind: "sandbox_placement",
+          version: 1,
+          sandbox_placement_id: input.sandbox_placement_id,
+          placement_kind: "fixture_local_placeholder",
+          authority_status: "not_launched"
+        },
+        instance: {
+          record_kind: "sandbox",
+          version: 1,
+          sandbox_id: input.instance_id,
+          adapter_kind: "deterministic_test",
+          system_code_ref: { record_kind: "system_code", id: input.artifact.system_code_id },
+          runtime_ref: input.runtime_ref,
+          sandbox_placement_ref: placementRef,
+          lifecycle_status: "running",
+          sandbox_name: input.sandbox_name,
+          created_at: input.created_at,
+          started_at: input.created_at,
+          log_refs: [{ record_kind: "sandbox_log", id: `sandbox-log-${input.instance_id}-start` }],
+          heartbeat_refs: [],
+          command_evidence_refs: [],
+          authority_status: "not_live"
+        },
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${input.instance_id}-start`,
+          sandbox_ref: sandboxRef,
+          lines: [orderLine],
+          captured_at: capturedAt,
+          authority_status: "trace_only"
+        }],
+        heartbeats: [],
+        command_evidence: []
+      };
+    },
+    async getArtifactInstanceStatus() {
+      return {};
+    },
+    async getArtifactInstanceLogs(instance) {
+      refreshCount += 1;
+      const sandboxId = instance.sandbox_id;
+      return {
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${sandboxId}-refresh-${refreshCount}`,
+          sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+          lines: [orderLine],
+          captured_at: `2026-05-16T00:0${refreshCount}:03.000Z`,
+          authority_status: "trace_only"
+        }]
+      };
+    },
+    async stopArtifactInstance(instance) {
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: instance.stopped_at ?? "2026-05-16T00:02:03.000Z"
+      };
+    }
+  };
+}
+
+function runningOrderThenCancelLogSandboxAdapter(orderLine: string, cancelLine: string): SandboxAdapter {
+  let refreshCount = 0;
+  return {
+    kind: "deterministic_test",
+    async startArtifactInstance(input) {
+      const sandboxRef = { record_kind: "sandbox", id: input.instance_id };
+      const placementRef = { record_kind: "sandbox_placement", id: input.sandbox_placement_id };
+      const capturedAt = input.created_at;
+      return {
+        placement: {
+          record_kind: "sandbox_placement",
+          version: 1,
+          sandbox_placement_id: input.sandbox_placement_id,
+          placement_kind: "fixture_local_placeholder",
+          authority_status: "not_launched"
+        },
+        instance: {
+          record_kind: "sandbox",
+          version: 1,
+          sandbox_id: input.instance_id,
+          adapter_kind: "deterministic_test",
+          system_code_ref: { record_kind: "system_code", id: input.artifact.system_code_id },
+          runtime_ref: input.runtime_ref,
+          sandbox_placement_ref: placementRef,
+          lifecycle_status: "running",
+          sandbox_name: input.sandbox_name,
+          created_at: input.created_at,
+          started_at: input.created_at,
+          log_refs: [{ record_kind: "sandbox_log", id: `sandbox-log-${input.instance_id}-start` }],
+          heartbeat_refs: [],
+          command_evidence_refs: [],
+          authority_status: "not_live"
+        },
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${input.instance_id}-start`,
+          sandbox_ref: sandboxRef,
+          lines: [orderLine],
+          captured_at: capturedAt,
+          authority_status: "trace_only"
+        }],
+        heartbeats: [],
+        command_evidence: []
+      };
+    },
+    async getArtifactInstanceStatus() {
+      return {};
+    },
+    async getArtifactInstanceLogs(instance) {
+      refreshCount += 1;
+      const sandboxId = instance.sandbox_id;
+      return {
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${sandboxId}-refresh-${refreshCount}`,
+          sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+          lines: refreshCount === 1 ? [orderLine] : [orderLine, cancelLine],
+          captured_at: `2026-05-16T00:0${refreshCount}:03.000Z`,
+          authority_status: "trace_only"
+        }]
+      };
+    },
+    async stopArtifactInstance(instance) {
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: instance.stopped_at ?? "2026-05-16T00:02:03.000Z"
+      };
+    }
+  };
+}

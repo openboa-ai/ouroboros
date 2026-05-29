@@ -497,7 +497,12 @@ export function selectedPaperTradingEvaluation(
       ledgerChainComplete: ledger?.chain_complete ?? false,
       profitLoss: evaluation.latest_score,
       latestMarketSnapshot: latestObservation?.market_snapshot,
+      latestPublicExecutionSnapshot: latestObservation?.public_execution_snapshot ??
+        evaluation.latest_public_execution_snapshot,
       latestDecision: latestObservation?.decision,
+      paperAccountSnapshot: latestObservation?.paper_account_snapshot ?? evaluation.paper_account_snapshot,
+      openOrders: latestObservation?.open_orders ?? evaluation.open_orders,
+      latestFill: latestObservation?.latest_fill ?? evaluation.latest_fill,
       latestOrderRequestId: ledger?.latest_order_request?.order_request_id,
       latestGatewayOutcome: ledger?.latest_gateway_result?.decision_outcome,
       latestExecutionStatus: ledger?.latest_execution_result?.status,
@@ -593,7 +598,11 @@ function paperTradingEvaluationReadModel(input: {
   ledgerChainComplete: boolean;
   profitLoss: OperatorReadModel["selected_paper_trading_evaluation"]["profit_loss"];
   latestMarketSnapshot?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_market_snapshot"];
+  latestPublicExecutionSnapshot?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_public_execution_snapshot"];
   latestDecision?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_decision"];
+  paperAccountSnapshot?: OperatorReadModel["selected_paper_trading_evaluation"]["paper_account_snapshot"];
+  openOrders?: OperatorReadModel["selected_paper_trading_evaluation"]["open_orders"];
+  latestFill?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_fill"];
   latestOrderRequestId?: string;
   latestGatewayOutcome?: string;
   latestExecutionStatus?: string;
@@ -617,7 +626,11 @@ function paperTradingEvaluationReadModel(input: {
     ledger_chain_complete: input.ledgerChainComplete,
     profit_loss: input.profitLoss,
     latest_market_snapshot: input.latestMarketSnapshot,
+    latest_public_execution_snapshot: input.latestPublicExecutionSnapshot,
     latest_decision: input.latestDecision,
+    paper_account_snapshot: input.paperAccountSnapshot,
+    open_orders: input.openOrders,
+    latest_fill: input.latestFill,
     latest_order_request_id: input.latestOrderRequestId,
     latest_gateway_outcome: input.latestGatewayOutcome,
     latest_execution_status: input.latestExecutionStatus,
@@ -625,7 +638,7 @@ function paperTradingEvaluationReadModel(input: {
     market_data_source: "binance_production_public_rest",
     account_provider: "fake_paper_account",
     executor: "fake_paper_order_executor",
-    score_source: "paper_gateway_ledger",
+    score_source: "paper_trading_engine",
     authority_status: "not_live"
   };
 }

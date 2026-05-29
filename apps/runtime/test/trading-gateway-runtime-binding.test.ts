@@ -31,7 +31,9 @@ describe("Gateway runtime binding", () => {
           "/fapi/v1/time",
           "/fapi/v1/exchangeInfo",
           "/fapi/v1/premiumIndex?symbol=BTCUSDT",
-          "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30"
+          "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30",
+          "/fapi/v1/ticker/bookTicker?symbol=BTCUSDT",
+          "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100"
         ],
         authority_status: "read_only"
       },
@@ -90,7 +92,7 @@ describe("Gateway runtime binding", () => {
       }
     });
     expect(JSON.stringify(binding)).not.toMatch(
-      /demo-fapi|api_secret|signature|recvWindow|listenKey|USER_DATA|TRADE|\/fapi\/v1\/order/i
+      /demo-fapi|api_secret|signature|recvWindow|listenKey|USER_DATA|\/fapi\/v1\/order/i
     );
   });
 

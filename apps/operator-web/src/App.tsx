@@ -1138,6 +1138,8 @@ export function CandidateArenaPanel({
     : undefined;
   const selectedPaperMarketSnapshot = selectedPaperTradingEvaluation?.latest_market_snapshot;
   const selectedPaperDecision = selectedPaperTradingEvaluation?.latest_decision;
+  const selectedPaperAccount = selectedPaperTradingEvaluation?.paper_account_snapshot;
+  const selectedPaperFill = selectedPaperTradingEvaluation?.latest_fill;
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   return (
@@ -1321,6 +1323,18 @@ export function CandidateArenaPanel({
               <Field
                 label="Paper decision"
                 value={formatPaperDecisionSummary(selectedPaperDecision)}
+              />
+              <Field
+                label="Paper account"
+                value={selectedPaperAccount
+                  ? `equity ${formatUsdt(Number(selectedPaperAccount.equity_usdt))} / ${selectedPaperAccount.position.side} ${selectedPaperAccount.position.quantity} BTCUSDT / open ${selectedPaperAccount.open_order_count}`
+                  : "not observed"}
+              />
+              <Field
+                label="Paper fill"
+                value={selectedPaperFill
+                  ? `${selectedPaperFill.fill_status} ${selectedPaperFill.fill_quantity} @ ${selectedPaperFill.fill_price}`
+                  : "none"}
               />
               {selectedPaperTradingEvaluation?.latest_failure_reason && (
                 <Field label="Paper failure" value={selectedPaperTradingEvaluation.latest_failure_reason} />

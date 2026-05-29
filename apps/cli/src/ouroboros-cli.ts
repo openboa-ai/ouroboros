@@ -402,6 +402,12 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
       : undefined,
     decision ? `Paper decision: ${formatPaperDecision(decision)}` : undefined,
+    paper.paper_account_snapshot
+      ? `Paper account: equity ${formatUsdt(Number(paper.paper_account_snapshot.equity_usdt))} / ${formatPaperPosition(paper.paper_account_snapshot.position)} / open orders ${paper.paper_account_snapshot.open_order_count}`
+      : undefined,
+    paper.latest_fill
+      ? `Paper fill: ${paper.latest_fill.fill_status} ${paper.latest_fill.fill_quantity} @ ${paper.latest_fill.fill_price}`
+      : undefined,
     paper.latest_failure_reason ? `Paper failure: ${paper.latest_failure_reason}` : undefined,
     lastCommand
       ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
@@ -425,6 +431,12 @@ function formatPaperDecision(
     decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined,
     `(${decision.reason})`
   ].filter(Boolean).join(" ");
+}
+
+function formatPaperPosition(
+  position: NonNullable<OperatorReadModel["selected_paper_trading_evaluation"]["paper_account_snapshot"]>["position"]
+): string {
+  return `${position.side} ${position.quantity} BTCUSDT${position.average_entry_price ? ` @ ${position.average_entry_price}` : ""}`;
 }
 
 function agentProfileNextStep(profile: AgentProfileReadModel): string | undefined {

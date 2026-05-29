@@ -21,6 +21,12 @@ and paper `Gateway`/`Ledger` evidence belongs only to selected Trading Runs, not
 `Improvement` remains a compatibility/AAR lineage record; it must not pull the architecture back
 toward one best artifact being improved in place.
 
+Selected Paper Trading is a running `TradingSystem` session, not a snapshot-driven decision helper.
+The TradingSystem owns its decision cadence and emits `OrderRequest`s when its own strategy, tools,
+market subscriptions, internal agent loop, or risk logic says to act. Paper observations are
+checkpoint/readback events: refresh market evidence, consume newly emitted orders, record Gateway
+validation and fake execution, or record no-order continuity.
+
 Candidate generation may be parallel across `ResearchWorker` and `ResearchDirection` lanes or
 iterative across ticks. The architecture should preserve candidate population memory: losing
 candidates, failed directions, findings, parent links, and lineage are inputs to the next
@@ -120,8 +126,9 @@ This file is a compact development map. The canonical architecture contract live
 
 Preserve these separations: Candidate Arena state vs selected Trading Run execution,
 TradingSystem identity vs ResearchPreflight evidence, research-time replay/backtest vs continuous
-paper trading evaluation, TradingRun control vs OrderRequest generation, provider output as trace
-material rather than proof, and persistence with enough attribution to replay why state exists.
+paper trading evaluation, TradingRun control vs OrderRequest generation, paper observation
+checkpoint vs TradingSystem decision cadence, provider output as trace material rather than proof,
+and persistence with enough attribution to replay why state exists.
 Docker, Compose, Docker Sandboxes `sbx`, placement, adapter, and host paths stay below the Sandbox
 boundary.
 

@@ -6,12 +6,31 @@ export function fakeGatewayMarketDataPort(input: {
   price?: number;
   observedAt?: string;
   snapshots?: Array<Partial<MarketSnapshot>>;
+  executionSnapshots?: Array<{
+    observed_at?: string;
+    book_ticker?: {
+      bid_price: string;
+      bid_quantity: string;
+      ask_price: string;
+      ask_quantity: string;
+      event_time?: string;
+    };
+    agg_trades?: Array<{
+      trade_id: string;
+      price: string;
+      quantity: string;
+      trade_time: string;
+      is_buyer_maker?: boolean;
+    }>;
+  }>;
   failMarketSnapshot?: boolean;
+  failPublicExecutionSnapshot?: boolean;
 } = {}): GatewayMarketDataPort {
   const price = input.price ?? 65_000;
   const observedAt = input.observedAt ?? "2026-05-16T00:00:03.000Z";
   let snapshotIndex = 0;
-  return {
+  let executionSnapshotIndex = 0;
+  const port: GatewayMarketDataPort = {
     provider_kind: "binance_production_public_market_data",
     source_kind: "binance_production_public_rest",
     rest_base_url: "https://fapi.binance.com",
@@ -19,10 +38,12 @@ export function fakeGatewayMarketDataPort(input: {
       "/fapi/v1/time",
       "/fapi/v1/exchangeInfo",
       "/fapi/v1/premiumIndex?symbol=BTCUSDT",
-      "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30"
+      "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30",
+      "/fapi/v1/ticker/bookTicker?symbol=BTCUSDT",
+      "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100"
     ],
     authority_status: "read_only",
-    async readMarketSnapshot(request = {}): Promise<MarketSnapshot> {
+    async readMarketSnapshot(request: { observedAt?: string } = {}): Promise<MarketSnapshot> {
       if (input.failMarketSnapshot) {
         throw new Error("fake market data unavailable");
       }
@@ -36,10 +57,12 @@ export function fakeGatewayMarketDataPort(input: {
         moving_average_slow: snapshot.moving_average_slow ?? snapshotPrice - 25,
         volatility: snapshot.volatility ?? 0.001,
         expected_direction: snapshot.expected_direction ?? "long",
-        observed_at: request.observedAt ?? snapshot.observed_at ?? observedAt
+        observed_at: snapshot.observed_at ?? request.observedAt ?? observedAt
       };
     },
-    async readPublicMarketLivenessSurface(request = {}): Promise<PublicMarketLivenessSurfaceRecord> {
+    async readPublicMarketLivenessSurface(
+      request: { observedAt?: string } = {}
+    ): Promise<PublicMarketLivenessSurfaceRecord> {
       const now = request.observedAt ?? observedAt;
       return {
         record_kind: "public_market_liveness_surface",
@@ -92,6 +115,32 @@ export function fakeGatewayMarketDataPort(input: {
         },
         authority_status: "read_only"
       };
+    },
+    async readPublicExecutionSnapshot(request: { observedAt?: string } = {}) {
+      if (input.failPublicExecutionSnapshot) {
+        throw new Error("fake public execution stream unavailable");
+      }
+      const now = request.observedAt ?? observedAt;
+      const executionSnapshot = input.executionSnapshots?.[
+        Math.min(executionSnapshotIndex, input.executionSnapshots.length - 1)
+      ] ?? {};
+      executionSnapshotIndex += 1;
+      return {
+        symbol: "BTCUSDT",
+        observed_at: executionSnapshot.observed_at ?? now,
+        source_kind: "binance_production_public_stream",
+        stream_marker: `fake-public-execution-${executionSnapshotIndex}`,
+        book_ticker: executionSnapshot.book_ticker ?? {
+          bid_price: String(price - 1),
+          bid_quantity: "1.000",
+          ask_price: String(price + 1),
+          ask_quantity: "1.000",
+          event_time: now
+        },
+        agg_trades: executionSnapshot.agg_trades ?? [],
+        authority_status: "read_only"
+      };
     }
   };
+  return port;
 }

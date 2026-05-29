@@ -83,8 +83,20 @@ Binance public market data is a Gateway concern. Application code depends on `Ma
 `GatewayMarketDataPort`; concrete Binance REST/SDK/fetch behavior belongs under
 `packages/adapters/src/binance/*`. A `TradingSystem` must never import Binance, read private account
 state, sign requests, open listenKey/user-data streams, mutate leverage/margin, or submit live
-orders. It emits bounded `OrderRequest`s; Gateway validation, market snapshot cache, fake paper
-execution, and Ledger recording produce evidence.
+orders. It owns decision cadence and emits bounded `OrderRequest`s when it chooses to trade;
+Gateway validation, market snapshot cache, fake paper execution, and Ledger recording produce
+evidence.
+
+Paper observations are checkpoint/readback events over the running TradingSystem. They may record
+the latest market snapshot, active runner state, newly emitted orders, no-order continuity, score,
+and Ledger evidence. They must not make the Gateway or runner synthesize a trade decision simply
+because a public market snapshot was refreshed.
+
+`PaperTradingEngine` is the stateful fake exchange/account boundary. It owns wallet/equity,
+available balance, margin, position, average entry, realized/unrealized PnL, open/partial/filled/
+canceled orders, fees, slippage, funding, and order fill state. Market orders fill from public
+`bookTicker`; limit orders fill only from public `aggTrade` evidence. Stream or public execution
+snapshot failure records a failed observation and leaves the TradingSystem event retryable.
 
 The Gateway market data adapter may cache public exchangeInfo for one hour, server time and
 premium/mark price for five seconds, and one-minute klines for thirty seconds. It should share

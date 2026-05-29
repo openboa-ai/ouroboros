@@ -29,8 +29,15 @@ Current command groups:
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
-  `trading_run.observe` is one market snapshot -> TradingSystem decision -> Gateway validation ->
-  Ledger/hold -> score update cycle.
+  `trading_run.start` starts or resumes the selected `TradingSystem` in paper mode.
+  `trading_run.observe` is a checkpoint/readback over that running system: refresh the latest market
+  snapshot, consume newly emitted `OrderRequest`s, run Gateway validation and fake paper execution
+  when orders exist, record no-order continuity when none exist, then update score and evidence.
+  Fake execution is stateful: open orders, partial fills, canceled orders, account equity, position,
+  PnL, fees, slippage, funding, public execution stream marker, and processed TradingSystem event
+  ids must be exposed as readback state. Market fills require public `bookTicker` or `aggTrade`
+  evidence and must remain retryable if that evidence is unavailable.
+  It must not force a trade decision just because a snapshot was read.
 - `run_control`: record lifecycle control decisions and audit evidence.
 - `trading_substrate`: record private-readiness posture without enabling private/live authority.
 - `sandbox`: start or stop sandbox execution through command dispatch.
@@ -42,8 +49,9 @@ Current command groups:
 `OperatorReadModel` is the shared operator state for all user surfaces. It must show the
 CandidateArena status, leaderboard, selected candidate, `PaperTradingEvaluation`, paper evidence
 readback, runner active status, interval, next observation time, latest market snapshot, latest
-paper failure, agent/provider status, latest ticks, latest candidates, latest command results, and
-latest TradingSystem paper decision, and authority flags.
+public execution snapshot, fake paper account, open orders, latest fill, latest paper failure,
+agent/provider status, latest ticks, latest candidates, latest command results, and latest
+TradingSystem paper decision when one has been emitted, and authority flags.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
@@ -51,8 +59,8 @@ login, or exchange behavior.
 Candidate, Paper Evidence, Paper Trading, and Live are separate states in every operator surface.
 Replay/backtest is a research tool, not final evaluation authority. `trading_run.start`,
 `trading_run.observe`, and `trading_run.stop` operate the selected candidate's continuous paper
-trading evaluation through the Gateway and `MarketDataPort`; paper evidence is Ledger readback, not
-live promotion.
+trading evaluation through the Gateway and `MarketDataPort`. The TradingSystem owns decision
+cadence; paper evidence is Ledger readback, not live promotion.
 
 ## Resource Reads
 

@@ -1,4 +1,7 @@
-import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
+import type {
+  PaperTradingPublicExecutionSnapshotSummary,
+  PublicMarketLivenessSurfaceRecord
+} from "@ouroboros/domain";
 import type { MarketSnapshot } from "../trading/research/types";
 
 export interface PublicMarketDataClient {
@@ -16,4 +19,5 @@ export interface GatewayMarketDataPort {
   authority_status: "read_only";
   readMarketSnapshot(input?: { observedAt?: string }): Promise<MarketSnapshot>;
   readPublicMarketLivenessSurface(input?: { observedAt?: string }): Promise<PublicMarketLivenessSurfaceRecord>;
+  readPublicExecutionSnapshot(input?: { observedAt?: string }): Promise<PaperTradingPublicExecutionSnapshotSummary>;
 }

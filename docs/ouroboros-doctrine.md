@@ -46,6 +46,8 @@ market data, scored by accumulated `revenue - cost`.
    - A TradingSystem is an executable candidate system, not just a code file.
    - TradingSystem may include an internal agent runtime, deterministic code, rules, model calls,
      tools, strategy logic, risk logic, and execution logic.
+   - TradingSystem owns its own decision cadence. It may decide on timers, market events, tool
+     results, internal agent loops, or explicit risk gates.
    - Whatever its internals, it must emit bounded, validated `OrderRequest`s and remain externally
      evaluated.
 
@@ -58,9 +60,12 @@ market data, scored by accumulated `revenue - cost`.
      TradingSystems may use current market state, news, social data, tools, and internal agents that
      old static data cannot faithfully grade.
    - Binance public market data enters through the Gateway `MarketDataPort`, not through the
-     TradingSystem. The observation records the market snapshot used for score and Ledger evidence.
-   - Every paper observation is a fresh decision cycle: market snapshot in, `OrderRequest` or
-     `hold` out, Gateway validation next, Ledger evidence only if an order request exists.
+     TradingSystem. The latest market snapshot is evidence and an input source, not the clock that
+     decides when a trade must happen.
+   - Paper observations are checkpoint/readback events over a running TradingSystem. They refresh
+     market evidence, consume newly emitted `OrderRequest`s, record Gateway validation and fake
+     execution when orders exist, and otherwise record a valid no-order checkpoint.
+   - A paper observation must not synthesize a decision merely because a snapshot was read.
    - Paper evaluation is sealed from candidate self-report, generated comments, provider optimism,
      and hidden authority.
 

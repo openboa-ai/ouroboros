@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { runOuroborosCli } from "@ouroboros/cli";
 import type {
   CandidateArenaReadModel,
@@ -31,7 +32,36 @@ describe("operator product loop smoke", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
-      marketDataPort: fakeGatewayMarketDataPort(),
+      sandboxAdapters: {
+        deterministic_test: fixedOrderLogSandboxAdapter(paperOrderRequestLine({
+          at: "2026-05-16T00:00:03.000Z",
+          quantity: "0.001"
+        }))
+      },
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          {
+            price: 65_000,
+            observed_at: "2026-05-16T00:01:03.000Z"
+          },
+          {
+            price: 65_000,
+            observed_at: "2026-05-16T00:02:03.000Z"
+          }
+        ],
+        executionSnapshots: [{
+          agg_trades: [{
+            trade_id: "product-loop-fill",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          }]
+        }]
+      }),
       paperTradingEvaluationIntervalMs: 60_000
     });
     const runtimeBaseUrl = "http://runtime.test";
@@ -137,6 +167,18 @@ describe("operator product loop smoke", () => {
             source_kind: "trading_system_decision",
             authority_status: "trace_only"
           },
+          paper_account_snapshot: {
+            position: {
+              side: "long",
+              quantity: "0.001"
+            },
+            open_order_count: 0
+          },
+          latest_fill: {
+            fill_status: "filled",
+            fill_quantity: "0.001",
+            fill_price: "60000"
+          },
           authority_status: "not_live"
         },
         selected_paper_evidence: {
@@ -171,7 +213,8 @@ describe("operator product loop smoke", () => {
       expect(evaluationId).toEqual(expect.any(String));
       const observations = await store.listPaperTradingObservations(evaluationId!);
       const observedCandidate = await store.getCandidateForTradingRun(tradingRunId!);
-      expect(observations.at(-1)?.ledger_ref?.id).toBe(observedCandidate?.ledger?.chains[0]?.chain_id);
+      expect(observations[0]?.ledger_ref?.id).toBe(observedCandidate?.ledger?.chains[0]?.chain_id);
+      expect(observations.at(-1)?.ledger_ref).toBeUndefined();
 
       const finalStatus = await runOuroborosCli(["--json", "status"], {
         runtimeBaseUrl,
@@ -198,8 +241,15 @@ describe("operator product loop smoke", () => {
           authority_status: "read_only"
         },
         latest_decision: {
-          decision_kind: "order_request",
+          decision_kind: "hold",
           authority_status: "trace_only"
+        },
+        paper_account_snapshot: {
+          position: {
+            side: "long",
+            quantity: "0.001"
+          },
+          open_order_count: 0
         },
         authority_status: "not_live"
       });
@@ -238,7 +288,7 @@ describe("operator product loop smoke", () => {
             observation_count: 2,
             ledger_chain_complete: true,
             latest_decision: {
-              decision_kind: "order_request",
+              decision_kind: "hold",
               authority_status: "trace_only"
             },
             authority_status: "not_live"
@@ -297,7 +347,8 @@ describe("operator product loop smoke", () => {
       expect(tui).toContain("Authority: not_live / live disabled");
       expect(tui).toContain(`Selected Candidate\n${leader.candidate_id}`);
       expect(tui).toContain("PaperTradingEvaluation: running");
-      expect(tui).toContain("Decision: order_request");
+      expect(tui).toContain("Decision: hold");
+      expect(tui).toContain("Account: equity");
       expect(tui).toContain("Ledger chain: complete");
       expect(tui).toContain("trading_run.observe: succeeded");
     } finally {
@@ -345,5 +396,92 @@ function serverFetch(server: Awaited<ReturnType<typeof buildServer>>) {
       json: async () => response.json(),
       text: async () => response.body
     } as unknown as Response;
+  };
+}
+
+function paperOrderRequestLine(input: { at: string; quantity: string }): string {
+  return JSON.stringify({
+    at: input.at,
+    authority_status: "trace_only",
+    event: "order_request",
+    instance_id: "operator-smoke-paper-runtime",
+    intent_kind: "place_order",
+    limit_price: "60000",
+    order_type: "limit",
+    quantity: input.quantity,
+    side: "buy",
+    symbol: "BTCUSDT"
+  });
+}
+
+function fixedOrderLogSandboxAdapter(orderLine: string): SandboxAdapter {
+  let refreshCount = 0;
+  return {
+    kind: "deterministic_test",
+    async startArtifactInstance(input) {
+      const sandboxRef = { record_kind: "sandbox", id: input.instance_id };
+      const placementRef = { record_kind: "sandbox_placement", id: input.sandbox_placement_id };
+      return {
+        placement: {
+          record_kind: "sandbox_placement",
+          version: 1,
+          sandbox_placement_id: input.sandbox_placement_id,
+          placement_kind: "fixture_local_placeholder",
+          authority_status: "not_launched"
+        },
+        instance: {
+          record_kind: "sandbox",
+          version: 1,
+          sandbox_id: input.instance_id,
+          adapter_kind: "deterministic_test",
+          system_code_ref: { record_kind: "system_code", id: input.artifact.system_code_id },
+          runtime_ref: input.runtime_ref,
+          sandbox_placement_ref: placementRef,
+          lifecycle_status: "running",
+          sandbox_name: input.sandbox_name,
+          created_at: input.created_at,
+          started_at: input.created_at,
+          log_refs: [{ record_kind: "sandbox_log", id: `sandbox-log-${input.instance_id}-start` }],
+          heartbeat_refs: [],
+          command_evidence_refs: [],
+          authority_status: "not_live"
+        },
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${input.instance_id}-start`,
+          sandbox_ref: sandboxRef,
+          lines: [orderLine],
+          captured_at: input.created_at,
+          authority_status: "trace_only"
+        }],
+        heartbeats: [],
+        command_evidence: []
+      };
+    },
+    async getArtifactInstanceStatus() {
+      return {};
+    },
+    async getArtifactInstanceLogs(instance) {
+      refreshCount += 1;
+      const sandboxId = instance.sandbox_id;
+      return {
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${sandboxId}-refresh-${refreshCount}`,
+          sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+          lines: [orderLine],
+          captured_at: `2026-05-16T00:0${refreshCount}:03.000Z`,
+          authority_status: "trace_only"
+        }]
+      };
+    },
+    async stopArtifactInstance(instance) {
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: instance.stopped_at ?? "2026-05-16T00:02:03.000Z"
+      };
+    }
   };
 }

@@ -33,9 +33,9 @@ same `OperatorReadModel`.
 - `ouroboros candidate select <candidate-id>` makes the candidate explicit while paper trading is
   still `not_started`.
 - `ouroboros candidate paper start <candidate-id>` starts selected continuous paper trading.
-- `ouroboros trading-run observe <trading-run-id>` appends another paper observation and Ledger
-  chain while the run is active when the TradingSystem emits an `OrderRequest`; explicit `hold`
-  decisions are valid no-order observations.
+- `ouroboros trading-run observe <trading-run-id>` appends another paper observation while the run
+  is active. It records a Ledger chain only when the TradingSystem emitted a new `OrderRequest`;
+  explicit `hold` or no new decision output are valid no-order checkpoints.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
   latest paper decision, accumulated score, and `ledger_chain_complete`.

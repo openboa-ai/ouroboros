@@ -88,6 +88,9 @@ requireText("docs/ouroboros-doctrine.md", [
   "Replay/backtest is a research tool, not final evaluation authority",
   "Continuous paper trading is the evaluation authority",
   "Gateway `MarketDataPort`",
+  "TradingSystem owns its own decision cadence",
+  "checkpoint/readback",
+  "no-order checkpoint",
   "Reference Lineage"
 ]);
 
@@ -109,7 +112,9 @@ requireText("docs/architecture-governance.md", [
   "Middleware",
   "Registry",
   "Plugin",
-  "Dependency Injection"
+  "Dependency Injection",
+  "decision cadence",
+  "checkpoint/readback"
 ]);
 
 requireText("docs/api-command-contract.md", [

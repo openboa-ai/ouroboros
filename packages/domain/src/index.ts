@@ -1495,6 +1495,86 @@ export interface PaperTradingMarketSnapshotSummary {
   authority_status: "read_only";
 }
 
+export interface PaperTradingPublicExecutionSnapshotSummary {
+  symbol: "BTCUSDT";
+  observed_at: string;
+  source_kind: "binance_production_public_stream";
+  stream_marker: string;
+  book_ticker?: {
+    bid_price: string;
+    bid_quantity: string;
+    ask_price: string;
+    ask_quantity: string;
+    event_time?: string;
+  };
+  agg_trades: Array<{
+    trade_id: string;
+    price: string;
+    quantity: string;
+    trade_time: string;
+    is_buyer_maker?: boolean;
+  }>;
+  authority_status: "read_only";
+}
+
+export type PaperTradingOrderStatus =
+  | "open"
+  | "partially_filled"
+  | "filled"
+  | "canceled"
+  | "rejected";
+
+export interface PaperTradingOrderSummary {
+  order_id: string;
+  event_id: string;
+  side: "buy" | "sell";
+  order_type: "market" | "limit";
+  quantity: string;
+  limit_price?: string;
+  status: PaperTradingOrderStatus;
+  cumulative_filled_quantity: string;
+  remaining_quantity: string;
+  average_fill_price?: string;
+  created_at: string;
+  updated_at: string;
+  ledger_ref?: Ref;
+}
+
+export interface PaperTradingFillSummary {
+  fill_id: string;
+  order_id: string;
+  fill_status: "partially_filled" | "filled";
+  fill_price: string;
+  fill_quantity: string;
+  fee_usdt: string;
+  slippage_usdt: string;
+  funding_usdt: string;
+  trade_time: string;
+  source_trade_id?: string;
+}
+
+export interface PaperTradingAccountSnapshot {
+  wallet_balance_usdt: string;
+  available_balance_usdt: string;
+  equity_usdt: string;
+  realized_pnl_usdt: string;
+  unrealized_pnl_usdt: string;
+  fee_paid_usdt: string;
+  slippage_paid_usdt: string;
+  funding_paid_usdt: string;
+  margin_reserved_usdt: string;
+  position: {
+    symbol: "BTCUSDT";
+    quantity: string;
+    side: "long" | "short" | "flat";
+    average_entry_price?: string;
+    mark_price: string;
+    notional_usdt: string;
+  };
+  open_order_count: number;
+  authority_status: "not_live";
+}
+
 export interface TradingEvaluationResultRecord extends BaseRecord {
   record_kind: "trading_evaluation_result";
   trading_evaluation_result_id: string;
@@ -1514,7 +1594,7 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
 
 export type PaperTradingObservationStatus = "recorded" | "no_order" | "failed";
 
-export type PaperTradingDecisionKind = "order_request" | "hold" | "error";
+export type PaperTradingDecisionKind = "order_request" | "hold" | "no_action" | "cancel_order" | "error";
 
 export interface PaperTradingDecisionOrderRequestSummary {
   intent_kind: "place_order";
@@ -1548,6 +1628,12 @@ export interface PaperTradingEvaluationRecord extends BaseRecord {
   next_observation_at?: string;
   stopped_at?: string;
   latest_score: TradingProfitLossReadModel;
+  paper_account_snapshot?: PaperTradingAccountSnapshot;
+  open_orders?: PaperTradingOrderSummary[];
+  latest_fill?: PaperTradingFillSummary;
+  processed_trading_system_event_ids?: string[];
+  processed_public_trade_ids?: string[];
+  latest_public_execution_snapshot?: PaperTradingPublicExecutionSnapshotSummary;
   latest_failure_reason?: string;
   authority_status: "not_live";
 }
@@ -1563,8 +1649,14 @@ export interface PaperTradingObservationRecord extends BaseRecord {
   status: PaperTradingObservationStatus;
   observed_at: string;
   market_snapshot?: PaperTradingMarketSnapshotSummary;
+  public_execution_snapshot?: PaperTradingPublicExecutionSnapshotSummary;
   decision?: PaperTradingDecisionSummary;
   ledger_ref?: Ref;
+  paper_account_snapshot?: PaperTradingAccountSnapshot;
+  open_orders?: PaperTradingOrderSummary[];
+  latest_fill?: PaperTradingFillSummary;
+  processed_trading_system_event_ids?: string[];
+  processed_public_trade_ids?: string[];
   score_delta: TradingProfitLossReadModel;
   cumulative_score: TradingProfitLossReadModel;
   failure_reason?: string;
@@ -2768,7 +2860,11 @@ export interface PaperTradingEvaluationReadModel {
   ledger_chain_complete: boolean;
   profit_loss: TradingProfitLossReadModel;
   latest_market_snapshot?: PaperTradingMarketSnapshotSummary;
+  latest_public_execution_snapshot?: PaperTradingPublicExecutionSnapshotSummary;
   latest_decision?: PaperTradingDecisionSummary;
+  paper_account_snapshot?: PaperTradingAccountSnapshot;
+  open_orders?: PaperTradingOrderSummary[];
+  latest_fill?: PaperTradingFillSummary;
   latest_order_request_id?: string;
   latest_gateway_outcome?: string;
   latest_execution_status?: string;
@@ -2776,7 +2872,7 @@ export interface PaperTradingEvaluationReadModel {
   market_data_source: "binance_production_public_rest";
   account_provider: "fake_paper_account";
   executor: "fake_paper_order_executor";
-  score_source: "paper_gateway_ledger";
+  score_source: "paper_trading_engine";
   authority_status: "not_live";
 }
 

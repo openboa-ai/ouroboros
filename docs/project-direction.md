@@ -44,13 +44,24 @@ market data through the Gateway-owned `MarketDataPort`, fake account, fake execu
 Binance attaches behind the Gateway market data boundary, not inside a `TradingSystem`. The Gateway
 can cache public exchangeInfo, server time, premium/mark price, and klines, and each observation
 records the market snapshot it used as evidence. Operator surfaces expose the latest market snapshot
-with the continuous paper score. Each observation passes that snapshot into the selected
-`TradingSystem`, which must emit either a bounded `OrderRequest` or an explicit `hold`; Gateway
-validation and fake paper execution are the only path to Ledger evidence. Accumulated
-`revenue - cost`, risk behavior, and
-Ledger evidence decide what counts. Loss-making candidates remain useful arena memory unless they
-crash, submit malformed orders, bypass provider boundaries, fail risk validation, or attempt
-private/live behavior.
+with the continuous paper score.
+
+The paper engine is a real paper trading engine, not a single dry-run receipt. It keeps fake wallet
+balance, equity, available balance, margin reserved, net BTCUSDT position, average entry price,
+realized/unrealized PnL, open orders, partial fills, canceled orders, fees, slippage, funding, and
+Ledger references. Market fills require public execution evidence (`bookTicker` for market orders,
+`aggTrade` for limit order matching). Mark price can update valuation; it cannot create a fill by
+itself.
+
+TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
+events, news or social inputs, tool calls, internal agent loops, or risk gates.
+`trading_run.observe` is not a command to force a trade decision; it is a checkpoint/readback over
+the running paper session. If the `TradingSystem` has emitted a new bounded `OrderRequest`, the
+Gateway validates it and fake executes it into Ledger evidence. If it emitted nothing, the
+observation records a valid no-order checkpoint and preserves score continuity. Accumulated
+`revenue - cost`, risk behavior, and Ledger evidence decide what counts. Loss-making candidates
+remain useful arena memory unless they crash, submit malformed orders, bypass provider boundaries,
+fail risk validation, or attempt private/live behavior.
 
 AI agents improve over time. Codex, Claude Code, Gemini-powered agents, and future providers should
 plug into the same loop as replaceable research labor rather than changing the product doctrine.
@@ -58,7 +69,8 @@ The stable contract is candidate generation, research-time preflight, findings/l
 selected continuous paper trading evidence.
 
 TradingSystem may include an internal agent runtime, model calls, tools, deterministic code, rules,
-and execution logic. Researcher cannot grade, candidate cannot grade itself, and Gateway binding
+and execution logic. TradingSystem may include an internal agent runtime, and it owns when to emit
+`OrderRequest`s. Researcher cannot grade, candidate cannot grade itself, and Gateway binding
 changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are separate states.
 
 ## Product Boundary

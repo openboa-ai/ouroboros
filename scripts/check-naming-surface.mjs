@@ -135,6 +135,8 @@ checkRequired("docs/project-direction.md", [
   "PaperTradingEvaluation",
   "parallel TradingSystem candidates",
   "revenue - cost",
+  "decision cadence",
+  "checkpoint/readback",
   "Gateway",
   "Ledger",
   "GitHub repository on `main` is the source of truth"
@@ -146,6 +148,9 @@ checkRequired("docs/ouroboros-doctrine.md", [
   "Researcher cannot grade",
   "Gateway binding changes, TradingSystem identity does not",
   "Candidate, Paper Evidence, and Live are separate states",
+  "decision cadence",
+  "checkpoint/readback",
+  "no-order checkpoint",
   "ResearchPreflight",
   "PaperTradingEvaluation",
   "Finding",

@@ -21,7 +21,9 @@ export const PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS = [
   "/fapi/v1/time",
   "/fapi/v1/exchangeInfo",
   "/fapi/v1/premiumIndex?symbol=BTCUSDT",
-  "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30"
+  "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30",
+  "/fapi/v1/ticker/bookTicker?symbol=BTCUSDT",
+  "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100"
 ] as const;
 
 export interface GatewayRuntimeBinding {
@@ -195,6 +197,9 @@ function missingGatewayMarketDataPort(): GatewayMarketDataPort {
     },
     async readPublicMarketLivenessSurface() {
       throw new Error("gateway_market_data_port_not_configured");
+    },
+    async readPublicExecutionSnapshot() {
+      throw new Error("gateway_public_execution_stream_not_configured");
     }
   };
 }
