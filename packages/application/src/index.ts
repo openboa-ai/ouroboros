@@ -15,6 +15,6 @@ export * from "./trading/candidate/promoted-candidate-bundles";
 export * from "./trading/candidate/replay-run-ledger";
 export * from "./trading/candidate/run-replay";
 export * from "./trading/paper/evaluation";
-export * from "./trading/paper/runtime-protocol";
+export * from "./trading/paper/engine";
 export * from "./research/orchestration/codex-improvement-proposal-evaluation-dry-run";
 export * from "./research/orchestration/fixture-improvement-proposal-provider";

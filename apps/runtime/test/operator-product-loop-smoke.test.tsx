@@ -31,7 +31,16 @@ describe("operator product loop smoke", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
-      marketDataPort: fakeGatewayMarketDataPort(),
+      marketDataPort: fakeGatewayMarketDataPort({
+        executionSnapshots: [{
+          agg_trades: [{
+            trade_id: "product-loop-fill",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:02.500Z"
+          }]
+        }]
+      }),
       paperTradingEvaluationIntervalMs: 60_000
     });
     const runtimeBaseUrl = "http://runtime.test";
@@ -137,6 +146,18 @@ describe("operator product loop smoke", () => {
             source_kind: "trading_system_decision",
             authority_status: "trace_only"
           },
+          paper_account_snapshot: {
+            position: {
+              side: "long",
+              quantity: "0.001"
+            },
+            open_order_count: 0
+          },
+          latest_fill: {
+            fill_status: "filled",
+            fill_quantity: "0.001",
+            fill_price: "60000"
+          },
           authority_status: "not_live"
         },
         selected_paper_evidence: {
@@ -171,7 +192,8 @@ describe("operator product loop smoke", () => {
       expect(evaluationId).toEqual(expect.any(String));
       const observations = await store.listPaperTradingObservations(evaluationId!);
       const observedCandidate = await store.getCandidateForTradingRun(tradingRunId!);
-      expect(observations.at(-1)?.ledger_ref?.id).toBe(observedCandidate?.ledger?.chains[0]?.chain_id);
+      expect(observations[0]?.ledger_ref?.id).toBe(observedCandidate?.ledger?.chains[0]?.chain_id);
+      expect(observations.at(-1)?.ledger_ref).toBeUndefined();
 
       const finalStatus = await runOuroborosCli(["--json", "status"], {
         runtimeBaseUrl,
@@ -198,8 +220,15 @@ describe("operator product loop smoke", () => {
           authority_status: "read_only"
         },
         latest_decision: {
-          decision_kind: "order_request",
+          decision_kind: "hold",
           authority_status: "trace_only"
+        },
+        paper_account_snapshot: {
+          position: {
+            side: "long",
+            quantity: "0.001"
+          },
+          open_order_count: 0
         },
         authority_status: "not_live"
       });
@@ -238,7 +267,7 @@ describe("operator product loop smoke", () => {
             observation_count: 2,
             ledger_chain_complete: true,
             latest_decision: {
-              decision_kind: "order_request",
+              decision_kind: "hold",
               authority_status: "trace_only"
             },
             authority_status: "not_live"
@@ -297,7 +326,8 @@ describe("operator product loop smoke", () => {
       expect(tui).toContain("Authority: not_live / live disabled");
       expect(tui).toContain(`Selected Candidate\n${leader.candidate_id}`);
       expect(tui).toContain("PaperTradingEvaluation: running");
-      expect(tui).toContain("Decision: order_request");
+      expect(tui).toContain("Decision: hold");
+      expect(tui).toContain("Account: equity");
       expect(tui).toContain("Ledger chain: complete");
       expect(tui).toContain("trading_run.observe: succeeded");
     } finally {

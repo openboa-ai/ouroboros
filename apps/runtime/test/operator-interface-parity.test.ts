@@ -246,7 +246,7 @@ function fixtureOperator(): OperatorReadModel {
       market_data_source: "binance_production_public_rest",
       account_provider: "fake_paper_account",
       executor: "fake_paper_order_executor",
-      score_source: "paper_gateway_ledger",
+      score_source: "paper_trading_engine",
       authority_status: "not_live"
     },
     researcher_provider: {

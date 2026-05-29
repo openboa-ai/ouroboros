@@ -195,6 +195,9 @@ function missingGatewayMarketDataPort(): GatewayMarketDataPort {
     },
     async readPublicMarketLivenessSurface() {
       throw new Error("gateway_market_data_port_not_configured");
+    },
+    async readPublicExecutionSnapshot() {
+      throw new Error("gateway_public_execution_stream_not_configured");
     }
   };
 }

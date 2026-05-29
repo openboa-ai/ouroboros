@@ -211,7 +211,7 @@ describe("runtime canonical operator API", () => {
     }
   });
 
-  it("records a fresh TradingSystem paper decision from each market snapshot observation", async () => {
+  it("consumes TradingSystem order events once and records fake account state", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
@@ -228,6 +228,21 @@ describe("runtime canonical operator API", () => {
             moving_average_fast: 66_025,
             moving_average_slow: 65_975,
             observed_at: "2026-05-16T00:01:03.000Z"
+          }
+        ],
+        executionSnapshots: [
+          {
+            observed_at: "2026-05-16T00:00:03.000Z",
+            agg_trades: [{
+              trade_id: "agg-60000-001",
+              price: "60000",
+              quantity: "0.001",
+              trade_time: "2026-05-16T00:00:02.500Z"
+            }]
+          },
+          {
+            observed_at: "2026-05-16T00:01:03.000Z",
+            agg_trades: []
           }
         ]
       }),
@@ -264,9 +279,22 @@ describe("runtime canonical operator API", () => {
               decision_kind: "order_request",
               order_request: {
                 side: "buy",
-                limit_price: "65000"
+                limit_price: "60000"
               },
               authority_status: "trace_only"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0.001",
+                side: "long",
+                average_entry_price: "60000"
+              },
+              open_order_count: 0
+            },
+            latest_fill: {
+              fill_status: "filled",
+              fill_price: "60000",
+              fill_quantity: "0.001"
             }
           }
         }
@@ -290,12 +318,18 @@ describe("runtime canonical operator API", () => {
               price: 66_000
             },
             latest_decision: {
-              decision_kind: "order_request",
-              order_request: {
-                side: "buy",
-                limit_price: "66000"
-              },
+              decision_kind: "hold",
+              reason: "no_new_trading_system_event",
               authority_status: "trace_only"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0.001",
+                side: "long",
+                average_entry_price: "60000",
+                mark_price: "66000"
+              },
+              open_order_count: 0
             }
           }
         }
@@ -303,6 +337,7 @@ describe("runtime canonical operator API", () => {
 
       const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
         decision?: {
           decision_kind: string;
           order_request?: {
@@ -310,28 +345,38 @@ describe("runtime canonical operator API", () => {
           };
         };
         ledger_ref?: { id: string };
+        processed_trading_system_event_ids?: string[];
+        paper_account_snapshot?: {
+          position: {
+            quantity: string;
+            side: string;
+          };
+        };
       }>;
       expect(observations).toHaveLength(2);
-      expect(observations[0]?.decision?.order_request?.limit_price).toBe("65000");
-      expect(observations[1]?.decision?.order_request?.limit_price).toBe("66000");
-      expect(observations[0]?.ledger_ref?.id).not.toBe(observations[1]?.ledger_ref?.id);
+      expect(observations[0]?.decision?.order_request?.limit_price).toBe("60000");
+      expect(observations[0]?.paper_account_snapshot?.position).toMatchObject({
+        quantity: "0.001",
+        side: "long"
+      });
+      expect(observations[0]?.processed_trading_system_event_ids).toHaveLength(1);
+      expect(observations[1]?.status).toBe("no_order");
+      expect(observations[1]?.decision?.decision_kind).toBe("hold");
+      expect(observations[1]?.ledger_ref).toBeUndefined();
+      expect(observations[1]?.processed_trading_system_event_ids).toEqual(
+        observations[0]?.processed_trading_system_event_ids
+      );
     } finally {
       await server.close();
     }
   });
 
-  it("records hold decisions as valid no-order paper observations without Ledger writes", async () => {
+  it("fails observation when public execution stream evidence is unavailable and leaves events retryable", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
       marketDataPort: fakeGatewayMarketDataPort({
-        snapshots: [{
-          price: 65_000,
-          moving_average_fast: 65_000,
-          moving_average_slow: 65_000,
-          expected_direction: "flat",
-          observed_at: "2026-05-16T00:00:03.000Z"
-        }]
+        failPublicExecutionSnapshot: true
       })
     });
 
@@ -360,31 +405,94 @@ describe("runtime canonical operator API", () => {
             ledger_chain_complete: false
           },
           selected_paper_trading_evaluation: {
+            status: "failed",
             observation_count: 1,
             ledger_chain_complete: false,
-            profit_loss: {
-              net_revenue_usdt: 0
-            },
-            latest_decision: {
-              decision_kind: "hold",
-              reason: "flat_market_snapshot",
-              authority_status: "trace_only"
-            }
+            latest_failure_reason: "fake public execution stream unavailable"
           }
         }
       });
       const evaluationId = started.json().operator.selected_paper_trading_evaluation.evaluation_id;
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
         status: string;
-        decision?: { decision_kind: string };
-        ledger_ref?: { id: string };
+        failure_reason?: string;
+        processed_trading_system_event_ids?: string[];
       }>;
       expect(observations).toHaveLength(1);
       expect(observations[0]).toMatchObject({
-        status: "no_order",
-        decision: { decision_kind: "hold" }
+        status: "failed",
+        failure_reason: "fake public execution stream unavailable",
+        processed_trading_system_event_ids: []
       });
-      expect(observations[0]?.ledger_ref).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("records risk-rejected TradingSystem orders without fake account mutation", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      marketDataPort: fakeGatewayMarketDataPort()
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: {
+            candidate_id: FIXTURE_CANDIDATE_ID,
+            paper_order_request: "rejected"
+          }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(started.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            observation_count: 1,
+            latest_gateway_outcome: "rejected",
+            latest_execution_status: "blocked",
+            paper_account_snapshot: {
+              equity_usdt: "10000",
+              position: {
+                side: "flat",
+                quantity: "0"
+              },
+              open_order_count: 0
+            }
+          }
+        }
+      });
+      const evaluationId = started.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        processed_trading_system_event_ids?: string[];
+        paper_account_snapshot?: {
+          equity_usdt: string;
+          position: {
+            side: string;
+            quantity: string;
+          };
+        };
+      }>;
+      expect(observations[0]?.processed_trading_system_event_ids).toHaveLength(1);
+      expect(observations[0]?.paper_account_snapshot).toMatchObject({
+        equity_usdt: "10000",
+        position: {
+          side: "flat",
+          quantity: "0"
+        }
+      });
     } finally {
       await server.close();
     }

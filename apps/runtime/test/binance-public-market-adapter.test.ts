@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BinancePublicMarketSdkAdapter,
+  readBinanceBtcUsdtPublicExecutionSnapshot,
   readBinanceBtcUsdtPublicMarketLivenessSurface,
   type BinancePublicMarketDataClient
 } from "@ouroboros/adapters/binance/public-market-adapter";
 
 describe("Binance public market liveness adapter", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("normalizes official connector market data into a no-authority BTCUSDT substrate surface", async () => {
     const client = {
       async exchangeInformation() {
@@ -145,6 +150,105 @@ describe("Binance public market liveness adapter", () => {
       klineCandlestickData: 2
     });
   });
+
+  it("reads public execution snapshots with bookTicker and aggTrade evidence through cache", async () => {
+    let now = Date.parse("2026-05-16T00:00:03.000Z");
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      const href = String(url);
+      fetchCalls.push(href);
+      if (href.includes("/ticker/bookTicker")) {
+        return jsonFetchResponse({
+          symbol: "BTCUSDT",
+          bidPrice: "59999",
+          bidQty: "1.000",
+          askPrice: "60001",
+          askQty: "1.000",
+          time: 1778889602500
+        });
+      }
+      if (href.includes("/aggTrades")) {
+        return jsonFetchResponse([
+          {
+            a: 123,
+            p: "60000",
+            q: "0.001",
+            T: 1778889602400,
+            m: false
+          }
+        ]);
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    });
+    const adapter = new BinancePublicMarketSdkAdapter({
+      restBaseUrl: "https://fapi.binance.com",
+      client: fakeBinancePublicMarketDataClient(),
+      cache: { now: () => now }
+    });
+
+    const [first, second] = await Promise.all([
+      adapter.readPublicExecutionSnapshot({ observedAt: "2026-05-16T00:00:03.000Z" }),
+      adapter.readPublicExecutionSnapshot({ observedAt: "2026-05-16T00:00:03.000Z" })
+    ]);
+
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({
+      symbol: "BTCUSDT",
+      source_kind: "binance_production_public_stream",
+      book_ticker: {
+        bid_price: "59999",
+        ask_price: "60001"
+      },
+      agg_trades: [{
+        trade_id: "123",
+        price: "60000",
+        quantity: "0.001",
+        trade_time: "2026-05-16T00:00:02.400Z",
+        is_buyer_maker: false
+      }],
+      authority_status: "read_only"
+    });
+    expect(fetchCalls).toHaveLength(2);
+
+    await adapter.readPublicExecutionSnapshot({ observedAt: "2026-05-16T00:00:03.000Z" });
+    expect(fetchCalls).toHaveLength(2);
+
+    now += 6_000;
+    await adapter.readPublicExecutionSnapshot({ observedAt: "2026-05-16T00:00:03.000Z" });
+    expect(fetchCalls).toHaveLength(4);
+  });
+
+  it("normalizes a public execution snapshot without private or live authority", async () => {
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      const href = String(url);
+      if (href.includes("/ticker/bookTicker")) {
+        return jsonFetchResponse({
+          symbol: "BTCUSDT",
+          bidPrice: "59999",
+          bidQty: "1.000",
+          askPrice: "60001",
+          askQty: "1.000",
+          time: 1778889602500
+        });
+      }
+      return jsonFetchResponse([
+        { a: 456, p: "60000", q: "0.001", T: 1778889602400, m: true }
+      ]);
+    });
+
+    await expect(readBinanceBtcUsdtPublicExecutionSnapshot({
+      restBaseUrl: "https://fapi.binance.com",
+      observedAt: "2026-05-16T00:00:03.000Z"
+    })).resolves.toMatchObject({
+      source_kind: "binance_production_public_stream",
+      stream_marker: "binance-public-execution-1778889603000",
+      agg_trades: [{
+        trade_id: "456",
+        is_buyer_maker: true
+      }],
+      authority_status: "read_only"
+    });
+  });
 });
 
 function response<T>(payload: T) {
@@ -153,6 +257,16 @@ function response<T>(payload: T) {
       return payload;
     }
   };
+}
+
+function jsonFetchResponse(payload: unknown) {
+  return {
+    ok: true,
+    status: 200,
+    async json() {
+      return payload;
+    }
+  } as Response;
 }
 
 function fakeBinancePublicMarketDataClient(input: { delayMs?: number } = {}) {

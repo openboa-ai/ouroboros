@@ -194,6 +194,8 @@ export function OperatorTuiScreen(props: {
         </Text>
         <Text>{`Market: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
         <Text>{`Decision: ${formatPaperDecision(paperDecision)}`}</Text>
+        <Text>{`Account: ${formatPaperAccount(paperEvaluation)}`}</Text>
+        <Text>{`Fill: ${formatPaperFill(paperEvaluation)}`}</Text>
         <Text>{`Ledger chain: ${paperEvaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
       </Box>
       <Box flexDirection="column">
@@ -234,6 +236,26 @@ function formatPaperDecision(
     decision.order_request.quantity,
     decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined
   ].filter(Boolean).join(" ");
+}
+
+function formatPaperAccount(
+  paperEvaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  const account = paperEvaluation.paper_account_snapshot;
+  if (!account) {
+    return "not observed";
+  }
+  return `equity ${account.equity_usdt} USDT / ${account.position.side} ${account.position.quantity} BTCUSDT / open ${account.open_order_count}`;
+}
+
+function formatPaperFill(
+  paperEvaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  const fill = paperEvaluation.latest_fill;
+  if (!fill) {
+    return "none";
+  }
+  return `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`;
 }
 
 export function operatorTuiActionForInput(

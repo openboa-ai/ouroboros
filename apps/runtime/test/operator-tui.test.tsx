@@ -28,6 +28,8 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Paper score: 4.95 USDT / observations 1");
     expect(output).toContain("Market: BTCUSDT 65000.00 @ 2026-05-16T00:00:03.000Z");
     expect(output).toContain("Decision: order_request buy limit 0.001 @ 65000");
+    expect(output).toContain("Account: equity 10004.952 USDT / long 0.001 BTCUSDT / open 0");
+    expect(output).toContain("Fill: filled 0.001 @ 60000");
     expect(output).toContain("Codex: configured");
     expect(output).toContain("arena.tick: succeeded");
     expect(output).toContain("Keys: r refresh");
@@ -182,7 +184,7 @@ function fixtureOperator(): OperatorReadModel {
       latest_decision: {
         decision_kind: "order_request",
         source_kind: "trading_system_decision",
-        reason: "long_market_snapshot",
+        reason: "trading_system_order_request",
         observed_at: "2026-05-16T00:00:03.000Z",
         order_request: {
           intent_kind: "place_order",
@@ -194,10 +196,44 @@ function fixtureOperator(): OperatorReadModel {
         },
         authority_status: "trace_only"
       },
+      paper_account_snapshot: {
+        wallet_balance_usdt: "9999.952",
+        available_balance_usdt: "10003.652",
+        equity_usdt: "10004.952",
+        realized_pnl_usdt: "0",
+        unrealized_pnl_usdt: "5",
+        fee_paid_usdt: "0.024",
+        slippage_paid_usdt: "0.018",
+        funding_paid_usdt: "0.006",
+        margin_reserved_usdt: "1.3",
+        position: {
+          symbol: "BTCUSDT",
+          quantity: "0.001",
+          side: "long",
+          average_entry_price: "60000",
+          mark_price: "65000",
+          notional_usdt: "65"
+        },
+        open_order_count: 0,
+        authority_status: "not_live"
+      },
+      open_orders: [],
+      latest_fill: {
+        fill_id: "paper-fill-order-1-fill-1",
+        order_id: "paper-order-1",
+        fill_status: "filled",
+        fill_price: "60000",
+        fill_quantity: "0.001",
+        fee_usdt: "0.024",
+        slippage_usdt: "0.018",
+        funding_usdt: "0.006",
+        trade_time: "2026-05-16T00:00:02.500Z",
+        source_trade_id: "agg-60000-001"
+      },
       market_data_source: "binance_production_public_rest",
       account_provider: "fake_paper_account",
       executor: "fake_paper_order_executor",
-      score_source: "paper_gateway_ledger",
+      score_source: "paper_trading_engine",
       authority_status: "not_live"
     },
     researcher_provider: {

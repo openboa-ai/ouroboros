@@ -3,7 +3,10 @@ import {
   DERIVATIVES_TRADING_USDS_FUTURES_REST_API_PROD_URL,
   DerivativesTradingUsdsFutures
 } from "@binance/derivatives-trading-usds-futures";
-import type { PublicMarketLivenessSurfaceRecord } from "@ouroboros/domain";
+import type {
+  PaperTradingPublicExecutionSnapshotSummary,
+  PublicMarketLivenessSurfaceRecord
+} from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import { PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { MarketSnapshot } from "@ouroboros/application/trading/research/types";
@@ -42,6 +45,7 @@ export interface BinancePublicMarketCacheOptions {
   serverTimeTtlMs?: number;
   markPriceTtlMs?: number;
   klinesTtlMs?: number;
+  publicExecutionTtlMs?: number;
   now?: () => number;
 }
 
@@ -49,7 +53,8 @@ export const DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS = {
   exchangeInfoTtlMs: 60 * 60 * 1_000,
   serverTimeTtlMs: 5_000,
   markPriceTtlMs: 5_000,
-  klinesTtlMs: 30_000
+  klinesTtlMs: 30_000,
+  publicExecutionTtlMs: 5_000
 } as const;
 
 export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
@@ -58,6 +63,7 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
   readonly required_endpoints = PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS;
   readonly authority_status = "read_only" as const;
   private readonly client: BinancePublicMarketDataClient;
+  private readonly publicExecutionCache: PublicExecutionSnapshotCache | undefined;
   readonly rest_base_url: string;
 
   constructor(options: BinancePublicMarketSdkAdapterOptions) {
@@ -66,6 +72,13 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
     this.client = options.cache === false
       ? client
       : new CachedBinancePublicMarketDataClient(client, options.cache);
+    this.publicExecutionCache = options.cache === false
+      ? undefined
+      : new PublicExecutionSnapshotCache({
+          ttlMs: options.cache?.publicExecutionTtlMs ??
+            DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.publicExecutionTtlMs,
+          now: options.cache?.now
+        });
   }
 
   readBtcUsdtPublicMarketLivenessSurface(
@@ -86,6 +99,23 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
       client: this.client,
       observedAt: input.observedAt
     });
+  }
+
+  readPublicExecutionSnapshot(
+    input: { observedAt?: string } = {}
+  ): Promise<PaperTradingPublicExecutionSnapshotSummary> {
+    return this.publicExecutionCache
+      ? this.publicExecutionCache.read(
+          `BTCUSDT:${input.observedAt ?? "latest"}`,
+          () => readBinanceBtcUsdtPublicExecutionSnapshot({
+            restBaseUrl: this.rest_base_url,
+            observedAt: input.observedAt
+          })
+        )
+      : readBinanceBtcUsdtPublicExecutionSnapshot({
+          restBaseUrl: this.rest_base_url,
+          observedAt: input.observedAt
+        });
   }
 }
 
@@ -154,7 +184,9 @@ class CachedBinancePublicMarketDataClient implements BinancePublicMarketDataClie
       exchangeInfoTtlMs: options.exchangeInfoTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.exchangeInfoTtlMs,
       serverTimeTtlMs: options.serverTimeTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.serverTimeTtlMs,
       markPriceTtlMs: options.markPriceTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.markPriceTtlMs,
-      klinesTtlMs: options.klinesTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.klinesTtlMs
+      klinesTtlMs: options.klinesTtlMs ?? DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.klinesTtlMs,
+      publicExecutionTtlMs: options.publicExecutionTtlMs ??
+        DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.publicExecutionTtlMs
     };
     this.now = options.now ?? Date.now;
   }
@@ -220,12 +252,69 @@ class CachedBinancePublicMarketDataClient implements BinancePublicMarketDataClie
   }
 }
 
+class PublicExecutionSnapshotCache {
+  private cached?: { key: string; expiresAt: number; payload: PaperTradingPublicExecutionSnapshotSummary };
+  private inFlight?: { key: string; promise: Promise<PaperTradingPublicExecutionSnapshotSummary> };
+  private readonly now: () => number;
+
+  constructor(private readonly input: {
+    ttlMs: number;
+    now?: () => number;
+  }) {
+    this.now = input.now ?? Date.now;
+  }
+
+  async read(
+    key: string,
+    load: () => Promise<PaperTradingPublicExecutionSnapshotSummary>
+  ): Promise<PaperTradingPublicExecutionSnapshotSummary> {
+    const now = this.now();
+    if (this.cached && this.cached.key === key && this.cached.expiresAt > now) {
+      return this.cached.payload;
+    }
+    if (this.inFlight?.key === key) {
+      return this.inFlight.promise;
+    }
+    const promise = load()
+      .then((payload) => {
+        this.cached = {
+          key,
+          payload,
+          expiresAt: this.now() + this.input.ttlMs
+        };
+        return payload;
+      })
+      .finally(() => {
+        this.inFlight = undefined;
+      });
+    this.inFlight = { key, promise };
+    return promise;
+  }
+}
+
 function responseFromPayload<T>(payload: T): BinanceRestResponse<T> {
   return {
     async data() {
       return payload;
     }
   };
+}
+
+interface BinanceBookTickerPayload {
+  symbol?: string;
+  bidPrice?: string;
+  bidQty?: string;
+  askPrice?: string;
+  askQty?: string;
+  time?: number | bigint;
+}
+
+interface BinanceAggTradePayload {
+  a?: number | bigint;
+  p?: string;
+  q?: string;
+  T?: number | bigint;
+  m?: boolean;
 }
 
 export function createOfficialBinanceUsdsFuturesPublicMarketClient(
@@ -357,6 +446,56 @@ export async function readBinanceBtcUsdtMarketSnapshot({
     expected_direction: expectedDirection(fastAverage, slowAverage),
     observed_at: epochMsToIso(observedEpochMs)
   };
+}
+
+export async function readBinanceBtcUsdtPublicExecutionSnapshot({
+  restBaseUrl,
+  observedAt = new Date().toISOString()
+}: {
+  restBaseUrl: string;
+  observedAt?: string;
+}): Promise<PaperTradingPublicExecutionSnapshotSummary> {
+  const baseUrl = restBaseUrl.replace(/\/+$/, "");
+  const [bookTicker, aggTrades] = await Promise.all([
+    fetchBinancePublicJson<BinanceBookTickerPayload>(
+      `${baseUrl}/fapi/v1/ticker/bookTicker?symbol=BTCUSDT`
+    ),
+    fetchBinancePublicJson<BinanceAggTradePayload[]>(
+      `${baseUrl}/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100`
+    )
+  ]);
+  if (bookTicker.symbol !== "BTCUSDT") {
+    throw new Error("Binance bookTicker response did not include BTCUSDT.");
+  }
+  return {
+    symbol: "BTCUSDT",
+    observed_at: observedAt,
+    source_kind: "binance_production_public_stream",
+    stream_marker: `binance-public-execution-${Date.parse(observedAt)}`,
+    book_ticker: {
+      bid_price: requiredString(bookTicker.bidPrice, "bookTicker bid price"),
+      bid_quantity: requiredString(bookTicker.bidQty, "bookTicker bid quantity"),
+      ask_price: requiredString(bookTicker.askPrice, "bookTicker ask price"),
+      ask_quantity: requiredString(bookTicker.askQty, "bookTicker ask quantity"),
+      event_time: bookTicker.time === undefined ? observedAt : epochMsToIso(requiredEpochMs(bookTicker.time, "bookTicker time"))
+    },
+    agg_trades: aggTrades.map((trade) => ({
+      trade_id: String(requiredEpochMs(trade.a, "aggTrade id")),
+      price: requiredString(trade.p, "aggTrade price"),
+      quantity: requiredString(trade.q, "aggTrade quantity"),
+      trade_time: epochMsToIso(requiredEpochMs(trade.T, "aggTrade time")),
+      is_buyer_maker: trade.m
+    })),
+    authority_status: "read_only"
+  };
+}
+
+async function fetchBinancePublicJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Binance public market request failed: ${response.status}`);
+  }
+  return await response.json() as T;
 }
 
 function normalizeMarkPricePayload(

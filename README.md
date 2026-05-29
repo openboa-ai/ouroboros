@@ -45,6 +45,10 @@ tools, internal agents, and risk. The Gateway owns public market data access, ca
 fake paper execution, and Ledger evidence. A paper observation is a checkpoint/readback: record the
 latest market snapshot, consume any newly emitted `OrderRequest`s through the Gateway, update paper
 score and Ledger evidence, or record a valid no-order checkpoint when the system emitted nothing.
+The paper engine owns the fake account, open/partial/filled/canceled orders, fake fills, mark-to-
+market PnL, fees, slippage, funding, and position state. Fills require public execution evidence
+such as Binance USD-M Futures `bookTicker` or `aggTrade` data; they are not invented from a mark
+price alone.
 Replaying old sandbox output as a new decision is not paper trading evaluation.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are

@@ -46,6 +46,13 @@ can cache public exchangeInfo, server time, premium/mark price, and klines, and 
 records the market snapshot it used as evidence. Operator surfaces expose the latest market snapshot
 with the continuous paper score.
 
+The paper engine is a real paper trading engine, not a single dry-run receipt. It keeps fake wallet
+balance, equity, available balance, margin reserved, net BTCUSDT position, average entry price,
+realized/unrealized PnL, open orders, partial fills, canceled orders, fees, slippage, funding, and
+Ledger references. Market fills require public execution evidence (`bookTicker` for market orders,
+`aggTrade` for limit order matching). Mark price can update valuation; it cannot create a fill by
+itself.
+
 TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
 events, news or social inputs, tool calls, internal agent loops, or risk gates.
 `trading_run.observe` is not a command to force a trade decision; it is a checkpoint/readback over
