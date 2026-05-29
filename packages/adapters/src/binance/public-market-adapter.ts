@@ -455,7 +455,7 @@ export async function readBinanceBtcUsdtPublicExecutionSnapshot({
   restBaseUrl: string;
   observedAt?: string;
 }): Promise<PaperTradingPublicExecutionSnapshotSummary> {
-  const baseUrl = restBaseUrl.replace(/\/+$/, "");
+  const baseUrl = trimTrailingSlashes(restBaseUrl);
   const [bookTicker, aggTrades] = await Promise.all([
     fetchBinancePublicJson<BinanceBookTickerPayload>(
       `${baseUrl}/fapi/v1/ticker/bookTicker?symbol=BTCUSDT`
@@ -488,6 +488,14 @@ export async function readBinanceBtcUsdtPublicExecutionSnapshot({
     })),
     authority_status: "read_only"
   };
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return value.slice(0, end);
 }
 
 async function fetchBinancePublicJson<T>(url: string): Promise<T> {

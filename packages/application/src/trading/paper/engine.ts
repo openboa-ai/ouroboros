@@ -500,5 +500,35 @@ function roundProfit(value: number): number {
 }
 
 function safeSummaryId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "event";
+  const chars: string[] = [];
+  let previousWasSeparator = true;
+  for (const char of value) {
+    if (chars.length >= 80) {
+      break;
+    }
+    if (isSafeSummaryIdChar(char)) {
+      chars.push(char);
+      previousWasSeparator = false;
+      continue;
+    }
+    if (!previousWasSeparator) {
+      chars.push("-");
+      previousWasSeparator = true;
+    }
+  }
+  while (chars.at(-1) === "-") {
+    chars.pop();
+  }
+  return chars.join("") || "event";
+}
+
+function isSafeSummaryIdChar(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    char === "_" ||
+    char === "-"
+  );
 }
