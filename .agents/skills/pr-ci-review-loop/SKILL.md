@@ -1,6 +1,6 @@
 ---
 name: pr-ci-review-loop
-description: "Use when a branch or pull request must be published, watched through local validation, GitHub CI, CodeQL, Codex or human review comments, bounded fixes, repeat pushes, and final merge only after explicit landing authority."
+description: "Use when a branch or pull request must be published, watched through local validation, GitHub CI, CodeQL, Codex or human review comments, bounded fixes, repeat pushes, and final merge when the current-head validation contract is clean."
 ---
 
 # PR CI Review Loop
@@ -33,11 +33,24 @@ implementation; it keeps one branch moving through validation, review, bounded f
    validation, commit, push, and restart the CI/review loop from the new head.
 10. Continue until current-head CI is green, current-head review freshness is satisfied, actionable
    current-head comments are handled or explicitly rerouted, and mergeability is clean.
-11. Merge only when the user has explicitly granted landing authority with wording such as "merge if
-   clean" or "merge when there are no issues".
+11. Treat a PR landing-loop request as merge authority once the validation contract below is fully
+   satisfied. Do not ask for a second merge confirmation unless the validation contract is ambiguous.
 12. Prefer `gh pr merge --squash --delete-branch`. If local worktree state blocks the command,
     verify whether the remote PR merged anyway, then separately handle branch cleanup and report the
     exact final state.
+
+## Validation Contract
+
+- Local validation must cover the repo-required checks for the change type, or record why a broader
+  check is unnecessary.
+- Remote CI must be tied to the current `headRefOid`; every required check must be complete and
+  successful. Pending, failing, missing, cancelled, or unexplained neutral checks block merge.
+- CodeQL, security scanning, repository guards, and naming/docs/env/secrets gates must be reported
+  explicitly when present.
+- Current-head review freshness must be satisfied, and actionable current-head comments must be
+  fixed, intentionally rerouted, or explicitly marked non-blocking with evidence.
+- `mergeable` must be `MERGEABLE` and `mergeStateStatus` must be `CLEAN` or the repository's
+  equivalent clean state.
 
 ## Review Freshness Gate
 
@@ -70,13 +83,14 @@ implementation; it keeps one branch moving through validation, review, bounded f
 ## Handoff
 
 Use `ci-recovery` for failing check evidence, `auto-coding` for bounded patches, and
-`auto-promotion-protocol` for final readiness judgment when landing authority is absent or unclear.
+`auto-promotion-protocol` when the validation contract is ambiguous or a non-blocking exception
+needs an explicit readiness judgment.
 If the loop outcome changes durable workflow or release state, set `writeback_needed: yes` and route
 to the repo's durable writeback skill.
 
 ## Hard Boundaries
 
-- Do not merge without explicit landing authority.
+- Do not merge unless the current-head validation contract is fully satisfied.
 - Do not trust stale CI, stale review, or comments from an older head as current promotion evidence.
 - Do not merge immediately after CI turns green when expected automated review has not reported on
   the current head yet.
