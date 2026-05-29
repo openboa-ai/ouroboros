@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { runOuroborosCli } from "@ouroboros/cli";
 import type {
   CandidateArenaReadModel,
@@ -31,6 +32,12 @@ describe("operator product loop smoke", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
+      sandboxAdapters: {
+        deterministic_test: fixedOrderLogSandboxAdapter(paperOrderRequestLine({
+          at: "2026-05-16T00:00:03.000Z",
+          quantity: "0.001"
+        }))
+      },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
           {
@@ -389,5 +396,92 @@ function serverFetch(server: Awaited<ReturnType<typeof buildServer>>) {
       json: async () => response.json(),
       text: async () => response.body
     } as unknown as Response;
+  };
+}
+
+function paperOrderRequestLine(input: { at: string; quantity: string }): string {
+  return JSON.stringify({
+    at: input.at,
+    authority_status: "trace_only",
+    event: "order_request",
+    instance_id: "operator-smoke-paper-runtime",
+    intent_kind: "place_order",
+    limit_price: "60000",
+    order_type: "limit",
+    quantity: input.quantity,
+    side: "buy",
+    symbol: "BTCUSDT"
+  });
+}
+
+function fixedOrderLogSandboxAdapter(orderLine: string): SandboxAdapter {
+  let refreshCount = 0;
+  return {
+    kind: "deterministic_test",
+    async startArtifactInstance(input) {
+      const sandboxRef = { record_kind: "sandbox", id: input.instance_id };
+      const placementRef = { record_kind: "sandbox_placement", id: input.sandbox_placement_id };
+      return {
+        placement: {
+          record_kind: "sandbox_placement",
+          version: 1,
+          sandbox_placement_id: input.sandbox_placement_id,
+          placement_kind: "fixture_local_placeholder",
+          authority_status: "not_launched"
+        },
+        instance: {
+          record_kind: "sandbox",
+          version: 1,
+          sandbox_id: input.instance_id,
+          adapter_kind: "deterministic_test",
+          system_code_ref: { record_kind: "system_code", id: input.artifact.system_code_id },
+          runtime_ref: input.runtime_ref,
+          sandbox_placement_ref: placementRef,
+          lifecycle_status: "running",
+          sandbox_name: input.sandbox_name,
+          created_at: input.created_at,
+          started_at: input.created_at,
+          log_refs: [{ record_kind: "sandbox_log", id: `sandbox-log-${input.instance_id}-start` }],
+          heartbeat_refs: [],
+          command_evidence_refs: [],
+          authority_status: "not_live"
+        },
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${input.instance_id}-start`,
+          sandbox_ref: sandboxRef,
+          lines: [orderLine],
+          captured_at: input.created_at,
+          authority_status: "trace_only"
+        }],
+        heartbeats: [],
+        command_evidence: []
+      };
+    },
+    async getArtifactInstanceStatus() {
+      return {};
+    },
+    async getArtifactInstanceLogs(instance) {
+      refreshCount += 1;
+      const sandboxId = instance.sandbox_id;
+      return {
+        logs: [{
+          record_kind: "sandbox_log",
+          version: 1,
+          sandbox_log_id: `sandbox-log-${sandboxId}-refresh-${refreshCount}`,
+          sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+          lines: [orderLine],
+          captured_at: `2026-05-16T00:0${refreshCount}:03.000Z`,
+          authority_status: "trace_only"
+        }]
+      };
+    },
+    async stopArtifactInstance(instance) {
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: instance.stopped_at ?? "2026-05-16T00:02:03.000Z"
+      };
+    }
   };
 }

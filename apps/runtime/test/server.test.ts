@@ -214,8 +214,15 @@ describe("runtime canonical operator API", () => {
 
   it("consumes TradingSystem order events once and records fake account state", async () => {
     const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
     const server = await buildServer({
       store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
+      },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
           {
@@ -374,17 +381,9 @@ describe("runtime canonical operator API", () => {
 
   it("does not replay the same TradingSystem log line when sandbox log refs change", async () => {
     const store = new LocalStore(tmpDir);
-    const orderLine = JSON.stringify({
-      at: "2026-05-16T00:00:00.000Z",
-      authority_status: "trace_only",
-      event: "order_request",
-      instance_id: "paper-runtime-fixture",
-      intent_kind: "place_order",
-      limit_price: "60000",
-      order_type: "limit",
-      quantity: "0.001",
-      side: "buy",
-      symbol: "BTCUSDT"
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
     });
     const server = await buildServer({
       store,
@@ -673,6 +672,21 @@ describe("runtime canonical operator API", () => {
     }
   });
 });
+
+function paperOrderRequestLine(input: { at: string; quantity: string }): string {
+  return JSON.stringify({
+    at: input.at,
+    authority_status: "trace_only",
+    event: "order_request",
+    instance_id: "paper-runtime-fixture",
+    intent_kind: "place_order",
+    limit_price: "60000",
+    order_type: "limit",
+    quantity: input.quantity,
+    side: "buy",
+    symbol: "BTCUSDT"
+  });
+}
 
 function runningDuplicateLogSandboxAdapter(orderLine: string): SandboxAdapter {
   let refreshCount = 0;

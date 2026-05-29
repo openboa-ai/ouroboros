@@ -147,6 +147,47 @@ describe("PaperTradingEngine", () => {
     expect(checkpoint.processedPublicTradeIds).toEqual(["agg-after-order"]);
   });
 
+  it("uses the TradingSystem event time as the paper order creation time", () => {
+    const checkpoint = applyPaperTradingCheckpoint({
+      previous: initialPaperTradingEngineState(),
+      marketPrice: 60_000,
+      observedAt: "2026-05-16T00:00:03.000Z",
+      publicExecutionSnapshot: publicExecutionSnapshot({
+        trades: [
+          {
+            trade_id: "agg-before-event",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          },
+          {
+            trade_id: "agg-after-event",
+            price: "60000",
+            quantity: "0.0004",
+            trade_time: "2026-05-16T00:00:04.500Z"
+          }
+        ]
+      }),
+      events: [orderRequestEvent({
+        eventId: "event-created-after-checkpoint",
+        observedAt: "2026-05-16T00:00:04.000Z",
+        quantity: "0.001",
+        limitPrice: "60000"
+      })]
+    });
+
+    expect(checkpoint.account.position).toMatchObject({
+      side: "long",
+      quantity: "0.0004"
+    });
+    expect(checkpoint.openOrders).toMatchObject([{
+      status: "partially_filled",
+      created_at: "2026-05-16T00:00:04.000Z",
+      remaining_quantity: "0.0006"
+    }]);
+    expect(checkpoint.processedPublicTradeIds).toEqual(["agg-after-event"]);
+  });
+
   it("fills market orders from public bookTicker evidence", () => {
     const filled = applyPaperTradingCheckpoint({
       previous: initialPaperTradingEngineState(),
@@ -249,6 +290,7 @@ describe("PaperTradingEngine", () => {
 
 function orderRequestEvent(input: {
   eventId: string;
+  observedAt?: string;
   side?: "buy" | "sell";
   orderType?: "market" | "limit";
   quantity: string;
@@ -266,7 +308,7 @@ function orderRequestEvent(input: {
   return {
     event_id: input.eventId,
     event_kind: "order_request",
-    observed_at: "2026-05-16T00:00:03.000Z",
+    observed_at: input.observedAt ?? "2026-05-16T00:00:03.000Z",
     order_request: orderRequest,
     gateway_outcome: input.gatewayOutcome ?? "dry_run_only"
   };

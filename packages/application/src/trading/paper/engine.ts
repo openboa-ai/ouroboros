@@ -106,7 +106,7 @@ export function applyPaperTradingCheckpoint(
     mutable.processedTradingSystemEventIds.push(event.event_id);
     processedEventIdsThisCheckpoint.push(event.event_id);
     if (event.event_kind === "order_request") {
-      mutable.openOrders.push(orderFromEvent(event, input.observedAt));
+      mutable.openOrders.push(orderFromEvent(event));
       continue;
     }
     if (event.event_kind === "cancel_order") {
@@ -150,10 +150,10 @@ export function applyPaperTradingCheckpoint(
 }
 
 function orderFromEvent(
-  event: Extract<PaperTradingSystemEvent, { event_kind: "order_request" }>,
-  observedAt: string
+  event: Extract<PaperTradingSystemEvent, { event_kind: "order_request" }>
 ): PaperTradingOrderSummary {
   const orderId = `paper-order-${safeSummaryId(event.event_id)}`;
+  const createdAt = event.observed_at;
   if (event.gateway_outcome !== "dry_run_only") {
     return {
       order_id: orderId,
@@ -165,8 +165,8 @@ function orderFromEvent(
       status: "rejected",
       cumulative_filled_quantity: "0",
       remaining_quantity: "0",
-      created_at: observedAt,
-      updated_at: observedAt,
+      created_at: createdAt,
+      updated_at: createdAt,
       ledger_ref: event.ledger_ref
     };
   }
@@ -180,8 +180,8 @@ function orderFromEvent(
     status: "open",
     cumulative_filled_quantity: "0",
     remaining_quantity: event.order_request.quantity,
-    created_at: observedAt,
-    updated_at: observedAt,
+    created_at: createdAt,
+    updated_at: createdAt,
     ledger_ref: event.ledger_ref
   };
 }
