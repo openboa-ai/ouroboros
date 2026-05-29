@@ -24,16 +24,18 @@ implementation; it keeps one branch moving through validation, review, bounded f
 6. After CI is green, wait for a current-head review freshness signal before merging. Poll PR
    reviews and inline comments until the configured automated reviewer or a human reviewer has
    reviewed the latest commit, or until an explicit user-approved timeout is reached.
-7. Inspect current-head review comments, inline comments, CodeQL/GitHub Advanced Security alerts,
+7. If the latest review remains stale after CI and an initial wait, request a fresh automated review
+   with the repo's configured review trigger such as `@codex review`, then keep polling the new head.
+8. Inspect current-head review comments, inline comments, CodeQL/GitHub Advanced Security alerts,
    and human comments. Treat old-head comments as historical unless they still apply to the latest
    diff.
-8. For actionable current-head comments, route a bounded patch through `auto-coding`, rerun local
+9. For actionable current-head comments, route a bounded patch through `auto-coding`, rerun local
    validation, commit, push, and restart the CI/review loop from the new head.
-9. Continue until current-head CI is green, current-head review freshness is satisfied, actionable
+10. Continue until current-head CI is green, current-head review freshness is satisfied, actionable
    current-head comments are handled or explicitly rerouted, and mergeability is clean.
-10. Merge only when the user has explicitly granted landing authority with wording such as "merge if
+11. Merge only when the user has explicitly granted landing authority with wording such as "merge if
    clean" or "merge when there are no issues".
-11. Prefer `gh pr merge --squash --delete-branch`. If local worktree state blocks the command,
+12. Prefer `gh pr merge --squash --delete-branch`. If local worktree state blocks the command,
     verify whether the remote PR merged anyway, then separately handle branch cleanup and report the
     exact final state.
 
@@ -43,7 +45,8 @@ implementation; it keeps one branch moving through validation, review, bounded f
 - Read inline comments by interpolating the actual PR number:
   `gh api repos/{owner}/{repo}/pulls/<pr-number>/comments --paginate`.
 - Treat review as current only when the review commit or comment `commit_id` matches `headRefOid`.
-- Treat "no current-head review yet" as pending, not clean. Keep polling or reroute to
+- Treat "no current-head review yet" as pending, not clean. If the review is stale after the initial
+  wait, request a fresh automated review and keep polling. If review remains unavailable, reroute to
   `auto-promotion-protocol`; do not merge merely because CI is green and comments are momentarily
   empty.
 
