@@ -243,6 +243,8 @@ function fillOpenOrders(
 ): MutablePaperState {
   let next = { ...state, openOrders: [...state.openOrders] };
   const updatedOrders: PaperTradingOrderSummary[] = [];
+  const consumedPublicTradeIds = new Set<string>();
+  const consumedPublicTradeQuantities = new Map<string, number>();
   for (const order of next.openOrders) {
     if (order.status !== "open" && order.status !== "partially_filled") {
       updatedOrders.push(order);
@@ -255,14 +257,19 @@ function fillOpenOrders(
         continue;
       }
       const fillPrice = parseDecimal(order.side === "buy" ? ticker.ask_price : ticker.bid_price);
-      const fillQuantity = parseDecimal(order.remaining_quantity);
+      const topQuantity = parseDecimal(order.side === "buy" ? ticker.ask_quantity : ticker.bid_quantity);
+      const fillQuantity = Math.min(parseDecimal(order.remaining_quantity), topQuantity);
+      if (fillQuantity <= 0) {
+        updatedOrders.push(order);
+        continue;
+      }
       next = applyFill(next, order, {
         price: fillPrice,
         quantity: fillQuantity,
         tradeTime: ticker.event_time ?? publicExecution.observed_at,
         sourceTradeId: `${publicExecution.stream_marker}:bookTicker`
       });
-      updatedOrders.push(updatedFilledOrder(order, fillPrice, fillQuantity, observedAt));
+      updatedOrders.push(updatedOrderAfterFill(order, fillPrice, fillQuantity, observedAt));
       continue;
     }
 
@@ -272,6 +279,12 @@ function fillOpenOrders(
     let status: PaperTradingOrderSummary["status"] = order.status;
     for (const trade of publicExecution.agg_trades) {
       if (remaining <= 0 || next.processedPublicTradeIds.includes(trade.trade_id)) {
+        continue;
+      }
+      const tradeQuantity = parseDecimal(trade.quantity);
+      const consumedQuantity = consumedPublicTradeQuantities.get(trade.trade_id) ?? 0;
+      const availableTradeQuantity = Math.max(0, tradeQuantity - consumedQuantity);
+      if (availableTradeQuantity <= 0) {
         continue;
       }
       if (!tradeCanFillOrderAfterCreation(trade.trade_time, order.created_at)) {
@@ -284,8 +297,12 @@ function fillOpenOrders(
       if (!canFill) {
         continue;
       }
-      const fillQuantity = Math.min(remaining, parseDecimal(trade.quantity));
-      next.processedPublicTradeIds.push(trade.trade_id);
+      const fillQuantity = Math.min(remaining, availableTradeQuantity);
+      if (fillQuantity <= 0) {
+        continue;
+      }
+      consumedPublicTradeQuantities.set(trade.trade_id, consumedQuantity + fillQuantity);
+      consumedPublicTradeIds.add(trade.trade_id);
       next = applyFill(next, order, {
         price: tradePrice,
         quantity: fillQuantity,
@@ -306,6 +323,11 @@ function fillOpenOrders(
       updated_at: observedAt
     });
   }
+  for (const tradeId of consumedPublicTradeIds) {
+    if (!next.processedPublicTradeIds.includes(tradeId)) {
+      next.processedPublicTradeIds.push(tradeId);
+    }
+  }
   next.openOrders = updatedOrders;
   return next;
 }
@@ -319,18 +341,23 @@ function tradeCanFillOrderAfterCreation(tradeTime: string, orderCreatedAt: strin
   return tradeEpochMs >= orderEpochMs;
 }
 
-function updatedFilledOrder(
+function updatedOrderAfterFill(
   order: PaperTradingOrderSummary,
   fillPrice: number,
   fillQuantity: number,
   observedAt: string
 ): PaperTradingOrderSummary {
+  const previousCumulative = parseDecimal(order.cumulative_filled_quantity);
+  const previousRemaining = parseDecimal(order.remaining_quantity);
+  const cumulative = previousCumulative + fillQuantity;
+  const remaining = Math.max(0, previousRemaining - fillQuantity);
+  const previousAverageNotional = parseDecimal(order.average_fill_price) * previousCumulative;
   return {
     ...order,
-    status: "filled",
-    cumulative_filled_quantity: formatDecimal(parseDecimal(order.cumulative_filled_quantity) + fillQuantity),
-    remaining_quantity: "0",
-    average_fill_price: formatDecimal(fillPrice),
+    status: remaining <= 1e-12 ? "filled" : "partially_filled",
+    cumulative_filled_quantity: formatDecimal(cumulative),
+    remaining_quantity: formatDecimal(remaining),
+    average_fill_price: formatDecimal((previousAverageNotional + fillPrice * fillQuantity) / cumulative),
     updated_at: observedAt
   };
 }
@@ -390,7 +417,14 @@ function applyPositionFill(input: {
 }): { positionQuantity: number; averageEntryPrice?: number; realizedPnlDelta: number } {
   const existing = input.positionQuantity;
   const fill = input.signedFillQuantity;
-  if (Math.abs(existing) <= 1e-12 || Math.sign(existing) === Math.sign(fill)) {
+  if (Math.abs(existing) <= 1e-12) {
+    return {
+      positionQuantity: fill,
+      averageEntryPrice: input.fillPrice,
+      realizedPnlDelta: 0
+    };
+  }
+  if (Math.sign(existing) === Math.sign(fill)) {
     const nextQuantity = existing + fill;
     const currentNotional = Math.abs(existing) * (input.averageEntryPrice ?? input.fillPrice);
     const fillNotional = Math.abs(fill) * input.fillPrice;

@@ -218,6 +218,77 @@ describe("PaperTradingEngine", () => {
     });
   });
 
+  it("caps market order fills to the quoted public book quantity", () => {
+    const partial = applyPaperTradingCheckpoint({
+      previous: initialPaperTradingEngineState(),
+      marketPrice: 60_000,
+      observedAt: "2026-05-16T00:00:03.000Z",
+      publicExecutionSnapshot: publicExecutionSnapshot({
+        askPrice: "60001",
+        askQuantity: "0.0004",
+        bidPrice: "59999",
+        trades: []
+      }),
+      events: [orderRequestEvent({
+        eventId: "event-market-buy-larger-than-book",
+        orderType: "market",
+        quantity: "0.001"
+      })]
+    });
+
+    expect(partial.account.position).toMatchObject({
+      side: "long",
+      quantity: "0.0004",
+      average_entry_price: "60001"
+    });
+    expect(partial.openOrders).toMatchObject([{
+      status: "partially_filled",
+      cumulative_filled_quantity: "0.0004",
+      remaining_quantity: "0.0006"
+    }]);
+    expect(partial.latestFill).toMatchObject({
+      fill_status: "partially_filled",
+      fill_quantity: "0.0004",
+      fill_price: "60001"
+    });
+  });
+
+  it("shares residual public aggTrade quantity across multiple matching limit orders in one checkpoint", () => {
+    const filled = applyPaperTradingCheckpoint({
+      previous: initialPaperTradingEngineState(),
+      marketPrice: 60_000,
+      observedAt: "2026-05-16T00:00:03.000Z",
+      publicExecutionSnapshot: publicExecutionSnapshot({
+        trades: [{
+          trade_id: "agg-shared-liquidity",
+          price: "60000",
+          quantity: "0.002",
+          trade_time: "2026-05-16T00:00:03.500Z"
+        }]
+      }),
+      events: [
+        orderRequestEvent({
+          eventId: "event-shared-limit-a",
+          quantity: "0.001",
+          limitPrice: "60000"
+        }),
+        orderRequestEvent({
+          eventId: "event-shared-limit-b",
+          quantity: "0.001",
+          limitPrice: "60000"
+        })
+      ]
+    });
+
+    expect(filled.openOrders).toEqual([]);
+    expect(filled.account.position).toMatchObject({
+      side: "long",
+      quantity: "0.002",
+      average_entry_price: "60000"
+    });
+    expect(filled.processedPublicTradeIds).toEqual(["agg-shared-liquidity"]);
+  });
+
   it("restores short position sign when marking an existing paper position", () => {
     const short = applyPaperTradingCheckpoint({
       previous: initialPaperTradingEngineState(),
@@ -317,7 +388,9 @@ function orderRequestEvent(input: {
 function publicExecutionSnapshot(input: {
   trades: PaperTradingPublicExecutionSnapshotSummary["agg_trades"];
   askPrice?: string;
+  askQuantity?: string;
   bidPrice?: string;
+  bidQuantity?: string;
 }): PaperTradingPublicExecutionSnapshotSummary {
   return {
     symbol: "BTCUSDT",
@@ -326,9 +399,9 @@ function publicExecutionSnapshot(input: {
     stream_marker: "test-public-execution",
     book_ticker: {
       bid_price: input.bidPrice ?? "59999",
-      bid_quantity: "1.000",
+      bid_quantity: input.bidQuantity ?? "1.000",
       ask_price: input.askPrice ?? "60001",
-      ask_quantity: "1.000",
+      ask_quantity: input.askQuantity ?? "1.000",
       event_time: "2026-05-16T00:00:02.000Z"
     },
     agg_trades: input.trades,
