@@ -16,6 +16,7 @@ Recover -> Context -> Shape -> Execute -> Evaluate -> Promote -> Persist -> Clea
 | Execute | `auto-coding` | one bounded code, documentation, or config change must be made and verified |
 | Evaluate | `auto-qa` | a frontier needs scenario, regression, edge-case, or reader acceptance pressure |
 | Evaluate | `ci-recovery` | local checks or remote CI fail and need root-cause routing |
+| Promote | `pr-ci-review-loop` | a PR must be published, watched through CI and review comments, fixed in bounded loops, and merged when landing authority is explicit |
 | Promote | `auto-promotion-protocol` | a frontier, branch, release, or PR needs a landing/readiness decision |
 | Persist | `llm-wiki` | durable source/project-document/project-memory writeback is needed |
 | Persist | `linear-graphql` | the `linear` skill has selected a Linear operation that should execute through repo-local GraphQL |
@@ -60,6 +61,8 @@ This is the registry-level Skill-First Gate. `superpowers:using-superpowers` map
 
 When a repo has a project state document, `auto-project` uses it after branch status. Repo product
 docs own product truth. Repo architecture docs own design truth. Skills own workflow, not truth.
+Use `pr-ci-review-loop` when the current owner has explicit PR landing authority and must keep
+checking current-head CI, CodeQL, review comments, bounded fixes, repeat pushes, and final merge.
 
 ## Skill Quality Standard
 
