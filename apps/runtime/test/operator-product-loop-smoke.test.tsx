@@ -28,8 +28,9 @@ afterEach(async () => {
 
 describe("operator product loop smoke", () => {
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
+    const store = new LocalStore(tmpDir);
     const server = await buildServer({
-      store: new LocalStore(tmpDir),
+      store,
       marketDataPort: fakeGatewayMarketDataPort(),
       paperTradingEvaluationIntervalMs: 60_000
     });
@@ -161,6 +162,11 @@ describe("operator product loop smoke", () => {
         ledger_chain_complete: true,
         authority_status: "not_live"
       });
+      const evaluationId = observedBody.operator.selected_paper_trading_evaluation.evaluation_id;
+      expect(evaluationId).toEqual(expect.any(String));
+      const observations = await store.listPaperTradingObservations(evaluationId!);
+      const observedCandidate = await store.getCandidateForTradingRun(tradingRunId!);
+      expect(observations.at(-1)?.ledger_ref?.id).toBe(observedCandidate?.ledger?.chains[0]?.chain_id);
 
       const finalStatus = await runOuroborosCli(["--json", "status"], {
         runtimeBaseUrl,

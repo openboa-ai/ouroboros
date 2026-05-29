@@ -722,8 +722,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
     const candidateAfterLedger = await store.getCandidateForTradingRun(input.tradingRunId);
     const latestChain = ledgerOutcome
-      ? candidateAfterLedger?.ledger?.chains.at(-1)
-      : candidateAfterLedger?.ledger?.chains.at(-1);
+      ? candidateAfterLedger?.ledger?.chains.find((chain) =>
+          chain.order_request?.order_request_id === ledgerOutcome.order_request.order_request_id
+        ) ?? candidateAfterLedger?.ledger?.chains[0]
+      : candidateAfterLedger?.ledger?.chains[0];
     const hasLedger = Boolean(ledgerOutcome ?? (!input.appendLedger && latestChain));
     const scoreDelta = hasLedger
       ? scorePaperLedgerChain({
