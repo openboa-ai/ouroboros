@@ -102,3 +102,11 @@ The Gateway market data adapter may cache public exchangeInfo for one hour, serv
 premium/mark price for five seconds, and one-minute klines for thirty seconds. It should share
 in-flight reads for the same key so continuous `PaperTradingEvaluation` observations do not fan out
 duplicate public reads.
+
+## Validation And Security Gates
+
+`npm run check:repo-guards` is the local parity gate for repository policy. It runs docs,
+architecture, naming, tracked env-file, full git secret scanning, GitHub workflow pin/permission,
+npm install-script allowlist, and whitespace checks. Pull-request CI also runs Gitleaks, CodeQL,
+and Dependency Review; Dependency Review blocks moderate, high, and critical dependency
+vulnerabilities before merge.

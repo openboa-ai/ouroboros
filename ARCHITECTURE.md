@@ -143,5 +143,6 @@ boundary.
 
 - Architecture pattern and layer guardrails: `npm run check:architecture`
 - Naming surface changes: `npm run check:naming`
-- Documentation and agent-policy changes: `bash scripts/check-docs.sh`, `bash scripts/check-secrets.sh`, `git diff --check`
+- Repository policy, documentation, workflow, secret, install-script, and whitespace changes: `npm run check:repo-guards`
+- Security CI: Gitleaks, CodeQL, and Dependency Review; Dependency Review blocks moderate, high, and critical dependency vulnerabilities
 - Runtime or package changes: add the relevant tests, then run `npm test` and `npm run typecheck`

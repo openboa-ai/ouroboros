@@ -163,13 +163,13 @@ future repo issue explicitly enables that authority.
 Before a PR is ready:
 
 ```bash
-bash scripts/check-docs.sh
-npm run check:architecture
-npm run check:naming
-bash scripts/check-env-files.sh --tracked
-bash scripts/check-secrets.sh
-git diff --check
+npm run check:repo-guards
 ```
+
+`check:repo-guards` runs docs, architecture, naming, tracked env-file, full git secret scanning,
+GitHub workflow pin/permission policy, npm install-script allowlist, and whitespace checks. CI also
+runs Gitleaks, CodeQL, and Dependency Review; Dependency Review blocks moderate, high, and critical
+dependency vulnerabilities on pull requests.
 
 For implementation changes, also run the relevant tests plus:
 
