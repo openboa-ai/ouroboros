@@ -755,11 +755,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ledgerOutcome = decisionOutcome.ledgerOutcome;
       decision = decisionOutcome.decision;
       engineEventsThisObservation = decisionOutcome.engineEvents;
-      const needsExecutionSnapshot = decisionOutcome.engineEvents.some((event) =>
-        event.event_kind === "order_request" && event.gateway_outcome === "dry_run_only"
-      ) ||
-        currentEngineState.openOrders.length > 0;
-      if (needsExecutionSnapshot) {
+      try {
+        engineResult = applyPaperTradingCheckpoint({
+          previous: previousEngineState,
+          marketPrice: market.price,
+          observedAt: market.observed_at,
+          events: decisionOutcome.engineEvents
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "public_execution_stream_unavailable") {
+          throw error;
+        }
         try {
           publicExecutionSnapshot = await input.gatewayRuntimeBinding.marketData
             .readPublicExecutionSnapshot({ observedAt: market.observed_at });
@@ -797,14 +803,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
           return { evaluation: failedEvaluation, observation: failedObservation };
         }
+        engineResult = applyPaperTradingCheckpoint({
+          previous: previousEngineState,
+          marketPrice: market.price,
+          observedAt: market.observed_at,
+          publicExecutionSnapshot,
+          events: decisionOutcome.engineEvents
+        });
       }
-      engineResult = applyPaperTradingCheckpoint({
-        previous: previousEngineState,
-        marketPrice: market.price,
-        observedAt: market.observed_at,
-        publicExecutionSnapshot,
-        events: decisionOutcome.engineEvents
-      });
       if (!decision) {
         decision = paperNoActionDecision(market.observed_at, "no_new_trading_system_event");
       }
