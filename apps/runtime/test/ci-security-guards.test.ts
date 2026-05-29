@@ -105,6 +105,42 @@ describe("CI security guard scripts", () => {
     }
   });
 
+  it("rejects unexpected job-level write permissions", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "ouroboros-workflow-guard-"));
+    try {
+      await writeWorkflow(
+        tempDir,
+        "ci.yml",
+        `name: ci
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps: []
+`
+      );
+      await writePins(tempDir, []);
+
+      const result = await runNode([
+        "scripts/check-github-workflows.mjs",
+        "--workflows-dir",
+        tempDir,
+        "--pins-file",
+        path.join(tempDir, "action-pins.json")
+      ]);
+
+      expect(result.code, scriptOutput(result)).toBe(1);
+      expect(result.stderr).toContain("ci.yml: job test has unexpected write permission contents: write");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects action SHAs missing from the manifest", async () => {
     const tempDir = await mkdtemp(path.join(tmpdir(), "ouroboros-workflow-guard-"));
     const checkoutSha = "de0fac2e4500dabe0009e67214ff5f5447ce83dd";

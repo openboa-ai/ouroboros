@@ -62,6 +62,7 @@ jobs:
 
   node-quality:
     name: node-quality
+    needs: repository-guards
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

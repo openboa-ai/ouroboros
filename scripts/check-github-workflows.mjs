@@ -77,6 +77,7 @@ function checkWorkflow(workflow, workflowName, relativePath, pins, problems) {
   }
 
   checkPermissions(workflow.permissions, workflowName, relativePath, problems);
+  checkJobPermissions(workflow.jobs, workflowName, relativePath, problems);
 
   for (const uses of collectUses(workflow)) {
     if (uses.startsWith("./")) {
@@ -108,11 +109,47 @@ function hasPullRequestTarget(triggers) {
 }
 
 function checkPermissions(permissions, workflowName, relativePath, problems) {
+  if (permissions === "read-all") {
+    return;
+  }
+  if (permissions === "write-all") {
+    problems.push(`${workflowName}: unexpected write permission write-all`);
+    return;
+  }
   if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) {
     problems.push(`${workflowName}: missing top-level permissions`);
     return;
   }
 
+  checkPermissionWrites(permissions, workflowName, relativePath, problems, "");
+}
+
+function checkJobPermissions(jobs, workflowName, relativePath, problems) {
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+    return;
+  }
+
+  for (const [jobName, job] of Object.entries(jobs)) {
+    if (!job || typeof job !== "object" || Array.isArray(job) || !Object.hasOwn(job, "permissions")) {
+      continue;
+    }
+    const permissions = job.permissions;
+    if (permissions === "read-all") {
+      continue;
+    }
+    if (permissions === "write-all") {
+      problems.push(`${workflowName}: job ${jobName} has unexpected write permission write-all`);
+      continue;
+    }
+    if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) {
+      problems.push(`${workflowName}: job ${jobName} has invalid permissions`);
+      continue;
+    }
+    checkPermissionWrites(permissions, workflowName, relativePath, problems, `job ${jobName} has `);
+  }
+}
+
+function checkPermissionWrites(permissions, workflowName, relativePath, problems, messagePrefix) {
   for (const [scope, value] of Object.entries(permissions)) {
     if (value !== "write") {
       continue;
@@ -120,7 +157,7 @@ function checkPermissions(permissions, workflowName, relativePath, problems) {
     if (scope === "security-events" && relativePath === ".github/workflows/codeql.yml") {
       continue;
     }
-    problems.push(`${workflowName}: unexpected write permission ${scope}: write`);
+    problems.push(`${workflowName}: ${messagePrefix}unexpected write permission ${scope}: write`);
   }
 }
 
