@@ -39,8 +39,9 @@ implementation; it keeps one branch moving through validation, review, bounded f
 
 ## Review Freshness Gate
 
-- Read `headRefOid` with `gh pr view --json headRefOid,reviews,comments`.
-- Read inline comments with `gh api repos/{owner}/{repo}/pulls/{pr}/comments --paginate`.
+- Read `headRefOid` and PR number with `gh pr view --json number,headRefOid,reviews,comments`.
+- Read inline comments by interpolating the actual PR number:
+  `gh api repos/{owner}/{repo}/pulls/<pr-number>/comments --paginate`.
 - Treat review as current only when the review commit or comment `commit_id` matches `headRefOid`.
 - Treat "no current-head review yet" as pending, not clean. Keep polling or reroute to
   `auto-promotion-protocol`; do not merge merely because CI is green and comments are momentarily
