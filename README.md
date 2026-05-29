@@ -39,10 +39,13 @@ selection. Failures and losing candidates remain useful arena memory unless they
 malformed orders, bypass provider boundaries, fail risk validation, or attempt private/live
 behavior.
 
-Each paper observation is a fresh runtime decision. The Gateway reads a public market snapshot,
-passes that observation input to the selected `TradingSystem`, accepts either `OrderRequest` or
-`hold`, and only then records Gateway/Ledger evidence. Reusing old sandbox output is not paper
-trading evaluation.
+Paper trading runs the selected `TradingSystem`; it does not ask the Gateway to invent a decision
+on every snapshot. The `TradingSystem` owns when and how often it evaluates market state, news,
+tools, internal agents, and risk. The Gateway owns public market data access, cache, validation,
+fake paper execution, and Ledger evidence. A paper observation is a checkpoint/readback: record the
+latest market snapshot, consume any newly emitted `OrderRequest`s through the Gateway, update paper
+score and Ledger evidence, or record a valid no-order checkpoint when the system emitted nothing.
+Replaying old sandbox output as a new decision is not paper trading evaluation.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.
