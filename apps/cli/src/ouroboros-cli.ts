@@ -401,6 +401,10 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
       : undefined,
+    `Market data: ${paper.market_data_source}${market?.source_priority ? ` / ${market.source_priority}` : ""}${market?.rest_fallback_used ? " / REST fallback" : ""}${market?.ws_connected === false ? " / WS disconnected" : ""}`,
+    paper.latest_public_execution_snapshot?.order_book
+      ? `Order book: ${paper.latest_public_execution_snapshot.order_book.sync_status} / update ${paper.latest_public_execution_snapshot.order_book.last_update_id ?? "unknown"}${paper.latest_public_execution_snapshot.order_book.gap_detected ? " / gap recovered" : ""}`
+      : undefined,
     decision ? `Paper decision: ${formatPaperDecision(decision)}` : undefined,
     paper.paper_account_snapshot
       ? `Paper account: equity ${formatUsdt(Number(paper.paper_account_snapshot.equity_usdt))} / ${formatPaperPosition(paper.paper_account_snapshot.position)} / open orders ${paper.paper_account_snapshot.open_order_count}`

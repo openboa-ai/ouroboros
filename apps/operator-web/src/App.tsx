@@ -1137,6 +1137,7 @@ export function CandidateArenaPanel({
     ? selectedLedger
     : undefined;
   const selectedPaperMarketSnapshot = selectedPaperTradingEvaluation?.latest_market_snapshot;
+  const selectedPaperExecutionSnapshot = selectedPaperTradingEvaluation?.latest_public_execution_snapshot;
   const selectedPaperDecision = selectedPaperTradingEvaluation?.latest_decision;
   const selectedPaperAccount = selectedPaperTradingEvaluation?.paper_account_snapshot;
   const selectedPaperFill = selectedPaperTradingEvaluation?.latest_fill;
@@ -1318,6 +1319,18 @@ export function CandidateArenaPanel({
                 label="Market snapshot"
                 value={selectedPaperMarketSnapshot
                   ? `${selectedPaperMarketSnapshot.symbol} ${formatUsdt(selectedPaperMarketSnapshot.price)} @ ${formatCompactDateTime(selectedPaperMarketSnapshot.observed_at)}`
+                  : "not observed"}
+              />
+              <Field
+                label="Market data"
+                value={selectedPaperTradingEvaluation
+                  ? `${selectedPaperTradingEvaluation.market_data_source}${selectedPaperMarketSnapshot?.source_priority ? ` / ${selectedPaperMarketSnapshot.source_priority}` : ""}${selectedPaperMarketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}`
+                  : "not observed"}
+              />
+              <Field
+                label="Order book"
+                value={selectedPaperExecutionSnapshot?.order_book
+                  ? `${selectedPaperExecutionSnapshot.order_book.sync_status} / update ${selectedPaperExecutionSnapshot.order_book.last_update_id ?? "unknown"}${selectedPaperExecutionSnapshot.order_book.gap_detected ? " / gap recovered" : ""}`
                   : "not observed"}
               />
               <Field

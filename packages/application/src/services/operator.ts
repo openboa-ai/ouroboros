@@ -635,7 +635,9 @@ function paperTradingEvaluationReadModel(input: {
     latest_gateway_outcome: input.latestGatewayOutcome,
     latest_execution_status: input.latestExecutionStatus,
     latest_failure_reason: input.latestFailureReason,
-    market_data_source: "binance_production_public_rest",
+    market_data_source: input.latestMarketSnapshot?.source_kind ??
+      input.latestPublicExecutionSnapshot?.source_kind ??
+      "binance_production_public_rest",
     account_provider: "fake_paper_account",
     executor: "fake_paper_order_executor",
     score_source: "paper_trading_engine",

@@ -33,7 +33,14 @@ export function marketSnapshotSummary(
     volatility: market.volatility,
     expected_direction: market.expected_direction,
     observed_at: market.observed_at,
-    source_kind: "binance_production_public_rest",
+    source_kind: market.source_kind ?? "binance_production_public_rest",
+    source_priority: market.source_priority,
+    freshness: market.freshness,
+    ws_connected: market.ws_connected,
+    rest_fallback_used: market.rest_fallback_used,
+    gap_detected: market.gap_detected,
+    last_update_id: market.last_update_id,
+    stream_marker: market.stream_marker,
     authority_status: "read_only"
   };
 }

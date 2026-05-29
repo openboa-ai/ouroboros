@@ -33,6 +33,7 @@
     "linear:graphql": "node .agents/skills/linear-graphql/scripts/linear-graphql.mjs",
     "linear:workpad": "node .agents/skills/linear-graphql/scripts/linear-workpad.mjs",
     "hooks:install": "bash scripts/install-git-hooks.sh",
+    "check:repo-guards": "bash scripts/check-docs.sh && npm run check:architecture && npm run check:naming && bash scripts/check-env-files.sh --tracked && bash scripts/check-secrets.sh && git diff --check",
     "check:architecture": "node scripts/check-architecture-governance.mjs",
     "check:naming": "node scripts/check-naming-surface.mjs",
     "test": "vitest run",

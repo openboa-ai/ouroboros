@@ -1,4 +1,5 @@
 import type {
+  PaperTradingMarketDataSourceKind,
   PaperTradingPublicExecutionSnapshotSummary,
   PublicMarketLivenessSurfaceRecord
 } from "@ouroboros/domain";
@@ -13,7 +14,7 @@ export interface PublicMarketDataClient {
 
 export interface GatewayMarketDataPort {
   provider_kind: "binance_production_public_market_data";
-  source_kind: "binance_production_public_rest";
+  source_kind: PaperTradingMarketDataSourceKind;
   rest_base_url: string;
   required_endpoints: readonly string[];
   authority_status: "read_only";

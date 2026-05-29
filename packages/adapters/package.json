@@ -20,6 +20,8 @@
   "dependencies": {
     "@binance/derivatives-trading-usds-futures": "^29.0.0",
     "@ouroboros/application": "0.0.0",
-    "@ouroboros/domain": "0.0.0"
+    "@ouroboros/domain": "0.0.0",
+    "@types/ws": "^8.18.1",
+    "ws": "^8.21.0"
   }
 }

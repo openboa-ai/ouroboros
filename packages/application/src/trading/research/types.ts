@@ -1,3 +1,9 @@
+import type {
+  PaperTradingMarketDataFreshness,
+  PaperTradingMarketDataSourceKind,
+  PaperTradingMarketDataSourcePriority
+} from "@ouroboros/domain";
+
 export type TradingResearchAgentProvider = "codex" | "claude_code" | "fixture";
 
 export type TradingResearchMode = "replay";
@@ -62,6 +68,14 @@ export interface MarketSnapshot {
   volatility: number;
   expected_direction: "long" | "short" | "flat";
   observed_at: string;
+  source_kind?: PaperTradingMarketDataSourceKind;
+  source_priority?: PaperTradingMarketDataSourcePriority;
+  freshness?: PaperTradingMarketDataFreshness;
+  ws_connected?: boolean;
+  rest_fallback_used?: boolean;
+  gap_detected?: boolean;
+  last_update_id?: string;
+  stream_marker?: string;
 }
 
 export interface AccountState {

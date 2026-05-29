@@ -38,7 +38,8 @@ same `OperatorReadModel`.
   explicit `hold` or no new decision output are valid no-order checkpoints.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
-  latest paper decision, accumulated score, and `ledger_chain_complete`.
+  latest public execution evidence, market data mode, order book sync state, latest paper decision,
+  accumulated score, and `ledger_chain_complete`.
 - Live/private Binance authority stays disabled throughout the loop.
 
 ## Manual Check

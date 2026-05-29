@@ -80,12 +80,12 @@ before implementing concrete behavior.
 ## Market Data Boundary
 
 Binance public market data is a Gateway concern. Application code depends on `MarketDataPort` /
-`GatewayMarketDataPort`; concrete Binance REST/SDK/fetch behavior belongs under
-`packages/adapters/src/binance/*`. A `TradingSystem` must never import Binance, read private account
-state, sign requests, open listenKey/user-data streams, mutate leverage/margin, or submit live
-orders. It owns decision cadence and emits bounded `OrderRequest`s when it chooses to trade;
-Gateway validation, market snapshot cache, fake paper execution, and Ledger recording produce
-evidence.
+`GatewayMarketDataPort`; concrete Binance REST, WebSocket, SDK, fetch, cache, and local order book
+behavior belongs under `packages/adapters/src/binance/*`. A `TradingSystem` must never import
+Binance, read private account state, sign requests, open listenKey/user-data streams, mutate
+leverage/margin, or submit live orders. It owns decision cadence and emits bounded `OrderRequest`s
+when it chooses to trade; Gateway validation, market snapshot cache, fake paper execution, and
+Ledger recording produce evidence.
 
 Paper observations are checkpoint/readback events over the running TradingSystem. They may record
 the latest market snapshot, active runner state, newly emitted orders, no-order continuity, score,
@@ -94,11 +94,17 @@ because a public market snapshot was refreshed.
 
 `PaperTradingEngine` is the stateful fake exchange/account boundary. It owns wallet/equity,
 available balance, margin, position, average entry, realized/unrealized PnL, open/partial/filled/
-canceled orders, fees, slippage, funding, and order fill state. Market orders fill from public
-`bookTicker`; limit orders fill only from public `aggTrade` evidence. Stream or public execution
-snapshot failure records a failed observation and leaves the TradingSystem event retryable.
+canceled orders, fees, slippage, funding, and order fill state. Market orders fill from routed
+Binance `/public` `bookTicker`; limit orders fill only from routed `/market` `aggTrade` evidence.
+Routed WebSocket is primary for live public evidence; REST is the cold-start, snapshot, backfill,
+and gap-recovery anchor. Public execution evidence failure records a failed observation and leaves
+the TradingSystem event retryable.
 
 The Gateway market data adapter may cache public exchangeInfo for one hour, server time and
 premium/mark price for five seconds, and one-minute klines for thirty seconds. It should share
 in-flight reads for the same key so continuous `PaperTradingEvaluation` observations do not fan out
-duplicate public reads.
+duplicate public reads. Local order book sync follows Binance's `depth` rule: buffer WebSocket
+updates while loading the REST snapshot, drop events with `u < lastUpdateId`, apply the first event
+where `U <= lastUpdateId <= u`, then require every next event's `pu` to equal the previous `u`.
+When that continuity breaks, mark a gap, reset from REST snapshot, and keep unsupported fills
+retryable.
