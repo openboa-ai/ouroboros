@@ -10,6 +10,10 @@ import type {
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import { PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { MarketSnapshot } from "@ouroboros/application/trading/research/types";
+import {
+  BinanceMarketDataHub,
+  type BinanceMarketDataHubOptions
+} from "./market-data-hub";
 
 export interface BinanceRestResponse<T> {
   data(): Promise<T>;
@@ -38,6 +42,7 @@ export interface BinancePublicMarketSdkAdapterOptions {
   restBaseUrl: string;
   client?: BinancePublicMarketDataClient;
   cache?: BinancePublicMarketCacheOptions | false;
+  webSocket?: BinanceMarketDataHub | (Omit<BinanceMarketDataHubOptions, "restBaseUrl"> & { enabled?: boolean }) | false;
 }
 
 export interface BinancePublicMarketCacheOptions {
@@ -59,11 +64,12 @@ export const DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS = {
 
 export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
   readonly provider_kind = "binance_production_public_market_data" as const;
-  readonly source_kind = "binance_production_public_rest" as const;
+  readonly source_kind = "binance_production_public_hybrid" as const;
   readonly required_endpoints = PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS;
   readonly authority_status = "read_only" as const;
   private readonly client: BinancePublicMarketDataClient;
   private readonly publicExecutionCache: PublicExecutionSnapshotCache | undefined;
+  private readonly marketDataHub: BinanceMarketDataHub | undefined;
   readonly rest_base_url: string;
 
   constructor(options: BinancePublicMarketSdkAdapterOptions) {
@@ -79,6 +85,10 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
             DEFAULT_BINANCE_PUBLIC_MARKET_CACHE_TTLS.publicExecutionTtlMs,
           now: options.cache?.now
         });
+    this.marketDataHub = createOptionalMarketDataHub({
+      restBaseUrl: options.restBaseUrl,
+      webSocket: options.webSocket
+    });
   }
 
   readBtcUsdtPublicMarketLivenessSurface(
@@ -95,16 +105,22 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
   }
 
   readMarketSnapshot(input: { observedAt?: string } = {}): Promise<MarketSnapshot> {
-    return readBinanceBtcUsdtMarketSnapshot({
+    const restSnapshot = () => readBinanceBtcUsdtMarketSnapshot({
       client: this.client,
       observedAt: input.observedAt
     });
+    return this.marketDataHub
+      ? this.marketDataHub.readMarketSnapshot({
+          observedAt: input.observedAt,
+          restSnapshot
+        })
+      : restSnapshot();
   }
 
   readPublicExecutionSnapshot(
     input: { observedAt?: string } = {}
   ): Promise<PaperTradingPublicExecutionSnapshotSummary> {
-    return this.publicExecutionCache
+    const restExecutionSnapshot = () => this.publicExecutionCache
       ? this.publicExecutionCache.read(
           `BTCUSDT:${input.observedAt ?? "latest"}`,
           () => readBinanceBtcUsdtPublicExecutionSnapshot({
@@ -116,7 +132,33 @@ export class BinancePublicMarketSdkAdapter implements GatewayMarketDataPort {
           restBaseUrl: this.rest_base_url,
           observedAt: input.observedAt
         });
+    return this.marketDataHub
+      ? this.marketDataHub.readPublicExecutionSnapshot({
+          observedAt: input.observedAt,
+          restExecutionSnapshot
+        })
+      : restExecutionSnapshot();
   }
+}
+
+function createOptionalMarketDataHub(input: {
+  restBaseUrl: string;
+  webSocket?: BinancePublicMarketSdkAdapterOptions["webSocket"];
+}): BinanceMarketDataHub | undefined {
+  const webSocket = input.webSocket;
+  if (webSocket === undefined || webSocket === false) {
+    return undefined;
+  }
+  if (webSocket instanceof BinanceMarketDataHub) {
+    return webSocket;
+  }
+  if (webSocket.enabled === false) {
+    return undefined;
+  }
+  return new BinanceMarketDataHub({
+    ...webSocket,
+    restBaseUrl: input.restBaseUrl
+  });
 }
 
 interface BinanceExchangeInformationPayload {
@@ -470,7 +512,12 @@ export async function readBinanceBtcUsdtPublicExecutionSnapshot({
   return {
     symbol: "BTCUSDT",
     observed_at: observedAt,
-    source_kind: "binance_production_public_stream",
+    source_kind: "binance_production_public_rest",
+    source_priority: "rest_fallback",
+    freshness: "fresh",
+    ws_connected: false,
+    rest_fallback_used: true,
+    gap_detected: false,
     stream_marker: `binance-public-execution-${Date.parse(observedAt)}`,
     book_ticker: {
       bid_price: requiredString(bookTicker.bidPrice, "bookTicker bid price"),

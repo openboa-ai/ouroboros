@@ -193,6 +193,8 @@ export function OperatorTuiScreen(props: {
           {`Paper score: ${paperEvaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${paperEvaluation.observation_count}`}
         </Text>
         <Text>{`Market: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
+        <Text>{`Market data: ${paperEvaluation.market_data_source}${marketSnapshot?.source_priority ? ` / ${marketSnapshot.source_priority}` : ""}${marketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}`}</Text>
+        <Text>{`Order book: ${formatOrderBook(paperEvaluation)}`}</Text>
         <Text>{`Decision: ${formatPaperDecision(paperDecision)}`}</Text>
         <Text>{`Account: ${formatPaperAccount(paperEvaluation)}`}</Text>
         <Text>{`Fill: ${formatPaperFill(paperEvaluation)}`}</Text>
@@ -256,6 +258,16 @@ function formatPaperFill(
     return "none";
   }
   return `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`;
+}
+
+function formatOrderBook(
+  paperEvaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  const orderBook = paperEvaluation.latest_public_execution_snapshot?.order_book;
+  if (!orderBook) {
+    return "not observed";
+  }
+  return `${orderBook.sync_status} / update ${orderBook.last_update_id ?? "unknown"}${orderBook.gap_detected ? " / gap recovered" : ""}`;
 }
 
 export function operatorTuiActionForInput(

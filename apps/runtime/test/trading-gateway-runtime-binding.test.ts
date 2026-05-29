@@ -25,7 +25,7 @@ describe("Gateway runtime binding", () => {
       environment: "paper",
       status: "enabled",
       marketData: {
-        source_kind: "binance_production_public_rest",
+        source_kind: "binance_production_public_hybrid",
         rest_base_url: BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL,
         required_endpoints: [
           "/fapi/v1/time",
@@ -33,7 +33,10 @@ describe("Gateway runtime binding", () => {
           "/fapi/v1/premiumIndex?symbol=BTCUSDT",
           "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30",
           "/fapi/v1/ticker/bookTicker?symbol=BTCUSDT",
-          "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100"
+          "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100",
+          "/fapi/v1/depth?symbol=BTCUSDT&limit=1000",
+          "wss://fstream.binance.com/public/stream?streams=btcusdt@bookTicker/btcusdt@depth@100ms",
+          "wss://fstream.binance.com/market/stream?streams=btcusdt@aggTrade/btcusdt@markPrice@1s/btcusdt@kline_1m"
         ],
         authority_status: "read_only"
       },

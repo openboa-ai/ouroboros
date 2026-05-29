@@ -227,7 +227,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
   const gatewayMarketDataPort = options.marketDataPort ?? new BinancePublicMarketSdkAdapter({
     restBaseUrl: tradingGatewayEnvironment.runtime_bindings.paper.rest_base_url,
-    client: options.binancePublicMarketClient
+    client: options.binancePublicMarketClient,
+    webSocket: { autoConnect: false }
   });
   const paperTradingEvaluationRunner = new PaperTradingEvaluationRunner();
   const paperTradingEvaluationIntervalMs = options.paperTradingEvaluationIntervalMs ?? 60_000;

@@ -101,6 +101,8 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
     expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
+    expect(result.stdout).toContain("Market data: binance_production_public_websocket");
+    expect(result.stdout).toContain("Order book: synced / update 11");
     expect(result.stdout).toContain("Paper decision: order_request buy limit 0.001 @ 65000 (trading_system_order_request)");
     expect(result.stdout).toContain("Paper account: equity 10004.95 USDT / long 0.001 BTCUSDT @ 60000 / open orders 0");
     expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000");
@@ -494,7 +496,34 @@ function fixtureOperator(
         trade_time: "2026-05-16T00:00:03.500Z",
         source_trade_id: "agg-60000-001"
       },
-      market_data_source: "binance_production_public_rest",
+      latest_public_execution_snapshot: {
+        symbol: "BTCUSDT",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        source_kind: "binance_production_public_websocket",
+        source_priority: "websocket_primary",
+        freshness: "fresh",
+        ws_connected: true,
+        rest_fallback_used: false,
+        gap_detected: false,
+        last_update_id: "11",
+        stream_marker: "binance-ws-aggTrade-991",
+        agg_trades: [],
+        order_book: {
+          symbol: "BTCUSDT",
+          observed_at: "2026-05-16T00:00:03.000Z",
+          source_kind: "binance_production_public_hybrid",
+          sync_status: "synced",
+          last_update_id: "11",
+          top_bid_price: "64999.9",
+          top_bid_quantity: "1.2",
+          top_ask_price: "65000.1",
+          top_ask_quantity: "1.1",
+          gap_detected: false,
+          authority_status: "read_only"
+        },
+        authority_status: "read_only"
+      },
+      market_data_source: "binance_production_public_websocket",
       account_provider: "fake_paper_account",
       executor: "fake_paper_order_executor",
       score_source: "paper_trading_engine",

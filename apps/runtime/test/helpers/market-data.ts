@@ -32,7 +32,7 @@ export function fakeGatewayMarketDataPort(input: {
   let executionSnapshotIndex = 0;
   const port: GatewayMarketDataPort = {
     provider_kind: "binance_production_public_market_data",
-    source_kind: "binance_production_public_rest",
+    source_kind: "binance_production_public_hybrid",
     rest_base_url: "https://fapi.binance.com",
     required_endpoints: [
       "/fapi/v1/time",
@@ -40,7 +40,10 @@ export function fakeGatewayMarketDataPort(input: {
       "/fapi/v1/premiumIndex?symbol=BTCUSDT",
       "/fapi/v1/klines?symbol=BTCUSDT&interval=1m&limit=30",
       "/fapi/v1/ticker/bookTicker?symbol=BTCUSDT",
-      "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100"
+      "/fapi/v1/aggTrades?symbol=BTCUSDT&limit=100",
+      "/fapi/v1/depth?symbol=BTCUSDT&limit=1000",
+      "wss://fstream.binance.com/public/stream?streams=btcusdt@bookTicker/btcusdt@depth@100ms",
+      "wss://fstream.binance.com/market/stream?streams=btcusdt@aggTrade/btcusdt@markPrice@1s/btcusdt@kline_1m"
     ],
     authority_status: "read_only",
     async readMarketSnapshot(request: { observedAt?: string } = {}): Promise<MarketSnapshot> {
@@ -129,6 +132,11 @@ export function fakeGatewayMarketDataPort(input: {
         symbol: "BTCUSDT",
         observed_at: executionSnapshot.observed_at ?? now,
         source_kind: "binance_production_public_stream",
+        source_priority: "websocket_primary",
+        freshness: "fresh",
+        ws_connected: true,
+        rest_fallback_used: false,
+        gap_detected: false,
         stream_marker: `fake-public-execution-${executionSnapshotIndex}`,
         book_ticker: executionSnapshot.book_ticker ?? {
           bid_price: String(price - 1),

@@ -1483,6 +1483,39 @@ export interface TradingProfitLossReadModel {
   net_return_pct: number;
 }
 
+export type PaperTradingMarketDataSourceKind =
+  | "binance_production_public_rest"
+  | "binance_production_public_websocket"
+  | "binance_production_public_hybrid"
+  | "binance_production_public_stream";
+
+export type PaperTradingMarketDataSourcePriority =
+  | "websocket_primary"
+  | "rest_fallback"
+  | "hybrid_recovered";
+
+export type PaperTradingMarketDataFreshness =
+  | "fresh"
+  | "stale"
+  | "recovering"
+  | "unavailable";
+
+export interface PaperTradingOrderBookSummary {
+  symbol: "BTCUSDT";
+  observed_at: string;
+  source_kind: PaperTradingMarketDataSourceKind;
+  sync_status: "not_started" | "buffering" | "synced" | "recovering" | "stale";
+  last_update_id?: string;
+  previous_final_update_id?: string;
+  top_bid_price?: string;
+  top_bid_quantity?: string;
+  top_ask_price?: string;
+  top_ask_quantity?: string;
+  depth_level_count?: number;
+  gap_detected: boolean;
+  authority_status: "read_only";
+}
+
 export interface PaperTradingMarketSnapshotSummary {
   symbol: "BTCUSDT";
   price: number;
@@ -1491,14 +1524,27 @@ export interface PaperTradingMarketSnapshotSummary {
   volatility?: number;
   expected_direction?: "long" | "short" | "flat";
   observed_at: string;
-  source_kind: "binance_production_public_rest";
+  source_kind: PaperTradingMarketDataSourceKind;
+  source_priority?: PaperTradingMarketDataSourcePriority;
+  freshness?: PaperTradingMarketDataFreshness;
+  ws_connected?: boolean;
+  rest_fallback_used?: boolean;
+  gap_detected?: boolean;
+  last_update_id?: string;
+  stream_marker?: string;
   authority_status: "read_only";
 }
 
 export interface PaperTradingPublicExecutionSnapshotSummary {
   symbol: "BTCUSDT";
   observed_at: string;
-  source_kind: "binance_production_public_stream";
+  source_kind: PaperTradingMarketDataSourceKind;
+  source_priority?: PaperTradingMarketDataSourcePriority;
+  freshness?: PaperTradingMarketDataFreshness;
+  ws_connected?: boolean;
+  rest_fallback_used?: boolean;
+  gap_detected?: boolean;
+  last_update_id?: string;
   stream_marker: string;
   book_ticker?: {
     bid_price: string;
@@ -1514,6 +1560,7 @@ export interface PaperTradingPublicExecutionSnapshotSummary {
     trade_time: string;
     is_buyer_maker?: boolean;
   }>;
+  order_book?: PaperTradingOrderBookSummary;
   authority_status: "read_only";
 }
 
@@ -2869,7 +2916,7 @@ export interface PaperTradingEvaluationReadModel {
   latest_gateway_outcome?: string;
   latest_execution_status?: string;
   latest_failure_reason?: string;
-  market_data_source: "binance_production_public_rest";
+  market_data_source: PaperTradingMarketDataSourceKind;
   account_provider: "fake_paper_account";
   executor: "fake_paper_order_executor";
   score_source: "paper_trading_engine";

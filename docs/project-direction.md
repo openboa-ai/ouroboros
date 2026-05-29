@@ -41,17 +41,19 @@ living agent-based systems.
 
 Continuous paper trading is the evaluation authority. Selected candidates run against live public
 market data through the Gateway-owned `MarketDataPort`, fake account, fake executor, and Ledger.
-Binance attaches behind the Gateway market data boundary, not inside a `TradingSystem`. The Gateway
-can cache public exchangeInfo, server time, premium/mark price, and klines, and each observation
-records the market snapshot it used as evidence. Operator surfaces expose the latest market snapshot
+Binance attaches behind the Gateway market data boundary, not inside a `TradingSystem`. WebSocket
+is the primary live public evidence path; REST remains the cold-start snapshot, backfill, recovery,
+and sanity-check anchor. Each observation records the market snapshot, execution evidence, order
+book sync state, and fallback status it used. Operator surfaces expose the latest market data mode
 with the continuous paper score.
 
 The paper engine is a real paper trading engine, not a single dry-run receipt. It keeps fake wallet
 balance, equity, available balance, margin reserved, net BTCUSDT position, average entry price,
 realized/unrealized PnL, open orders, partial fills, canceled orders, fees, slippage, funding, and
-Ledger references. Market fills require public execution evidence (`bookTicker` for market orders,
-`aggTrade` for limit order matching). Mark price can update valuation; it cannot create a fill by
-itself.
+Ledger references. Market fills require public execution evidence (routed `/public` `bookTicker`
+for market orders, routed `/market` `aggTrade` for limit order matching). Local order book state is
+consistency evidence built from REST `depth` snapshot plus routed `/public` WebSocket `depth@100ms`
+`U/u/pu` continuity. Mark price can update valuation; it cannot create a fill by itself.
 
 TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
 events, news or social inputs, tool calls, internal agent loops, or risk gates.

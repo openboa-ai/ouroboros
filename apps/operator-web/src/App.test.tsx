@@ -12,6 +12,7 @@ import type {
   ReplayRunValidationStateReadModel,
   LedgerSourceRecordsReadModel,
   CandidateArenaReadModel,
+  PaperTradingEvaluationReadModel,
   RunControlReadModel,
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -473,6 +474,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Paper runner");
     expect(html).toContain("active / next");
     expect(html).toContain("Market snapshot");
+    expect(html).toContain("Market data");
+    expect(html).toContain("binance_production_public_websocket");
+    expect(html).toContain("Order book");
+    expect(html).toContain("synced / update 11");
     expect(html).toContain("BTCUSDT");
     expect(html).toContain("Paper decision");
     expect(html).toContain("order_request buy limit 0.001 @ 65000");
@@ -3515,13 +3520,40 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
       trade_time: "2026-05-16T00:00:03.500Z",
       source_trade_id: "agg-60000-001"
     },
-    market_data_source: "binance_production_public_rest",
+    latest_public_execution_snapshot: {
+      symbol: "BTCUSDT",
+      observed_at: "2026-05-16T00:00:03.000Z",
+      source_kind: "binance_production_public_websocket",
+      source_priority: "websocket_primary",
+      freshness: "fresh",
+      ws_connected: true,
+      rest_fallback_used: false,
+      gap_detected: false,
+      last_update_id: "11",
+      stream_marker: "binance-ws-aggTrade-991",
+      agg_trades: [],
+      order_book: {
+        symbol: "BTCUSDT",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        source_kind: "binance_production_public_hybrid",
+        sync_status: "synced",
+        last_update_id: "11",
+        top_bid_price: "64999.9",
+        top_bid_quantity: "1.2",
+        top_ask_price: "65000.1",
+        top_ask_quantity: "1.1",
+        gap_detected: false,
+        authority_status: "read_only"
+      },
+      authority_status: "read_only"
+    },
+    market_data_source: "binance_production_public_websocket",
     account_provider: "fake_paper_account",
     executor: "fake_paper_order_executor",
     score_source: "paper_trading_engine",
     authority_status: "not_live",
     ...overrides
-  } as const;
+  } as PaperTradingEvaluationReadModel;
 }
 
 function arenaSelectedCandidate(

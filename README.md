@@ -46,9 +46,11 @@ fake paper execution, and Ledger evidence. A paper observation is a checkpoint/r
 latest market snapshot, consume any newly emitted `OrderRequest`s through the Gateway, update paper
 score and Ledger evidence, or record a valid no-order checkpoint when the system emitted nothing.
 The paper engine owns the fake account, open/partial/filled/canceled orders, fake fills, mark-to-
-market PnL, fees, slippage, funding, and position state. Fills require public execution evidence
-such as Binance USD-M Futures `bookTicker` or `aggTrade` data; they are not invented from a mark
-price alone.
+market PnL, fees, slippage, funding, and position state. Fills require public execution evidence:
+Binance routed WebSocket `/public` `bookTicker` and `/market` `aggTrade` are the primary live
+sources, REST is the snapshot, backfill, and recovery anchor, and local order book state follows
+Binance `/public` `depth` snapshot plus `U/u/pu` continuity rules. Fills are not invented from a
+mark price alone.
 Replaying old sandbox output as a new decision is not paper trading evaluation.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
@@ -153,8 +155,8 @@ point back to repo truth rather than replacing it.
 MLP-01 is paper-only. Paper uses Binance production public market data through the Gateway-owned
 `MarketDataPort` with a fake account, fake executor, and fake Ledger. Binance never attaches
 directly to a `TradingSystem`; the `TradingSystem` emits validated `OrderRequest`s and the Gateway
-owns market data reads, cache, validation, execution routing, and evidence. Live trading, private
-account reads, signed exchange requests,
+owns REST + WebSocket market data reads, cache, order book recovery, validation, execution routing,
+and evidence. Live trading, private account reads, signed exchange requests,
 listenKey/user-data streams, leverage or margin mutation, and live orders remain disabled until a
 future repo issue explicitly enables that authority.
 
