@@ -70,6 +70,7 @@ requireText("docs/project-direction.md", [
   "CandidateArena",
   "parallel TradingSystem candidates",
   "selected candidate continuous paper trading evaluation",
+  "Gateway-owned `MarketDataPort`",
   "Live trading, private account reads"
 ]);
 
@@ -86,11 +87,14 @@ requireText("docs/ouroboros-doctrine.md", [
   "Candidate, Paper Evidence, and Live are separate states",
   "Replay/backtest is a research tool, not final evaluation authority",
   "Continuous paper trading is the evaluation authority",
+  "Gateway `MarketDataPort`",
   "Reference Lineage"
 ]);
 
 requireText("docs/architecture-governance.md", [
   "Domain -> Application -> Adapters -> Controllers -> Interfaces",
+  "Market Data Boundary",
+  "GatewayMarketDataPort",
   "Hexagonal Architecture",
   "Clean Architecture",
   "Layered Architecture",
@@ -113,7 +117,8 @@ requireText("docs/api-command-contract.md", [
   "POST /api/commands",
   "OUROBOROS_COMMAND_REGISTRY",
   "OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS",
-  "OperatorReadModel"
+  "OperatorReadModel",
+  "latest market snapshot"
 ]);
 
 requireText("docs/interface-parity.md", [
@@ -125,12 +130,14 @@ requireText("docs/interface-parity.md", [
   "OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS",
   "agent setup|login|probe|status",
   "local controller",
-  "Candidate, Paper Evidence, and Live remain visibly separate states"
+  "Candidate, Paper Evidence, and Live remain visibly separate states",
+  "runner active status"
 ]);
 
 requireText("docs/naming-taxonomy.md", [
   "Canonical Nouns",
   "`CandidateArena`",
+  "`MarketDataPort`",
   "`OuroborosCommand`",
   "`OperatorReadModel`"
 ]);
@@ -272,6 +279,23 @@ for (const file of listFiles("packages/application/src").filter((item) =>
   for (const banned of applicationBannedImports) {
     if (body.includes(banned)) {
       fail(`${file}: application imports outer implementation boundary ${JSON.stringify(banned)}`);
+    }
+  }
+}
+
+for (const file of listFiles("packages/application/src/trading/gateway").filter((item) =>
+  item.endsWith(".ts") && !item.includes(".test.")
+)) {
+  const body = read(file);
+  for (const banned of [
+    "fetch(",
+    "exchangeInformation(",
+    "markPrice(",
+    "klineCandlestickData(",
+    "checkServerTime("
+  ]) {
+    if (body.includes(banned)) {
+      fail(`${file}: Gateway application code must use MarketDataPort, not direct Binance public market reads ${JSON.stringify(banned)}`);
     }
   }
 }

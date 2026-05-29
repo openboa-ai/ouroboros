@@ -29,13 +29,15 @@ problem
 -> leaderboard
 -> findings and lineage
 -> next generation
--> selected candidate paper evidence
+-> selected candidate continuous PaperTradingEvaluation
 ```
 
 Researchers and LLM agents generate candidates; they do not grant authority. External Evaluation,
-provider/risk validation, and selected-candidate paper Gateway/Ledger evidence decide what counts.
-Failed or loss-making candidates remain useful arena memory unless they crash, submit malformed
-orders, bypass provider boundaries, fail risk validation, or attempt private/live behavior.
+provider/risk validation, selected-candidate continuous paper `revenue - cost`, and Gateway/Ledger
+evidence decide what counts. Binance public market data enters through the Gateway-owned
+`MarketDataPort`, never directly through a `TradingSystem`. Failed or loss-making candidates remain
+useful arena memory unless they crash, submit malformed orders, bypass provider boundaries, fail
+risk validation, or attempt private/live behavior.
 
 Treat AAR, AlphaProof Nexus, and future research references as pressure toward this candidate
 population loop. If a proposed change does not strengthen CandidateArena generation, external

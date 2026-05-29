@@ -124,6 +124,8 @@ import type {
   PrivateReadinessPostureWriteInput,
   PrivateReadinessPreflightSurfaceReadModel,
   PrivateReadinessPreflightSurfaceRecord,
+  PaperTradingEvaluationRecord,
+  PaperTradingObservationRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
   OrderRequestRecord,
@@ -279,6 +281,8 @@ type Collection =
   | "run-control-commands"
   | "run-control-decisions"
   | "runtime-audit-events"
+  | "paper-trading-evaluations"
+  | "paper-trading-observations"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -2258,6 +2262,68 @@ export class LocalStore {
       );
     }
     return outcome;
+  }
+
+  async recordPaperTradingEvaluation(
+    evaluation: PaperTradingEvaluationRecord
+  ): Promise<PaperTradingEvaluationRecord> {
+    await this.writeJson(
+      this.itemPath("paper-trading-evaluations", evaluation.paper_trading_evaluation_id),
+      evaluation
+    );
+    return evaluation;
+  }
+
+  async getPaperTradingEvaluation(
+    evaluationId: string
+  ): Promise<PaperTradingEvaluationRecord | undefined> {
+    return this.readOptionalRecord<PaperTradingEvaluationRecord>(
+      "paper-trading-evaluations",
+      evaluationId
+    );
+  }
+
+  async getLatestPaperTradingEvaluationForCandidate(
+    candidateId: string
+  ): Promise<PaperTradingEvaluationRecord | undefined> {
+    return (await this.listPaperTradingEvaluationsForCandidate(candidateId)).at(-1);
+  }
+
+  async getLatestPaperTradingEvaluationForTradingRun(
+    tradingRunId: string
+  ): Promise<PaperTradingEvaluationRecord | undefined> {
+    return (await this.readCollection<PaperTradingEvaluationRecord>("paper-trading-evaluations"))
+      .filter((evaluation) => evaluation.trading_run_ref.id === tradingRunId)
+      .sort(comparePaperTradingEvaluations)
+      .at(-1);
+  }
+
+  async listPaperTradingEvaluationsForCandidate(
+    candidateId: string
+  ): Promise<PaperTradingEvaluationRecord[]> {
+    return (await this.readCollection<PaperTradingEvaluationRecord>("paper-trading-evaluations"))
+      .filter((evaluation) => evaluation.candidate_ref.id === candidateId)
+      .sort(comparePaperTradingEvaluations);
+  }
+
+  async recordPaperTradingObservation(
+    observation: PaperTradingObservationRecord,
+    evaluation: PaperTradingEvaluationRecord
+  ): Promise<PaperTradingObservationRecord> {
+    await this.writeJson(
+      this.itemPath("paper-trading-observations", observation.paper_trading_observation_id),
+      observation
+    );
+    await this.recordPaperTradingEvaluation(evaluation);
+    return observation;
+  }
+
+  async listPaperTradingObservations(
+    evaluationId: string
+  ): Promise<PaperTradingObservationRecord[]> {
+    return (await this.readCollection<PaperTradingObservationRecord>("paper-trading-observations"))
+      .filter((observation) => observation.paper_trading_evaluation_ref.id === evaluationId)
+      .sort(comparePaperTradingObservations);
   }
 
   async recordRunControlAudit(
@@ -5904,6 +5970,23 @@ function stripUndefined<T extends Record<string, unknown>>(value: T): T {
 
 function stableSuffix(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+function comparePaperTradingEvaluations(
+  a: PaperTradingEvaluationRecord,
+  b: PaperTradingEvaluationRecord
+): number {
+  return a.started_at.localeCompare(b.started_at) ||
+    a.paper_trading_evaluation_id.localeCompare(b.paper_trading_evaluation_id);
+}
+
+function comparePaperTradingObservations(
+  a: PaperTradingObservationRecord,
+  b: PaperTradingObservationRecord
+): number {
+  return a.sequence - b.sequence ||
+    a.observed_at.localeCompare(b.observed_at) ||
+    a.paper_trading_observation_id.localeCompare(b.paper_trading_observation_id);
 }
 
 function storeJsonFileName(id: string): string {

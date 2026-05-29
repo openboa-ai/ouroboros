@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
 import { buildServer } from "../src/server";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
 
@@ -109,7 +110,10 @@ describe("runtime canonical operator API", () => {
   });
 
   it("runs user mutations through /api/commands and reflects them in /api/operator", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      marketDataPort: fakeGatewayMarketDataPort()
+    });
 
     try {
       const status = await server.inject({

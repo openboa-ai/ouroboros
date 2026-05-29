@@ -24,7 +24,9 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Agent profile: Fixture / authenticated");
     expect(output).toContain("> #1 candidate-profitable");
     expect(output).toContain("PaperTradingEvaluation: running");
+    expect(output).toContain("Runner: active / next 2026-05-16T00:01:03.000Z");
     expect(output).toContain("Paper score: 4.95 USDT / observations 1");
+    expect(output).toContain("Market: BTCUSDT 65000.00 @ 2026-05-16T00:00:03.000Z");
     expect(output).toContain("Codex: configured");
     expect(output).toContain("arena.tick: succeeded");
     expect(output).toContain("Keys: r refresh");
@@ -153,6 +155,8 @@ function fixtureOperator(): OperatorReadModel {
       status: "running",
       trading_run_id: "trading-run-candidate-profitable",
       trading_run_status: "running",
+      runner_active: true,
+      next_observation_at: "2026-05-16T00:01:03.000Z",
       observation_count: 1,
       ledger_chain_complete: true,
       profit_loss: {
@@ -163,6 +167,17 @@ function fixtureOperator(): OperatorReadModel {
       },
       latest_gateway_outcome: "dry_run_only",
       latest_execution_status: "dry_run_recorded",
+      latest_market_snapshot: {
+        symbol: "BTCUSDT",
+        price: 65_000,
+        moving_average_fast: 65_025,
+        moving_average_slow: 64_975,
+        volatility: 0.001,
+        expected_direction: "long",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        source_kind: "binance_production_public_rest",
+        authority_status: "read_only"
+      },
       market_data_source: "binance_production_public_rest",
       account_provider: "fake_paper_account",
       executor: "fake_paper_order_executor",

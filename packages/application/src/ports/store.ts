@@ -18,7 +18,9 @@ import type {
   ResearcherProviderSelectionRecord,
   ResearchFindingRecord,
   SystemCodeRecord,
-  TradingEvaluationResultRecord
+  TradingEvaluationResultRecord,
+  PaperTradingEvaluationRecord,
+  PaperTradingObservationRecord
 } from "@ouroboros/domain";
 import { createHash } from "node:crypto";
 
@@ -97,6 +99,14 @@ export interface OuroborosStorePort {
   recordResearcherProviderSelection(selection: ResearcherProviderSelectionRecord): Promise<ResearcherProviderSelectionRecord>;
   listOuroborosCommands(): Promise<OuroborosCommandRecord[]>;
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
+  recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
+  getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
+  getLatestPaperTradingEvaluationForTradingRun(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
+  recordPaperTradingObservation(
+    observation: PaperTradingObservationRecord,
+    evaluation: PaperTradingEvaluationRecord
+  ): Promise<PaperTradingObservationRecord>;
+  listPaperTradingObservations(evaluationId: string): Promise<PaperTradingObservationRecord[]>;
 }
 
 function stableSuffix(value: string): string {

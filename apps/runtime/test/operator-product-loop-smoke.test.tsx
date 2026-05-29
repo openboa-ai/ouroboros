@@ -14,6 +14,7 @@ import type {
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OperatorTuiScreen } from "@ouroboros/operator-tui";
 import { buildServer } from "../src/server";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
 
@@ -27,7 +28,11 @@ afterEach(async () => {
 
 describe("operator product loop smoke", () => {
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildServer({
+      store: new LocalStore(tmpDir),
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
     const runtimeBaseUrl = "http://runtime.test";
     const fetcher = serverFetch(server);
 
@@ -117,8 +122,15 @@ describe("operator product loop smoke", () => {
         selected_paper_trading_evaluation: {
           evaluation_kind: "paper_trading_evaluation",
           status: "running",
+          runner_active: true,
+          interval_ms: 60_000,
           observation_count: 1,
           ledger_chain_complete: true,
+          latest_market_snapshot: {
+            symbol: "BTCUSDT",
+            source_kind: "binance_production_public_rest",
+            authority_status: "read_only"
+          },
           authority_status: "not_live"
         },
         selected_paper_evidence: {
@@ -144,6 +156,7 @@ describe("operator product loop smoke", () => {
       const observedBody = JSON.parse(observed.stdout) as { operator: OperatorReadModel };
       expect(observedBody.operator.selected_paper_trading_evaluation).toMatchObject({
         status: "running",
+        runner_active: true,
         observation_count: 2,
         ledger_chain_complete: true,
         authority_status: "not_live"
@@ -165,8 +178,14 @@ describe("operator product loop smoke", () => {
       });
       expect(finalOperator.selected_paper_trading_evaluation).toMatchObject({
         status: "running",
+        runner_active: true,
+        interval_ms: 60_000,
         observation_count: 2,
         ledger_chain_complete: true,
+        latest_market_snapshot: {
+          symbol: "BTCUSDT",
+          authority_status: "read_only"
+        },
         authority_status: "not_live"
       });
       expect(finalOperator.latest_commands.map((command) => command.command_kind)).toEqual(
@@ -179,7 +198,10 @@ describe("operator product loop smoke", () => {
         ])
       );
 
-      const restartedServer = await buildServer({ store: new LocalStore(tmpDir) });
+      const restartedServer = await buildServer({
+        store: new LocalStore(tmpDir),
+        marketDataPort: fakeGatewayMarketDataPort()
+      });
       try {
         const restartedOperator = await restartedServer.inject({
           method: "GET",
@@ -197,9 +219,33 @@ describe("operator product loop smoke", () => {
           },
           selected_paper_trading_evaluation: {
             status: "running",
+            runner_active: false,
             observation_count: 2,
             ledger_chain_complete: true,
             authority_status: "not_live"
+          }
+        });
+        const resumed = await restartedServer.inject({
+          method: "POST",
+          url: "/api/commands",
+          payload: {
+            command_kind: "trading_run.start",
+            payload: { candidate_id: leader.candidate_id }
+          }
+        });
+        expect(resumed.statusCode, resumed.body).toBe(200);
+        expect(resumed.json()).toMatchObject({
+          result: {
+            status: "resumed",
+            runner_status: "running"
+          },
+          operator: {
+            selected_paper_trading_evaluation: {
+              status: "running",
+              runner_active: true,
+              observation_count: 3,
+              authority_status: "not_live"
+            }
           }
         });
       } finally {

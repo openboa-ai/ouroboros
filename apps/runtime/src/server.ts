@@ -9,6 +9,9 @@ import type {
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
   LedgerInput,
+  LedgerWriteOutcome,
+  PaperTradingEvaluationRecord,
+  PaperTradingObservationRecord,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
@@ -18,6 +21,7 @@ import type {
   TradingRuntimeEnvironment,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
+import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
 import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
@@ -74,7 +78,14 @@ import {
   BinancePublicMarketSdkAdapter,
   type BinancePublicMarketDataClient
 } from "@ouroboros/adapters/binance/public-market-adapter";
+import {
+  addPaperTradingProfitLoss,
+  marketSnapshotSummary,
+  scorePaperLedgerChain,
+  zeroPaperTradingProfitLoss
+} from "@ouroboros/application/trading/paper/evaluation";
 import { safeId } from "@ouroboros/application/safe-id";
+import { PaperTradingEvaluationRunner } from "./paper/evaluation-runner";
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
@@ -93,6 +104,8 @@ export interface BuildServerOptions {
   agentProfileExecFile?: AgentProfileExecFile;
   candidateArenaTickIntervalMs?: number;
   binancePublicMarketClient?: BinancePublicMarketDataClient;
+  marketDataPort?: GatewayMarketDataPort;
+  paperTradingEvaluationIntervalMs?: number;
 }
 
 interface CreateEvaluationRunBody {
@@ -197,6 +210,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const evaluationProviderAdapter = options.evaluationProviderAdapter ?? new FixtureEvaluationProviderAdapter();
   const tradingGatewayEnvironment = options.tradingGatewayEnvironment
     ?? loadTradingGatewayEnvironment(options.tradingGatewayEnv ?? process.env);
+  const gatewayMarketDataPort = options.marketDataPort ?? new BinancePublicMarketSdkAdapter({
+    restBaseUrl: tradingGatewayEnvironment.runtime_bindings.paper.rest_base_url,
+    client: options.binancePublicMarketClient
+  });
+  const paperTradingEvaluationRunner = new PaperTradingEvaluationRunner();
+  const paperTradingEvaluationIntervalMs = options.paperTradingEvaluationIntervalMs ?? 60_000;
   const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
     ?? loadTradingResearchRuntimeConfig();
   const tradingResearchAgentFactory = options.tradingResearchAgentFactory
@@ -458,7 +477,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
     const gatewayRuntimeBinding = createGatewayRuntimeBinding({
       environment: runtimeEnvironment,
-      marketDataClient: options.binancePublicMarketClient
+      marketData: gatewayMarketDataPort
     });
     if (gatewayRuntimeBinding.status === "disabled") {
       return {
@@ -495,6 +514,40 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
     const tradingRunId = candidate.runtime.ref.id;
+    const existingEvaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    if (existingEvaluation?.status === "running") {
+      if (!paperTradingEvaluationRunner.active(tradingRunId)) {
+        const resumedEvaluation = await recordPaperTradingEvaluationObservation({
+          tradingRunId,
+          gatewayRuntimeBinding,
+          appendLedger: true,
+          intervalMs: paperTradingEvaluationIntervalMs
+        });
+        schedulePaperTradingEvaluation(tradingRunId);
+        const response = await tradingRunResponse(store, tradingRunId);
+        return {
+          statusCode: 200,
+          body: {
+            status: "resumed",
+            ...response,
+            paper_trading_evaluation: resumedEvaluation.evaluation,
+            paper_trading_observation: resumedEvaluation.observation,
+            runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
+          }
+        };
+      }
+      schedulePaperTradingEvaluation(tradingRunId);
+      const response = await tradingRunResponse(store, tradingRunId);
+      return {
+        statusCode: 200,
+        body: {
+          status: "already_running",
+          ...response,
+          paper_trading_evaluation: existingEvaluation,
+          runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
+        }
+      };
+    }
     try {
       const outcome = await startFixtureTradingRun({
         store,
@@ -507,8 +560,23 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         tradingGatewayEnvironment,
         gatewayRuntimeBinding
       });
+      const paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
+        tradingRunId,
+        gatewayRuntimeBinding,
+        appendLedger: false,
+        intervalMs: paperTradingEvaluationIntervalMs
+      });
+      schedulePaperTradingEvaluation(tradingRunId);
 
-      return { statusCode: 201, body: outcome };
+      return {
+        statusCode: 201,
+        body: {
+          ...outcome,
+          paper_trading_evaluation: paperTradingEvaluation.evaluation,
+          paper_trading_observation: paperTradingEvaluation.observation,
+          runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
+        }
+      };
     } catch (error) {
       if (error instanceof LocalStoreError) {
         return {
@@ -527,15 +595,16 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   async function observeTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
     const candidate = await store.getCandidateForTradingRun(tradingRunId);
+    let paperTradingEvaluation: Awaited<ReturnType<typeof recordPaperTradingEvaluationObservation>> | undefined;
     if (candidate?.runtime.runtime_lifecycle_status === "running") {
-      await recordPaperTradingObservationSample({
-        store,
-        candidate,
+      paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
         tradingRunId,
         gatewayRuntimeBinding: createGatewayRuntimeBinding({
           environment: "paper",
-          marketDataClient: options.binancePublicMarketClient
-        })
+          marketData: gatewayMarketDataPort
+        }),
+        appendLedger: true,
+        intervalMs: paperTradingEvaluationIntervalMs
       });
     }
 
@@ -553,9 +622,159 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       statusCode: 200,
       body: {
         status: "observed",
-        ...response
+        ...response,
+        paper_trading_evaluation: paperTradingEvaluation?.evaluation,
+        paper_trading_observation: paperTradingEvaluation?.observation,
+        runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
       }
     };
+  }
+
+  function schedulePaperTradingEvaluation(tradingRunId: string): void {
+    paperTradingEvaluationRunner.start({
+      tradingRunId,
+      intervalMs: paperTradingEvaluationIntervalMs,
+      observe: async () => {
+        const candidate = await store.getCandidateForTradingRun(tradingRunId);
+        if (candidate?.runtime.runtime_lifecycle_status !== "running") {
+          paperTradingEvaluationRunner.stop(tradingRunId);
+          return;
+        }
+        await recordPaperTradingEvaluationObservation({
+          tradingRunId,
+          gatewayRuntimeBinding: createGatewayRuntimeBinding({
+            environment: "paper",
+            marketData: gatewayMarketDataPort
+          }),
+          appendLedger: true,
+          intervalMs: paperTradingEvaluationIntervalMs
+        });
+      }
+    });
+  }
+
+  async function recordPaperTradingEvaluationObservation(input: {
+    tradingRunId: string;
+    gatewayRuntimeBinding: GatewayRuntimeBinding;
+    appendLedger: boolean;
+    intervalMs: number;
+  }): Promise<{
+    evaluation: PaperTradingEvaluationRecord;
+    observation: PaperTradingObservationRecord;
+  }> {
+    const candidateBefore = await store.getCandidateForTradingRun(input.tradingRunId);
+    if (!candidateBefore) {
+      throw new LocalStoreError(
+        "runtime_not_found",
+        `runtime ${input.tradingRunId} not found`,
+        { runtime_id: input.tradingRunId }
+      );
+    }
+    const now = new Date().toISOString();
+    const existingEvaluation = await store.getLatestPaperTradingEvaluationForTradingRun(input.tradingRunId);
+    const baseEvaluation = existingEvaluation ?? paperTradingEvaluationRecord({
+      candidate: candidateBefore,
+      tradingRunId: input.tradingRunId,
+      intervalMs: input.intervalMs,
+      startedAt: now
+    });
+
+    let market;
+    try {
+      market = await input.gatewayRuntimeBinding.marketData.readMarketSnapshot({ observedAt: now });
+    } catch (error) {
+      const failedObservation = paperTradingObservationRecord({
+        candidate: candidateBefore,
+        evaluation: baseEvaluation,
+        sequence: baseEvaluation.observation_count + 1,
+        status: "failed",
+        observedAt: now,
+        scoreDelta: zeroPaperTradingProfitLoss(),
+        cumulativeScore: baseEvaluation.latest_score,
+        failureReason: error instanceof Error ? error.message : "market_data_unavailable"
+      });
+      const failedEvaluation = paperTradingEvaluationUpdate({
+        evaluation: baseEvaluation,
+        status: "failed",
+        observedAt: now,
+        nextObservationAt: undefined,
+        latestScore: baseEvaluation.latest_score,
+        latestFailureReason: failedObservation.failure_reason
+      });
+      await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
+      return { evaluation: failedEvaluation, observation: failedObservation };
+    }
+
+    await input.gatewayRuntimeBinding.marketData
+      .readPublicMarketLivenessSurface({ observedAt: market.observed_at })
+      .then((surface) => store.recordPublicMarketLivenessSurface(surface))
+      .catch(() => undefined);
+
+    let ledgerOutcome: LedgerWriteOutcome | undefined;
+    if (input.appendLedger) {
+      const refreshedCandidate = await refreshPaperTradingSandbox(candidateBefore);
+      ledgerOutcome = await recordPaperTradingObservationSample({
+        store,
+        candidate: refreshedCandidate,
+        tradingRunId: input.tradingRunId,
+        gatewayRuntimeBinding: input.gatewayRuntimeBinding
+      });
+    }
+    const candidateAfterLedger = await store.getCandidateForTradingRun(input.tradingRunId);
+    const latestChain = ledgerOutcome
+      ? candidateAfterLedger?.ledger?.chains.at(-1)
+      : candidateAfterLedger?.ledger?.chains.at(-1);
+    const hasLedger = Boolean(ledgerOutcome ?? (!input.appendLedger && latestChain));
+    const scoreDelta = hasLedger
+      ? scorePaperLedgerChain({
+          chain: latestChain,
+          marketPrice: market.price
+        })
+      : zeroPaperTradingProfitLoss();
+    const cumulativeScore = addPaperTradingProfitLoss(baseEvaluation.latest_score, scoreDelta);
+    const observedAt = market.observed_at;
+    const observation = paperTradingObservationRecord({
+      candidate: candidateAfterLedger ?? candidateBefore,
+      evaluation: baseEvaluation,
+      sequence: baseEvaluation.observation_count + 1,
+      status: hasLedger ? "recorded" : "no_order",
+      observedAt,
+      marketSnapshot: marketSnapshotSummary(market),
+      ledgerRef: latestChain ? { record_kind: "ledger_chain", id: latestChain.chain_id } : undefined,
+      scoreDelta,
+      cumulativeScore
+    });
+    const evaluation = paperTradingEvaluationUpdate({
+      evaluation: baseEvaluation,
+      status: "running",
+      observedAt,
+      nextObservationAt: new Date(Date.parse(observedAt) + input.intervalMs).toISOString(),
+      latestScore: cumulativeScore,
+      latestFailureReason: undefined
+    });
+    await store.recordPaperTradingObservation(observation, evaluation);
+    return { evaluation, observation };
+  }
+
+  async function refreshPaperTradingSandbox(
+    candidate: CandidateInspectReadModel
+  ): Promise<CandidateInspectReadModel> {
+    const sandbox = candidate.runtime.sandbox;
+    if (!sandbox || !shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+      return candidate;
+    }
+    const observations = await sandboxAdapters[sandbox.adapter_kind]
+      .getArtifactInstanceLogs(sandbox);
+    if (
+      observations.lifecycle_status ||
+      observations.logs?.length ||
+      observations.heartbeats?.length ||
+      observations.command_evidence?.length
+    ) {
+      await store.recordSandboxObservations(sandbox.sandbox_id, observations);
+      return await store.getCandidateForTradingRun(candidate.runtime.ref.id) ?? candidate;
+    }
+    return candidate;
   }
 
   async function stopTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
@@ -586,13 +805,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       sandboxAdapters,
       tradingRunId
     });
+    paperTradingEvaluationRunner.stop(tradingRunId);
+    const existingEvaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    const stoppedAt = new Date().toISOString();
+    const stoppedEvaluation = existingEvaluation
+      ? await store.recordPaperTradingEvaluation({
+          ...existingEvaluation,
+          status: "stopped",
+          next_observation_at: undefined,
+          stopped_at: stoppedAt
+        })
+      : undefined;
 
     const response = await tradingRunResponse(store, tradingRunId);
     return {
       statusCode: 201,
       body: {
         status: "stopped",
-        ...response
+        ...response,
+        paper_trading_evaluation: stoppedEvaluation,
+        runner_status: "stopped"
       }
     };
   }
@@ -897,10 +1129,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       return { statusCode: 404, body: { error: "public_market_liveness_surface_not_found", venue, instrument } };
     }
 
-    const refresh = await refreshBinancePublicMarketSurface({
+    const refresh = await refreshGatewayPublicMarketSurface({
       store,
-      tradingGatewayEnvironment,
-      client: options.binancePublicMarketClient
+      marketData: gatewayMarketDataPort
     });
     const surface = await store.getLatestPublicMarketLivenessSurface({ venue, instrument });
     if (!surface) {
@@ -1199,6 +1430,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const operatorService = new OperatorService({
     store,
     candidateArenaRunner,
+    paperTradingEvaluationRunner,
     agentProfileExecFile: options.agentProfileExecFile,
     paperEvidenceAdapter: {
       run: async (candidateId) => startTradingRunCommand(candidateId, {})
@@ -1369,14 +1601,17 @@ async function recordPaperTradingObservationSample(input: {
   candidate: CandidateInspectReadModel;
   tradingRunId: string;
   gatewayRuntimeBinding: GatewayRuntimeBinding;
-}) {
+}): Promise<LedgerWriteOutcome | undefined> {
   const sandbox = input.candidate.runtime.sandbox;
   if (!sandbox) {
-    return;
+    return undefined;
+  }
+  if (!latestSandboxOrderRequest(sandbox)) {
+    return undefined;
   }
   const candidateVersionId = input.candidate.candidate_version.candidate_version_id;
   const nextObservation = (input.candidate.ledger?.chain_count ?? 0) + 1;
-  await input.store.recordLedger(await ledgerInputFromSandboxOutput({
+  const ledger = await input.store.recordLedger(await ledgerInputFromSandboxOutput({
     sandbox,
     candidateId: input.candidate.candidate_id,
     candidateVersionId,
@@ -1397,6 +1632,94 @@ async function recordPaperTradingObservationSample(input: {
     reasonSummary: "Operator observed continuous paper Trading Run.",
     message: "Paper TradingEvaluation observation recorded."
   }));
+  return ledger;
+}
+
+function paperTradingEvaluationRecord(input: {
+  candidate: CandidateInspectReadModel;
+  tradingRunId: string;
+  intervalMs: number;
+  startedAt: string;
+}): PaperTradingEvaluationRecord {
+  return {
+    record_kind: "paper_trading_evaluation",
+    version: 1,
+    paper_trading_evaluation_id: `paper-trading-evaluation-${safeRouteId(input.tradingRunId)}`,
+    candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: input.candidate.candidate_version.candidate_version_id
+    },
+    trading_run_ref: { record_kind: "trading_run", id: input.tradingRunId },
+    status: "running",
+    interval_ms: input.intervalMs,
+    observation_count: 0,
+    started_at: input.startedAt,
+    next_observation_at: new Date(Date.parse(input.startedAt) + input.intervalMs).toISOString(),
+    latest_score: zeroPaperTradingProfitLoss(),
+    authority_status: "not_live"
+  };
+}
+
+function paperTradingEvaluationUpdate(input: {
+  evaluation: PaperTradingEvaluationRecord;
+  status: PaperTradingEvaluationRecord["status"];
+  observedAt: string;
+  nextObservationAt?: string;
+  latestScore: PaperTradingEvaluationRecord["latest_score"];
+  latestFailureReason?: string;
+}): PaperTradingEvaluationRecord {
+  return {
+    ...input.evaluation,
+    status: input.status,
+    observation_count: input.evaluation.observation_count + 1,
+    last_observed_at: input.observedAt,
+    next_observation_at: input.nextObservationAt,
+    latest_score: input.latestScore,
+    latest_failure_reason: input.latestFailureReason
+  };
+}
+
+function paperTradingObservationRecord(input: {
+  candidate: CandidateInspectReadModel;
+  evaluation: PaperTradingEvaluationRecord;
+  sequence: number;
+  status: PaperTradingObservationRecord["status"];
+  observedAt: string;
+  marketSnapshot?: PaperTradingObservationRecord["market_snapshot"];
+  ledgerRef?: Ref;
+  scoreDelta: PaperTradingObservationRecord["score_delta"];
+  cumulativeScore: PaperTradingObservationRecord["cumulative_score"];
+  failureReason?: string;
+}): PaperTradingObservationRecord {
+  return {
+    record_kind: "paper_trading_observation",
+    version: 1,
+    paper_trading_observation_id: [
+      "paper-trading-observation",
+      safeRouteId(input.evaluation.paper_trading_evaluation_id),
+      String(input.sequence).padStart(4, "0")
+    ].join("-"),
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: input.evaluation.paper_trading_evaluation_id
+    },
+    candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: input.candidate.candidate_version.candidate_version_id
+    },
+    trading_run_ref: input.evaluation.trading_run_ref,
+    sequence: input.sequence,
+    status: input.status,
+    observed_at: input.observedAt,
+    market_snapshot: input.marketSnapshot,
+    ledger_ref: input.ledgerRef,
+    score_delta: input.scoreDelta,
+    cumulative_score: input.cumulativeScore,
+    failure_reason: input.failureReason,
+    authority_status: "not_live"
+  };
 }
 
 async function ensureTradingRunSandbox(input: {
@@ -1516,25 +1839,12 @@ function startRuntimeEnvironment(body: StartTradingRunBody | undefined): Trading
   return undefined;
 }
 
-async function refreshBinancePublicMarketSurface(input: {
+async function refreshGatewayPublicMarketSurface(input: {
   store: LocalStore;
-  tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
-  client?: BinancePublicMarketDataClient;
+  marketData: GatewayMarketDataPort;
 }): Promise<{ status: "recorded" | "skipped" | "failed"; reason?: string }> {
-  const restBaseUrl = input.tradingGatewayEnvironment.runtime_bindings.paper.rest_base_url;
-  if (!restBaseUrl) {
-    return {
-      status: "skipped",
-      reason: "rest_base_url_not_configured"
-    };
-  }
-
-  const adapter = new BinancePublicMarketSdkAdapter({
-    restBaseUrl,
-    client: input.client
-  });
   try {
-    const surface = await adapter.readBtcUsdtPublicMarketLivenessSurface();
+    const surface = await input.marketData.readPublicMarketLivenessSurface();
     await input.store.recordPublicMarketLivenessSurface(surface);
     return { status: "recorded" };
   } catch (error) {

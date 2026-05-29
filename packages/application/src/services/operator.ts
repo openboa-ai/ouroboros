@@ -7,6 +7,8 @@ import {
   type OuroborosCommandKind,
   type OuroborosCommandReadModel,
   type OuroborosCommandRecord,
+  type PaperTradingEvaluationRecord,
+  type PaperTradingObservationRecord,
   type ResearcherProviderReadModel
 } from "@ouroboros/domain";
 import {
@@ -45,6 +47,9 @@ export interface OperatorServiceOptions {
   paperEvidenceAdapter: SelectedCandidatePaperEvidencePort;
   mutationPort?: OperatorMutationPort;
   agentProfileExecFile?: AgentProfileExecFile;
+  paperTradingEvaluationRunner?: {
+    active(tradingRunId: string): boolean;
+  };
 }
 
 export class OperatorService {
@@ -62,6 +67,16 @@ export class OperatorService {
     const selectedCandidate = candidateId
       ? await this.options.store.getCandidate(candidateId)
       : undefined;
+    const selectedEvaluation = selectedCandidate
+      ? await this.options.store.getLatestPaperTradingEvaluationForCandidate(selectedCandidate.candidate_id)
+      : undefined;
+    const selectedObservations = selectedEvaluation
+      ? await this.options.store.listPaperTradingObservations(selectedEvaluation.paper_trading_evaluation_id)
+      : [];
+    const selectedEvaluationRunnerActive = selectedEvaluation
+      ? this.options.paperTradingEvaluationRunner?.active(selectedEvaluation.trading_run_ref.id) ??
+        selectedEvaluation.status === "running"
+      : false;
     if (this.selectedCandidateId && candidateId === this.selectedCandidateId && !selectedCandidate) {
       this.selectedCandidateId = undefined;
     }
@@ -75,7 +90,12 @@ export class OperatorService {
       selected_candidate_id: selectedCandidate?.candidate_id ?? null,
       selected_candidate: selectedCandidate ?? null,
       selected_paper_evidence: selectedPaperEvidence(selectedCandidate),
-      selected_paper_trading_evaluation: selectedPaperTradingEvaluation(selectedCandidate),
+      selected_paper_trading_evaluation: selectedPaperTradingEvaluation(
+        selectedCandidate,
+        selectedEvaluation,
+        selectedObservations,
+        selectedEvaluationRunnerActive
+      ),
       researcher_provider: await this.readResearcherProvider(),
       agent_profiles: await listAgentProfileReadModels(this.options.store),
       latest_commands: latestCommands,
@@ -442,11 +462,15 @@ export function selectedPaperEvidence(
 }
 
 export function selectedPaperTradingEvaluation(
-  candidate: CandidateInspectReadModel | undefined
+  candidate: CandidateInspectReadModel | undefined,
+  evaluation?: PaperTradingEvaluationRecord,
+  observations: PaperTradingObservationRecord[] = [],
+  runnerActive = false
 ): OperatorReadModel["selected_paper_trading_evaluation"] {
   if (!candidate) {
     return paperTradingEvaluationReadModel({
       status: "not_started",
+      runnerActive: false,
       observationCount: 0,
       ledgerChainComplete: false,
       profitLoss: zeroProfitLoss()
@@ -454,10 +478,37 @@ export function selectedPaperTradingEvaluation(
   }
 
   const ledger = candidate.ledger;
+  const latestObservation = observations.at(-1);
+  if (evaluation) {
+    return paperTradingEvaluationReadModel({
+      evaluationId: evaluation.paper_trading_evaluation_id,
+      candidateId: evaluation.candidate_ref.id,
+      candidateVersionId: evaluation.candidate_version_ref.id,
+      status: evaluation.status,
+      tradingRunId: evaluation.trading_run_ref.id,
+      tradingRunStatus: candidate.trading_run?.lifecycle_status,
+      runnerActive,
+      intervalMs: evaluation.interval_ms,
+      observationCount: evaluation.observation_count,
+      startedAt: evaluation.started_at,
+      lastObservedAt: evaluation.last_observed_at,
+      nextObservationAt: evaluation.next_observation_at,
+      stoppedAt: evaluation.stopped_at,
+      ledgerChainComplete: ledger?.chain_complete ?? false,
+      profitLoss: evaluation.latest_score,
+      latestMarketSnapshot: latestObservation?.market_snapshot,
+      latestOrderRequestId: ledger?.latest_order_request?.order_request_id,
+      latestGatewayOutcome: ledger?.latest_gateway_result?.decision_outcome,
+      latestExecutionStatus: ledger?.latest_execution_result?.status,
+      latestFailureReason: evaluation.latest_failure_reason
+    });
+  }
+
   const tradingRunStatus = candidate.trading_run?.lifecycle_status;
   const status = paperTradingEvaluationStatus(tradingRunStatus, ledger?.has_activity ?? false);
   return paperTradingEvaluationReadModel({
     status,
+    runnerActive: false,
     tradingRunId: candidate.trading_run?.ref.id,
     tradingRunStatus,
     observationCount: ledger?.chain_count ?? 0,
@@ -525,27 +576,49 @@ function paperTradingProfitLoss(
 }
 
 function paperTradingEvaluationReadModel(input: {
+  evaluationId?: string;
+  candidateId?: string;
+  candidateVersionId?: string;
   status: OperatorReadModel["selected_paper_trading_evaluation"]["status"];
   tradingRunId?: string;
   tradingRunStatus?: OperatorReadModel["selected_paper_trading_evaluation"]["trading_run_status"];
+  runnerActive: boolean;
+  intervalMs?: number;
   observationCount: number;
+  startedAt?: string;
+  lastObservedAt?: string;
+  nextObservationAt?: string;
+  stoppedAt?: string;
   ledgerChainComplete: boolean;
   profitLoss: OperatorReadModel["selected_paper_trading_evaluation"]["profit_loss"];
+  latestMarketSnapshot?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_market_snapshot"];
   latestOrderRequestId?: string;
   latestGatewayOutcome?: string;
   latestExecutionStatus?: string;
+  latestFailureReason?: string;
 }): OperatorReadModel["selected_paper_trading_evaluation"] {
   return {
     evaluation_kind: "paper_trading_evaluation",
+    evaluation_id: input.evaluationId,
     status: input.status,
+    candidate_id: input.candidateId,
+    candidate_version_id: input.candidateVersionId,
     trading_run_id: input.tradingRunId,
     trading_run_status: input.tradingRunStatus,
+    runner_active: input.runnerActive,
+    interval_ms: input.intervalMs,
     observation_count: input.observationCount,
+    started_at: input.startedAt,
+    last_observed_at: input.lastObservedAt,
+    next_observation_at: input.nextObservationAt,
+    stopped_at: input.stoppedAt,
     ledger_chain_complete: input.ledgerChainComplete,
     profit_loss: input.profitLoss,
+    latest_market_snapshot: input.latestMarketSnapshot,
     latest_order_request_id: input.latestOrderRequestId,
     latest_gateway_outcome: input.latestGatewayOutcome,
     latest_execution_status: input.latestExecutionStatus,
+    latest_failure_reason: input.latestFailureReason,
     market_data_source: "binance_production_public_rest",
     account_provider: "fake_paper_account",
     executor: "fake_paper_order_executor",

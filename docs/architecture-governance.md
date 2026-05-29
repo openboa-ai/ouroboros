@@ -76,3 +76,17 @@ CandidateArena doctrine:
 Do not add a pattern because it is fashionable. If a feature changes a public command, provider,
 exchange, evaluator, sandbox, or evidence boundary, update the domain registry or application port
 before implementing concrete behavior.
+
+## Market Data Boundary
+
+Binance public market data is a Gateway concern. Application code depends on `MarketDataPort` /
+`GatewayMarketDataPort`; concrete Binance REST/SDK/fetch behavior belongs under
+`packages/adapters/src/binance/*`. A `TradingSystem` must never import Binance, read private account
+state, sign requests, open listenKey/user-data streams, mutate leverage/margin, or submit live
+orders. It emits bounded `OrderRequest`s; Gateway validation, market snapshot cache, fake paper
+execution, and Ledger recording produce evidence.
+
+The Gateway market data adapter may cache public exchangeInfo for one hour, server time and
+premium/mark price for five seconds, and one-minute klines for thirty seconds. It should share
+in-flight reads for the same key so continuous `PaperTradingEvaluation` observations do not fan out
+duplicate public reads.

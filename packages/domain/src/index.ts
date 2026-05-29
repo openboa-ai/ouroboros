@@ -1483,6 +1483,18 @@ export interface TradingProfitLossReadModel {
   net_return_pct: number;
 }
 
+export interface PaperTradingMarketSnapshotSummary {
+  symbol: "BTCUSDT";
+  price: number;
+  moving_average_fast?: number;
+  moving_average_slow?: number;
+  volatility?: number;
+  expected_direction?: "long" | "short" | "flat";
+  observed_at: string;
+  source_kind: "binance_production_public_rest";
+  authority_status: "read_only";
+}
+
 export interface TradingEvaluationResultRecord extends BaseRecord {
   record_kind: "trading_evaluation_result";
   trading_evaluation_result_id: string;
@@ -1498,6 +1510,44 @@ export interface TradingEvaluationResultRecord extends BaseRecord {
   quarantine_reason?: TradingEvaluationQuarantineReason;
   completed_at: string;
   authority_status: "not_counted" | "counted";
+}
+
+export type PaperTradingObservationStatus = "recorded" | "no_order" | "failed";
+
+export interface PaperTradingEvaluationRecord extends BaseRecord {
+  record_kind: "paper_trading_evaluation";
+  paper_trading_evaluation_id: string;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  trading_run_ref: Ref;
+  status: PaperTradingEvaluationStatus;
+  interval_ms: number;
+  observation_count: number;
+  started_at: string;
+  last_observed_at?: string;
+  next_observation_at?: string;
+  stopped_at?: string;
+  latest_score: TradingProfitLossReadModel;
+  latest_failure_reason?: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingObservationRecord extends BaseRecord {
+  record_kind: "paper_trading_observation";
+  paper_trading_observation_id: string;
+  paper_trading_evaluation_ref: Ref;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  trading_run_ref: Ref;
+  sequence: number;
+  status: PaperTradingObservationStatus;
+  observed_at: string;
+  market_snapshot?: PaperTradingMarketSnapshotSummary;
+  ledger_ref?: Ref;
+  score_delta: TradingProfitLossReadModel;
+  cumulative_score: TradingProfitLossReadModel;
+  failure_reason?: string;
+  authority_status: "not_live";
 }
 
 export interface ResearchFindingRecord extends BaseRecord {
@@ -2681,15 +2731,26 @@ export type PaperTradingEvaluationStatus =
 
 export interface PaperTradingEvaluationReadModel {
   evaluation_kind: "paper_trading_evaluation";
+  evaluation_id?: string;
   status: PaperTradingEvaluationStatus;
+  candidate_id?: string;
+  candidate_version_id?: string;
   trading_run_id?: string;
   trading_run_status?: TradingRunLifecycleStatus;
+  runner_active: boolean;
+  interval_ms?: number;
   observation_count: number;
+  started_at?: string;
+  last_observed_at?: string;
+  next_observation_at?: string;
+  stopped_at?: string;
   ledger_chain_complete: boolean;
   profit_loss: TradingProfitLossReadModel;
+  latest_market_snapshot?: PaperTradingMarketSnapshotSummary;
   latest_order_request_id?: string;
   latest_gateway_outcome?: string;
   latest_execution_status?: string;
+  latest_failure_reason?: string;
   market_data_source: "binance_production_public_rest";
   account_provider: "fake_paper_account";
   executor: "fake_paper_order_executor";
@@ -2758,6 +2819,8 @@ export type FixtureRecord =
   | ExperimentRunRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
+  | PaperTradingEvaluationRecord
+  | PaperTradingObservationRecord
   | CandidateArenaTickRecord
   | AgentProfileRecord
   | ResearcherProviderSelectionRecord

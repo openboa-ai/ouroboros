@@ -1136,6 +1136,7 @@ export function CandidateArenaPanel({
   const selectedLedgerSummary = selectedLedger?.chain_count && selectedLedger.chain_count > 0
     ? selectedLedger
     : undefined;
+  const selectedPaperMarketSnapshot = selectedPaperTradingEvaluation?.latest_market_snapshot;
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   return (
@@ -1299,11 +1300,26 @@ export function CandidateArenaPanel({
               <Field label="profit_loss" value={`${formatUsdt(selectedEntry.profit_loss.net_revenue_usdt)} / ${formatPercent(selectedEntry.profit_loss.net_return_pct)}`} />
               <Field label="PaperTradingEvaluation" value={selectedPaperEvaluationStatus} />
               <Field
+                label="Paper runner"
+                value={selectedPaperTradingEvaluation
+                  ? `${selectedPaperTradingEvaluation.runner_active ? "active" : "stopped"}${selectedPaperTradingEvaluation.next_observation_at ? ` / next ${formatCompactDateTime(selectedPaperTradingEvaluation.next_observation_at)}` : ""}`
+                  : "not started"}
+              />
+              <Field
                 label="Paper score"
                 value={selectedPaperTradingEvaluation
                   ? `${formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)} / ${selectedPaperTradingEvaluation.observation_count} observations`
                   : "not started"}
               />
+              <Field
+                label="Market snapshot"
+                value={selectedPaperMarketSnapshot
+                  ? `${selectedPaperMarketSnapshot.symbol} ${formatUsdt(selectedPaperMarketSnapshot.price)} @ ${formatCompactDateTime(selectedPaperMarketSnapshot.observed_at)}`
+                  : "not observed"}
+              />
+              {selectedPaperTradingEvaluation?.latest_failure_reason && (
+                <Field label="Paper failure" value={selectedPaperTradingEvaluation.latest_failure_reason} />
+              )}
               <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
               <Field label="TradingRun" value={selectedTradingRunStatus} />
               <Field label="Latest finding" value={selectedEntry.latest_finding} />

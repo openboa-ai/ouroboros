@@ -62,4 +62,6 @@ Interface parity does not change authority. Candidate, Paper Evidence, and Live 
 Paper Trading is the continuous selected-candidate evaluation state between candidate selection and any
 future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
-promotion. Live/private Binance authority remains disabled.
+promotion. Each surface should expose runner active status, next observation time, observation
+count, latest market snapshot, latest paper score, and any paper failure from `OperatorReadModel`.
+Live/private Binance authority remains disabled.

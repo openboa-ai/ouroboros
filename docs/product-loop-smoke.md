@@ -36,7 +36,8 @@ same `OperatorReadModel`.
 - `ouroboros trading-run observe <trading-run-id>` appends another paper observation and Ledger
   chain while the run is active.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
-  `PaperTradingEvaluation`, observation count, and `ledger_chain_complete`.
+  `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
+  accumulated score, and `ledger_chain_complete`.
 - Live/private Binance authority stays disabled throughout the loop.
 
 ## Manual Check

@@ -7,13 +7,18 @@ import {
   executeGatewayOrderRequest,
   LIVE_GATEWAY_DISABLED_REASON
 } from "@ouroboros/application/trading/gateway/runtime-binding";
+import { BinancePublicMarketSdkAdapter } from "@ouroboros/adapters/binance/public-market-adapter";
 
 describe("Gateway runtime binding", () => {
   it("binds paper to Binance production public market data and fake account/execution/Ledger", async () => {
     const client = fakeBinancePublicMarketDataClient();
     const binding = createGatewayRuntimeBinding({
       environment: "paper",
-      marketDataClient: client
+      marketData: new BinancePublicMarketSdkAdapter({
+        restBaseUrl: BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL,
+        client,
+        cache: false
+      })
     });
 
     expect(binding).toMatchObject({
@@ -92,7 +97,11 @@ describe("Gateway runtime binding", () => {
   it("uses the same Gateway entrypoint but rejects disabled live execution", async () => {
     const liveBinding = createGatewayRuntimeBinding({
       environment: "live",
-      marketDataClient: fakeBinancePublicMarketDataClient()
+      marketData: new BinancePublicMarketSdkAdapter({
+        restBaseUrl: BINANCE_USDM_FUTURES_MAINNET_REST_BASE_URL,
+        client: fakeBinancePublicMarketDataClient(),
+        cache: false
+      })
     });
 
     await expect(executeGatewayOrderRequest(liveBinding, {
