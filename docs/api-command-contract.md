@@ -41,6 +41,10 @@ Current command groups:
   book recovery. The readback must show source priority, freshness, WebSocket connection state, REST
   fallback, gap detection, latest update id, and order book sync state when present.
   It must not force a trade decision just because a snapshot was read.
+  Sandbox JSONL output must follow the
+  [TradingSystem Paper Event Protocol](trading-system-paper-event-protocol.md): stable `event_id`,
+  `trace_only` authority, bounded `order_request`, `cancel_order`, and explicit `hold`/`no_action`
+  events. Protocol errors are rejected without Ledger creation or fake account mutation.
 - `run_control`: record lifecycle control decisions and audit evidence.
 - `trading_substrate`: record private-readiness posture without enabling private/live authority.
 - `sandbox`: start or stop sandbox execution through command dispatch.

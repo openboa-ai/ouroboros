@@ -97,7 +97,8 @@ describe("PaperTradingEngine", () => {
         event_id: "event-cancel",
         event_kind: "cancel_order",
         observed_at: "2026-05-16T00:01:03.000Z",
-        order_id: opened.openOrders[0]!.order_id
+        order_id: opened.openOrders[0]!.order_id,
+        reason: "test_cancel_remaining_quantity"
       }]
     });
 

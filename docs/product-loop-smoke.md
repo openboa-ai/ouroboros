@@ -36,6 +36,10 @@ same `OperatorReadModel`.
 - `ouroboros trading-run observe <trading-run-id>` appends another paper observation while the run
   is active. It records a Ledger chain only when the TradingSystem emitted a new `OrderRequest`;
   explicit `hold` or no new decision output are valid no-order checkpoints.
+- Sandbox JSONL events follow the
+  [TradingSystem Paper Event Protocol](trading-system-paper-event-protocol.md). The smoke must
+  prove at least one accepted `order_request` and one explicit `hold`/`no_action` readback, while
+  protocol errors remain rejected without Ledger or fake account mutation.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,

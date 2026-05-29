@@ -845,6 +845,75 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("rejects private or live TradingSystem paper events without Ledger or fake account mutation", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(paperLiveAuthorityAttemptLine())
+      },
+      marketDataPort: fakeGatewayMarketDataPort({
+        failPublicExecutionSnapshot: true
+      })
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(started.json()).toMatchObject({
+        operator: {
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: {
+            status: "failed",
+            observation_count: 1,
+            ledger_chain_complete: false,
+            latest_decision: {
+              decision_kind: "error",
+              reason: "forbidden_private_or_live_authority",
+              authority_status: "trace_only"
+            },
+            latest_failure_reason: "forbidden_private_or_live_authority",
+            paper_account_snapshot: {
+              equity_usdt: "10000",
+              position: {
+                side: "flat",
+                quantity: "0"
+              },
+              open_order_count: 0
+            }
+          }
+        }
+      });
+      const candidate = await server.inject({
+        method: "GET",
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      });
+      expect(candidate.statusCode, candidate.body).toBe(200);
+      expect(candidate.json().ledger.has_activity).toBe(false);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs candidate evaluation through the command endpoint and exposes evaluation resources", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
@@ -896,6 +965,7 @@ function paperOrderRequestLine(input: {
     at: input.at,
     authority_status: "trace_only",
     event: "order_request",
+    event_id: `paper-runtime-${orderType}-order-${input.at.replace(/[^0-9]/g, "")}`,
     instance_id: "paper-runtime-fixture",
     intent_kind: "place_order",
     ...(orderType === "limit" ? { limit_price: "60000" } : {}),
@@ -914,6 +984,24 @@ function paperCancelOrderLine(at: string): string {
     event_id: "paper-runtime-cancel-open-order",
     instance_id: "paper-runtime-fixture",
     reason: "operator_stop_loss"
+  });
+}
+
+function paperLiveAuthorityAttemptLine(): string {
+  return JSON.stringify({
+    at: "2026-05-16T00:00:03.000Z",
+    authority_status: "trace_only",
+    event: "order_request",
+    event_id: "paper-runtime-live-authority-attempt",
+    instance_id: "paper-runtime-fixture",
+    intent_kind: "place_order",
+    limit_price: "60000",
+    order_type: "limit",
+    quantity: "0.001",
+    runtime_environment: "live",
+    side: "buy",
+    signed_request: true,
+    symbol: "BTCUSDT"
   });
 }
 
