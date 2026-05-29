@@ -743,7 +743,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       previousEngineState = currentEngineState;
       const tradingSystemEvents = tradingSystemEventsFromCandidate(refreshedCandidate)
         .filter((event) => !currentEngineState.processedTradingSystemEventIds.includes(event.event_id));
-      const needsExecutionSnapshot = tradingSystemEvents.some((event) => event.event_kind === "order_request") ||
+      const decisionOutcome = await recordPaperTradingObservationDecision({
+        store,
+        candidate: refreshedCandidate,
+        tradingRunId: input.tradingRunId,
+        gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+        sequence,
+        market,
+        tradingSystemEvents
+      });
+      ledgerOutcome = decisionOutcome.ledgerOutcome;
+      decision = decisionOutcome.decision;
+      engineEventsThisObservation = decisionOutcome.engineEvents;
+      const needsExecutionSnapshot = decisionOutcome.engineEvents.some((event) =>
+        event.event_kind === "order_request" && event.gateway_outcome === "dry_run_only"
+      ) ||
         currentEngineState.openOrders.length > 0;
       if (needsExecutionSnapshot) {
         try {
@@ -757,6 +771,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             status: "failed",
             observedAt: market.observed_at,
             marketSnapshot: marketSnapshotSummary(market),
+            decision,
             scoreDelta: zeroPaperTradingProfitLoss(),
             cumulativeScore: baseEvaluation.latest_score,
             failureReason: error instanceof Error ? error.message : "public_execution_stream_unavailable",
@@ -783,18 +798,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return { evaluation: failedEvaluation, observation: failedObservation };
         }
       }
-      const decisionOutcome = await recordPaperTradingObservationDecision({
-        store,
-        candidate: refreshedCandidate,
-        tradingRunId: input.tradingRunId,
-        gatewayRuntimeBinding: input.gatewayRuntimeBinding,
-        sequence,
-        market,
-        tradingSystemEvents
-      });
-      ledgerOutcome = decisionOutcome.ledgerOutcome;
-      decision = decisionOutcome.decision;
-      engineEventsThisObservation = decisionOutcome.engineEvents;
       engineResult = applyPaperTradingCheckpoint({
         previous: previousEngineState,
         marketPrice: market.price,

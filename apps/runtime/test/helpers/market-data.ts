@@ -55,7 +55,7 @@ export function fakeGatewayMarketDataPort(input: {
         moving_average_slow: snapshot.moving_average_slow ?? snapshotPrice - 25,
         volatility: snapshot.volatility ?? 0.001,
         expected_direction: snapshot.expected_direction ?? "long",
-        observed_at: request.observedAt ?? snapshot.observed_at ?? observedAt
+        observed_at: snapshot.observed_at ?? request.observedAt ?? observedAt
       };
     },
     async readPublicMarketLivenessSurface(

@@ -32,12 +32,26 @@ describe("operator product loop smoke", () => {
     const server = await buildServer({
       store,
       marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          {
+            price: 65_000,
+            observed_at: "2026-05-16T00:01:03.000Z"
+          },
+          {
+            price: 65_000,
+            observed_at: "2026-05-16T00:02:03.000Z"
+          }
+        ],
         executionSnapshots: [{
           agg_trades: [{
             trade_id: "product-loop-fill",
             price: "60000",
             quantity: "0.001",
-            trade_time: "2026-05-16T00:00:02.500Z"
+            trade_time: "2026-05-16T00:00:03.500Z"
           }]
         }]
       }),

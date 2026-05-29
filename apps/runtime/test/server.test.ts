@@ -237,7 +237,7 @@ describe("runtime canonical operator API", () => {
               trade_id: "agg-60000-001",
               price: "60000",
               quantity: "0.001",
-              trade_time: "2026-05-16T00:00:02.500Z"
+              trade_time: "2026-05-16T00:00:03.500Z"
             }]
           },
           {
@@ -401,13 +401,17 @@ describe("runtime canonical operator API", () => {
       expect(started.json()).toMatchObject({
         operator: {
           selected_paper_evidence: {
-            status: "not_run",
-            ledger_chain_complete: false
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true
           },
           selected_paper_trading_evaluation: {
             status: "failed",
             observation_count: 1,
-            ledger_chain_complete: false,
+            ledger_chain_complete: true,
+            latest_decision: {
+              decision_kind: "order_request",
+              authority_status: "trace_only"
+            },
             latest_failure_reason: "fake public execution stream unavailable"
           }
         }
@@ -415,12 +419,14 @@ describe("runtime canonical operator API", () => {
       const evaluationId = started.json().operator.selected_paper_trading_evaluation.evaluation_id;
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
         status: string;
+        decision?: { decision_kind: string };
         failure_reason?: string;
         processed_trading_system_event_ids?: string[];
       }>;
       expect(observations).toHaveLength(1);
       expect(observations[0]).toMatchObject({
         status: "failed",
+        decision: { decision_kind: "order_request" },
         failure_reason: "fake public execution stream unavailable",
         processed_trading_system_event_ids: []
       });
@@ -433,7 +439,9 @@ describe("runtime canonical operator API", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
-      marketDataPort: fakeGatewayMarketDataPort()
+      marketDataPort: fakeGatewayMarketDataPort({
+        failPublicExecutionSnapshot: true
+      })
     });
 
     try {

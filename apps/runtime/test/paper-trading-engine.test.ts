@@ -28,7 +28,7 @@ describe("PaperTradingEngine", () => {
           trade_id: "agg-partial",
           price: "60000",
           quantity: "0.0004",
-          trade_time: "2026-05-16T00:00:02.500Z"
+          trade_time: "2026-05-16T00:00:03.500Z"
         }]
       }),
       events: [orderEvent]
@@ -54,7 +54,7 @@ describe("PaperTradingEngine", () => {
           trade_id: "agg-complete",
           price: "60000",
           quantity: "0.001",
-          trade_time: "2026-05-16T00:01:02.500Z"
+          trade_time: "2026-05-16T00:01:03.500Z"
         }]
       }),
       events: []
@@ -106,6 +106,45 @@ describe("PaperTradingEngine", () => {
       side: "flat",
       quantity: "0"
     });
+  });
+
+  it("ignores public aggTrades that happened before the paper order was created", () => {
+    const checkpoint = applyPaperTradingCheckpoint({
+      previous: initialPaperTradingEngineState(),
+      marketPrice: 60_000,
+      observedAt: "2026-05-16T00:00:03.000Z",
+      publicExecutionSnapshot: publicExecutionSnapshot({
+        trades: [
+          {
+            trade_id: "agg-before-order",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:02.999Z"
+          },
+          {
+            trade_id: "agg-after-order",
+            price: "60000",
+            quantity: "0.0004",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          }
+        ]
+      }),
+      events: [orderRequestEvent({
+        eventId: "event-limit-filter",
+        quantity: "0.001",
+        limitPrice: "60000"
+      })]
+    });
+
+    expect(checkpoint.account.position).toMatchObject({
+      side: "long",
+      quantity: "0.0004"
+    });
+    expect(checkpoint.openOrders).toMatchObject([{
+      status: "partially_filled",
+      remaining_quantity: "0.0006"
+    }]);
+    expect(checkpoint.processedPublicTradeIds).toEqual(["agg-after-order"]);
   });
 
   it("fills market orders from public bookTicker evidence", () => {

@@ -491,7 +491,7 @@ function fixtureOperator(
         fee_usdt: "0.024",
         slippage_usdt: "0.018",
         funding_usdt: "0.006",
-        trade_time: "2026-05-16T00:00:02.500Z",
+        trade_time: "2026-05-16T00:00:03.500Z",
         source_trade_id: "agg-60000-001"
       },
       market_data_source: "binance_production_public_rest",

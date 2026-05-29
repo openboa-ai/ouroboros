@@ -274,6 +274,9 @@ function fillOpenOrders(
       if (remaining <= 0 || next.processedPublicTradeIds.includes(trade.trade_id)) {
         continue;
       }
+      if (!tradeCanFillOrderAfterCreation(trade.trade_time, order.created_at)) {
+        continue;
+      }
       const tradePrice = parseDecimal(trade.price);
       const canFill = order.side === "buy"
         ? tradePrice <= parseDecimal(order.limit_price)
@@ -305,6 +308,15 @@ function fillOpenOrders(
   }
   next.openOrders = updatedOrders;
   return next;
+}
+
+function tradeCanFillOrderAfterCreation(tradeTime: string, orderCreatedAt: string): boolean {
+  const tradeEpochMs = Date.parse(tradeTime);
+  const orderEpochMs = Date.parse(orderCreatedAt);
+  if (!Number.isFinite(tradeEpochMs) || !Number.isFinite(orderEpochMs)) {
+    return false;
+  }
+  return tradeEpochMs >= orderEpochMs;
 }
 
 function updatedFilledOrder(
