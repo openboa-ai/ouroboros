@@ -815,13 +815,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           chain.order_request?.order_request_id === ledgerOutcome.order_request.order_request_id
         ) ?? candidateAfterLedger?.ledger?.chains[0]
       : candidateAfterLedger?.ledger?.chains[0];
-    const hasLedger = Boolean(ledgerOutcome);
-    const filledThisObservation = previousEngineState && engineResult
-      ? engineResult.processedPublicTradeIds.length > previousEngineState.processedPublicTradeIds.length
-      : false;
-    const canceledThisObservation = engineEventsThisObservation.some((event) => event.event_kind === "cancel_order");
     const scoreDelta = engineResult?.scoreDelta ?? zeroPaperTradingProfitLoss();
     const cumulativeScore = engineResult?.score ?? baseEvaluation.latest_score;
+    const hasLedger = Boolean(ledgerOutcome);
+    const filledThisObservation = previousEngineState && engineResult
+      ? engineResult.processedPublicTradeIds.length > previousEngineState.processedPublicTradeIds.length ||
+        engineResult.latestFill?.fill_id !== previousEngineState.latestFill?.fill_id ||
+        Boolean(engineResult.latestFill && paperPositionChanged(previousEngineState, engineResult))
+      : false;
+    const canceledThisObservation = engineEventsThisObservation.some((event) => event.event_kind === "cancel_order");
     const observedAt = market.observed_at;
     const observation = paperTradingObservationRecord({
       candidate: candidateAfterLedger ?? candidateBefore,
@@ -2176,6 +2178,15 @@ function paperNoActionDecision(
     observed_at: observedAt,
     authority_status: "trace_only"
   };
+}
+
+function paperPositionChanged(
+  previous: PaperTradingEngineState,
+  next: PaperTradingEngineState
+): boolean {
+  return previous.account.position.side !== next.account.position.side ||
+    previous.account.position.quantity !== next.account.position.quantity ||
+    previous.openOrders.length !== next.openOrders.length;
 }
 
 function isOrderSide(value: unknown): value is "buy" | "sell" {

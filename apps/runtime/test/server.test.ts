@@ -497,6 +497,104 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("records residual bookTicker-only market fills as paper observations", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      orderType: "market",
+      quantity: "0.001"
+    });
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
+      },
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            moving_average_fast: 65_025,
+            moving_average_slow: 64_975,
+            observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          {
+            price: 66_000,
+            moving_average_fast: 66_025,
+            moving_average_slow: 65_975,
+            observed_at: "2026-05-16T00:01:03.000Z"
+          }
+        ],
+        executionSnapshots: [
+          {
+            observed_at: "2026-05-16T00:00:03.000Z",
+            book_ticker: {
+              bid_price: "64999",
+              bid_quantity: "1.000",
+              ask_price: "65001",
+              ask_quantity: "0.0004",
+              event_time: "2026-05-16T00:00:03.500Z"
+            }
+          },
+          {
+            observed_at: "2026-05-16T00:01:03.000Z",
+            book_ticker: {
+              bid_price: "65999",
+              bid_quantity: "1.000",
+              ask_price: "66001",
+              ask_quantity: "0.0006",
+              event_time: "2026-05-16T00:01:03.500Z"
+            }
+          }
+        ]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      const tradingRunId = started.json().operator.selected_paper_trading_evaluation.trading_run_id;
+      const observed = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: { trading_run_id: tradingRunId }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+
+      const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
+        latest_fill?: unknown;
+        paper_account_snapshot?: {
+          position: { quantity: string };
+        };
+      }>;
+      expect(observations).toHaveLength(2);
+      expect(observations[1]?.status, JSON.stringify(observations, null, 2)).toBe("recorded");
+      expect(observations[1]?.paper_account_snapshot?.position.quantity).toBe("0.001");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("fails observation when public execution stream evidence is unavailable and leaves events retryable", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
@@ -673,15 +771,20 @@ describe("runtime canonical operator API", () => {
   });
 });
 
-function paperOrderRequestLine(input: { at: string; quantity: string }): string {
+function paperOrderRequestLine(input: {
+  at: string;
+  quantity: string;
+  orderType?: "limit" | "market";
+}): string {
+  const orderType = input.orderType ?? "limit";
   return JSON.stringify({
     at: input.at,
     authority_status: "trace_only",
     event: "order_request",
     instance_id: "paper-runtime-fixture",
     intent_kind: "place_order",
-    limit_price: "60000",
-    order_type: "limit",
+    ...(orderType === "limit" ? { limit_price: "60000" } : {}),
+    order_type: orderType,
     quantity: input.quantity,
     side: "buy",
     symbol: "BTCUSDT"
