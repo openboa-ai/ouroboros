@@ -548,7 +548,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const existingEvaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
     if (existingEvaluation?.status === "running") {
       if (!paperTradingEvaluationRunner.active(tradingRunId)) {
-        await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
+        const tradingApiBaseUrl = await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
+        await stopLinkedTradingRunSandbox({
+          store,
+          sandboxAdapters,
+          tradingRunId
+        });
+        await ensureTradingRunSandbox({
+          store,
+          sandboxAdapter: sandboxAdapters.deterministic_test,
+          candidate,
+          tradingRunId,
+          candidateVersionId,
+          paperOrderRequest,
+          tradingApiBaseUrl,
+          restartToken: `resume-${safeRouteId(new Date().toISOString())}`
+        });
         const resumedEvaluation = await recordPaperTradingEvaluationObservation({
           tradingRunId,
           gatewayRuntimeBinding,
@@ -2116,6 +2131,7 @@ async function ensureTradingRunSandbox(input: {
   candidateVersionId: string;
   paperOrderRequest: PaperOrderRequestFixture;
   tradingApiBaseUrl?: string;
+  restartToken?: string;
 }): Promise<SandboxDetailReadModel> {
   const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
   const artifact = await input.store.getSystemCode(systemCodeId);
@@ -2127,12 +2143,16 @@ async function ensureTradingRunSandbox(input: {
     );
   }
 
-  const idempotencyKey = [
+  const idempotencyKeyParts = [
     "trading-run-sandbox",
     input.paperOrderRequest,
     input.tradingRunId,
     input.candidateVersionId
-  ].join(":");
+  ];
+  if (input.restartToken) {
+    idempotencyKeyParts.push(input.restartToken);
+  }
+  const idempotencyKey = idempotencyKeyParts.join(":");
   const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
   const existing = await input.store.getSandbox(sandboxId);
   const linked = await linkedTradingRunSandbox(input.store, input.tradingRunId);

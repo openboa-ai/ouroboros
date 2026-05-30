@@ -6,10 +6,7 @@ import type {
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import { recordPaperExecutionResult } from "./paper-execution";
-import {
-  defaultReplayTradingScenario,
-  validateOrderRequest
-} from "../research/replay-trading-api-provider";
+import { validateOrderRequest } from "../research/replay-trading-api-provider";
 import type {
   AccountState,
   ReplayTradingApiProviderSession,

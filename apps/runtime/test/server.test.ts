@@ -219,6 +219,80 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("restarts the sandbox with a fresh provider URL when resuming an inactive paper run", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
+    const firstSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
+    const firstServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: firstSandbox.adapter
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await firstServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.select",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      const started = await firstServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(firstSandbox.starts).toHaveLength(1);
+      expect(firstSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
+    } finally {
+      await firstServer.close();
+    }
+
+    const resumedSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
+    const resumedServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: resumedSandbox.adapter
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const resumed = await resumedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(resumed.statusCode, resumed.body).toBe(200);
+      expect(resumed.json()).toMatchObject({
+        command: {
+          command_kind: "trading_run.start",
+          status: "succeeded"
+        }
+      });
+      expect(resumedSandbox.starts).toHaveLength(1);
+      expect(resumedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      expect(resumedSandbox.starts[0]?.instance_id).not.toBe(firstSandbox.starts[0]?.instance_id);
+    } finally {
+      await resumedServer.close();
+    }
+  });
+
   it("consumes TradingSystem order events once and records fake account state", async () => {
     const store = new LocalStore(tmpDir);
     const orderLine = paperOrderRequestLine({
@@ -1149,6 +1223,24 @@ function paperLiveAuthorityAttemptLine(): string {
     signed_request: true,
     symbol: "BTCUSDT"
   });
+}
+
+function recordingDuplicateLogSandboxAdapter(orderLines: string | string[]): {
+  adapter: SandboxAdapter;
+  starts: Array<Parameters<SandboxAdapter["startArtifactInstance"]>[0]>;
+} {
+  const starts: Array<Parameters<SandboxAdapter["startArtifactInstance"]>[0]> = [];
+  const adapter = runningDuplicateLogSandboxAdapter(orderLines);
+  return {
+    starts,
+    adapter: {
+      ...adapter,
+      async startArtifactInstance(input) {
+        starts.push(input);
+        return adapter.startArtifactInstance(input);
+      }
+    }
+  };
 }
 
 function runningDuplicateLogSandboxAdapter(orderLines: string | string[]): SandboxAdapter {
