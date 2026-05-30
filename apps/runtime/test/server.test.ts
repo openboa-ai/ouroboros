@@ -939,6 +939,7 @@ describe("runtime canonical operator API", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
       store,
+      marketDataPort: fakeGatewayMarketDataPort(),
       sandboxAdapters: {
         deterministic_test: runningDuplicateLogSandboxAdapter([
           paperLiveAuthorityAttemptLine(),
