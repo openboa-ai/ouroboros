@@ -543,7 +543,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           appendLedger: true,
           intervalMs: paperTradingEvaluationIntervalMs
         });
-        schedulePaperTradingEvaluation(tradingRunId);
+        if (resumedEvaluation.evaluation.status === "running") {
+          schedulePaperTradingEvaluation(tradingRunId);
+        } else {
+          paperTradingEvaluationRunner.stop(tradingRunId);
+        }
         const response = await tradingRunResponse(store, tradingRunId);
         return {
           statusCode: 200,
@@ -586,7 +590,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         appendLedger: true,
         intervalMs: paperTradingEvaluationIntervalMs
       });
-      schedulePaperTradingEvaluation(tradingRunId);
+      if (paperTradingEvaluation.evaluation.status === "running") {
+        schedulePaperTradingEvaluation(tradingRunId);
+      } else {
+        paperTradingEvaluationRunner.stop(tradingRunId);
+      }
       const response = await tradingRunResponse(store, tradingRunId);
 
       return {
@@ -665,7 +673,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           paperTradingEvaluationRunner.stop(tradingRunId);
           return;
         }
-        await recordPaperTradingEvaluationObservation({
+        const result = await recordPaperTradingEvaluationObservation({
           tradingRunId,
           gatewayRuntimeBinding: createGatewayRuntimeBinding({
             environment: "paper",
@@ -674,6 +682,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           appendLedger: true,
           intervalMs: paperTradingEvaluationIntervalMs
         });
+        if (result.evaluation.status === "failed") {
+          paperTradingEvaluationRunner.stop(tradingRunId);
+        }
       }
     });
   }
@@ -858,15 +869,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       cumulativeScore,
       failureReason: rejectedThisObservation ? decision?.reason ?? "trading_system_event_rejected" : undefined
     });
+    const failedEvaluationAlready = baseEvaluation.status === "failed";
+    const failedEvaluation = rejectedThisObservation || failedEvaluationAlready;
+    const latestFailureReason = rejectedThisObservation
+      ? observation.failure_reason
+      : failedEvaluationAlready ? baseEvaluation.latest_failure_reason : undefined;
     const evaluation = paperTradingEvaluationUpdate({
       evaluation: baseEvaluation,
-      status: rejectedThisObservation ? "failed" : "running",
+      status: failedEvaluation ? "failed" : "running",
       observedAt,
-      nextObservationAt: rejectedThisObservation
+      nextObservationAt: failedEvaluation
         ? undefined
         : new Date(Date.parse(observedAt) + input.intervalMs).toISOString(),
       latestScore: cumulativeScore,
-      latestFailureReason: rejectedThisObservation ? observation.failure_reason : undefined,
+      latestFailureReason,
       paperAccountSnapshot: engineResult?.account,
       openOrders: engineResult?.openOrders,
       processedTradingSystemEventIds: engineResult?.processedTradingSystemEventIds,

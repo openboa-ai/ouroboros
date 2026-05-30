@@ -909,6 +909,27 @@ describe("runtime canonical operator API", () => {
       });
       expect(candidate.statusCode, candidate.body).toBe(200);
       expect(candidate.json().ledger.has_activity).toBe(false);
+
+      const observed = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: {
+            trading_run_id: started.json().operator.selected_paper_trading_evaluation.trading_run_id
+          }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+      expect(observed.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            status: "failed",
+            observation_count: 2,
+            latest_failure_reason: "forbidden_private_or_live_authority"
+          }
+        }
+      });
     } finally {
       await server.close();
     }
