@@ -292,7 +292,7 @@ describe("runtime canonical operator API", () => {
       expect(resumedSandbox.starts).toHaveLength(1);
       expect(resumedSandbox.starts[0]?.paper_order_request).toBe("rejected");
       expect(resumedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
-      expect(resumedSandbox.starts[0]?.instance_id).not.toBe(firstSandbox.starts[0]?.instance_id);
+      expect(resumedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
     } finally {
       await resumedServer.close();
     }
@@ -359,9 +359,99 @@ describe("runtime canonical operator API", () => {
       });
       expect(observedSandbox.starts).toHaveLength(1);
       expect(observedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
-      expect(observedSandbox.starts[0]?.instance_id).not.toBe(firstSandbox.starts[0]?.instance_id);
+      expect(observedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
     } finally {
       await observedServer.close();
+    }
+  });
+
+  it("keeps resumed sandbox event ids stable when TradingSystem events derive from instance id", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLineForInstance = (input: TestSandboxStartInput) => paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001",
+      eventId: `${input.instance_id}:order-request:0001`,
+      instanceId: input.instance_id,
+      orderType: "market"
+    });
+    const firstSandbox = recordingDuplicateLogSandboxAdapter(orderLineForInstance);
+    const firstServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: firstSandbox.adapter
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const started = await firstServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(firstSandbox.starts).toHaveLength(1);
+    } finally {
+      await firstServer.close();
+    }
+
+    const resumedSandbox = recordingDuplicateLogSandboxAdapter(orderLineForInstance);
+    const resumedServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: resumedSandbox.adapter
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const resumed = await resumedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(resumed.statusCode, resumed.body).toBe(200);
+      expect(resumedSandbox.starts).toHaveLength(1);
+      expect(resumedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
+      expect(resumed.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            observation_count: 2,
+            latest_decision: {
+              decision_kind: "hold",
+              reason: "no_new_trading_system_event"
+            },
+            paper_account_snapshot: {
+              position: {
+                quantity: "0.001",
+                side: "long"
+              }
+            }
+          }
+        }
+      });
+
+      const evaluationId = resumed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
+        status: string;
+        processed_trading_system_event_ids?: string[];
+      }>;
+      expect(observations).toHaveLength(2);
+      expect(observations[0]?.processed_trading_system_event_ids).toHaveLength(1);
+      expect(observations[1]?.status).toBe("no_order");
+      expect(observations[1]?.processed_trading_system_event_ids).toEqual(
+        observations[0]?.processed_trading_system_event_ids
+      );
+    } finally {
+      await resumedServer.close();
     }
   });
 
@@ -1250,6 +1340,8 @@ describe("runtime canonical operator API", () => {
 function paperOrderRequestLine(input: {
   at: string;
   quantity: string;
+  eventId?: string;
+  instanceId?: string;
   orderType?: "limit" | "market";
 }): string {
   const orderType = input.orderType ?? "limit";
@@ -1257,8 +1349,8 @@ function paperOrderRequestLine(input: {
     at: input.at,
     authority_status: "trace_only",
     event: "order_request",
-    event_id: `paper-runtime-${orderType}-order-${input.at.replace(/[^0-9]/g, "")}`,
-    instance_id: "paper-runtime-fixture",
+    event_id: input.eventId ?? `paper-runtime-${orderType}-order-${input.at.replace(/[^0-9]/g, "")}`,
+    instance_id: input.instanceId ?? "paper-runtime-fixture",
     intent_kind: "place_order",
     ...(orderType === "limit" ? { limit_price: "60000" } : {}),
     order_type: orderType,
@@ -1297,11 +1389,14 @@ function paperLiveAuthorityAttemptLine(): string {
   });
 }
 
-function recordingDuplicateLogSandboxAdapter(orderLines: string | string[]): {
+type TestSandboxStartInput = Parameters<SandboxAdapter["startArtifactInstance"]>[0];
+type TestSandboxLinesInput = string | string[] | ((input: TestSandboxStartInput) => string | string[]);
+
+function recordingDuplicateLogSandboxAdapter(orderLines: TestSandboxLinesInput): {
   adapter: SandboxAdapter;
-  starts: Array<Parameters<SandboxAdapter["startArtifactInstance"]>[0]>;
+  starts: TestSandboxStartInput[];
 } {
-  const starts: Array<Parameters<SandboxAdapter["startArtifactInstance"]>[0]> = [];
+  const starts: TestSandboxStartInput[] = [];
   const adapter = runningDuplicateLogSandboxAdapter(orderLines);
   return {
     starts,
@@ -1315,12 +1410,14 @@ function recordingDuplicateLogSandboxAdapter(orderLines: string | string[]): {
   };
 }
 
-function runningDuplicateLogSandboxAdapter(orderLines: string | string[]): SandboxAdapter {
+function runningDuplicateLogSandboxAdapter(orderLines: TestSandboxLinesInput): SandboxAdapter {
   let refreshCount = 0;
-  const lines = Array.isArray(orderLines) ? orderLines : [orderLines];
+  const linesBySandboxId = new Map<string, string[]>();
   return {
     kind: "deterministic_test",
     async startArtifactInstance(input) {
+      const lines = resolveTestSandboxLines(orderLines, input);
+      linesBySandboxId.set(input.instance_id, lines);
       const sandboxRef = { record_kind: "sandbox", id: input.instance_id };
       const placementRef = { record_kind: "sandbox_placement", id: input.sandbox_placement_id };
       const capturedAt = input.created_at;
@@ -1368,6 +1465,7 @@ function runningDuplicateLogSandboxAdapter(orderLines: string | string[]): Sandb
     async getArtifactInstanceLogs(instance) {
       refreshCount += 1;
       const sandboxId = instance.sandbox_id;
+      const lines = linesBySandboxId.get(sandboxId) ?? [];
       return {
         logs: [{
           record_kind: "sandbox_log",
@@ -1387,6 +1485,14 @@ function runningDuplicateLogSandboxAdapter(orderLines: string | string[]): Sandb
       };
     }
   };
+}
+
+function resolveTestSandboxLines(
+  orderLines: TestSandboxLinesInput,
+  input: TestSandboxStartInput
+): string[] {
+  const value = typeof orderLines === "function" ? orderLines(input) : orderLines;
+  return Array.isArray(value) ? value : [value];
 }
 
 function runningOrderThenCancelLogSandboxAdapter(orderLine: string, cancelLine: string): SandboxAdapter {

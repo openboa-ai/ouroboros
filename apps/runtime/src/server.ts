@@ -554,8 +554,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           tradingRunId,
           candidateVersionId,
           paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-          tradingApiBaseUrl,
-          restartReason: "resume"
+          tradingApiBaseUrl
         });
         const resumedEvaluation = await recordPaperTradingEvaluationObservation({
           tradingRunId,
@@ -671,8 +670,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           tradingRunId,
           candidateVersionId: candidate.candidate_version.candidate_version_id,
           paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-          tradingApiBaseUrl,
-          restartReason: "observe"
+          tradingApiBaseUrl
         });
       }
       paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
@@ -739,7 +737,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     candidateVersionId: string;
     paperOrderRequest: PaperOrderRequestFixture;
     tradingApiBaseUrl: string;
-    restartReason: "observe" | "resume";
   }): Promise<void> {
     await stopLinkedTradingRunSandbox({
       store,
@@ -753,8 +750,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       tradingRunId: input.tradingRunId,
       candidateVersionId: input.candidateVersionId,
       paperOrderRequest: input.paperOrderRequest,
-      tradingApiBaseUrl: input.tradingApiBaseUrl,
-      restartToken: `${input.restartReason}-${safeRouteId(new Date().toISOString())}`
+      tradingApiBaseUrl: input.tradingApiBaseUrl
     });
   }
 
@@ -2160,7 +2156,6 @@ async function ensureTradingRunSandbox(input: {
   candidateVersionId: string;
   paperOrderRequest: PaperOrderRequestFixture;
   tradingApiBaseUrl?: string;
-  restartToken?: string;
 }): Promise<SandboxDetailReadModel> {
   const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
   const artifact = await input.store.getSystemCode(systemCodeId);
@@ -2178,16 +2173,13 @@ async function ensureTradingRunSandbox(input: {
     input.tradingRunId,
     input.candidateVersionId
   ];
-  if (input.restartToken) {
-    idempotencyKeyParts.push(input.restartToken);
-  }
   const idempotencyKey = idempotencyKeyParts.join(":");
   const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
   const existing = await input.store.getSandbox(sandboxId);
   const linked = await linkedTradingRunSandbox(input.store, input.tradingRunId);
   if (
     existing &&
-    existing.lifecycle_status !== "failed" &&
+    existing.lifecycle_status === "running" &&
     linked?.sandbox_id === existing.sandbox_id
   ) {
     return existing;
