@@ -165,6 +165,7 @@ export async function startPaperTradingApiProvider(
   const readAccountState = async () => options.readAccountState
     ? options.readAccountState()
     : binding.account.state;
+  const initialMarket = await binding.marketData.readMarketSnapshot();
   const initialAccount = await readAccountState();
   const server = http.createServer(async (request, response) => {
     const body = await readJsonBody(request);
@@ -226,10 +227,10 @@ export async function startPaperTradingApiProvider(
     scenario: {
       id: "binance-production-public-paper",
       description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
-      market: defaultReplayTradingScenario.market,
+      market: initialMarket,
       account: initialAccount,
       outcome: {
-        exit_price: defaultReplayTradingScenario.market.price,
+        exit_price: initialMarket.price,
         fee_bps: 4,
         slippage_bps: 3,
         funding_bps: 1

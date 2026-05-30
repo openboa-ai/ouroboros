@@ -137,6 +137,13 @@ describe("Python clock system code fixture", () => {
     }));
 
     try {
+      expect(provider.scenario.market).toMatchObject({
+        price: 65_000,
+        expected_direction: "short",
+        observed_at: "2026-05-16T00:00:03.000Z"
+      });
+      expect(provider.scenario.outcome.exit_price).toBe(65_000);
+
       const { stdout } = await execFileAsync(
         "python3",
         [
