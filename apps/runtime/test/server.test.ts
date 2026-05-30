@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
-import { buildServer } from "../src/server";
+import { buildServer, paperTradingApiProviderNetworkOptions } from "../src/server";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
@@ -19,6 +19,17 @@ afterEach(async () => {
 });
 
 describe("runtime canonical operator API", () => {
+  it("binds the paper runtime provider to a sandbox-reachable interface when sandbox host is configured", () => {
+    expect(paperTradingApiProviderNetworkOptions({
+      sandboxHost: "host.docker.internal"
+    })).toEqual({
+      listen_host: "0.0.0.0",
+      sandbox_host: "host.docker.internal"
+    });
+    expect(paperTradingApiProviderNetworkOptions({ sandboxHost: "  " })).toEqual({});
+    expect(paperTradingApiProviderNetworkOptions({})).toEqual({});
+  });
+
   it("serves health, operator state, resource reads, and no removed public routes", async () => {
     const server = await buildServer({
       store: new LocalStore(tmpDir),

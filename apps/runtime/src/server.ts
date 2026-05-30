@@ -61,7 +61,8 @@ import {
   executeGatewayOrderRequest,
   LIVE_GATEWAY_DISABLED_REASON,
   startPaperTradingApiProvider,
-  type GatewayRuntimeBinding
+  type GatewayRuntimeBinding,
+  type PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/gateway/environment";
 import type {
@@ -130,6 +131,18 @@ export interface BuildServerOptions {
   marketDataPort?: GatewayMarketDataPort;
   paperTradingEvaluationIntervalMs?: number;
   tradingApiProviderSandboxHost?: string;
+}
+
+export function paperTradingApiProviderNetworkOptions(input: {
+  sandboxHost?: string;
+}): Pick<PaperTradingApiProviderOptions, "listen_host" | "sandbox_host"> {
+  const sandboxHost = input.sandboxHost?.trim() || undefined;
+  return sandboxHost
+    ? {
+        listen_host: "0.0.0.0",
+        sandbox_host: sandboxHost
+      }
+    : {};
 }
 
 interface CreateEvaluationRunBody {
@@ -762,8 +775,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     if (existing) {
       return existing.sandbox_base_url ?? existing.base_url;
     }
+    const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
     const provider = await startPaperTradingApiProvider(gatewayRuntimeBinding, {
-      sandbox_host: options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST,
+      ...paperTradingApiProviderNetworkOptions({ sandboxHost }),
       readAccountState: () => latestPaperAccountState(tradingRunId, gatewayRuntimeBinding)
     });
     paperTradingApiProviderSessions.set(tradingRunId, provider);
