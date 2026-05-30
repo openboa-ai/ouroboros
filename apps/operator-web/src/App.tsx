@@ -1120,12 +1120,31 @@ export function CandidateArenaPanel({
   error?: string;
 }) {
   const leader = arena.leaderboard[0];
-  const selectedEntry = arena.leaderboard.find((entry) => entry.candidate_id === selectedCandidateId)
-    ?? leader;
+  const selectedEntry = selectedCandidateId
+    ? arena.leaderboard.find((entry) => entry.candidate_id === selectedCandidateId)
+    : leader;
+  const inspectorVisible = Boolean(selectedCandidate || selectedEntry);
   const latestTick = arena.latest_ticks[0];
   const selectedLineage = selectedCandidate?.full_cycle_lineage;
   const selectedSystemCode = selectedCandidate?.system_code?.ref ?? selectedLineage?.generated?.system_code_ref;
   const selectedLedger = selectedCandidate?.ledger;
+  const selectedProfitLoss = selectedEntry?.profit_loss
+    ?? selectedPaperTradingEvaluation?.profit_loss
+    ?? selectedLineage?.evidence?.profit_loss;
+  const selectedDirection = selectedEntry?.direction_kind
+    ?? selectedLineage?.evidence?.direction_kind
+    ?? "outside_arena_leaderboard";
+  const selectedParent = selectedEntry?.parent_candidate_id
+    ?? selectedLineage?.source?.trading_system_id;
+  const selectedStatus = selectedEntry?.status
+    ?? selectedCandidate?.status
+    ?? "not_selected";
+  const selectedFinding = selectedEntry?.latest_finding
+    ?? "Selected candidate is not in the current arena leaderboard.";
+  const selectedAuthority = selectedEntry?.authority_status
+    ?? selectedCandidate?.runtime.authority_status
+    ?? selectedCandidate?.trading_run?.authority_status
+    ?? "not_live";
   const selectedPaperEvaluationStatus = runningPaperTrading
     ? "running"
     : selectedPaperTradingEvaluation?.status ?? "not_started";
@@ -1275,33 +1294,40 @@ export function CandidateArenaPanel({
           )}
         </section>
         <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
-        {selectedEntry && (
+        {inspectorVisible && (
           <section className="grid gap-3 rounded-md bg-muted/25 p-3" aria-label="Selected Candidate Arena candidate">
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <h3 className="text-sm font-medium">Selected candidate</h3>
-                <p className="break-words text-sm text-muted-foreground">{selectedEntry.display_name}</p>
+                <p className="break-words text-sm text-muted-foreground">
+                  {selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
+                </p>
               </div>
               <Button
                 type="button"
                 onClick={onStartPaperTrading}
-                disabled={!onStartPaperTrading || runningPaperTrading}
+                disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
                 variant="secondary"
               >
                 {runningPaperTrading ? "Starting paper trading" : "Start paper trading"}
               </Button>
             </div>
             <dl className="grid gap-2 sm:grid-cols-2">
-              <Field label="Direction" value={selectedEntry.direction_kind} />
-              <Field label="Parent" value={selectedEntry.parent_candidate_id ?? "none"} />
+              <Field label="Direction" value={selectedDirection} />
+              <Field label="Parent" value={selectedParent ?? "none"} />
               <Field label="SystemCode" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
               <Field
                 label="Evaluation"
                 value={selectedLineage?.evidence
                   ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
-                  : selectedEntry.status}
+                  : selectedStatus}
               />
-              <Field label="profit_loss" value={`${formatUsdt(selectedEntry.profit_loss.net_revenue_usdt)} / ${formatPercent(selectedEntry.profit_loss.net_return_pct)}`} />
+              <Field
+                label="profit_loss"
+                value={selectedProfitLoss
+                  ? `${formatUsdt(selectedProfitLoss.net_revenue_usdt)} / ${formatPercent(selectedProfitLoss.net_return_pct)}`
+                  : "not ranked"}
+              />
               <Field label="PaperTradingEvaluation" value={selectedPaperEvaluationStatus} />
               <Field
                 label="Paper runner"
@@ -1354,14 +1380,14 @@ export function CandidateArenaPanel({
               )}
               <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
               <Field label="TradingRun" value={selectedTradingRunStatus} />
-              <Field label="Latest finding" value={selectedEntry.latest_finding} />
+              <Field label="Latest finding" value={selectedFinding} />
               <Field
                 label="Lineage"
                 value={selectedLineage?.source
-                  ? `${selectedLineage.source.trading_system_id} -> ${selectedEntry.candidate_id}`
-                  : `${selectedEntry.parent_candidate_id ?? "none"} -> ${selectedEntry.candidate_id}`}
+                  ? `${selectedLineage.source.trading_system_id} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`
+                  : `${selectedParent ?? "none"} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`}
               />
-              <Field label="Authority" value={selectedEntry.authority_status} />
+              <Field label="Authority" value={selectedAuthority} />
               {selectedLedgerSummary?.latest_order_request && (
                 <Field
                   label="OrderRequest"
@@ -1767,9 +1793,8 @@ export function CandidateDetail({
   privateReadinessPostureMessage?: string;
 }) {
   const ledger = candidate.ledger;
-  const selectedArenaEntry = candidateArena?.leaderboard.find((entry) => entry.candidate_id === candidate.candidate_id)
-    ?? candidateArena?.leaderboard[0];
-  const selectedArenaCandidate = selectedArenaEntry?.candidate_id === candidate.candidate_id ? candidate : undefined;
+  const operatorSelectedCandidateId = operator?.selected_candidate_id ?? candidate.candidate_id;
+  const selectedArenaCandidate = candidate.candidate_id === operatorSelectedCandidateId ? candidate : undefined;
   const latestReplayRun = replayRuns[0];
   const publicMarketSurface = candidate.trading_substrate?.latest_public_market_liveness_surface ?? null;
   const orderFillSurface = candidate.trading_substrate?.latest_order_fill_surface ?? null;
@@ -1912,7 +1937,7 @@ export function CandidateDetail({
       {candidateArena && (
         <CandidateArenaPanel
           arena={candidateArena}
-          selectedCandidateId={selectedArenaEntry?.candidate_id}
+          selectedCandidateId={operatorSelectedCandidateId}
           selectedCandidate={selectedArenaCandidate}
           researcherProvider={operator?.researcher_provider}
           agentProfiles={operator?.agent_profiles}

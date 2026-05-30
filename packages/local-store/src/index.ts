@@ -4172,11 +4172,11 @@ export class LocalStore {
       sandboxId
     );
     const logs = (await this.readCollection<SandboxLogRecord>("sandbox-logs"))
-      .filter((log) => log.sandbox_ref.id === sandboxId)
+      .filter((log) => log.sandbox_ref?.id === sandboxId)
       .sort(compareSandboxLogs)
       .map(toSandboxLogReadModel);
     const heartbeats = (await this.readCollection<RuntimeHeartbeatRecord>("runtime-heartbeats"))
-      .filter((heartbeat) => heartbeat.sandbox_ref.id === sandboxId)
+      .filter((heartbeat) => heartbeat.sandbox_ref?.id === sandboxId)
       .sort(compareRuntimeHeartbeats)
       .map(toSandboxHeartbeatReadModel);
     const commandEvidence = (await this.readCollection<SandboxCommandEvidenceRecord>("sandbox-command-evidence"))
