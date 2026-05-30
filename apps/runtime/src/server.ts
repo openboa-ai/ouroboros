@@ -549,20 +549,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     if (existingEvaluation?.status === "running") {
       if (!paperTradingEvaluationRunner.active(tradingRunId)) {
         const tradingApiBaseUrl = await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-        await stopLinkedTradingRunSandbox({
-          store,
-          sandboxAdapters,
-          tradingRunId
-        });
-        await ensureTradingRunSandbox({
-          store,
-          sandboxAdapter: sandboxAdapters.deterministic_test,
+        await restartTradingRunSandboxWithProvider({
           candidate,
           tradingRunId,
           candidateVersionId,
           paperOrderRequest,
           tradingApiBaseUrl,
-          restartToken: `resume-${safeRouteId(new Date().toISOString())}`
+          restartReason: "resume"
         });
         const resumedEvaluation = await recordPaperTradingEvaluationObservation({
           tradingRunId,
@@ -670,7 +663,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         environment: "paper",
         marketData: gatewayMarketDataPort
       });
-      await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
+      const providerWasActive = paperTradingApiProviderSessions.has(tradingRunId);
+      const tradingApiBaseUrl = await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
+      if (!providerWasActive) {
+        await restartTradingRunSandboxWithProvider({
+          candidate,
+          tradingRunId,
+          candidateVersionId: candidate.candidate_version.candidate_version_id,
+          paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
+          tradingApiBaseUrl,
+          restartReason: "observe"
+        });
+      }
       paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
         tradingRunId,
         gatewayRuntimeBinding,
@@ -726,6 +730,31 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           await stopPaperTradingApiProviderSession(tradingRunId);
         }
       }
+    });
+  }
+
+  async function restartTradingRunSandboxWithProvider(input: {
+    candidate: CandidateInspectReadModel;
+    tradingRunId: string;
+    candidateVersionId: string;
+    paperOrderRequest: PaperOrderRequestFixture;
+    tradingApiBaseUrl: string;
+    restartReason: "observe" | "resume";
+  }): Promise<void> {
+    await stopLinkedTradingRunSandbox({
+      store,
+      sandboxAdapters,
+      tradingRunId: input.tradingRunId
+    });
+    await ensureTradingRunSandbox({
+      store,
+      sandboxAdapter: sandboxAdapters.deterministic_test,
+      candidate: input.candidate,
+      tradingRunId: input.tradingRunId,
+      candidateVersionId: input.candidateVersionId,
+      paperOrderRequest: input.paperOrderRequest,
+      tradingApiBaseUrl: input.tradingApiBaseUrl,
+      restartToken: `${input.restartReason}-${safeRouteId(new Date().toISOString())}`
     });
   }
 
@@ -2255,6 +2284,10 @@ function startPaperOrderRequest(body: StartTradingRunBody | undefined): PaperOrd
     return body.paper_order_request;
   }
   return undefined;
+}
+
+function paperOrderRequestFromCandidateRuntime(candidate: CandidateInspectReadModel): PaperOrderRequestFixture {
+  return candidate.runtime.sandbox?.sandbox_name?.endsWith("-rejected") ? "rejected" : "valid";
 }
 
 function startRuntimeEnvironment(body: StartTradingRunBody | undefined): TradingRuntimeEnvironment | undefined {

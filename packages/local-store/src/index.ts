@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
@@ -770,7 +770,11 @@ export class LocalStore {
 
   async seedFixture(): Promise<void> {
     for (const item of createFixtureRecords()) {
-      await this.writeJson(this.itemPath(item.collection, item.id, item.itemDir), item.record);
+      const targetPath = this.itemPath(item.collection, item.id, item.itemDir);
+      if (await pathExists(targetPath)) {
+        continue;
+      }
+      await this.writeJson(targetPath, item.record);
     }
   }
 
@@ -6323,4 +6327,16 @@ function containsForbiddenMaterializationKey(value: unknown): boolean {
     });
   }
   return false;
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await access(targetPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }

@@ -293,6 +293,73 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("restarts the sandbox with a fresh provider URL when observe is first after restart", async () => {
+    const store = new LocalStore(tmpDir);
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
+    const firstSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
+    const firstServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: firstSandbox.adapter
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+    let tradingRunId = "";
+
+    try {
+      const started = await firstServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      tradingRunId = started.json().operator.selected_paper_trading_evaluation.trading_run_id;
+      expect(firstSandbox.starts).toHaveLength(1);
+    } finally {
+      await firstServer.close();
+    }
+
+    const observedSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
+    const observedServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: observedSandbox.adapter
+      },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const observed = await observedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: { trading_run_id: tradingRunId }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+      expect(observed.json()).toMatchObject({
+        command: {
+          command_kind: "trading_run.observe",
+          status: "succeeded"
+        }
+      });
+      expect(observedSandbox.starts).toHaveLength(1);
+      expect(observedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      expect(observedSandbox.starts[0]?.instance_id).not.toBe(firstSandbox.starts[0]?.instance_id);
+    } finally {
+      await observedServer.close();
+    }
+  });
+
   it("consumes TradingSystem order events once and records fake account state", async () => {
     const store = new LocalStore(tmpDir);
     const orderLine = paperOrderRequestLine({
