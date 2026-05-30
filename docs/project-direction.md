@@ -57,6 +57,10 @@ consistency evidence built from REST `depth` snapshot plus routed `/public` WebS
 
 TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
 events, news or social inputs, tool calls, internal agent loops, or risk gates.
+Ouroboros may inject `TRADING_API_BASE_URL` so the running system can read paper market snapshots,
+fake account state, and order validation through the Gateway-owned runtime API. That is the only
+supported paper context path for a TradingSystem; it must not attach to Binance, credentials,
+private account state, or order submission directly.
 `trading_run.observe` is not a command to force a trade decision; it is a checkpoint/readback over
 the running paper session. If the `TradingSystem` has emitted a new bounded `OrderRequest`, the
 Gateway validates it and fake executes it into Ledger evidence. If it emitted nothing, the

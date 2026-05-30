@@ -516,6 +516,47 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("Research iterations");
   });
 
+  it("keeps the cockpit inspector bound to the operator-selected candidate even outside the arena leaderboard", () => {
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={fixtureCandidateArena}
+        selectedCandidateId={fixtureCandidate.candidate_id}
+        selectedCandidate={fixtureCandidate}
+        selectedPaperEvidence={{
+          status: "ledger_chain_complete",
+          ledger_chain_complete: true,
+          ledger_chain_count: 1,
+          authority_status: "not_live"
+        }}
+        selectedPaperTradingEvaluation={paperTradingEvaluationFixture({
+          profit_loss: {
+            revenue_usdt: 0,
+            cost_usdt: 0.054504,
+            net_revenue_usdt: -0.054504,
+            net_return_pct: -0.00054504
+          },
+          observation_count: 3
+        })}
+        onStart={() => undefined}
+        onStop={() => undefined}
+        onTick={() => undefined}
+        onSelectCandidate={() => undefined}
+        onStartPaperTrading={() => undefined}
+        actionPending={false}
+        runningPaperTrading={false}
+      />
+    );
+    const selectedSection = extractSelectedCandidateArenaSection(html);
+
+    expect(html).toContain("Arena trend Trading System");
+    expect(selectedSection).toContain("Fixture generic trading-system candidate");
+    expect(selectedSection).toContain("outside_arena_leaderboard");
+    expect(selectedSection).toContain("Selected candidate is not in the current arena leaderboard.");
+    expect(selectedSection).toContain("-0.054504 USDT / -0.000545%");
+    expect(selectedSection).toContain("Ledger chain complete");
+    expect(selectedSection).not.toContain("Arena trend Trading System");
+  });
+
   it("treats an empty selected candidate Ledger as paper evidence not run", () => {
     const selectedCandidate = arenaSelectedCandidate({
       ledger: buildLedgerReadModel(emptyLedgerSourceRecords()),
@@ -3443,6 +3484,15 @@ function jsonResponse(body: unknown): Response {
     json: async () => body,
     text: async () => JSON.stringify(body)
   } as Response;
+}
+
+function extractSelectedCandidateArenaSection(html: string): string {
+  const start = html.indexOf('aria-label="Selected Candidate Arena candidate"');
+  const end = html.indexOf('aria-label="Agent provider status"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("selected candidate arena section not found");
+  }
+  return html.slice(start, end);
 }
 
 function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {

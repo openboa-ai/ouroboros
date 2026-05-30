@@ -2069,6 +2069,106 @@ describe("LocalStore", () => {
     );
   });
 
+  it("ignores legacy orphan sandbox logs and heartbeats when rebuilding read models", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate?.system_code?.ref) {
+      throw new Error("expected fixture candidate system code");
+    }
+
+    const sandboxId = "sandbox-legacy-orphan-observation-guard";
+    const placement: SandboxPlacementRecord = {
+      record_kind: "sandbox_placement",
+      version: 1,
+      sandbox_placement_id: "sandbox-placement-legacy-orphan-observation-guard",
+      placement_kind: "containerized_remote",
+      tooling_kind: "docker_sandbox",
+      sandbox_template_ref: { record_kind: "sandbox_template", id: "fixture-sandbox-template" },
+      authority_status: "not_launched"
+    };
+    const log: SandboxLogRecord = {
+      record_kind: "sandbox_log",
+      version: 1,
+      sandbox_log_id: "sandbox-log-legacy-orphan-observation-guard-valid",
+      sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+      lines: ["{\"event\":\"runtime_heartbeat\",\"tick\":1}"],
+      captured_at: "2026-05-20T00:00:01.000Z",
+      authority_status: "trace_only"
+    };
+    const heartbeat: RuntimeHeartbeatRecord = {
+      record_kind: "runtime_heartbeat",
+      version: 1,
+      runtime_heartbeat_id: "runtime-heartbeat-legacy-orphan-observation-guard-valid",
+      sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+      heartbeat_line: "{\"event\":\"runtime_heartbeat\",\"tick\":1}",
+      observed_at: "2026-05-20T00:00:01.000Z",
+      authority_status: "trace_only"
+    };
+    const sandbox: SandboxRecord = {
+      record_kind: "sandbox",
+      version: 1,
+      sandbox_id: sandboxId,
+      adapter_kind: "deterministic_test",
+      system_code_ref: candidate.system_code.ref,
+      runtime_ref: candidate.runtime.ref,
+      sandbox_placement_ref: { record_kind: "sandbox_placement", id: placement.sandbox_placement_id },
+      lifecycle_status: "running",
+      sandbox_name: "ouro-legacy-orphan-observation-guard",
+      sandbox_ref: { record_kind: "docker_sandbox", id: "ouro-legacy-orphan-observation-guard" },
+      created_at: "2026-05-20T00:00:00.000Z",
+      started_at: "2026-05-20T00:00:00.000Z",
+      last_heartbeat_at: heartbeat.observed_at,
+      log_refs: [{ record_kind: "sandbox_log", id: log.sandbox_log_id }],
+      heartbeat_refs: [{ record_kind: "runtime_heartbeat", id: heartbeat.runtime_heartbeat_id }],
+      authority_status: "not_live"
+    };
+
+    await store.recordSandboxStart({
+      instance: sandbox,
+      placement,
+      logs: [log],
+      heartbeats: [heartbeat]
+    });
+    await writeStoreJson(
+      {
+        record_kind: "sandbox_log",
+        version: 1,
+        sandbox_log_id: "sandbox-log-legacy-missing-sandbox-ref",
+        lines: ["legacy log without sandbox_ref"],
+        captured_at: "2026-05-19T00:00:00.000Z",
+        authority_status: "trace_only"
+      },
+      "sandbox-logs",
+      "items",
+      "sandbox-log-legacy-missing-sandbox-ref.json"
+    );
+    await writeStoreJson(
+      {
+        record_kind: "runtime_heartbeat",
+        version: 1,
+        runtime_heartbeat_id: "runtime-heartbeat-legacy-missing-sandbox-ref",
+        heartbeat_line: "legacy heartbeat without sandbox_ref",
+        observed_at: "2026-05-19T00:00:00.000Z",
+        authority_status: "trace_only"
+      },
+      "runtime-heartbeats",
+      "items",
+      "runtime-heartbeat-legacy-missing-sandbox-ref.json"
+    );
+
+    const projectedSandbox = await store.getSandbox(sandboxId);
+    expect(projectedSandbox?.logs).toHaveLength(1);
+    expect(projectedSandbox?.heartbeats).toHaveLength(1);
+    expect(projectedSandbox?.logs[0].log_ref.id).toBe(log.sandbox_log_id);
+    expect(projectedSandbox?.heartbeats[0].heartbeat_ref.id).toBe(heartbeat.runtime_heartbeat_id);
+
+    const projectedCandidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    expect(projectedCandidate?.runtime.sandbox?.sandbox_id).toBe(sandboxId);
+    expect(projectedCandidate?.runtime.sandbox?.logs).toHaveLength(1);
+    expect(projectedCandidate?.runtime.sandbox?.heartbeats).toHaveLength(1);
+  });
+
   it("rejects invalid runtime control audit commands without creating records", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

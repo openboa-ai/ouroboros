@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createGatewayRuntimeBinding,
+  startPaperTradingApiProvider
+} from "@ouroboros/application/trading/gateway/runtime-binding";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFile);
 const artifactPath = path.resolve("fixtures/trading-systems/clock.py");
@@ -118,5 +123,121 @@ describe("Python clock system code fixture", () => {
       limit_price: "60000",
       authority_status: "trace_only"
     });
+  });
+
+  it("uses the injected paper runtime API instead of direct exchange access", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort({
+        snapshots: [{
+          price: 65_000,
+          expected_direction: "short",
+          observed_at: "2026-05-16T00:00:03.000Z"
+        }]
+      })
+    }));
+
+    try {
+      expect(provider.scenario.market).toMatchObject({
+        price: 65_000,
+        expected_direction: "short",
+        observed_at: "2026-05-16T00:00:03.000Z"
+      });
+      expect(provider.scenario.outcome.exit_price).toBe(65_000);
+
+      const { stdout } = await execFileAsync(
+        "python3",
+        [
+          artifactPath,
+          "--instance-id",
+          "clock-test-runtime-api",
+          "--ticks",
+          "1",
+          "--interval-ms",
+          "1",
+          "--start-at",
+          "2026-05-16T00:00:03.000Z"
+        ],
+        {
+          env: {
+            ...process.env,
+            TRADING_API_BASE_URL: provider.base_url
+          }
+        }
+      );
+
+      const [orderRequest] = stdout.trim().split("\n").map((line) => JSON.parse(line));
+      expect(orderRequest).toMatchObject({
+        event: "order_request",
+        event_id: "clock-test-runtime-api:order-request:0001",
+        instance_id: "clock-test-runtime-api",
+        symbol: "BTCUSDT",
+        intent_kind: "place_order",
+        side: "sell",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: "65000",
+        reason: "runtime_api_market_expected_direction_short_validation_risk_limits_passed",
+        authority_status: "trace_only",
+        at: "2026-05-16T00:00:03.000Z"
+      });
+      expect(provider.requests().map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+        "GET /market/snapshot",
+        "GET /account/state",
+        "POST /orders/validate"
+      ]);
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it("keeps the paper runtime API available when the first market snapshot is unavailable", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort({
+        failMarketSnapshot: true
+      })
+    }));
+
+    try {
+      expect(provider.scenario.market).toMatchObject({
+        symbol: "BTCUSDT",
+        price: 0,
+        expected_direction: "flat"
+      });
+
+      const response = await fetch(`${provider.base_url}/market/snapshot`);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: "paper_runtime_api_unavailable",
+        authority_status: "not_live"
+      });
+      expect(provider.requests()).toMatchObject([{
+        method: "GET",
+        path: "/market/snapshot",
+        response_status: 503
+      }]);
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it("bounds the injected paper runtime API request log", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort()
+    }), {
+      request_log_limit: 2
+    });
+
+    try {
+      await fetch(`${provider.base_url}/market/snapshot`);
+      await fetch(`${provider.base_url}/account/state`);
+      await fetch(`${provider.base_url}/market/snapshot`);
+
+      expect(provider.requests().map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+        "GET /account/state",
+        "GET /market/snapshot"
+      ]);
+    } finally {
+      await provider.close();
+    }
   });
 });

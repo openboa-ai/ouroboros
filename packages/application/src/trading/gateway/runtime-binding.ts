@@ -1,3 +1,4 @@
+import http from "node:http";
 import type {
   GatewayResultAuthorityStatus,
   LedgerInput,
@@ -5,10 +6,12 @@ import type {
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import { recordPaperExecutionResult } from "./paper-execution";
-import { startReplayTradingApiProvider } from "../research/replay-trading-api-provider";
+import { validateOrderRequest } from "../research/replay-trading-api-provider";
 import type {
   AccountState,
-  ReplayTradingApiProviderSession
+  MarketSnapshot,
+  ReplayTradingApiProviderSession,
+  TradingProviderRequestLog
 } from "../research/types";
 import {
   type PaperGatewayOrderRequest,
@@ -80,6 +83,14 @@ export interface CreateGatewayRuntimeBindingInput {
   paperAccount?: AccountState;
 }
 
+export interface PaperTradingApiProviderOptions {
+  listen_host?: string;
+  base_host?: string;
+  sandbox_host?: string;
+  request_log_limit?: number;
+  readAccountState?: () => AccountState | Promise<AccountState>;
+}
+
 export type GatewayOrderExecution = Pick<
   LedgerInput,
   "intent" | "gateway_result" | "execution_result"
@@ -145,22 +156,118 @@ export function createGatewayRuntimeBinding(
 }
 
 export async function startPaperTradingApiProvider(
-  binding: GatewayRuntimeBinding
+  binding: GatewayRuntimeBinding,
+  options: PaperTradingApiProviderOptions = {}
 ): Promise<ReplayTradingApiProviderSession> {
   assertPaperBindingEnabled(binding);
-  const market = await binding.marketData.readMarketSnapshot();
-  return startReplayTradingApiProvider({
-    id: "binance-production-public-paper",
-    description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
-    market,
-    account: binding.account.state,
-    outcome: {
-      exit_price: market.price,
-      fee_bps: 4,
-      slippage_bps: 3,
-      funding_bps: 1
+  const requestLogLimit = options.request_log_limit ?? 200;
+  const requestLog: TradingProviderRequestLog[] = [];
+  const readAccountState = async () => options.readAccountState
+    ? options.readAccountState()
+    : binding.account.state;
+  const initialMarket = await initialPaperProviderMarketSnapshot(binding);
+  const initialAccount = await initialPaperProviderAccountState(binding.account.state, readAccountState);
+  const server = http.createServer(async (request, response) => {
+    const body = await readJsonBody(request);
+    const method = request.method ?? "GET";
+    const path = requestPath(request.url);
+    try {
+      if (method === "GET" && path === "/market/snapshot") {
+        const market = await binding.marketData.readMarketSnapshot();
+        sendJson(response, 200, market);
+        pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
+        return;
+      }
+
+      if (method === "GET" && path === "/account/state") {
+        const account = await readAccountState();
+        sendJson(response, 200, account);
+        pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
+        return;
+      }
+
+      if (method === "POST" && path === "/orders/validate") {
+        const [market, account] = await Promise.all([
+          binding.marketData.readMarketSnapshot(),
+          readAccountState()
+        ]);
+        const validation = validateOrderRequest(body, market, account);
+        sendJson(response, 200, validation);
+        pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
+        return;
+      }
+
+      sendJson(response, 404, { error: "not_found" });
+      pushBoundedRequestLog(requestLog, logRequest(method, path, body, 404), requestLogLimit);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "paper_runtime_api_unavailable";
+      sendJson(response, 503, {
+        error: "paper_runtime_api_unavailable",
+        reason,
+        authority_status: "not_live"
+      });
+      pushBoundedRequestLog(requestLog, logRequest(method, path, body, 503), requestLogLimit);
     }
   });
+
+  await listen(server, options.listen_host ?? "127.0.0.1");
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Paper trading API provider did not bind to a TCP port");
+  }
+  const baseHost = options.base_host ?? "127.0.0.1";
+
+  return {
+    base_url: providerBaseUrl(baseHost, address.port),
+    sandbox_base_url: options.sandbox_host
+      ? providerBaseUrl(options.sandbox_host, address.port)
+      : undefined,
+    close: () => close(server),
+    requests: () => [...requestLog],
+    scenario: {
+      id: "binance-production-public-paper",
+      description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
+      market: initialMarket,
+      account: initialAccount,
+      outcome: {
+        exit_price: initialMarket.price,
+        fee_bps: 4,
+        slippage_bps: 3,
+        funding_bps: 1
+      }
+    }
+  };
+}
+
+async function initialPaperProviderMarketSnapshot(
+  binding: GatewayRuntimeBinding
+): Promise<MarketSnapshot> {
+  try {
+    return await binding.marketData.readMarketSnapshot();
+  } catch {
+    return {
+      symbol: "BTCUSDT",
+      price: 0,
+      moving_average_fast: 0,
+      moving_average_slow: 0,
+      volatility: 0,
+      expected_direction: "flat",
+      observed_at: new Date().toISOString(),
+      source_kind: "binance_production_public_hybrid",
+      freshness: "stale"
+    };
+  }
+}
+
+async function initialPaperProviderAccountState(
+  fallbackAccount: AccountState,
+  readAccountState: () => Promise<AccountState>
+): Promise<AccountState> {
+  try {
+    return await readAccountState();
+  } catch {
+    return fallbackAccount;
+  }
 }
 
 export async function executeGatewayOrderRequest(
@@ -228,4 +335,94 @@ function defaultPaperAccount(): AccountState {
     max_risk_fraction: 0.03,
     target_risk_fraction: 0.02
   };
+}
+
+async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { malformed_json: raw };
+  }
+}
+
+function requestPath(rawUrl: string | undefined): string {
+  try {
+    return new URL(rawUrl ?? "/", "http://localhost").pathname;
+  } catch {
+    return rawUrl ?? "/";
+  }
+}
+
+function sendJson(response: http.ServerResponse, status: number, body: unknown): void {
+  response.writeHead(status, {
+    "content-type": "application/json"
+  });
+  response.end(`${JSON.stringify(body)}\n`);
+}
+
+function logRequest(
+  method: string,
+  path: string,
+  body: unknown,
+  responseStatus: number
+): TradingProviderRequestLog {
+  return {
+    at: new Date().toISOString(),
+    method,
+    path,
+    body,
+    response_status: responseStatus
+  };
+}
+
+function pushBoundedRequestLog(
+  requestLog: TradingProviderRequestLog[],
+  entry: TradingProviderRequestLog,
+  limit: number
+): void {
+  if (limit <= 0) {
+    return;
+  }
+  requestLog.push(entry);
+  if (requestLog.length > limit) {
+    requestLog.splice(0, requestLog.length - limit);
+  }
+}
+
+function listen(server: http.Server, host: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function close(server: http.Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function providerBaseUrl(host: string, port: number): string {
+  return `http://${formatHostForUrl(host)}:${port}`;
+}
+
+function formatHostForUrl(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }

@@ -30,6 +30,9 @@ Current command groups:
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
   `trading_run.start` starts or resumes the selected `TradingSystem` in paper mode.
+  The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
+  Gateway-owned paper market snapshots, fake account state, and order validation without importing
+  Binance or touching private/live authority.
   `trading_run.observe` is a checkpoint/readback over that running system: refresh the latest market
   snapshot, consume newly emitted `OrderRequest`s, run Gateway validation and fake paper execution
   when orders exist, record no-order continuity when none exist, then update score and evidence.
