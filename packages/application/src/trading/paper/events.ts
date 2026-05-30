@@ -151,9 +151,7 @@ export function parseTradingSystemPaperEventLine(
   }
 
   const eventId = stableTradingSystemEventId(raw.event_id, line, input.sandboxId, input.lineIndex);
-  const observedAt = typeof raw.at === "string" && raw.at.trim()
-    ? raw.at
-    : input.fallbackObservedAt;
+  const observedAt = typeof raw.at === "string" && raw.at.trim() ? raw.at : undefined;
   const commonRejection = validateCommonProtocol(raw, observedAt);
   if (commonRejection) {
     return rejectedPaperEvent(eventId, observedAt ?? input.fallbackObservedAt, commonRejection);
@@ -220,7 +218,7 @@ function validateCommonProtocol(
     return "missing_instance_id";
   }
   if (!observedAt) {
-    return "missing_observed_at";
+    return "missing_at";
   }
   if (raw.authority_status !== "trace_only") {
     return "authority_status_must_be_trace_only";
