@@ -154,7 +154,10 @@ export function parseTradingSystemPaperEventLine(
   const observedAt = typeof raw.at === "string" && raw.at.trim() ? raw.at : undefined;
   const commonRejection = validateCommonProtocol(raw, observedAt);
   if (commonRejection) {
-    return rejectedPaperEvent(eventId, observedAt ?? input.fallbackObservedAt, commonRejection);
+    const errorObservedAt = commonRejection === "invalid_at"
+      ? input.fallbackObservedAt
+      : observedAt ?? input.fallbackObservedAt;
+    return rejectedPaperEvent(eventId, errorObservedAt, commonRejection);
   }
   if (hasForbiddenAuthorityField(raw)) {
     return rejectedPaperEvent(eventId, observedAt, "forbidden_private_or_live_authority");
@@ -219,6 +222,9 @@ function validateCommonProtocol(
   }
   if (!observedAt) {
     return "missing_at";
+  }
+  if (!isValidPaperEventTimestamp(observedAt)) {
+    return "invalid_at";
   }
   if (raw.authority_status !== "trace_only") {
     return "authority_status_must_be_trace_only";
@@ -331,6 +337,11 @@ function isOrderSide(value: unknown): value is "buy" | "sell" {
 
 function isOrderType(value: unknown): value is "market" | "limit" {
   return value === "market" || value === "limit";
+}
+
+function isValidPaperEventTimestamp(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) &&
+    Number.isFinite(Date.parse(value));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

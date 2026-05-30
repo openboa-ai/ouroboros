@@ -92,6 +92,30 @@ describe("TradingSystem paper event protocol", () => {
     });
   });
 
+  it("rejects paper events with invalid decision timestamps", () => {
+    const invalidTimestamp = {
+      ...TRADING_SYSTEM_PAPER_EVENT_EXAMPLES.order_request,
+      event_id: "paper-smoke-order-invalid-at",
+      at: "not-a-date"
+    };
+
+    const parsed = parseTradingSystemPaperEventLine(JSON.stringify(invalidTimestamp), {
+      sandboxId: "sandbox-paper-event-protocol",
+      lineIndex: 4,
+      fallbackObservedAt: "2026-05-16T00:00:10.000Z"
+    });
+
+    expect(parsed).toMatchObject({
+      status: "rejected",
+      reason: "invalid_at",
+      event: {
+        event_kind: "error",
+        event_id: "paper-smoke-order-invalid-at",
+        observed_at: "2026-05-16T00:00:10.000Z"
+      }
+    });
+  });
+
   it("documents the required JSON fields for each paper event kind", () => {
     expect(TRADING_SYSTEM_PAPER_EVENT_REQUIRED_FIELDS).toMatchObject({
       common: ["event", "event_id", "instance_id", "at", "authority_status"],
