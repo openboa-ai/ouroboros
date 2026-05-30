@@ -553,7 +553,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           candidate,
           tradingRunId,
           candidateVersionId,
-          paperOrderRequest,
+          paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
           tradingApiBaseUrl,
           restartReason: "resume"
         });

@@ -249,11 +249,15 @@ describe("runtime canonical operator API", () => {
         url: "/api/commands",
         payload: {
           command_kind: "trading_run.start",
-          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+          payload: {
+            candidate_id: FIXTURE_CANDIDATE_ID,
+            paper_order_request: "rejected"
+          }
         }
       });
       expect(started.statusCode, started.body).toBe(200);
       expect(firstSandbox.starts).toHaveLength(1);
+      expect(firstSandbox.starts[0]?.paper_order_request).toBe("rejected");
       expect(firstSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
     } finally {
       await firstServer.close();
@@ -286,6 +290,7 @@ describe("runtime canonical operator API", () => {
         }
       });
       expect(resumedSandbox.starts).toHaveLength(1);
+      expect(resumedSandbox.starts[0]?.paper_order_request).toBe("rejected");
       expect(resumedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
       expect(resumedSandbox.starts[0]?.instance_id).not.toBe(firstSandbox.starts[0]?.instance_id);
     } finally {
