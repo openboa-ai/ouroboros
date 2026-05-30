@@ -190,6 +190,36 @@ describe("Python clock system code fixture", () => {
     }
   });
 
+  it("keeps the paper runtime API available when the first market snapshot is unavailable", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort({
+        failMarketSnapshot: true
+      })
+    }));
+
+    try {
+      expect(provider.scenario.market).toMatchObject({
+        symbol: "BTCUSDT",
+        price: 0,
+        expected_direction: "flat"
+      });
+
+      const response = await fetch(`${provider.base_url}/market/snapshot`);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: "paper_runtime_api_unavailable",
+        authority_status: "not_live"
+      });
+      expect(provider.requests()).toMatchObject([{
+        method: "GET",
+        path: "/market/snapshot",
+        response_status: 503
+      }]);
+    } finally {
+      await provider.close();
+    }
+  });
+
   it("bounds the injected paper runtime API request log", async () => {
     const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
       marketData: fakeGatewayMarketDataPort()

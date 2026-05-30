@@ -9,6 +9,7 @@ import { recordPaperExecutionResult } from "./paper-execution";
 import { validateOrderRequest } from "../research/replay-trading-api-provider";
 import type {
   AccountState,
+  MarketSnapshot,
   ReplayTradingApiProviderSession,
   TradingProviderRequestLog
 } from "../research/types";
@@ -164,8 +165,8 @@ export async function startPaperTradingApiProvider(
   const readAccountState = async () => options.readAccountState
     ? options.readAccountState()
     : binding.account.state;
-  const initialMarket = await binding.marketData.readMarketSnapshot();
-  const initialAccount = await readAccountState();
+  const initialMarket = await initialPaperProviderMarketSnapshot(binding);
+  const initialAccount = await initialPaperProviderAccountState(binding.account.state, readAccountState);
   const server = http.createServer(async (request, response) => {
     const body = await readJsonBody(request);
     const method = request.method ?? "GET";
@@ -236,6 +237,37 @@ export async function startPaperTradingApiProvider(
       }
     }
   };
+}
+
+async function initialPaperProviderMarketSnapshot(
+  binding: GatewayRuntimeBinding
+): Promise<MarketSnapshot> {
+  try {
+    return await binding.marketData.readMarketSnapshot();
+  } catch {
+    return {
+      symbol: "BTCUSDT",
+      price: 0,
+      moving_average_fast: 0,
+      moving_average_slow: 0,
+      volatility: 0,
+      expected_direction: "flat",
+      observed_at: new Date().toISOString(),
+      source_kind: "binance_production_public_hybrid",
+      freshness: "stale"
+    };
+  }
+}
+
+async function initialPaperProviderAccountState(
+  fallbackAccount: AccountState,
+  readAccountState: () => Promise<AccountState>
+): Promise<AccountState> {
+  try {
+    return await readAccountState();
+  } catch {
+    return fallbackAccount;
+  }
 }
 
 export async function executeGatewayOrderRequest(
