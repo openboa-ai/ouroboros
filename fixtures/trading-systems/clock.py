@@ -69,6 +69,7 @@ def main() -> int:
 
     order_request_payload = {
         "event": "order_request",
+        "event_id": f"{args.instance_id}:order-request:0001",
         "instance_id": args.instance_id,
         "symbol": "BTCUSDT",
         "intent_kind": "place_order",

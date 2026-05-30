@@ -1,14 +1,14 @@
 import type {
-  GatewayResultOutcome,
   PaperTradingAccountSnapshot,
-  PaperTradingDecisionOrderRequestSummary,
   PaperTradingFillSummary,
   PaperTradingOrderSummary,
   PaperTradingPublicExecutionSnapshotSummary,
-  Ref,
   TradingProfitLossReadModel
 } from "@ouroboros/domain";
 import { PAPER_TRADING_ACCOUNT_EQUITY_USDT, PAPER_TRADING_COST_BPS } from "./evaluation";
+import type { PaperTradingSystemEvent } from "./events";
+
+export type { PaperTradingSystemEvent } from "./events";
 
 const PAPER_MARGIN_FRACTION = 0.02;
 
@@ -19,28 +19,6 @@ export interface PaperTradingEngineState {
   processedPublicTradeIds: string[];
   latestFill?: PaperTradingFillSummary;
 }
-
-export type PaperTradingSystemEvent =
-  | {
-      event_id: string;
-      event_kind: "order_request";
-      observed_at: string;
-      order_request: PaperTradingDecisionOrderRequestSummary;
-      ledger_ref?: Ref;
-      gateway_outcome: GatewayResultOutcome;
-    }
-  | {
-      event_id: string;
-      event_kind: "cancel_order";
-      observed_at: string;
-      order_id?: string;
-    }
-  | {
-      event_id: string;
-      event_kind: "hold" | "no_action";
-      observed_at: string;
-      reason: string;
-    };
 
 export interface PaperTradingEngineCheckpointInput {
   previous?: PaperTradingEngineState;

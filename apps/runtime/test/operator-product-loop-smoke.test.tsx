@@ -36,7 +36,7 @@ describe("operator product loop smoke", () => {
         deterministic_test: fixedOrderLogSandboxAdapter(paperOrderRequestLine({
           at: "2026-05-16T00:00:03.000Z",
           quantity: "0.001"
-        }))
+        }), paperHoldLine("2026-05-16T00:01:03.000Z"))
       },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
@@ -263,6 +263,17 @@ describe("operator product loop smoke", () => {
         ])
       );
 
+      const humanStatus = await runOuroborosCli(["status"], {
+        runtimeBaseUrl,
+        fetch: fetcher
+      });
+      expect(humanStatus.exitCode, humanStatus.stderr).toBe(0);
+      expect(humanStatus.stdout).toContain("PaperTradingEvaluation: running");
+      expect(humanStatus.stdout).toContain("Market data:");
+      expect(humanStatus.stdout).toContain("Paper decision: hold");
+      expect(humanStatus.stdout).toContain("Paper account: equity");
+      expect(humanStatus.stdout).toContain("Paper fill: filled 0.001 @ 60000");
+
       const restartedServer = await buildServer({
         store: new LocalStore(tmpDir),
         marketDataPort: fakeGatewayMarketDataPort()
@@ -404,6 +415,7 @@ function paperOrderRequestLine(input: { at: string; quantity: string }): string 
     at: input.at,
     authority_status: "trace_only",
     event: "order_request",
+    event_id: "operator-smoke-order-0001",
     instance_id: "operator-smoke-paper-runtime",
     intent_kind: "place_order",
     limit_price: "60000",
@@ -414,7 +426,18 @@ function paperOrderRequestLine(input: { at: string; quantity: string }): string 
   });
 }
 
-function fixedOrderLogSandboxAdapter(orderLine: string): SandboxAdapter {
+function paperHoldLine(at: string): string {
+  return JSON.stringify({
+    at,
+    authority_status: "trace_only",
+    event: "hold",
+    event_id: "operator-smoke-hold-0001",
+    instance_id: "operator-smoke-paper-runtime",
+    reason: "sample paper TradingSystem emitted no fresh order"
+  });
+}
+
+function fixedOrderLogSandboxAdapter(orderLine: string, holdLine: string): SandboxAdapter {
   let refreshCount = 0;
   return {
     kind: "deterministic_test",
@@ -471,7 +494,7 @@ function fixedOrderLogSandboxAdapter(orderLine: string): SandboxAdapter {
           version: 1,
           sandbox_log_id: `sandbox-log-${sandboxId}-refresh-${refreshCount}`,
           sandbox_ref: { record_kind: "sandbox", id: sandboxId },
-          lines: [orderLine],
+          lines: refreshCount === 1 ? [orderLine] : [orderLine, holdLine],
           captured_at: `2026-05-16T00:0${refreshCount}:03.000Z`,
           authority_status: "trace_only"
         }]

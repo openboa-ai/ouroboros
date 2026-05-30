@@ -96,9 +96,14 @@ import {
   applyPaperTradingCheckpoint,
   initialPaperTradingEngineState,
   restorePaperTradingEngineState,
-  type PaperTradingEngineState,
-  type PaperTradingSystemEvent
+  type PaperTradingEngineCheckpointResult,
+  type PaperTradingEngineState
 } from "@ouroboros/application/trading/paper/engine";
+import {
+  parseTradingSystemPaperEventLine,
+  type ParsedTradingSystemPaperEvent,
+  type PaperTradingSystemEvent
+} from "@ouroboros/application/trading/paper/events";
 import { safeId } from "@ouroboros/application/safe-id";
 import { PaperTradingEvaluationRunner } from "./paper/evaluation-runner";
 import { registerCoreControllerRoutes } from "./controllers/core";
@@ -539,7 +544,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           appendLedger: true,
           intervalMs: paperTradingEvaluationIntervalMs
         });
-        schedulePaperTradingEvaluation(tradingRunId);
+        if (resumedEvaluation.evaluation.status === "running") {
+          schedulePaperTradingEvaluation(tradingRunId);
+        } else {
+          paperTradingEvaluationRunner.stop(tradingRunId);
+        }
         const response = await tradingRunResponse(store, tradingRunId);
         return {
           statusCode: 200,
@@ -582,7 +591,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         appendLedger: true,
         intervalMs: paperTradingEvaluationIntervalMs
       });
-      schedulePaperTradingEvaluation(tradingRunId);
+      if (paperTradingEvaluation.evaluation.status === "running") {
+        schedulePaperTradingEvaluation(tradingRunId);
+      } else {
+        paperTradingEvaluationRunner.stop(tradingRunId);
+      }
       const response = await tradingRunResponse(store, tradingRunId);
 
       return {
@@ -661,7 +674,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           paperTradingEvaluationRunner.stop(tradingRunId);
           return;
         }
-        await recordPaperTradingEvaluationObservation({
+        const result = await recordPaperTradingEvaluationObservation({
           tradingRunId,
           gatewayRuntimeBinding: createGatewayRuntimeBinding({
             environment: "paper",
@@ -670,6 +683,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           appendLedger: true,
           intervalMs: paperTradingEvaluationIntervalMs
         });
+        if (result.evaluation.status === "failed") {
+          paperTradingEvaluationRunner.stop(tradingRunId);
+        }
       }
     });
   }
@@ -699,6 +715,43 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       intervalMs: input.intervalMs,
       startedAt: now
     });
+    if (baseEvaluation.status === "failed") {
+      const previousEngineState = engineStateFromEvaluation(baseEvaluation);
+      const failureReason = baseEvaluation.latest_failure_reason ?? "paper_trading_evaluation_failed";
+      const sequence = baseEvaluation.observation_count + 1;
+      const observation = paperTradingObservationRecord({
+        candidate: candidateBefore,
+        evaluation: baseEvaluation,
+        sequence,
+        status: "failed",
+        observedAt: now,
+        decision: paperProtocolErrorDecision(now, failureReason),
+        paperAccountSnapshot: previousEngineState.account,
+        openOrders: previousEngineState.openOrders,
+        processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+        processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+        latestFill: previousEngineState.latestFill,
+        scoreDelta: zeroPaperTradingProfitLoss(),
+        cumulativeScore: baseEvaluation.latest_score,
+        failureReason
+      });
+      const evaluation = paperTradingEvaluationUpdate({
+        evaluation: baseEvaluation,
+        status: "failed",
+        observedAt: now,
+        nextObservationAt: undefined,
+        latestScore: baseEvaluation.latest_score,
+        latestFailureReason: failureReason,
+        paperAccountSnapshot: previousEngineState.account,
+        openOrders: previousEngineState.openOrders,
+        processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+        processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+        latestFill: previousEngineState.latestFill
+      });
+      paperTradingEvaluationRunner.stop(input.tradingRunId);
+      await store.recordPaperTradingObservation(observation, evaluation);
+      return { evaluation, observation };
+    }
 
     let market;
     try {
@@ -756,61 +809,69 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ledgerOutcome = decisionOutcome.ledgerOutcome;
       decision = decisionOutcome.decision;
       engineEventsThisObservation = decisionOutcome.engineEvents;
-      try {
-        engineResult = applyPaperTradingCheckpoint({
+      if (decisionOutcome.engineEvents.some(isPaperTradingErrorEvent)) {
+        engineResult = paperTradingTerminalCheckpoint({
           previous: previousEngineState,
-          marketPrice: market.price,
-          observedAt: market.observed_at,
+          score: baseEvaluation.latest_score,
           events: decisionOutcome.engineEvents
         });
-      } catch (error) {
-        if (!(error instanceof Error) || error.message !== "public_execution_stream_unavailable") {
-          throw error;
-        }
+      } else {
         try {
-          publicExecutionSnapshot = await input.gatewayRuntimeBinding.marketData
-            .readPublicExecutionSnapshot({ observedAt: market.observed_at });
+          engineResult = applyPaperTradingCheckpoint({
+            previous: previousEngineState,
+            marketPrice: market.price,
+            observedAt: market.observed_at,
+            events: decisionOutcome.engineEvents
+          });
         } catch (error) {
-          const failedObservation = paperTradingObservationRecord({
-            candidate: refreshedCandidate,
-            evaluation: baseEvaluation,
-            sequence,
-            status: "failed",
+          if (!(error instanceof Error) || error.message !== "public_execution_stream_unavailable") {
+            throw error;
+          }
+          try {
+            publicExecutionSnapshot = await input.gatewayRuntimeBinding.marketData
+              .readPublicExecutionSnapshot({ observedAt: market.observed_at });
+          } catch (error) {
+            const failedObservation = paperTradingObservationRecord({
+              candidate: refreshedCandidate,
+              evaluation: baseEvaluation,
+              sequence,
+              status: "failed",
+              observedAt: market.observed_at,
+              marketSnapshot: marketSnapshotSummary(market),
+              decision,
+              scoreDelta: zeroPaperTradingProfitLoss(),
+              cumulativeScore: baseEvaluation.latest_score,
+              failureReason: error instanceof Error ? error.message : "public_execution_stream_unavailable",
+              paperAccountSnapshot: previousEngineState.account,
+              openOrders: previousEngineState.openOrders,
+              processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+              processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+              latestFill: previousEngineState.latestFill
+            });
+            const failedEvaluation = paperTradingEvaluationUpdate({
+              evaluation: baseEvaluation,
+              status: "failed",
+              observedAt: market.observed_at,
+              nextObservationAt: undefined,
+              latestScore: baseEvaluation.latest_score,
+              latestFailureReason: failedObservation.failure_reason,
+              paperAccountSnapshot: previousEngineState.account,
+              openOrders: previousEngineState.openOrders,
+              processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+              processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+              latestFill: previousEngineState.latestFill
+            });
+            await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
+            return { evaluation: failedEvaluation, observation: failedObservation };
+          }
+          engineResult = applyPaperTradingCheckpoint({
+            previous: previousEngineState,
+            marketPrice: market.price,
             observedAt: market.observed_at,
-            marketSnapshot: marketSnapshotSummary(market),
-            decision,
-            scoreDelta: zeroPaperTradingProfitLoss(),
-            cumulativeScore: baseEvaluation.latest_score,
-            failureReason: error instanceof Error ? error.message : "public_execution_stream_unavailable",
-            paperAccountSnapshot: previousEngineState.account,
-            openOrders: previousEngineState.openOrders,
-            processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
-            processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
-            latestFill: previousEngineState.latestFill
+            publicExecutionSnapshot,
+            events: decisionOutcome.engineEvents
           });
-          const failedEvaluation = paperTradingEvaluationUpdate({
-            evaluation: baseEvaluation,
-            status: "failed",
-            observedAt: market.observed_at,
-            nextObservationAt: undefined,
-            latestScore: baseEvaluation.latest_score,
-            latestFailureReason: failedObservation.failure_reason,
-            paperAccountSnapshot: previousEngineState.account,
-            openOrders: previousEngineState.openOrders,
-            processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
-            processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
-            latestFill: previousEngineState.latestFill
-          });
-          await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
-          return { evaluation: failedEvaluation, observation: failedObservation };
         }
-        engineResult = applyPaperTradingCheckpoint({
-          previous: previousEngineState,
-          marketPrice: market.price,
-          observedAt: market.observed_at,
-          publicExecutionSnapshot,
-          events: decisionOutcome.engineEvents
-        });
       }
       if (!decision) {
         decision = paperNoActionDecision(market.observed_at, "no_new_trading_system_event");
@@ -831,12 +892,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         Boolean(engineResult.latestFill && paperPositionChanged(previousEngineState, engineResult))
       : false;
     const canceledThisObservation = engineEventsThisObservation.some((event) => event.event_kind === "cancel_order");
+    const rejectedThisObservation = engineEventsThisObservation.some((event) => event.event_kind === "error");
     const observedAt = market.observed_at;
     const observation = paperTradingObservationRecord({
       candidate: candidateAfterLedger ?? candidateBefore,
       evaluation: baseEvaluation,
       sequence,
-      status: hasLedger || filledThisObservation || canceledThisObservation ? "recorded" : "no_order",
+      status: rejectedThisObservation
+        ? "failed"
+        : hasLedger || filledThisObservation || canceledThisObservation ? "recorded" : "no_order",
       observedAt,
       marketSnapshot: marketSnapshotSummary(market),
       publicExecutionSnapshot,
@@ -848,15 +912,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       processedPublicTradeIds: engineResult?.processedPublicTradeIds,
       latestFill: engineResult?.latestFill,
       scoreDelta,
-      cumulativeScore
+      cumulativeScore,
+      failureReason: rejectedThisObservation ? decision?.reason ?? "trading_system_event_rejected" : undefined
     });
+    const failedEvaluation = rejectedThisObservation;
+    const latestFailureReason = rejectedThisObservation ? observation.failure_reason : undefined;
     const evaluation = paperTradingEvaluationUpdate({
       evaluation: baseEvaluation,
-      status: "running",
+      status: failedEvaluation ? "failed" : "running",
       observedAt,
-      nextObservationAt: new Date(Date.parse(observedAt) + input.intervalMs).toISOString(),
+      nextObservationAt: failedEvaluation
+        ? undefined
+        : new Date(Date.parse(observedAt) + input.intervalMs).toISOString(),
       latestScore: cumulativeScore,
-      latestFailureReason: undefined,
+      latestFailureReason,
       paperAccountSnapshot: engineResult?.account,
       openOrders: engineResult?.openOrders,
       processedTradingSystemEventIds: engineResult?.processedTradingSystemEventIds,
@@ -1699,7 +1768,7 @@ async function recordPaperTradingObservationDecision(input: {
   gatewayRuntimeBinding: GatewayRuntimeBinding;
   sequence: number;
   market: MarketSnapshot;
-  tradingSystemEvents: ParsedTradingSystemEvent[];
+  tradingSystemEvents: ParsedTradingSystemPaperEvent[];
 }): Promise<{
   decision?: PaperTradingDecisionSummary;
   ledgerOutcome?: LedgerWriteOutcome;
@@ -1722,6 +1791,29 @@ async function recordPaperTradingObservationDecision(input: {
   const engineEvents: PaperTradingSystemEvent[] = [];
   let latestDecision: PaperTradingDecisionSummary | undefined;
   let latestLedger: LedgerWriteOutcome | undefined;
+  const protocolErrorEvents = input.tradingSystemEvents.filter(isPaperTradingErrorEvent);
+  if (protocolErrorEvents.length) {
+    const latestError = protocolErrorEvents[protocolErrorEvents.length - 1] as Extract<
+      ParsedTradingSystemPaperEvent,
+      { event_kind: "error" }
+    >;
+    await recordPaperTradingObservationAudit({
+      store: input.store,
+      candidate: input.candidate,
+      candidateVersionId,
+      tradingRunId: input.tradingRunId,
+      sequence: input.sequence
+    });
+    return {
+      decision: paperProtocolErrorDecision(latestError.observed_at, latestError.reason),
+      engineEvents: protocolErrorEvents.map((event) => ({
+        event_id: event.event_id,
+        event_kind: "error",
+        observed_at: event.observed_at,
+        reason: event.reason
+      }))
+    };
+  }
   for (const event of input.tradingSystemEvents) {
     if (event.event_kind === "order_request") {
       const ledger = await input.store.recordLedger(await ledgerInputFromTradingSystemDecision({
@@ -1765,7 +1857,24 @@ async function recordPaperTradingObservationDecision(input: {
         event_id: event.event_id,
         event_kind: "cancel_order",
         observed_at: event.observed_at,
-        order_id: event.order_id
+        order_id: event.order_id,
+        reason: event.reason
+      });
+      continue;
+    }
+    if (event.event_kind === "error") {
+      latestDecision = {
+        decision_kind: "error",
+        source_kind: "trading_system_decision",
+        reason: event.reason,
+        observed_at: event.observed_at,
+        authority_status: "trace_only"
+      };
+      engineEvents.push({
+        event_id: event.event_id,
+        event_kind: "error",
+        observed_at: event.observed_at,
+        reason: event.reason
       });
       continue;
     }
@@ -1976,27 +2085,6 @@ async function ensureTradingRunSandbox(input: {
   return (await input.store.recordSandboxStart(adapterResult)).sandbox;
 }
 
-type ParsedTradingSystemEvent =
-  | {
-      event_id: string;
-      event_kind: "order_request";
-      observed_at: string;
-      order_request: PaperTradingDecisionOrderRequestSummary;
-    }
-  | {
-      event_id: string;
-      event_kind: "cancel_order";
-      observed_at: string;
-      order_id?: string;
-      reason: string;
-    }
-  | {
-      event_id: string;
-      event_kind: "hold" | "no_action";
-      observed_at: string;
-      reason: string;
-    };
-
 function engineStateFromEvaluation(evaluation: PaperTradingEvaluationRecord): PaperTradingEngineState {
   return restorePaperTradingEngineState({
     account: evaluation.paper_account_snapshot,
@@ -2005,6 +2093,32 @@ function engineStateFromEvaluation(evaluation: PaperTradingEvaluationRecord): Pa
     processedPublicTradeIds: evaluation.processed_public_trade_ids,
     latestFill: evaluation.latest_fill
   });
+}
+
+function paperTradingTerminalCheckpoint(input: {
+  previous: PaperTradingEngineState;
+  score: PaperTradingEvaluationRecord["latest_score"];
+  events?: Array<Pick<PaperTradingSystemEvent, "event_id">>;
+}): PaperTradingEngineCheckpointResult {
+  const processedTradingSystemEventIds = [...input.previous.processedTradingSystemEventIds];
+  const processedEventIdsThisCheckpoint: string[] = [];
+  for (const event of input.events ?? []) {
+    if (processedTradingSystemEventIds.includes(event.event_id)) {
+      continue;
+    }
+    processedTradingSystemEventIds.push(event.event_id);
+    processedEventIdsThisCheckpoint.push(event.event_id);
+  }
+  return {
+    account: { ...input.previous.account },
+    openOrders: [...input.previous.openOrders],
+    processedTradingSystemEventIds,
+    processedPublicTradeIds: [...input.previous.processedPublicTradeIds],
+    latestFill: input.previous.latestFill,
+    score: input.score,
+    scoreDelta: zeroPaperTradingProfitLoss(),
+    processedEventIdsThisCheckpoint
+  };
 }
 
 async function ledgerInputFromTradingSystemDecision(input: {
@@ -2075,18 +2189,22 @@ async function refreshGatewayPublicMarketSurface(input: {
 
 function tradingSystemEventsFromCandidate(
   candidate: CandidateInspectReadModel
-): ParsedTradingSystemEvent[] {
+): ParsedTradingSystemPaperEvent[] {
   const sandbox = candidate.runtime.sandbox;
   if (!sandbox) {
     return [];
   }
   const events = sandbox.logs.flatMap((log) =>
-    log.lines.map((line, index) => parseTradingSystemEvent(line, {
-      sandboxId: sandbox.sandbox_id,
-      lineIndex: index,
-      fallbackObservedAt: log.captured_at
-    }))
-  ).filter((event): event is ParsedTradingSystemEvent => Boolean(event));
+    log.lines
+      .map((line, index) => parseTradingSystemPaperEventLine(line, {
+        sandboxId: sandbox.sandbox_id,
+        lineIndex: index,
+        fallbackObservedAt: log.captured_at
+      }))
+      .flatMap((result) => result.status === "accepted" || result.status === "rejected"
+        ? [result.event]
+        : [])
+  );
   const seen = new Set<string>();
   return events.filter((event) => {
     if (seen.has(event.event_id)) {
@@ -2095,83 +2213,6 @@ function tradingSystemEventsFromCandidate(
     seen.add(event.event_id);
     return true;
   });
-}
-
-function parseTradingSystemEvent(
-  line: string,
-  input: {
-    sandboxId: string;
-    lineIndex: number;
-    fallbackObservedAt?: string;
-  }
-): ParsedTradingSystemEvent | undefined {
-  try {
-    const value = JSON.parse(line) as Record<string, unknown>;
-    const eventId = stableTradingSystemEventId(value.event_id, line, input.sandboxId, input.lineIndex);
-    const observedAt = typeof value.at === "string"
-      ? value.at
-      : input.fallbackObservedAt ?? new Date().toISOString();
-    if (value.event === "order_request") {
-      if (
-        value.intent_kind !== "place_order" ||
-        value.symbol !== "BTCUSDT" ||
-        !isOrderSide(value.side) ||
-        !isOrderType(value.order_type) ||
-        typeof value.quantity !== "string" ||
-        (value.limit_price !== undefined && typeof value.limit_price !== "string")
-      ) {
-        return undefined;
-      }
-      return {
-        event_id: eventId,
-        event_kind: "order_request",
-        observed_at: observedAt,
-        order_request: {
-          intent_kind: "place_order",
-          symbol: "BTCUSDT",
-          side: value.side,
-          order_type: value.order_type,
-          quantity: value.quantity,
-          limit_price: value.limit_price
-        }
-      };
-    }
-    if (value.event === "cancel_order") {
-      return {
-        event_id: eventId,
-        event_kind: "cancel_order",
-        observed_at: observedAt,
-        order_id: typeof value.order_id === "string" ? value.order_id : undefined,
-        reason: typeof value.reason === "string" ? value.reason : "trading_system_cancel_order"
-      };
-    }
-    if (value.event === "hold" || value.event === "no_action") {
-      return {
-        event_id: eventId,
-        event_kind: value.event,
-        observed_at: observedAt,
-        reason: typeof value.reason === "string" ? value.reason : `trading_system_${value.event}`
-      };
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function stableTradingSystemEventId(
-  explicitEventId: unknown,
-  line: string,
-  sandboxId: string,
-  lineIndex: number
-): string {
-  if (typeof explicitEventId === "string" && explicitEventId.trim()) {
-    return explicitEventId;
-  }
-  return `trading-system-event-${createHash("sha256")
-    .update(`${sandboxId}:${lineIndex}:${line}`)
-    .digest("hex")
-    .slice(0, 20)}`;
 }
 
 function paperNoActionDecision(
@@ -2187,6 +2228,19 @@ function paperNoActionDecision(
   };
 }
 
+function paperProtocolErrorDecision(
+  observedAt: string,
+  reason: string
+): PaperTradingDecisionSummary {
+  return {
+    decision_kind: "error",
+    source_kind: "trading_system_decision",
+    reason,
+    observed_at: observedAt,
+    authority_status: "trace_only"
+  };
+}
+
 function paperPositionChanged(
   previous: PaperTradingEngineState,
   next: PaperTradingEngineState
@@ -2194,14 +2248,6 @@ function paperPositionChanged(
   return previous.account.position.side !== next.account.position.side ||
     previous.account.position.quantity !== next.account.position.quantity ||
     previous.openOrders.length !== next.openOrders.length;
-}
-
-function isOrderSide(value: unknown): value is "buy" | "sell" {
-  return value === "buy" || value === "sell";
-}
-
-function isOrderType(value: unknown): value is "market" | "limit" {
-  return value === "market" || value === "limit";
 }
 
 async function stopLinkedTradingRunSandbox(input: {
@@ -2562,6 +2608,12 @@ function sandboxError(input: {
 
 function shouldRefreshSandboxStatus(lifecycleStatus: string): boolean {
   return lifecycleStatus !== "stopped" && lifecycleStatus !== "removed" && lifecycleStatus !== "failed";
+}
+
+function isPaperTradingErrorEvent(
+  event: ParsedTradingSystemPaperEvent | PaperTradingSystemEvent
+): event is Extract<ParsedTradingSystemPaperEvent | PaperTradingSystemEvent, { event_kind: "error" }> {
+  return event.event_kind === "error";
 }
 
 function rawSecretMaterialPath(value: unknown, currentPath = "$"): string | undefined {

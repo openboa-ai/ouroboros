@@ -46,6 +46,7 @@ describe("Python clock system code fixture", () => {
         at: "1970-01-01T00:00:00.000Z",
         authority_status: "trace_only",
         event: "order_request",
+        event_id: "clock-test-alpha:order-request:0001",
         instance_id: "clock-test-alpha",
         intent_kind: "place_order",
         limit_price: "60000",
@@ -107,6 +108,7 @@ describe("Python clock system code fixture", () => {
 
     expect(orderRequest).toMatchObject({
       event: "order_request",
+      event_id: "clock-test-rejected:order-request:0001",
       instance_id: "clock-test-rejected",
       symbol: "BTCUSDT",
       intent_kind: "place_order",

@@ -481,6 +481,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("BTCUSDT");
     expect(html).toContain("Paper decision");
     expect(html).toContain("order_request buy limit 0.001 @ 65000");
+    expect(html).toContain("Paper account");
+    expect(html).toContain("equity 10,004.952 USDT / long 0.001 BTCUSDT / open 0");
+    expect(html).toContain("Paper fill");
+    expect(html).toContain("filled 0.001 @ 60000");
     expect(html).toContain("Lineage");
     expect(html).toContain("Start paper trading");
     expect(html).toContain("Agent providers");

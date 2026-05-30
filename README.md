@@ -73,6 +73,7 @@ Canonical repo docs:
 - [API And Command Contract](docs/api-command-contract.md)
 - [Interface Parity](docs/interface-parity.md)
 - [Product Loop Smoke](docs/product-loop-smoke.md)
+- [TradingSystem Paper Event Protocol](docs/trading-system-paper-event-protocol.md)
 - [Naming Taxonomy](docs/naming-taxonomy.md)
 
 ## Canonical Flow
