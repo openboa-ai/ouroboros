@@ -10,6 +10,23 @@ allowed, but only the events below affect `PaperTradingEvaluation`.
 The machine-readable schema is
 [`docs/schemas/trading-system-paper-event.schema.json`](schemas/trading-system-paper-event.schema.json).
 
+## Paper Runtime API
+
+When a selected `TradingSystem` needs current paper context, Ouroboros injects
+`TRADING_API_BASE_URL` into the sandbox environment. That endpoint is owned by the paper Gateway
+runtime and exposes the same bounded provider contract used in research:
+
+- `GET /market/snapshot`
+- `GET /account/state`
+- `POST /orders/validate`
+
+The endpoint may read Binance production public market data through the Gateway-owned
+`MarketDataPort`, and it may read fake paper account state. It never exposes private Binance
+account state, signed requests, live order submission, listenKey/user-data streams, leverage
+mutation, or margin mutation. A `TradingSystem` may call this runtime API to decide on its own
+schedule, but the API call itself is not evidence of execution. Only emitted JSONL paper events,
+Gateway validation, fake paper execution, and Ledger/readback records count.
+
 ## Common Fields
 
 All paper events require:
@@ -89,5 +106,7 @@ The sample paper TradingSystem is
 [`fixtures/trading-systems/paper_smoke.py`](../fixtures/trading-systems/paper_smoke.py). It runs
 without a researcher or provider and emits stable `order_request`, optional `cancel_order`, and
 `hold` events. The deterministic runtime fixture
-[`fixtures/trading-systems/clock.py`](../fixtures/trading-systems/clock.py) also emits a stable
-paper `order_request` for sandbox smoke coverage.
+[`fixtures/trading-systems/clock.py`](../fixtures/trading-systems/clock.py) emits a stable paper
+`order_request` without injected runtime context, and becomes market-reactive when
+`TRADING_API_BASE_URL` is present. That fixture proves the selected `TradingSystem` reads
+Ouroboros-owned paper runtime APIs instead of calling Binance or credentials directly.

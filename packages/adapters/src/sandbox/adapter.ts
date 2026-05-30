@@ -23,6 +23,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 
 export type PaperOrderRequestFixture = "valid" | "rejected";
 
+export interface SandboxRuntimeEnv {
+  TRADING_API_BASE_URL?: string;
+}
+
 export interface SandboxAdapterStartInput {
   artifact: SystemCodeRecord;
   instance_id: string;
@@ -34,6 +38,7 @@ export interface SandboxAdapterStartInput {
   test_ticks?: number;
   interval_ms?: number;
   paper_order_request?: PaperOrderRequestFixture;
+  env?: SandboxRuntimeEnv;
 }
 
 export interface SandboxAdapterStartResult {
@@ -125,11 +130,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     ];
     const executionResult = await runDeterministicFixtureCommand({
       command: executionCommand,
-      instanceId: input.instance_id,
-      tickCount,
-      intervalMs,
-      startAt: input.created_at,
-      paperOrderRequest: input.paper_order_request ?? "valid",
+      env: input.env,
       timeoutMs: this.commandTimeoutMs
     });
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute", executionResult);
@@ -297,6 +298,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       "-w",
       this.workspacePath,
       input.sandbox_name,
+      ...sandboxRuntimeEnvCommand(input.env),
       "python3",
       artifactPath,
       "--instance-id",
@@ -783,37 +785,33 @@ function stdoutLines(stdout: string): string[] {
 
 function runDeterministicFixtureCommand(input: {
   command: string[];
-  instanceId: string;
-  tickCount: number;
-  intervalMs: number;
-  startAt: string;
-  paperOrderRequest: PaperOrderRequestFixture;
+  env?: SandboxRuntimeEnv;
   timeoutMs: number;
 }): Promise<CommandResult> {
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
-    const args = [
-      DETERMINISTIC_FIXTURE_ARTIFACT_PATH,
-      "--instance-id",
-      input.instanceId,
-      "--ticks",
-      String(input.tickCount),
-      "--interval-ms",
-      String(input.intervalMs),
-      "--start-at",
-      input.startAt,
-      "--paper-order-request",
-      input.paperOrderRequest
-    ];
+    const [file, ...args] = input.command;
+    if (!file) {
+      resolve({
+        command: input.command,
+        exit_code: 2,
+        stdout: "",
+        stderr: "empty deterministic fixture command",
+        started_at: startedAt,
+        completed_at: startedAt
+      });
+      return;
+    }
 
     execFile(
-      "python3",
+      file,
       args,
       {
         cwd: REPO_ROOT,
         encoding: "utf8",
         timeout: input.timeoutMs,
-        maxBuffer: 1024 * 1024
+        maxBuffer: 1024 * 1024,
+        env: input.env ? { ...process.env, ...input.env } : process.env
       },
       (error, stdout, stderr) => {
         const completedAt = new Date().toISOString();
@@ -828,6 +826,13 @@ function runDeterministicFixtureCommand(input: {
       }
     );
   });
+}
+
+function sandboxRuntimeEnvCommand(env: SandboxRuntimeEnv | undefined): string[] {
+  if (!env?.TRADING_API_BASE_URL) {
+    return [];
+  }
+  return ["env", `TRADING_API_BASE_URL=${env.TRADING_API_BASE_URL}`];
 }
 
 function runCommand(

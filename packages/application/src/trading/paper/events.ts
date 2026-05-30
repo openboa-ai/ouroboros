@@ -16,6 +16,7 @@ export interface TradingSystemPaperOrderRequestEvent {
   event_kind: "order_request";
   observed_at: string;
   order_request: PaperTradingDecisionOrderRequestSummary;
+  reason?: string;
 }
 
 export interface PaperTradingErrorEvent {
@@ -175,7 +176,8 @@ export function parseTradingSystemPaperEventLine(
         event_id: eventId,
         event_kind: "order_request",
         observed_at: acceptedObservedAt,
-        order_request: orderRequest.order_request
+        order_request: orderRequest.order_request,
+        reason: typeof raw.reason === "string" && raw.reason.trim() ? raw.reason : undefined
       }
     };
   }

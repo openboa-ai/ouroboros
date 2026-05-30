@@ -1,3 +1,4 @@
+import http from "node:http";
 import type {
   GatewayResultAuthorityStatus,
   LedgerInput,
@@ -5,10 +6,14 @@ import type {
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import { recordPaperExecutionResult } from "./paper-execution";
-import { startReplayTradingApiProvider } from "../research/replay-trading-api-provider";
+import {
+  defaultReplayTradingScenario,
+  validateOrderRequest
+} from "../research/replay-trading-api-provider";
 import type {
   AccountState,
-  ReplayTradingApiProviderSession
+  ReplayTradingApiProviderSession,
+  TradingProviderRequestLog
 } from "../research/types";
 import {
   type PaperGatewayOrderRequest,
@@ -80,6 +85,13 @@ export interface CreateGatewayRuntimeBindingInput {
   paperAccount?: AccountState;
 }
 
+export interface PaperTradingApiProviderOptions {
+  listen_host?: string;
+  base_host?: string;
+  sandbox_host?: string;
+  readAccountState?: () => AccountState | Promise<AccountState>;
+}
+
 export type GatewayOrderExecution = Pick<
   LedgerInput,
   "intent" | "gateway_result" | "execution_result"
@@ -145,22 +157,85 @@ export function createGatewayRuntimeBinding(
 }
 
 export async function startPaperTradingApiProvider(
-  binding: GatewayRuntimeBinding
+  binding: GatewayRuntimeBinding,
+  options: PaperTradingApiProviderOptions = {}
 ): Promise<ReplayTradingApiProviderSession> {
   assertPaperBindingEnabled(binding);
-  const market = await binding.marketData.readMarketSnapshot();
-  return startReplayTradingApiProvider({
-    id: "binance-production-public-paper",
-    description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
-    market,
-    account: binding.account.state,
-    outcome: {
-      exit_price: market.price,
-      fee_bps: 4,
-      slippage_bps: 3,
-      funding_bps: 1
+  const requestLog: TradingProviderRequestLog[] = [];
+  const readAccountState = async () => options.readAccountState
+    ? options.readAccountState()
+    : binding.account.state;
+  const initialAccount = await readAccountState();
+  const server = http.createServer(async (request, response) => {
+    const body = await readJsonBody(request);
+    const method = request.method ?? "GET";
+    const path = requestPath(request.url);
+    try {
+      if (method === "GET" && path === "/market/snapshot") {
+        const market = await binding.marketData.readMarketSnapshot();
+        sendJson(response, 200, market);
+        requestLog.push(logRequest(method, path, body, 200));
+        return;
+      }
+
+      if (method === "GET" && path === "/account/state") {
+        const account = await readAccountState();
+        sendJson(response, 200, account);
+        requestLog.push(logRequest(method, path, body, 200));
+        return;
+      }
+
+      if (method === "POST" && path === "/orders/validate") {
+        const [market, account] = await Promise.all([
+          binding.marketData.readMarketSnapshot(),
+          readAccountState()
+        ]);
+        const validation = validateOrderRequest(body, market, account);
+        sendJson(response, 200, validation);
+        requestLog.push(logRequest(method, path, body, 200));
+        return;
+      }
+
+      sendJson(response, 404, { error: "not_found" });
+      requestLog.push(logRequest(method, path, body, 404));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "paper_runtime_api_unavailable";
+      sendJson(response, 503, {
+        error: "paper_runtime_api_unavailable",
+        reason,
+        authority_status: "not_live"
+      });
+      requestLog.push(logRequest(method, path, body, 503));
     }
   });
+
+  await listen(server, options.listen_host ?? "127.0.0.1");
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Paper trading API provider did not bind to a TCP port");
+  }
+  const baseHost = options.base_host ?? "127.0.0.1";
+
+  return {
+    base_url: providerBaseUrl(baseHost, address.port),
+    sandbox_base_url: options.sandbox_host
+      ? providerBaseUrl(options.sandbox_host, address.port)
+      : undefined,
+    close: () => close(server),
+    requests: () => [...requestLog],
+    scenario: {
+      id: "binance-production-public-paper",
+      description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
+      market: defaultReplayTradingScenario.market,
+      account: initialAccount,
+      outcome: {
+        exit_price: defaultReplayTradingScenario.market.price,
+        fee_bps: 4,
+        slippage_bps: 3,
+        funding_bps: 1
+      }
+    }
+  };
 }
 
 export async function executeGatewayOrderRequest(
@@ -228,4 +303,80 @@ function defaultPaperAccount(): AccountState {
     max_risk_fraction: 0.03,
     target_risk_fraction: 0.02
   };
+}
+
+async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { malformed_json: raw };
+  }
+}
+
+function requestPath(rawUrl: string | undefined): string {
+  try {
+    return new URL(rawUrl ?? "/", "http://localhost").pathname;
+  } catch {
+    return rawUrl ?? "/";
+  }
+}
+
+function sendJson(response: http.ServerResponse, status: number, body: unknown): void {
+  response.writeHead(status, {
+    "content-type": "application/json"
+  });
+  response.end(`${JSON.stringify(body)}\n`);
+}
+
+function logRequest(
+  method: string,
+  path: string,
+  body: unknown,
+  responseStatus: number
+): TradingProviderRequestLog {
+  return {
+    at: new Date().toISOString(),
+    method,
+    path,
+    body,
+    response_status: responseStatus
+  };
+}
+
+function listen(server: http.Server, host: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
+
+function close(server: http.Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function providerBaseUrl(host: string, port: number): string {
+  return `http://${formatHostForUrl(host)}:${port}`;
+}
+
+function formatHostForUrl(host: string): string {
+  return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }

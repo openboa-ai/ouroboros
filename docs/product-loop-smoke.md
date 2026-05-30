@@ -40,6 +40,9 @@ same `OperatorReadModel`.
   [TradingSystem Paper Event Protocol](trading-system-paper-event-protocol.md). The smoke must
   prove at least one accepted `order_request` and one explicit `hold`/`no_action` readback, while
   protocol errors remain rejected without Ledger or fake account mutation.
+- The running `TradingSystem` receives `TRADING_API_BASE_URL`, reads Gateway-owned paper runtime
+  market/account/validation APIs when it wants context, and still emits its own JSONL events.
+  The smoke must not call Binance directly from the `TradingSystem`.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,

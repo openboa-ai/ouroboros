@@ -185,6 +185,13 @@ describe("runtime canonical operator API", () => {
           selected_paper_trading_evaluation: {
             status: "running",
             observation_count: 1,
+            latest_decision: {
+              decision_kind: "order_request",
+              reason: "runtime_api_market_expected_direction_long_validation_risk_limits_passed",
+              order_request: {
+                limit_price: "65000"
+              }
+            },
             ledger_chain_complete: true,
             authority_status: "not_live"
           },

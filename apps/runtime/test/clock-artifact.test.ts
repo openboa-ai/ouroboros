@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createGatewayRuntimeBinding,
+  startPaperTradingApiProvider
+} from "@ouroboros/application/trading/gateway/runtime-binding";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const execFileAsync = promisify(execFile);
 const artifactPath = path.resolve("fixtures/trading-systems/clock.py");
@@ -118,5 +123,63 @@ describe("Python clock system code fixture", () => {
       limit_price: "60000",
       authority_status: "trace_only"
     });
+  });
+
+  it("uses the injected paper runtime API instead of direct exchange access", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort({
+        snapshots: [{
+          price: 65_000,
+          expected_direction: "short",
+          observed_at: "2026-05-16T00:00:03.000Z"
+        }]
+      })
+    }));
+
+    try {
+      const { stdout } = await execFileAsync(
+        "python3",
+        [
+          artifactPath,
+          "--instance-id",
+          "clock-test-runtime-api",
+          "--ticks",
+          "1",
+          "--interval-ms",
+          "1",
+          "--start-at",
+          "2026-05-16T00:00:03.000Z"
+        ],
+        {
+          env: {
+            ...process.env,
+            TRADING_API_BASE_URL: provider.base_url
+          }
+        }
+      );
+
+      const [orderRequest] = stdout.trim().split("\n").map((line) => JSON.parse(line));
+      expect(orderRequest).toMatchObject({
+        event: "order_request",
+        event_id: "clock-test-runtime-api:order-request:0001",
+        instance_id: "clock-test-runtime-api",
+        symbol: "BTCUSDT",
+        intent_kind: "place_order",
+        side: "sell",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: "65000",
+        reason: "runtime_api_market_expected_direction_short_validation_risk_limits_passed",
+        authority_status: "trace_only",
+        at: "2026-05-16T00:00:03.000Z"
+      });
+      expect(provider.requests().map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+        "GET /market/snapshot",
+        "GET /account/state",
+        "POST /orders/validate"
+      ]);
+    } finally {
+      await provider.close();
+    }
   });
 });
