@@ -239,6 +239,12 @@ describe("runtime canonical operator API", () => {
             observed_at: "2026-05-16T00:00:03.000Z"
           },
           {
+            price: 65_000,
+            moving_average_fast: 65_025,
+            moving_average_slow: 64_975,
+            observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          {
             price: 66_000,
             moving_average_fast: 66_025,
             moving_average_slow: 65_975,
