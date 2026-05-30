@@ -1748,6 +1748,35 @@ async function recordPaperTradingObservationDecision(input: {
   const engineEvents: PaperTradingSystemEvent[] = [];
   let latestDecision: PaperTradingDecisionSummary | undefined;
   let latestLedger: LedgerWriteOutcome | undefined;
+  const protocolErrorEvents = input.tradingSystemEvents.filter(isPaperTradingErrorEvent);
+  if (protocolErrorEvents.length) {
+    const latestError = protocolErrorEvents[protocolErrorEvents.length - 1] as Extract<
+      ParsedTradingSystemPaperEvent,
+      { event_kind: "error" }
+    >;
+    await recordPaperTradingObservationAudit({
+      store: input.store,
+      candidate: input.candidate,
+      candidateVersionId,
+      tradingRunId: input.tradingRunId,
+      sequence: input.sequence
+    });
+    return {
+      decision: {
+        decision_kind: "error",
+        source_kind: "trading_system_decision",
+        reason: latestError.reason,
+        observed_at: latestError.observed_at,
+        authority_status: "trace_only"
+      },
+      engineEvents: protocolErrorEvents.map((event) => ({
+        event_id: event.event_id,
+        event_kind: "error",
+        observed_at: event.observed_at,
+        reason: event.reason
+      }))
+    };
+  }
   for (const event of input.tradingSystemEvents) {
     if (event.event_kind === "order_request") {
       const ledger = await input.store.recordLedger(await ledgerInputFromTradingSystemDecision({
@@ -2503,6 +2532,12 @@ function sandboxError(input: {
 
 function shouldRefreshSandboxStatus(lifecycleStatus: string): boolean {
   return lifecycleStatus !== "stopped" && lifecycleStatus !== "removed" && lifecycleStatus !== "failed";
+}
+
+function isPaperTradingErrorEvent(
+  event: ParsedTradingSystemPaperEvent
+): event is Extract<ParsedTradingSystemPaperEvent, { event_kind: "error" }> {
+  return event.event_kind === "error";
 }
 
 function rawSecretMaterialPath(value: unknown, currentPath = "$"): string | undefined {
