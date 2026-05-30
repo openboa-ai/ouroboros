@@ -86,6 +86,7 @@ export interface PaperTradingApiProviderOptions {
   listen_host?: string;
   base_host?: string;
   sandbox_host?: string;
+  request_log_limit?: number;
   readAccountState?: () => AccountState | Promise<AccountState>;
 }
 
@@ -158,6 +159,7 @@ export async function startPaperTradingApiProvider(
   options: PaperTradingApiProviderOptions = {}
 ): Promise<ReplayTradingApiProviderSession> {
   assertPaperBindingEnabled(binding);
+  const requestLogLimit = options.request_log_limit ?? 200;
   const requestLog: TradingProviderRequestLog[] = [];
   const readAccountState = async () => options.readAccountState
     ? options.readAccountState()
@@ -172,14 +174,14 @@ export async function startPaperTradingApiProvider(
       if (method === "GET" && path === "/market/snapshot") {
         const market = await binding.marketData.readMarketSnapshot();
         sendJson(response, 200, market);
-        requestLog.push(logRequest(method, path, body, 200));
+        pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
 
       if (method === "GET" && path === "/account/state") {
         const account = await readAccountState();
         sendJson(response, 200, account);
-        requestLog.push(logRequest(method, path, body, 200));
+        pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
 
@@ -190,12 +192,12 @@ export async function startPaperTradingApiProvider(
         ]);
         const validation = validateOrderRequest(body, market, account);
         sendJson(response, 200, validation);
-        requestLog.push(logRequest(method, path, body, 200));
+        pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
 
       sendJson(response, 404, { error: "not_found" });
-      requestLog.push(logRequest(method, path, body, 404));
+      pushBoundedRequestLog(requestLog, logRequest(method, path, body, 404), requestLogLimit);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "paper_runtime_api_unavailable";
       sendJson(response, 503, {
@@ -203,7 +205,7 @@ export async function startPaperTradingApiProvider(
         reason,
         authority_status: "not_live"
       });
-      requestLog.push(logRequest(method, path, body, 503));
+      pushBoundedRequestLog(requestLog, logRequest(method, path, body, 503), requestLogLimit);
     }
   });
 
@@ -347,6 +349,20 @@ function logRequest(
     body,
     response_status: responseStatus
   };
+}
+
+function pushBoundedRequestLog(
+  requestLog: TradingProviderRequestLog[],
+  entry: TradingProviderRequestLog,
+  limit: number
+): void {
+  if (limit <= 0) {
+    return;
+  }
+  requestLog.push(entry);
+  if (requestLog.length > limit) {
+    requestLog.splice(0, requestLog.length - limit);
+  }
 }
 
 function listen(server: http.Server, host: string): Promise<void> {

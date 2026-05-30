@@ -189,4 +189,25 @@ describe("Python clock system code fixture", () => {
       await provider.close();
     }
   });
+
+  it("bounds the injected paper runtime API request log", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort()
+    }), {
+      request_log_limit: 2
+    });
+
+    try {
+      await fetch(`${provider.base_url}/market/snapshot`);
+      await fetch(`${provider.base_url}/account/state`);
+      await fetch(`${provider.base_url}/market/snapshot`);
+
+      expect(provider.requests().map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+        "GET /account/state",
+        "GET /market/snapshot"
+      ]);
+    } finally {
+      await provider.close();
+    }
+  });
 });
