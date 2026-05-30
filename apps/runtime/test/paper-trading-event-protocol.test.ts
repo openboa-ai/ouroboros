@@ -116,6 +116,31 @@ describe("TradingSystem paper event protocol", () => {
     });
   });
 
+  it("rejects non-decimal-string order quantities before Gateway or fake account mutation", () => {
+    for (const [index, quantity] of ["1e-3", " 0.001 "].entries()) {
+      const malformed = {
+        ...TRADING_SYSTEM_PAPER_EVENT_EXAMPLES.order_request,
+        event_id: `paper-smoke-order-non-decimal-${index}`,
+        quantity
+      };
+
+      const parsed = parseTradingSystemPaperEventLine(JSON.stringify(malformed), {
+        sandboxId: "sandbox-paper-event-protocol",
+        lineIndex: 5 + index,
+        fallbackObservedAt: "2026-05-16T00:00:10.000Z"
+      });
+
+      expect(parsed).toMatchObject({
+        status: "rejected",
+        reason: "order_request_quantity_must_be_decimal_string",
+        event: {
+          event_kind: "error",
+          event_id: `paper-smoke-order-non-decimal-${index}`
+        }
+      });
+    }
+  });
+
   it("documents the required JSON fields for each paper event kind", () => {
     expect(TRADING_SYSTEM_PAPER_EVENT_REQUIRED_FIELDS).toMatchObject({
       common: ["event", "event_id", "instance_id", "at", "authority_status"],

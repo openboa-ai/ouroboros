@@ -247,15 +247,15 @@ function parseOrderRequestProtocol(
   if (!isOrderType(raw.order_type)) {
     return { reason: "order_request_type_must_be_market_or_limit" };
   }
-  if (typeof raw.quantity !== "string" || !raw.quantity.trim() || !Number.isFinite(Number(raw.quantity))) {
+  if (!isDecimalString(raw.quantity)) {
     return { reason: "order_request_quantity_must_be_decimal_string" };
   }
   if (raw.order_type === "limit") {
-    if (typeof raw.limit_price !== "string" || !raw.limit_price.trim() || !Number.isFinite(Number(raw.limit_price))) {
+    if (!isDecimalString(raw.limit_price)) {
       return { reason: "limit_order_request_requires_decimal_limit_price" };
     }
   }
-  if (raw.limit_price !== undefined && typeof raw.limit_price !== "string") {
+  if (raw.limit_price !== undefined && !isDecimalString(raw.limit_price)) {
     return { reason: "order_request_limit_price_must_be_decimal_string" };
   }
   return {
@@ -342,6 +342,10 @@ function isOrderType(value: unknown): value is "market" | "limit" {
 function isValidPaperEventTimestamp(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) &&
     Number.isFinite(Date.parse(value));
+}
+
+function isDecimalString(value: unknown): value is string {
+  return typeof value === "string" && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

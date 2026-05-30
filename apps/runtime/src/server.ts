@@ -96,6 +96,7 @@ import {
   applyPaperTradingCheckpoint,
   initialPaperTradingEngineState,
   restorePaperTradingEngineState,
+  type PaperTradingEngineCheckpointResult,
   type PaperTradingEngineState
 } from "@ouroboros/application/trading/paper/engine";
 import {
@@ -714,6 +715,43 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       intervalMs: input.intervalMs,
       startedAt: now
     });
+    if (baseEvaluation.status === "failed") {
+      const previousEngineState = engineStateFromEvaluation(baseEvaluation);
+      const failureReason = baseEvaluation.latest_failure_reason ?? "paper_trading_evaluation_failed";
+      const sequence = baseEvaluation.observation_count + 1;
+      const observation = paperTradingObservationRecord({
+        candidate: candidateBefore,
+        evaluation: baseEvaluation,
+        sequence,
+        status: "failed",
+        observedAt: now,
+        decision: paperProtocolErrorDecision(now, failureReason),
+        paperAccountSnapshot: previousEngineState.account,
+        openOrders: previousEngineState.openOrders,
+        processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+        processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+        latestFill: previousEngineState.latestFill,
+        scoreDelta: zeroPaperTradingProfitLoss(),
+        cumulativeScore: baseEvaluation.latest_score,
+        failureReason
+      });
+      const evaluation = paperTradingEvaluationUpdate({
+        evaluation: baseEvaluation,
+        status: "failed",
+        observedAt: now,
+        nextObservationAt: undefined,
+        latestScore: baseEvaluation.latest_score,
+        latestFailureReason: failureReason,
+        paperAccountSnapshot: previousEngineState.account,
+        openOrders: previousEngineState.openOrders,
+        processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+        processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+        latestFill: previousEngineState.latestFill
+      });
+      paperTradingEvaluationRunner.stop(input.tradingRunId);
+      await store.recordPaperTradingObservation(observation, evaluation);
+      return { evaluation, observation };
+    }
 
     let market;
     try {
@@ -771,61 +809,69 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ledgerOutcome = decisionOutcome.ledgerOutcome;
       decision = decisionOutcome.decision;
       engineEventsThisObservation = decisionOutcome.engineEvents;
-      try {
-        engineResult = applyPaperTradingCheckpoint({
+      if (decisionOutcome.engineEvents.some(isPaperTradingErrorEvent)) {
+        engineResult = paperTradingTerminalCheckpoint({
           previous: previousEngineState,
-          marketPrice: market.price,
-          observedAt: market.observed_at,
+          score: baseEvaluation.latest_score,
           events: decisionOutcome.engineEvents
         });
-      } catch (error) {
-        if (!(error instanceof Error) || error.message !== "public_execution_stream_unavailable") {
-          throw error;
-        }
+      } else {
         try {
-          publicExecutionSnapshot = await input.gatewayRuntimeBinding.marketData
-            .readPublicExecutionSnapshot({ observedAt: market.observed_at });
+          engineResult = applyPaperTradingCheckpoint({
+            previous: previousEngineState,
+            marketPrice: market.price,
+            observedAt: market.observed_at,
+            events: decisionOutcome.engineEvents
+          });
         } catch (error) {
-          const failedObservation = paperTradingObservationRecord({
-            candidate: refreshedCandidate,
-            evaluation: baseEvaluation,
-            sequence,
-            status: "failed",
+          if (!(error instanceof Error) || error.message !== "public_execution_stream_unavailable") {
+            throw error;
+          }
+          try {
+            publicExecutionSnapshot = await input.gatewayRuntimeBinding.marketData
+              .readPublicExecutionSnapshot({ observedAt: market.observed_at });
+          } catch (error) {
+            const failedObservation = paperTradingObservationRecord({
+              candidate: refreshedCandidate,
+              evaluation: baseEvaluation,
+              sequence,
+              status: "failed",
+              observedAt: market.observed_at,
+              marketSnapshot: marketSnapshotSummary(market),
+              decision,
+              scoreDelta: zeroPaperTradingProfitLoss(),
+              cumulativeScore: baseEvaluation.latest_score,
+              failureReason: error instanceof Error ? error.message : "public_execution_stream_unavailable",
+              paperAccountSnapshot: previousEngineState.account,
+              openOrders: previousEngineState.openOrders,
+              processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+              processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+              latestFill: previousEngineState.latestFill
+            });
+            const failedEvaluation = paperTradingEvaluationUpdate({
+              evaluation: baseEvaluation,
+              status: "failed",
+              observedAt: market.observed_at,
+              nextObservationAt: undefined,
+              latestScore: baseEvaluation.latest_score,
+              latestFailureReason: failedObservation.failure_reason,
+              paperAccountSnapshot: previousEngineState.account,
+              openOrders: previousEngineState.openOrders,
+              processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
+              processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
+              latestFill: previousEngineState.latestFill
+            });
+            await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
+            return { evaluation: failedEvaluation, observation: failedObservation };
+          }
+          engineResult = applyPaperTradingCheckpoint({
+            previous: previousEngineState,
+            marketPrice: market.price,
             observedAt: market.observed_at,
-            marketSnapshot: marketSnapshotSummary(market),
-            decision,
-            scoreDelta: zeroPaperTradingProfitLoss(),
-            cumulativeScore: baseEvaluation.latest_score,
-            failureReason: error instanceof Error ? error.message : "public_execution_stream_unavailable",
-            paperAccountSnapshot: previousEngineState.account,
-            openOrders: previousEngineState.openOrders,
-            processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
-            processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
-            latestFill: previousEngineState.latestFill
+            publicExecutionSnapshot,
+            events: decisionOutcome.engineEvents
           });
-          const failedEvaluation = paperTradingEvaluationUpdate({
-            evaluation: baseEvaluation,
-            status: "failed",
-            observedAt: market.observed_at,
-            nextObservationAt: undefined,
-            latestScore: baseEvaluation.latest_score,
-            latestFailureReason: failedObservation.failure_reason,
-            paperAccountSnapshot: previousEngineState.account,
-            openOrders: previousEngineState.openOrders,
-            processedTradingSystemEventIds: previousEngineState.processedTradingSystemEventIds,
-            processedPublicTradeIds: previousEngineState.processedPublicTradeIds,
-            latestFill: previousEngineState.latestFill
-          });
-          await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
-          return { evaluation: failedEvaluation, observation: failedObservation };
         }
-        engineResult = applyPaperTradingCheckpoint({
-          previous: previousEngineState,
-          marketPrice: market.price,
-          observedAt: market.observed_at,
-          publicExecutionSnapshot,
-          events: decisionOutcome.engineEvents
-        });
       }
       if (!decision) {
         decision = paperNoActionDecision(market.observed_at, "no_new_trading_system_event");
@@ -869,11 +915,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       cumulativeScore,
       failureReason: rejectedThisObservation ? decision?.reason ?? "trading_system_event_rejected" : undefined
     });
-    const failedEvaluationAlready = baseEvaluation.status === "failed";
-    const failedEvaluation = rejectedThisObservation || failedEvaluationAlready;
-    const latestFailureReason = rejectedThisObservation
-      ? observation.failure_reason
-      : failedEvaluationAlready ? baseEvaluation.latest_failure_reason : undefined;
+    const failedEvaluation = rejectedThisObservation;
+    const latestFailureReason = rejectedThisObservation ? observation.failure_reason : undefined;
     const evaluation = paperTradingEvaluationUpdate({
       evaluation: baseEvaluation,
       status: failedEvaluation ? "failed" : "running",
@@ -1762,13 +1805,7 @@ async function recordPaperTradingObservationDecision(input: {
       sequence: input.sequence
     });
     return {
-      decision: {
-        decision_kind: "error",
-        source_kind: "trading_system_decision",
-        reason: latestError.reason,
-        observed_at: latestError.observed_at,
-        authority_status: "trace_only"
-      },
+      decision: paperProtocolErrorDecision(latestError.observed_at, latestError.reason),
       engineEvents: protocolErrorEvents.map((event) => ({
         event_id: event.event_id,
         event_kind: "error",
@@ -2058,6 +2095,32 @@ function engineStateFromEvaluation(evaluation: PaperTradingEvaluationRecord): Pa
   });
 }
 
+function paperTradingTerminalCheckpoint(input: {
+  previous: PaperTradingEngineState;
+  score: PaperTradingEvaluationRecord["latest_score"];
+  events?: Array<Pick<PaperTradingSystemEvent, "event_id">>;
+}): PaperTradingEngineCheckpointResult {
+  const processedTradingSystemEventIds = [...input.previous.processedTradingSystemEventIds];
+  const processedEventIdsThisCheckpoint: string[] = [];
+  for (const event of input.events ?? []) {
+    if (processedTradingSystemEventIds.includes(event.event_id)) {
+      continue;
+    }
+    processedTradingSystemEventIds.push(event.event_id);
+    processedEventIdsThisCheckpoint.push(event.event_id);
+  }
+  return {
+    account: { ...input.previous.account },
+    openOrders: [...input.previous.openOrders],
+    processedTradingSystemEventIds,
+    processedPublicTradeIds: [...input.previous.processedPublicTradeIds],
+    latestFill: input.previous.latestFill,
+    score: input.score,
+    scoreDelta: zeroPaperTradingProfitLoss(),
+    processedEventIdsThisCheckpoint
+  };
+}
+
 async function ledgerInputFromTradingSystemDecision(input: {
   candidateId: string;
   candidateVersionId: string;
@@ -2158,6 +2221,19 @@ function paperNoActionDecision(
 ): PaperTradingDecisionSummary {
   return {
     decision_kind: "hold",
+    source_kind: "trading_system_decision",
+    reason,
+    observed_at: observedAt,
+    authority_status: "trace_only"
+  };
+}
+
+function paperProtocolErrorDecision(
+  observedAt: string,
+  reason: string
+): PaperTradingDecisionSummary {
+  return {
+    decision_kind: "error",
     source_kind: "trading_system_decision",
     reason,
     observed_at: observedAt,
@@ -2535,8 +2611,8 @@ function shouldRefreshSandboxStatus(lifecycleStatus: string): boolean {
 }
 
 function isPaperTradingErrorEvent(
-  event: ParsedTradingSystemPaperEvent
-): event is Extract<ParsedTradingSystemPaperEvent, { event_kind: "error" }> {
+  event: ParsedTradingSystemPaperEvent | PaperTradingSystemEvent
+): event is Extract<ParsedTradingSystemPaperEvent | PaperTradingSystemEvent, { event_kind: "error" }> {
   return event.event_kind === "error";
 }
 

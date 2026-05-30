@@ -1003,6 +1003,45 @@ describe("runtime canonical operator API", () => {
       expect(observations[0]?.processed_trading_system_event_ids).toEqual([
         "paper-runtime-live-authority-attempt"
       ]);
+
+      const observedAgain = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: {
+            trading_run_id: started.json().operator.selected_paper_trading_evaluation.trading_run_id
+          }
+        }
+      });
+      expect(observedAgain.statusCode, observedAgain.body).toBe(200);
+      expect(observedAgain.json()).toMatchObject({
+        operator: {
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false
+          },
+          selected_paper_trading_evaluation: {
+            status: "failed",
+            observation_count: 2,
+            latest_failure_reason: "forbidden_private_or_live_authority",
+            paper_account_snapshot: {
+              position: {
+                side: "flat",
+                quantity: "0"
+              },
+              open_order_count: 0
+            }
+          }
+        }
+      });
+
+      const candidateAfterRetry = await server.inject({
+        method: "GET",
+        url: `/api/candidates/${FIXTURE_CANDIDATE_ID}`
+      });
+      expect(candidateAfterRetry.statusCode, candidateAfterRetry.body).toBe(200);
+      expect(candidateAfterRetry.json().ledger.has_activity).toBe(false);
     } finally {
       await server.close();
     }
