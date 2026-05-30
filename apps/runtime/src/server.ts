@@ -559,6 +559,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           schedulePaperTradingEvaluation(tradingRunId);
         } else {
           paperTradingEvaluationRunner.stop(tradingRunId);
+          await stopPaperTradingApiProviderSession(tradingRunId);
         }
         const response = await tradingRunResponse(store, tradingRunId);
         return {
