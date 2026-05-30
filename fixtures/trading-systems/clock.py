@@ -114,7 +114,7 @@ def paper_order_payload(args: argparse.Namespace) -> dict[str, object]:
 
     try:
         market = read_provider_json(provider_base_url, "/market/snapshot")
-        _account = read_provider_json(provider_base_url, "/account/state")
+        read_provider_json(provider_base_url, "/account/state")
         direction = market.get("expected_direction")
         if direction == "flat":
             return {
