@@ -1,4 +1,5 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { LocalStore } from "@ouroboros/local-store";
@@ -142,6 +143,305 @@ describe("sandbox API", () => {
     expect(started.sandbox.command_evidence[0].stdout).not.toMatch(
       /secret|password|token|api[-_]?key|credential/i
     );
+  });
+
+  it("starts deterministic SystemCode as a long-running paper session when no test tick limit is supplied", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: "sandbox-deterministic-long-running",
+      sandbox_name: "ouro-deterministic-long-running",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-long-running",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      expect(started.command_evidence[0]?.command).toEqual(expect.arrayContaining([
+        "--log-file",
+        "--heartbeat-file"
+      ]));
+
+      await sleep(30);
+      const logs = await adapter.getArtifactInstanceLogs(started.instance);
+      const logText = logs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+      expect(logText).toContain("\"event\": \"order_request\"");
+      expect(logText).toContain("\"event\": \"runtime_heartbeat\"");
+      expect(logText).not.toContain("\"event\": \"runtime_stopped\"");
+      expect(logs.heartbeats?.length).toBeGreaterThan(0);
+      const heartbeatPayload = JSON.parse(logs.heartbeats?.[0]?.heartbeat_line ?? "{}");
+      expect(heartbeatPayload.at).not.toBe("2026-05-21T00:00:00.000Z");
+    } finally {
+      const stopped = await adapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+    }
+  });
+
+  it("keeps public sandbox.start finite when test tick limit is omitted", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const started = await startSandboxCommand(server, {
+      idempotency_key: "sandbox-standalone-finite-default",
+      sandbox_id: "sandbox-standalone-finite-default",
+      sandbox_name: "ouro-standalone-finite-default",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    expect(started.statusCode).toBe(200);
+    expect(started.json().sandbox.lifecycle_status).toBe("stopped");
+    expect(started.json().sandbox.command_evidence[0]?.command).toEqual(expect.arrayContaining([
+      "--ticks",
+      "2"
+    ]));
+  });
+
+  it("stops a deterministic long-running paper session through persisted PID after adapter restart", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: "sandbox-deterministic-pid-reap",
+      sandbox_name: "ouro-deterministic-pid-reap",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-pid-reap",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const restartedAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+      const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+      expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_heartbeat");
+    } finally {
+      await adapter.stopArtifactInstance(started.instance);
+    }
+  });
+
+  it("reaps an existing long-running paper session before replacing its handle", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const instanceId = "sandbox-deterministic-replaced-session";
+    const pidFile = sandboxPidFileForTest(instanceId);
+    const startInput = {
+      artifact,
+      instance_id: instanceId,
+      sandbox_name: "ouro-deterministic-replaced-session",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-replaced-session",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const started = await adapter.startArtifactInstance(startInput);
+    let activeInstance = started.instance;
+
+    try {
+      const firstPid = Number((await readFile(pidFile, "utf8")).trim());
+      const replaced = await adapter.startArtifactInstance(startInput);
+      activeInstance = replaced.instance;
+      const secondPid = Number((await readFile(pidFile, "utf8")).trim());
+
+      expect(secondPid).not.toBe(firstPid);
+      expect(isPidAlive(firstPid)).toBe(false);
+      expect(isPidAlive(secondPid)).toBe(true);
+    } finally {
+      await adapter.stopArtifactInstance(activeInstance);
+    }
+  });
+
+  it("uses collision-resistant PID files for long sandbox ids with the same prefix", () => {
+    const sharedPrefix = `sandbox-${"same-prefix-".repeat(8)}`;
+    const first = sandboxPidFileForTest(`${sharedPrefix}first`);
+    const second = sandboxPidFileForTest(`${sharedPrefix}second`);
+
+    expect(path.basename(first)).not.toBe(path.basename(second));
+  });
+
+  it("marks a generated long-running paper session as failed when it exits before startup logs", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const crashPath = path.join(tmpDir, "crash-before-startup-log.py");
+    await writeFile(crashPath, "raise RuntimeError('startup crash before jsonl')\n", "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+    const instanceId = "sandbox-generated-startup-crash";
+    const started = await adapter.startArtifactInstance({
+      artifact: {
+        ...fixtureArtifact,
+        system_code_id: "system-code-generated-startup-crash",
+        artifact_path: crashPath,
+        artifact_digest: "sha256:generated-startup-crash",
+        entrypoint: ["python3", crashPath],
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        created_at: "2026-05-21T00:00:00.000Z"
+      },
+      instance_id: instanceId,
+      sandbox_name: "ouro-generated-startup-crash",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-generated-startup-crash",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    expect(started.instance.lifecycle_status).toBe("failed");
+    expect(started.instance.started_at).toBeUndefined();
+    expect(started.command_evidence[0]?.exit_code).not.toBe(0);
+    expect(started.logs).toHaveLength(0);
+    await expect(readFile(
+      sandboxPidFileForTest(instanceId),
+      "utf8"
+    )).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("marks a deterministic long-running paper session as failed when spawn fails", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const instanceId = "sandbox-deterministic-spawn-failure";
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: instanceId,
+      sandbox_name: "ouro-deterministic-spawn-failure",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-spawn-failure",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10,
+      env: { PATH: "" } as never
+    });
+
+    expect(started.instance.lifecycle_status).toBe("failed");
+    expect(started.instance.started_at).toBeUndefined();
+    expect(started.command_evidence[0]?.exit_code).not.toBe(0);
+    expect(started.command_evidence[0]?.stderr).toContain("spawn python3");
+    await expect(readFile(
+      sandboxPidFileForTest(instanceId),
+      "utf8"
+    )).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not report an externally killed long-running paper session as running", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const instanceId = "sandbox-deterministic-signal-exit";
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: instanceId,
+      sandbox_name: "ouro-deterministic-signal-exit",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-signal-exit",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const pid = Number((await readFile(
+        sandboxPidFileForTest(instanceId),
+        "utf8"
+      )).trim());
+      process.kill(pid, "SIGKILL");
+
+      let lifecycleStatus = "running";
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const status = await adapter.getArtifactInstanceStatus(started.instance);
+        lifecycleStatus = status.lifecycle_status ?? lifecycleStatus;
+        if (lifecycleStatus !== "running") {
+          break;
+        }
+        await sleep(25);
+      }
+      expect(lifecycleStatus).toBe("failed");
+    } finally {
+      await adapter.stopArtifactInstance(started.instance);
+    }
+  });
+
+  it("terminates helper processes in the detached paper sandbox process group", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const helperPidFile = path.join(tmpDir, "sandbox-helper.pid");
+    const helperScriptPath = path.join(tmpDir, "sandbox-with-helper.py");
+    await writeFile(helperScriptPath, helperSpawningSandboxScript(helperPidFile), "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+    const started = await adapter.startArtifactInstance({
+      artifact: {
+        ...fixtureArtifact,
+        system_code_id: "system-code-generated-helper-process",
+        artifact_path: helperScriptPath,
+        artifact_digest: "sha256:generated-helper-process",
+        entrypoint: ["python3", helperScriptPath],
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        created_at: "2026-05-21T00:00:00.000Z"
+      },
+      instance_id: "sandbox-generated-helper-process",
+      sandbox_name: "ouro-generated-helper-process",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-generated-helper-process",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const helperPid = Number((await waitForFile(helperPidFile, 1_000)).trim());
+      expect(isPidAlive(helperPid)).toBe(true);
+
+      const stopped = await adapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+
+      for (let attempt = 0; attempt < 20 && isPidAlive(helperPid); attempt += 1) {
+        await sleep(25);
+      }
+      expect(isPidAlive(helperPid)).toBe(false);
+    } finally {
+      await adapter.stopArtifactInstance(started.instance);
+    }
   });
 
   it("executes fixture SystemCode when the runtime process starts from apps/runtime", async () => {
@@ -335,7 +635,7 @@ describe("sandbox API", () => {
       }
 
       const persisted = await store.getSandbox("sandbox-real-adapter-evidence");
-      expect(persisted?.command_evidence_refs).toHaveLength(11);
+      expect(persisted?.command_evidence_refs).toHaveLength(12);
       const commandEvidenceIds = persisted?.command_evidence.map((evidence) => evidence.command_evidence_ref.id) ?? [];
       expect(new Set(commandEvidenceIds).size).toBe(commandEvidenceIds.length);
       expect(persisted?.command_evidence.filter((evidence) => evidence.command[1] === "version")).toHaveLength(5);
@@ -343,7 +643,7 @@ describe("sandbox API", () => {
         evidence.command[1] === "exec" &&
         evidence.command[3] === "cat" &&
         evidence.command[4]?.endsWith(".heartbeat.json")
-      ))).toHaveLength(2);
+      ))).toHaveLength(3);
       expect(persisted?.command_evidence.filter((evidence) => (
         evidence.command[1] === "exec" &&
         evidence.command[3] === "cat" &&
@@ -354,6 +654,52 @@ describe("sandbox API", () => {
       restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
       restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
       restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
+    }
+  });
+
+  it("fails a real-adapter detached start when startup heartbeat evidence is missing", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx");
+    const commandLog = path.join(tmpDir, "sbx-missing-heartbeat.log");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+
+    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
+    const previousSbxBin = process.env.OUROBOROS_SBX_BIN;
+    const previousCommandLog = process.env.SBX_FAKE_COMMAND_LOG;
+    const previousInstanceId = process.env.SBX_FAKE_INSTANCE_ID;
+    const previousHeartbeatMode = process.env.SBX_FAKE_HEARTBEAT_MODE;
+    const previousCommandTimeout = process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS;
+    process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
+    process.env.OUROBOROS_SBX_BIN = fakeSbx;
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-real-adapter-missing-heartbeat";
+    process.env.SBX_FAKE_HEARTBEAT_MODE = "missing";
+    process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS = "1000";
+    try {
+      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const start = await startSandboxCommand(server, {
+        idempotency_key: "sandbox-real-adapter-missing-heartbeat",
+        adapter_kind: "docker_sandboxes_sbx",
+        sandbox_id: "sandbox-real-adapter-missing-heartbeat",
+        sandbox_name: "ouro-s5-clock-missing-heartbeat",
+        trading_run_id: "fixture-trading-run-001",
+        interval_ms: 1
+      });
+
+      expect(start.statusCode).toBe(200);
+      expect(start.json().status).toBe("failed");
+      expect(start.json().sandbox.lifecycle_status).toBe("failed");
+      expect(start.json().sandbox.started_at).toBeUndefined();
+      expect(start.json().sandbox.command_evidence.some((evidence: { command: string[] }) =>
+        evidence.command[1] === "stop"
+      )).toBe(true);
+    } finally {
+      restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
+      restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
+      restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
+      restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
+      restoreEnv("SBX_FAKE_HEARTBEAT_MODE", previousHeartbeatMode);
+      restoreEnv("OUROBOROS_SBX_COMMAND_TIMEOUT_MS", previousCommandTimeout);
     }
   });
 
@@ -372,8 +718,8 @@ describe("sandbox API", () => {
           }
         };
       },
-      getArtifactInstanceStatus: () => baseAdapter.getArtifactInstanceStatus(),
-      getArtifactInstanceLogs: () => baseAdapter.getArtifactInstanceLogs(),
+      getArtifactInstanceStatus: (instance) => baseAdapter.getArtifactInstanceStatus(instance),
+      getArtifactInstanceLogs: (instance) => baseAdapter.getArtifactInstanceLogs(instance),
       stopArtifactInstance: async () => ({
         lifecycle_status: "failed"
       })
@@ -412,13 +758,13 @@ describe("sandbox API", () => {
     const countingAdapter: SandboxAdapter = {
       kind: "deterministic_test",
       startArtifactInstance: (input) => baseAdapter.startArtifactInstance(input),
-      getArtifactInstanceStatus: async () => {
+      getArtifactInstanceStatus: async (instance) => {
         statusCallCount += 1;
-        return await baseAdapter.getArtifactInstanceStatus();
+        return await baseAdapter.getArtifactInstanceStatus(instance);
       },
-      getArtifactInstanceLogs: async () => {
+      getArtifactInstanceLogs: async (instance) => {
         logCallCount += 1;
-        return await baseAdapter.getArtifactInstanceLogs();
+        return await baseAdapter.getArtifactInstanceLogs(instance);
       },
       stopArtifactInstance: (instance) => baseAdapter.stopArtifactInstance(instance)
     };
@@ -465,6 +811,7 @@ describe("sandbox API", () => {
       kind: "deterministic_test",
       startArtifactInstance: async (input) => {
         const result = await baseAdapter.startArtifactInstance(input);
+        await baseAdapter.stopArtifactInstance(result.instance);
         return {
           ...result,
           instance: {
@@ -474,13 +821,13 @@ describe("sandbox API", () => {
           }
         };
       },
-      getArtifactInstanceStatus: async () => {
+      getArtifactInstanceStatus: async (instance) => {
         statusCallCount += 1;
-        return await baseAdapter.getArtifactInstanceStatus();
+        return await baseAdapter.getArtifactInstanceStatus(instance);
       },
-      getArtifactInstanceLogs: async () => {
+      getArtifactInstanceLogs: async (instance) => {
         logCallCount += 1;
-        return await baseAdapter.getArtifactInstanceLogs();
+        return await baseAdapter.getArtifactInstanceLogs(instance);
       },
       stopArtifactInstance: async (instance) => {
         stopCallCount += 1;
@@ -599,6 +946,78 @@ function restoreEnv(name: string, value: string | undefined): void {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForFile(filePath: string, timeoutMs: number): Promise<string> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const content = await readFile(filePath, "utf8").catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    });
+    if (content !== undefined) {
+      return content;
+    }
+    await sleep(10);
+  }
+  return await readFile(filePath, "utf8");
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function sandboxPidFileForTest(instanceId: string): string {
+  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
+  return path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${safeRuntimeIdForTest(instanceId)}-${digest}.pid`);
+}
+
+function safeRuntimeIdForTest(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "runtime";
+}
+
+function helperSpawningSandboxScript(helperPidFile: string): string {
+  return `import argparse
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--interval-ms", required=True)
+parser.add_argument("--log-file", required=True)
+parser.add_argument("--heartbeat-file", required=True)
+args, _ = parser.parse_known_args()
+
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+pathlib.Path(${JSON.stringify(helperPidFile)}).write_text(str(child.pid), encoding="utf8")
+event = {
+    "event": "runtime_heartbeat",
+    "instance_id": args.instance_id,
+    "tick": 0,
+    "at": "2026-05-21T00:00:00.000Z"
+}
+pathlib.Path(args.log_file).write_text(json.dumps(event) + "\\n", encoding="utf8")
+pathlib.Path(args.heartbeat_file).write_text(json.dumps(event), encoding="utf8")
+while True:
+    time.sleep(1)
+`;
+}
+
 function fakeSdxScript(): string {
   return `#!/bin/sh
 set -eu
@@ -628,6 +1047,10 @@ case "$1" in
     if [ "$2" = "-d" ]; then
       echo "detached $3"
     elif [ "$3" = "cat" ]; then
+      if [ "\${SBX_FAKE_HEARTBEAT_MODE:-present}" = "missing" ]; then
+        echo "missing heartbeat" >&2
+        exit 1
+      fi
       printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$SBX_FAKE_INSTANCE_ID"
     else
       echo "exec $2"

@@ -36,7 +36,8 @@ import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
   type PaperOrderRequestFixture,
-  type SandboxAdapter
+  type SandboxAdapter,
+  type SandboxAdapterObservationResult
 } from "@ouroboros/adapters/sandbox/adapter";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
@@ -305,7 +306,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     logger: false
   });
   server.addHook("onClose", async () => {
-    for (const tradingRunId of paperTradingApiProviderSessions.keys()) {
+    for (const tradingRunId of [...paperTradingApiProviderSessions.keys()]) {
+      paperTradingEvaluationRunner.stop(tradingRunId);
+      await stopLinkedTradingRunSandbox({
+        store,
+        sandboxAdapters,
+        tradingRunId
+      }).catch(() => undefined);
       await stopPaperTradingApiProviderSession(tradingRunId);
     }
   });
@@ -589,8 +596,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         if (resumedEvaluation.evaluation.status === "running") {
           schedulePaperTradingEvaluation(tradingRunId);
         } else {
-          paperTradingEvaluationRunner.stop(tradingRunId);
-          await stopPaperTradingApiProviderSession(tradingRunId);
+          await stopFailedPaperTradingSession(tradingRunId);
         }
         const response = await tradingRunResponse(store, tradingRunId);
         return {
@@ -643,8 +649,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       if (paperTradingEvaluation.evaluation.status === "running") {
         schedulePaperTradingEvaluation(tradingRunId);
       } else {
-        paperTradingEvaluationRunner.stop(tradingRunId);
-        await stopPaperTradingApiProviderSession(tradingRunId);
+        await stopFailedPaperTradingSession(tradingRunId);
       }
       const response = await tradingRunResponse(store, tradingRunId);
 
@@ -662,7 +667,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         }
       };
     } catch (error) {
-      await stopPaperTradingApiProviderSession(tradingRunId);
+      await cleanupFailedTradingRunStart(tradingRunId);
       if (error instanceof LocalStoreError) {
         return {
           statusCode: ledgerStatusCode(error.code),
@@ -703,6 +708,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         appendLedger: true,
         intervalMs: paperTradingEvaluationIntervalMs
       });
+      if (paperTradingEvaluation.evaluation.status === "failed") {
+        await stopFailedPaperTradingSession(tradingRunId);
+      }
     }
 
     const response = await tradingRunResponse(store, tradingRunId);
@@ -748,11 +756,32 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           intervalMs: paperTradingEvaluationIntervalMs
         });
         if (result.evaluation.status === "failed") {
-          paperTradingEvaluationRunner.stop(tradingRunId);
-          await stopPaperTradingApiProviderSession(tradingRunId);
+          await stopFailedPaperTradingSession(tradingRunId);
         }
       }
     });
+  }
+
+  async function stopFailedPaperTradingSession(tradingRunId: string): Promise<void> {
+    paperTradingEvaluationRunner.stop(tradingRunId);
+    await stopPaperTradingApiProviderSession(tradingRunId);
+    await stopLinkedTradingRunSandbox({
+      store,
+      sandboxAdapters,
+      tradingRunId
+    });
+  }
+
+  async function cleanupFailedTradingRunStart(tradingRunId: string): Promise<void> {
+    paperTradingEvaluationRunner.stop(tradingRunId);
+    await Promise.allSettled([
+      stopPaperTradingApiProviderSession(tradingRunId),
+      stopLinkedTradingRunSandbox({
+        store,
+        sandboxAdapters,
+        tradingRunId
+      })
+    ]);
   }
 
   async function restartTradingRunSandboxWithProvider(input: {
@@ -929,6 +958,41 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const refreshedCandidate = await refreshPaperTradingSandbox(candidateBefore);
       const currentEngineState = engineStateFromEvaluation(baseEvaluation);
       previousEngineState = currentEngineState;
+      if (refreshedCandidate.runtime.sandbox?.lifecycle_status === "failed") {
+        const failureReason = "paper_trading_sandbox_failed";
+        const failedObservation = paperTradingObservationRecord({
+          candidate: refreshedCandidate,
+          evaluation: baseEvaluation,
+          sequence,
+          status: "failed",
+          observedAt: market.observed_at,
+          marketSnapshot: marketSnapshotSummary(market),
+          decision: paperProtocolErrorDecision(market.observed_at, failureReason),
+          scoreDelta: zeroPaperTradingProfitLoss(),
+          cumulativeScore: baseEvaluation.latest_score,
+          failureReason,
+          paperAccountSnapshot: currentEngineState.account,
+          openOrders: currentEngineState.openOrders,
+          processedTradingSystemEventIds: currentEngineState.processedTradingSystemEventIds,
+          processedPublicTradeIds: currentEngineState.processedPublicTradeIds,
+          latestFill: currentEngineState.latestFill
+        });
+        const failedEvaluation = paperTradingEvaluationUpdate({
+          evaluation: baseEvaluation,
+          status: "failed",
+          observedAt: market.observed_at,
+          nextObservationAt: undefined,
+          latestScore: baseEvaluation.latest_score,
+          latestFailureReason: failureReason,
+          paperAccountSnapshot: currentEngineState.account,
+          openOrders: currentEngineState.openOrders,
+          processedTradingSystemEventIds: currentEngineState.processedTradingSystemEventIds,
+          processedPublicTradeIds: currentEngineState.processedPublicTradeIds,
+          latestFill: currentEngineState.latestFill
+        });
+        await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
+        return { evaluation: failedEvaluation, observation: failedObservation };
+      }
       const tradingSystemEvents = tradingSystemEventsFromCandidate(refreshedCandidate)
         .filter((event) => !currentEngineState.processedTradingSystemEventIds.includes(event.event_id));
       const decisionOutcome = await recordPaperTradingObservationDecision({
@@ -1006,9 +1070,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             events: decisionOutcome.engineEvents
           });
         }
-      }
-      if (!decision) {
-        decision = paperNoActionDecision(market.observed_at, "no_new_trading_system_event");
       }
     }
     const candidateAfterLedger = await store.getCandidateForTradingRun(input.tradingRunId);
@@ -1351,7 +1412,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           : undefined,
         sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
         created_at: createdAt,
-        test_ticks: body.test_ticks,
+        test_ticks: body.test_ticks ?? 2,
         interval_ms: body.interval_ms
       });
       const outcome = await store.recordSandboxStart(adapterResult);
@@ -2207,7 +2268,36 @@ async function ensureTradingRunSandbox(input: {
     existing.lifecycle_status === "running" &&
     linked?.sandbox_id === existing.sandbox_id
   ) {
-    return existing;
+    const observations = await input.sandboxAdapter.getArtifactInstanceStatus(existing);
+    if (
+      observations.lifecycle_status ||
+      observations.logs?.length ||
+      observations.heartbeats?.length ||
+      observations.command_evidence?.length
+    ) {
+      await input.store.recordSandboxObservations(existing.sandbox_id, observations);
+    }
+    const verified = await input.store.getSandbox(existing.sandbox_id) ?? existing;
+    if (
+      verified.lifecycle_status === "running" &&
+      (
+        observations.lifecycle_status === "running" ||
+        hasFreshSandboxHeartbeat(existing, observations)
+      )
+    ) {
+      return verified;
+    }
+    if (verified.lifecycle_status !== "stopped" && verified.lifecycle_status !== "removed") {
+      const stopObservations = await input.sandboxAdapter.stopArtifactInstance(verified);
+      await input.store.stopSandbox(
+        {
+          sandbox_id: verified.sandbox_id,
+          stopped_at: stopObservations.stopped_at,
+          removed_at: stopObservations.removed_at
+        },
+        stopObservations
+      );
+    }
   }
 
   const adapterResult = await input.sandboxAdapter.startArtifactInstance({
@@ -2217,7 +2307,6 @@ async function ensureTradingRunSandbox(input: {
     runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
     sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
     created_at: existing?.created_at ?? new Date().toISOString(),
-    test_ticks: 2,
     interval_ms: 1_000,
     paper_order_request: input.paperOrderRequest,
     env: input.tradingApiBaseUrl
@@ -2410,7 +2499,7 @@ async function stopLinkedTradingRunSandbox(input: {
   tradingRunId: string;
 }): Promise<SandboxDetailReadModel | undefined> {
   const sandbox = await linkedTradingRunSandbox(input.store, input.tradingRunId);
-  if (!sandbox || !shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+  if (!sandbox || sandbox.lifecycle_status === "stopped" || sandbox.lifecycle_status === "removed") {
     return sandbox;
   }
 
@@ -2435,6 +2524,22 @@ async function linkedTradingRunSandbox(
     return undefined;
   }
   return store.getSandbox(tradingRun.sandbox_ref.id);
+}
+
+function hasFreshSandboxHeartbeat(
+  existing: SandboxDetailReadModel,
+  observations: SandboxAdapterObservationResult
+): boolean {
+  const previousHeartbeatAt = existing.last_heartbeat_at ? Date.parse(existing.last_heartbeat_at) : undefined;
+  return observations.heartbeats?.some((heartbeat) => {
+    const observedAt = Date.parse(heartbeat.observed_at);
+    return Number.isFinite(observedAt) &&
+      (
+        previousHeartbeatAt === undefined ||
+        !Number.isFinite(previousHeartbeatAt) ||
+        observedAt > previousHeartbeatAt
+      );
+  }) ?? false;
 }
 
 function tradingRunLifecycleAuditInput(input: {

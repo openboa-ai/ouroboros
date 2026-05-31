@@ -1,8 +1,16 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
 import { loadTradingResearchRuntimeConfig } from "@ouroboros/application/trading/research/runtime-config";
+import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import type {
+  ReplayTradingApiProviderSession,
+  ReplayTradingScenario,
+  TradingProviderRequestLog,
+  TradingSystemEvent
+} from "@ouroboros/application/trading/research/types";
 import { LocalStore } from "@ouroboros/local-store";
 import { buildServer } from "../src/server";
 
@@ -29,6 +37,8 @@ describe("managed Codex researcher execution", () => {
       tradingResearchRuntimeConfig: loadTradingResearchRuntimeConfig({
         OUROBOROS_TRADING_RESEARCH_CODEX_BIN: fakeCodex
       }),
+      candidateArenaArtifactRunner: networklessReplayArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
       agentProfileExecFile: async (file, args, options) => {
         profileExecCalls.push({ file, args, env: options?.env });
         return { stdout: args[0] === "--version" ? "codex fake 1.0.0\n" : "authenticated\n", stderr: "" };
@@ -216,4 +226,79 @@ process.stdin.on("end", () => {
   }
 });
 `;
+}
+
+function networklessReplayArtifactRunner(): TradingArtifactRunner {
+  return {
+    kind: "host_process",
+    async run(input) {
+      const market = input.provider.scenario.market;
+      const account = input.provider.scenario.account;
+      const orderRequest = market.expected_direction === "flat"
+        ? {
+            symbol: market.symbol,
+            side: "hold" as const,
+            quantity: 0,
+            order_type: "none" as const,
+            reason: "flat replay regime holds through provider validation"
+          }
+        : {
+            symbol: market.symbol,
+            side: market.expected_direction === "short" ? "sell" as const : "buy" as const,
+            quantity: Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+            order_type: "market" as const,
+            reason: "networkless managed Codex runner preserves TradingApiProvider boundary"
+          };
+      const validation = validateOrderRequest(orderRequest, market, account);
+      const events: TradingSystemEvent[] = [
+        { event: "market_snapshot", ...market },
+        { event: "account_state", ...account },
+        { event: "order_request", ...orderRequest },
+        { event: "order_validation", ...validation },
+        { event: "run_complete", accepted: validation.accepted }
+      ];
+      await mkdir(input.output_dir, { recursive: true });
+      const eventsPath = path.join(input.output_dir, "events.jsonl");
+      await writeFile(eventsPath, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
+      return {
+        status: "completed",
+        runner_kind: "host_process",
+        artifact_dir: input.artifact_dir,
+        entrypoint: input.manifest.entrypoint,
+        events_path: eventsPath,
+        stdout: events.map((event) => JSON.stringify(event)).join("\n"),
+        stderr: "",
+        events,
+        provider_requests: providerBoundaryRequests()
+      };
+    }
+  };
+}
+
+async function networklessReplayTradingApiProvider(
+  scenario: ReplayTradingScenario
+): Promise<ReplayTradingApiProviderSession> {
+  return {
+    base_url: "",
+    close: async () => undefined,
+    requests: () => providerBoundaryRequests(),
+    scenario
+  };
+}
+
+function providerBoundaryRequests(): TradingProviderRequestLog[] {
+  return [
+    providerRequest("GET", "/market/snapshot"),
+    providerRequest("GET", "/account/state"),
+    providerRequest("POST", "/orders/validate")
+  ];
+}
+
+function providerRequest(method: string, requestPath: string): TradingProviderRequestLog {
+  return {
+    at: "2026-05-16T00:00:00.000Z",
+    method,
+    path: requestPath,
+    response_status: 200
+  };
 }

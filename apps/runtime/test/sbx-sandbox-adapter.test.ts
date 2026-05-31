@@ -14,6 +14,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
+  delete process.env.SBX_FAKE_HEARTBEAT_AFTER;
+  delete process.env.SBX_FAKE_HEARTBEAT_COUNTER;
+  delete process.env.SBX_FAKE_FINITE_STOPPED;
   delete process.env.SBX_FAKE_INSTANCE_ID;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
@@ -47,11 +50,12 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
 
     expect(start.instance.adapter_kind).toBe("docker_sandboxes_sbx");
     expect(start.instance.lifecycle_status).toBe("running");
-    expect(start.command_evidence).toHaveLength(3);
+    expect(start.command_evidence).toHaveLength(4);
     expect(start.command_evidence.map((evidence) => evidence.command.slice(1, 3))).toEqual([
       ["version"],
       ["create", "--name"],
-      ["exec", "-d"]
+      ["exec", "-d"],
+      ["exec", "ouro-s5-clock-fake"]
     ]);
     expect(JSON.stringify(start.command_evidence)).not.toMatch(/secret|password|token|api[-_]?key|credential/i);
 
@@ -80,7 +84,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect(commands).toEqual([
       "version",
       "create --name ouro-s5-clock-fake shell .",
-      "exec -d -w . ouro-s5-clock-fake python3 fixtures/trading-systems/clock.py --instance-id sandbox-fake-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-fake-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json --ticks 2",
+      "exec -d -w . ouro-s5-clock-fake python3 fixtures/trading-systems/clock.py --instance-id sandbox-fake-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-fake-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
+      "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.heartbeat.json",
       "version",
       "exec ouro-s5-clock-fake cat /tmp/ouroboros-sandbox-fake-sbx.jsonl",
       "version",
@@ -92,6 +97,84 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "version",
       "exec ouro-s5-clock-fake pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-fake"
+    ]);
+  });
+
+  it("waits under the startup timeout for a delayed first heartbeat", async () => {
+    const commandLog = path.join(tmpDir, "slow-startup-commands.log");
+    const heartbeatCounter = path.join(tmpDir, "slow-startup-heartbeat-count");
+    const fakeSbx = path.join(tmpDir, "sbx-slow-startup");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_HEARTBEAT_AFTER = "3";
+    process.env.SBX_FAKE_HEARTBEAT_COUNTER = heartbeatCounter;
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      startupHeartbeatTimeoutMs: 1_000,
+      startupHeartbeatPollIntervalMs: 1
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-slow-startup-sbx",
+      sandbox_name: "ouro-s5-clock-slow-startup",
+      sandbox_placement_id: "sandbox-placement-slow-startup-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    expect(start.instance.lifecycle_status).toBe("running");
+    expect(start.heartbeats).toHaveLength(1);
+    expect(start.command_evidence.map((evidence) => evidence.command.slice(1, 3))).toEqual([
+      ["version"],
+      ["create", "--name"],
+      ["exec", "-d"],
+      ["exec", "ouro-s5-clock-slow-startup"],
+      ["exec", "ouro-s5-clock-slow-startup"],
+      ["exec", "ouro-s5-clock-slow-startup"]
+    ]);
+    expect((await readFile(heartbeatCounter, "utf8")).trim()).toBe("3");
+  });
+
+  it("treats a finite detached run that stops before heartbeat read as stopped", async () => {
+    const commandLog = path.join(tmpDir, "finite-stopped-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-finite-stopped");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_FINITE_STOPPED = "1";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      startupHeartbeatTimeoutMs: 1_000,
+      startupHeartbeatPollIntervalMs: 1
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-finite-stopped-sbx",
+      sandbox_name: "ouro-s5-clock-finite-stopped",
+      sandbox_placement_id: "sandbox-placement-finite-stopped-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      test_ticks: 2,
+      interval_ms: 1
+    });
+
+    expect(start.instance.lifecycle_status).toBe("stopped");
+    expect(start.instance.started_at).toBe("2026-05-10T00:00:00.000Z");
+    expect(start.instance.stopped_at).toBe("2026-05-10T00:00:01.000Z");
+    expect(start.heartbeats).toHaveLength(0);
+    expect(start.logs[0]?.lines.some((line) => line.includes("\"runtime_stopped\""))).toBe(true);
+
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands).toEqual([
+      "version",
+      "create --name ouro-s5-clock-finite-stopped shell .",
+      "exec -d -w . ouro-s5-clock-finite-stopped python3 fixtures/trading-systems/clock.py --instance-id sandbox-finite-stopped-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
+      "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json",
+      "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl"
     ]);
   });
 
@@ -165,7 +248,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-home shell .",
-      "exec -d -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-home-sbx.heartbeat.json"
+      "exec -d -w . ouro-s5-clock-home python3 fixtures/trading-systems/clock.py --instance-id sandbox-home-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-home-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-home-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec ouro-s5-clock-home cat /tmp/ouroboros-sandbox-home-sbx.heartbeat.json"
     ]);
   });
 
@@ -197,7 +281,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-aliased-sdx shell .",
-      "exec -d -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json"
+      "exec -d -w . ouro-s5-clock-aliased-sdx python3 fixtures/trading-systems/clock.py --instance-id sandbox-aliased-sdx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-aliased-sdx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec ouro-s5-clock-aliased-sdx cat /tmp/ouroboros-sandbox-aliased-sdx.heartbeat.json"
     ]);
   });
 
@@ -226,7 +311,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-sdx-env-alias shell .",
-      "exec -d -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json"
+      "exec -d -w . ouro-s5-clock-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec ouro-s5-clock-sdx-env-alias cat /tmp/ouroboros-sandbox-sdx-env-alias.heartbeat.json"
     ]);
   });
 
@@ -257,7 +343,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       `create --name ouro-s5-clock-relative-sdx-env-alias shell ${tmpDir}`,
-      `exec -d -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json`
+      `exec -d -w ${tmpDir} ouro-s5-clock-relative-sdx-env-alias python3 fixtures/trading-systems/clock.py --instance-id sandbox-relative-sdx-env-alias --interval-ms 1 --log-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.jsonl --heartbeat-file /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid`,
+      "exec ouro-s5-clock-relative-sdx-env-alias cat /tmp/ouroboros-sandbox-relative-sdx-env-alias.heartbeat.json"
     ]);
   });
 
@@ -369,7 +456,8 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
     expect((await readFile(commandLog, "utf8")).trim().split("\n")).toEqual([
       "version",
       "create --name ouro-s5-clock-stop-failed shell .",
-      "exec -d -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json",
+      "exec -d -w . ouro-s5-clock-stop-failed python3 fixtures/trading-systems/clock.py --instance-id sandbox-stop-failed-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-stop-failed-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid",
+      "exec ouro-s5-clock-stop-failed cat /tmp/ouroboros-sandbox-stop-failed-sbx.heartbeat.json",
       "version",
       "exec ouro-s5-clock-stop-failed pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-stop-failed"
@@ -406,11 +494,46 @@ case "$1" in
   create)
     echo "created $4"
     ;;
-  exec)
-    if [ "$2" = "-d" ]; then
-      echo "detached $3"
-    elif [ "$3" = "cat" ]; then
-      printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$SBX_FAKE_INSTANCE_ID"
+	  exec)
+	    if [ "$2" = "-d" ]; then
+	      echo "detached $3"
+	    elif [ "$3" = "cat" ]; then
+	      cat_path="$4"
+	      if [ "\${SBX_FAKE_FINITE_STOPPED:-}" = "1" ]; then
+	        cat_file="$(basename "$cat_path")"
+	        cat_id="\${cat_file#ouroboros-}"
+	        cat_id="\${cat_id%.heartbeat.json}"
+	        cat_id="\${cat_id%.jsonl}"
+	        case "$cat_path" in
+	          *.heartbeat.json)
+	            printf '{"event":"runtime_stopped","instance_id":"%s","tick":2,"at":"2026-05-10T00:00:01.000Z"}\\n' "$cat_id"
+	            ;;
+	          *.jsonl)
+	            printf '{"event":"order_request","event_id":"%s:order-request:0001","instance_id":"%s"}\\n' "$cat_id" "$cat_id"
+	            printf '{"event":"runtime_stopped","instance_id":"%s","tick":2,"at":"2026-05-10T00:00:01.000Z"}\\n' "$cat_id"
+	            ;;
+	        esac
+	        exit 0
+	      fi
+	      heartbeat_after="\${SBX_FAKE_HEARTBEAT_AFTER:-1}"
+	      heartbeat_counter="\${SBX_FAKE_HEARTBEAT_COUNTER:-}"
+	      heartbeat_attempt=1
+      if [ -n "$heartbeat_counter" ]; then
+        if [ -f "$heartbeat_counter" ]; then
+          heartbeat_attempt=$(( $(cat "$heartbeat_counter") + 1 ))
+        fi
+        printf '%s\\n' "$heartbeat_attempt" > "$heartbeat_counter"
+      fi
+      if [ "$heartbeat_attempt" -lt "$heartbeat_after" ]; then
+        echo "heartbeat not ready" >&2
+        exit 1
+      fi
+      heartbeat_path="$4"
+      heartbeat_file="$(basename "$heartbeat_path")"
+      heartbeat_id="\${heartbeat_file#ouroboros-}"
+      heartbeat_id="\${heartbeat_id%.heartbeat.json}"
+      heartbeat_id="\${heartbeat_id%.jsonl}"
+      printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$heartbeat_id"
     else
       echo "exec $2"
     fi
@@ -472,6 +595,13 @@ case "$1" in
   exec)
     if [ "$2" = "-d" ]; then
       echo "detached $3"
+    elif [ "$3" = "cat" ]; then
+      heartbeat_path="$4"
+      heartbeat_file="$(basename "$heartbeat_path")"
+      heartbeat_id="\${heartbeat_file#ouroboros-}"
+      heartbeat_id="\${heartbeat_id%.heartbeat.json}"
+      heartbeat_id="\${heartbeat_id%.jsonl}"
+      printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$heartbeat_id"
     else
       echo "exec $2"
     fi

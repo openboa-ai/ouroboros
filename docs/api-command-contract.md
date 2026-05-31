@@ -29,7 +29,9 @@ Current command groups:
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
-  `trading_run.start` starts or resumes the selected `TradingSystem` in paper mode.
+  `trading_run.start` starts or resumes the selected `TradingSystem` as a managed paper session.
+  The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
+  it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
   Gateway-owned paper market snapshots, fake account state, and order validation without importing
   Binance or touching private/live authority.

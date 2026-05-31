@@ -31,6 +31,9 @@ describe("generated TradingSystem artifact", () => {
       "runtime_heartbeat",
       "runtime_stopped"
     ]);
+    expect(events[1].at).not.toBe("2026-05-16T00:00:03.000Z");
+    expect(events[2].at).not.toBe("2026-05-16T00:00:03.000Z");
+    expect(events[3].at).not.toBe("2026-05-16T00:00:03.000Z");
     expect(events[0]).toMatchObject({
       event: "order_request",
       event_id: "generated-test-rejected:order-request:0001",

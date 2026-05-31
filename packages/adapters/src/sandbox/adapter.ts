@@ -1,4 +1,6 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -74,6 +76,15 @@ export interface SandboxAdapter {
 
 export class DeterministicSandboxAdapter implements SandboxAdapter {
   readonly kind = "deterministic_test" as const;
+  private readonly sessions = new Map<
+    string,
+    {
+      child: ReturnType<typeof spawn>;
+      logFile: string;
+      heartbeatFile: string;
+      pidFile: string;
+    }
+  >();
 
   constructor(
     private readonly options: {
@@ -114,6 +125,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         heartbeats: [],
         command_evidence: [commandEvidence]
       };
+    }
+    if (input.test_ticks === undefined) {
+      return this.startLongRunningArtifactInstance(input, command, placement);
     }
     const executionCommand = [
       ...command,
@@ -172,12 +186,39 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     };
   }
 
-  async getArtifactInstanceStatus(): Promise<SandboxAdapterObservationResult> {
-    return {};
+  async getArtifactInstanceStatus(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
+    const instanceId = instanceIdFor(instance);
+    const session = this.sessions.get(instanceId);
+    if (!session) {
+      return {};
+    }
+    const capturedAt = new Date().toISOString();
+    const heartbeatLines = await readSandboxLogLines(session.heartbeatFile);
+    return {
+      lifecycle_status: childLifecycleStatus(session.child),
+      heartbeats: heartbeatRecordsFromLines(instanceId, "status", heartbeatLines, capturedAt)
+    };
   }
 
-  async getArtifactInstanceLogs(): Promise<SandboxAdapterObservationResult> {
-    return {};
+  async getArtifactInstanceLogs(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
+    const instanceId = instanceIdFor(instance);
+    const session = this.sessions.get(instanceId);
+    if (!session) {
+      return {};
+    }
+    const capturedAt = new Date().toISOString();
+    const lines = await readSandboxLogLines(session.logFile);
+    return {
+      lifecycle_status: childLifecycleStatus(session.child),
+      logs: lines.length > 0
+        ? [runtimeLogRecord(instanceId, `logs-${safeRuntimeId(capturedAt)}`, lines, capturedAt)]
+        : [],
+      heartbeats: heartbeatRecordsFromLines(instanceId, "logs", lines, capturedAt)
+    };
   }
 
   async stopArtifactInstance(
@@ -185,6 +226,41 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
   ): Promise<SandboxAdapterObservationResult> {
     const stoppedAt = new Date().toISOString();
     const instanceId = instanceIdFor(instance);
+    const session = this.sessions.get(instanceId);
+    if (session) {
+      await terminateChildProcess(session.child);
+      this.sessions.delete(instanceId);
+      await removePersistedSandboxProcessFiles(session.pidFile);
+      const lines = await readSandboxLogLines(session.logFile);
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: stoppedAt,
+        logs: lines.length > 0
+          ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
+          : [],
+        heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
+      };
+    }
+    const pidFile = sandboxPidFile(instanceId);
+    const persistedProcess = await readPersistedSandboxProcess(pidFile);
+    if (persistedProcess && await isPersistedSandboxProcessCurrent(persistedProcess)) {
+      if (signalProcessTree(persistedProcess.pid, "SIGTERM")) {
+        await waitForProcessTreeExit(persistedProcess.pid, 500);
+      }
+      if (isProcessTreeAlive(persistedProcess.pid) && signalProcessTree(persistedProcess.pid, "SIGKILL")) {
+        await waitForProcessTreeExit(persistedProcess.pid, 500);
+      }
+      await removePersistedSandboxProcessFiles(pidFile);
+      const lines = await readSandboxLogLines(sandboxLogFile(instanceId));
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: stoppedAt,
+        logs: lines.length > 0
+          ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
+          : [],
+        heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
+      };
+    }
     const stoppedLine = JSON.stringify({
       event: "runtime_stopped",
       instance_id: instanceId,
@@ -212,6 +288,155 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
   private get allowedCapabilityPolicyIds(): readonly string[] {
     return this.options.allowedCapabilityPolicyIds ?? [];
   }
+
+  private async startLongRunningArtifactInstance(
+    input: SandboxAdapterStartInput,
+    command: string[],
+    placement: SandboxPlacementRecord
+  ): Promise<SandboxAdapterStartResult> {
+    const logFile = sandboxLogFile(input.instance_id);
+    const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
+    const pidFile = sandboxPidFile(input.instance_id);
+    await this.stopExistingLongRunningSession(input.instance_id, pidFile);
+    await Promise.all([
+      rm(logFile, { force: true }),
+      rm(heartbeatFile, { force: true }),
+      rm(pidFile, { force: true })
+    ]);
+    const executionCommand = [
+      ...command,
+      "--instance-id",
+      input.instance_id,
+      "--interval-ms",
+      String(input.interval_ms ?? 1_000),
+      "--log-file",
+      logFile,
+      "--heartbeat-file",
+      heartbeatFile,
+      "--start-at",
+      input.created_at,
+      "--paper-order-request",
+      input.paper_order_request ?? "valid"
+    ];
+    const startedAt = new Date().toISOString();
+    const [file, ...args] = executionCommand;
+    if (!file) {
+      const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
+        command: executionCommand,
+        exit_code: 2,
+        stdout: "",
+        stderr: "empty deterministic fixture command",
+        started_at: startedAt,
+        completed_at: startedAt
+      });
+      return {
+        instance: sandboxSandboxRecord({
+          adapterKind: this.kind,
+          artifact: input.artifact,
+          instanceId: input.instance_id,
+          sandboxName: input.sandbox_name,
+          runtimeRef: input.runtime_ref,
+          placementId: placement.sandbox_placement_id,
+          lifecycleStatus: "failed",
+          createdAt: input.created_at,
+          commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
+          traceRef: input.trace_ref
+        }),
+        placement,
+        logs: [],
+        heartbeats: [],
+        command_evidence: [commandEvidence]
+      };
+    }
+    const child = spawn(file, args, {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: "ignore",
+      env: input.env ? { ...process.env, ...input.env } : process.env
+    });
+    let spawnError: Error | undefined;
+    const spawnErrorSignal = new Promise<never[]>((resolve) => {
+      child.once("error", (error) => {
+        spawnError = error;
+        resolve([]);
+      });
+    });
+    const lines = await Promise.race([
+      waitForSandboxLogLines(logFile, 500),
+      spawnErrorSignal
+    ]);
+    const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
+    const lifecycleStatus = spawnError ? "failed" : childLifecycleStatus(child);
+    if (lifecycleStatus === "running") {
+      child.unref();
+      if (child.pid !== undefined) {
+        await writePersistedSandboxProcess(pidFile, {
+          pid: child.pid,
+          instance_id: input.instance_id,
+          command: executionCommand,
+          started_at: startedAt
+        });
+      }
+      const session = { child, logFile, heartbeatFile, pidFile };
+      this.sessions.set(input.instance_id, session);
+    }
+    const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
+      command: executionCommand,
+      exit_code: lifecycleStatus === "running" ? null : child.exitCode ?? 1,
+      stdout: "",
+      stderr: spawnError?.message ?? (child.signalCode ? `terminated by ${child.signalCode}` : ""),
+      started_at: startedAt,
+      completed_at: startedAt
+    });
+    return {
+      instance: sandboxSandboxRecord({
+        adapterKind: this.kind,
+        artifact: input.artifact,
+        instanceId: input.instance_id,
+        sandboxName: input.sandbox_name,
+        runtimeRef: input.runtime_ref,
+        placementId: placement.sandbox_placement_id,
+        lifecycleStatus: lifecycleStatus === "running" ? "running" : "failed",
+        createdAt: input.created_at,
+        startedAt: lifecycleStatus === "running" ? input.created_at : undefined,
+        lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
+        logRefs: lines.length > 0
+          ? [ref("sandbox_log", `sandbox-log-${safeRuntimeId(input.instance_id)}-start`)]
+          : [],
+        heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
+        commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
+        traceRef: input.trace_ref
+      }),
+      placement,
+      logs: lines.length > 0
+        ? [runtimeLogRecord(input.instance_id, "start", lines, startedAt)]
+        : [],
+      heartbeats,
+      command_evidence: [commandEvidence]
+    };
+  }
+
+  private async stopExistingLongRunningSession(instanceId: string, pidFile: string): Promise<void> {
+    const session = this.sessions.get(instanceId);
+    if (session) {
+      await terminateChildProcess(session.child);
+      this.sessions.delete(instanceId);
+      await removePersistedSandboxProcessFiles(session.pidFile);
+      return;
+    }
+    const persistedProcess = await readPersistedSandboxProcess(pidFile);
+    if (!persistedProcess || !await isPersistedSandboxProcessCurrent(persistedProcess)) {
+      await removePersistedSandboxProcessFiles(pidFile);
+      return;
+    }
+    if (signalProcessTree(persistedProcess.pid, "SIGTERM")) {
+      await waitForProcessTreeExit(persistedProcess.pid, 500);
+    }
+    if (isProcessTreeAlive(persistedProcess.pid) && signalProcessTree(persistedProcess.pid, "SIGKILL")) {
+      await waitForProcessTreeExit(persistedProcess.pid, 500);
+    }
+    await removePersistedSandboxProcessFiles(pidFile);
+  }
 }
 
 export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
@@ -223,6 +448,8 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       sbxHome?: string;
       workspacePath?: string;
       commandTimeoutMs?: number;
+      startupHeartbeatTimeoutMs?: number;
+      startupHeartbeatPollIntervalMs?: number;
     } = {}
   ) {}
 
@@ -309,17 +536,38 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       logFile,
       "--heartbeat-file",
       heartbeatFile,
+      "--start-at",
+      input.created_at,
+      "--paper-order-request",
+      input.paper_order_request ?? "valid",
       ...(input.test_ticks !== undefined ? ["--ticks", String(input.test_ticks)] : [])
     ];
     const execResult = await this.runSbxCommand(execCommand);
+    const startupEvidence = createResult.exit_code === 0 && execResult.exit_code === 0
+      ? await this.readStartupEvidence(input.instance_id, input.sandbox_name, {
+        allowStoppedLog: input.test_ticks !== undefined
+      })
+      : { heartbeats: [], logs: [], commandEvidence: [] };
+    const lifecycleStatus = createResult.exit_code === 0 &&
+      execResult.exit_code === 0
+      ? startupEvidence.heartbeats.length > 0
+        ? "running"
+        : startupEvidence.stopped_at
+          ? "stopped"
+          : "failed"
+      : "failed";
+    const stopResult = createResult.exit_code === 0 && lifecycleStatus === "failed"
+      ? await this.runSbxCommand([this.sbxPath, "stop", input.sandbox_name])
+      : undefined;
     const commandEvidence = [
       versionEvidence,
       createEvidence,
-      commandEvidenceRecord(input.instance_id, "exec-detached", execResult)
+      commandEvidenceRecord(input.instance_id, "exec-detached", execResult),
+      ...startupEvidence.commandEvidence,
+      ...(stopResult
+        ? [commandEvidenceRecord(input.instance_id, commandEvidenceSuffix("startup-stop", stopResult), stopResult)]
+        : [])
     ];
-    const lifecycleStatus = createResult.exit_code === 0 && execResult.exit_code === 0
-      ? "running"
-      : "failed";
     const instance = sandboxSandboxRecord({
       adapterKind: this.kind,
       artifact: input.artifact,
@@ -329,7 +577,13 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       placementId: placement.sandbox_placement_id,
       lifecycleStatus,
       createdAt,
-      startedAt: lifecycleStatus === "running" ? createdAt : undefined,
+      startedAt: lifecycleStatus !== "failed" ? createdAt : undefined,
+      stoppedAt: lifecycleStatus === "stopped" ? startupEvidence.stopped_at : undefined,
+      lastHeartbeatAt: startupEvidence.heartbeats.at(-1)?.observed_at,
+      logRefs: startupEvidence.logs.map((log) => ref(log.record_kind, log.sandbox_log_id)),
+      heartbeatRefs: startupEvidence.heartbeats.map((heartbeat) =>
+        ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)
+      ),
       commandEvidenceRefs: commandEvidence.map((evidence) => (
         ref(evidence.record_kind, evidence.sandbox_command_evidence_id)
       )),
@@ -339,8 +593,8 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return {
       instance,
       placement,
-      logs: [],
-      heartbeats: [],
+      logs: startupEvidence.logs,
+      heartbeats: startupEvidence.heartbeats,
       command_evidence: commandEvidence
     };
   }
@@ -452,12 +706,90 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return this.options.commandTimeoutMs ?? Number(process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS ?? 30_000);
   }
 
+  private get startupHeartbeatTimeoutMs(): number {
+    return this.options.startupHeartbeatTimeoutMs ?? this.commandTimeoutMs;
+  }
+
+  private get startupHeartbeatPollIntervalMs(): number {
+    return this.options.startupHeartbeatPollIntervalMs ?? 500;
+  }
+
   private get sbxHome(): string | undefined {
     return this.options.sbxHome ?? process.env.OUROBOROS_SBX_HOME;
   }
 
   private runSbxCommand(command: string[]): Promise<CommandResult> {
     return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
+  }
+
+  private async readStartupEvidence(
+    instanceId: string,
+    sandboxName: string,
+    options: { allowStoppedLog?: boolean } = {}
+  ): Promise<{
+    heartbeats: RuntimeHeartbeatRecord[];
+    logs: SandboxLogRecord[];
+    stopped_at?: string;
+    commandEvidence: SandboxCommandEvidenceRecord[];
+  }> {
+    const commandEvidence: SandboxCommandEvidenceRecord[] = [];
+    const deadlineAt = Date.now() + Math.max(0, this.startupHeartbeatTimeoutMs);
+    let attempt = 0;
+    do {
+      if (attempt > 0) {
+        const remainingMs = Math.max(0, deadlineAt - Date.now());
+        await sleep(Math.min(this.startupHeartbeatPollIntervalMs, remainingMs));
+      }
+      const result = await this.runSbxCommand([
+        this.sbxPath,
+        "exec",
+        sandboxName,
+        "cat",
+        sandboxHeartbeatFile(instanceId)
+      ]);
+      commandEvidence.push(commandEvidenceRecord(
+        instanceId,
+        commandEvidenceSuffix(`startup-heartbeat-${attempt + 1}`, result),
+        result
+      ));
+      const heartbeats = heartbeatRecordsFromLines(
+        instanceId,
+        `startup-heartbeat-${attempt + 1}`,
+        stdoutLines(result.stdout),
+        result.completed_at
+      );
+      if (heartbeats.length > 0) {
+        return { heartbeats, logs: [], commandEvidence };
+      }
+      if (options.allowStoppedLog) {
+        const logResult = await this.runSbxCommand([
+          this.sbxPath,
+          "exec",
+          sandboxName,
+          "cat",
+          sandboxLogFile(instanceId)
+        ]);
+        commandEvidence.push(commandEvidenceRecord(
+          instanceId,
+          commandEvidenceSuffix(`startup-log-${attempt + 1}`, logResult),
+          logResult
+        ));
+        const lines = stdoutLines(logResult.stdout);
+        const stoppedAt = runtimeStoppedAtFromLines(instanceId, lines, logResult.completed_at);
+        if (stoppedAt) {
+          return {
+            heartbeats: [],
+            logs: lines.length > 0
+              ? [runtimeLogRecord(instanceId, `startup-log-${safeRuntimeId(logResult.completed_at)}`, lines, logResult.completed_at)]
+              : [],
+            stopped_at: stoppedAt,
+            commandEvidence
+          };
+        }
+      }
+      attempt += 1;
+    } while (Date.now() < deadlineAt);
+    return { heartbeats: [], logs: [], commandEvidence };
   }
 
   private async versionObservation(
@@ -640,6 +972,24 @@ function parseHeartbeatLine(line: string): { event?: string; instance_id?: strin
   }
 }
 
+function runtimeStoppedAtFromLines(
+  instanceId: string,
+  lines: string[],
+  capturedAt: string
+): string | undefined {
+  for (const line of lines) {
+    try {
+      const value = JSON.parse(line) as { event?: unknown; instance_id?: unknown; at?: unknown };
+      if (value.event === "runtime_stopped" && value.instance_id === instanceId) {
+        return typeof value.at === "string" ? value.at : capturedAt;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 function isDockerSandboxesSbxVersion(stdout: string): boolean {
   return stdout.includes("Client Version:") && stdout.includes("Server Version:");
 }
@@ -771,6 +1121,15 @@ function sandboxHeartbeatFile(instanceId: string): string {
   return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.heartbeat.json`;
 }
 
+function sandboxPidFile(instanceId: string): string {
+  return path.join(REPO_ROOT, ".ouroboros", "sandbox-pids", `${sandboxPidFileKey(instanceId)}.pid`);
+}
+
+function sandboxPidFileKey(instanceId: string): string {
+  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
+  return `${safeRuntimeId(instanceId)}-${digest}`;
+}
+
 function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string {
   return instance.sandbox_id;
 }
@@ -828,6 +1187,212 @@ function runDeterministicFixtureCommand(input: {
   });
 }
 
+async function readSandboxLogLines(logFile: string): Promise<string[]> {
+  const content = await readFile(logFile, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  return stdoutLines(content);
+}
+
+async function waitForSandboxLogLines(logFile: string, timeoutMs: number): Promise<string[]> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const lines = await readSandboxLogLines(logFile);
+    if (lines.length > 0) {
+      return lines;
+    }
+    await sleep(10);
+  }
+  return readSandboxLogLines(logFile);
+}
+
+interface PersistedSandboxProcess {
+  pid: number;
+  instance_id: string;
+  command: string[];
+  started_at: string;
+}
+
+async function writePersistedSandboxProcess(
+  pidFile: string,
+  processRecord: PersistedSandboxProcess
+): Promise<void> {
+  await mkdir(path.dirname(pidFile), { recursive: true });
+  await writeFile(pidFile, String(processRecord.pid), "utf8");
+  await writeFile(`${pidFile}.json`, `${JSON.stringify(processRecord)}\n`, "utf8");
+}
+
+async function removePersistedSandboxProcessFiles(pidFile: string): Promise<void> {
+  await rm(pidFile, { force: true });
+  await rm(`${pidFile}.json`, { force: true });
+}
+
+async function readPersistedSandboxPid(pidFile: string): Promise<number | undefined> {
+  const content = await readFile(pidFile, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  const pid = Number(content.trim());
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+async function readPersistedSandboxProcess(pidFile: string): Promise<PersistedSandboxProcess | undefined> {
+  const pid = await readPersistedSandboxPid(pidFile);
+  if (pid === undefined) {
+    return undefined;
+  }
+  const content = await readFile(`${pidFile}.json`, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  if (!content.trim()) {
+    return undefined;
+  }
+  try {
+    const value = JSON.parse(content) as Partial<PersistedSandboxProcess>;
+    if (
+      value.pid === pid &&
+      typeof value.instance_id === "string" &&
+      Array.isArray(value.command) &&
+      value.command.every((item) => typeof item === "string") &&
+      typeof value.started_at === "string"
+    ) {
+      return {
+        pid,
+        instance_id: value.instance_id,
+        command: value.command,
+        started_at: value.started_at
+      };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+async function isPersistedSandboxProcessCurrent(processRecord: PersistedSandboxProcess): Promise<boolean> {
+  if (!isProcessTreeAlive(processRecord.pid)) {
+    return false;
+  }
+  const processInfo = await runCommand(["ps", "-p", String(processRecord.pid), "-o", "command="], 500);
+  if (processInfo.exit_code !== 0) {
+    return false;
+  }
+  const commandText = processInfo.stdout;
+  const entrypoint = processRecord.command[1] ?? processRecord.command[0] ?? "";
+  return commandText.includes(processRecord.instance_id) &&
+    (entrypoint.length === 0 || commandText.includes(entrypoint));
+}
+
+function signalProcess(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || code === "EPERM") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || code === "EPERM") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
+  return signalProcess(-pid, signal);
+}
+
+function isProcessGroupAlive(pid: number): boolean {
+  return isProcessAlive(-pid);
+}
+
+function signalProcessTree(pid: number, signal: NodeJS.Signals): boolean {
+  return signalProcessGroup(pid, signal) || signalProcess(pid, signal);
+}
+
+function isProcessTreeAlive(pid: number): boolean {
+  return isProcessGroupAlive(pid) || isProcessAlive(pid);
+}
+
+async function waitForProcessTreeExit(pid: number, timeoutMs: number): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessTreeAlive(pid)) {
+      return;
+    }
+    await sleep(10);
+  }
+}
+
+async function terminateChildProcess(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.pid !== undefined) {
+    if (!signalProcessTree(child.pid, "SIGTERM")) {
+      child.kill("SIGTERM");
+    }
+  } else {
+    child.kill("SIGTERM");
+  }
+  await waitForChildExit(child, 500);
+  if (child.pid !== undefined && isProcessTreeAlive(child.pid)) {
+    signalProcessTree(child.pid, "SIGKILL");
+    await waitForProcessTreeExit(child.pid, 500);
+  }
+  if (!hasChildExited(child)) {
+    child.kill("SIGKILL");
+    await waitForChildExit(child, 500);
+  }
+}
+
+function waitForChildExit(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<void> {
+  if (hasChildExited(child)) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(), timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+function childLifecycleStatus(child: ReturnType<typeof spawn>): SandboxLifecycleStatus {
+  if (child.exitCode !== null) {
+    return child.exitCode === 0 ? "stopped" : "failed";
+  }
+  if (child.signalCode !== null) {
+    return child.signalCode === "SIGTERM" ? "stopped" : "failed";
+  }
+  return "running";
+}
+
+function hasChildExited(child: ReturnType<typeof spawn>): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function sandboxRuntimeEnvCommand(env: SandboxRuntimeEnv | undefined): string[] {
   if (!env?.TRADING_API_BASE_URL) {
     return [];
@@ -843,27 +1408,43 @@ function runCommand(
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
     const [file, ...args] = command;
-    execFile(
-      file,
-      args,
-      {
-        encoding: "utf8",
-        timeout: timeoutMs,
-        maxBuffer: 1024 * 1024,
-        env: envOverrides ? { ...process.env, ...envOverrides } : process.env
-      },
-      (error, stdout, stderr) => {
+    try {
+      execFile(
+        file,
+        args,
+        {
+          encoding: "utf8",
+          timeout: timeoutMs,
+          maxBuffer: 1024 * 1024,
+          env: envOverrides ? { ...process.env, ...envOverrides } : process.env
+        },
+        (error, stdout, stderr) => {
+          const completedAt = new Date().toISOString();
+          resolve({
+            command,
+            exit_code: error ? exitCodeFor(error) : 0,
+            stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
+            stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
+            started_at: startedAt,
+            completed_at: completedAt
+          });
+        }
+      );
+    } catch (error) {
+      if (error instanceof Error) {
         const completedAt = new Date().toISOString();
         resolve({
           command,
-          exit_code: error ? exitCodeFor(error) : 0,
-          stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
-          stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
+          exit_code: exitCodeFor(error),
+          stdout: "",
+          stderr: error.message,
           started_at: startedAt,
           completed_at: completedAt
         });
+      } else {
+        throw error;
       }
-    );
+    }
   });
 }
 
