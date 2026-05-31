@@ -243,11 +243,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const pidFile = sandboxPidFile(instanceId);
     const persistedPid = await readPersistedSandboxPid(pidFile);
     if (persistedPid !== undefined) {
-      if (signalProcess(persistedPid, "SIGTERM")) {
-        await waitForProcessExit(persistedPid, 500);
+      if (signalProcessTree(persistedPid, "SIGTERM")) {
+        await waitForProcessTreeExit(persistedPid, 500);
       }
-      if (isProcessAlive(persistedPid) && signalProcess(persistedPid, "SIGKILL")) {
-        await waitForProcessExit(persistedPid, 500);
+      if (isProcessTreeAlive(persistedPid) && signalProcessTree(persistedPid, "SIGKILL")) {
+        await waitForProcessTreeExit(persistedPid, 500);
       }
       await rm(pidFile, { force: true });
       const lines = await readSandboxLogLines(sandboxLogFile(instanceId));
@@ -415,11 +415,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     if (persistedPid === undefined) {
       return;
     }
-    if (signalProcess(persistedPid, "SIGTERM")) {
-      await waitForProcessExit(persistedPid, 500);
+    if (signalProcessTree(persistedPid, "SIGTERM")) {
+      await waitForProcessTreeExit(persistedPid, 500);
     }
-    if (isProcessAlive(persistedPid) && signalProcess(persistedPid, "SIGKILL")) {
-      await waitForProcessExit(persistedPid, 500);
+    if (isProcessTreeAlive(persistedPid) && signalProcessTree(persistedPid, "SIGKILL")) {
+      await waitForProcessTreeExit(persistedPid, 500);
     }
     await rm(pidFile, { force: true });
   }
@@ -1106,10 +1106,26 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void> {
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
+  return signalProcess(-pid, signal);
+}
+
+function isProcessGroupAlive(pid: number): boolean {
+  return isProcessAlive(-pid);
+}
+
+function signalProcessTree(pid: number, signal: NodeJS.Signals): boolean {
+  return signalProcessGroup(pid, signal) || signalProcess(pid, signal);
+}
+
+function isProcessTreeAlive(pid: number): boolean {
+  return isProcessGroupAlive(pid) || isProcessAlive(pid);
+}
+
+async function waitForProcessTreeExit(pid: number, timeoutMs: number): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (!isProcessAlive(pid)) {
+    if (!isProcessTreeAlive(pid)) {
       return;
     }
     await sleep(10);
@@ -1117,8 +1133,18 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void>
 }
 
 async function terminateChildProcess(child: ReturnType<typeof spawn>): Promise<void> {
-  child.kill("SIGTERM");
+  if (child.pid !== undefined) {
+    if (!signalProcessTree(child.pid, "SIGTERM")) {
+      child.kill("SIGTERM");
+    }
+  } else {
+    child.kill("SIGTERM");
+  }
   await waitForChildExit(child, 500);
+  if (child.pid !== undefined && isProcessTreeAlive(child.pid)) {
+    signalProcessTree(child.pid, "SIGKILL");
+    await waitForProcessTreeExit(child.pid, 500);
+  }
   if (!hasChildExited(child)) {
     child.kill("SIGKILL");
     await waitForChildExit(child, 500);

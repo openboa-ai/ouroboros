@@ -945,6 +945,41 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       const refreshedCandidate = await refreshPaperTradingSandbox(candidateBefore);
       const currentEngineState = engineStateFromEvaluation(baseEvaluation);
       previousEngineState = currentEngineState;
+      if (refreshedCandidate.runtime.sandbox?.lifecycle_status === "failed") {
+        const failureReason = "paper_trading_sandbox_failed";
+        const failedObservation = paperTradingObservationRecord({
+          candidate: refreshedCandidate,
+          evaluation: baseEvaluation,
+          sequence,
+          status: "failed",
+          observedAt: market.observed_at,
+          marketSnapshot: marketSnapshotSummary(market),
+          decision: paperProtocolErrorDecision(market.observed_at, failureReason),
+          scoreDelta: zeroPaperTradingProfitLoss(),
+          cumulativeScore: baseEvaluation.latest_score,
+          failureReason,
+          paperAccountSnapshot: currentEngineState.account,
+          openOrders: currentEngineState.openOrders,
+          processedTradingSystemEventIds: currentEngineState.processedTradingSystemEventIds,
+          processedPublicTradeIds: currentEngineState.processedPublicTradeIds,
+          latestFill: currentEngineState.latestFill
+        });
+        const failedEvaluation = paperTradingEvaluationUpdate({
+          evaluation: baseEvaluation,
+          status: "failed",
+          observedAt: market.observed_at,
+          nextObservationAt: undefined,
+          latestScore: baseEvaluation.latest_score,
+          latestFailureReason: failureReason,
+          paperAccountSnapshot: currentEngineState.account,
+          openOrders: currentEngineState.openOrders,
+          processedTradingSystemEventIds: currentEngineState.processedTradingSystemEventIds,
+          processedPublicTradeIds: currentEngineState.processedPublicTradeIds,
+          latestFill: currentEngineState.latestFill
+        });
+        await store.recordPaperTradingObservation(failedObservation, failedEvaluation);
+        return { evaluation: failedEvaluation, observation: failedObservation };
+      }
       const tradingSystemEvents = tradingSystemEventsFromCandidate(refreshedCandidate)
         .filter((event) => !currentEngineState.processedTradingSystemEventIds.includes(event.event_id));
       const decisionOutcome = await recordPaperTradingObservationDecision({
@@ -2422,7 +2457,7 @@ async function stopLinkedTradingRunSandbox(input: {
   tradingRunId: string;
 }): Promise<SandboxDetailReadModel | undefined> {
   const sandbox = await linkedTradingRunSandbox(input.store, input.tradingRunId);
-  if (!sandbox || !shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
+  if (!sandbox || sandbox.lifecycle_status === "stopped" || sandbox.lifecycle_status === "removed") {
     return sandbox;
   }
 

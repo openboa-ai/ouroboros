@@ -335,6 +335,57 @@ describe("sandbox API", () => {
     }
   });
 
+  it("terminates helper processes in the detached paper sandbox process group", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const helperPidFile = path.join(tmpDir, "sandbox-helper.pid");
+    const helperScriptPath = path.join(tmpDir, "sandbox-with-helper.py");
+    await writeFile(helperScriptPath, helperSpawningSandboxScript(helperPidFile), "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+    const started = await adapter.startArtifactInstance({
+      artifact: {
+        ...fixtureArtifact,
+        system_code_id: "system-code-generated-helper-process",
+        artifact_path: helperScriptPath,
+        artifact_digest: "sha256:generated-helper-process",
+        entrypoint: ["python3", helperScriptPath],
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        created_at: "2026-05-21T00:00:00.000Z"
+      },
+      instance_id: "sandbox-generated-helper-process",
+      sandbox_name: "ouro-generated-helper-process",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-generated-helper-process",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const helperPid = Number((await waitForFile(helperPidFile, 1_000)).trim());
+      expect(isPidAlive(helperPid)).toBe(true);
+
+      const stopped = await adapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+
+      for (let attempt = 0; attempt < 20 && isPidAlive(helperPid); attempt += 1) {
+        await sleep(25);
+      }
+      expect(isPidAlive(helperPid)).toBe(false);
+    } finally {
+      await adapter.stopArtifactInstance(started.instance);
+    }
+  });
+
   it("executes fixture SystemCode when the runtime process starts from apps/runtime", async () => {
     const originalCwd = process.cwd();
     process.chdir(path.join(originalCwd, "apps/runtime"));
@@ -795,6 +846,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForFile(filePath: string, timeoutMs: number): Promise<string> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const content = await readFile(filePath, "utf8").catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    });
+    if (content !== undefined) {
+      return content;
+    }
+    await sleep(10);
+  }
+  return await readFile(filePath, "utf8");
+}
+
 function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -805,6 +873,36 @@ function isPidAlive(pid: number): boolean {
     }
     throw error;
   }
+}
+
+function helperSpawningSandboxScript(helperPidFile: string): string {
+  return `import argparse
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--interval-ms", required=True)
+parser.add_argument("--log-file", required=True)
+parser.add_argument("--heartbeat-file", required=True)
+args, _ = parser.parse_known_args()
+
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+pathlib.Path(${JSON.stringify(helperPidFile)}).write_text(str(child.pid), encoding="utf8")
+event = {
+    "event": "runtime_heartbeat",
+    "instance_id": args.instance_id,
+    "tick": 0,
+    "at": "2026-05-21T00:00:00.000Z"
+}
+pathlib.Path(args.log_file).write_text(json.dumps(event) + "\\n", encoding="utf8")
+pathlib.Path(args.heartbeat_file).write_text(json.dumps(event), encoding="utf8")
+while True:
+    time.sleep(1)
+`;
 }
 
 function fakeSdxScript(): string {

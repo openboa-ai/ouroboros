@@ -1046,6 +1046,12 @@ describe("runtime canonical operator API", () => {
     const store = new LocalStore(tmpDir);
     const server = await buildRuntimeTestServer({
       store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(paperOrderRequestLine({
+          at: "2026-05-16T00:00:03.000Z",
+          quantity: "0"
+        }))
+      },
       marketDataPort: fakeGatewayMarketDataPort({
         failPublicExecutionSnapshot: true
       })

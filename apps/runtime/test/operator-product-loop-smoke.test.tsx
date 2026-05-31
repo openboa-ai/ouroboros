@@ -291,6 +291,12 @@ describe("operator product loop smoke", () => {
 
       const restartedServer = await buildServer({
         store: new LocalStore(tmpDir),
+        sandboxAdapters: {
+          deterministic_test: fixedOrderLogSandboxAdapter(paperOrderRequestLine({
+            at: "2026-05-16T00:00:03.000Z",
+            quantity: "0.001"
+          }), paperHoldLine("2026-05-16T00:01:03.000Z"))
+        },
         marketDataPort: fakeGatewayMarketDataPort(),
         paperTradingApiProviderFactory: networklessPaperTradingApiProvider
       });

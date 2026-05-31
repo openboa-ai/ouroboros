@@ -208,6 +208,73 @@ describe("long-running paper TradingSystem sessions", () => {
       await server.close();
     }
   });
+
+  it("fails paper evaluation when the linked TradingSystem sandbox crashes", async () => {
+    const store = new LocalStore(tmpDir);
+    const sandboxAdapter = queuedLongRunningSandboxAdapter(
+      [
+        [paperOrderLine("crashed-session-order-0001", "2026-05-16T00:00:03.000Z")],
+        []
+      ],
+      [undefined, "failed"]
+    );
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: sandboxAdapter
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, observed_at: "2026-05-16T00:00:03.000Z" },
+          { price: 65_100, observed_at: "2026-05-16T00:01:03.000Z" }
+        ],
+        executionSnapshots: [{
+          agg_trades: [{
+            trade_id: "crashed-session-fill-0001",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          }]
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      const started = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        observation_count: 1
+      });
+
+      const tradingRunId = started.operator.selected_paper_trading_evaluation.trading_run_id;
+      const observed = await postCommand(server, {
+        command_kind: "trading_run.observe",
+        payload: { trading_run_id: tradingRunId }
+      });
+
+      expect(observed.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "failed",
+        runner_active: false,
+        observation_count: 2,
+        latest_failure_reason: "paper_trading_sandbox_failed"
+      });
+      expect(observed.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("stopped");
+      expect(sandboxAdapter.stopCalls()).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 interface InspectableSandboxAdapter extends SandboxAdapter {
@@ -215,7 +282,10 @@ interface InspectableSandboxAdapter extends SandboxAdapter {
   stopCalls(): number;
 }
 
-function queuedLongRunningSandboxAdapter(logBatches: string[][]): InspectableSandboxAdapter {
+function queuedLongRunningSandboxAdapter(
+  logBatches: string[][],
+  lifecycleStatuses: Array<SandboxRecord["lifecycle_status"] | undefined> = []
+): InspectableSandboxAdapter {
   let startCallCount = 0;
   let stopCallCount = 0;
   let logReadCount = 0;
@@ -276,6 +346,7 @@ function queuedLongRunningSandboxAdapter(logBatches: string[][]): InspectableSan
       const lines = logBatches[Math.min(logReadCount - 1, logBatches.length - 1)] ?? [];
       const capturedAt = `2026-05-16T00:0${Math.min(logReadCount, 9)}:03.000Z`;
       return {
+        lifecycle_status: lifecycleStatuses[Math.min(logReadCount - 1, lifecycleStatuses.length - 1)],
         logs: lines.length
           ? [{
               record_kind: "sandbox_log",
