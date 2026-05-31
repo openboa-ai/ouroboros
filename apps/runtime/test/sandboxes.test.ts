@@ -596,7 +596,7 @@ describe("sandbox API", () => {
       }
 
       const persisted = await store.getSandbox("sandbox-real-adapter-evidence");
-      expect(persisted?.command_evidence_refs).toHaveLength(11);
+      expect(persisted?.command_evidence_refs).toHaveLength(12);
       const commandEvidenceIds = persisted?.command_evidence.map((evidence) => evidence.command_evidence_ref.id) ?? [];
       expect(new Set(commandEvidenceIds).size).toBe(commandEvidenceIds.length);
       expect(persisted?.command_evidence.filter((evidence) => evidence.command[1] === "version")).toHaveLength(5);
@@ -604,7 +604,7 @@ describe("sandbox API", () => {
         evidence.command[1] === "exec" &&
         evidence.command[3] === "cat" &&
         evidence.command[4]?.endsWith(".heartbeat.json")
-      ))).toHaveLength(2);
+      ))).toHaveLength(3);
       expect(persisted?.command_evidence.filter((evidence) => (
         evidence.command[1] === "exec" &&
         evidence.command[3] === "cat" &&
@@ -615,6 +615,49 @@ describe("sandbox API", () => {
       restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
       restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
       restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
+    }
+  });
+
+  it("fails a real-adapter detached start when startup heartbeat evidence is missing", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx");
+    const commandLog = path.join(tmpDir, "sbx-missing-heartbeat.log");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+
+    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
+    const previousSbxBin = process.env.OUROBOROS_SBX_BIN;
+    const previousCommandLog = process.env.SBX_FAKE_COMMAND_LOG;
+    const previousInstanceId = process.env.SBX_FAKE_INSTANCE_ID;
+    const previousHeartbeatMode = process.env.SBX_FAKE_HEARTBEAT_MODE;
+    process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
+    process.env.OUROBOROS_SBX_BIN = fakeSbx;
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-real-adapter-missing-heartbeat";
+    process.env.SBX_FAKE_HEARTBEAT_MODE = "missing";
+    try {
+      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const start = await startSandboxCommand(server, {
+        idempotency_key: "sandbox-real-adapter-missing-heartbeat",
+        adapter_kind: "docker_sandboxes_sbx",
+        sandbox_id: "sandbox-real-adapter-missing-heartbeat",
+        sandbox_name: "ouro-s5-clock-missing-heartbeat",
+        trading_run_id: "fixture-trading-run-001",
+        interval_ms: 1
+      });
+
+      expect(start.statusCode).toBe(200);
+      expect(start.json().status).toBe("failed");
+      expect(start.json().sandbox.lifecycle_status).toBe("failed");
+      expect(start.json().sandbox.started_at).toBeUndefined();
+      expect(start.json().sandbox.command_evidence.some((evidence: { command: string[] }) =>
+        evidence.command[1] === "stop"
+      )).toBe(true);
+    } finally {
+      restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
+      restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
+      restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
+      restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
+      restoreEnv("SBX_FAKE_HEARTBEAT_MODE", previousHeartbeatMode);
     }
   });
 
@@ -953,6 +996,10 @@ case "$1" in
     if [ "$2" = "-d" ]; then
       echo "detached $3"
     elif [ "$3" = "cat" ]; then
+      if [ "\${SBX_FAKE_HEARTBEAT_MODE:-present}" = "missing" ]; then
+        echo "missing heartbeat" >&2
+        exit 1
+      fi
       printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$SBX_FAKE_INSTANCE_ID"
     else
       echo "exec $2"
