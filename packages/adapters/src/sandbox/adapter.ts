@@ -230,7 +230,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     if (session) {
       await terminateChildProcess(session.child);
       this.sessions.delete(instanceId);
-      await rm(session.pidFile, { force: true });
+      await removePersistedSandboxProcessFiles(session.pidFile);
       const lines = await readSandboxLogLines(session.logFile);
       return {
         lifecycle_status: "stopped",
@@ -242,15 +242,15 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       };
     }
     const pidFile = sandboxPidFile(instanceId);
-    const persistedPid = await readPersistedSandboxPid(pidFile);
-    if (persistedPid !== undefined) {
-      if (signalProcessTree(persistedPid, "SIGTERM")) {
-        await waitForProcessTreeExit(persistedPid, 500);
+    const persistedProcess = await readPersistedSandboxProcess(pidFile);
+    if (persistedProcess && await isPersistedSandboxProcessCurrent(persistedProcess)) {
+      if (signalProcessTree(persistedProcess.pid, "SIGTERM")) {
+        await waitForProcessTreeExit(persistedProcess.pid, 500);
       }
-      if (isProcessTreeAlive(persistedPid) && signalProcessTree(persistedPid, "SIGKILL")) {
-        await waitForProcessTreeExit(persistedPid, 500);
+      if (isProcessTreeAlive(persistedProcess.pid) && signalProcessTree(persistedProcess.pid, "SIGKILL")) {
+        await waitForProcessTreeExit(persistedProcess.pid, 500);
       }
-      await rm(pidFile, { force: true });
+      await removePersistedSandboxProcessFiles(pidFile);
       const lines = await readSandboxLogLines(sandboxLogFile(instanceId));
       return {
         lifecycle_status: "stopped",
@@ -354,25 +354,37 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       stdio: "ignore",
       env: input.env ? { ...process.env, ...input.env } : process.env
     });
-    child.unref();
-    if (child.pid !== undefined) {
-      await mkdir(path.dirname(pidFile), { recursive: true });
-      await writeFile(pidFile, String(child.pid), "utf8");
-    }
-    const session = { child, logFile, heartbeatFile, pidFile };
-    this.sessions.set(input.instance_id, session);
-    const lines = await waitForSandboxLogLines(logFile, 500);
+    let spawnError: Error | undefined;
+    const spawnErrorSignal = new Promise<never[]>((resolve) => {
+      child.once("error", (error) => {
+        spawnError = error;
+        resolve([]);
+      });
+    });
+    const lines = await Promise.race([
+      waitForSandboxLogLines(logFile, 500),
+      spawnErrorSignal
+    ]);
     const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
-    const lifecycleStatus = childLifecycleStatus(child);
-    if (lifecycleStatus !== "running") {
-      this.sessions.delete(input.instance_id);
-      await rm(pidFile, { force: true });
+    const lifecycleStatus = spawnError ? "failed" : childLifecycleStatus(child);
+    if (lifecycleStatus === "running") {
+      child.unref();
+      if (child.pid !== undefined) {
+        await writePersistedSandboxProcess(pidFile, {
+          pid: child.pid,
+          instance_id: input.instance_id,
+          command: executionCommand,
+          started_at: startedAt
+        });
+      }
+      const session = { child, logFile, heartbeatFile, pidFile };
+      this.sessions.set(input.instance_id, session);
     }
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
       command: executionCommand,
       exit_code: lifecycleStatus === "running" ? null : child.exitCode ?? 1,
       stdout: "",
-      stderr: child.signalCode ? `terminated by ${child.signalCode}` : "",
+      stderr: spawnError?.message ?? (child.signalCode ? `terminated by ${child.signalCode}` : ""),
       started_at: startedAt,
       completed_at: startedAt
     });
@@ -409,20 +421,21 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     if (session) {
       await terminateChildProcess(session.child);
       this.sessions.delete(instanceId);
-      await rm(session.pidFile, { force: true });
+      await removePersistedSandboxProcessFiles(session.pidFile);
       return;
     }
-    const persistedPid = await readPersistedSandboxPid(pidFile);
-    if (persistedPid === undefined) {
+    const persistedProcess = await readPersistedSandboxProcess(pidFile);
+    if (!persistedProcess || !await isPersistedSandboxProcessCurrent(persistedProcess)) {
+      await removePersistedSandboxProcessFiles(pidFile);
       return;
     }
-    if (signalProcessTree(persistedPid, "SIGTERM")) {
-      await waitForProcessTreeExit(persistedPid, 500);
+    if (signalProcessTree(persistedProcess.pid, "SIGTERM")) {
+      await waitForProcessTreeExit(persistedProcess.pid, 500);
     }
-    if (isProcessTreeAlive(persistedPid) && signalProcessTree(persistedPid, "SIGKILL")) {
-      await waitForProcessTreeExit(persistedPid, 500);
+    if (isProcessTreeAlive(persistedProcess.pid) && signalProcessTree(persistedProcess.pid, "SIGKILL")) {
+      await waitForProcessTreeExit(persistedProcess.pid, 500);
     }
-    await rm(pidFile, { force: true });
+    await removePersistedSandboxProcessFiles(pidFile);
   }
 }
 
@@ -1142,6 +1155,27 @@ async function waitForSandboxLogLines(logFile: string, timeoutMs: number): Promi
   return readSandboxLogLines(logFile);
 }
 
+interface PersistedSandboxProcess {
+  pid: number;
+  instance_id: string;
+  command: string[];
+  started_at: string;
+}
+
+async function writePersistedSandboxProcess(
+  pidFile: string,
+  processRecord: PersistedSandboxProcess
+): Promise<void> {
+  await mkdir(path.dirname(pidFile), { recursive: true });
+  await writeFile(pidFile, String(processRecord.pid), "utf8");
+  await writeFile(`${pidFile}.json`, `${JSON.stringify(processRecord)}\n`, "utf8");
+}
+
+async function removePersistedSandboxProcessFiles(pidFile: string): Promise<void> {
+  await rm(pidFile, { force: true });
+  await rm(`${pidFile}.json`, { force: true });
+}
+
 async function readPersistedSandboxPid(pidFile: string): Promise<number | undefined> {
   const content = await readFile(pidFile, "utf8").catch((error) => {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -1151,6 +1185,56 @@ async function readPersistedSandboxPid(pidFile: string): Promise<number | undefi
   });
   const pid = Number(content.trim());
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+async function readPersistedSandboxProcess(pidFile: string): Promise<PersistedSandboxProcess | undefined> {
+  const pid = await readPersistedSandboxPid(pidFile);
+  if (pid === undefined) {
+    return undefined;
+  }
+  const content = await readFile(`${pidFile}.json`, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  if (!content.trim()) {
+    return undefined;
+  }
+  try {
+    const value = JSON.parse(content) as Partial<PersistedSandboxProcess>;
+    if (
+      value.pid === pid &&
+      typeof value.instance_id === "string" &&
+      Array.isArray(value.command) &&
+      value.command.every((item) => typeof item === "string") &&
+      typeof value.started_at === "string"
+    ) {
+      return {
+        pid,
+        instance_id: value.instance_id,
+        command: value.command,
+        started_at: value.started_at
+      };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+async function isPersistedSandboxProcessCurrent(processRecord: PersistedSandboxProcess): Promise<boolean> {
+  if (!isProcessTreeAlive(processRecord.pid)) {
+    return false;
+  }
+  const processInfo = await runCommand(["ps", "-p", String(processRecord.pid), "-o", "command="], 500);
+  if (processInfo.exit_code !== 0) {
+    return false;
+  }
+  const commandText = processInfo.stdout;
+  const entrypoint = processRecord.command[1] ?? processRecord.command[0] ?? "";
+  return commandText.includes(processRecord.instance_id) &&
+    (entrypoint.length === 0 || commandText.includes(entrypoint));
 }
 
 function signalProcess(pid: number, signal: NodeJS.Signals): boolean {
@@ -1270,27 +1354,43 @@ function runCommand(
   return new Promise((resolve) => {
     const startedAt = new Date().toISOString();
     const [file, ...args] = command;
-    execFile(
-      file,
-      args,
-      {
-        encoding: "utf8",
-        timeout: timeoutMs,
-        maxBuffer: 1024 * 1024,
-        env: envOverrides ? { ...process.env, ...envOverrides } : process.env
-      },
-      (error, stdout, stderr) => {
+    try {
+      execFile(
+        file,
+        args,
+        {
+          encoding: "utf8",
+          timeout: timeoutMs,
+          maxBuffer: 1024 * 1024,
+          env: envOverrides ? { ...process.env, ...envOverrides } : process.env
+        },
+        (error, stdout, stderr) => {
+          const completedAt = new Date().toISOString();
+          resolve({
+            command,
+            exit_code: error ? exitCodeFor(error) : 0,
+            stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
+            stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
+            started_at: startedAt,
+            completed_at: completedAt
+          });
+        }
+      );
+    } catch (error) {
+      if (error instanceof Error) {
         const completedAt = new Date().toISOString();
         resolve({
           command,
-          exit_code: error ? exitCodeFor(error) : 0,
-          stdout: typeof stdout === "string" ? stdout : String(stdout ?? ""),
-          stderr: typeof stderr === "string" ? stderr : String(stderr ?? ""),
+          exit_code: exitCodeFor(error),
+          stdout: "",
+          stderr: error.message,
           started_at: startedAt,
           completed_at: completedAt
         });
+      } else {
+        throw error;
       }
-    );
+    }
   });
 }
 

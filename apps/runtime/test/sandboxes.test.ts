@@ -313,8 +313,38 @@ describe("sandbox API", () => {
 
     expect(started.instance.lifecycle_status).toBe("failed");
     expect(started.instance.started_at).toBeUndefined();
-    expect(started.command_evidence[0]?.exit_code).toBe(1);
+    expect(started.command_evidence[0]?.exit_code).not.toBe(0);
     expect(started.logs).toHaveLength(0);
+    await expect(readFile(
+      sandboxPidFileForTest(instanceId),
+      "utf8"
+    )).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("marks a deterministic long-running paper session as failed when spawn fails", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const instanceId = "sandbox-deterministic-spawn-failure";
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: instanceId,
+      sandbox_name: "ouro-deterministic-spawn-failure",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-spawn-failure",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10,
+      env: { PATH: "" } as never
+    });
+
+    expect(started.instance.lifecycle_status).toBe("failed");
+    expect(started.instance.started_at).toBeUndefined();
+    expect(started.command_evidence[0]?.exit_code).not.toBe(0);
+    expect(started.command_evidence[0]?.stderr).toContain("spawn python3");
     await expect(readFile(
       sandboxPidFileForTest(instanceId),
       "utf8"
