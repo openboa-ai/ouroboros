@@ -16,6 +16,7 @@ import os
 import signal
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, request
 
@@ -26,6 +27,10 @@ STOP_REQUESTED = False
 def request_stop(_signum: int, _frame: object) -> None:
     global STOP_REQUESTED
     STOP_REQUESTED = True
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def parse_args() -> argparse.Namespace:
@@ -172,7 +177,7 @@ def main() -> int:
             "event": "runtime_heartbeat",
             "instance_id": args.instance_id,
             "tick": tick,
-            "at": args.start_at,
+            "at": utc_now(),
         }
         emit(json.dumps(payload, sort_keys=True), log_path, heartbeat_path)
 
@@ -185,7 +190,7 @@ def main() -> int:
         "event": "runtime_stopped",
         "instance_id": args.instance_id,
         "tick": tick,
-        "at": args.start_at,
+        "at": utc_now(),
     }
     emit(json.dumps(shutdown_payload, sort_keys=True), log_path, heartbeat_path)
     return 0

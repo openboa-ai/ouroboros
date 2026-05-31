@@ -167,7 +167,7 @@ def run_paper(args):
             "event": "runtime_heartbeat",
             "instance_id": args.instance_id,
             "tick": tick,
-            "at": args.start_at,
+            "at": utc_now(),
         }, sort_keys=True), log_path, heartbeat_path)
         if args.ticks and tick >= args.ticks:
             break
@@ -176,7 +176,7 @@ def run_paper(args):
         "event": "runtime_stopped",
         "instance_id": args.instance_id,
         "tick": tick,
-        "at": args.start_at,
+        "at": utc_now(),
     }, sort_keys=True), log_path)
     return 0
 

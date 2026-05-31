@@ -176,6 +176,8 @@ describe("sandbox API", () => {
       expect(logText).toContain("\"event\": \"runtime_heartbeat\"");
       expect(logText).not.toContain("\"event\": \"runtime_stopped\"");
       expect(logs.heartbeats?.length).toBeGreaterThan(0);
+      const heartbeatPayload = JSON.parse(logs.heartbeats?.[0]?.heartbeat_line ?? "{}");
+      expect(heartbeatPayload.at).not.toBe("2026-05-21T00:00:00.000Z");
     } finally {
       const stopped = await adapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
