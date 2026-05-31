@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/server";
 import {
   DeterministicSandboxAdapter,
+  DockerSandboxesSbxSandboxAdapter,
   type SandboxAdapter
 } from "@ouroboros/adapters/sandbox/adapter";
 
@@ -660,23 +661,27 @@ describe("sandbox API", () => {
   it("fails a real-adapter detached start when startup heartbeat evidence is missing", async () => {
     const fakeSbx = path.join(tmpDir, "sbx");
     const commandLog = path.join(tmpDir, "sbx-missing-heartbeat.log");
-    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await writeFile(fakeSbx, fakeSbxScript({
+      commandLog,
+      heartbeatMode: "missing",
+      instanceId: "sandbox-real-adapter-missing-heartbeat"
+    }), "utf8");
     await chmod(fakeSbx, 0o755);
 
     const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
-    const previousSbxBin = process.env.OUROBOROS_SBX_BIN;
-    const previousCommandLog = process.env.SBX_FAKE_COMMAND_LOG;
-    const previousInstanceId = process.env.SBX_FAKE_INSTANCE_ID;
-    const previousHeartbeatMode = process.env.SBX_FAKE_HEARTBEAT_MODE;
-    const previousCommandTimeout = process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS;
     process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
-    process.env.OUROBOROS_SBX_BIN = fakeSbx;
-    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
-    process.env.SBX_FAKE_INSTANCE_ID = "sandbox-real-adapter-missing-heartbeat";
-    process.env.SBX_FAKE_HEARTBEAT_MODE = "missing";
-    process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS = "1000";
     try {
-      const server = await buildServer({ store: new LocalStore(tmpDir) });
+      const server = await buildServer({
+        store: new LocalStore(tmpDir),
+        sandboxAdapters: {
+          docker_sandboxes_sbx: new DockerSandboxesSbxSandboxAdapter({
+            commandTimeoutMs: 5_000,
+            sbxPath: fakeSbx,
+            startupHeartbeatPollIntervalMs: 100,
+            startupHeartbeatTimeoutMs: 1_000
+          })
+        }
+      });
       const start = await startSandboxCommand(server, {
         idempotency_key: "sandbox-real-adapter-missing-heartbeat",
         adapter_kind: "docker_sandboxes_sbx",
@@ -695,11 +700,6 @@ describe("sandbox API", () => {
       )).toBe(true);
     } finally {
       restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
-      restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
-      restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
-      restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
-      restoreEnv("SBX_FAKE_HEARTBEAT_MODE", previousHeartbeatMode);
-      restoreEnv("OUROBOROS_SBX_COMMAND_TIMEOUT_MS", previousCommandTimeout);
     }
   });
 
@@ -1031,10 +1031,26 @@ exit 2
 `;
 }
 
-function fakeSbxScript(): string {
+function fakeSbxScript(options: {
+  commandLog?: string;
+  heartbeatMode?: "missing" | "present";
+  instanceId?: string;
+} = {}): string {
+  const commandLog = options.commandLog
+    ? shellSingleQuote(options.commandLog)
+    : "\"${SBX_FAKE_COMMAND_LOG}\"";
+  const heartbeatMode = options.heartbeatMode
+    ? shellSingleQuote(options.heartbeatMode)
+    : "\"${SBX_FAKE_HEARTBEAT_MODE:-present}\"";
+  const instanceId = options.instanceId
+    ? shellSingleQuote(options.instanceId)
+    : "\"${SBX_FAKE_INSTANCE_ID}\"";
   return `#!/bin/sh
 set -eu
-printf '%s\\n' "$*" >> "$SBX_FAKE_COMMAND_LOG"
+command_log=${commandLog}
+heartbeat_mode=${heartbeatMode}
+instance_id=${instanceId}
+printf '%s\\n' "$*" >> "$command_log"
 case "$1" in
   version)
     echo "Client Version:  v0.28.3 test"
@@ -1047,11 +1063,11 @@ case "$1" in
     if [ "$2" = "-d" ]; then
       echo "detached $3"
     elif [ "$3" = "cat" ]; then
-      if [ "\${SBX_FAKE_HEARTBEAT_MODE:-present}" = "missing" ]; then
+      if [ "$heartbeat_mode" = "missing" ]; then
         echo "missing heartbeat" >&2
         exit 1
       fi
-      printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$SBX_FAKE_INSTANCE_ID"
+      printf '{"event":"runtime_heartbeat","instance_id":"%s","tick":1,"at":"2026-05-10T00:00:00.000Z"}\\n' "$instance_id"
     else
       echo "exec $2"
     fi
@@ -1065,4 +1081,8 @@ case "$1" in
     ;;
 esac
 `;
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }

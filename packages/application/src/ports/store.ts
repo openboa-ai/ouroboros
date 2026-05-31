@@ -20,7 +20,13 @@ import type {
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   PaperTradingEvaluationRecord,
-  PaperTradingObservationRecord
+  PaperTradingObservationRecord,
+  LedgerInput,
+  LedgerWriteOutcome,
+  PublicMarketLivenessSurfaceRecord,
+  PublicMarketLivenessSurfaceReadModel,
+  RunControlAuditInput,
+  RunControlAuditOutcome
 } from "@ouroboros/domain";
 import { createHash } from "node:crypto";
 
@@ -53,6 +59,7 @@ export interface OuroborosStorePort {
   [method: string]: any;
   root(): string;
   getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined>;
+  getCandidateForTradingRun(tradingRunId: string): Promise<CandidateInspectReadModel | undefined>;
   listCandidates(): Promise<CandidateSummaryReadModel[]>;
   materializeCandidate(input: CandidateMaterializationInput): Promise<CandidateMaterializationOutcome>;
   recordCandidateMaterializationFailure(input: CandidateMaterializationFailureInput): Promise<CandidateMaterializationOutcome>;
@@ -99,6 +106,8 @@ export interface OuroborosStorePort {
   recordResearcherProviderSelection(selection: ResearcherProviderSelectionRecord): Promise<ResearcherProviderSelectionRecord>;
   listOuroborosCommands(): Promise<OuroborosCommandRecord[]>;
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
+  recordRunControlAudit(input: RunControlAuditInput): Promise<RunControlAuditOutcome>;
+  recordPublicMarketLivenessSurface(surface: PublicMarketLivenessSurfaceRecord): Promise<PublicMarketLivenessSurfaceReadModel>;
   recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
   getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   getLatestPaperTradingEvaluationForTradingRun(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
@@ -107,6 +116,7 @@ export interface OuroborosStorePort {
     evaluation: PaperTradingEvaluationRecord
   ): Promise<PaperTradingObservationRecord>;
   listPaperTradingObservations(evaluationId: string): Promise<PaperTradingObservationRecord[]>;
+  recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 
 function stableSuffix(value: string): string {
