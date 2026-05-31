@@ -543,13 +543,18 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       ...(input.test_ticks !== undefined ? ["--ticks", String(input.test_ticks)] : [])
     ];
     const execResult = await this.runSbxCommand(execCommand);
-    const startupHeartbeat = createResult.exit_code === 0 && execResult.exit_code === 0
-      ? await this.readStartupHeartbeat(input.instance_id, input.sandbox_name)
-      : { heartbeats: [], commandEvidence: [] };
+    const startupEvidence = createResult.exit_code === 0 && execResult.exit_code === 0
+      ? await this.readStartupEvidence(input.instance_id, input.sandbox_name, {
+        allowStoppedLog: input.test_ticks !== undefined
+      })
+      : { heartbeats: [], logs: [], commandEvidence: [] };
     const lifecycleStatus = createResult.exit_code === 0 &&
-      execResult.exit_code === 0 &&
-      startupHeartbeat.heartbeats.length > 0
-      ? "running"
+      execResult.exit_code === 0
+      ? startupEvidence.heartbeats.length > 0
+        ? "running"
+        : startupEvidence.stopped_at
+          ? "stopped"
+          : "failed"
       : "failed";
     const stopResult = createResult.exit_code === 0 && lifecycleStatus === "failed"
       ? await this.runSbxCommand([this.sbxPath, "stop", input.sandbox_name])
@@ -558,7 +563,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       versionEvidence,
       createEvidence,
       commandEvidenceRecord(input.instance_id, "exec-detached", execResult),
-      ...startupHeartbeat.commandEvidence,
+      ...startupEvidence.commandEvidence,
       ...(stopResult
         ? [commandEvidenceRecord(input.instance_id, commandEvidenceSuffix("startup-stop", stopResult), stopResult)]
         : [])
@@ -572,9 +577,11 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       placementId: placement.sandbox_placement_id,
       lifecycleStatus,
       createdAt,
-      startedAt: lifecycleStatus === "running" ? createdAt : undefined,
-      lastHeartbeatAt: startupHeartbeat.heartbeats.at(-1)?.observed_at,
-      heartbeatRefs: startupHeartbeat.heartbeats.map((heartbeat) =>
+      startedAt: lifecycleStatus !== "failed" ? createdAt : undefined,
+      stoppedAt: lifecycleStatus === "stopped" ? startupEvidence.stopped_at : undefined,
+      lastHeartbeatAt: startupEvidence.heartbeats.at(-1)?.observed_at,
+      logRefs: startupEvidence.logs.map((log) => ref(log.record_kind, log.sandbox_log_id)),
+      heartbeatRefs: startupEvidence.heartbeats.map((heartbeat) =>
         ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)
       ),
       commandEvidenceRefs: commandEvidence.map((evidence) => (
@@ -586,8 +593,8 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return {
       instance,
       placement,
-      logs: [],
-      heartbeats: startupHeartbeat.heartbeats,
+      logs: startupEvidence.logs,
+      heartbeats: startupEvidence.heartbeats,
       command_evidence: commandEvidence
     };
   }
@@ -715,11 +722,14 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return runCommand(command, this.commandTimeoutMs, this.sbxHome ? { HOME: this.sbxHome } : undefined);
   }
 
-  private async readStartupHeartbeat(
+  private async readStartupEvidence(
     instanceId: string,
-    sandboxName: string
+    sandboxName: string,
+    options: { allowStoppedLog?: boolean } = {}
   ): Promise<{
     heartbeats: RuntimeHeartbeatRecord[];
+    logs: SandboxLogRecord[];
+    stopped_at?: string;
     commandEvidence: SandboxCommandEvidenceRecord[];
   }> {
     const commandEvidence: SandboxCommandEvidenceRecord[] = [];
@@ -749,11 +759,37 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
         result.completed_at
       );
       if (heartbeats.length > 0) {
-        return { heartbeats, commandEvidence };
+        return { heartbeats, logs: [], commandEvidence };
+      }
+      if (options.allowStoppedLog) {
+        const logResult = await this.runSbxCommand([
+          this.sbxPath,
+          "exec",
+          sandboxName,
+          "cat",
+          sandboxLogFile(instanceId)
+        ]);
+        commandEvidence.push(commandEvidenceRecord(
+          instanceId,
+          commandEvidenceSuffix(`startup-log-${attempt + 1}`, logResult),
+          logResult
+        ));
+        const lines = stdoutLines(logResult.stdout);
+        const stoppedAt = runtimeStoppedAtFromLines(instanceId, lines, logResult.completed_at);
+        if (stoppedAt) {
+          return {
+            heartbeats: [],
+            logs: lines.length > 0
+              ? [runtimeLogRecord(instanceId, `startup-log-${safeRuntimeId(logResult.completed_at)}`, lines, logResult.completed_at)]
+              : [],
+            stopped_at: stoppedAt,
+            commandEvidence
+          };
+        }
       }
       attempt += 1;
     } while (Date.now() < deadlineAt);
-    return { heartbeats: [], commandEvidence };
+    return { heartbeats: [], logs: [], commandEvidence };
   }
 
   private async versionObservation(
@@ -934,6 +970,24 @@ function parseHeartbeatLine(line: string): { event?: string; instance_id?: strin
   } catch {
     return undefined;
   }
+}
+
+function runtimeStoppedAtFromLines(
+  instanceId: string,
+  lines: string[],
+  capturedAt: string
+): string | undefined {
+  for (const line of lines) {
+    try {
+      const value = JSON.parse(line) as { event?: unknown; instance_id?: unknown; at?: unknown };
+      if (value.event === "runtime_stopped" && value.instance_id === instanceId) {
+        return typeof value.at === "string" ? value.at : capturedAt;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
 
 function isDockerSandboxesSbxVersion(stdout: string): boolean {

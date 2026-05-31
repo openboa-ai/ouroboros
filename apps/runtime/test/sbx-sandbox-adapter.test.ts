@@ -16,6 +16,7 @@ afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
   delete process.env.SBX_FAKE_HEARTBEAT_AFTER;
   delete process.env.SBX_FAKE_HEARTBEAT_COUNTER;
+  delete process.env.SBX_FAKE_FINITE_STOPPED;
   delete process.env.SBX_FAKE_INSTANCE_ID;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
@@ -135,6 +136,46 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       ["exec", "ouro-s5-clock-slow-startup"]
     ]);
     expect((await readFile(heartbeatCounter, "utf8")).trim()).toBe("3");
+  });
+
+  it("treats a finite detached run that stops before heartbeat read as stopped", async () => {
+    const commandLog = path.join(tmpDir, "finite-stopped-commands.log");
+    const fakeSbx = path.join(tmpDir, "sbx-finite-stopped");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_FINITE_STOPPED = "1";
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      startupHeartbeatTimeoutMs: 1_000,
+      startupHeartbeatPollIntervalMs: 1
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-finite-stopped-sbx",
+      sandbox_name: "ouro-s5-clock-finite-stopped",
+      sandbox_placement_id: "sandbox-placement-finite-stopped-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      test_ticks: 2,
+      interval_ms: 1
+    });
+
+    expect(start.instance.lifecycle_status).toBe("stopped");
+    expect(start.instance.started_at).toBe("2026-05-10T00:00:00.000Z");
+    expect(start.instance.stopped_at).toBe("2026-05-10T00:00:01.000Z");
+    expect(start.heartbeats).toHaveLength(0);
+    expect(start.logs[0]?.lines.some((line) => line.includes("\"runtime_stopped\""))).toBe(true);
+
+    const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands).toEqual([
+      "version",
+      "create --name ouro-s5-clock-finite-stopped shell .",
+      "exec -d -w . ouro-s5-clock-finite-stopped python3 fixtures/trading-systems/clock.py --instance-id sandbox-finite-stopped-sbx --interval-ms 1 --log-file /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl --heartbeat-file /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json --start-at 2026-05-10T00:00:00.000Z --paper-order-request valid --ticks 2",
+      "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.heartbeat.json",
+      "exec ouro-s5-clock-finite-stopped cat /tmp/ouroboros-sandbox-finite-stopped-sbx.jsonl"
+    ]);
   });
 
   it("persists failed lifecycle evidence when sbx create fails before detached exec", async () => {
@@ -453,13 +494,30 @@ case "$1" in
   create)
     echo "created $4"
     ;;
-  exec)
-    if [ "$2" = "-d" ]; then
-      echo "detached $3"
-    elif [ "$3" = "cat" ]; then
-      heartbeat_after="\${SBX_FAKE_HEARTBEAT_AFTER:-1}"
-      heartbeat_counter="\${SBX_FAKE_HEARTBEAT_COUNTER:-}"
-      heartbeat_attempt=1
+	  exec)
+	    if [ "$2" = "-d" ]; then
+	      echo "detached $3"
+	    elif [ "$3" = "cat" ]; then
+	      cat_path="$4"
+	      if [ "\${SBX_FAKE_FINITE_STOPPED:-}" = "1" ]; then
+	        cat_file="$(basename "$cat_path")"
+	        cat_id="\${cat_file#ouroboros-}"
+	        cat_id="\${cat_id%.heartbeat.json}"
+	        cat_id="\${cat_id%.jsonl}"
+	        case "$cat_path" in
+	          *.heartbeat.json)
+	            printf '{"event":"runtime_stopped","instance_id":"%s","tick":2,"at":"2026-05-10T00:00:01.000Z"}\\n' "$cat_id"
+	            ;;
+	          *.jsonl)
+	            printf '{"event":"order_request","event_id":"%s:order-request:0001","instance_id":"%s"}\\n' "$cat_id" "$cat_id"
+	            printf '{"event":"runtime_stopped","instance_id":"%s","tick":2,"at":"2026-05-10T00:00:01.000Z"}\\n' "$cat_id"
+	            ;;
+	        esac
+	        exit 0
+	      fi
+	      heartbeat_after="\${SBX_FAKE_HEARTBEAT_AFTER:-1}"
+	      heartbeat_counter="\${SBX_FAKE_HEARTBEAT_COUNTER:-}"
+	      heartbeat_attempt=1
       if [ -n "$heartbeat_counter" ]; then
         if [ -f "$heartbeat_counter" ]; then
           heartbeat_attempt=$(( $(cat "$heartbeat_counter") + 1 ))
