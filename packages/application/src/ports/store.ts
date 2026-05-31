@@ -26,8 +26,15 @@ import type {
   PublicMarketLivenessSurfaceRecord,
   PublicMarketLivenessSurfaceReadModel,
   RunControlAuditInput,
-  RunControlAuditOutcome
+  RunControlAuditOutcome,
+  SandboxDetailReadModel,
+  SandboxLogsOutcome,
+  SandboxRecord,
+  StartSandboxOutcome,
+  StopSandboxInput,
+  TradingRunRecord
 } from "@ouroboros/domain";
+import type { SandboxStartResult, SandboxAdapterObservationResult } from "./sandbox";
 import { createHash } from "node:crypto";
 
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
@@ -60,6 +67,7 @@ export interface OuroborosStorePort {
   root(): string;
   getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined>;
   getCandidateForTradingRun(tradingRunId: string): Promise<CandidateInspectReadModel | undefined>;
+  getTradingRun(tradingRunId: string): Promise<TradingRunRecord | undefined>;
   listCandidates(): Promise<CandidateSummaryReadModel[]>;
   materializeCandidate(input: CandidateMaterializationInput): Promise<CandidateMaterializationOutcome>;
   recordCandidateMaterializationFailure(input: CandidateMaterializationFailureInput): Promise<CandidateMaterializationOutcome>;
@@ -108,6 +116,19 @@ export interface OuroborosStorePort {
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
   recordRunControlAudit(input: RunControlAuditInput): Promise<RunControlAuditOutcome>;
   recordPublicMarketLivenessSurface(surface: PublicMarketLivenessSurfaceRecord): Promise<PublicMarketLivenessSurfaceReadModel>;
+  getSandbox(sandboxId: string): Promise<SandboxDetailReadModel | undefined>;
+  recordSandboxStart(input: SandboxStartResult): Promise<StartSandboxOutcome>;
+  recordSandboxObservations(
+    sandboxId: string,
+    observations: Omit<SandboxAdapterObservationResult, "instance"> & {
+      lifecycle_status?: SandboxRecord["lifecycle_status"];
+      last_heartbeat_at?: string;
+    }
+  ): Promise<SandboxLogsOutcome>;
+  stopSandbox(
+    input: StopSandboxInput,
+    observations?: SandboxAdapterObservationResult
+  ): Promise<StartSandboxOutcome>;
   recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
   getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   getLatestPaperTradingEvaluationForTradingRun(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
