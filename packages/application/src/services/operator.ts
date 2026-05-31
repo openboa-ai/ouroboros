@@ -479,6 +479,8 @@ export function selectedPaperTradingEvaluation(
 
   const ledger = candidate.ledger;
   const latestObservation = observations.at(-1);
+  const latestDecision = [...observations].reverse()
+    .find((observation) => observation.decision)?.decision;
   if (evaluation) {
     return paperTradingEvaluationReadModel({
       evaluationId: evaluation.paper_trading_evaluation_id,
@@ -499,7 +501,7 @@ export function selectedPaperTradingEvaluation(
       latestMarketSnapshot: latestObservation?.market_snapshot,
       latestPublicExecutionSnapshot: latestObservation?.public_execution_snapshot ??
         evaluation.latest_public_execution_snapshot,
-      latestDecision: latestObservation?.decision,
+      latestDecision,
       paperAccountSnapshot: latestObservation?.paper_account_snapshot ?? evaluation.paper_account_snapshot,
       openOrders: latestObservation?.open_orders ?? evaluation.open_orders,
       latestFill: latestObservation?.latest_fill ?? evaluation.latest_fill,

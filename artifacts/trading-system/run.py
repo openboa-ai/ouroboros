@@ -2,6 +2,7 @@
 import json
 import os
 import argparse
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -9,6 +10,12 @@ from pathlib import Path
 from urllib import request
 
 RISK_FRACTION = 0.01
+STOP_REQUESTED = False
+
+
+def request_stop(_signum, _frame):
+    global STOP_REQUESTED
+    STOP_REQUESTED = True
 
 
 def utc_now():
@@ -87,12 +94,15 @@ def build_rejected_order_request():
     }
 
 
-def append_line(line, log_path):
+def append_line(line, log_path, heartbeat_path=None):
     print(line, flush=True)
     if log_path is not None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+    if heartbeat_path is not None:
+        heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+        heartbeat_path.write_text(line + "\n", encoding="utf-8")
 
 
 def paper_event_from_intent(args, intent, validation):
@@ -139,6 +149,7 @@ def run_paper(args):
     if not args.instance_id:
         raise SystemExit("--instance-id is required when --output-events is not set")
     log_path = Path(args.log_file) if args.log_file else None
+    heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
     if args.paper_order_request == "rejected":
         intent = build_rejected_order_request()
         validation = {"reason": "explicit_rejected_paper_order_request"}
@@ -149,31 +160,37 @@ def run_paper(args):
         intent = build_order_request(market, account)
         validation = post_json(base_url, "/orders/validate", intent)
     append_line(json.dumps(paper_event_from_intent(args, intent, validation), sort_keys=True), log_path)
-    for tick in range(1, args.ticks + 1):
+    tick = 0
+    while not STOP_REQUESTED:
+        tick += 1
         append_line(json.dumps({
             "event": "runtime_heartbeat",
             "instance_id": args.instance_id,
             "tick": tick,
             "at": args.start_at,
-        }, sort_keys=True), log_path)
-        if tick < args.ticks:
-            time.sleep(args.interval_ms / 1000)
+        }, sort_keys=True), log_path, heartbeat_path)
+        if args.ticks and tick >= args.ticks:
+            break
+        time.sleep(args.interval_ms / 1000)
     append_line(json.dumps({
         "event": "runtime_stopped",
         "instance_id": args.instance_id,
-        "tick": args.ticks,
+        "tick": tick,
         "at": args.start_at,
     }, sort_keys=True), log_path)
     return 0
 
 
 def main():
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
     parser = argparse.ArgumentParser(description="Minimal replay trading system artifact")
     parser.add_argument("--output-events")
     parser.add_argument("--instance-id")
     parser.add_argument("--ticks", type=int, default=0)
     parser.add_argument("--interval-ms", type=int, default=1000)
     parser.add_argument("--log-file")
+    parser.add_argument("--heartbeat-file")
     parser.add_argument("--start-at", default="1970-01-01T00:00:00.000Z")
     parser.add_argument(
         "--paper-order-request",

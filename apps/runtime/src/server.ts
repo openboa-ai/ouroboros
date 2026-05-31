@@ -305,7 +305,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     logger: false
   });
   server.addHook("onClose", async () => {
-    for (const tradingRunId of paperTradingApiProviderSessions.keys()) {
+    for (const tradingRunId of [...paperTradingApiProviderSessions.keys()]) {
+      paperTradingEvaluationRunner.stop(tradingRunId);
+      await stopLinkedTradingRunSandbox({
+        store,
+        sandboxAdapters,
+        tradingRunId
+      }).catch(() => undefined);
       await stopPaperTradingApiProviderSession(tradingRunId);
     }
   });
@@ -1006,9 +1012,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             events: decisionOutcome.engineEvents
           });
         }
-      }
-      if (!decision) {
-        decision = paperNoActionDecision(market.observed_at, "no_new_trading_system_event");
       }
     }
     const candidateAfterLedger = await store.getCandidateForTradingRun(input.tradingRunId);
@@ -2217,7 +2220,6 @@ async function ensureTradingRunSandbox(input: {
     runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
     sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
     created_at: existing?.created_at ?? new Date().toISOString(),
-    test_ticks: 2,
     interval_ms: 1_000,
     paper_order_request: input.paperOrderRequest,
     env: input.tradingApiBaseUrl

@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -74,6 +75,14 @@ export interface SandboxAdapter {
 
 export class DeterministicSandboxAdapter implements SandboxAdapter {
   readonly kind = "deterministic_test" as const;
+  private readonly sessions = new Map<
+    string,
+    {
+      child: ReturnType<typeof spawn>;
+      logFile: string;
+      heartbeatFile: string;
+    }
+  >();
 
   constructor(
     private readonly options: {
@@ -114,6 +123,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         heartbeats: [],
         command_evidence: [commandEvidence]
       };
+    }
+    if (input.test_ticks === undefined) {
+      return this.startLongRunningArtifactInstance(input, command, placement);
     }
     const executionCommand = [
       ...command,
@@ -172,12 +184,39 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     };
   }
 
-  async getArtifactInstanceStatus(): Promise<SandboxAdapterObservationResult> {
-    return {};
+  async getArtifactInstanceStatus(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
+    const instanceId = instanceIdFor(instance);
+    const session = this.sessions.get(instanceId);
+    if (!session) {
+      return {};
+    }
+    const capturedAt = new Date().toISOString();
+    const heartbeatLines = await readSandboxLogLines(session.heartbeatFile);
+    return {
+      lifecycle_status: childLifecycleStatus(session.child),
+      heartbeats: heartbeatRecordsFromLines(instanceId, "status", heartbeatLines, capturedAt)
+    };
   }
 
-  async getArtifactInstanceLogs(): Promise<SandboxAdapterObservationResult> {
-    return {};
+  async getArtifactInstanceLogs(
+    instance: SandboxRecord | SandboxDetailReadModel
+  ): Promise<SandboxAdapterObservationResult> {
+    const instanceId = instanceIdFor(instance);
+    const session = this.sessions.get(instanceId);
+    if (!session) {
+      return {};
+    }
+    const capturedAt = new Date().toISOString();
+    const lines = await readSandboxLogLines(session.logFile);
+    return {
+      lifecycle_status: childLifecycleStatus(session.child),
+      logs: lines.length > 0
+        ? [runtimeLogRecord(instanceId, `logs-${safeRuntimeId(capturedAt)}`, lines, capturedAt)]
+        : [],
+      heartbeats: heartbeatRecordsFromLines(instanceId, "logs", lines, capturedAt)
+    };
   }
 
   async stopArtifactInstance(
@@ -185,6 +224,25 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
   ): Promise<SandboxAdapterObservationResult> {
     const stoppedAt = new Date().toISOString();
     const instanceId = instanceIdFor(instance);
+    const session = this.sessions.get(instanceId);
+    if (session) {
+      session.child.kill("SIGTERM");
+      await waitForChildExit(session.child, 500);
+      if (session.child.exitCode === null) {
+        session.child.kill("SIGKILL");
+        await waitForChildExit(session.child, 500);
+      }
+      this.sessions.delete(instanceId);
+      const lines = await readSandboxLogLines(session.logFile);
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: stoppedAt,
+        logs: lines.length > 0
+          ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
+          : [],
+        heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
+      };
+    }
     const stoppedLine = JSON.stringify({
       event: "runtime_stopped",
       instance_id: instanceId,
@@ -211,6 +269,108 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
 
   private get allowedCapabilityPolicyIds(): readonly string[] {
     return this.options.allowedCapabilityPolicyIds ?? [];
+  }
+
+  private async startLongRunningArtifactInstance(
+    input: SandboxAdapterStartInput,
+    command: string[],
+    placement: SandboxPlacementRecord
+  ): Promise<SandboxAdapterStartResult> {
+    const logFile = sandboxLogFile(input.instance_id);
+    const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
+    await Promise.all([
+      rm(logFile, { force: true }),
+      rm(heartbeatFile, { force: true })
+    ]);
+    const executionCommand = [
+      ...command,
+      "--instance-id",
+      input.instance_id,
+      "--interval-ms",
+      String(input.interval_ms ?? 1_000),
+      "--log-file",
+      logFile,
+      "--heartbeat-file",
+      heartbeatFile,
+      "--start-at",
+      input.created_at,
+      "--paper-order-request",
+      input.paper_order_request ?? "valid"
+    ];
+    const startedAt = new Date().toISOString();
+    const [file, ...args] = executionCommand;
+    if (!file) {
+      const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
+        command: executionCommand,
+        exit_code: 2,
+        stdout: "",
+        stderr: "empty deterministic fixture command",
+        started_at: startedAt,
+        completed_at: startedAt
+      });
+      return {
+        instance: sandboxSandboxRecord({
+          adapterKind: this.kind,
+          artifact: input.artifact,
+          instanceId: input.instance_id,
+          sandboxName: input.sandbox_name,
+          runtimeRef: input.runtime_ref,
+          placementId: placement.sandbox_placement_id,
+          lifecycleStatus: "failed",
+          createdAt: input.created_at,
+          commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
+          traceRef: input.trace_ref
+        }),
+        placement,
+        logs: [],
+        heartbeats: [],
+        command_evidence: [commandEvidence]
+      };
+    }
+    const child = spawn(file, args, {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: "ignore",
+      env: input.env ? { ...process.env, ...input.env } : process.env
+    });
+    child.unref();
+    this.sessions.set(input.instance_id, { child, logFile, heartbeatFile });
+    const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
+      command: executionCommand,
+      exit_code: null,
+      stdout: "",
+      stderr: "",
+      started_at: startedAt,
+      completed_at: startedAt
+    });
+    const lines = await waitForSandboxLogLines(logFile, 500);
+    const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
+    return {
+      instance: sandboxSandboxRecord({
+        adapterKind: this.kind,
+        artifact: input.artifact,
+        instanceId: input.instance_id,
+        sandboxName: input.sandbox_name,
+        runtimeRef: input.runtime_ref,
+        placementId: placement.sandbox_placement_id,
+        lifecycleStatus: "running",
+        createdAt: input.created_at,
+        startedAt: input.created_at,
+        lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
+        logRefs: lines.length > 0
+          ? [ref("sandbox_log", `sandbox-log-${safeRuntimeId(input.instance_id)}-start`)]
+          : [],
+        heartbeatRefs: heartbeats.map((heartbeat) => ref(heartbeat.record_kind, heartbeat.runtime_heartbeat_id)),
+        commandEvidenceRefs: [ref(commandEvidence.record_kind, commandEvidence.sandbox_command_evidence_id)],
+        traceRef: input.trace_ref
+      }),
+      placement,
+      logs: lines.length > 0
+        ? [runtimeLogRecord(input.instance_id, "start", lines, startedAt)]
+        : [],
+      heartbeats,
+      command_evidence: [commandEvidence]
+    };
   }
 }
 
@@ -309,6 +469,10 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       logFile,
       "--heartbeat-file",
       heartbeatFile,
+      "--start-at",
+      input.created_at,
+      "--paper-order-request",
+      input.paper_order_request ?? "valid",
       ...(input.test_ticks !== undefined ? ["--ticks", String(input.test_ticks)] : [])
     ];
     const execResult = await this.runSbxCommand(execCommand);
@@ -826,6 +990,49 @@ function runDeterministicFixtureCommand(input: {
       }
     );
   });
+}
+
+async function readSandboxLogLines(logFile: string): Promise<string[]> {
+  const content = await readFile(logFile, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  return stdoutLines(content);
+}
+
+async function waitForSandboxLogLines(logFile: string, timeoutMs: number): Promise<string[]> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const lines = await readSandboxLogLines(logFile);
+    if (lines.length > 0) {
+      return lines;
+    }
+    await sleep(10);
+  }
+  return readSandboxLogLines(logFile);
+}
+
+function waitForChildExit(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<void> {
+  if (child.exitCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(), timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+function childLifecycleStatus(child: ReturnType<typeof spawn>): SandboxLifecycleStatus {
+  return child.exitCode === null ? "running" : child.exitCode === 0 ? "stopped" : "failed";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function sandboxRuntimeEnvCommand(env: SandboxRuntimeEnv | undefined): string[] {

@@ -144,6 +144,44 @@ describe("sandbox API", () => {
     );
   });
 
+  it("starts deterministic SystemCode as a long-running paper session when no test tick limit is supplied", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: "sandbox-deterministic-long-running",
+      sandbox_name: "ouro-deterministic-long-running",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-long-running",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      expect(started.command_evidence[0]?.command).toEqual(expect.arrayContaining([
+        "--log-file",
+        "--heartbeat-file"
+      ]));
+
+      await sleep(30);
+      const logs = await adapter.getArtifactInstanceLogs(started.instance);
+      const logText = logs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+      expect(logText).toContain("\"event\": \"order_request\"");
+      expect(logText).toContain("\"event\": \"runtime_heartbeat\"");
+      expect(logText).not.toContain("\"event\": \"runtime_stopped\"");
+      expect(logs.heartbeats?.length).toBeGreaterThan(0);
+    } finally {
+      const stopped = await adapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+    }
+  });
+
   it("executes fixture SystemCode when the runtime process starts from apps/runtime", async () => {
     const originalCwd = process.cwd();
     process.chdir(path.join(originalCwd, "apps/runtime"));
@@ -372,8 +410,8 @@ describe("sandbox API", () => {
           }
         };
       },
-      getArtifactInstanceStatus: () => baseAdapter.getArtifactInstanceStatus(),
-      getArtifactInstanceLogs: () => baseAdapter.getArtifactInstanceLogs(),
+      getArtifactInstanceStatus: (instance) => baseAdapter.getArtifactInstanceStatus(instance),
+      getArtifactInstanceLogs: (instance) => baseAdapter.getArtifactInstanceLogs(instance),
       stopArtifactInstance: async () => ({
         lifecycle_status: "failed"
       })
@@ -412,13 +450,13 @@ describe("sandbox API", () => {
     const countingAdapter: SandboxAdapter = {
       kind: "deterministic_test",
       startArtifactInstance: (input) => baseAdapter.startArtifactInstance(input),
-      getArtifactInstanceStatus: async () => {
+      getArtifactInstanceStatus: async (instance) => {
         statusCallCount += 1;
-        return await baseAdapter.getArtifactInstanceStatus();
+        return await baseAdapter.getArtifactInstanceStatus(instance);
       },
-      getArtifactInstanceLogs: async () => {
+      getArtifactInstanceLogs: async (instance) => {
         logCallCount += 1;
-        return await baseAdapter.getArtifactInstanceLogs();
+        return await baseAdapter.getArtifactInstanceLogs(instance);
       },
       stopArtifactInstance: (instance) => baseAdapter.stopArtifactInstance(instance)
     };
@@ -474,13 +512,13 @@ describe("sandbox API", () => {
           }
         };
       },
-      getArtifactInstanceStatus: async () => {
+      getArtifactInstanceStatus: async (instance) => {
         statusCallCount += 1;
-        return await baseAdapter.getArtifactInstanceStatus();
+        return await baseAdapter.getArtifactInstanceStatus(instance);
       },
-      getArtifactInstanceLogs: async () => {
+      getArtifactInstanceLogs: async (instance) => {
         logCallCount += 1;
-        return await baseAdapter.getArtifactInstanceLogs();
+        return await baseAdapter.getArtifactInstanceLogs(instance);
       },
       stopArtifactInstance: async (instance) => {
         stopCallCount += 1;
@@ -597,6 +635,10 @@ function restoreEnv(name: string, value: string | undefined): void {
   } else {
     process.env[name] = value;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function fakeSdxScript(): string {

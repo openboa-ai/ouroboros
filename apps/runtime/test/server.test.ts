@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
+import type {
+  GatewayRuntimeBinding,
+  PaperTradingApiProviderOptions
+} from "@ouroboros/application/trading/gateway/runtime-binding";
+import type { ReplayTradingApiProviderSession } from "@ouroboros/application/trading/research/types";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
 import { buildServer, paperTradingApiProviderNetworkOptions } from "../src/server";
@@ -18,6 +23,15 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
+let paperProviderSequence = 0;
+
+function buildRuntimeTestServer(options: Parameters<typeof buildServer>[0]) {
+  return buildServer({
+    paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+    ...options
+  });
+}
+
 describe("runtime canonical operator API", () => {
   it("binds the paper runtime provider to a sandbox-reachable interface when sandbox host is configured", () => {
     expect(paperTradingApiProviderNetworkOptions({
@@ -31,7 +45,7 @@ describe("runtime canonical operator API", () => {
   });
 
   it("serves health, operator state, resource reads, and no removed public routes", async () => {
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
       promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
       replayRunRoot: path.join(tmpDir, "empty-replay-runs")
@@ -122,7 +136,7 @@ describe("runtime canonical operator API", () => {
   });
 
   it("runs user mutations through /api/commands and reflects them in /api/operator", async () => {
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store: new LocalStore(tmpDir),
       marketDataPort: fakeGatewayMarketDataPort()
     });
@@ -198,9 +212,9 @@ describe("runtime canonical operator API", () => {
             observation_count: 1,
             latest_decision: {
               decision_kind: "order_request",
-              reason: "runtime_api_market_expected_direction_long_validation_risk_limits_passed",
+              reason: "trading_system_order_request",
               order_request: {
-                limit_price: "65000"
+                limit_price: "60000"
               }
             },
             ledger_chain_complete: true,
@@ -237,7 +251,7 @@ describe("runtime canonical operator API", () => {
       quantity: "0.001"
     });
     const firstSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
-    const firstServer = await buildServer({
+    const firstServer = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: firstSandbox.adapter
@@ -269,13 +283,13 @@ describe("runtime canonical operator API", () => {
       expect(started.statusCode, started.body).toBe(200);
       expect(firstSandbox.starts).toHaveLength(1);
       expect(firstSandbox.starts[0]?.paper_order_request).toBe("rejected");
-      expect(firstSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      expect(firstSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toBeUndefined();
     } finally {
       await firstServer.close();
     }
 
     const resumedSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
-    const resumedServer = await buildServer({
+    const resumedServer = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: resumedSandbox.adapter
@@ -302,21 +316,21 @@ describe("runtime canonical operator API", () => {
       });
       expect(resumedSandbox.starts).toHaveLength(1);
       expect(resumedSandbox.starts[0]?.paper_order_request).toBe("rejected");
-      expect(resumedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
+      expect(resumedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toBeUndefined();
       expect(resumedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
     } finally {
       await resumedServer.close();
     }
   });
 
-  it("restarts the sandbox with a fresh provider URL when observe is first after restart", async () => {
+  it("does not restart a stopped paper session from observe after runtime close", async () => {
     const store = new LocalStore(tmpDir);
     const orderLine = paperOrderRequestLine({
       at: "2026-05-16T00:00:03.000Z",
       quantity: "0.001"
     });
     const firstSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
-    const firstServer = await buildServer({
+    const firstServer = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: firstSandbox.adapter
@@ -343,7 +357,7 @@ describe("runtime canonical operator API", () => {
     }
 
     const observedSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
-    const observedServer = await buildServer({
+    const observedServer = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: observedSandbox.adapter
@@ -366,11 +380,14 @@ describe("runtime canonical operator API", () => {
         command: {
           command_kind: "trading_run.observe",
           status: "succeeded"
+        },
+        operator: {
+          selected_paper_trading_evaluation: {
+            runner_active: false
+          }
         }
       });
-      expect(observedSandbox.starts).toHaveLength(1);
-      expect(observedSandbox.starts[0]?.env?.TRADING_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:/);
-      expect(observedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
+      expect(observedSandbox.starts).toHaveLength(0);
     } finally {
       await observedServer.close();
     }
@@ -386,7 +403,7 @@ describe("runtime canonical operator API", () => {
       orderType: "market"
     });
     const firstSandbox = recordingDuplicateLogSandboxAdapter(orderLineForInstance);
-    const firstServer = await buildServer({
+    const firstServer = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: firstSandbox.adapter
@@ -411,7 +428,7 @@ describe("runtime canonical operator API", () => {
     }
 
     const resumedSandbox = recordingDuplicateLogSandboxAdapter(orderLineForInstance);
-    const resumedServer = await buildServer({
+    const resumedServer = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: resumedSandbox.adapter
@@ -437,8 +454,8 @@ describe("runtime canonical operator API", () => {
           selected_paper_trading_evaluation: {
             observation_count: 2,
             latest_decision: {
-              decision_kind: "hold",
-              reason: "no_new_trading_system_event"
+              decision_kind: "order_request",
+              reason: "trading_system_order_request"
             },
             paper_account_snapshot: {
               position: {
@@ -472,7 +489,7 @@ describe("runtime canonical operator API", () => {
       at: "2026-05-16T00:00:03.000Z",
       quantity: "0.001"
     });
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
@@ -586,8 +603,8 @@ describe("runtime canonical operator API", () => {
               price: 66_000
             },
             latest_decision: {
-              decision_kind: "hold",
-              reason: "no_new_trading_system_event",
+              decision_kind: "order_request",
+              reason: "trading_system_order_request",
               authority_status: "trace_only"
             },
             paper_account_snapshot: {
@@ -629,7 +646,7 @@ describe("runtime canonical operator API", () => {
       });
       expect(observations[0]?.processed_trading_system_event_ids).toHaveLength(1);
       expect(observations[1]?.status).toBe("no_order");
-      expect(observations[1]?.decision?.decision_kind).toBe("hold");
+      expect(observations[1]?.decision).toBeUndefined();
       expect(observations[1]?.ledger_ref).toBeUndefined();
       expect(observations[1]?.processed_trading_system_event_ids).toEqual(
         observations[0]?.processed_trading_system_event_ids
@@ -645,7 +662,7 @@ describe("runtime canonical operator API", () => {
       at: "2026-05-16T00:00:03.000Z",
       quantity: "0.001"
     });
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
@@ -723,8 +740,8 @@ describe("runtime canonical operator API", () => {
           selected_paper_trading_evaluation: {
             observation_count: 2,
             latest_decision: {
-              decision_kind: "hold",
-              reason: "no_new_trading_system_event"
+              decision_kind: "order_request",
+              reason: "trading_system_order_request"
             },
             paper_account_snapshot: {
               position: {
@@ -764,7 +781,7 @@ describe("runtime canonical operator API", () => {
       orderType: "market",
       quantity: "0.001"
     });
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
@@ -891,7 +908,7 @@ describe("runtime canonical operator API", () => {
       }
       return originalExecutionSnapshot(request);
     };
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: runningOrderThenCancelLogSandboxAdapter(orderLine, cancelLine)
@@ -972,8 +989,15 @@ describe("runtime canonical operator API", () => {
 
   it("fails observation when public execution stream evidence is unavailable and leaves events retryable", async () => {
     const store = new LocalStore(tmpDir);
-    const server = await buildServer({
+    const orderLine = paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    });
+    const server = await buildRuntimeTestServer({
       store,
+      sandboxAdapters: {
+        deterministic_test: runningDuplicateLogSandboxAdapter(orderLine)
+      },
       marketDataPort: fakeGatewayMarketDataPort({
         failPublicExecutionSnapshot: true
       })
@@ -1036,7 +1060,7 @@ describe("runtime canonical operator API", () => {
 
   it("records risk-rejected TradingSystem orders without fake account mutation", async () => {
     const store = new LocalStore(tmpDir);
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       marketDataPort: fakeGatewayMarketDataPort({
         failPublicExecutionSnapshot: true
@@ -1107,7 +1131,7 @@ describe("runtime canonical operator API", () => {
 
   it("rejects private or live TradingSystem paper events without Ledger or fake account mutation", async () => {
     const store = new LocalStore(tmpDir);
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       sandboxAdapters: {
         deterministic_test: runningDuplicateLogSandboxAdapter(paperLiveAuthorityAttemptLine())
@@ -1197,7 +1221,7 @@ describe("runtime canonical operator API", () => {
 
   it("aborts a mixed paper event batch after a protocol error before Ledger or account mutation", async () => {
     const store = new LocalStore(tmpDir);
-    const server = await buildServer({
+    const server = await buildRuntimeTestServer({
       store,
       marketDataPort: fakeGatewayMarketDataPort(),
       sandboxAdapters: {
@@ -1308,7 +1332,7 @@ describe("runtime canonical operator API", () => {
   });
 
   it("runs candidate evaluation through the command endpoint and exposes evaluation resources", async () => {
-    const server = await buildServer({ store: new LocalStore(tmpDir) });
+    const server = await buildRuntimeTestServer({ store: new LocalStore(tmpDir) });
 
     try {
       const created = await server.inject({
@@ -1575,6 +1599,42 @@ function runningOrderThenCancelLogSandboxAdapter(orderLine: string, cancelLine: 
         lifecycle_status: "stopped",
         stopped_at: instance.stopped_at ?? "2026-05-16T00:02:03.000Z"
       };
+    }
+  };
+}
+
+async function networklessPaperTradingApiProvider(
+  binding: GatewayRuntimeBinding,
+  options: PaperTradingApiProviderOptions
+): Promise<ReplayTradingApiProviderSession> {
+  paperProviderSequence += 1;
+  const market = await binding.marketData.readMarketSnapshot();
+  const account = options.readAccountState
+    ? await options.readAccountState()
+    : binding.account.provider_kind === "fake_paper_account"
+      ? binding.account.state
+      : {
+          equity: 10_000,
+          max_position_notional: 350,
+          max_risk_fraction: 0.03,
+          target_risk_fraction: 0.02
+        };
+  return {
+    base_url: "",
+    sandbox_base_url: "",
+    close: async () => undefined,
+    requests: () => [],
+    scenario: {
+      id: `networkless-paper-provider-${paperProviderSequence}`,
+      description: "Networkless paper runtime provider used by runtime controller tests.",
+      market,
+      account,
+      outcome: {
+        exit_price: market.price,
+        fee_bps: 4,
+        slippage_bps: 3,
+        funding_bps: 1
+      }
     }
   };
 }
