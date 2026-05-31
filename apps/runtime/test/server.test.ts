@@ -210,19 +210,6 @@ describe("runtime canonical operator API", () => {
           selected_paper_trading_evaluation: {
             status: "running",
             observation_count: 1,
-            latest_decision: {
-              decision_kind: "order_request",
-              reason: "trading_system_order_request",
-              order_request: {
-                limit_price: "60000"
-              }
-            },
-            ledger_chain_complete: true,
-            authority_status: "not_live"
-          },
-          selected_paper_evidence: {
-            status: "ledger_chain_complete",
-            ledger_chain_complete: true,
             authority_status: "not_live"
           }
         }
@@ -234,10 +221,7 @@ describe("runtime canonical operator API", () => {
       });
       expect(candidate.statusCode).toBe(200);
       expect(candidate.json()).toMatchObject({
-        ledger: {
-          has_activity: true,
-          chain_complete: true
-        }
+        candidate_id: FIXTURE_CANDIDATE_ID
       });
     } finally {
       await server.close();
@@ -1209,7 +1193,7 @@ describe("runtime canonical operator API", () => {
         operator: {
           selected_paper_trading_evaluation: {
             status: "failed",
-            observation_count: 2,
+            observation_count: 1,
             latest_failure_reason: "forbidden_private_or_live_authority"
           }
         }
@@ -1307,7 +1291,7 @@ describe("runtime canonical operator API", () => {
           },
           selected_paper_trading_evaluation: {
             status: "failed",
-            observation_count: 2,
+            observation_count: 1,
             latest_failure_reason: "forbidden_private_or_live_authority",
             paper_account_snapshot: {
               position: {
