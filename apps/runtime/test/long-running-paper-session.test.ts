@@ -18,7 +18,7 @@ import type {
   SandboxPlacementRecord,
   SandboxRecord
 } from "@ouroboros/domain";
-import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
+import { FIXTURE_CANDIDATE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import type {
   SandboxAdapter,
   SandboxAdapterObservationResult,
@@ -204,6 +204,65 @@ describe("long-running paper TradingSystem sessions", () => {
       });
       expect(started.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("stopped");
       expect(sandboxAdapter.stopCalls()).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("stops the linked sandbox when trading run start fails after sandbox launch", async () => {
+    const store = new LocalStore(tmpDir);
+    store.recordRunControlAudit = (async () => {
+      throw new LocalStoreError("invalid_run_control_input", "forced run control failure");
+    }) as typeof store.recordRunControlAudit;
+    const sandboxAdapter = queuedLongRunningSandboxAdapter([
+      [paperOrderLine("start-failure-order-0001", "2026-05-16T00:00:03.000Z")]
+    ]);
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: sandboxAdapter
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, observed_at: "2026-05-16T00:00:03.000Z" }
+        ],
+        executionSnapshots: [{
+          agg_trades: [{
+            trade_id: "start-failure-fill-0001",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          }]
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        error: "trading_run_failed",
+        reason: "invalid_run_control_input"
+      });
+      expect(sandboxAdapter.startCalls()).toBe(1);
+      expect(sandboxAdapter.stopCalls()).toBe(1);
+      const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+      expect(candidate?.runtime.sandbox?.lifecycle_status).toBe("stopped");
     } finally {
       await server.close();
     }

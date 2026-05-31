@@ -666,7 +666,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         }
       };
     } catch (error) {
-      await stopPaperTradingApiProviderSession(tradingRunId);
+      await cleanupFailedTradingRunStart(tradingRunId);
       if (error instanceof LocalStoreError) {
         return {
           statusCode: ledgerStatusCode(error.code),
@@ -769,6 +769,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       sandboxAdapters,
       tradingRunId
     });
+  }
+
+  async function cleanupFailedTradingRunStart(tradingRunId: string): Promise<void> {
+    paperTradingEvaluationRunner.stop(tradingRunId);
+    await Promise.allSettled([
+      stopPaperTradingApiProviderSession(tradingRunId),
+      stopLinkedTradingRunSandbox({
+        store,
+        sandboxAdapters,
+        tradingRunId
+      })
+    ]);
   }
 
   async function restartTradingRunSandboxWithProvider(input: {
