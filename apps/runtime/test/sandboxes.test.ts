@@ -249,6 +249,50 @@ describe("sandbox API", () => {
     }
   });
 
+  it("marks a generated long-running paper session as failed when it exits before startup logs", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const crashPath = path.join(tmpDir, "crash-before-startup-log.py");
+    await writeFile(crashPath, "raise RuntimeError('startup crash before jsonl')\n", "utf8");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+    const instanceId = "sandbox-generated-startup-crash";
+    const started = await adapter.startArtifactInstance({
+      artifact: {
+        ...fixtureArtifact,
+        system_code_id: "system-code-generated-startup-crash",
+        artifact_path: crashPath,
+        artifact_digest: "sha256:generated-startup-crash",
+        entrypoint: ["python3", crashPath],
+        capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+        created_at: "2026-05-21T00:00:00.000Z"
+      },
+      instance_id: instanceId,
+      sandbox_name: "ouro-generated-startup-crash",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-generated-startup-crash",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    expect(started.instance.lifecycle_status).toBe("failed");
+    expect(started.instance.started_at).toBeUndefined();
+    expect(started.command_evidence[0]?.exit_code).toBe(1);
+    expect(started.logs).toHaveLength(0);
+    await expect(readFile(
+      path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${instanceId}.pid`),
+      "utf8"
+    )).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("does not report an externally killed long-running paper session as running", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

@@ -358,17 +358,23 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       await mkdir(path.dirname(pidFile), { recursive: true });
       await writeFile(pidFile, String(child.pid), "utf8");
     }
-    this.sessions.set(input.instance_id, { child, logFile, heartbeatFile, pidFile });
+    const session = { child, logFile, heartbeatFile, pidFile };
+    this.sessions.set(input.instance_id, session);
+    const lines = await waitForSandboxLogLines(logFile, 500);
+    const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
+    const lifecycleStatus = childLifecycleStatus(child);
+    if (lifecycleStatus !== "running") {
+      this.sessions.delete(input.instance_id);
+      await rm(pidFile, { force: true });
+    }
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
       command: executionCommand,
-      exit_code: null,
+      exit_code: lifecycleStatus === "running" ? null : child.exitCode ?? 1,
       stdout: "",
-      stderr: "",
+      stderr: child.signalCode ? `terminated by ${child.signalCode}` : "",
       started_at: startedAt,
       completed_at: startedAt
     });
-    const lines = await waitForSandboxLogLines(logFile, 500);
-    const heartbeats = heartbeatRecordsFromLines(input.instance_id, "start", lines, startedAt);
     return {
       instance: sandboxSandboxRecord({
         adapterKind: this.kind,
@@ -377,9 +383,9 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         sandboxName: input.sandbox_name,
         runtimeRef: input.runtime_ref,
         placementId: placement.sandbox_placement_id,
-        lifecycleStatus: "running",
+        lifecycleStatus: lifecycleStatus === "running" ? "running" : "failed",
         createdAt: input.created_at,
-        startedAt: input.created_at,
+        startedAt: lifecycleStatus === "running" ? input.created_at : undefined,
         lastHeartbeatAt: heartbeats.at(-1)?.observed_at,
         logRefs: lines.length > 0
           ? [ref("sandbox_log", `sandbox-log-${safeRuntimeId(input.instance_id)}-start`)]
