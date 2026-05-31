@@ -30,6 +30,9 @@ Use directories when a repeated prefix is carrying ownership:
 - `packages/application/src/research/*`: research orchestration and sealed evaluation helpers.
 - `packages/application/src/trading/*`: TradingSystem execution, replay, gateway, and research
   application logic.
+- `packages/application/src/trading/paper/*`: selected-candidate continuous paper trading use
+  cases, including observation recording, fake account/order state transitions, and runner
+  scheduling contracts.
 - `packages/adapters/src/codex/*`, `binance/*`, `fixture/*`, `sandbox/*`: concrete outside-system
   adapters grouped by the thing they integrate with.
 - `apps/runtime/src/controllers/*`: HTTP request validation and response mapping.
@@ -91,6 +94,11 @@ Paper observations are checkpoint/readback events over the running TradingSystem
 the latest market snapshot, active runner state, newly emitted orders, no-order continuity, score,
 and Ledger evidence. They must not make the Gateway or runner synthesize a trade decision simply
 because a public market snapshot was refreshed.
+
+The observation use case belongs in `packages/application/src/trading/paper/*`. `apps/runtime`
+may wire the store, Gateway binding, sandbox refresher, provider sessions, and timer instance, but
+it should not own paper account transitions, observation records, TradingSystem event processing,
+or Ledger decision assembly.
 
 `PaperTradingEngine` is the stateful fake exchange/account boundary. It owns wallet/equity,
 available balance, margin, position, average entry, realized/unrealized PnL, open/partial/filled/

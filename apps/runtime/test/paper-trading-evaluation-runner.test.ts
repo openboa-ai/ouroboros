@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PaperTradingEvaluationRunner } from "../src/paper/evaluation-runner";
+import { PaperTradingEvaluationRunner } from "@ouroboros/application/trading/paper/evaluation-runner";
 
 describe("PaperTradingEvaluationRunner", () => {
   beforeEach(() => {

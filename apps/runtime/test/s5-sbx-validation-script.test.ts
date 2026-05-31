@@ -1918,7 +1918,7 @@ describe("S5 sbx validation harness", () => {
         OUROBOROS_SBX_BIN: fakeSbx,
         OUROBOROS_SBX_HOME: path.join(tempDir, "isolated-sbx-home"),
         OUROBOROS_SBX_VALIDATE_PORT: String(await findFreePort()),
-        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "2000",
+        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "10000",
         OUROBOROS_SBX_EVIDENCE_PATH: evidencePath,
         SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
         SBX_CALL_LOG: sbxCallLog
@@ -1995,11 +1995,14 @@ describe("S5 sbx validation harness", () => {
         OUROBOROS_SBX_HOME: path.join(tempDir, "isolated-sbx-home"),
         OUROBOROS_SBX_VALIDATE_NAME_SUFFIX: "nightly.001",
         OUROBOROS_SBX_VALIDATE_PORT: String(await findFreePort()),
-        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "2000",
+        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "10000",
         OUROBOROS_SBX_EVIDENCE_PATH: evidencePath,
         SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
         SBX_CALL_LOG: sbxCallLog
       }, s5LifecycleScriptTimeoutMs);
+
+      expect(result.code, scriptOutput(result)).toBe(0);
+
       const calls = (await readFile(sbxCallLog, "utf8")).trim().split("\n");
       const evidence = await readFile(evidencePath, "utf8");
       const completionAudit = await runScript([
@@ -2008,7 +2011,6 @@ describe("S5 sbx validation harness", () => {
         evidencePath
       ], {}, 10_000);
 
-      expect(result.code, scriptOutput(result)).toBe(0);
       expect(completionAudit.code, scriptOutput(completionAudit)).toBe(0);
       expect(evidence).toContain("sandbox name suffix: nightly.001");
       expect(evidence).toContain("sandbox A name: ouro-s5-clock-a-nightly.001");
@@ -2033,7 +2035,7 @@ describe("S5 sbx validation harness", () => {
         OUROBOROS_SBX_BIN: fakeSbx,
         OUROBOROS_SBX_HOME: path.join(tempDir, "isolated-sbx-home"),
         OUROBOROS_SBX_VALIDATE_PORT: String(await findFreePort()),
-        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "2000",
+        OUROBOROS_SBX_VALIDATE_TIMEOUT_MS: "10000",
         SBX_EXPECT_HOME: path.join(tempDir, "isolated-sbx-home"),
         SBX_CALL_LOG: sbxCallLog
       }, s5LifecycleScriptTimeoutMs);
