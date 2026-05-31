@@ -36,7 +36,8 @@ import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
   type PaperOrderRequestFixture,
-  type SandboxAdapter
+  type SandboxAdapter,
+  type SandboxAdapterObservationResult
 } from "@ouroboros/adapters/sandbox/adapter";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
@@ -2281,10 +2282,21 @@ async function ensureTradingRunSandbox(input: {
       verified.lifecycle_status === "running" &&
       (
         observations.lifecycle_status === "running" ||
-        Boolean(observations.heartbeats?.length)
+        hasFreshSandboxHeartbeat(existing, observations)
       )
     ) {
       return verified;
+    }
+    if (verified.lifecycle_status !== "stopped" && verified.lifecycle_status !== "removed") {
+      const stopObservations = await input.sandboxAdapter.stopArtifactInstance(verified);
+      await input.store.stopSandbox(
+        {
+          sandbox_id: verified.sandbox_id,
+          stopped_at: stopObservations.stopped_at,
+          removed_at: stopObservations.removed_at
+        },
+        stopObservations
+      );
     }
   }
 
@@ -2512,6 +2524,22 @@ async function linkedTradingRunSandbox(
     return undefined;
   }
   return store.getSandbox(tradingRun.sandbox_ref.id);
+}
+
+function hasFreshSandboxHeartbeat(
+  existing: SandboxDetailReadModel,
+  observations: SandboxAdapterObservationResult
+): boolean {
+  const previousHeartbeatAt = existing.last_heartbeat_at ? Date.parse(existing.last_heartbeat_at) : undefined;
+  return observations.heartbeats?.some((heartbeat) => {
+    const observedAt = Date.parse(heartbeat.observed_at);
+    return Number.isFinite(observedAt) &&
+      (
+        previousHeartbeatAt === undefined ||
+        !Number.isFinite(previousHeartbeatAt) ||
+        observedAt > previousHeartbeatAt
+      );
+  }) ?? false;
 }
 
 function tradingRunLifecycleAuditInput(input: {

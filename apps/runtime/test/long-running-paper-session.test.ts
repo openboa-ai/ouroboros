@@ -268,6 +268,114 @@ describe("long-running paper TradingSystem sessions", () => {
     }
   });
 
+  it("restarts a resumed sandbox when status returns only stale heartbeat evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    const firstSandbox = queuedLongRunningSandboxAdapter([
+      [paperOrderLine("stale-resume-order-0001", "2026-05-16T00:00:03.000Z")]
+    ]);
+    const firstServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: firstSandbox
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, observed_at: "2026-05-16T00:00:03.000Z" }
+        ],
+        executionSnapshots: [{
+          agg_trades: [{
+            trade_id: "stale-resume-fill-0001",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:00:03.500Z"
+          }]
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    let staleHeartbeatAt: string | undefined;
+    try {
+      const started = await postCommand(firstServer, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running"
+      });
+      staleHeartbeatAt = started.operator.selected_candidate?.runtime.sandbox?.last_heartbeat_at;
+      expect(staleHeartbeatAt).toEqual(expect.any(String));
+    } finally {
+      await firstServer.close();
+    }
+    const stoppedSandbox = (await store.getCandidate(FIXTURE_CANDIDATE_ID))?.runtime.sandbox;
+    expect(stoppedSandbox?.lifecycle_status).toBe("stopped");
+    await store.recordSandboxStart({
+      placement: sandboxPlacement(stoppedSandbox!.sandbox_placement_ref.id),
+      instance: {
+        record_kind: "sandbox",
+        version: 1,
+        sandbox_id: stoppedSandbox!.sandbox_id,
+        adapter_kind: stoppedSandbox!.adapter_kind,
+        system_code_ref: stoppedSandbox!.system_code_ref,
+        runtime_ref: stoppedSandbox!.runtime_ref,
+        sandbox_placement_ref: stoppedSandbox!.sandbox_placement_ref,
+        lifecycle_status: "running",
+        sandbox_name: stoppedSandbox!.sandbox_name,
+        sandbox_ref: stoppedSandbox!.sandbox_ref,
+        created_at: stoppedSandbox!.created_at,
+        started_at: stoppedSandbox!.started_at,
+        last_heartbeat_at: staleHeartbeatAt,
+        log_refs: stoppedSandbox!.log_refs,
+        heartbeat_refs: stoppedSandbox!.heartbeat_refs,
+        command_evidence_refs: stoppedSandbox!.command_evidence_refs,
+        trace_ref: stoppedSandbox!.trace_ref,
+        authority_status: "not_live"
+      } satisfies SandboxRecord,
+      logs: [],
+      heartbeats: [],
+      command_evidence: []
+    });
+
+    const resumedSandbox = queuedLongRunningSandboxAdapter(
+      [[paperHoldLine("stale-resume-hold-0001", "2026-05-16T00:01:03.000Z")]],
+      [],
+      staleHeartbeatAt
+    );
+    const resumedServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: resumedSandbox
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_100, observed_at: "2026-05-16T00:01:03.000Z" }
+        ],
+        executionSnapshots: [{
+          agg_trades: []
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const resumed = await postCommand(resumedServer, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      expect(resumed.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running"
+      });
+      expect(resumedSandbox.stopCalls()).toBe(1);
+      expect(resumedSandbox.startCalls()).toBe(1);
+    } finally {
+      await resumedServer.close();
+    }
+  });
+
   it("fails paper evaluation when the linked TradingSystem sandbox crashes", async () => {
     const store = new LocalStore(tmpDir);
     const sandboxAdapter = queuedLongRunningSandboxAdapter(
@@ -343,7 +451,8 @@ interface InspectableSandboxAdapter extends SandboxAdapter {
 
 function queuedLongRunningSandboxAdapter(
   logBatches: string[][],
-  lifecycleStatuses: Array<SandboxRecord["lifecycle_status"] | undefined> = []
+  lifecycleStatuses: Array<SandboxRecord["lifecycle_status"] | undefined> = [],
+  statusHeartbeatAt?: string
 ): InspectableSandboxAdapter {
   let startCallCount = 0;
   let stopCallCount = 0;
@@ -398,7 +507,25 @@ function queuedLongRunningSandboxAdapter(
       };
     },
     async getArtifactInstanceStatus(): Promise<SandboxAdapterObservationResult> {
-      return {};
+      if (!statusHeartbeatAt) {
+        return {};
+      }
+      return {
+        heartbeats: [{
+          record_kind: "runtime_heartbeat",
+          version: 1,
+          runtime_heartbeat_id: `runtime-heartbeat-${instanceId}-status-stale`,
+          sandbox_ref: { record_kind: "sandbox", id: instanceId },
+          heartbeat_line: JSON.stringify({
+            event: "runtime_heartbeat",
+            instance_id: instanceId,
+            tick: 0,
+            at: statusHeartbeatAt
+          }),
+          observed_at: statusHeartbeatAt,
+          authority_status: "trace_only"
+        }]
+      };
     },
     async getArtifactInstanceLogs(): Promise<SandboxAdapterObservationResult> {
       logReadCount += 1;
