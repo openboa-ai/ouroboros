@@ -435,6 +435,8 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       sbxHome?: string;
       workspacePath?: string;
       commandTimeoutMs?: number;
+      startupHeartbeatTimeoutMs?: number;
+      startupHeartbeatPollIntervalMs?: number;
     } = {}
   ) {}
 
@@ -684,6 +686,14 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     return this.options.commandTimeoutMs ?? Number(process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS ?? 30_000);
   }
 
+  private get startupHeartbeatTimeoutMs(): number {
+    return this.options.startupHeartbeatTimeoutMs ?? this.commandTimeoutMs;
+  }
+
+  private get startupHeartbeatPollIntervalMs(): number {
+    return this.options.startupHeartbeatPollIntervalMs ?? 500;
+  }
+
   private get sbxHome(): string | undefined {
     return this.options.sbxHome ?? process.env.OUROBOROS_SBX_HOME;
   }
@@ -700,9 +710,12 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
     commandEvidence: SandboxCommandEvidenceRecord[];
   }> {
     const commandEvidence: SandboxCommandEvidenceRecord[] = [];
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    const deadlineAt = Date.now() + Math.max(0, this.startupHeartbeatTimeoutMs);
+    let attempt = 0;
+    do {
       if (attempt > 0) {
-        await sleep(100);
+        const remainingMs = Math.max(0, deadlineAt - Date.now());
+        await sleep(Math.min(this.startupHeartbeatPollIntervalMs, remainingMs));
       }
       const result = await this.runSbxCommand([
         this.sbxPath,
@@ -725,7 +738,8 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
       if (heartbeats.length > 0) {
         return { heartbeats, commandEvidence };
       }
-    }
+      attempt += 1;
+    } while (Date.now() < deadlineAt);
     return { heartbeats: [], commandEvidence };
   }
 

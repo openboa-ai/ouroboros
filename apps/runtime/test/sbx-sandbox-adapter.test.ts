@@ -14,6 +14,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env.SBX_FAKE_COMMAND_LOG;
+  delete process.env.SBX_FAKE_HEARTBEAT_AFTER;
+  delete process.env.SBX_FAKE_HEARTBEAT_COUNTER;
   delete process.env.SBX_FAKE_INSTANCE_ID;
   delete process.env.SBX_EXPECT_HOME;
   delete process.env.OUROBOROS_SDX_BIN;
@@ -95,6 +97,44 @@ describe("Docker Sandboxes sbx runtime adapter", () => {
       "exec ouro-s5-clock-fake pkill -TERM -f fixtures/trading-systems/clock.py",
       "stop ouro-s5-clock-fake"
     ]);
+  });
+
+  it("waits under the startup timeout for a delayed first heartbeat", async () => {
+    const commandLog = path.join(tmpDir, "slow-startup-commands.log");
+    const heartbeatCounter = path.join(tmpDir, "slow-startup-heartbeat-count");
+    const fakeSbx = path.join(tmpDir, "sbx-slow-startup");
+    await writeFile(fakeSbx, fakeSbxScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    process.env.SBX_FAKE_HEARTBEAT_AFTER = "3";
+    process.env.SBX_FAKE_HEARTBEAT_COUNTER = heartbeatCounter;
+
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: fakeSbx,
+      workspacePath: ".",
+      startupHeartbeatTimeoutMs: 1_000,
+      startupHeartbeatPollIntervalMs: 1
+    });
+    const start = await adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-slow-startup-sbx",
+      sandbox_name: "ouro-s5-clock-slow-startup",
+      sandbox_placement_id: "sandbox-placement-slow-startup-sbx",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    expect(start.instance.lifecycle_status).toBe("running");
+    expect(start.heartbeats).toHaveLength(1);
+    expect(start.command_evidence.map((evidence) => evidence.command.slice(1, 3))).toEqual([
+      ["version"],
+      ["create", "--name"],
+      ["exec", "-d"],
+      ["exec", "ouro-s5-clock-slow-startup"],
+      ["exec", "ouro-s5-clock-slow-startup"],
+      ["exec", "ouro-s5-clock-slow-startup"]
+    ]);
+    expect((await readFile(heartbeatCounter, "utf8")).trim()).toBe("3");
   });
 
   it("persists failed lifecycle evidence when sbx create fails before detached exec", async () => {
@@ -417,6 +457,19 @@ case "$1" in
     if [ "$2" = "-d" ]; then
       echo "detached $3"
     elif [ "$3" = "cat" ]; then
+      heartbeat_after="\${SBX_FAKE_HEARTBEAT_AFTER:-1}"
+      heartbeat_counter="\${SBX_FAKE_HEARTBEAT_COUNTER:-}"
+      heartbeat_attempt=1
+      if [ -n "$heartbeat_counter" ]; then
+        if [ -f "$heartbeat_counter" ]; then
+          heartbeat_attempt=$(( $(cat "$heartbeat_counter") + 1 ))
+        fi
+        printf '%s\\n' "$heartbeat_attempt" > "$heartbeat_counter"
+      fi
+      if [ "$heartbeat_attempt" -lt "$heartbeat_after" ]; then
+        echo "heartbeat not ready" >&2
+        exit 1
+      fi
       heartbeat_path="$4"
       heartbeat_file="$(basename "$heartbeat_path")"
       heartbeat_id="\${heartbeat_file#ouroboros-}"

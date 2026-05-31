@@ -638,11 +638,13 @@ describe("sandbox API", () => {
     const previousCommandLog = process.env.SBX_FAKE_COMMAND_LOG;
     const previousInstanceId = process.env.SBX_FAKE_INSTANCE_ID;
     const previousHeartbeatMode = process.env.SBX_FAKE_HEARTBEAT_MODE;
+    const previousCommandTimeout = process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS;
     process.env.OUROBOROS_ENABLE_SBX_SANDBOX = "1";
     process.env.OUROBOROS_SBX_BIN = fakeSbx;
     process.env.SBX_FAKE_COMMAND_LOG = commandLog;
     process.env.SBX_FAKE_INSTANCE_ID = "sandbox-real-adapter-missing-heartbeat";
     process.env.SBX_FAKE_HEARTBEAT_MODE = "missing";
+    process.env.OUROBOROS_SBX_COMMAND_TIMEOUT_MS = "1000";
     try {
       const server = await buildServer({ store: new LocalStore(tmpDir) });
       const start = await startSandboxCommand(server, {
@@ -667,6 +669,7 @@ describe("sandbox API", () => {
       restoreEnv("SBX_FAKE_COMMAND_LOG", previousCommandLog);
       restoreEnv("SBX_FAKE_INSTANCE_ID", previousInstanceId);
       restoreEnv("SBX_FAKE_HEARTBEAT_MODE", previousHeartbeatMode);
+      restoreEnv("OUROBOROS_SBX_COMMAND_TIMEOUT_MS", previousCommandTimeout);
     }
   });
 
