@@ -2255,7 +2255,25 @@ async function ensureTradingRunSandbox(input: {
     existing.lifecycle_status === "running" &&
     linked?.sandbox_id === existing.sandbox_id
   ) {
-    return existing;
+    const observations = await input.sandboxAdapter.getArtifactInstanceStatus(existing);
+    if (
+      observations.lifecycle_status ||
+      observations.logs?.length ||
+      observations.heartbeats?.length ||
+      observations.command_evidence?.length
+    ) {
+      await input.store.recordSandboxObservations(existing.sandbox_id, observations);
+    }
+    const verified = await input.store.getSandbox(existing.sandbox_id) ?? existing;
+    if (
+      verified.lifecycle_status === "running" &&
+      (
+        observations.lifecycle_status === "running" ||
+        Boolean(observations.heartbeats?.length)
+      )
+    ) {
+      return verified;
+    }
   }
 
   const adapterResult = await input.sandboxAdapter.startArtifactInstance({

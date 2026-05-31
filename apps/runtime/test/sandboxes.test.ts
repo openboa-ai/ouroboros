@@ -1,4 +1,5 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { LocalStore } from "@ouroboros/local-store";
@@ -241,7 +242,7 @@ describe("sandbox API", () => {
     }
     const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
     const instanceId = "sandbox-deterministic-replaced-session";
-    const pidFile = path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${instanceId}.pid`);
+    const pidFile = sandboxPidFileForTest(instanceId);
     const startInput = {
       artifact,
       instance_id: instanceId,
@@ -266,6 +267,14 @@ describe("sandbox API", () => {
     } finally {
       await adapter.stopArtifactInstance(activeInstance);
     }
+  });
+
+  it("uses collision-resistant PID files for long sandbox ids with the same prefix", () => {
+    const sharedPrefix = `sandbox-${"same-prefix-".repeat(8)}`;
+    const first = sandboxPidFileForTest(`${sharedPrefix}first`);
+    const second = sandboxPidFileForTest(`${sharedPrefix}second`);
+
+    expect(path.basename(first)).not.toBe(path.basename(second));
   });
 
   it("marks a generated long-running paper session as failed when it exits before startup logs", async () => {
@@ -307,7 +316,7 @@ describe("sandbox API", () => {
     expect(started.command_evidence[0]?.exit_code).toBe(1);
     expect(started.logs).toHaveLength(0);
     await expect(readFile(
-      path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${instanceId}.pid`),
+      sandboxPidFileForTest(instanceId),
       "utf8"
     )).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -334,7 +343,7 @@ describe("sandbox API", () => {
     try {
       expect(started.instance.lifecycle_status).toBe("running");
       const pid = Number((await readFile(
-        path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${instanceId}.pid`),
+        sandboxPidFileForTest(instanceId),
         "utf8"
       )).trim());
       process.kill(pid, "SIGKILL");
@@ -935,6 +944,15 @@ function isPidAlive(pid: number): boolean {
     }
     throw error;
   }
+}
+
+function sandboxPidFileForTest(instanceId: string): string {
+  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
+  return path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${safeRuntimeIdForTest(instanceId)}-${digest}.pid`);
+}
+
+function safeRuntimeIdForTest(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "runtime";
 }
 
 function helperSpawningSandboxScript(helperPidFile: string): string {

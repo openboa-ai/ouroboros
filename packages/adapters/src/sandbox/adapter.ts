@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1040,7 +1041,12 @@ function sandboxHeartbeatFile(instanceId: string): string {
 }
 
 function sandboxPidFile(instanceId: string): string {
-  return path.join(REPO_ROOT, ".ouroboros", "sandbox-pids", `${safeRuntimeId(instanceId)}.pid`);
+  return path.join(REPO_ROOT, ".ouroboros", "sandbox-pids", `${sandboxPidFileKey(instanceId)}.pid`);
+}
+
+function sandboxPidFileKey(instanceId: string): string {
+  const digest = createHash("sha256").update(instanceId).digest("hex").slice(0, 12);
+  return `${safeRuntimeId(instanceId)}-${digest}`;
 }
 
 function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string {
