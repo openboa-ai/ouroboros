@@ -1090,7 +1090,7 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void>
 }
 
 function waitForChildExit(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null) {
+  if (hasChildExited(child)) {
     return Promise.resolve();
   }
   return new Promise((resolve) => {
@@ -1103,7 +1103,17 @@ function waitForChildExit(child: ReturnType<typeof spawn>, timeoutMs: number): P
 }
 
 function childLifecycleStatus(child: ReturnType<typeof spawn>): SandboxLifecycleStatus {
-  return child.exitCode === null ? "running" : child.exitCode === 0 ? "stopped" : "failed";
+  if (child.exitCode !== null) {
+    return child.exitCode === 0 ? "stopped" : "failed";
+  }
+  if (child.signalCode !== null) {
+    return child.signalCode === "SIGTERM" ? "stopped" : "failed";
+  }
+  return "running";
+}
+
+function hasChildExited(child: ReturnType<typeof spawn>): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
 }
 
 function sleep(ms: number): Promise<void> {

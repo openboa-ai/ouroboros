@@ -213,6 +213,48 @@ describe("sandbox API", () => {
     }
   });
 
+  it("does not report an externally killed long-running paper session as running", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const instanceId = "sandbox-deterministic-signal-exit";
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: instanceId,
+      sandbox_name: "ouro-deterministic-signal-exit",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-signal-exit",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const pid = Number((await readFile(
+        path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${instanceId}.pid`),
+        "utf8"
+      )).trim());
+      process.kill(pid, "SIGKILL");
+
+      let lifecycleStatus = "running";
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const status = await adapter.getArtifactInstanceStatus(started.instance);
+        lifecycleStatus = status.lifecycle_status ?? lifecycleStatus;
+        if (lifecycleStatus !== "running") {
+          break;
+        }
+        await sleep(25);
+      }
+      expect(lifecycleStatus).toBe("failed");
+    } finally {
+      await adapter.stopArtifactInstance(started.instance);
+    }
+  });
+
   it("executes fixture SystemCode when the runtime process starts from apps/runtime", async () => {
     const originalCwd = process.cwd();
     process.chdir(path.join(originalCwd, "apps/runtime"));
