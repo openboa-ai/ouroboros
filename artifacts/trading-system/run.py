@@ -77,6 +77,16 @@ def build_order_request(market, account):
     }
 
 
+def build_rejected_order_request():
+    return {
+        "symbol": "BTCUSDT",
+        "side": "buy",
+        "quantity": 0,
+        "order_type": "market",
+        "reason": "explicit rejected paper order request for Gateway risk validation",
+    }
+
+
 def append_line(line, log_path):
     print(line, flush=True)
     if log_path is not None:
@@ -128,24 +138,32 @@ def run_replay(args):
 def run_paper(args):
     if not args.instance_id:
         raise SystemExit("--instance-id is required when --output-events is not set")
-    base_url = os.environ["TRADING_API_BASE_URL"]
-    market = get_json(base_url, "/market/snapshot")
-    account = get_json(base_url, "/account/state")
-    intent = build_order_request(market, account)
-    validation = post_json(base_url, "/orders/validate", intent)
     log_path = Path(args.log_file) if args.log_file else None
+    if args.paper_order_request == "rejected":
+        intent = build_rejected_order_request()
+        validation = {"reason": "explicit_rejected_paper_order_request"}
+    else:
+        base_url = os.environ["TRADING_API_BASE_URL"]
+        market = get_json(base_url, "/market/snapshot")
+        account = get_json(base_url, "/account/state")
+        intent = build_order_request(market, account)
+        validation = post_json(base_url, "/orders/validate", intent)
     append_line(json.dumps(paper_event_from_intent(args, intent, validation), sort_keys=True), log_path)
     for tick in range(1, args.ticks + 1):
         append_line(json.dumps({
-            "event": "no_action",
-            "event_id": f"{args.instance_id}:no-action:{tick:04d}",
+            "event": "runtime_heartbeat",
             "instance_id": args.instance_id,
+            "tick": tick,
             "at": args.start_at,
-            "authority_status": "trace_only",
-            "reason": "paper runtime emitted no fresh order after initial decision",
         }, sort_keys=True), log_path)
         if tick < args.ticks:
             time.sleep(args.interval_ms / 1000)
+    append_line(json.dumps({
+        "event": "runtime_stopped",
+        "instance_id": args.instance_id,
+        "tick": args.ticks,
+        "at": args.start_at,
+    }, sort_keys=True), log_path)
     return 0
 
 
