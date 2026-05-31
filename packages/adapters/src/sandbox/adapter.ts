@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -359,6 +359,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     });
     child.unref();
     if (child.pid !== undefined) {
+      await mkdir(path.dirname(pidFile), { recursive: true });
       await writeFile(pidFile, String(child.pid), "utf8");
     }
     this.sessions.set(input.instance_id, { child, logFile, heartbeatFile, pidFile });
@@ -963,7 +964,7 @@ function sandboxHeartbeatFile(instanceId: string): string {
 }
 
 function sandboxPidFile(instanceId: string): string {
-  return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.pid`;
+  return path.join(REPO_ROOT, ".ouroboros", "sandbox-pids", `${safeRuntimeId(instanceId)}.pid`);
 }
 
 function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string {
