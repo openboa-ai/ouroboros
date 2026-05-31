@@ -4,18 +4,14 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import type {
-  CandidateInspectReadModel,
   CandidateSummaryReadModel,
   ReplayRunEvidenceReadModel,
   EvaluationExecutionMode,
-  PaperTradingEvaluationRecord,
   PrivateReadinessPolicyGateInput,
   PrivateReadinessPostureWriteInput,
   Ref,
   RunControlAuditInput,
   SandboxAdapterKind,
-  SandboxDetailReadModel,
-  TradingRuntimeEnvironment,
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
@@ -26,9 +22,7 @@ import type { EvaluationProviderAdapter } from "@ouroboros/application/ports/pro
 import {
   DeterministicSandboxAdapter,
   DockerSandboxesSbxSandboxAdapter,
-  type PaperOrderRequestFixture,
-  type SandboxAdapter,
-  type SandboxAdapterObservationResult
+  type SandboxAdapter
 } from "@ouroboros/adapters/sandbox/adapter";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
@@ -50,14 +44,11 @@ import {
 } from "@ouroboros/application/trading/candidate/run-replay";
 import {
   createGatewayRuntimeBinding,
-  LIVE_GATEWAY_DISABLED_REASON,
-  startPaperTradingApiProvider,
   type GatewayRuntimeBinding,
   type PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import { loadTradingGatewayEnvironment } from "@ouroboros/application/trading/gateway/environment";
 import type {
-  AccountState,
   ReplayTradingApiProviderSession,
   TradingArtifactRunnerKind,
   TradingResearchAgentAdapter
@@ -85,14 +76,17 @@ import {
   type BinancePublicMarketDataClient
 } from "@ouroboros/adapters/binance/public-market-adapter";
 import {
-  recordPaperTradingEvaluationObservation,
-  tradingRunLifecycleAuditInput
-} from "@ouroboros/application/trading/paper/observation";
+  PaperTradingCommandService,
+  paperTradingApiProviderNetworkOptions,
+  tradingRunResponse
+} from "@ouroboros/application/trading/paper/commands";
 import { safeId } from "@ouroboros/application/safe-id";
 import { PaperTradingEvaluationRunner } from "@ouroboros/application/trading/paper/evaluation-runner";
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
+
+export { paperTradingApiProviderNetworkOptions };
 
 export interface BuildServerOptions {
   store?: LocalStore;
@@ -119,30 +113,11 @@ export interface BuildServerOptions {
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
 }
 
-export function paperTradingApiProviderNetworkOptions(input: {
-  sandboxHost?: string;
-}): Pick<PaperTradingApiProviderOptions, "listen_host" | "sandbox_host"> {
-  const sandboxHost = input.sandboxHost?.trim() || undefined;
-  return sandboxHost
-    ? {
-        listen_host: "0.0.0.0",
-        sandbox_host: sandboxHost
-      }
-    : {};
-}
-
 interface CreateEvaluationRunBody {
   candidate_version_id?: string;
   idempotency_key?: string;
   stage?: string;
   execution_mode?: EvaluationExecutionMode;
-}
-
-interface StartTradingRunBody {
-  paper_order_request?: string;
-  runtime_environment?: string;
-  research_agent?: string;
-  research_iterations?: number;
 }
 
 interface RecordRunControlBody {
@@ -240,8 +215,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   });
   const paperTradingEvaluationRunner = new PaperTradingEvaluationRunner();
   const paperTradingEvaluationIntervalMs = options.paperTradingEvaluationIntervalMs ?? 60_000;
-  const paperTradingApiProviderSessions = new Map<string, ReplayTradingApiProviderSession>();
-  const paperTradingApiProviderFactory = options.paperTradingApiProviderFactory ?? startPaperTradingApiProvider;
   const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
     ?? loadTradingResearchRuntimeConfig();
   const tradingResearchAgentFactory = options.tradingResearchAgentFactory
@@ -270,6 +243,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     docker_sandboxes_sbx: providedSandboxAdapters?.docker_sandboxes_sbx
       ?? new DockerSandboxesSbxSandboxAdapter()
   };
+  const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
+  const paperTradingCommandService = new PaperTradingCommandService({
+    store,
+    sandboxAdapters,
+    marketData: gatewayMarketDataPort,
+    tradingGatewayEnvironment,
+    runner: paperTradingEvaluationRunner,
+    intervalMs: paperTradingEvaluationIntervalMs,
+    apiProviderFactory: options.paperTradingApiProviderFactory,
+    apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
+    logger: console
+  });
   await store.initialize();
   const persistedResearcherProvider = await store.getResearcherProviderSelection();
   if (
@@ -283,15 +268,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     logger: false
   });
   server.addHook("onClose", async () => {
-    for (const tradingRunId of [...paperTradingApiProviderSessions.keys()]) {
-      paperTradingEvaluationRunner.stop(tradingRunId);
-      await stopLinkedTradingRunSandbox({
-        store,
-        sandboxAdapters,
-        tradingRunId
-      }).catch(() => undefined);
-      await stopPaperTradingApiProviderSession(tradingRunId);
-    }
+    await paperTradingCommandService.stopAllSessions();
   });
 
   await server.register(cors, {
@@ -497,419 +474,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
       throw error;
     }
-  }
-
-  async function startTradingRunCommand(
-    candidateId: string,
-    payload: unknown
-  ): Promise<RuntimeControllerResponse> {
-    const body = payload as StartTradingRunBody | undefined;
-    const runtimeEnvironment = startRuntimeEnvironment(body);
-    if (!runtimeEnvironment) {
-      return {
-        statusCode: 400,
-        body: {
-          error: "invalid_runtime_environment",
-          allowed_values: ["paper", "live"]
-        }
-      };
-    }
-    const gatewayRuntimeBinding = createGatewayRuntimeBinding({
-      environment: runtimeEnvironment,
-      marketData: gatewayMarketDataPort
-    });
-    if (gatewayRuntimeBinding.status === "disabled") {
-      return {
-        statusCode: 422,
-        body: {
-          error: "gateway_runtime_binding_disabled",
-          reason: gatewayRuntimeBinding.disabled_reason ?? LIVE_GATEWAY_DISABLED_REASON,
-          runtime_environment: gatewayRuntimeBinding.environment
-        }
-      };
-    }
-
-    const paperOrderRequest = startPaperOrderRequest(body);
-    if (!paperOrderRequest) {
-      return {
-        statusCode: 400,
-        body: {
-          error: "invalid_paper_order_request",
-          allowed_values: ["valid", "rejected"]
-        }
-      };
-    }
-
-    const candidate = await store.getCandidate(candidateId);
-    if (!candidate) {
-      return {
-        statusCode: 404,
-        body: {
-          error: "trading_system_not_found",
-          system_id: candidateId
-        }
-      };
-    }
-
-    const candidateVersionId = candidate.candidate_version.candidate_version_id;
-    const tradingRunId = candidate.runtime.ref.id;
-    const existingEvaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
-    if (existingEvaluation?.status === "running") {
-      if (!paperTradingEvaluationRunner.active(tradingRunId)) {
-        const tradingApiBaseUrl = await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-        await restartTradingRunSandboxWithProvider({
-          candidate,
-          tradingRunId,
-          candidateVersionId,
-          paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-          tradingApiBaseUrl
-        });
-        const resumedEvaluation = await recordPaperTradingEvaluationObservation({
-          store,
-          tradingRunId,
-          gatewayRuntimeBinding,
-          appendLedger: true,
-          intervalMs: paperTradingEvaluationIntervalMs,
-          refreshCandidate: refreshPaperTradingSandbox
-        });
-        if (resumedEvaluation.evaluation.status === "running") {
-          schedulePaperTradingEvaluation(tradingRunId);
-        } else {
-          await stopFailedPaperTradingSession(tradingRunId);
-        }
-        const response = await tradingRunResponse(store, tradingRunId);
-        return {
-          statusCode: 200,
-          body: {
-            status: "resumed",
-            ...response,
-            paper_trading_evaluation: resumedEvaluation.evaluation,
-            paper_trading_observation: resumedEvaluation.observation,
-            runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
-          }
-        };
-      }
-      await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-      schedulePaperTradingEvaluation(tradingRunId);
-      const response = await tradingRunResponse(store, tradingRunId);
-      return {
-        statusCode: 200,
-        body: {
-          status: "already_running",
-          ...response,
-          paper_trading_evaluation: existingEvaluation,
-          runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
-        }
-      };
-    }
-    try {
-      const tradingApiBaseUrl = await ensurePaperTradingApiProviderSession(
-        tradingRunId,
-        gatewayRuntimeBinding
-      );
-      const outcome = await startFixtureTradingRun({
-        store,
-        sandboxAdapter: sandboxAdapters.deterministic_test,
-        candidate,
-        systemId: candidateId,
-        tradingRunId,
-        candidateVersionId,
-        paperOrderRequest,
-        tradingApiBaseUrl,
-        tradingGatewayEnvironment,
-        gatewayRuntimeBinding
-      });
-      const paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
-        store,
-        tradingRunId,
-        gatewayRuntimeBinding,
-        appendLedger: true,
-        intervalMs: paperTradingEvaluationIntervalMs,
-        refreshCandidate: refreshPaperTradingSandbox
-      });
-      if (paperTradingEvaluation.evaluation.status === "running") {
-        schedulePaperTradingEvaluation(tradingRunId);
-      } else {
-        await stopFailedPaperTradingSession(tradingRunId);
-      }
-      const response = await tradingRunResponse(store, tradingRunId);
-
-      return {
-        statusCode: 201,
-        body: {
-          ...outcome,
-          ...response,
-          order_request: response?.ledger?.latest_order_request,
-          gateway_result: response?.ledger?.latest_gateway_result,
-          execution_result: response?.ledger?.latest_execution_result,
-          paper_trading_evaluation: paperTradingEvaluation.evaluation,
-          paper_trading_observation: paperTradingEvaluation.observation,
-          runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
-        }
-      };
-    } catch (error) {
-      await cleanupFailedTradingRunStart(tradingRunId);
-      if (error instanceof LocalStoreError) {
-        return {
-          statusCode: ledgerStatusCode(error.code),
-          body: {
-            error: "trading_run_failed",
-            reason: error.code,
-            system_id: candidateId,
-            candidate_version_id: candidateVersionId
-          }
-        };
-      }
-      throw error;
-    }
-  }
-
-  async function observeTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
-    const candidate = await store.getCandidateForTradingRun(tradingRunId);
-    let paperTradingEvaluation: Awaited<ReturnType<typeof recordPaperTradingEvaluationObservation>> | undefined;
-    if (candidate?.runtime.runtime_lifecycle_status === "running") {
-      const gatewayRuntimeBinding = createGatewayRuntimeBinding({
-        environment: "paper",
-        marketData: gatewayMarketDataPort
-      });
-      const providerWasActive = paperTradingApiProviderSessions.has(tradingRunId);
-      const tradingApiBaseUrl = await ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-      if (!providerWasActive) {
-        await restartTradingRunSandboxWithProvider({
-          candidate,
-          tradingRunId,
-          candidateVersionId: candidate.candidate_version.candidate_version_id,
-          paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-          tradingApiBaseUrl
-        });
-      }
-      paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
-        store,
-        tradingRunId,
-        gatewayRuntimeBinding,
-        appendLedger: true,
-        intervalMs: paperTradingEvaluationIntervalMs,
-        refreshCandidate: refreshPaperTradingSandbox
-      });
-      if (paperTradingEvaluation.evaluation.status === "failed") {
-        await stopFailedPaperTradingSession(tradingRunId);
-      }
-    }
-
-    const response = await tradingRunResponse(store, tradingRunId);
-    if (!response) {
-      return {
-        statusCode: 404,
-        body: {
-          error: "trading_run_not_found",
-          trading_run_id: tradingRunId
-        }
-      };
-    }
-    return {
-      statusCode: 200,
-      body: {
-        status: "observed",
-        ...response,
-        paper_trading_evaluation: paperTradingEvaluation?.evaluation,
-        paper_trading_observation: paperTradingEvaluation?.observation,
-        runner_status: paperTradingEvaluationRunner.active(tradingRunId) ? "running" : "stopped"
-      }
-    };
-  }
-
-  function schedulePaperTradingEvaluation(tradingRunId: string): void {
-    paperTradingEvaluationRunner.start({
-      tradingRunId,
-      intervalMs: paperTradingEvaluationIntervalMs,
-      observe: async () => {
-        const candidate = await store.getCandidateForTradingRun(tradingRunId);
-        if (candidate?.runtime.runtime_lifecycle_status !== "running") {
-          paperTradingEvaluationRunner.stop(tradingRunId);
-          await stopPaperTradingApiProviderSession(tradingRunId);
-          return;
-        }
-        const result = await recordPaperTradingEvaluationObservation({
-          store,
-          tradingRunId,
-          gatewayRuntimeBinding: createGatewayRuntimeBinding({
-            environment: "paper",
-            marketData: gatewayMarketDataPort
-          }),
-          appendLedger: true,
-          intervalMs: paperTradingEvaluationIntervalMs,
-          refreshCandidate: refreshPaperTradingSandbox
-        });
-        if (result.evaluation.status === "failed") {
-          await stopFailedPaperTradingSession(tradingRunId);
-        }
-      }
-    });
-  }
-
-  async function stopFailedPaperTradingSession(tradingRunId: string): Promise<void> {
-    paperTradingEvaluationRunner.stop(tradingRunId);
-    await stopPaperTradingApiProviderSession(tradingRunId);
-    await stopLinkedTradingRunSandbox({
-      store,
-      sandboxAdapters,
-      tradingRunId
-    });
-  }
-
-  async function cleanupFailedTradingRunStart(tradingRunId: string): Promise<void> {
-    paperTradingEvaluationRunner.stop(tradingRunId);
-    await Promise.allSettled([
-      stopPaperTradingApiProviderSession(tradingRunId),
-      stopLinkedTradingRunSandbox({
-        store,
-        sandboxAdapters,
-        tradingRunId
-      })
-    ]);
-  }
-
-  async function restartTradingRunSandboxWithProvider(input: {
-    candidate: CandidateInspectReadModel;
-    tradingRunId: string;
-    candidateVersionId: string;
-    paperOrderRequest: PaperOrderRequestFixture;
-    tradingApiBaseUrl: string;
-  }): Promise<void> {
-    await stopLinkedTradingRunSandbox({
-      store,
-      sandboxAdapters,
-      tradingRunId: input.tradingRunId
-    });
-    await ensureTradingRunSandbox({
-      store,
-      sandboxAdapter: sandboxAdapters.deterministic_test,
-      candidate: input.candidate,
-      tradingRunId: input.tradingRunId,
-      candidateVersionId: input.candidateVersionId,
-      paperOrderRequest: input.paperOrderRequest,
-      tradingApiBaseUrl: input.tradingApiBaseUrl
-    });
-  }
-
-  async function ensurePaperTradingApiProviderSession(
-    tradingRunId: string,
-    gatewayRuntimeBinding: GatewayRuntimeBinding
-  ): Promise<string> {
-    const existing = paperTradingApiProviderSessions.get(tradingRunId);
-    if (existing) {
-      return existing.sandbox_base_url ?? existing.base_url;
-    }
-    const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
-    const provider = await paperTradingApiProviderFactory(gatewayRuntimeBinding, {
-      ...paperTradingApiProviderNetworkOptions({ sandboxHost }),
-      readAccountState: () => latestPaperAccountState(tradingRunId, gatewayRuntimeBinding)
-    });
-    paperTradingApiProviderSessions.set(tradingRunId, provider);
-    return provider.sandbox_base_url ?? provider.base_url;
-  }
-
-  async function stopPaperTradingApiProviderSession(tradingRunId: string): Promise<void> {
-    const provider = paperTradingApiProviderSessions.get(tradingRunId);
-    if (!provider) {
-      return;
-    }
-    paperTradingApiProviderSessions.delete(tradingRunId);
-    await provider.close();
-  }
-
-  async function latestPaperAccountState(
-    tradingRunId: string,
-    gatewayRuntimeBinding: GatewayRuntimeBinding
-  ): Promise<AccountState> {
-    const fallback = gatewayRuntimeBinding.account.provider_kind === "fake_paper_account"
-      ? gatewayRuntimeBinding.account.state
-      : {
-          equity: 10_000,
-          max_position_notional: 350,
-          max_risk_fraction: 0.03,
-          target_risk_fraction: 0.02
-        };
-    const evaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
-    const equity = parseFiniteAccountNumber(evaluation?.paper_account_snapshot?.equity_usdt);
-    return {
-      ...fallback,
-      equity: equity ?? fallback.equity
-    };
-  }
-
-  async function refreshPaperTradingSandbox(
-    candidate: CandidateInspectReadModel
-  ): Promise<CandidateInspectReadModel> {
-    const sandbox = candidate.runtime.sandbox;
-    if (!sandbox || !shouldRefreshSandboxStatus(sandbox.lifecycle_status)) {
-      return candidate;
-    }
-    const observations = await sandboxAdapters[sandbox.adapter_kind]
-      .getArtifactInstanceLogs(sandbox);
-    if (
-      observations.lifecycle_status ||
-      observations.logs?.length ||
-      observations.heartbeats?.length ||
-      observations.command_evidence?.length
-    ) {
-      await store.recordSandboxObservations(sandbox.sandbox_id, observations);
-      return await store.getCandidateForTradingRun(candidate.runtime.ref.id) ?? candidate;
-    }
-    return candidate;
-  }
-
-  async function stopTradingRunCommand(tradingRunId: string): Promise<RuntimeControllerResponse> {
-    const candidate = await store.getCandidateForTradingRun(tradingRunId);
-    if (!candidate) {
-      return {
-        statusCode: 404,
-        body: {
-          error: "trading_run_not_found",
-          trading_run_id: tradingRunId
-        }
-      };
-    }
-    const candidateVersionId = candidate.candidate_version.candidate_version_id;
-    await store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-      idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
-      candidateId: candidate.candidate_id,
-      candidateVersionId,
-      tradingRunId,
-      action: "stop",
-      lifecycleStatus: "stopped",
-      actorId: "runtime-api",
-      reasonSummary: "Operator requested trading run stop.",
-      message: "Trading run stop recorded."
-    }));
-    await stopLinkedTradingRunSandbox({
-      store,
-      sandboxAdapters,
-      tradingRunId
-    });
-    paperTradingEvaluationRunner.stop(tradingRunId);
-    await stopPaperTradingApiProviderSession(tradingRunId);
-    const existingEvaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
-    const stoppedAt = new Date().toISOString();
-    const stoppedEvaluation = existingEvaluation
-      ? await store.recordPaperTradingEvaluation({
-          ...existingEvaluation,
-          status: "stopped",
-          next_observation_at: undefined,
-          stopped_at: stoppedAt
-        })
-      : undefined;
-
-    const response = await tradingRunResponse(store, tradingRunId);
-    return {
-      statusCode: 201,
-      body: {
-        status: "stopped",
-        ...response,
-        paper_trading_evaluation: stoppedEvaluation,
-        runner_status: "stopped"
-      }
-    };
   }
 
   async function recordRunControlCommand(
@@ -1516,7 +1080,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     paperTradingEvaluationRunner,
     agentProfileExecFile: options.agentProfileExecFile,
     paperEvidenceAdapter: {
-      run: async (candidateId) => startTradingRunCommand(candidateId, {})
+      run: async (candidateId) => paperTradingCommandService.start(candidateId, {})
     },
     mutationPort: {
       run: async (commandKind, payload) => {
@@ -1527,13 +1091,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           return runCandidateReplayCommand(commandPayloadId(payload, "candidate_id"), payload);
         }
         if (commandKind === "trading_run.start") {
-          return startTradingRunCommand(commandPayloadId(payload, "candidate_id"), payload);
+          return paperTradingCommandService.start(commandPayloadId(payload, "candidate_id"), payload);
         }
         if (commandKind === "trading_run.observe") {
-          return observeTradingRunCommand(commandPayloadId(payload, "trading_run_id"));
+          return paperTradingCommandService.observe(commandPayloadId(payload, "trading_run_id"));
         }
         if (commandKind === "trading_run.stop") {
-          return stopTradingRunCommand(commandPayloadId(payload, "trading_run_id"));
+          return paperTradingCommandService.stop(commandPayloadId(payload, "trading_run_id"));
         }
         if (commandKind === "run_control.record") {
           return recordRunControlCommand(commandPayloadId(payload, "candidate_id"), payload);
@@ -1592,183 +1156,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   return server;
 }
 
-async function tradingRunResponse(store: LocalStore, tradingRunId: string) {
-  const tradingRun = await store.getTradingRun(tradingRunId);
-  if (!tradingRun) {
-    return undefined;
-  }
-  const candidate = await store.getCandidateForTradingRun(tradingRunId);
-
-  return {
-    trading_run_id: tradingRunId,
-    trading_run: {
-      ref: { record_kind: "trading_run", id: tradingRunId },
-      stage: tradingRun.stage_binding_profile,
-      lifecycle_status: tradingRun.runtime_lifecycle_status,
-      authority_status: tradingRun.authority_status
-    },
-    trading_system: candidate?.trading_system,
-    ledger: candidate?.ledger,
-    run_control: candidate?.runtime.run_control,
-    sandbox: candidate?.runtime.sandbox,
-    transcript: candidate?.runtime.transcript
-  };
-}
-
 function commandPayloadId(payload: Record<string, unknown> | undefined, key: string): string {
   const value = payload?.[key];
   if (typeof value === "string" && value.trim()) {
     return value;
   }
   throw new Error(`missing_command_payload_${key}`);
-}
-
-async function startFixtureTradingRun(input: {
-  store: LocalStore;
-  sandboxAdapter: SandboxAdapter;
-  candidate: CandidateInspectReadModel;
-  systemId: string;
-  tradingRunId: string;
-  candidateVersionId: string;
-  paperOrderRequest: PaperOrderRequestFixture;
-  tradingApiBaseUrl: string;
-  tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
-  gatewayRuntimeBinding: GatewayRuntimeBinding;
-}) {
-  await ensureTradingRunSandbox({
-    store: input.store,
-    sandboxAdapter: input.sandboxAdapter,
-    candidate: input.candidate,
-    tradingRunId: input.tradingRunId,
-    candidateVersionId: input.candidateVersionId,
-    paperOrderRequest: input.paperOrderRequest,
-    tradingApiBaseUrl: input.tradingApiBaseUrl
-  });
-  await input.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
-    idempotencyKey: `trading-run-start:${input.paperOrderRequest}:${input.tradingRunId}:${input.candidateVersionId}`,
-    candidateId: input.systemId,
-    candidateVersionId: input.candidateVersionId,
-    tradingRunId: input.tradingRunId,
-    action: "start",
-    lifecycleStatus: "running",
-    actorId: "runtime-api",
-    reasonSummary: "Operator requested trading run start.",
-    message: "Trading run start recorded."
-  }));
-
-  const response = await tradingRunResponse(input.store, input.tradingRunId);
-
-  return {
-    status: "started",
-    ...response,
-    trading_gateway_environment: input.tradingGatewayEnvironment
-  } as const;
-}
-
-async function ensureTradingRunSandbox(input: {
-  store: LocalStore;
-  sandboxAdapter: SandboxAdapter;
-  candidate: CandidateInspectReadModel;
-  tradingRunId: string;
-  candidateVersionId: string;
-  paperOrderRequest: PaperOrderRequestFixture;
-  tradingApiBaseUrl?: string;
-}): Promise<SandboxDetailReadModel> {
-  const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
-  const artifact = await input.store.getSystemCode(systemCodeId);
-  if (!artifact) {
-    throw new LocalStoreError(
-      "system_code_not_found",
-      `system code ${systemCodeId} not found`,
-      { system_code_id: systemCodeId }
-    );
-  }
-
-  const idempotencyKeyParts = [
-    "trading-run-sandbox",
-    input.paperOrderRequest,
-    input.tradingRunId,
-    input.candidateVersionId
-  ];
-  const idempotencyKey = idempotencyKeyParts.join(":");
-  const sandboxId = `sandbox-${safeRouteId(idempotencyKey)}`;
-  const existing = await input.store.getSandbox(sandboxId);
-  const linked = await linkedTradingRunSandbox(input.store, input.tradingRunId);
-  if (
-    existing &&
-    existing.lifecycle_status === "running" &&
-    linked?.sandbox_id === existing.sandbox_id
-  ) {
-    const observations = await input.sandboxAdapter.getArtifactInstanceStatus(existing);
-    if (
-      observations.lifecycle_status ||
-      observations.logs?.length ||
-      observations.heartbeats?.length ||
-      observations.command_evidence?.length
-    ) {
-      await input.store.recordSandboxObservations(existing.sandbox_id, observations);
-    }
-    const verified = await input.store.getSandbox(existing.sandbox_id) ?? existing;
-    if (
-      verified.lifecycle_status === "running" &&
-      (
-        observations.lifecycle_status === "running" ||
-        hasFreshSandboxHeartbeat(existing, observations)
-      )
-    ) {
-      return verified;
-    }
-    if (verified.lifecycle_status !== "stopped" && verified.lifecycle_status !== "removed") {
-      const stopObservations = await input.sandboxAdapter.stopArtifactInstance(verified);
-      await input.store.stopSandbox(
-        {
-          sandbox_id: verified.sandbox_id,
-          stopped_at: stopObservations.stopped_at,
-          removed_at: stopObservations.removed_at
-        },
-        stopObservations
-      );
-    }
-  }
-
-  const adapterResult = await input.sandboxAdapter.startArtifactInstance({
-    artifact,
-    instance_id: sandboxId,
-    sandbox_name: `ouro-trading-run-${safeRouteId(input.tradingRunId).slice(0, 34)}-${input.paperOrderRequest}`,
-    runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
-    sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
-    created_at: existing?.created_at ?? new Date().toISOString(),
-    interval_ms: 1_000,
-    paper_order_request: input.paperOrderRequest,
-    env: input.tradingApiBaseUrl
-      ? { TRADING_API_BASE_URL: input.tradingApiBaseUrl }
-      : undefined
-  });
-  return (await input.store.recordSandboxStart(adapterResult)).sandbox;
-}
-
-function startPaperOrderRequest(body: StartTradingRunBody | undefined): PaperOrderRequestFixture | undefined {
-  if (!body?.paper_order_request) {
-    return "valid";
-  }
-  if (body.paper_order_request === "valid" || body.paper_order_request === "rejected") {
-    return body.paper_order_request;
-  }
-  return undefined;
-}
-
-function paperOrderRequestFromCandidateRuntime(candidate: CandidateInspectReadModel): PaperOrderRequestFixture {
-  return candidate.runtime.sandbox?.sandbox_name?.endsWith("-rejected") ? "rejected" : "valid";
-}
-
-function startRuntimeEnvironment(body: StartTradingRunBody | undefined): TradingRuntimeEnvironment | undefined {
-  if (!body?.runtime_environment) {
-    return "paper";
-  }
-  if (body.runtime_environment === "paper" || body.runtime_environment === "live") {
-    return body.runtime_environment;
-  }
-  return undefined;
 }
 
 async function refreshGatewayPublicMarketSurface(input: {
@@ -1787,71 +1180,10 @@ async function refreshGatewayPublicMarketSurface(input: {
   }
 }
 
-function parseFiniteAccountNumber(value: unknown): number | undefined {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return undefined;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-async function stopLinkedTradingRunSandbox(input: {
-  store: LocalStore;
-  sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter>;
-  tradingRunId: string;
-}): Promise<SandboxDetailReadModel | undefined> {
-  const sandbox = await linkedTradingRunSandbox(input.store, input.tradingRunId);
-  if (!sandbox || sandbox.lifecycle_status === "stopped" || sandbox.lifecycle_status === "removed") {
-    return sandbox;
-  }
-
-  const observations = await input.sandboxAdapters[sandbox.adapter_kind]
-    .stopArtifactInstance(sandbox);
-  return (await input.store.stopSandbox(
-    {
-      sandbox_id: sandbox.sandbox_id,
-      stopped_at: observations.stopped_at,
-      removed_at: observations.removed_at
-    },
-    observations
-  )).sandbox;
-}
-
-async function linkedTradingRunSandbox(
-  store: LocalStore,
-  tradingRunId: string
-): Promise<SandboxDetailReadModel | undefined> {
-  const tradingRun = await store.getTradingRun(tradingRunId);
-  if (!tradingRun?.sandbox_ref) {
-    return undefined;
-  }
-  return store.getSandbox(tradingRun.sandbox_ref.id);
-}
-
-function hasFreshSandboxHeartbeat(
-  existing: SandboxDetailReadModel,
-  observations: SandboxAdapterObservationResult
-): boolean {
-  const previousHeartbeatAt = existing.last_heartbeat_at ? Date.parse(existing.last_heartbeat_at) : undefined;
-  return observations.heartbeats?.some((heartbeat) => {
-    const observedAt = Date.parse(heartbeat.observed_at);
-    return Number.isFinite(observedAt) &&
-      (
-        previousHeartbeatAt === undefined ||
-        !Number.isFinite(previousHeartbeatAt) ||
-        observedAt > previousHeartbeatAt
-      );
-  }) ?? false;
-}
-
 function safeRouteId(value: string): string {
   const prefix = safeId(value, { maxLength: 72 });
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
   return `${prefix}-${digest}`;
-}
-
-function ledgerStatusCode(reason: string): 404 | 422 {
-  return reason === "candidate_not_found" ? 404 : 422;
 }
 
 function isRunControlRequestComplete(

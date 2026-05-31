@@ -95,9 +95,10 @@ the latest market snapshot, active runner state, newly emitted orders, no-order 
 and Ledger evidence. They must not make the Gateway or runner synthesize a trade decision simply
 because a public market snapshot was refreshed.
 
-The observation use case belongs in `packages/application/src/trading/paper/*`. `apps/runtime`
-may wire the store, Gateway binding, sandbox refresher, provider sessions, and timer instance, but
-it should not own paper account transitions, observation records, TradingSystem event processing,
+The paper command and observation use cases belong in `packages/application/src/trading/paper/*`.
+`apps/runtime` may wire the store, Gateway market-data port, sandbox adapters, provider factory,
+and timer instance, but it should not own `trading_run.start/observe/stop` orchestration, provider
+session lifecycle, paper account transitions, observation records, TradingSystem event processing,
 or Ledger decision assembly.
 
 `PaperTradingEngine` is the stateful fake exchange/account boundary. It owns wallet/equity,
