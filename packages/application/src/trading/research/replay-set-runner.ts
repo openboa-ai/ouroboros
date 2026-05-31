@@ -8,6 +8,7 @@ import {
   startReplayTradingApiProvider
 } from "./replay-trading-api-provider";
 import type {
+  ReplayTradingApiProviderSession,
   ReplayTradingScenario,
   TradingArtifactCommandEvidence,
   TradingArtifactCommandEvidenceSummary,
@@ -17,12 +18,18 @@ import type {
   TradingSystemManifest
 } from "./types";
 
+export type ReplayTradingApiProviderFactory = (
+  scenario: ReplayTradingScenario,
+  options: ReplayTradingApiProviderOptions
+) => Promise<ReplayTradingApiProviderSession>;
+
 export interface TradingReplaySetRunnerInput {
   artifact_dir: string;
   manifest: TradingSystemManifest;
   output_dir: string;
   scenarios?: ReplayTradingScenario[];
   artifact_runner?: TradingArtifactRunner;
+  replay_provider_factory?: ReplayTradingApiProviderFactory;
 }
 
 export interface TradingReplaySetRunnerResult {
@@ -45,7 +52,7 @@ export async function runTradingReplaySet(
   const scenarioResults: TradingScenarioEvaluationResult[] = [];
 
   for (const scenario of scenarios) {
-    const provider = await startReplayTradingApiProvider(
+    const provider = await (input.replay_provider_factory ?? startReplayTradingApiProvider)(
       scenario,
       replayProviderOptionsFor(artifactRunner.kind)
     );

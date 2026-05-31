@@ -1,9 +1,21 @@
 import React from "react";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
+import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import type {
+  ReplayTradingApiProviderSession,
+  ReplayTradingScenario,
+  TradingProviderRequestLog,
+  TradingSystemEvent
+} from "@ouroboros/application/trading/research/types";
+import type {
+  GatewayRuntimeBinding,
+  PaperTradingApiProviderOptions
+} from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { SandboxAdapter } from "@ouroboros/adapters/sandbox/adapter";
 import { runOuroborosCli } from "@ouroboros/cli";
 import type {
@@ -38,6 +50,9 @@ describe("operator product loop smoke", () => {
           quantity: "0.001"
         }), paperHoldLine("2026-05-16T00:01:03.000Z"))
       },
+      candidateArenaArtifactRunner: networklessReplayArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
           {
@@ -276,7 +291,8 @@ describe("operator product loop smoke", () => {
 
       const restartedServer = await buildServer({
         store: new LocalStore(tmpDir),
-        marketDataPort: fakeGatewayMarketDataPort()
+        marketDataPort: fakeGatewayMarketDataPort(),
+        paperTradingApiProviderFactory: networklessPaperTradingApiProvider
       });
       try {
         const restartedOperator = await restartedServer.inject({
@@ -506,5 +522,120 @@ function fixedOrderLogSandboxAdapter(orderLine: string, holdLine: string): Sandb
         stopped_at: instance.stopped_at ?? "2026-05-16T00:02:03.000Z"
       };
     }
+  };
+}
+
+function networklessReplayArtifactRunner(): TradingArtifactRunner {
+  return {
+    kind: "host_process",
+    async run(input) {
+      await mkdir(input.output_dir, { recursive: true });
+      const eventsPath = path.join(input.output_dir, "events.jsonl");
+      const market = input.provider.scenario.market;
+      const account = input.provider.scenario.account;
+      const orderRequest = market.expected_direction === "flat"
+        ? {
+            symbol: market.symbol,
+            side: "hold" as const,
+            quantity: 0,
+            order_type: "none" as const,
+            reason: "flat replay regime holds through provider validation"
+          }
+        : {
+            symbol: market.symbol,
+            side: market.expected_direction === "short" ? "sell" as const : "buy" as const,
+            quantity: Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+            order_type: "market" as const,
+            reason: "networkless smoke runner preserves TradingApiProvider boundary events"
+          };
+      const validation = validateOrderRequest(orderRequest, market, account);
+      const events: TradingSystemEvent[] = [
+        { event: "market_snapshot", ...market },
+        { event: "account_state", ...account },
+        { event: "order_request", ...orderRequest },
+        { event: "order_validation", ...validation },
+        { event: "run_complete", accepted: validation.accepted }
+      ];
+      await writeFile(
+        eventsPath,
+        `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+        "utf8"
+      );
+      return {
+        status: "completed",
+        runner_kind: "host_process",
+        artifact_dir: input.artifact_dir,
+        entrypoint: input.manifest.entrypoint,
+        events_path: eventsPath,
+        stdout: events.map((event) => JSON.stringify(event)).join("\n"),
+        stderr: "",
+        events,
+        provider_requests: providerBoundaryRequests()
+      };
+    }
+  };
+}
+
+async function networklessReplayTradingApiProvider(
+  scenario: ReplayTradingScenario
+): Promise<ReplayTradingApiProviderSession> {
+  const requests: TradingProviderRequestLog[] = [];
+  return {
+    base_url: `http://replay-provider.test/${scenario.id}`,
+    close: async () => undefined,
+    requests: () => [...requests],
+    scenario
+  };
+}
+
+async function networklessPaperTradingApiProvider(
+  binding: GatewayRuntimeBinding,
+  options: PaperTradingApiProviderOptions
+): Promise<ReplayTradingApiProviderSession> {
+  const market = await binding.marketData.readMarketSnapshot();
+  const account = options.readAccountState
+    ? await options.readAccountState()
+    : binding.account.provider_kind === "fake_paper_account"
+      ? binding.account.state
+      : {
+          equity: 10_000,
+          max_position_notional: 350,
+          max_risk_fraction: 0.03,
+          target_risk_fraction: 0.02
+        };
+  return {
+    base_url: "http://paper-runtime.test",
+    sandbox_base_url: "http://paper-runtime.test",
+    close: async () => undefined,
+    requests: () => [],
+    scenario: {
+      id: "networkless-paper-runtime",
+      description: "Networkless paper runtime provider used by operator product-loop smoke.",
+      market,
+      account,
+      outcome: {
+        exit_price: market.price,
+        fee_bps: 4,
+        slippage_bps: 3,
+        funding_bps: 1
+      }
+    }
+  };
+}
+
+function providerBoundaryRequests(): TradingProviderRequestLog[] {
+  return [
+    providerRequest("GET", "/market/snapshot"),
+    providerRequest("GET", "/account/state"),
+    providerRequest("POST", "/orders/validate")
+  ];
+}
+
+function providerRequest(method: string, requestPath: string): TradingProviderRequestLog {
+  return {
+    at: "2026-05-16T00:00:00.000Z",
+    method,
+    path: requestPath,
+    response_status: 200
   };
 }

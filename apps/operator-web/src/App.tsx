@@ -1088,6 +1088,8 @@ export function CandidateArenaPanel({
   onTick,
   onSelectCandidate,
   onStartPaperTrading,
+  onObservePaperTrading,
+  onStopPaperTrading,
   onSetupAgentProvider,
   onProbeAgentProvider,
   onStartAgentProviderLogin,
@@ -1110,6 +1112,8 @@ export function CandidateArenaPanel({
   onTick?: () => void;
   onSelectCandidate?: (candidateId: string) => void;
   onStartPaperTrading?: () => void;
+  onObservePaperTrading?: () => void;
+  onStopPaperTrading?: () => void;
   onSetupAgentProvider?: (provider: AgentProfileProviderKind) => void;
   onProbeAgentProvider?: (provider: AgentProfileProviderKind) => void;
   onStartAgentProviderLogin?: (provider: AgentProfileProviderKind) => void;
@@ -1162,6 +1166,7 @@ export function CandidateArenaPanel({
   const selectedPaperFill = selectedPaperTradingEvaluation?.latest_fill;
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
+  const paperRunnerActive = selectedPaperTradingEvaluation?.runner_active === true;
   return (
     <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
       <CardHeader className="gap-3">
@@ -1303,14 +1308,37 @@ export function CandidateArenaPanel({
                   {selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
                 </p>
               </div>
-              <Button
-                type="button"
-                onClick={onStartPaperTrading}
-                disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
-                variant="secondary"
-              >
-                {runningPaperTrading ? "Starting paper trading" : "Start paper trading"}
-              </Button>
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                {paperRunnerActive ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={onObservePaperTrading}
+                      disabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
+                      variant="secondary"
+                    >
+                      {runningPaperTrading ? "Updating paper trading" : "Observe now"}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={onStopPaperTrading}
+                      disabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
+                      variant="outline"
+                    >
+                      Stop paper trading
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={onStartPaperTrading}
+                    disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
+                    variant="secondary"
+                  >
+                    {runningPaperTrading ? "Starting paper trading" : "Start paper trading"}
+                  </Button>
+                )}
+              </div>
             </div>
             <dl className="grid gap-2 sm:grid-cols-2">
               <Field label="Direction" value={selectedDirection} />
@@ -1949,6 +1977,8 @@ export function CandidateDetail({
           onTick={onTickCandidateArena}
           onSelectCandidate={(candidateId) => void onSelectCandidate?.(candidateId)}
           onStartPaperTrading={selectedArenaCandidate ? onStartTradingRun : undefined}
+          onObservePaperTrading={selectedArenaCandidate ? onObserveTradingRun : undefined}
+          onStopPaperTrading={selectedArenaCandidate ? onStopTradingRun : undefined}
           onSetupAgentProvider={onSetupAgentProvider}
           onProbeAgentProvider={onProbeAgentProvider}
           onStartAgentProviderLogin={onStartAgentProviderLogin}

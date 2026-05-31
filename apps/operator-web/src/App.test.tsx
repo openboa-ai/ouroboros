@@ -486,7 +486,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Paper fill");
     expect(html).toContain("filled 0.001 @ 60000");
     expect(html).toContain("Lineage");
-    expect(html).toContain("Start paper trading");
+    expect(html).toContain("Observe now");
+    expect(html).toContain("Stop paper trading");
     expect(html).toContain("Agent providers");
     expect(html).toContain("Codex");
     expect(html).toContain("Command log");

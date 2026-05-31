@@ -72,6 +72,8 @@ import type {
   TradingArtifactRunnerKind,
   TradingResearchAgentAdapter
 } from "@ouroboros/application/trading/research/types";
+import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
+import type { ReplayTradingApiProviderFactory } from "@ouroboros/application/trading/research/replay-set-runner";
 import {
   createTradingResearchAgentAdapter,
   loadTradingResearchRuntimeConfig,
@@ -131,6 +133,12 @@ export interface BuildServerOptions {
   marketDataPort?: GatewayMarketDataPort;
   paperTradingEvaluationIntervalMs?: number;
   tradingApiProviderSandboxHost?: string;
+  paperTradingApiProviderFactory?: (
+    binding: GatewayRuntimeBinding,
+    options: PaperTradingApiProviderOptions
+  ) => Promise<ReplayTradingApiProviderSession>;
+  candidateArenaArtifactRunner?: TradingArtifactRunner;
+  candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
 }
 
 export function paperTradingApiProviderNetworkOptions(input: {
@@ -255,6 +263,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const paperTradingEvaluationRunner = new PaperTradingEvaluationRunner();
   const paperTradingEvaluationIntervalMs = options.paperTradingEvaluationIntervalMs ?? 60_000;
   const paperTradingApiProviderSessions = new Map<string, ReplayTradingApiProviderSession>();
+  const paperTradingApiProviderFactory = options.paperTradingApiProviderFactory ?? startPaperTradingApiProvider;
   const tradingResearchRuntimeConfig = options.tradingResearchRuntimeConfig
     ?? loadTradingResearchRuntimeConfig();
   const tradingResearchAgentFactory = options.tradingResearchAgentFactory
@@ -269,7 +278,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const candidateArenaRunner = new CandidateArenaRunner({
     store,
     researchAgent: tradingResearchRuntimeConfig.default_agent,
-    agentFactory: tradingResearchAgentFactory
+    agentFactory: tradingResearchAgentFactory,
+    artifactRunner: options.candidateArenaArtifactRunner,
+    replayProviderFactory: options.candidateArenaReplayProviderFactory
   }, options.candidateArenaTickIntervalMs);
   const providedSandboxAdapters = options.sandboxAdapters;
   const sandboxAdapters: Record<SandboxAdapterKind, SandboxAdapter> = {
@@ -776,7 +787,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       return existing.sandbox_base_url ?? existing.base_url;
     }
     const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
-    const provider = await startPaperTradingApiProvider(gatewayRuntimeBinding, {
+    const provider = await paperTradingApiProviderFactory(gatewayRuntimeBinding, {
       ...paperTradingApiProviderNetworkOptions({ sandboxHost }),
       readAccountState: () => latestPaperAccountState(tradingRunId, gatewayRuntimeBinding)
     });
