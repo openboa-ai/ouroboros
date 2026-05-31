@@ -164,6 +164,50 @@ describe("long-running paper TradingSystem sessions", () => {
       await server.close();
     }
   });
+
+  it("stops the linked sandbox when paper evaluation fails", async () => {
+    const store = new LocalStore(tmpDir);
+    const sandboxAdapter = queuedLongRunningSandboxAdapter([
+      [paperOrderLine("failed-session-order-0001", "2026-05-16T00:00:03.000Z")]
+    ]);
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: sandboxAdapter
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, observed_at: "2026-05-16T00:00:03.000Z" },
+          { price: 65_000, observed_at: "2026-05-16T00:00:04.000Z" }
+        ],
+        failPublicExecutionSnapshot: true
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      const started = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "failed",
+        runner_active: false,
+        latest_failure_reason: "fake public execution stream unavailable"
+      });
+      expect(started.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("stopped");
+      expect(sandboxAdapter.stopCalls()).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 interface InspectableSandboxAdapter extends SandboxAdapter {

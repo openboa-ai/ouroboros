@@ -184,6 +184,35 @@ describe("sandbox API", () => {
     }
   });
 
+  it("stops a deterministic long-running paper session through persisted PID after adapter restart", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const started = await adapter.startArtifactInstance({
+      artifact,
+      instance_id: "sandbox-deterministic-pid-reap",
+      sandbox_name: "ouro-deterministic-pid-reap",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-pid-reap",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    });
+
+    try {
+      expect(started.instance.lifecycle_status).toBe("running");
+      const restartedAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+      const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
+      expect(stopped.lifecycle_status).toBe("stopped");
+      expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_heartbeat");
+    } finally {
+      await adapter.stopArtifactInstance(started.instance);
+    }
+  });
+
   it("executes fixture SystemCode when the runtime process starts from apps/runtime", async () => {
     const originalCwd = process.cwd();
     process.chdir(path.join(originalCwd, "apps/runtime"));

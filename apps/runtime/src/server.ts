@@ -595,8 +595,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         if (resumedEvaluation.evaluation.status === "running") {
           schedulePaperTradingEvaluation(tradingRunId);
         } else {
-          paperTradingEvaluationRunner.stop(tradingRunId);
-          await stopPaperTradingApiProviderSession(tradingRunId);
+          await stopFailedPaperTradingSession(tradingRunId);
         }
         const response = await tradingRunResponse(store, tradingRunId);
         return {
@@ -649,8 +648,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       if (paperTradingEvaluation.evaluation.status === "running") {
         schedulePaperTradingEvaluation(tradingRunId);
       } else {
-        paperTradingEvaluationRunner.stop(tradingRunId);
-        await stopPaperTradingApiProviderSession(tradingRunId);
+        await stopFailedPaperTradingSession(tradingRunId);
       }
       const response = await tradingRunResponse(store, tradingRunId);
 
@@ -709,6 +707,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         appendLedger: true,
         intervalMs: paperTradingEvaluationIntervalMs
       });
+      if (paperTradingEvaluation.evaluation.status === "failed") {
+        await stopFailedPaperTradingSession(tradingRunId);
+      }
     }
 
     const response = await tradingRunResponse(store, tradingRunId);
@@ -754,10 +755,19 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           intervalMs: paperTradingEvaluationIntervalMs
         });
         if (result.evaluation.status === "failed") {
-          paperTradingEvaluationRunner.stop(tradingRunId);
-          await stopPaperTradingApiProviderSession(tradingRunId);
+          await stopFailedPaperTradingSession(tradingRunId);
         }
       }
+    });
+  }
+
+  async function stopFailedPaperTradingSession(tradingRunId: string): Promise<void> {
+    paperTradingEvaluationRunner.stop(tradingRunId);
+    await stopPaperTradingApiProviderSession(tradingRunId);
+    await stopLinkedTradingRunSandbox({
+      store,
+      sandboxAdapters,
+      tradingRunId
     });
   }
 

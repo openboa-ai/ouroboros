@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -81,6 +81,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       child: ReturnType<typeof spawn>;
       logFile: string;
       heartbeatFile: string;
+      pidFile: string;
     }
   >();
 
@@ -233,7 +234,28 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
         await waitForChildExit(session.child, 500);
       }
       this.sessions.delete(instanceId);
+      await rm(session.pidFile, { force: true });
       const lines = await readSandboxLogLines(session.logFile);
+      return {
+        lifecycle_status: "stopped",
+        stopped_at: stoppedAt,
+        logs: lines.length > 0
+          ? [runtimeLogRecord(instanceId, `stop-${safeRuntimeId(stoppedAt)}`, lines, stoppedAt)]
+          : [],
+        heartbeats: heartbeatRecordsFromLines(instanceId, "stop", lines, stoppedAt)
+      };
+    }
+    const pidFile = sandboxPidFile(instanceId);
+    const persistedPid = await readPersistedSandboxPid(pidFile);
+    if (persistedPid !== undefined) {
+      signalProcess(persistedPid, "SIGTERM");
+      await waitForProcessExit(persistedPid, 500);
+      if (isProcessAlive(persistedPid)) {
+        signalProcess(persistedPid, "SIGKILL");
+        await waitForProcessExit(persistedPid, 500);
+      }
+      await rm(pidFile, { force: true });
+      const lines = await readSandboxLogLines(sandboxLogFile(instanceId));
       return {
         lifecycle_status: "stopped",
         stopped_at: stoppedAt,
@@ -278,9 +300,11 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
   ): Promise<SandboxAdapterStartResult> {
     const logFile = sandboxLogFile(input.instance_id);
     const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
+    const pidFile = sandboxPidFile(input.instance_id);
     await Promise.all([
       rm(logFile, { force: true }),
-      rm(heartbeatFile, { force: true })
+      rm(heartbeatFile, { force: true }),
+      rm(pidFile, { force: true })
     ]);
     const executionCommand = [
       ...command,
@@ -334,7 +358,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       env: input.env ? { ...process.env, ...input.env } : process.env
     });
     child.unref();
-    this.sessions.set(input.instance_id, { child, logFile, heartbeatFile });
+    if (child.pid !== undefined) {
+      await writeFile(pidFile, String(child.pid), "utf8");
+    }
+    this.sessions.set(input.instance_id, { child, logFile, heartbeatFile, pidFile });
     const commandEvidence = commandEvidenceRecord(input.instance_id, "execute-detached", {
       command: executionCommand,
       exit_code: null,
@@ -935,6 +962,10 @@ function sandboxHeartbeatFile(instanceId: string): string {
   return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.heartbeat.json`;
 }
 
+function sandboxPidFile(instanceId: string): string {
+  return `/tmp/ouroboros-${safeRuntimeId(instanceId)}.pid`;
+}
+
 function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string {
   return instance.sandbox_id;
 }
@@ -1012,6 +1043,49 @@ async function waitForSandboxLogLines(logFile: string, timeoutMs: number): Promi
     await sleep(10);
   }
   return readSandboxLogLines(logFile);
+}
+
+async function readPersistedSandboxPid(pidFile: string): Promise<number | undefined> {
+  const content = await readFile(pidFile, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  });
+  const pid = Number(content.trim());
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+      throw error;
+    }
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (!isProcessAlive(pid)) {
+      return;
+    }
+    await sleep(10);
+  }
 }
 
 function waitForChildExit(child: ReturnType<typeof spawn>, timeoutMs: number): Promise<void> {
