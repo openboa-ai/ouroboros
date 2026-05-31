@@ -227,12 +227,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const instanceId = instanceIdFor(instance);
     const session = this.sessions.get(instanceId);
     if (session) {
-      session.child.kill("SIGTERM");
-      await waitForChildExit(session.child, 500);
-      if (session.child.exitCode === null) {
-        session.child.kill("SIGKILL");
-        await waitForChildExit(session.child, 500);
-      }
+      await terminateChildProcess(session.child);
       this.sessions.delete(instanceId);
       await rm(session.pidFile, { force: true });
       const lines = await readSandboxLogLines(session.logFile);
@@ -248,10 +243,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const pidFile = sandboxPidFile(instanceId);
     const persistedPid = await readPersistedSandboxPid(pidFile);
     if (persistedPid !== undefined) {
-      signalProcess(persistedPid, "SIGTERM");
-      await waitForProcessExit(persistedPid, 500);
-      if (isProcessAlive(persistedPid)) {
-        signalProcess(persistedPid, "SIGKILL");
+      if (signalProcess(persistedPid, "SIGTERM")) {
+        await waitForProcessExit(persistedPid, 500);
+      }
+      if (isProcessAlive(persistedPid) && signalProcess(persistedPid, "SIGKILL")) {
         await waitForProcessExit(persistedPid, 500);
       }
       await rm(pidFile, { force: true });
@@ -301,6 +296,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const logFile = sandboxLogFile(input.instance_id);
     const heartbeatFile = sandboxHeartbeatFile(input.instance_id);
     const pidFile = sandboxPidFile(input.instance_id);
+    await this.stopExistingLongRunningSession(input.instance_id, pidFile);
     await Promise.all([
       rm(logFile, { force: true }),
       rm(heartbeatFile, { force: true }),
@@ -399,6 +395,27 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       heartbeats,
       command_evidence: [commandEvidence]
     };
+  }
+
+  private async stopExistingLongRunningSession(instanceId: string, pidFile: string): Promise<void> {
+    const session = this.sessions.get(instanceId);
+    if (session) {
+      await terminateChildProcess(session.child);
+      this.sessions.delete(instanceId);
+      await rm(session.pidFile, { force: true });
+      return;
+    }
+    const persistedPid = await readPersistedSandboxPid(pidFile);
+    if (persistedPid === undefined) {
+      return;
+    }
+    if (signalProcess(persistedPid, "SIGTERM")) {
+      await waitForProcessExit(persistedPid, 500);
+    }
+    if (isProcessAlive(persistedPid) && signalProcess(persistedPid, "SIGKILL")) {
+      await waitForProcessExit(persistedPid, 500);
+    }
+    await rm(pidFile, { force: true });
   }
 }
 
@@ -1057,13 +1074,16 @@ async function readPersistedSandboxPid(pidFile: string): Promise<number | undefi
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-function signalProcess(pid: number, signal: NodeJS.Signals): void {
+function signalProcess(pid: number, signal: NodeJS.Signals): boolean {
   try {
     process.kill(pid, signal);
+    return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
-      throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || code === "EPERM") {
+      return false;
     }
+    throw error;
   }
 }
 
@@ -1072,7 +1092,8 @@ function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || code === "EPERM") {
       return false;
     }
     throw error;
@@ -1086,6 +1107,15 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<void>
       return;
     }
     await sleep(10);
+  }
+}
+
+async function terminateChildProcess(child: ReturnType<typeof spawn>): Promise<void> {
+  child.kill("SIGTERM");
+  await waitForChildExit(child, 500);
+  if (!hasChildExited(child)) {
+    child.kill("SIGKILL");
+    await waitForChildExit(child, 500);
   }
 }
 

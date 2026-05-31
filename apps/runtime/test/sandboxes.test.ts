@@ -213,6 +213,42 @@ describe("sandbox API", () => {
     }
   });
 
+  it("reaps an existing long-running paper session before replacing its handle", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!artifact) {
+      throw new Error("expected fixture SystemCode");
+    }
+    const adapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
+    const instanceId = "sandbox-deterministic-replaced-session";
+    const pidFile = path.join(process.cwd(), ".ouroboros", "sandbox-pids", `${instanceId}.pid`);
+    const startInput = {
+      artifact,
+      instance_id: instanceId,
+      sandbox_name: "ouro-deterministic-replaced-session",
+      runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+      sandbox_placement_id: "sandbox-placement-deterministic-replaced-session",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 10
+    } as const;
+    const started = await adapter.startArtifactInstance(startInput);
+    let activeInstance = started.instance;
+
+    try {
+      const firstPid = Number((await readFile(pidFile, "utf8")).trim());
+      const replaced = await adapter.startArtifactInstance(startInput);
+      activeInstance = replaced.instance;
+      const secondPid = Number((await readFile(pidFile, "utf8")).trim());
+
+      expect(secondPid).not.toBe(firstPid);
+      expect(isPidAlive(firstPid)).toBe(false);
+      expect(isPidAlive(secondPid)).toBe(true);
+    } finally {
+      await adapter.stopArtifactInstance(activeInstance);
+    }
+  });
+
   it("does not report an externally killed long-running paper session as running", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -576,6 +612,7 @@ describe("sandbox API", () => {
       kind: "deterministic_test",
       startArtifactInstance: async (input) => {
         const result = await baseAdapter.startArtifactInstance(input);
+        await baseAdapter.stopArtifactInstance(result.instance);
         return {
           ...result,
           instance: {
@@ -712,6 +749,18 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function fakeSdxScript(): string {
