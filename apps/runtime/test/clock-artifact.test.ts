@@ -46,7 +46,7 @@ describe("Python clock system code fixture", () => {
     const latestHeartbeat = JSON.parse(await readFile(heartbeatFile, "utf8"));
 
     expect(stdoutLines).toEqual(logLines);
-    expect(stdoutLines).toEqual([
+    expect(stdoutLines).toMatchObject([
       {
         at: "1970-01-01T00:00:00.000Z",
         authority_status: "trace_only",
@@ -61,24 +61,27 @@ describe("Python clock system code fixture", () => {
         symbol: "BTCUSDT"
       },
       {
-        at: "1970-01-01T00:00:00.000Z",
+        at: expect.any(String),
         event: "runtime_heartbeat",
         instance_id: "clock-test-alpha",
         tick: 1
       },
       {
-        at: "1970-01-01T00:00:00.000Z",
+        at: expect.any(String),
         event: "runtime_heartbeat",
         instance_id: "clock-test-alpha",
         tick: 2
       },
       {
-        at: "1970-01-01T00:00:00.000Z",
+        at: expect.any(String),
         event: "runtime_stopped",
         instance_id: "clock-test-alpha",
         tick: 2
       }
     ]);
+    expect(stdoutLines[1].at).not.toBe("1970-01-01T00:00:00.000Z");
+    expect(stdoutLines[2].at).not.toBe("1970-01-01T00:00:00.000Z");
+    expect(stdoutLines[3].at).not.toBe("1970-01-01T00:00:00.000Z");
     expect(latestHeartbeat).toMatchObject({
       event: "runtime_stopped",
       instance_id: "clock-test-alpha",
