@@ -1399,7 +1399,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           : undefined,
         sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
         created_at: createdAt,
-        test_ticks: body.test_ticks,
+        test_ticks: body.test_ticks ?? 2,
         interval_ms: body.interval_ms
       });
       const outcome = await store.recordSandboxStart(adapterResult);

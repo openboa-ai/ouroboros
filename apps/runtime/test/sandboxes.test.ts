@@ -184,6 +184,25 @@ describe("sandbox API", () => {
     }
   });
 
+  it("keeps public sandbox.start finite when test tick limit is omitted", async () => {
+    const server = await buildServer({ store: new LocalStore(tmpDir) });
+
+    const started = await startSandboxCommand(server, {
+      idempotency_key: "sandbox-standalone-finite-default",
+      sandbox_id: "sandbox-standalone-finite-default",
+      sandbox_name: "ouro-standalone-finite-default",
+      created_at: "2026-05-21T00:00:00.000Z",
+      interval_ms: 1
+    });
+
+    expect(started.statusCode).toBe(200);
+    expect(started.json().sandbox.lifecycle_status).toBe("stopped");
+    expect(started.json().sandbox.command_evidence[0]?.command).toEqual(expect.arrayContaining([
+      "--ticks",
+      "2"
+    ]));
+  });
+
   it("stops a deterministic long-running paper session through persisted PID after adapter restart", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
