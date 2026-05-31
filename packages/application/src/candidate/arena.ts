@@ -26,8 +26,10 @@ import {
 } from "../ports/store";
 import { safeId } from "../safe-id";
 import { readTradingSystemManifest } from "../trading/research/artifact-runner";
+import type { TradingArtifactRunner } from "../trading/research/artifact-runner";
 import { FixtureTradingResearchAgentAdapter } from "../trading/research/agent-adapters";
 import { runTradingResearchLoop } from "../trading/research/run-trading-research";
+import type { ReplayTradingApiProviderFactory } from "../trading/research/replay-set-runner";
 import type {
   AgentEditInput,
   AgentEditResult,
@@ -64,6 +66,8 @@ export interface RunCandidateArenaTickInput {
   repoRoot?: string;
   researchAgent: TradingResearchRuntimeAgent;
   agentFactory: (agent: TradingResearchRuntimeAgent) => TradingResearchAgentAdapter;
+  artifactRunner?: TradingArtifactRunner;
+  replayProviderFactory?: ReplayTradingApiProviderFactory;
 }
 
 export interface CandidateArenaTickOutcome {
@@ -308,6 +312,8 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     session_id: sessionId,
     iterations: 1,
     agent_adapter: adapter,
+    artifact_runner: input.artifactRunner,
+    replay_provider_factory: input.replayProviderFactory,
     arena_context: await arenaContext(input.store, input.direction)
   });
   const entry = research.entries.at(-1);

@@ -8,6 +8,7 @@ import {
   type TradingArtifactRunner
 } from "./artifact-runner";
 import { runTradingReplaySet } from "./replay-set-runner";
+import type { ReplayTradingApiProviderFactory } from "./replay-set-runner";
 import {
   createTradingResearchAgentAdapter,
   loadTradingResearchRuntimeConfig,
@@ -42,6 +43,7 @@ export interface RunTradingResearchLoopInput {
   agent_adapter?: TradingResearchAgentAdapter;
   artifact_runner?: TradingArtifactRunner;
   artifact_runner_kind?: TradingArtifactRunnerKind;
+  replay_provider_factory?: ReplayTradingApiProviderFactory;
   arena_context?: string;
 }
 
@@ -138,7 +140,8 @@ export async function runTradingResearchLoop(
       artifact_dir: candidateDir,
       manifest,
       output_dir: outputDir,
-      artifact_runner: artifactRunner
+      artifact_runner: artifactRunner,
+      replay_provider_factory: input.replay_provider_factory
     });
 
     const evaluation = replaySet.evaluation;

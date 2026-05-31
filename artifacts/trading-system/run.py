@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-import argparse
 import json
 import os
+import argparse
+import sys
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib import request
 
 RISK_FRACTION = 0.01
@@ -36,6 +39,25 @@ def append_event(events_path, event):
 
 
 def build_order_request(market, account):
+    expected_direction = market.get("expected_direction")
+    if expected_direction == "flat":
+        return {
+            "symbol": market["symbol"],
+            "side": "hold",
+            "quantity": 0,
+            "order_type": "none",
+            "reason": "fast average is not above slow average",
+        }
+    if expected_direction == "short":
+        notional = account["equity"] * RISK_FRACTION
+        quantity = round(notional / market["price"], 8)
+        return {
+            "symbol": market["symbol"],
+            "side": "sell",
+            "quantity": quantity,
+            "order_type": "market",
+            "reason": "public market context indicates a short regime with bounded account risk",
+        }
     if market["moving_average_fast"] <= market["moving_average_slow"]:
         return {
             "symbol": market["symbol"],
@@ -55,11 +77,51 @@ def build_order_request(market, account):
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Minimal replay trading system artifact")
-    parser.add_argument("--output-events", required=True)
-    args = parser.parse_args()
+def build_rejected_order_request():
+    return {
+        "symbol": "BTCUSDT",
+        "side": "buy",
+        "quantity": 0,
+        "order_type": "market",
+        "reason": "explicit rejected paper order request for Gateway risk validation",
+    }
 
+
+def append_line(line, log_path):
+    print(line, flush=True)
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+
+def paper_event_from_intent(args, intent, validation):
+    if intent["side"] == "hold" or intent["order_type"] == "none":
+        return {
+            "event": "hold",
+            "event_id": f"{args.instance_id}:hold:0001",
+            "instance_id": args.instance_id,
+            "at": args.start_at,
+            "authority_status": "trace_only",
+            "reason": intent.get("reason", "paper runtime decided to hold"),
+        }
+    event = {
+        "event": "order_request",
+        "event_id": f"{args.instance_id}:order-request:0001",
+        "instance_id": args.instance_id,
+        "at": args.start_at,
+        "authority_status": "trace_only",
+        "intent_kind": "place_order",
+        "symbol": intent["symbol"],
+        "side": intent["side"],
+        "order_type": "market",
+        "quantity": str(intent["quantity"]),
+        "reason": f"{intent.get('reason', 'paper runtime order')} / validation {validation.get('reason', 'unknown')}",
+    }
+    return event
+
+
+def run_replay(args):
     base_url = os.environ["TRADING_API_BASE_URL"]
     market = get_json(base_url, "/market/snapshot")
     append_event(args.output_events, {"event": "market_snapshot", **market})
@@ -70,7 +132,65 @@ def main():
     validation = post_json(base_url, "/orders/validate", intent)
     append_event(args.output_events, {"event": "order_validation", **validation})
     append_event(args.output_events, {"event": "run_complete", "accepted": validation["accepted"]})
+    return 0
+
+
+def run_paper(args):
+    if not args.instance_id:
+        raise SystemExit("--instance-id is required when --output-events is not set")
+    log_path = Path(args.log_file) if args.log_file else None
+    if args.paper_order_request == "rejected":
+        intent = build_rejected_order_request()
+        validation = {"reason": "explicit_rejected_paper_order_request"}
+    else:
+        base_url = os.environ["TRADING_API_BASE_URL"]
+        market = get_json(base_url, "/market/snapshot")
+        account = get_json(base_url, "/account/state")
+        intent = build_order_request(market, account)
+        validation = post_json(base_url, "/orders/validate", intent)
+    append_line(json.dumps(paper_event_from_intent(args, intent, validation), sort_keys=True), log_path)
+    for tick in range(1, args.ticks + 1):
+        append_line(json.dumps({
+            "event": "runtime_heartbeat",
+            "instance_id": args.instance_id,
+            "tick": tick,
+            "at": args.start_at,
+        }, sort_keys=True), log_path)
+        if tick < args.ticks:
+            time.sleep(args.interval_ms / 1000)
+    append_line(json.dumps({
+        "event": "runtime_stopped",
+        "instance_id": args.instance_id,
+        "tick": args.ticks,
+        "at": args.start_at,
+    }, sort_keys=True), log_path)
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Minimal replay trading system artifact")
+    parser.add_argument("--output-events")
+    parser.add_argument("--instance-id")
+    parser.add_argument("--ticks", type=int, default=0)
+    parser.add_argument("--interval-ms", type=int, default=1000)
+    parser.add_argument("--log-file")
+    parser.add_argument("--start-at", default="1970-01-01T00:00:00.000Z")
+    parser.add_argument(
+        "--paper-order-request",
+        choices=("valid", "rejected"),
+        default="valid",
+    )
+    args = parser.parse_args()
+
+    if args.ticks < 0:
+        parser.error("--ticks must be >= 0")
+    if args.interval_ms < 0:
+        parser.error("--interval-ms must be >= 0")
+
+    if args.output_events:
+        return run_replay(args)
+    return run_paper(args)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
