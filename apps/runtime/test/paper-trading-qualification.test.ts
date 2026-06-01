@@ -34,6 +34,42 @@ describe("PaperTradingQualificationPolicy", () => {
     });
   });
 
+  it("keeps empty or not-yet-sampled evaluations collecting instead of quality blocked", () => {
+    const evaluation = {
+      ...paperEvaluation({
+        observationCount: 0,
+        netRevenueUsdt: 0,
+        startedAt: "2026-05-16T00:00:00.000Z",
+        lastObservedAt: "2026-05-16T00:00:00.000Z"
+      }),
+      latest_fill: undefined,
+      latest_public_execution_snapshot: undefined,
+      latest_score: {
+        revenue_usdt: 0,
+        cost_usdt: 0,
+        net_revenue_usdt: 0,
+        net_return_pct: 0
+      }
+    };
+
+    expect(qualifyPaperTradingEvaluation({
+      evaluation,
+      observations: [],
+      runnerActive: true,
+      policy: {
+        minObservationCount: 30,
+        minElapsedMs: 30 * 60_000,
+        maxFailedObservationRatio: 0.1
+      }
+    })).toMatchObject({
+      qualification_status: "collecting_evidence",
+      qualification_reasons: [
+        "min_observation_count_not_met",
+        "min_elapsed_ms_not_met"
+      ]
+    });
+  });
+
   it("qualifies paper evaluations only after enough observations, elapsed time, and public fill evidence", () => {
     const evaluation = paperEvaluation({
       observationCount: 30,

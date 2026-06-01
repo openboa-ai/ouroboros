@@ -74,7 +74,10 @@ export function qualifyPaperTradingEvaluation(input: {
   if (failedRatio > policy.maxFailedObservationRatio) {
     qualityReasons.push("failed_observation_ratio_exceeded");
   }
-  if (!latestMarketSnapshot(input.evaluation, input.observations)) {
+  if (
+    evidenceWindow.observation_count >= policy.minObservationCount &&
+    !latestMarketSnapshot(input.evaluation, input.observations)
+  ) {
     qualityReasons.push("latest_market_snapshot_missing");
   }
   if (hasFillWithoutMatchingPublicExecutionEvidence(input.evaluation, input.observations)) {
