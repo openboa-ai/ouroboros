@@ -109,6 +109,28 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade agg-60000-001");
   });
 
+  it("formats restart recovery when a persisted paper evaluation needs a runner resume", async () => {
+    const operator = fixtureOperator();
+    const result = await runOuroborosCli(["status"], {
+      fetch: async () =>
+        jsonResponse({
+          operator: fixtureOperator({
+            selected_paper_trading_evaluation: {
+              ...operator.selected_paper_trading_evaluation,
+              status: "running",
+              runner_active: false
+            }
+          })
+        }),
+      runtimeBaseUrl: "http://runtime.test"
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      "Paper runner: needs resume / persisted running, timer inactive / interval 60000ms / next 2026-05-16T00:01:03.000Z"
+    );
+  });
+
   it("returns operator status JSON for automation", async () => {
     const result = await runOuroborosCli(["--json", "status"], {
       fetch: async () => jsonResponse({ operator: fixtureOperator() }),

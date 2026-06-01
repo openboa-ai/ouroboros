@@ -47,6 +47,9 @@ same `OperatorReadModel`.
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,
   accumulated score, and `ledger_chain_complete`.
+- Runtime restart smoke must keep persisted paper evidence visible while making scheduler loss
+  explicit: `running` evaluation plus inactive in-memory runner is `needs resume`, and `trading_run.start`
+  resumes the session instead of creating duplicate runners.
 - Live/private Binance authority stays disabled throughout the loop.
 
 ## Manual Check

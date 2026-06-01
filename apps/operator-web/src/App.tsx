@@ -1167,6 +1167,12 @@ export function CandidateArenaPanel({
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   const paperRunnerActive = selectedPaperTradingEvaluation?.runner_active === true;
+  const paperRunnerStatus = selectedPaperTradingEvaluation
+    ? paperTradingRunnerStatus(selectedPaperTradingEvaluation)
+    : "not started";
+  const paperStartActionLabel = paperRunnerStatus === "needs resume"
+    ? "Resume paper trading"
+    : "Start paper trading";
   return (
     <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
       <CardHeader className="gap-3">
@@ -1335,7 +1341,7 @@ export function CandidateArenaPanel({
                     disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
                     variant="secondary"
                   >
-                    {runningPaperTrading ? "Starting paper trading" : "Start paper trading"}
+                    {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
                   </Button>
                 )}
               </div>
@@ -1360,7 +1366,7 @@ export function CandidateArenaPanel({
               <Field
                 label="Paper runner"
                 value={selectedPaperTradingEvaluation
-                  ? `${selectedPaperTradingEvaluation.runner_active ? "active" : "stopped"}${selectedPaperTradingEvaluation.next_observation_at ? ` / next ${formatCompactDateTime(selectedPaperTradingEvaluation.next_observation_at)}` : ""}`
+                  ? formatPaperRunnerSummary(selectedPaperTradingEvaluation)
                   : "not started"}
               />
               <Field
@@ -1612,6 +1618,28 @@ function formatPaperDecisionSummary(
     decision.order_request.quantity,
     decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined
   ].filter(Boolean).join(" ");
+}
+
+function formatPaperRunnerSummary(evaluation: PaperTradingEvaluationReadModel): string {
+  const runnerStatus = paperTradingRunnerStatus(evaluation);
+  return [
+    runnerStatus,
+    runnerStatus === "needs resume" ? "persisted running, timer inactive" : undefined,
+    evaluation.next_observation_at ? `next ${formatCompactDateTime(evaluation.next_observation_at)}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function paperTradingRunnerStatus(evaluation: PaperTradingEvaluationReadModel): string {
+  if (evaluation.runner_active) {
+    return "active";
+  }
+  if (evaluation.status === "running") {
+    return "needs resume";
+  }
+  if (evaluation.status === "not_started") {
+    return "not started";
+  }
+  return evaluation.status;
 }
 
 function formatPublicExecutionEvidenceSummary(

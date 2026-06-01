@@ -64,4 +64,6 @@ future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
 promotion. Each surface should expose runner active status, next observation time, observation
 count, latest market snapshot, latest paper score, and any paper failure from `OperatorReadModel`.
-Live/private Binance authority remains disabled.
+When a persisted evaluation is still `running` but the in-memory runner is inactive after a runtime
+restart, every surface must say `needs resume` instead of making the session look actively scheduled
+or fully stopped. Live/private Binance authority remains disabled.

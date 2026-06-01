@@ -519,6 +519,37 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("Research iterations");
   });
 
+  it("shows resume language when persisted paper evaluation lost the in-memory runner", () => {
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={fixtureCandidateArena}
+        selectedCandidateId="candidate-profitable"
+        selectedCandidate={arenaSelectedCandidate()}
+        selectedPaperEvidence={{
+          status: "ledger_chain_complete",
+          ledger_chain_complete: true,
+          ledger_chain_count: 1,
+          authority_status: "not_live"
+        }}
+        selectedPaperTradingEvaluation={paperTradingEvaluationFixture({
+          status: "running",
+          runner_active: false
+        })}
+        onStart={() => undefined}
+        onStop={() => undefined}
+        onTick={() => undefined}
+        onSelectCandidate={() => undefined}
+        onStartPaperTrading={() => undefined}
+        actionPending={false}
+        runningPaperTrading={false}
+      />
+    );
+
+    expect(html).toContain("Resume paper trading");
+    expect(html).toContain("needs resume / persisted running, timer inactive / next");
+    expect(html).not.toContain("Stop paper trading");
+  });
+
   it("keeps the cockpit inspector bound to the operator-selected candidate even outside the arena leaderboard", () => {
     const html = renderToStaticMarkup(
       <CandidateArenaPanel
