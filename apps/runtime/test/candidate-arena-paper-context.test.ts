@@ -67,9 +67,10 @@ describe("CandidateArena paper evidence context", () => {
       paper_trading_board: Array<{
         rank: number;
         candidate_id: string;
+        paper_runner_status: string;
         net_revenue_usdt: number;
         observation_count: number;
-        promotion_gate_status: string;
+        promotion_gate_status?: string;
         authority_status: string;
       }>;
     };
@@ -96,12 +97,13 @@ describe("CandidateArena paper evidence context", () => {
       expect.objectContaining({
         rank: 1,
         candidate_id: FIXTURE_CANDIDATE_ID,
+        paper_runner_status: "unknown_at_tick_context",
         net_revenue_usdt: 12.34,
         observation_count: 7,
-        promotion_gate_status: "needs_resume",
         authority_status: "not_live"
       })
     ]);
+    expect(context.paper_trading_board[0]).not.toHaveProperty("promotion_gate_status");
   });
 });
 

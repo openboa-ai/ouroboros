@@ -752,10 +752,11 @@ function arenaPaperTradingBoardContext(
   rank: number;
   candidate_id: string | undefined;
   paper_trading_status: string;
+  paper_runner_status: "unknown_at_tick_context" | "inactive";
   net_revenue_usdt: number;
   net_return_pct: number;
   observation_count: number;
-  promotion_gate_status: "collecting_paper_evidence" | "needs_resume" | "paper_evidence_recorded" | "paper_failed" | "not_evaluated";
+  promotion_gate_status?: "paper_evidence_recorded" | "paper_failed" | "not_evaluated";
   market_data_source?: string;
   latest_public_execution_source?: string;
   latest_failure_reason?: string;
@@ -772,6 +773,9 @@ function arenaPaperTradingBoardContext(
         rank: 0,
         candidate_id: candidate?.candidate_id ?? entry?.candidate_id,
         paper_trading_status: paperEvaluation?.status ?? "not_started",
+        paper_runner_status: paperEvaluation?.status === "running"
+          ? "unknown_at_tick_context" as const
+          : "inactive" as const,
         net_revenue_usdt: paperEvaluation?.latest_score.net_revenue_usdt ?? 0,
         net_return_pct: paperEvaluation?.latest_score.net_return_pct ?? 0,
         observation_count: paperEvaluation?.observation_count ?? 0,
@@ -794,7 +798,7 @@ function arenaPaperTradingBoardContext(
 
 function arenaPaperPromotionGateStatus(
   evaluation: Awaited<ReturnType<OuroborosStorePort["getLatestPaperTradingEvaluationForCandidate"]>> | undefined
-): "collecting_paper_evidence" | "needs_resume" | "paper_evidence_recorded" | "paper_failed" | "not_evaluated" {
+): "paper_evidence_recorded" | "paper_failed" | "not_evaluated" | undefined {
   if (!evaluation) {
     return "not_evaluated";
   }
@@ -802,7 +806,7 @@ function arenaPaperPromotionGateStatus(
     return "paper_failed";
   }
   if (evaluation.status === "running") {
-    return "needs_resume";
+    return undefined;
   }
   return evaluation.observation_count > 0 ? "paper_evidence_recorded" : "not_evaluated";
 }
