@@ -77,6 +77,10 @@ export class OperatorService {
       ? this.options.paperTradingEvaluationRunner?.active(selectedEvaluation.trading_run_ref.id) ??
         selectedEvaluation.status === "running"
       : false;
+    const paperTradingBoard = await buildPaperTradingBoard(
+      this.options.store,
+      this.options.paperTradingEvaluationRunner
+    );
     if (this.selectedCandidateId && candidateId === this.selectedCandidateId && !selectedCandidate) {
       this.selectedCandidateId = undefined;
     }
@@ -96,6 +100,7 @@ export class OperatorService {
         selectedObservations,
         selectedEvaluationRunnerActive
       ),
+      paper_trading_board: paperTradingBoard,
       researcher_provider: await this.readResearcherProvider(),
       agent_profiles: await listAgentProfileReadModels(this.options.store),
       latest_commands: latestCommands,
@@ -459,6 +464,101 @@ export function selectedPaperEvidence(
     failure_reason: ledger.chain_complete ? undefined : "ledger_chain_incomplete",
     authority_status: "not_live"
   };
+}
+
+async function buildPaperTradingBoard(
+  store: OuroborosStorePort,
+  runner?: OperatorServiceOptions["paperTradingEvaluationRunner"]
+): Promise<OperatorReadModel["paper_trading_board"]> {
+  const latestByCandidate = new Map<string, PaperTradingEvaluationRecord>();
+  for (const evaluation of await store.listPaperTradingEvaluations()) {
+    latestByCandidate.set(evaluation.candidate_ref.id, evaluation);
+  }
+
+  const entries = await Promise.all([...latestByCandidate.values()].map(async (evaluation) => {
+    const candidate = await store.getCandidate(evaluation.candidate_ref.id);
+    const observations = await store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id);
+    const latestObservation = observations.at(-1);
+    const latestMarketSnapshot = latestObservation?.market_snapshot;
+    const latestPublicExecutionSnapshot = latestObservation?.public_execution_snapshot ??
+      evaluation.latest_public_execution_snapshot;
+    const runnerActive = runner?.active(evaluation.trading_run_ref.id) ?? false;
+    const runnerStatus = paperTradingBoardRunnerStatus(evaluation, runnerActive);
+    const openOrderCount = latestObservation?.open_orders?.length ??
+      evaluation.open_orders?.length ??
+      evaluation.paper_account_snapshot?.open_order_count ??
+      0;
+    return {
+      rank: 0,
+      candidate_id: evaluation.candidate_ref.id,
+      display_name: candidate?.display_name ?? evaluation.candidate_ref.id,
+      evaluation_id: evaluation.paper_trading_evaluation_id,
+      status: evaluation.status,
+      runner_status: runnerStatus,
+      promotion_gate_status: paperTradingPromotionGateStatus(evaluation, runnerStatus),
+      observation_count: evaluation.observation_count,
+      trading_run_id: evaluation.trading_run_ref.id,
+      last_observed_at: evaluation.last_observed_at,
+      next_observation_at: evaluation.next_observation_at,
+      profit_loss: evaluation.latest_score,
+      market_data_source: latestMarketSnapshot?.source_kind ??
+        latestPublicExecutionSnapshot?.source_kind ??
+        "binance_production_public_rest",
+      latest_public_execution_source: latestPublicExecutionSnapshot?.source_priority,
+      latest_fill_status: (latestObservation?.latest_fill ?? evaluation.latest_fill)?.fill_status,
+      open_order_count: openOrderCount,
+      latest_failure_reason: latestObservation?.failure_reason ?? evaluation.latest_failure_reason,
+      authority_status: "not_live" as const
+    };
+  }));
+
+  const rankedEntries = entries
+    .sort((a, b) =>
+      b.profit_loss.net_revenue_usdt - a.profit_loss.net_revenue_usdt ||
+      b.profit_loss.net_return_pct - a.profit_loss.net_return_pct ||
+      b.observation_count - a.observation_count ||
+      a.candidate_id.localeCompare(b.candidate_id)
+    )
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+  return {
+    board_kind: "paper_trading_board",
+    primary_rank_metric: "net_revenue_usdt",
+    secondary_rank_metric: "net_return_pct",
+    evaluation_authority: "continuous_paper_trading",
+    entries: rankedEntries,
+    live_disabled: true,
+    authority_status: "not_live"
+  };
+}
+
+function paperTradingBoardRunnerStatus(
+  evaluation: PaperTradingEvaluationRecord,
+  runnerActive: boolean
+): OperatorReadModel["paper_trading_board"]["entries"][number]["runner_status"] {
+  if (evaluation.status === "running" && runnerActive) {
+    return "active";
+  }
+  if (evaluation.status === "running") {
+    return "needs_resume";
+  }
+  return "inactive";
+}
+
+function paperTradingPromotionGateStatus(
+  evaluation: PaperTradingEvaluationRecord,
+  runnerStatus: OperatorReadModel["paper_trading_board"]["entries"][number]["runner_status"]
+): OperatorReadModel["paper_trading_board"]["entries"][number]["promotion_gate_status"] {
+  if (evaluation.status === "failed") {
+    return "paper_failed";
+  }
+  if (runnerStatus === "active") {
+    return "collecting_paper_evidence";
+  }
+  if (runnerStatus === "needs_resume") {
+    return "needs_resume";
+  }
+  return evaluation.observation_count > 0 ? "paper_evidence_recorded" : "not_evaluated";
 }
 
 export function selectedPaperTradingEvaluation(

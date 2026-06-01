@@ -29,6 +29,7 @@ import type {
   ImprovementReadModel,
   LedgerReadModel,
   OperatorReadModel,
+  PaperTradingBoardReadModel,
   PaperTradingEvaluationReadModel,
   ResearcherProviderReadModel,
   AgentProfileReadModel,
@@ -1083,6 +1084,7 @@ export function CandidateArenaPanel({
   latestCommands = [],
   selectedPaperEvidence,
   selectedPaperTradingEvaluation,
+  paperTradingBoard,
   onStart,
   onStop,
   onTick,
@@ -1107,6 +1109,7 @@ export function CandidateArenaPanel({
   latestCommands?: OuroborosCommandReadModel[];
   selectedPaperEvidence?: SelectedPaperEvidenceReadModel;
   selectedPaperTradingEvaluation?: PaperTradingEvaluationReadModel;
+  paperTradingBoard?: PaperTradingBoardReadModel;
   onStart?: () => void;
   onStop?: () => void;
   onTick?: () => void;
@@ -1164,6 +1167,7 @@ export function CandidateArenaPanel({
   const selectedPaperDecision = selectedPaperTradingEvaluation?.latest_decision;
   const selectedPaperAccount = selectedPaperTradingEvaluation?.paper_account_snapshot;
   const selectedPaperFill = selectedPaperTradingEvaluation?.latest_fill;
+  const paperBoardEntries = paperTradingBoard?.entries ?? [];
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   const paperRunnerActive = selectedPaperTradingEvaluation?.runner_active === true;
@@ -1230,6 +1234,41 @@ export function CandidateArenaPanel({
             <span className="text-xs text-muted-foreground">secondary rank signal</span>
           </div>
         </div>
+        <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Paper trading board">
+          <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
+            <h3 className="text-sm font-medium">Paper Board</h3>
+            <span className="text-xs text-muted-foreground">product authority: continuous paper trading</span>
+          </div>
+          {paperBoardEntries.length ? (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {paperBoardEntries.slice(0, 6).map((entry) => (
+                <div key={entry.evaluation_id} className="grid gap-2 rounded-md bg-background/35 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium text-muted-foreground">#{entry.rank}</span>
+                      <strong className="block break-words text-sm leading-snug">{entry.display_name}</strong>
+                    </div>
+                    <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
+                      {entry.status}
+                    </Badge>
+                  </div>
+                  <dl className="grid gap-2 sm:grid-cols-2">
+                    <Field label="Paper net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
+                    <Field label="Return" value={formatPercent(entry.profit_loss.net_return_pct)} />
+                    <Field label="Gate" value={entry.promotion_gate_status} />
+                    <Field label="Runner" value={entry.runner_status} />
+                    <Field label="Observations" value={String(entry.observation_count)} />
+                    <Field label="Market" value={`${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`} />
+                  </dl>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="placeholder">
+              No paper evaluations yet. Select a candidate and start paper trading to create product evidence.
+            </div>
+          )}
+        </section>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
         <section className="grid content-start gap-2" aria-label="Candidate Arena leaderboard">
           <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
@@ -2030,6 +2069,7 @@ export function CandidateDetail({
           latestCommands={operator?.latest_commands}
           selectedPaperEvidence={operator?.selected_paper_evidence}
           selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
+          paperTradingBoard={operator?.paper_trading_board}
           onStart={onStartCandidateArena}
           onStop={onStopCandidateArena}
           onTick={onTickCandidateArena}

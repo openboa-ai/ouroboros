@@ -2923,6 +2923,49 @@ export interface PaperTradingEvaluationReadModel {
   authority_status: "not_live";
 }
 
+export type PaperTradingBoardRunnerStatus =
+  | "active"
+  | "needs_resume"
+  | "inactive";
+
+export type PaperTradingPromotionGateStatus =
+  | "collecting_paper_evidence"
+  | "needs_resume"
+  | "paper_evidence_recorded"
+  | "paper_failed"
+  | "not_evaluated";
+
+export interface PaperTradingBoardEntryReadModel {
+  rank: number;
+  candidate_id: string;
+  display_name: string;
+  evaluation_id: string;
+  status: PaperTradingEvaluationStatus;
+  runner_status: PaperTradingBoardRunnerStatus;
+  promotion_gate_status: PaperTradingPromotionGateStatus;
+  observation_count: number;
+  trading_run_id: string;
+  last_observed_at?: string;
+  next_observation_at?: string;
+  profit_loss: TradingProfitLossReadModel;
+  market_data_source: PaperTradingMarketDataSourceKind;
+  latest_public_execution_source?: PaperTradingMarketDataSourcePriority;
+  latest_fill_status?: PaperTradingFillSummary["fill_status"];
+  open_order_count: number;
+  latest_failure_reason?: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingBoardReadModel {
+  board_kind: "paper_trading_board";
+  primary_rank_metric: "net_revenue_usdt";
+  secondary_rank_metric: "net_return_pct";
+  evaluation_authority: "continuous_paper_trading";
+  entries: PaperTradingBoardEntryReadModel[];
+  live_disabled: true;
+  authority_status: "not_live";
+}
+
 export interface OperatorReadModel {
   operator_kind: "ouroboros_operator";
   command_descriptors: readonly OuroborosCommandDescriptor[];
@@ -2931,6 +2974,7 @@ export interface OperatorReadModel {
   selected_candidate: CandidateInspectReadModel | null;
   selected_paper_evidence: SelectedPaperEvidenceReadModel;
   selected_paper_trading_evaluation: PaperTradingEvaluationReadModel;
+  paper_trading_board: PaperTradingBoardReadModel;
   researcher_provider: ResearcherProviderReadModel;
   agent_profiles: AgentProfileReadModel[];
   latest_commands: OuroborosCommandReadModel[];

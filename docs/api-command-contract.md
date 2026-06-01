@@ -59,12 +59,21 @@ Current command groups:
 ## Read Model Authority
 
 `OperatorReadModel` is the shared operator state for all user surfaces. It must show the
-CandidateArena status, leaderboard, selected candidate, `PaperTradingEvaluation`, paper evidence
-readback, runner active status, interval, next observation time, latest market snapshot, latest
-public execution snapshot, market data mode, local order book sync state, fake paper account, open
-orders, latest fill, latest paper failure, agent/provider status, latest ticks, latest candidates,
-latest command results, and latest TradingSystem paper decision when one has been emitted, and
-authority flags.
+CandidateArena status, research-preflight leaderboard, selected candidate, selected
+`PaperTradingEvaluation`, product `PaperTradingEvaluation` board, paper evidence readback, runner
+active status, interval, next observation time, latest market snapshot, latest public execution
+snapshot, market data mode, local order book sync state, fake paper account, open orders, latest
+fill, latest paper failure, agent/provider status, latest ticks, latest candidates, latest command
+results, and latest TradingSystem paper decision when one has been emitted, and authority flags.
+
+The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
+`net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
+(`active`, `needs_resume`, or `inactive`), and exposes promotion-gate state without enabling live
+authority. UI, CLI, TUI, and researcher context must treat this board as product evaluation
+evidence, while CandidateArena leaderboard remains research preflight.
+When compacting this board into researcher context, do not invent runner authority: if the current
+process cannot see the in-memory runner, keep the paper status and score but mark runner state as
+unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.

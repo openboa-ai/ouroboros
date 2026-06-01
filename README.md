@@ -27,6 +27,7 @@ parallel TradingSystem candidates
 -> findings and lineage
 -> next generation
 -> selected continuous paper trading evaluation
+-> PaperTradingEvaluation board
 ```
 
 `TradingSystem` is an executable candidate system. It may be code, rules, model-assisted policy, or
@@ -52,6 +53,11 @@ sources, REST is the snapshot, backfill, and recovery anchor, and local order bo
 Binance `/public` `depth` snapshot plus `U/u/pu` continuity rules. Fills are not invented from a
 mark price alone.
 Replaying old sandbox output as a new decision is not paper trading evaluation.
+
+The Candidate Arena leaderboard is a research preflight board. The `PaperTradingEvaluation` board
+is the product evaluation board: it ranks selected candidates by accumulated paper
+`net_revenue_usdt` first and `net_return_pct` second, keeps losing candidates visible as useful
+evidence, and shows the promotion gate state without enabling live authority.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.

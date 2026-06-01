@@ -32,6 +32,7 @@ parallel TradingSystem candidates
 -> findings and lineage
 -> next generation
 -> selected candidate continuous paper trading evaluation
+-> PaperTradingEvaluation board
 ```
 
 Researchers and LLM agents generate candidates; they do not grant authority. Replay/backtest is a
@@ -54,6 +55,16 @@ Ledger references. Market fills require public execution evidence (routed `/publ
 for market orders, routed `/market` `aggTrade` for limit order matching). Local order book state is
 consistency evidence built from REST `depth` snapshot plus routed `/public` WebSocket `depth@100ms`
 `U/u/pu` continuity. Mark price can update valuation; it cannot create a fill by itself.
+
+The CandidateArena leaderboard is research preflight, not final product authority. The
+`PaperTradingEvaluation` board is the product authority surface: it ranks selected candidates by
+accumulated paper `net_revenue_usdt`, uses `net_return_pct` as the secondary rank, keeps negative
+paper candidates visible, and shows whether each candidate is still collecting paper evidence,
+needs resume, has recorded paper evidence, or failed paper evaluation. That board is also compacted
+into the next researcher context so new candidates are generated from paper evidence, not replay
+scores alone. Researcher context must not pretend to know in-memory runner state when it cannot see
+the active runner; running paper evidence remains running evidence, not an automatic
+`needs_resume` claim.
 
 TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
 events, news or social inputs, tool calls, internal agent loops, or risk gates.

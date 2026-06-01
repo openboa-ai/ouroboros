@@ -202,6 +202,16 @@ export function OperatorTuiScreen(props: {
         <Text>{`Ledger chain: ${paperEvaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
       </Box>
       <Box flexDirection="column">
+        <Text bold>Paper Board</Text>
+        {props.operator.paper_trading_board.entries.length
+          ? props.operator.paper_trading_board.entries.slice(0, 5).map((entry) => (
+              <Text key={entry.evaluation_id}>
+                {`#${entry.rank} ${entry.display_name} ${entry.profit_loss.net_revenue_usdt.toFixed(2)} USDT / ${entry.promotion_gate_status}`}
+              </Text>
+            ))
+          : <Text>No paper evaluations yet.</Text>}
+      </Box>
+      <Box flexDirection="column">
         <Text bold>Agent Providers</Text>
         {props.operator.agent_profiles.map((profile) => (
           <Text key={profile.profile_id}>

@@ -40,6 +40,7 @@ status
 -> observe paper score
 -> stop paper trading
 -> evidence readback
+-> PaperTradingEvaluation board
 ```
 
 Developer/detail commands can remain in `OUROBOROS_COMMAND_REGISTRY` without becoming interface
@@ -63,7 +64,10 @@ Paper Trading is the continuous selected-candidate evaluation state between cand
 future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
 promotion. Each surface should expose runner active status, next observation time, observation
-count, latest market snapshot, latest paper score, and any paper failure from `OperatorReadModel`.
+count, latest market snapshot, latest paper score, `PaperTradingEvaluation` board rank, and any
+paper failure from `OperatorReadModel`. The CandidateArena leaderboard is research preflight; the
+paper board is the product evaluation authority and must remain visibly distinct in CLI, TUI, and
+Web UI.
 When a persisted evaluation is still `running` but the in-memory runner is inactive after a runtime
 restart, every surface must say `needs resume` instead of making the session look actively scheduled
 or fully stopped. Live/private Binance authority remains disabled.
