@@ -45,6 +45,7 @@ export interface PaperTradingCommandServiceOptions {
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
   runner?: PaperTradingEvaluationRunner;
   intervalMs?: number;
+  sandboxIntervalMs?: number;
   apiProviderFactory?: (
     binding: GatewayRuntimeBinding,
     options: PaperTradingApiProviderOptions
@@ -68,11 +69,13 @@ export class PaperTradingCommandService {
   private readonly apiProviderSessions = new Map<string, ReplayTradingApiProviderSession>();
   private readonly runner: PaperTradingEvaluationRunner;
   private readonly intervalMs: number;
+  private readonly sandboxIntervalMs: number;
   private readonly apiProviderFactory: NonNullable<PaperTradingCommandServiceOptions["apiProviderFactory"]>;
 
   constructor(private readonly options: PaperTradingCommandServiceOptions) {
     this.runner = options.runner ?? new PaperTradingEvaluationRunner();
     this.intervalMs = options.intervalMs ?? 60_000;
+    this.sandboxIntervalMs = options.sandboxIntervalMs ?? 1_000;
     this.apiProviderFactory = options.apiProviderFactory ?? startPaperTradingApiProvider;
   }
 
@@ -600,7 +603,7 @@ export class PaperTradingCommandService {
       runtime_ref: { record_kind: "trading_run", id: input.tradingRunId },
       sandbox_placement_id: `sandbox-placement-${safeRouteId(sandboxId)}`,
       created_at: existing?.created_at ?? new Date().toISOString(),
-      interval_ms: 1_000,
+      interval_ms: this.sandboxIntervalMs,
       paper_order_request: input.paperOrderRequest,
       env: input.tradingApiBaseUrl
         ? { TRADING_API_BASE_URL: input.tradingApiBaseUrl }

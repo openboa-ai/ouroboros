@@ -23,6 +23,13 @@ The automated smoke test is
 the `ouroboros` CLI fetch path to that runtime, runs the product loop, and renders the TUI from the
 same `OperatorReadModel`.
 
+The reference paper soak test is
+`apps/runtime/test/reference-paper-soak-trading-system.test.ts`. It registers the repo-owned
+`fixtures/trading-systems/reference_paper_soak.py` SystemCode as a selected candidate, starts
+continuous paper trading, lets the running system emit its own order/hold/cancel cadence through
+`TRADING_API_BASE_URL`, and proves fake fill, position, PnL, Ledger, stop, and operator readback
+accumulate across observations.
+
 ## Acceptance
 
 - `ouroboros status` shows the stopped arena, no selected candidate, `PaperTradingEvaluation`
@@ -43,6 +50,9 @@ same `OperatorReadModel`.
 - The running `TradingSystem` receives `TRADING_API_BASE_URL`, reads Gateway-owned paper runtime
   market/account/validation APIs when it wants context, and still emits its own JSONL events.
   The smoke must not call Binance directly from the `TradingSystem`.
+- The reference paper soak must prove that a selected `TradingSystem` can run as a long-lived
+  process, emit multiple paper events on its own cadence, and be observed without the Gateway
+  inventing decisions from refreshed snapshots.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,
