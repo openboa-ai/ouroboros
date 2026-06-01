@@ -102,10 +102,11 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
     expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
     expect(result.stdout).toContain("Market data: binance_production_public_websocket");
+    expect(result.stdout).toContain("Public execution: binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
     expect(result.stdout).toContain("Order book: synced / update 11");
     expect(result.stdout).toContain("Paper decision: order_request buy limit 0.001 @ 65000 (trading_system_order_request)");
     expect(result.stdout).toContain("Paper account: equity 10004.95 USDT / long 0.001 BTCUSDT @ 60000 / open orders 0");
-    expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000");
+    expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade agg-60000-001");
   });
 
   it("returns operator status JSON for automation", async () => {

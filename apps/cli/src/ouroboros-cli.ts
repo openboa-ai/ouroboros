@@ -401,7 +401,10 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
       : undefined,
-    `Market data: ${paper.market_data_source}${market?.source_priority ? ` / ${market.source_priority}` : ""}${market?.rest_fallback_used ? " / REST fallback" : ""}${market?.ws_connected === false ? " / WS disconnected" : ""}`,
+    `Market data: ${paper.market_data_source}${market?.source_priority ? ` / ${market.source_priority}` : ""}${market?.rest_fallback_used ? " / REST fallback" : ""}${market?.ws_connected === true ? " / WS connected" : ""}${market?.ws_connected === false ? " / WS disconnected" : ""}`,
+    paper.latest_public_execution_snapshot
+      ? `Public execution: ${formatPublicExecutionEvidence(paper.latest_public_execution_snapshot)}`
+      : undefined,
     paper.latest_public_execution_snapshot?.order_book
       ? `Order book: ${paper.latest_public_execution_snapshot.order_book.sync_status} / update ${paper.latest_public_execution_snapshot.order_book.last_update_id ?? "unknown"}${paper.latest_public_execution_snapshot.order_book.gap_detected ? " / gap recovered" : ""}`
       : undefined,
@@ -410,13 +413,37 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       ? `Paper account: equity ${formatUsdt(Number(paper.paper_account_snapshot.equity_usdt))} / ${formatPaperPosition(paper.paper_account_snapshot.position)} / open orders ${paper.paper_account_snapshot.open_order_count}`
       : undefined,
     paper.latest_fill
-      ? `Paper fill: ${paper.latest_fill.fill_status} ${paper.latest_fill.fill_quantity} @ ${paper.latest_fill.fill_price}`
+      ? `Paper fill: ${formatPaperFill(paper.latest_fill)}`
       : undefined,
     paper.latest_failure_reason ? `Paper failure: ${paper.latest_failure_reason}` : undefined,
     lastCommand
       ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
       : "Latest command: none"
   ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function formatPublicExecutionEvidence(
+  snapshot: NonNullable<OperatorReadModel["selected_paper_trading_evaluation"]["latest_public_execution_snapshot"]>
+): string {
+  return [
+    snapshot.source_kind,
+    snapshot.source_priority,
+    snapshot.freshness,
+    snapshot.ws_connected === true ? "WS connected" : undefined,
+    snapshot.ws_connected === false ? "WS disconnected" : undefined,
+    snapshot.rest_fallback_used ? "REST fallback" : undefined,
+    snapshot.gap_detected ? "gap detected" : undefined,
+    snapshot.stream_marker ? `marker ${snapshot.stream_marker}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatPaperFill(
+  fill: NonNullable<OperatorReadModel["selected_paper_trading_evaluation"]["latest_fill"]>
+): string {
+  return [
+    `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
+    fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
+  ].filter(Boolean).join(" / ");
 }
 
 function formatPaperDecision(

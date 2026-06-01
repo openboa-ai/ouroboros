@@ -285,9 +285,10 @@ describe("operator product loop smoke", () => {
       expect(humanStatus.exitCode, humanStatus.stderr).toBe(0);
       expect(humanStatus.stdout).toContain("PaperTradingEvaluation: running");
       expect(humanStatus.stdout).toContain("Market data:");
+      expect(humanStatus.stdout).toContain("Public execution:");
       expect(humanStatus.stdout).toContain("Paper decision: hold");
       expect(humanStatus.stdout).toContain("Paper account: equity");
-      expect(humanStatus.stdout).toContain("Paper fill: filled 0.001 @ 60000");
+      expect(humanStatus.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade product-loop-fill");
 
       const restartedServer = await buildServer({
         store: new LocalStore(tmpDir),
@@ -382,6 +383,7 @@ describe("operator product loop smoke", () => {
       expect(tui).toContain("PaperTradingEvaluation: running");
       expect(tui).toContain("Decision: hold");
       expect(tui).toContain("Account: equity");
+      expect(tui).toContain("Public execution:");
       expect(tui).toContain("Ledger chain: complete");
       expect(tui).toContain("trading_run.observe: succeeded");
     } finally {
