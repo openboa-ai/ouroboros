@@ -110,3 +110,13 @@ without a researcher or provider and emits stable `order_request`, optional `can
 `order_request` without injected runtime context, and becomes market-reactive when
 `TRADING_API_BASE_URL` is present. That fixture proves the selected `TradingSystem` reads
 Ouroboros-owned paper runtime APIs instead of calling Binance or credentials directly.
+
+The reference paper soak TradingSystem is
+[`fixtures/trading-systems/reference_paper_soak.py`](../fixtures/trading-systems/reference_paper_soak.py).
+It is the smallest repo-owned example of the real product shape: a long-running system receives
+`TRADING_API_BASE_URL`, reads `GET /market/snapshot`, `GET /account/state`, validates an order with
+`POST /orders/validate`, then emits its own `order_request`, `hold`, `cancel_order`, heartbeats, and
+stop events on its own cadence. The paper engine consumes those events during observations and
+updates fake fills, position, PnL, Ledger refs, and score readback. This reference system is not a
+strategy recommendation and not live authority; it is the executable contract for selected-candidate
+paper soak behavior.

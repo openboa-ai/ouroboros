@@ -104,6 +104,7 @@ export interface BuildServerOptions {
   binancePublicMarketClient?: BinancePublicMarketDataClient;
   marketDataPort?: GatewayMarketDataPort;
   paperTradingEvaluationIntervalMs?: number;
+  paperTradingSandboxIntervalMs?: number;
   tradingApiProviderSandboxHost?: string;
   paperTradingApiProviderFactory?: (
     binding: GatewayRuntimeBinding,
@@ -251,6 +252,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     tradingGatewayEnvironment,
     runner: paperTradingEvaluationRunner,
     intervalMs: paperTradingEvaluationIntervalMs,
+    sandboxIntervalMs: options.paperTradingSandboxIntervalMs,
     apiProviderFactory: options.paperTradingApiProviderFactory,
     apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
     logger: console
