@@ -661,23 +661,7 @@ async function recordArenaResearchRecords(input: {
 
 async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
-  const leaderboardCandidates = await Promise.all(
-    arena.leaderboard.slice(0, 8).map(async (entry) => {
-      const candidate = await store.getCandidate(entry.candidate_id);
-      const paperEvaluation = candidate
-        ? await store.getLatestPaperTradingEvaluationForCandidate(candidate.candidate_id)
-        : undefined;
-      const paperObservations = paperEvaluation
-        ? await store.listPaperTradingObservations(paperEvaluation.paper_trading_evaluation_id)
-        : [];
-      return {
-        entry,
-        candidate,
-        paperEvaluation,
-        paperObservations
-      };
-    })
-  );
+  const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
   return JSON.stringify({
     requested_direction: direction,
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
@@ -705,16 +689,28 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
         finding: entry.latest_finding
       })),
-    selected_paper_evidence: leaderboardCandidates
+    selected_paper_evidence: paperEvidenceCandidates
       .filter(({ candidate, paperEvaluation }) => candidate?.ledger?.has_activity || paperEvaluation)
       .map(({ entry, candidate, paperEvaluation, paperObservations }) => ({
-        candidate_id: entry.candidate_id,
-        direction_kind: entry.direction_kind,
-        net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+        candidate_id: candidate?.candidate_id ?? entry?.candidate_id,
+        direction_kind: entry?.direction_kind ??
+          candidate?.full_cycle_lineage?.evidence?.direction_kind ??
+          "paper_evidence",
+        net_revenue_usdt: entry?.profit_loss.net_revenue_usdt ??
+          paperEvaluation?.latest_score.net_revenue_usdt ??
+          0,
         paper_trading_status: paperEvaluation?.status,
         paper_observation_count: paperEvaluation?.observation_count ?? 0,
         paper_score: paperEvaluation?.latest_score,
         latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
+        latest_public_execution_snapshot: paperObservations.at(-1)?.public_execution_snapshot ??
+          paperEvaluation?.latest_public_execution_snapshot,
+        latest_paper_account: paperObservations.at(-1)?.paper_account_snapshot ??
+          paperEvaluation?.paper_account_snapshot,
+        latest_open_orders: paperObservations.at(-1)?.open_orders ??
+          paperEvaluation?.open_orders,
+        latest_fill: paperObservations.at(-1)?.latest_fill ??
+          paperEvaluation?.latest_fill,
         latest_paper_failure: paperEvaluation?.latest_failure_reason,
         failed_observations: paperObservations
           .filter((observation) => observation.status === "failed")
@@ -746,6 +742,48 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         })))
       .slice(0, 8)
   });
+}
+
+async function arenaPaperEvidenceCandidates(
+  store: OuroborosStorePort,
+  arena: CandidateArenaReadModel
+): Promise<Array<{
+  entry?: CandidateArenaReadModel["leaderboard"][number];
+  candidate?: CandidateInspectReadModel;
+  paperEvaluation?: Awaited<ReturnType<OuroborosStorePort["getLatestPaperTradingEvaluationForCandidate"]>>;
+  paperObservations: Awaited<ReturnType<OuroborosStorePort["listPaperTradingObservations"]>>;
+}>> {
+  const leaderboardEntries = arena.leaderboard.slice(0, 8);
+  const entriesByCandidateId = new Map(leaderboardEntries.map((entry) => [entry.candidate_id, entry]));
+  const candidateIds = new Set(leaderboardEntries.map((entry) => entry.candidate_id));
+  const candidateSummaries = await store.listCandidates();
+
+  await Promise.all(candidateSummaries.map(async (summary) => {
+    if (candidateIds.has(summary.candidate_id)) {
+      return;
+    }
+    const candidate = await store.getCandidate(summary.candidate_id);
+    const paperEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(summary.candidate_id);
+    if (candidate?.ledger?.has_activity || paperEvaluation) {
+      candidateIds.add(summary.candidate_id);
+    }
+  }));
+
+  return Promise.all([...candidateIds].map(async (candidateId) => {
+    const candidate = await store.getCandidate(candidateId);
+    const paperEvaluation = candidate
+      ? await store.getLatestPaperTradingEvaluationForCandidate(candidate.candidate_id)
+      : undefined;
+    const paperObservations = paperEvaluation
+      ? await store.listPaperTradingObservations(paperEvaluation.paper_trading_evaluation_id)
+      : [];
+    return {
+      entry: entriesByCandidateId.get(candidateId),
+      candidate,
+      paperEvaluation,
+      paperObservations
+    };
+  }));
 }
 
 function evaluationStatus(value: string | undefined): "accepted" | "disqualified" {

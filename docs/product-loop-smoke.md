@@ -30,6 +30,12 @@ continuous paper trading, lets the running system emit its own order/hold/cancel
 `TRADING_API_BASE_URL`, and proves fake fill, position, PnL, Ledger, stop, and operator readback
 accumulate across observations.
 
+The arena paper context test is
+`apps/runtime/test/candidate-arena-paper-context.test.ts`. It proves selected-candidate paper
+evidence is not only operator readback: latest paper score, market snapshot, public execution
+evidence, account/fill state, failures, and Ledger summary are compacted into the next
+CandidateArena researcher context, even before that candidate appears in the replay leaderboard.
+
 ## Acceptance
 
 - `ouroboros status` shows the stopped arena, no selected candidate, `PaperTradingEvaluation`
@@ -53,6 +59,10 @@ accumulate across observations.
 - The reference paper soak must prove that a selected `TradingSystem` can run as a long-lived
   process, emit multiple paper events on its own cadence, and be observed without the Gateway
   inventing decisions from refreshed snapshots.
+- CandidateArena researcher context must include latest selected paper evidence: paper score,
+  observation count, market snapshot, public execution evidence, fake account/fill state, failures,
+  and Ledger summary. This keeps the next candidate generation grounded in paper results instead of
+  replay-only leaderboard data.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,
