@@ -307,7 +307,8 @@ describe("operator product loop smoke", () => {
           url: "/api/operator"
         });
         expect(restartedOperator.statusCode, restartedOperator.body).toBe(200);
-        expect(restartedOperator.json().operator).toMatchObject({
+        const restartedOperatorBody = restartedOperator.json() as { operator: OperatorReadModel };
+        expect(restartedOperatorBody.operator).toMatchObject({
           selected_candidate_id: leader.candidate_id,
           selected_paper_evidence: {
             status: "ledger_chain_complete",
@@ -328,6 +329,21 @@ describe("operator product loop smoke", () => {
             authority_status: "not_live"
           }
         });
+        const restartedHumanStatus = await runOuroborosCli(["status"], {
+          runtimeBaseUrl,
+          fetch: serverFetch(restartedServer)
+        });
+        expect(restartedHumanStatus.exitCode, restartedHumanStatus.stderr).toBe(0);
+        expect(restartedHumanStatus.stdout).toContain(
+          "Paper runner: needs resume / persisted running, timer inactive"
+        );
+        const restartedTui = renderToString(
+          <OperatorTuiScreen
+            operator={restartedOperatorBody.operator}
+            cursor={0}
+          />
+        );
+        expect(restartedTui).toContain("Runner: needs resume / persisted running, timer inactive");
         const resumed = await restartedServer.inject({
           method: "POST",
           url: "/api/commands",

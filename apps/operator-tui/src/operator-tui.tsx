@@ -187,7 +187,7 @@ export function OperatorTuiScreen(props: {
         <Text>{selectedCandidateId ?? "none"}</Text>
         <Text>{`PaperTradingEvaluation: ${paperEvaluation.status}`}</Text>
         <Text>
-          {`Runner: ${paperEvaluation.runner_active ? "active" : "stopped"}${paperEvaluation.next_observation_at ? ` / next ${paperEvaluation.next_observation_at}` : ""}`}
+          {`Runner: ${formatPaperRunner(paperEvaluation)}`}
         </Text>
         <Text>
           {`Paper score: ${paperEvaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${paperEvaluation.observation_count}`}
@@ -262,6 +262,32 @@ function formatPaperFill(
     `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
     fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
   ].filter(Boolean).join(" / ");
+}
+
+function formatPaperRunner(
+  paperEvaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  const runnerStatus = paperRunnerStatus(paperEvaluation);
+  return [
+    runnerStatus,
+    runnerStatus === "needs resume" ? "persisted running, timer inactive" : undefined,
+    paperEvaluation.next_observation_at ? `next ${paperEvaluation.next_observation_at}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function paperRunnerStatus(
+  paperEvaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  if (paperEvaluation.runner_active) {
+    return "active";
+  }
+  if (paperEvaluation.status === "running") {
+    return "needs resume";
+  }
+  if (paperEvaluation.status === "not_started") {
+    return "not started";
+  }
+  return paperEvaluation.status;
 }
 
 function formatPublicExecutionEvidence(

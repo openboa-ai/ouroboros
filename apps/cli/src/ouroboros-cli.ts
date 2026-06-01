@@ -397,7 +397,7 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
     `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
-    `Paper runner: ${paper.runner_active ? "active" : "stopped"}${paper.interval_ms ? ` / interval ${paper.interval_ms}ms` : ""}${paper.next_observation_at ? ` / next ${paper.next_observation_at}` : ""}`,
+    `Paper runner: ${formatPaperRunner(paper)}`,
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
       : undefined,
@@ -435,6 +435,33 @@ function formatPublicExecutionEvidence(
     snapshot.gap_detected ? "gap detected" : undefined,
     snapshot.stream_marker ? `marker ${snapshot.stream_marker}` : undefined
   ].filter(Boolean).join(" / ");
+}
+
+function formatPaperRunner(
+  paper: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  const runnerStatus = paperRunnerStatus(paper);
+  return [
+    runnerStatus,
+    runnerStatus === "needs resume" ? "persisted running, timer inactive" : undefined,
+    paper.interval_ms ? `interval ${paper.interval_ms}ms` : undefined,
+    paper.next_observation_at ? `next ${paper.next_observation_at}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function paperRunnerStatus(
+  paper: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  if (paper.runner_active) {
+    return "active";
+  }
+  if (paper.status === "running") {
+    return "needs resume";
+  }
+  if (paper.status === "not_started") {
+    return "not started";
+  }
+  return paper.status;
 }
 
 function formatPaperFill(

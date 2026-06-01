@@ -39,6 +39,25 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Keys: r refresh");
   });
 
+  it("renders a restart recovery hint when a persisted paper evaluation needs resume", () => {
+    const operator = fixtureOperator();
+    operator.selected_paper_trading_evaluation = {
+      ...operator.selected_paper_trading_evaluation,
+      status: "running",
+      runner_active: false
+    };
+
+    const output = renderToString(
+      <OperatorTuiScreen
+        operator={operator}
+        cursor={0}
+      />
+    );
+
+    expect(output).toContain("PaperTradingEvaluation: running");
+    expect(output).toContain("Runner: needs resume / persisted running, timer inactive / next");
+  });
+
   it("maps keyboard input to action console actions", () => {
     expect(operatorTuiActionForInput("r", {})).toBe("refresh");
     expect(operatorTuiActionForInput("t", {})).toBe("tick");
