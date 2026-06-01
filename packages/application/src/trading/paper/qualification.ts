@@ -127,13 +127,18 @@ function hasFillWithoutMatchingPublicExecutionEvidence(
   evaluation: PaperTradingEvaluationRecord,
   observations: PaperTradingObservationRecord[]
 ): boolean {
-  if (evaluation.latest_fill &&
-    !fillMatchesPublicExecutionSnapshot(evaluation.latest_fill, evaluation.latest_public_execution_snapshot)) {
-    return true;
-  }
-  return observations.some((observation) =>
-    observation.latest_fill &&
-    !fillMatchesPublicExecutionSnapshot(observation.latest_fill, observation.public_execution_snapshot)
+  const fills = uniqueFills([
+    evaluation.latest_fill,
+    ...observations.map((observation) => observation.latest_fill)
+  ]);
+  const publicExecutionSnapshots = [
+    evaluation.latest_public_execution_snapshot,
+    ...observations.map((observation) => observation.public_execution_snapshot)
+  ].filter((snapshot): snapshot is NonNullable<PaperTradingObservationRecord["public_execution_snapshot"]> =>
+    Boolean(snapshot)
+  );
+  return fills.some((fill) =>
+    !publicExecutionSnapshots.some((snapshot) => fillMatchesPublicExecutionSnapshot(fill, snapshot))
   );
 }
 
@@ -150,4 +155,17 @@ function fillMatchesPublicExecutionSnapshot(
   return snapshot.agg_trades.some((trade) => trade.trade_id === fill.source_trade_id) ||
     snapshot.stream_marker === fill.source_trade_id ||
     fill.source_trade_id.startsWith(`${snapshot.stream_marker}:`);
+}
+
+function uniqueFills(
+  fills: Array<PaperTradingEvaluationRecord["latest_fill"] | undefined>
+): Array<NonNullable<PaperTradingEvaluationRecord["latest_fill"]>> {
+  const unique = new Map<string, NonNullable<PaperTradingEvaluationRecord["latest_fill"]>>();
+  for (const fill of fills) {
+    if (!fill) {
+      continue;
+    }
+    unique.set(fill.source_trade_id ?? fill.fill_id, fill);
+  }
+  return [...unique.values()];
 }

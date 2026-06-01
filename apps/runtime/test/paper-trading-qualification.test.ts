@@ -175,6 +175,49 @@ describe("PaperTradingQualificationPolicy", () => {
       qualification_reasons: ["fill_public_execution_evidence_missing"]
     });
   });
+
+  it("qualifies carried-forward latest fills when the original observation has matching public execution evidence", () => {
+    const evaluation = {
+      ...paperEvaluation({
+        observationCount: 30,
+        netRevenueUsdt: 42,
+        startedAt: "2026-05-16T00:00:00.000Z",
+        lastObservedAt: "2026-05-16T00:31:00.000Z"
+      }),
+      latest_public_execution_snapshot: {
+        ...publicExecutionSnapshot("2026-05-16T00:31:00.000Z"),
+        stream_marker: "later-unrelated-marker",
+        agg_trades: []
+      }
+    };
+    const observations = recordedObservations(30).map((observation) =>
+      observation.sequence === 30
+        ? {
+            ...observation,
+            latest_fill: evaluation.latest_fill,
+            public_execution_snapshot: {
+              ...publicExecutionSnapshot(observation.observed_at),
+              stream_marker: "later-unrelated-observation-marker",
+              agg_trades: []
+            }
+          }
+        : observation
+    );
+
+    expect(qualifyPaperTradingEvaluation({
+      evaluation,
+      observations,
+      runnerActive: true,
+      policy: {
+        minObservationCount: 30,
+        minElapsedMs: 30 * 60_000,
+        maxFailedObservationRatio: 0.1
+      }
+    })).toMatchObject({
+      qualification_status: "qualified",
+      qualification_reasons: []
+    });
+  });
 });
 
 function paperEvaluation(input: {
