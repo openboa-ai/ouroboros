@@ -381,6 +381,7 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
   );
   const selectedProfileNextStep = selectedProfile ? agentProfileNextStep(selectedProfile) : undefined;
   const paper = operator.selected_paper_trading_evaluation;
+  const paperLeader = operator.paper_trading_board.entries[0];
   const market = paper.latest_market_snapshot;
   const decision = paper.latest_decision;
   return [
@@ -397,6 +398,9 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
     `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
+    paperLeader
+      ? `Paper board: #${paperLeader.rank} ${paperLeader.display_name} ${formatUsdt(paperLeader.profit_loss.net_revenue_usdt)} / ${paperLeader.promotion_gate_status}`
+      : "Paper board: no paper evaluations",
     `Paper runner: ${formatPaperRunner(paper)}`,
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`

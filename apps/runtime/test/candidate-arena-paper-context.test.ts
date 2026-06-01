@@ -64,6 +64,14 @@ describe("CandidateArena paper evidence context", () => {
         ledger_chain_complete: boolean;
         authority_status: string;
       }>;
+      paper_trading_board: Array<{
+        rank: number;
+        candidate_id: string;
+        net_revenue_usdt: number;
+        observation_count: number;
+        promotion_gate_status: string;
+        authority_status: string;
+      }>;
     };
     expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -84,6 +92,16 @@ describe("CandidateArena paper evidence context", () => {
         authority_status: "not_live"
       })
     ]));
+    expect(context.paper_trading_board).toEqual([
+      expect.objectContaining({
+        rank: 1,
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        net_revenue_usdt: 12.34,
+        observation_count: 7,
+        promotion_gate_status: "needs_resume",
+        authority_status: "not_live"
+      })
+    ]);
   });
 });
 

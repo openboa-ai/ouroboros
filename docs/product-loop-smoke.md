@@ -11,6 +11,7 @@ status
 -> start paper trading
 -> observe paper trading
 -> evidence readback
+-> PaperTradingEvaluation board
 ```
 
 This smoke is a proof-path check, not final product evaluation. Replay/backtest belongs inside
@@ -35,6 +36,8 @@ The arena paper context test is
 evidence is not only operator readback: latest paper score, market snapshot, public execution
 evidence, account/fill state, failures, and Ledger summary are compacted into the next
 CandidateArena researcher context, even before that candidate appears in the replay leaderboard.
+It also proves the compact paper board enters the next researcher context so future candidates can
+learn from top, negative, failed, and resume-needed paper evaluations.
 
 ## Acceptance
 
@@ -63,8 +66,10 @@ CandidateArena researcher context, even before that candidate appears in the rep
   observation count, market snapshot, public execution evidence, fake account/fill state, failures,
   and Ledger summary. This keeps the next candidate generation grounded in paper results instead of
   replay-only leaderboard data.
+- `GET /api/operator` must include `paper_trading_board`, ranked by selected-candidate continuous
+  paper `net_revenue_usdt`; negative paper candidates remain visible below profitable candidates.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
-  `PaperTradingEvaluation`, runner active status, observation count, latest market snapshot,
+  `PaperTradingEvaluation`, `PaperTradingEvaluation` board, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,
   accumulated score, and `ledger_chain_complete`.
 - Runtime restart smoke must keep persisted paper evidence visible while making scheduler loss

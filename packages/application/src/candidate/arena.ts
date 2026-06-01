@@ -662,6 +662,7 @@ async function recordArenaResearchRecords(input: {
 async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
   const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
+  const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
   return JSON.stringify({
     requested_direction: direction,
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
@@ -732,6 +733,7 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
           ?? "recorded",
         authority_status: "not_live"
       })),
+    paper_trading_board: paperTradingBoard,
     latest_tick_failures: arena.latest_ticks
       .flatMap((tick) => tick.direction_results
         .filter((result) => result.status === "failed")
@@ -742,6 +744,67 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         })))
       .slice(0, 8)
   });
+}
+
+function arenaPaperTradingBoardContext(
+  candidates: Awaited<ReturnType<typeof arenaPaperEvidenceCandidates>>
+): Array<{
+  rank: number;
+  candidate_id: string | undefined;
+  paper_trading_status: string;
+  net_revenue_usdt: number;
+  net_return_pct: number;
+  observation_count: number;
+  promotion_gate_status: "collecting_paper_evidence" | "needs_resume" | "paper_evidence_recorded" | "paper_failed" | "not_evaluated";
+  market_data_source?: string;
+  latest_public_execution_source?: string;
+  latest_failure_reason?: string;
+  authority_status: "not_live";
+}> {
+  return candidates
+    .filter(({ paperEvaluation }) => paperEvaluation)
+    .map(({ candidate, entry, paperEvaluation, paperObservations }) => {
+      const latestObservation = paperObservations.at(-1);
+      const latestMarketSnapshot = latestObservation?.market_snapshot;
+      const latestPublicExecutionSnapshot = latestObservation?.public_execution_snapshot ??
+        paperEvaluation?.latest_public_execution_snapshot;
+      return {
+        rank: 0,
+        candidate_id: candidate?.candidate_id ?? entry?.candidate_id,
+        paper_trading_status: paperEvaluation?.status ?? "not_started",
+        net_revenue_usdt: paperEvaluation?.latest_score.net_revenue_usdt ?? 0,
+        net_return_pct: paperEvaluation?.latest_score.net_return_pct ?? 0,
+        observation_count: paperEvaluation?.observation_count ?? 0,
+        promotion_gate_status: arenaPaperPromotionGateStatus(paperEvaluation),
+        market_data_source: latestMarketSnapshot?.source_kind ?? latestPublicExecutionSnapshot?.source_kind,
+        latest_public_execution_source: latestPublicExecutionSnapshot?.source_priority,
+        latest_failure_reason: latestObservation?.failure_reason ?? paperEvaluation?.latest_failure_reason,
+        authority_status: "not_live" as const
+      };
+    })
+    .sort((a, b) =>
+      b.net_revenue_usdt - a.net_revenue_usdt ||
+      b.net_return_pct - a.net_return_pct ||
+      b.observation_count - a.observation_count ||
+      String(a.candidate_id).localeCompare(String(b.candidate_id))
+    )
+    .map((entry, index) => ({ ...entry, rank: index + 1 }))
+    .slice(0, 8);
+}
+
+function arenaPaperPromotionGateStatus(
+  evaluation: Awaited<ReturnType<OuroborosStorePort["getLatestPaperTradingEvaluationForCandidate"]>> | undefined
+): "collecting_paper_evidence" | "needs_resume" | "paper_evidence_recorded" | "paper_failed" | "not_evaluated" {
+  if (!evaluation) {
+    return "not_evaluated";
+  }
+  if (evaluation.status === "failed") {
+    return "paper_failed";
+  }
+  if (evaluation.status === "running") {
+    return "needs_resume";
+  }
+  return evaluation.observation_count > 0 ? "paper_evidence_recorded" : "not_evaluated";
 }
 
 async function arenaPaperEvidenceCandidates(

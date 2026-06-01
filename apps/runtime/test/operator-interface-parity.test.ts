@@ -249,6 +249,36 @@ function fixtureOperator(): OperatorReadModel {
       score_source: "paper_trading_engine",
       authority_status: "not_live"
     },
+    paper_trading_board: {
+      board_kind: "paper_trading_board",
+      primary_rank_metric: "net_revenue_usdt",
+      secondary_rank_metric: "net_return_pct",
+      evaluation_authority: "continuous_paper_trading",
+      entries: [
+        {
+          rank: 1,
+          candidate_id: "candidate-profitable",
+          display_name: "candidate-profitable",
+          evaluation_id: "paper-evaluation-candidate-profitable",
+          status: "running",
+          runner_status: "active",
+          promotion_gate_status: "collecting_paper_evidence",
+          observation_count: 1,
+          trading_run_id: "trading-run-candidate-profitable",
+          profit_loss: {
+            revenue_usdt: 5,
+            cost_usdt: 0.048,
+            net_revenue_usdt: 4.952,
+            net_return_pct: 0.04952
+          },
+          market_data_source: "binance_production_public_rest",
+          open_order_count: 0,
+          authority_status: "not_live"
+        }
+      ],
+      live_disabled: true,
+      authority_status: "not_live"
+    },
     researcher_provider: {
       selected_provider: "fixture",
       available_providers: ["codex", "fixture"],

@@ -130,6 +130,7 @@ export interface OuroborosStorePort {
     observations?: SandboxAdapterObservationResult
   ): Promise<StartSandboxOutcome>;
   recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
+  listPaperTradingEvaluations(): Promise<PaperTradingEvaluationRecord[]>;
   getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   getLatestPaperTradingEvaluationForTradingRun(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   recordPaperTradingObservation(

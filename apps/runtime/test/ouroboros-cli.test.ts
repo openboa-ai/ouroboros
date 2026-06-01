@@ -99,6 +99,7 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
     expect(result.stdout).toContain("Paper evidence: ledger_chain_complete");
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
+    expect(result.stdout).toContain("Paper board: #1 candidate-profitable 4.95 USDT / collecting_paper_evidence");
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
     expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
     expect(result.stdout).toContain("Market data: binance_production_public_websocket");
@@ -550,6 +551,40 @@ function fixtureOperator(
       account_provider: "fake_paper_account",
       executor: "fake_paper_order_executor",
       score_source: "paper_trading_engine",
+      authority_status: "not_live"
+    },
+    paper_trading_board: {
+      board_kind: "paper_trading_board",
+      primary_rank_metric: "net_revenue_usdt",
+      secondary_rank_metric: "net_return_pct",
+      evaluation_authority: "continuous_paper_trading",
+      entries: [
+        {
+          rank: 1,
+          candidate_id: "candidate-profitable",
+          display_name: "candidate-profitable",
+          evaluation_id: "paper-evaluation-candidate-profitable",
+          status: "running",
+          runner_status: "active",
+          promotion_gate_status: "collecting_paper_evidence",
+          observation_count: 1,
+          trading_run_id: "trading-run-candidate-profitable",
+          last_observed_at: "2026-05-16T00:00:03.000Z",
+          next_observation_at: "2026-05-16T00:01:03.000Z",
+          profit_loss: {
+            revenue_usdt: 5,
+            cost_usdt: 0.048,
+            net_revenue_usdt: 4.952,
+            net_return_pct: 0.04952
+          },
+          market_data_source: "binance_production_public_websocket",
+          latest_public_execution_source: "websocket_primary",
+          latest_fill_status: "filled",
+          open_order_count: 0,
+          authority_status: "not_live"
+        }
+      ],
+      live_disabled: true,
       authority_status: "not_live"
     },
     researcher_provider: {

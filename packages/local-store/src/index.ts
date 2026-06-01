@@ -2287,6 +2287,11 @@ export class LocalStore {
     );
   }
 
+  async listPaperTradingEvaluations(): Promise<PaperTradingEvaluationRecord[]> {
+    return (await this.readCollection<PaperTradingEvaluationRecord>("paper-trading-evaluations"))
+      .sort(comparePaperTradingEvaluations);
+  }
+
   async getLatestPaperTradingEvaluationForCandidate(
     candidateId: string
   ): Promise<PaperTradingEvaluationRecord | undefined> {

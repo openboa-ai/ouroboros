@@ -12,6 +12,7 @@ import type {
   ReplayRunValidationStateReadModel,
   LedgerSourceRecordsReadModel,
   CandidateArenaReadModel,
+  PaperTradingBoardReadModel,
   PaperTradingEvaluationReadModel,
   RunControlReadModel,
   TradingGatewayEnvironmentReadModel,
@@ -390,6 +391,7 @@ describe("operator command API", () => {
           observation_count: 0,
           ledger_chain_complete: false
         }),
+        paper_trading_board: paperTradingBoardFixture(),
         researcher_provider: {
           selected_provider: "fixture",
           available_providers: ["codex", "fixture"],
@@ -445,6 +447,7 @@ describe("CandidateDetail", () => {
           authority_status: "not_live"
         }}
         selectedPaperTradingEvaluation={paperTradingEvaluationFixture()}
+        paperTradingBoard={paperTradingBoardFixture()}
         onStart={() => undefined}
         onStop={() => undefined}
         onTick={() => undefined}
@@ -472,6 +475,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evaluation");
     expect(html).toContain("profit_loss");
     expect(html).toContain("Paper runner");
+    expect(html).toContain("Paper Board");
+    expect(html).toContain("collecting_paper_evidence");
     expect(html).toContain("active / next");
     expect(html).toContain("Market snapshot");
     expect(html).toContain("Market data");
@@ -3642,6 +3647,43 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
     authority_status: "not_live",
     ...overrides
   } as PaperTradingEvaluationReadModel;
+}
+
+function paperTradingBoardFixture(): PaperTradingBoardReadModel {
+  return {
+    board_kind: "paper_trading_board",
+    primary_rank_metric: "net_revenue_usdt",
+    secondary_rank_metric: "net_return_pct",
+    evaluation_authority: "continuous_paper_trading",
+    entries: [
+      {
+        rank: 1,
+        candidate_id: "candidate-profitable",
+        display_name: "candidate-profitable",
+        evaluation_id: "paper-evaluation-candidate-profitable",
+        status: "running",
+        runner_status: "active",
+        promotion_gate_status: "collecting_paper_evidence",
+        observation_count: 1,
+        trading_run_id: "trading-run-candidate-profitable",
+        last_observed_at: "2026-05-16T00:00:03.000Z",
+        next_observation_at: "2026-05-16T00:01:03.000Z",
+        profit_loss: {
+          revenue_usdt: 5,
+          cost_usdt: 0.048,
+          net_revenue_usdt: 4.952,
+          net_return_pct: 0.04952
+        },
+        market_data_source: "binance_production_public_websocket",
+        latest_public_execution_source: "websocket_primary",
+        latest_fill_status: "filled",
+        open_order_count: 0,
+        authority_status: "not_live"
+      }
+    ],
+    live_disabled: true,
+    authority_status: "not_live"
+  };
 }
 
 function arenaSelectedCandidate(
