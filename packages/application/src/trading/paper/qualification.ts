@@ -77,8 +77,7 @@ export function qualifyPaperTradingEvaluation(input: {
   if (!latestMarketSnapshot(input.evaluation, input.observations)) {
     qualityReasons.push("latest_market_snapshot_missing");
   }
-  if (hasFillEvidence(input.evaluation, input.observations) &&
-    !hasPublicExecutionEvidence(input.evaluation, input.observations)) {
+  if (hasFillWithoutMatchingPublicExecutionEvidence(input.evaluation, input.observations)) {
     qualityReasons.push("fill_public_execution_evidence_missing");
   }
 
@@ -124,17 +123,31 @@ function latestMarketSnapshot(
   return [...observations].reverse().find((observation) => observation.market_snapshot)?.market_snapshot;
 }
 
-function hasFillEvidence(
+function hasFillWithoutMatchingPublicExecutionEvidence(
   evaluation: PaperTradingEvaluationRecord,
   observations: PaperTradingObservationRecord[]
 ): boolean {
-  return Boolean(evaluation.latest_fill) || observations.some((observation) => observation.latest_fill);
+  if (evaluation.latest_fill &&
+    !fillMatchesPublicExecutionSnapshot(evaluation.latest_fill, evaluation.latest_public_execution_snapshot)) {
+    return true;
+  }
+  return observations.some((observation) =>
+    observation.latest_fill &&
+    !fillMatchesPublicExecutionSnapshot(observation.latest_fill, observation.public_execution_snapshot)
+  );
 }
 
-function hasPublicExecutionEvidence(
-  evaluation: PaperTradingEvaluationRecord,
-  observations: PaperTradingObservationRecord[]
+function fillMatchesPublicExecutionSnapshot(
+  fill: NonNullable<PaperTradingEvaluationRecord["latest_fill"]>,
+  snapshot: PaperTradingObservationRecord["public_execution_snapshot"]
 ): boolean {
-  return Boolean(evaluation.latest_public_execution_snapshot) ||
-    observations.some((observation) => observation.public_execution_snapshot);
+  if (!snapshot) {
+    return false;
+  }
+  if (!fill.source_trade_id) {
+    return Boolean(snapshot.book_ticker || snapshot.agg_trades.length > 0);
+  }
+  return snapshot.agg_trades.some((trade) => trade.trade_id === fill.source_trade_id) ||
+    snapshot.stream_marker === fill.source_trade_id ||
+    fill.source_trade_id.startsWith(`${snapshot.stream_marker}:`);
 }

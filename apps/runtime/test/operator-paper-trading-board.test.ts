@@ -333,7 +333,12 @@ async function seedPaperEvaluation(
     ws_connected: input.sourcePriority === "websocket_primary",
     rest_fallback_used: input.sourcePriority === "rest_fallback",
     stream_marker: `${input.sourcePriority}-${input.candidate.candidate_id}`,
-    agg_trades: [],
+    agg_trades: [{
+      trade_id: `trade-${input.candidate.candidate_id}`,
+      price: "65200",
+      quantity: "0.001",
+      trade_time: observedAt
+    }],
     authority_status: "read_only" as const
   };
   const account = {

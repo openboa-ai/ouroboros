@@ -127,6 +127,54 @@ describe("PaperTradingQualificationPolicy", () => {
       qualification_reasons: ["fill_public_execution_evidence_missing"]
     });
   });
+
+  it("does not qualify fills using unrelated public execution snapshots elsewhere in the window", () => {
+    const latestFill = {
+      fill_id: "paper-qualification-late-fill",
+      order_id: "paper-qualification-order",
+      fill_status: "filled" as const,
+      fill_price: "65000",
+      fill_quantity: "0.001",
+      fee_usdt: "0.4",
+      slippage_usdt: "0.3",
+      funding_usdt: "0.3",
+      trade_time: "2026-05-16T00:31:00.000Z",
+      source_trade_id: "paper-qualification-late-trade"
+    };
+    const evaluation = {
+      ...paperEvaluation({
+        observationCount: 30,
+        netRevenueUsdt: 42,
+        startedAt: "2026-05-16T00:00:00.000Z",
+        lastObservedAt: "2026-05-16T00:31:00.000Z"
+      }),
+      latest_fill: latestFill,
+      latest_public_execution_snapshot: undefined
+    };
+    const observations = recordedObservations(30).map((observation) =>
+      observation.sequence === 30
+        ? {
+            ...observation,
+            latest_fill: latestFill,
+            public_execution_snapshot: undefined
+          }
+        : observation
+    );
+
+    expect(qualifyPaperTradingEvaluation({
+      evaluation,
+      observations,
+      runnerActive: true,
+      policy: {
+        minObservationCount: 30,
+        minElapsedMs: 30 * 60_000,
+        maxFailedObservationRatio: 0.1
+      }
+    })).toMatchObject({
+      qualification_status: "blocked_by_quality",
+      qualification_reasons: ["fill_public_execution_evidence_missing"]
+    });
+  });
 });
 
 function paperEvaluation(input: {
