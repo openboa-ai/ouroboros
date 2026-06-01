@@ -263,6 +263,19 @@ function fixtureOperator(): OperatorReadModel {
           status: "running",
           runner_status: "active",
           promotion_gate_status: "collecting_paper_evidence",
+          qualification_status: "collecting_evidence",
+          qualification_reasons: [
+            "min_observation_count_not_met",
+            "min_elapsed_ms_not_met"
+          ],
+          evidence_window: {
+            observation_count: 1,
+            elapsed_ms: 60_000,
+            failed_observation_count: 0
+          },
+          risk_summary: {
+            open_order_count: 0
+          },
           observation_count: 1,
           trading_run_id: "trading-run-candidate-profitable",
           profit_loss: {

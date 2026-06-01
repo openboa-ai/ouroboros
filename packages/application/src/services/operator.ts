@@ -29,6 +29,7 @@ import type {
 import type { OuroborosStorePort } from "../ports/store";
 import { safeId } from "../safe-id";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
+import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
 
 export class OperatorCommandError extends Error {
   constructor(
@@ -488,6 +489,13 @@ async function buildPaperTradingBoard(
       evaluation.open_orders?.length ??
       evaluation.paper_account_snapshot?.open_order_count ??
       0;
+    const qualification = qualifyPaperTradingEvaluation({
+      evaluation,
+      observations,
+      runnerActive
+    });
+    const latestFillStatus = (latestObservation?.latest_fill ?? evaluation.latest_fill)?.fill_status;
+    const latestFailureReason = latestObservation?.failure_reason ?? evaluation.latest_failure_reason;
     return {
       rank: 0,
       candidate_id: evaluation.candidate_ref.id,
@@ -496,6 +504,14 @@ async function buildPaperTradingBoard(
       status: evaluation.status,
       runner_status: runnerStatus,
       promotion_gate_status: paperTradingPromotionGateStatus(evaluation, runnerStatus),
+      qualification_status: qualification.qualification_status,
+      qualification_reasons: qualification.qualification_reasons,
+      evidence_window: qualification.evidence_window,
+      risk_summary: {
+        open_order_count: openOrderCount,
+        latest_fill_status: latestFillStatus,
+        latest_failure_reason: latestFailureReason
+      },
       observation_count: evaluation.observation_count,
       trading_run_id: evaluation.trading_run_ref.id,
       last_observed_at: evaluation.last_observed_at,
@@ -505,9 +521,9 @@ async function buildPaperTradingBoard(
         latestPublicExecutionSnapshot?.source_kind ??
         "binance_production_public_rest",
       latest_public_execution_source: latestPublicExecutionSnapshot?.source_priority,
-      latest_fill_status: (latestObservation?.latest_fill ?? evaluation.latest_fill)?.fill_status,
+      latest_fill_status: latestFillStatus,
       open_order_count: openOrderCount,
-      latest_failure_reason: latestObservation?.failure_reason ?? evaluation.latest_failure_reason,
+      latest_failure_reason: latestFailureReason,
       authority_status: "not_live" as const
     };
   }));

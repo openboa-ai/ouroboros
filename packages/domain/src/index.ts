@@ -2935,6 +2935,34 @@ export type PaperTradingPromotionGateStatus =
   | "paper_failed"
   | "not_evaluated";
 
+export type PaperTradingQualificationStatus =
+  | "collecting_evidence"
+  | "qualified"
+  | "needs_resume"
+  | "blocked_by_quality"
+  | "paper_failed";
+
+export type PaperTradingQualificationReason =
+  | "min_observation_count_not_met"
+  | "min_elapsed_ms_not_met"
+  | "runner_inactive_for_running_evaluation"
+  | "failed_observation_ratio_exceeded"
+  | "latest_market_snapshot_missing"
+  | "fill_public_execution_evidence_missing"
+  | "paper_evaluation_failed";
+
+export interface PaperTradingEvidenceWindowReadModel {
+  observation_count: number;
+  elapsed_ms: number;
+  failed_observation_count: number;
+}
+
+export interface PaperTradingRiskSummaryReadModel {
+  open_order_count: number;
+  latest_fill_status?: PaperTradingFillSummary["fill_status"];
+  latest_failure_reason?: string;
+}
+
 export interface PaperTradingBoardEntryReadModel {
   rank: number;
   candidate_id: string;
@@ -2943,6 +2971,10 @@ export interface PaperTradingBoardEntryReadModel {
   status: PaperTradingEvaluationStatus;
   runner_status: PaperTradingBoardRunnerStatus;
   promotion_gate_status: PaperTradingPromotionGateStatus;
+  qualification_status: PaperTradingQualificationStatus;
+  qualification_reasons: PaperTradingQualificationReason[];
+  evidence_window: PaperTradingEvidenceWindowReadModel;
+  risk_summary: PaperTradingRiskSummaryReadModel;
   observation_count: number;
   trading_run_id: string;
   last_observed_at?: string;

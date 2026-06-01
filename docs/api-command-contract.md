@@ -68,9 +68,12 @@ results, and latest TradingSystem paper decision when one has been emitted, and 
 
 The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
 `net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
-(`active`, `needs_resume`, or `inactive`), and exposes promotion-gate state without enabling live
-authority. UI, CLI, TUI, and researcher context must treat this board as product evaluation
-evidence, while CandidateArena leaderboard remains research preflight.
+(`active`, `needs_resume`, or `inactive`), exposes qualification status and reasons, and exposes
+promotion-gate state without enabling live authority. Qualification is not the rank metric. It is
+the evidence-quality gate: observation window size, elapsed time, runner health when known, failed
+observation ratio, market snapshot presence, and public execution evidence for fills. UI, CLI, TUI,
+and researcher context must treat this board as product evaluation evidence, while CandidateArena
+leaderboard remains research preflight.
 When compacting this board into researcher context, do not invent runner authority: if the current
 process cannot see the in-memory runner, keep the paper status and score but mark runner state as
 unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`.

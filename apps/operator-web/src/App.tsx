@@ -1255,6 +1255,12 @@ export function CandidateArenaPanel({
                   <dl className="grid gap-2 sm:grid-cols-2">
                     <Field label="Paper net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
                     <Field label="Return" value={formatPercent(entry.profit_loss.net_return_pct)} />
+                    <Field label="Qualification" value={entry.qualification_status} />
+                    <Field label="Evidence window" value={`${entry.evidence_window.observation_count} obs / ${entry.evidence_window.failed_observation_count} failed / ${entry.evidence_window.elapsed_ms}ms`} />
+                    <Field
+                      label="Reasons"
+                      value={entry.qualification_reasons.length ? entry.qualification_reasons.join(", ") : "qualified"}
+                    />
                     <Field label="Gate" value={entry.promotion_gate_status} />
                     <Field label="Runner" value={entry.runner_status} />
                     <Field label="Observations" value={String(entry.observation_count)} />

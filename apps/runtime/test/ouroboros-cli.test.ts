@@ -99,7 +99,8 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
     expect(result.stdout).toContain("Paper evidence: ledger_chain_complete");
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
-    expect(result.stdout).toContain("Paper board: #1 candidate-profitable 4.95 USDT / collecting_paper_evidence");
+    expect(result.stdout).toContain("Paper board: #1 candidate-profitable 4.95 USDT / collecting_evidence / gate collecting_paper_evidence");
+    expect(result.stdout).toContain("Paper qualification: observations 1, failed 0, elapsed 60000ms / min_observation_count_not_met, min_elapsed_ms_not_met");
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
     expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
     expect(result.stdout).toContain("Market data: binance_production_public_websocket");
@@ -567,6 +568,20 @@ function fixtureOperator(
           status: "running",
           runner_status: "active",
           promotion_gate_status: "collecting_paper_evidence",
+          qualification_status: "collecting_evidence",
+          qualification_reasons: [
+            "min_observation_count_not_met",
+            "min_elapsed_ms_not_met"
+          ],
+          evidence_window: {
+            observation_count: 1,
+            elapsed_ms: 60_000,
+            failed_observation_count: 0
+          },
+          risk_summary: {
+            open_order_count: 0,
+            latest_fill_status: "filled"
+          },
           observation_count: 1,
           trading_run_id: "trading-run-candidate-profitable",
           last_observed_at: "2026-05-16T00:00:03.000Z",

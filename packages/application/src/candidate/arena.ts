@@ -38,6 +38,7 @@ import type {
   TradingResearchAgentAdapter
 } from "../trading/research/types";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
+import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -756,6 +757,13 @@ function arenaPaperTradingBoardContext(
   net_revenue_usdt: number;
   net_return_pct: number;
   observation_count: number;
+  qualification_status: string;
+  qualification_reasons: string[];
+  evidence_window: {
+    observation_count: number;
+    elapsed_ms: number;
+    failed_observation_count: number;
+  };
   promotion_gate_status?: "paper_evidence_recorded" | "paper_failed" | "not_evaluated";
   market_data_source?: string;
   latest_public_execution_source?: string;
@@ -769,6 +777,14 @@ function arenaPaperTradingBoardContext(
       const latestMarketSnapshot = latestObservation?.market_snapshot;
       const latestPublicExecutionSnapshot = latestObservation?.public_execution_snapshot ??
         paperEvaluation?.latest_public_execution_snapshot;
+      const qualification = qualifyPaperTradingEvaluation({
+        evaluation: paperEvaluation!,
+        observations: paperObservations,
+        runnerActive: false,
+        policy: {
+          assessRunnerHealth: false
+        }
+      });
       return {
         rank: 0,
         candidate_id: candidate?.candidate_id ?? entry?.candidate_id,
@@ -779,6 +795,9 @@ function arenaPaperTradingBoardContext(
         net_revenue_usdt: paperEvaluation?.latest_score.net_revenue_usdt ?? 0,
         net_return_pct: paperEvaluation?.latest_score.net_return_pct ?? 0,
         observation_count: paperEvaluation?.observation_count ?? 0,
+        qualification_status: qualification.qualification_status,
+        qualification_reasons: qualification.qualification_reasons,
+        evidence_window: qualification.evidence_window,
         promotion_gate_status: arenaPaperPromotionGateStatus(paperEvaluation),
         market_data_source: latestMarketSnapshot?.source_kind ?? latestPublicExecutionSnapshot?.source_kind,
         latest_public_execution_source: latestPublicExecutionSnapshot?.source_priority,

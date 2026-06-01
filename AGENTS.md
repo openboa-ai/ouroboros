@@ -164,6 +164,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |
 | `Evaluation` | Backtest or evaluation evidence, ranked by `net_revenue_usdt` first and `net_return_pct` second. |
+| `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate the primary CandidateArena workflow. |
 | `TradingRun` | One execution session for a TradingSystem. |
 | `Sandbox` | Isolated execution boundary for a TradingRun. |

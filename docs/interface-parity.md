@@ -65,9 +65,11 @@ future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
 promotion. Each surface should expose runner active status, next observation time, observation
 count, latest market snapshot, latest paper score, `PaperTradingEvaluation` board rank, and any
-paper failure from `OperatorReadModel`. The CandidateArena leaderboard is research preflight; the
-paper board is the product evaluation authority and must remain visibly distinct in CLI, TUI, and
-Web UI.
+paper failure from `OperatorReadModel`. Each surface must also expose paper qualification status,
+qualification reasons, and the evidence window so a high `net_revenue_usdt` candidate does not look
+ready when it is still collecting evidence or blocked by market/fill data quality. The
+CandidateArena leaderboard is research preflight; the paper board is the product evaluation
+authority and must remain visibly distinct in CLI, TUI, and Web UI.
 When a persisted evaluation is still `running` but the in-memory runner is inactive after a runtime
 restart, every surface must say `needs resume` instead of making the session look actively scheduled
 or fully stopped. Live/private Binance authority remains disabled.

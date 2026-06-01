@@ -68,6 +68,8 @@ learn from top, negative, failed, and resume-needed paper evaluations.
   replay-only leaderboard data.
 - `GET /api/operator` must include `paper_trading_board`, ranked by selected-candidate continuous
   paper `net_revenue_usdt`; negative paper candidates remain visible below profitable candidates.
+- `paper_trading_board` entries must expose qualification status, reasons, evidence window,
+  runner state, and market/fill quality so ranking by paper score is not confused with readiness.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, `PaperTradingEvaluation` board, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,

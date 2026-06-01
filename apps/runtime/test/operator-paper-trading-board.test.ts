@@ -102,6 +102,111 @@ describe("operator paper trading board", () => {
       latest_fill_status: "filled"
     });
   });
+
+  it("exposes qualification state separately from paper net revenue rank", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const mature = await registerCandidate(store, {
+      id: "mature-paper-board",
+      title: "Mature Paper Candidate"
+    });
+    const collecting = await registerCandidate(store, {
+      id: "collecting-paper-board",
+      title: "Collecting Paper Candidate"
+    });
+    const resume = await registerCandidate(store, {
+      id: "resume-paper-board",
+      title: "Resume Paper Candidate"
+    });
+    const blocked = await registerCandidate(store, {
+      id: "blocked-paper-board",
+      title: "Blocked Paper Candidate"
+    });
+
+    await seedPaperEvaluation(store, {
+      candidate: mature,
+      netRevenueUsdt: 10,
+      netReturnPct: 0.1,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: collecting,
+      netRevenueUsdt: 100,
+      netReturnPct: 1,
+      observationCount: 5,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:05:00.000Z"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: resume,
+      netRevenueUsdt: 9,
+      netReturnPct: 0.09,
+      observationCount: 30,
+      status: "running",
+      runnerActive: false,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: blocked,
+      netRevenueUsdt: 8,
+      netReturnPct: 0.08,
+      observationCount: 30,
+      status: "stopped",
+      runnerActive: false,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z",
+      includePublicExecution: false
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => tradingRunId === mature.runtime.ref.id ||
+          tradingRunId === collecting.runtime.ref.id
+      }
+    });
+
+    const operator = await service.readOperator();
+    const byCandidate = new Map(operator.paper_trading_board.entries.map((entry) => [entry.candidate_id, entry]));
+
+    expect(operator.paper_trading_board.entries[0]?.candidate_id).toBe(collecting.candidate_id);
+    expect(byCandidate.get(collecting.candidate_id)).toMatchObject({
+      qualification_status: "collecting_evidence",
+      qualification_reasons: [
+        "min_observation_count_not_met",
+        "min_elapsed_ms_not_met"
+      ],
+      evidence_window: {
+        observation_count: 5,
+        failed_observation_count: 0,
+        elapsed_ms: 5 * 60_000
+      }
+    });
+    expect(byCandidate.get(mature.candidate_id)).toMatchObject({
+      qualification_status: "qualified",
+      qualification_reasons: []
+    });
+    expect(byCandidate.get(resume.candidate_id)).toMatchObject({
+      qualification_status: "needs_resume",
+      qualification_reasons: ["runner_inactive_for_running_evaluation"]
+    });
+    expect(byCandidate.get(blocked.candidate_id)).toMatchObject({
+      qualification_status: "blocked_by_quality",
+      qualification_reasons: ["fill_public_execution_evidence_missing"]
+    });
+  });
 });
 
 async function registerCandidate(
@@ -192,10 +297,12 @@ async function seedPaperEvaluation(
     status: PaperTradingEvaluationRecord["status"];
     runnerActive: boolean;
     sourcePriority: "websocket_primary" | "rest_fallback";
+    observedAt?: string;
+    includePublicExecution?: boolean;
   }
 ): Promise<void> {
   const evaluationId = `paper-evaluation-${input.candidate.candidate_id}`;
-  const observedAt = "2026-05-16T00:08:00.000Z";
+  const observedAt = input.observedAt ?? "2026-05-16T00:08:00.000Z";
   const score = {
     revenue_usdt: input.netRevenueUsdt + 0.6,
     cost_usdt: 0.6,
@@ -282,7 +389,7 @@ async function seedPaperEvaluation(
     paper_account_snapshot: account,
     open_orders: [],
     latest_fill: latestFill,
-    latest_public_execution_snapshot: executionSnapshot,
+    latest_public_execution_snapshot: input.includePublicExecution === false ? undefined : executionSnapshot,
     authority_status: "not_live"
   };
   const observation: PaperTradingObservationRecord = {
@@ -303,7 +410,7 @@ async function seedPaperEvaluation(
     status: "recorded",
     observed_at: observedAt,
     market_snapshot: marketSnapshot,
-    public_execution_snapshot: executionSnapshot,
+    public_execution_snapshot: input.includePublicExecution === false ? undefined : executionSnapshot,
     paper_account_snapshot: account,
     open_orders: [],
     latest_fill: latestFill,

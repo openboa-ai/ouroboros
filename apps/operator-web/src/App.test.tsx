@@ -476,6 +476,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("profit_loss");
     expect(html).toContain("Paper runner");
     expect(html).toContain("Paper Board");
+    expect(html).toContain("Qualification");
+    expect(html).toContain("collecting_evidence");
+    expect(html).toContain("Evidence window");
+    expect(html).toContain("1 obs / 0 failed / 60000ms");
+    expect(html).toContain("min_observation_count_not_met, min_elapsed_ms_not_met");
     expect(html).toContain("collecting_paper_evidence");
     expect(html).toContain("active / next");
     expect(html).toContain("Market snapshot");
@@ -3664,6 +3669,20 @@ function paperTradingBoardFixture(): PaperTradingBoardReadModel {
         status: "running",
         runner_status: "active",
         promotion_gate_status: "collecting_paper_evidence",
+        qualification_status: "collecting_evidence",
+        qualification_reasons: [
+          "min_observation_count_not_met",
+          "min_elapsed_ms_not_met"
+        ],
+        evidence_window: {
+          observation_count: 1,
+          elapsed_ms: 60_000,
+          failed_observation_count: 0
+        },
+        risk_summary: {
+          open_order_count: 0,
+          latest_fill_status: "filled"
+        },
         observation_count: 1,
         trading_run_id: "trading-run-candidate-profitable",
         last_observed_at: "2026-05-16T00:00:03.000Z",
