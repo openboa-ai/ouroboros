@@ -25,7 +25,10 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("> #1 candidate-profitable");
     expect(output).toContain("PaperTradingEvaluation: running");
     expect(output).toContain("Paper Board");
-    expect(output).toContain("#1 candidate-profitable 4.95 USDT / collecting_paper_evidence");
+    expect(output).toContain("#1 candidate-profitable 4.95 USDT / collecting_evidence / gate");
+    expect(output).toContain("collecting_paper_evidence");
+    expect(output).toContain("window 1 obs, 0 failed, 60000ms");
+    expect(output).toContain("min_observation_count_not_met, min_elapsed_ms_not_met");
     expect(output).toContain("Runner: active / next 2026-05-16T00:01:03.000Z");
     expect(output).toContain("Paper score: 4.95 USDT / observations 1");
     expect(output).toContain("Market: BTCUSDT 65000.00 @ 2026-05-16T00:00:03.000Z");
@@ -302,6 +305,20 @@ function fixtureOperator(): OperatorReadModel {
           status: "running",
           runner_status: "active",
           promotion_gate_status: "collecting_paper_evidence",
+          qualification_status: "collecting_evidence",
+          qualification_reasons: [
+            "min_observation_count_not_met",
+            "min_elapsed_ms_not_met"
+          ],
+          evidence_window: {
+            observation_count: 1,
+            elapsed_ms: 60_000,
+            failed_observation_count: 0
+          },
+          risk_summary: {
+            open_order_count: 0,
+            latest_fill_status: "filled"
+          },
           observation_count: 1,
           trading_run_id: "trading-run-candidate-profitable",
           last_observed_at: "2026-05-16T00:00:03.000Z",

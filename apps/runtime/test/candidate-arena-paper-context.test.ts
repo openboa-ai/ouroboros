@@ -70,6 +70,8 @@ describe("CandidateArena paper evidence context", () => {
         paper_runner_status: string;
         net_revenue_usdt: number;
         observation_count: number;
+        qualification_status: string;
+        qualification_reasons: string[];
         promotion_gate_status?: string;
         authority_status: string;
       }>;
@@ -100,6 +102,11 @@ describe("CandidateArena paper evidence context", () => {
         paper_runner_status: "unknown_at_tick_context",
         net_revenue_usdt: 12.34,
         observation_count: 7,
+        qualification_status: "collecting_evidence",
+        qualification_reasons: [
+          "min_observation_count_not_met",
+          "min_elapsed_ms_not_met"
+        ],
         authority_status: "not_live"
       })
     ]);

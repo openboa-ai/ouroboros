@@ -59,12 +59,15 @@ consistency evidence built from REST `depth` snapshot plus routed `/public` WebS
 The CandidateArena leaderboard is research preflight, not final product authority. The
 `PaperTradingEvaluation` board is the product authority surface: it ranks selected candidates by
 accumulated paper `net_revenue_usdt`, uses `net_return_pct` as the secondary rank, keeps negative
-paper candidates visible, and shows whether each candidate is still collecting paper evidence,
-needs resume, has recorded paper evidence, or failed paper evaluation. That board is also compacted
-into the next researcher context so new candidates are generated from paper evidence, not replay
-scores alone. Researcher context must not pretend to know in-memory runner state when it cannot see
-the active runner; running paper evidence remains running evidence, not an automatic
-`needs_resume` claim.
+paper candidates visible, and exposes qualification separately from rank. Qualification answers
+whether the paper evidence window is mature enough to trust: minimum observation count, elapsed
+time, runner health when known, failed-observation ratio, market snapshot availability, and public
+execution evidence for fills. A candidate can lead the board by paper `net_revenue_usdt` while
+still being `collecting_evidence` or `blocked_by_quality`. That board is also compacted into the
+next researcher context so new candidates are generated from paper evidence, not replay scores
+alone. Researcher context must not pretend to know in-memory runner state when it cannot see the
+active runner; running paper evidence remains running evidence, not an automatic `needs_resume`
+claim.
 
 TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
 events, news or social inputs, tool calls, internal agent loops, or risk gates.

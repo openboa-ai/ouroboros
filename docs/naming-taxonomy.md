@@ -16,6 +16,7 @@ that pack every axis into one identifier.
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
+| `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `TradingSystemDecision` | `OrderRequest`, `hold`, or no-action signal emitted by a selected TradingSystem according to its own decision cadence. |
 | `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |

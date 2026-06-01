@@ -57,7 +57,11 @@ Replaying old sandbox output as a new decision is not paper trading evaluation.
 The Candidate Arena leaderboard is a research preflight board. The `PaperTradingEvaluation` board
 is the product evaluation board: it ranks selected candidates by accumulated paper
 `net_revenue_usdt` first and `net_return_pct` second, keeps losing candidates visible as useful
-evidence, and shows the promotion gate state without enabling live authority.
+evidence, and shows a qualification gate without enabling live authority. Ranking and
+qualification are deliberately separate: a high paper `net_revenue_usdt` can still be
+`collecting_evidence` or `blocked_by_quality` when the evidence window is too small, the runner is
+inactive, failure ratio is high, market snapshots are missing, or fill-bearing results lack public
+execution evidence.
 
 Gateway binding changes, TradingSystem identity does not. Candidate, Paper Evidence, and Live are
 separate states; live authority remains disabled.

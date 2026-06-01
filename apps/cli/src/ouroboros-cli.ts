@@ -399,8 +399,11 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
     `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
     paperLeader
-      ? `Paper board: #${paperLeader.rank} ${paperLeader.display_name} ${formatUsdt(paperLeader.profit_loss.net_revenue_usdt)} / ${paperLeader.promotion_gate_status}`
+      ? `Paper board: #${paperLeader.rank} ${paperLeader.display_name} ${formatUsdt(paperLeader.profit_loss.net_revenue_usdt)} / ${paperLeader.qualification_status} / gate ${paperLeader.promotion_gate_status}`
       : "Paper board: no paper evaluations",
+    paperLeader
+      ? `Paper qualification: observations ${paperLeader.evidence_window.observation_count}, failed ${paperLeader.evidence_window.failed_observation_count}, elapsed ${paperLeader.evidence_window.elapsed_ms}ms / ${paperLeader.qualification_reasons.length ? paperLeader.qualification_reasons.join(", ") : "qualified"}`
+      : undefined,
     `Paper runner: ${formatPaperRunner(paper)}`,
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
