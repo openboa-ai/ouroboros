@@ -193,7 +193,8 @@ export function OperatorTuiScreen(props: {
           {`Paper score: ${paperEvaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${paperEvaluation.observation_count}`}
         </Text>
         <Text>{`Market: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
-        <Text>{`Market data: ${paperEvaluation.market_data_source}${marketSnapshot?.source_priority ? ` / ${marketSnapshot.source_priority}` : ""}${marketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}`}</Text>
+        <Text>{`Market data: ${paperEvaluation.market_data_source}${marketSnapshot?.source_priority ? ` / ${marketSnapshot.source_priority}` : ""}${marketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}${marketSnapshot?.ws_connected === true ? " / WS connected" : ""}${marketSnapshot?.ws_connected === false ? " / WS disconnected" : ""}`}</Text>
+        <Text>{`Public execution: ${formatPublicExecutionEvidence(paperEvaluation)}`}</Text>
         <Text>{`Order book: ${formatOrderBook(paperEvaluation)}`}</Text>
         <Text>{`Decision: ${formatPaperDecision(paperDecision)}`}</Text>
         <Text>{`Account: ${formatPaperAccount(paperEvaluation)}`}</Text>
@@ -257,7 +258,29 @@ function formatPaperFill(
   if (!fill) {
     return "none";
   }
-  return `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`;
+  return [
+    `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
+    fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatPublicExecutionEvidence(
+  paperEvaluation: OperatorReadModel["selected_paper_trading_evaluation"]
+): string {
+  const snapshot = paperEvaluation.latest_public_execution_snapshot;
+  if (!snapshot) {
+    return "not observed";
+  }
+  return [
+    snapshot.source_kind,
+    snapshot.source_priority,
+    snapshot.freshness,
+    snapshot.ws_connected === true ? "WS connected" : undefined,
+    snapshot.ws_connected === false ? "WS disconnected" : undefined,
+    snapshot.rest_fallback_used ? "REST fallback" : undefined,
+    snapshot.gap_detected ? "gap detected" : undefined,
+    snapshot.stream_marker ? `marker ${snapshot.stream_marker}` : undefined
+  ].filter(Boolean).join(" / ");
 }
 
 function formatOrderBook(

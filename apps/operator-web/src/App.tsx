@@ -1378,7 +1378,13 @@ export function CandidateArenaPanel({
               <Field
                 label="Market data"
                 value={selectedPaperTradingEvaluation
-                  ? `${selectedPaperTradingEvaluation.market_data_source}${selectedPaperMarketSnapshot?.source_priority ? ` / ${selectedPaperMarketSnapshot.source_priority}` : ""}${selectedPaperMarketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}`
+                  ? `${selectedPaperTradingEvaluation.market_data_source}${selectedPaperMarketSnapshot?.source_priority ? ` / ${selectedPaperMarketSnapshot.source_priority}` : ""}${selectedPaperMarketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}${selectedPaperMarketSnapshot?.ws_connected === true ? " / WS connected" : ""}${selectedPaperMarketSnapshot?.ws_connected === false ? " / WS disconnected" : ""}`
+                  : "not observed"}
+              />
+              <Field
+                label="Public execution"
+                value={selectedPaperExecutionSnapshot
+                  ? formatPublicExecutionEvidenceSummary(selectedPaperExecutionSnapshot)
                   : "not observed"}
               />
               <Field
@@ -1400,7 +1406,7 @@ export function CandidateArenaPanel({
               <Field
                 label="Paper fill"
                 value={selectedPaperFill
-                  ? `${selectedPaperFill.fill_status} ${selectedPaperFill.fill_quantity} @ ${selectedPaperFill.fill_price}`
+                  ? formatPaperFillSummary(selectedPaperFill)
                   : "none"}
               />
               {selectedPaperTradingEvaluation?.latest_failure_reason && (
@@ -1606,6 +1612,30 @@ function formatPaperDecisionSummary(
     decision.order_request.quantity,
     decision.order_request.limit_price ? `@ ${decision.order_request.limit_price}` : undefined
   ].filter(Boolean).join(" ");
+}
+
+function formatPublicExecutionEvidenceSummary(
+  snapshot: NonNullable<PaperTradingEvaluationReadModel["latest_public_execution_snapshot"]>
+): string {
+  return [
+    snapshot.source_kind,
+    snapshot.source_priority,
+    snapshot.freshness,
+    snapshot.ws_connected === true ? "WS connected" : undefined,
+    snapshot.ws_connected === false ? "WS disconnected" : undefined,
+    snapshot.rest_fallback_used ? "REST fallback" : undefined,
+    snapshot.gap_detected ? "gap detected" : undefined,
+    snapshot.stream_marker ? `marker ${snapshot.stream_marker}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatPaperFillSummary(
+  fill: NonNullable<PaperTradingEvaluationReadModel["latest_fill"]>
+): string {
+  return [
+    `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
+    fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
+  ].filter(Boolean).join(" / ");
 }
 
 function FullCycleDeveloperControls({

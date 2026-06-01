@@ -476,6 +476,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Market snapshot");
     expect(html).toContain("Market data");
     expect(html).toContain("binance_production_public_websocket");
+    expect(html).toContain("Public execution");
+    expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
     expect(html).toContain("Order book");
     expect(html).toContain("synced / update 11");
     expect(html).toContain("BTCUSDT");
@@ -484,7 +486,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Paper account");
     expect(html).toContain("equity 10,004.952 USDT / long 0.001 BTCUSDT / open 0");
     expect(html).toContain("Paper fill");
-    expect(html).toContain("filled 0.001 @ 60000");
+    expect(html).toContain("filled 0.001 @ 60000 / trade agg-60000-001");
     expect(html).toContain("Lineage");
     expect(html).toContain("Observe now");
     expect(html).toContain("Stop paper trading");

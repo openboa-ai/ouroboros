@@ -28,10 +28,12 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Paper score: 4.95 USDT / observations 1");
     expect(output).toContain("Market: BTCUSDT 65000.00 @ 2026-05-16T00:00:03.000Z");
     expect(output).toContain("Market data: binance_production_public_websocket");
+    expect(output).toContain("Public execution: binance_production_public_websocket / websocket_primary /");
+    expect(output).toContain("fresh / WS connected / marker binance-ws-aggTrade-991");
     expect(output).toContain("Order book: synced / update 11");
     expect(output).toContain("Decision: order_request buy limit 0.001 @ 65000");
     expect(output).toContain("Account: equity 10004.952 USDT / long 0.001 BTCUSDT / open 0");
-    expect(output).toContain("Fill: filled 0.001 @ 60000");
+    expect(output).toContain("Fill: filled 0.001 @ 60000 / trade agg-60000-001");
     expect(output).toContain("Codex: configured");
     expect(output).toContain("arena.tick: succeeded");
     expect(output).toContain("Keys: r refresh");
