@@ -115,6 +115,64 @@ describe("reference paper soak TradingSystem", () => {
     }
   });
 
+  it("honors rejected Gateway paper API validation without emitting an order request", async () => {
+    const provider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, expected_direction: "long", observed_at: "2026-05-16T00:00:01.000Z" },
+          { price: 65_000, expected_direction: "long", observed_at: "2026-05-16T00:00:02.000Z" }
+        ]
+      })
+    }), {
+      readAccountState: async () => ({
+        equity: 10_000,
+        max_position_notional: 1,
+        max_risk_fraction: 0.03,
+        target_risk_fraction: 0.02
+      })
+    });
+
+    try {
+      const { stdout } = await execFileAsync("python3", [
+        referenceArtifactPath,
+        "--instance-id",
+        "reference-paper-soak-risk-rejected",
+        "--ticks",
+        "1",
+        "--interval-ms",
+        "1",
+        "--start-at",
+        "2026-05-16T00:00:03.000Z"
+      ], {
+        env: {
+          ...process.env,
+          TRADING_API_BASE_URL: provider.base_url
+        }
+      });
+
+      const parsedEvents = stdout.trim().split("\n")
+        .map((line, lineIndex) => parseTradingSystemPaperEventLine(line, {
+          sandboxId: "sandbox-reference-paper-soak-risk-rejected",
+          lineIndex
+        }))
+        .filter((result) => result.status === "accepted")
+        .map((result) => result.event);
+
+      expect(parsedEvents).toHaveLength(1);
+      expect(parsedEvents[0]).toMatchObject({
+        event_kind: "hold",
+        reason: "reference_paper_soak_runtime_api_validation_risk_limits_rejected"
+      });
+      expect(provider.requests().map((entry) => `${entry.method} ${entry.path}`)).toEqual([
+        "GET /market/snapshot",
+        "GET /account/state",
+        "POST /orders/validate"
+      ]);
+    } finally {
+      await provider.close();
+    }
+  });
+
   it("soaks a selected reference TradingSystem through live paper observations, fake fills, PnL, and stop", async () => {
     const store = new LocalStore(tmpDir);
     const candidateId = await registerReferenceCandidate(store);

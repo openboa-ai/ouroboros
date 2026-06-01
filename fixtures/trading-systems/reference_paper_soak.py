@@ -135,6 +135,15 @@ def order_event(args: argparse.Namespace, tick: int, market: dict[str, object], 
         "order_type": "limit",
         "reason": "reference paper soak bounded order",
     })
+    if validation.get("accepted") is not True:
+        return {
+            "event": "hold",
+            "event_id": f"{args.instance_id}:validation-hold:0001",
+            "instance_id": args.instance_id,
+            "at": tick_time(args, tick),
+            "authority_status": "trace_only",
+            "reason": f"reference_paper_soak_runtime_api_validation_{validation.get('reason', 'unknown')}",
+        }
     return {
         "event": "order_request",
         "event_id": f"{args.instance_id}:order-request:0001",
