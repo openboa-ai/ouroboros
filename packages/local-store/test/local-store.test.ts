@@ -939,6 +939,25 @@ describe("LocalStore", () => {
     ]);
   });
 
+  it("self-heals a missing candidate projection index from authoritative records", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await rm(path.join(tmpDir, "read-models/candidates/index.json"), { force: true });
+
+    await expect(store.listCandidates()).resolves.toMatchObject([
+      {
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        status: "fixture_only"
+      }
+    ]);
+  });
+
+  it("returns an empty candidate list when an uninitialized store has no projection index", async () => {
+    const store = new LocalStore(tmpDir);
+
+    await expect(store.listCandidates()).resolves.toEqual([]);
+  });
+
   it("materializes a provider-shaped candidate and rebuilds it from authoritative item files", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

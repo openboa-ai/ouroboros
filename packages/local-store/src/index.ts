@@ -861,8 +861,25 @@ export class LocalStore {
 
   async listCandidates(): Promise<CandidateSummaryReadModel[]> {
     const indexPath = path.join(this.storeRoot, "read-models/candidates/index.json");
-    const index = await this.readJson<CandidateIndexProjection>(indexPath);
-    return index.candidates;
+    try {
+      const index = await this.readJson<CandidateIndexProjection>(indexPath);
+      return index.candidates;
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw error;
+      }
+    }
+
+    await this.rebuildProjections();
+    try {
+      const index = await this.readJson<CandidateIndexProjection>(indexPath);
+      return index.candidates;
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined> {
