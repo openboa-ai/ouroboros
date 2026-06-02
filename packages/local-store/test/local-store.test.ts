@@ -952,6 +952,25 @@ describe("LocalStore", () => {
     ]);
   });
 
+  it("serializes concurrent candidate projection self-heal reads", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await rm(path.join(tmpDir, "read-models/candidates/index.json"), { force: true });
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => store.listCandidates())
+    );
+
+    for (const candidates of results) {
+      expect(candidates).toMatchObject([
+        {
+          candidate_id: FIXTURE_CANDIDATE_ID,
+          status: "fixture_only"
+        }
+      ]);
+    }
+  });
+
   it("returns an empty candidate list when an uninitialized store has no projection index", async () => {
     const store = new LocalStore(tmpDir);
 
