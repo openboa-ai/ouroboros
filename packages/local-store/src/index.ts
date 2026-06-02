@@ -758,6 +758,8 @@ export function createFixtureRecords(): FixtureItem[] {
 }
 
 export class LocalStore {
+  private projectionRebuildPromise?: Promise<void>;
+
   constructor(private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT) {}
 
   root(): string {
@@ -779,6 +781,23 @@ export class LocalStore {
   }
 
   async rebuildProjections(): Promise<void> {
+    if (this.projectionRebuildPromise) {
+      await this.projectionRebuildPromise;
+      return;
+    }
+
+    const rebuild = this.rebuildProjectionsUnlocked();
+    this.projectionRebuildPromise = rebuild;
+    try {
+      await rebuild;
+    } finally {
+      if (this.projectionRebuildPromise === rebuild) {
+        this.projectionRebuildPromise = undefined;
+      }
+    }
+  }
+
+  private async rebuildProjectionsUnlocked(): Promise<void> {
     const candidates = await this.readCollection<TradingSystemCandidateRecord>("candidates");
     const summaries = candidates
       .map((candidate) => this.toCandidateSummary(candidate))
@@ -861,8 +880,25 @@ export class LocalStore {
 
   async listCandidates(): Promise<CandidateSummaryReadModel[]> {
     const indexPath = path.join(this.storeRoot, "read-models/candidates/index.json");
-    const index = await this.readJson<CandidateIndexProjection>(indexPath);
-    return index.candidates;
+    try {
+      const index = await this.readJson<CandidateIndexProjection>(indexPath);
+      return index.candidates;
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw error;
+      }
+    }
+
+    await this.rebuildProjections();
+    try {
+      const index = await this.readJson<CandidateIndexProjection>(indexPath);
+      return index.candidates;
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined> {

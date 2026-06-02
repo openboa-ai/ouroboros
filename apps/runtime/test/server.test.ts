@@ -228,6 +228,37 @@ describe("runtime canonical operator API", () => {
     }
   });
 
+  it("serves candidates and operator state when the candidate projection index is missing", async () => {
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot: path.join(tmpDir, "empty-promoted-candidates"),
+      replayRunRoot: path.join(tmpDir, "empty-replay-runs")
+    });
+
+    try {
+      await rm(path.join(tmpDir, "read-models/candidates/index.json"), { force: true });
+
+      const candidates = await server.inject({ method: "GET", url: "/api/candidates" });
+      expect(candidates.statusCode).toBe(200);
+      expect(candidates.json().candidates.map((candidate: { candidate_id: string }) => candidate.candidate_id))
+        .toContain(FIXTURE_CANDIDATE_ID);
+
+      const operator = await server.inject({ method: "GET", url: "/api/operator" });
+      expect(operator.statusCode).toBe(200);
+      expect(operator.json()).toMatchObject({
+        operator: {
+          candidate_arena: {
+            runner_status: "stopped"
+          },
+          live_disabled: true,
+          authority_status: "not_live"
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("restarts the sandbox with a fresh provider URL when resuming an inactive paper run", async () => {
     const store = new LocalStore(tmpDir);
     const orderLine = paperOrderRequestLine({
