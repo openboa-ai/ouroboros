@@ -758,6 +758,9 @@ export function createFixtureRecords(): FixtureItem[] {
 }
 
 export class LocalStore {
+  private candidateProjectionSelfHealPromise?: Promise<void>;
+  private projectionRebuildQueue: Promise<void> = Promise.resolve();
+
   constructor(private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT) {}
 
   root(): string {
@@ -779,6 +782,14 @@ export class LocalStore {
   }
 
   async rebuildProjections(): Promise<void> {
+    const queuedRebuild = this.projectionRebuildQueue.then(async () => {
+      await this.rebuildProjectionsUnlocked();
+    });
+    this.projectionRebuildQueue = queuedRebuild.catch(() => {});
+    await queuedRebuild;
+  }
+
+  private async rebuildProjectionsUnlocked(): Promise<void> {
     const candidates = await this.readCollection<TradingSystemCandidateRecord>("candidates");
     const summaries = candidates
       .map((candidate) => this.toCandidateSummary(candidate))
@@ -861,8 +872,37 @@ export class LocalStore {
 
   async listCandidates(): Promise<CandidateSummaryReadModel[]> {
     const indexPath = path.join(this.storeRoot, "read-models/candidates/index.json");
-    const index = await this.readJson<CandidateIndexProjection>(indexPath);
-    return index.candidates;
+    try {
+      const index = await this.readJson<CandidateIndexProjection>(indexPath);
+      return index.candidates;
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw error;
+      }
+    }
+
+    await this.selfHealCandidateProjectionIndex();
+    try {
+      const index = await this.readJson<CandidateIndexProjection>(indexPath);
+      return index.candidates;
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  private async selfHealCandidateProjectionIndex(): Promise<void> {
+    if (!this.candidateProjectionSelfHealPromise) {
+      this.candidateProjectionSelfHealPromise = this.rebuildProjections();
+    }
+
+    try {
+      await this.candidateProjectionSelfHealPromise;
+    } finally {
+      this.candidateProjectionSelfHealPromise = undefined;
+    }
   }
 
   async getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined> {
