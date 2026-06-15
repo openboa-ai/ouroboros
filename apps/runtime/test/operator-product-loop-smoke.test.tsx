@@ -400,6 +400,8 @@ describe("operator product loop smoke", () => {
       expect(tui).toContain("Decision: hold");
       expect(tui).toContain("Account: equity");
       expect(tui).toContain("Public execution:");
+      expect(tui).toContain("runner active, market binance_production_public_rest / websocket_primary,");
+      expect(tui).toContain("fill filled, open 0");
       expect(tui).toContain("Ledger chain: complete");
       expect(tui).toContain("trading_run.observe: succeeded");
     } finally {

@@ -212,6 +212,9 @@ export function OperatorTuiScreen(props: {
                 <Text dimColor>
                   {`   window ${entry.evidence_window.observation_count} obs, ${entry.evidence_window.failed_observation_count} failed, ${entry.evidence_window.elapsed_ms}ms`}
                 </Text>
+                <Text dimColor>
+                  {`   runner ${entry.runner_status}, market ${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}, fill ${entry.latest_fill_status ?? "none"}, open ${entry.open_order_count}`}
+                </Text>
                 {entry.qualification_reasons.length ? (
                   <Text dimColor>{`   ${entry.qualification_reasons.join(", ")}`}</Text>
                 ) : null}

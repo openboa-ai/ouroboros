@@ -1265,6 +1265,7 @@ export function CandidateArenaPanel({
                     <Field label="Runner" value={entry.runner_status} />
                     <Field label="Observations" value={String(entry.observation_count)} />
                     <Field label="Market" value={`${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`} />
+                    <Field label="Fill quality" value={`${entry.latest_fill_status ?? "none"} / open ${entry.open_order_count}`} />
                   </dl>
                 </div>
               ))}

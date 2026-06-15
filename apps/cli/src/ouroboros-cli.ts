@@ -404,6 +404,9 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     paperLeader
       ? `Paper qualification: observations ${paperLeader.evidence_window.observation_count}, failed ${paperLeader.evidence_window.failed_observation_count}, elapsed ${paperLeader.evidence_window.elapsed_ms}ms / ${paperLeader.qualification_reasons.length ? paperLeader.qualification_reasons.join(", ") : "qualified"}`
       : undefined,
+    paperLeader
+      ? `Paper board quality: runner ${paperLeader.runner_status}, market ${paperLeader.market_data_source}${paperLeader.latest_public_execution_source ? ` / ${paperLeader.latest_public_execution_source}` : ""}, fill ${paperLeader.latest_fill_status ?? "none"}, open orders ${paperLeader.open_order_count}`
+      : undefined,
     `Paper runner: ${formatPaperRunner(paper)}`,
     market
       ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`

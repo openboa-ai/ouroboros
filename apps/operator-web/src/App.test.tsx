@@ -486,6 +486,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Market snapshot");
     expect(html).toContain("Market data");
     expect(html).toContain("binance_production_public_websocket");
+    expect(html).toContain("Fill quality");
+    expect(html).toContain("filled / open 0");
     expect(html).toContain("Public execution");
     expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
     expect(html).toContain("Order book");
