@@ -51,6 +51,10 @@ import type {
   TradingRunRecord
 } from "@ouroboros/domain";
 
+type LocalStoreProjectionInternals = {
+  rebuildProjectionsUnlocked(): Promise<void>;
+};
+
 let tmpDir: string;
 
 beforeEach(async () => {
@@ -957,6 +961,14 @@ describe("LocalStore", () => {
     await store.initialize();
     await rm(path.join(tmpDir, "read-models/candidates/index.json"), { force: true });
 
+    const internals = store as unknown as LocalStoreProjectionInternals;
+    const originalRebuild = internals.rebuildProjectionsUnlocked.bind(store);
+    let rebuilds = 0;
+    internals.rebuildProjectionsUnlocked = async () => {
+      rebuilds += 1;
+      await originalRebuild();
+    };
+
     const results = await Promise.all(
       Array.from({ length: 8 }, () => store.listCandidates())
     );
@@ -969,6 +981,41 @@ describe("LocalStore", () => {
         }
       ]);
     }
+    expect(rebuilds).toBe(1);
+  });
+
+  it("queues explicit projection rebuild requests made while another rebuild is in flight", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const internals = store as unknown as LocalStoreProjectionInternals;
+    const originalRebuild = internals.rebuildProjectionsUnlocked.bind(store);
+    let rebuilds = 0;
+    let firstRebuildStarted!: () => void;
+    let releaseFirstRebuild!: () => void;
+    const firstRebuildStartedPromise = new Promise<void>((resolve) => {
+      firstRebuildStarted = resolve;
+    });
+    const releaseFirstRebuildPromise = new Promise<void>((resolve) => {
+      releaseFirstRebuild = resolve;
+    });
+
+    internals.rebuildProjectionsUnlocked = async () => {
+      rebuilds += 1;
+      if (rebuilds === 1) {
+        firstRebuildStarted();
+        await releaseFirstRebuildPromise;
+      }
+      await originalRebuild();
+    };
+
+    const firstRebuild = store.rebuildProjections();
+    await firstRebuildStartedPromise;
+    const secondRebuild = store.rebuildProjections();
+    releaseFirstRebuild();
+    await Promise.all([firstRebuild, secondRebuild]);
+
+    expect(rebuilds).toBe(2);
   });
 
   it("returns an empty candidate list when an uninitialized store has no projection index", async () => {

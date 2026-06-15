@@ -758,7 +758,8 @@ export function createFixtureRecords(): FixtureItem[] {
 }
 
 export class LocalStore {
-  private projectionRebuildPromise?: Promise<void>;
+  private candidateProjectionSelfHealPromise?: Promise<void>;
+  private projectionRebuildQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly storeRoot = process.env.OUROBOROS_STORE_ROOT ?? DEFAULT_STORE_ROOT) {}
 
@@ -781,20 +782,11 @@ export class LocalStore {
   }
 
   async rebuildProjections(): Promise<void> {
-    if (this.projectionRebuildPromise) {
-      await this.projectionRebuildPromise;
-      return;
-    }
-
-    const rebuild = this.rebuildProjectionsUnlocked();
-    this.projectionRebuildPromise = rebuild;
-    try {
-      await rebuild;
-    } finally {
-      if (this.projectionRebuildPromise === rebuild) {
-        this.projectionRebuildPromise = undefined;
-      }
-    }
+    const queuedRebuild = this.projectionRebuildQueue.then(async () => {
+      await this.rebuildProjectionsUnlocked();
+    });
+    this.projectionRebuildQueue = queuedRebuild.catch(() => {});
+    await queuedRebuild;
   }
 
   private async rebuildProjectionsUnlocked(): Promise<void> {
@@ -889,7 +881,7 @@ export class LocalStore {
       }
     }
 
-    await this.rebuildProjections();
+    await this.selfHealCandidateProjectionIndex();
     try {
       const index = await this.readJson<CandidateIndexProjection>(indexPath);
       return index.candidates;
@@ -898,6 +890,18 @@ export class LocalStore {
         return [];
       }
       throw error;
+    }
+  }
+
+  private async selfHealCandidateProjectionIndex(): Promise<void> {
+    if (!this.candidateProjectionSelfHealPromise) {
+      this.candidateProjectionSelfHealPromise = this.rebuildProjections();
+    }
+
+    try {
+      await this.candidateProjectionSelfHealPromise;
+    } finally {
+      this.candidateProjectionSelfHealPromise = undefined;
     }
   }
 
