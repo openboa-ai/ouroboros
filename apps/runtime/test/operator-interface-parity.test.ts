@@ -16,6 +16,7 @@ describe("operator interface parity", () => {
       "arena.stop",
       "arena.tick",
       "candidate.select",
+      "trading_candidate.promote",
       "trading_run.start",
       "trading_run.observe",
       "trading_run.stop",
@@ -40,6 +41,13 @@ describe("operator interface parity", () => {
         args: ["candidate", "select", "candidate-profitable"],
         request: {
           command_kind: "candidate.select",
+          payload: { candidate_id: "candidate-profitable" }
+        }
+      },
+      {
+        args: ["candidate", "promote", "candidate-profitable"],
+        request: {
+          command_kind: "trading_candidate.promote",
           payload: { candidate_id: "candidate-profitable" }
         }
       },
@@ -135,6 +143,10 @@ describe("operator interface parity", () => {
     });
     expect(operatorTuiCommandForAction("select_current", runningOperator, 0)).toEqual({
       command_kind: "candidate.select",
+      payload: { candidate_id: "candidate-profitable" }
+    });
+    expect(operatorTuiCommandForAction("promote_trading_candidate", runningOperator, 0)).toEqual({
+      command_kind: "trading_candidate.promote",
       payload: { candidate_id: "candidate-profitable" }
     });
     expect(operatorTuiCommandForAction("start_paper_trading", runningOperator, 0)).toEqual({

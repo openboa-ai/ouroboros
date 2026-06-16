@@ -9,6 +9,7 @@ import {
   type OuroborosCommandRecord,
   type PaperTradingEvaluationRecord,
   type PaperTradingObservationRecord,
+  type Ref,
   type ResearcherProviderReadModel
 } from "@ouroboros/domain";
 import {
@@ -102,6 +103,11 @@ export class OperatorService {
         selectedEvaluationRunnerActive
       ),
       paper_trading_board: paperTradingBoard,
+      trading_promotion: await buildTradingPromotionReadModel({
+        store: this.options.store,
+        paperTradingBoard,
+        runner: this.options.paperTradingEvaluationRunner
+      }),
       researcher_provider: await this.readResearcherProvider(),
       agent_profiles: await listAgentProfileReadModels(this.options.store),
       latest_commands: latestCommands,
@@ -217,6 +223,39 @@ export class OperatorService {
         return {
           result: { candidate },
           summary: `Selected candidate ${candidateId}.`
+        };
+      },
+      "trading_candidate.promote": async (payload) => {
+        const candidateId = parseCommandCandidateId(payload);
+        const candidate = await this.options.store.getCandidate(candidateId);
+        if (!candidate) {
+          throw new OperatorCommandError(404, "candidate_not_found", { candidate_id: candidateId });
+        }
+        const evaluation = await this.options.store.getLatestPaperTradingEvaluationForCandidate(candidateId);
+        if (!evaluation) {
+          throw new OperatorCommandError(409, "paper_trading_evaluation_required", {
+            candidate_id: candidateId,
+            required_command: `ouroboros candidate paper start ${candidateId}`
+          });
+        }
+        const promotion = await this.options.store.recordTradingPromotion({
+          record_kind: "trading_promotion",
+          version: 1,
+          trading_promotion_id: "active-trading-promotion",
+          status: "promoted_for_trading_review",
+          candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
+          candidate_version_ref: ref("candidate_version", candidate.active_version_id),
+          paper_trading_evaluation_ref: ref(
+            "paper_trading_evaluation",
+            evaluation.paper_trading_evaluation_id
+          ),
+          promoted_at: new Date().toISOString(),
+          authority_status: "not_live"
+        });
+        this.selectedCandidateId = candidateId;
+        return {
+          result: { trading_promotion: promotion },
+          summary: `Promoted ${candidateId} to Trading review.`
         };
       },
       "candidate.paper_evidence.run": async (payload) => {
@@ -548,6 +587,121 @@ async function buildPaperTradingBoard(
   };
 }
 
+async function buildTradingPromotionReadModel(input: {
+  store: OuroborosStorePort;
+  paperTradingBoard: OperatorReadModel["paper_trading_board"];
+  runner?: OperatorServiceOptions["paperTradingEvaluationRunner"];
+}): Promise<NonNullable<OperatorReadModel["trading_promotion"]>> {
+  const promotion = await input.store.getLatestTradingPromotion();
+  if (!promotion) {
+    return {
+      promotion_kind: "trading_promotion",
+      status: "not_promoted",
+      readiness_status: "paper_required",
+      paper_qualification_reasons: [],
+      next_action: "Promote a selected PaperTradingEvaluation candidate from Arena to Trading review.",
+      live_disabled_reason: "mlp_paper_only",
+      authority_status: "not_live"
+    };
+  }
+
+  const candidate = await input.store.getCandidate(promotion.candidate_ref.id);
+  const boardEntry = input.paperTradingBoard.entries.find((entry) =>
+    entry.candidate_id === promotion.candidate_ref.id &&
+    entry.evaluation_id === promotion.paper_trading_evaluation_ref.id
+  ) ?? input.paperTradingBoard.entries.find((entry) =>
+    entry.candidate_id === promotion.candidate_ref.id
+  );
+  if (boardEntry) {
+    return {
+      promotion_kind: "trading_promotion",
+      status: "promoted_for_trading_review",
+      readiness_status: tradingPromotionReadinessFromQualification(boardEntry.qualification_status),
+      candidate_id: promotion.candidate_ref.id,
+      candidate_version_id: promotion.candidate_version_ref.id,
+      display_name: candidate?.display_name ?? boardEntry.display_name,
+      promoted_at: promotion.promoted_at,
+      paper_trading_evaluation_id: boardEntry.evaluation_id,
+      paper_qualification_status: boardEntry.qualification_status,
+      paper_qualification_reasons: boardEntry.qualification_reasons,
+      paper_evidence_window: boardEntry.evidence_window,
+      paper_profit_loss: boardEntry.profit_loss,
+      runner_status: boardEntry.runner_status,
+      latest_failure_reason: boardEntry.latest_failure_reason,
+      next_action: tradingPromotionNextAction(boardEntry.qualification_status),
+      live_disabled_reason: "mlp_paper_only",
+      authority_status: "not_live"
+    };
+  }
+
+  const evaluation = await input.store.getLatestPaperTradingEvaluationForCandidate(promotion.candidate_ref.id);
+  const observations = evaluation
+    ? await input.store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
+    : [];
+  const runnerActive = evaluation
+    ? input.runner?.active(evaluation.trading_run_ref.id) ?? false
+    : false;
+  const qualification = evaluation
+    ? qualifyPaperTradingEvaluation({ evaluation, observations, runnerActive })
+    : undefined;
+  const runnerStatus = evaluation
+    ? paperTradingBoardRunnerStatus(evaluation, runnerActive)
+    : undefined;
+  return {
+    promotion_kind: "trading_promotion",
+    status: "promoted_for_trading_review",
+    readiness_status: qualification
+      ? tradingPromotionReadinessFromQualification(qualification.qualification_status)
+      : "paper_required",
+    candidate_id: promotion.candidate_ref.id,
+    candidate_version_id: promotion.candidate_version_ref.id,
+    display_name: candidate?.display_name ?? promotion.candidate_ref.id,
+    promoted_at: promotion.promoted_at,
+    paper_trading_evaluation_id: evaluation?.paper_trading_evaluation_id,
+    paper_qualification_status: qualification?.qualification_status,
+    paper_qualification_reasons: qualification?.qualification_reasons ?? [],
+    paper_evidence_window: qualification?.evidence_window,
+    paper_profit_loss: evaluation?.latest_score,
+    runner_status: runnerStatus,
+    latest_failure_reason: evaluation?.latest_failure_reason,
+    next_action: qualification
+      ? tradingPromotionNextAction(qualification.qualification_status)
+      : "Start continuous paper trading before promotion can be trusted.",
+    live_disabled_reason: "mlp_paper_only",
+    authority_status: "not_live"
+  };
+}
+
+function tradingPromotionReadinessFromQualification(
+  status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"]
+): NonNullable<OperatorReadModel["trading_promotion"]>["readiness_status"] {
+  if (status === "qualified") {
+    return "promoted_for_trading_review";
+  }
+  if (status === "needs_resume") {
+    return "needs_resume";
+  }
+  if (status === "blocked_by_quality" || status === "paper_failed") {
+    return "blocked_by_quality";
+  }
+  return "collecting_paper_evidence";
+}
+
+function tradingPromotionNextAction(
+  status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"]
+): string {
+  if (status === "qualified") {
+    return "Keep live disabled; review paper score, fills, risk, and authority boundary.";
+  }
+  if (status === "needs_resume") {
+    return "Resume paper trading before treating this Trading review candidate as current.";
+  }
+  if (status === "blocked_by_quality" || status === "paper_failed") {
+    return "Fix paper evidence quality before this candidate can be trusted.";
+  }
+  return "Continue paper trading until the evidence window qualifies.";
+}
+
 function paperTradingBoardRunnerStatus(
   evaluation: PaperTradingEvaluationRecord,
   runnerActive: boolean
@@ -559,6 +713,10 @@ function paperTradingBoardRunnerStatus(
     return "needs_resume";
   }
   return "inactive";
+}
+
+function ref(record_kind: string, id: string): Ref {
+  return { record_kind, id };
 }
 
 function paperTradingPromotionGateStatus(

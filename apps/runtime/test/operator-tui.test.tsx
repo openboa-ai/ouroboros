@@ -23,6 +23,7 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Researcher provider: fixture");
     expect(output).toContain("Agent profile: Fixture / authenticated");
     expect(output).toContain("> #1 candidate-profitable");
+    expect(output).toContain("Trading promotion: promoted_for_trading_review / collecting_paper_evidence");
     expect(output).toContain("PaperTradingEvaluation: running");
     expect(output).toContain("Paper Board");
     expect(output).toContain("#1 candidate-profitable 4.95 USDT / collecting_evidence / gate");
@@ -69,6 +70,7 @@ describe("Operator TUI action console", () => {
     expect(operatorTuiActionForInput("r", {})).toBe("refresh");
     expect(operatorTuiActionForInput("t", {})).toBe("tick");
     expect(operatorTuiActionForInput("s", {})).toBe("toggle_running");
+    expect(operatorTuiActionForInput("m", {})).toBe("promote_trading_candidate");
     expect(operatorTuiActionForInput("e", {})).toBe("start_paper_trading");
     expect(operatorTuiActionForInput("o", {})).toBe("observe_paper_trading");
     expect(operatorTuiActionForInput("x", {})).toBe("stop_paper_trading");
@@ -111,6 +113,10 @@ describe("Operator TUI action console", () => {
     });
     expect(operatorTuiCommandForAction("select_current", fixtureOperator(), 0)).toEqual({
       command_kind: "candidate.select",
+      payload: { candidate_id: "candidate-profitable" }
+    });
+    expect(operatorTuiCommandForAction("promote_trading_candidate", fixtureOperator(), 0)).toEqual({
+      command_kind: "trading_candidate.promote",
       payload: { candidate_id: "candidate-profitable" }
     });
     expect(operatorTuiCommandForAction("start_paper_trading", fixtureOperator(), 0)).toEqual({
@@ -339,6 +345,36 @@ function fixtureOperator(): OperatorReadModel {
         }
       ],
       live_disabled: true,
+      authority_status: "not_live"
+    },
+    trading_promotion: {
+      promotion_kind: "trading_promotion",
+      status: "promoted_for_trading_review",
+      readiness_status: "collecting_paper_evidence",
+      candidate_id: "candidate-profitable",
+      candidate_version_id: "candidate-version-profitable",
+      display_name: "candidate-profitable",
+      promoted_at: "2026-05-16T00:00:04.000Z",
+      paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
+      paper_qualification_status: "collecting_evidence",
+      paper_qualification_reasons: [
+        "min_observation_count_not_met",
+        "min_elapsed_ms_not_met"
+      ],
+      paper_evidence_window: {
+        observation_count: 1,
+        elapsed_ms: 60_000,
+        failed_observation_count: 0
+      },
+      paper_profit_loss: {
+        revenue_usdt: 5,
+        cost_usdt: 0.048,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952
+      },
+      runner_status: "active",
+      next_action: "Continue paper trading until the evidence window qualifies.",
+      live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"
     },
     researcher_provider: {

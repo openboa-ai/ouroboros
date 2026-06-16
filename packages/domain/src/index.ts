@@ -2573,6 +2573,7 @@ export type OuroborosCommandKind =
   | "arena.stop"
   | "arena.tick"
   | "candidate.select"
+  | "trading_candidate.promote"
   | "candidate.paper_evidence.run"
   | "candidate.evaluation.run"
   | "candidate.replay.run"
@@ -2592,6 +2593,7 @@ export type OuroborosCommandKind =
 export type OuroborosCommandGroup =
   | "arena"
   | "candidate"
+  | "trading_candidate"
   | "trading_run"
   | "run_control"
   | "trading_substrate"
@@ -2618,6 +2620,7 @@ export const OUROBOROS_COMMAND_KINDS = [
   "arena.stop",
   "arena.tick",
   "candidate.select",
+  "trading_candidate.promote",
   "candidate.paper_evidence.run",
   "candidate.evaluation.run",
   "candidate.replay.run",
@@ -2641,6 +2644,7 @@ export const OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS = [
   "arena.stop",
   "arena.tick",
   "candidate.select",
+  "trading_candidate.promote",
   "trading_run.start",
   "trading_run.observe",
   "trading_run.stop",
@@ -2691,6 +2695,14 @@ export const OUROBOROS_COMMAND_DESCRIPTORS = [
     command_kind: "candidate.select",
     group: "candidate",
     label: "Select candidate",
+    availability: "controller",
+    requires_candidate_id: true,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "trading_candidate.promote",
+    group: "trading_candidate",
+    label: "Promote candidate to Trading review",
     availability: "controller",
     requires_candidate_id: true,
     authority_status: "not_live"
@@ -2998,6 +3010,50 @@ export interface PaperTradingBoardReadModel {
   authority_status: "not_live";
 }
 
+export type TradingPromotionStatus =
+  | "not_promoted"
+  | "promoted_for_trading_review";
+
+export type TradingPromotionReadinessStatus =
+  | "paper_required"
+  | "collecting_paper_evidence"
+  | "needs_resume"
+  | "blocked_by_quality"
+  | "ready_to_promote"
+  | "promoted_for_trading_review";
+
+export interface TradingPromotionRecord extends BaseRecord {
+  record_kind: "trading_promotion";
+  trading_promotion_id: string;
+  status: "promoted_for_trading_review";
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  paper_trading_evaluation_ref: Ref;
+  promoted_at: string;
+  promoted_by_command_ref?: Ref;
+  authority_status: "not_live";
+}
+
+export interface TradingPromotionReadModel {
+  promotion_kind: "trading_promotion";
+  status: TradingPromotionStatus;
+  readiness_status: TradingPromotionReadinessStatus;
+  candidate_id?: string;
+  candidate_version_id?: string;
+  display_name?: string;
+  promoted_at?: string;
+  paper_trading_evaluation_id?: string;
+  paper_qualification_status?: PaperTradingQualificationStatus;
+  paper_qualification_reasons: PaperTradingQualificationReason[];
+  paper_evidence_window?: PaperTradingEvidenceWindowReadModel;
+  paper_profit_loss?: TradingProfitLossReadModel;
+  runner_status?: PaperTradingBoardRunnerStatus;
+  latest_failure_reason?: string;
+  next_action: string;
+  live_disabled_reason: "mlp_paper_only";
+  authority_status: "not_live";
+}
+
 export interface OperatorReadModel {
   operator_kind: "ouroboros_operator";
   command_descriptors: readonly OuroborosCommandDescriptor[];
@@ -3007,6 +3063,7 @@ export interface OperatorReadModel {
   selected_paper_evidence: SelectedPaperEvidenceReadModel;
   selected_paper_trading_evaluation: PaperTradingEvaluationReadModel;
   paper_trading_board: PaperTradingBoardReadModel;
+  trading_promotion?: TradingPromotionReadModel;
   researcher_provider: ResearcherProviderReadModel;
   agent_profiles: AgentProfileReadModel[];
   latest_commands: OuroborosCommandReadModel[];

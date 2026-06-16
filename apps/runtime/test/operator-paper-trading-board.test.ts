@@ -207,6 +207,66 @@ describe("operator paper trading board", () => {
       qualification_reasons: ["fill_public_execution_evidence_missing"]
     });
   });
+
+  it("promotes a selected paper candidate into Trading review without live authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const candidate = await registerCandidate(store, {
+      id: "promotion-paper-board",
+      title: "Promotion Paper Candidate"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+      }
+    });
+
+    const result = await service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    });
+    const operator = await service.readOperator();
+    const promotionRecord = await store.getLatestTradingPromotion();
+
+    expect(result.summary).toBe(`Promoted ${candidate.candidate_id} to Trading review.`);
+    expect(promotionRecord?.candidate_ref).toEqual({
+      record_kind: "trading_system_candidate",
+      id: candidate.candidate_id
+    });
+    expect(operator.selected_candidate_id).toBe(candidate.candidate_id);
+    expect(operator.trading_promotion).toMatchObject({
+      status: "promoted_for_trading_review",
+      readiness_status: "promoted_for_trading_review",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      display_name: "Promotion Paper Candidate",
+      paper_qualification_status: "qualified",
+      paper_qualification_reasons: [],
+      paper_profit_loss: {
+        net_revenue_usdt: 14.2,
+        net_return_pct: 0.142
+      },
+      runner_status: "active",
+      live_disabled_reason: "mlp_paper_only",
+      authority_status: "not_live"
+    });
+  });
 });
 
 async function registerCandidate(

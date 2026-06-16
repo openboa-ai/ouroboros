@@ -225,11 +225,12 @@ describe("sandbox API", () => {
 
     try {
       expect(started.instance.lifecycle_status).toBe("running");
-      await sleep(30);
+      const runningLogText = await waitForSandboxLog(adapter, started.instance, "runtime_heartbeat", 1_000);
       const restartedAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
       const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
-      expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_heartbeat");
+      expect(runningLogText).toContain("runtime_heartbeat");
+      expect(stopped.logs?.flatMap((log) => log.lines).join("\n")).toContain("runtime_stopped");
     } finally {
       await adapter.stopArtifactInstance(started.instance);
     }
@@ -1115,6 +1116,25 @@ async function waitForFile(filePath: string, timeoutMs: number): Promise<string>
     await sleep(10);
   }
   return await readFile(filePath, "utf8");
+}
+
+async function waitForSandboxLog(
+  adapter: SandboxAdapter,
+  instance: Parameters<SandboxAdapter["getArtifactInstanceLogs"]>[0],
+  expectedText: string,
+  timeoutMs: number
+): Promise<string> {
+  const startedAt = Date.now();
+  let lastLogText = "";
+  while (Date.now() - startedAt < timeoutMs) {
+    const logs = await adapter.getArtifactInstanceLogs(instance);
+    lastLogText = logs.logs?.flatMap((log) => log.lines).join("\n") ?? "";
+    if (lastLogText.includes(expectedText)) {
+      return lastLogText;
+    }
+    await sleep(10);
+  }
+  return lastLogText;
 }
 
 function isPidAlive(pid: number): boolean {

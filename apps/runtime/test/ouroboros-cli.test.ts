@@ -348,6 +348,15 @@ describe("ouroboros CLI", () => {
   });
 
   it("maps selected candidate paper trading commands to the command endpoint", () => {
+    expect(parseOuroborosCliArgs(["candidate", "promote", "candidate-alpha"])).toEqual({
+      mode: "command",
+      request: {
+        command_kind: "trading_candidate.promote",
+        payload: {
+          candidate_id: "candidate-alpha"
+        }
+      }
+    });
     expect(parseOuroborosCliArgs(["candidate", "paper", "start", "candidate-alpha"])).toEqual({
       mode: "command",
       request: {

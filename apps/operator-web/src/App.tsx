@@ -59,6 +59,7 @@ import {
   recordImprovement as submitImprovement,
   probeAgentProvider as submitProbeAgentProvider,
   runFullCycle as submitFullCycle,
+  promoteCandidateToTrading as submitPromoteCandidateToTrading,
   selectResearcherProvider as submitSelectResearcherProvider,
   setupAgentProvider as submitSetupAgentProvider,
   startAgentProviderLogin as submitStartAgentProviderLogin,
@@ -148,6 +149,7 @@ interface AppState {
   recordingRunControl: boolean;
   recordingPrivateReadinessPosture: boolean;
   runningCandidateReplay: boolean;
+  runningTradingPromotion: boolean;
   runningCandidateArenaAction: boolean;
   candidateArenaMessage?: string;
   candidateArenaError?: string;
@@ -155,6 +157,8 @@ interface AppState {
   replayRunMessage?: string;
   tradingRunError?: string;
   tradingRunMessage?: string;
+  tradingPromotionError?: string;
+  tradingPromotionMessage?: string;
   fullCycleError?: string;
   fullCycleMessage?: string;
   lastFullCycle?: FullCycleOutcome;
@@ -209,6 +213,7 @@ export function App() {
     recordingRunControl: false,
     recordingPrivateReadinessPosture: false,
     runningCandidateReplay: false,
+    runningTradingPromotion: false,
     runningCandidateArenaAction: false
   });
 
@@ -259,6 +264,7 @@ export function App() {
             recordingRunControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false,
+            runningTradingPromotion: false,
             runningCandidateArenaAction: false
           });
         }
@@ -277,6 +283,7 @@ export function App() {
             recordingRunControl: false,
             recordingPrivateReadinessPosture: false,
             runningCandidateReplay: false,
+            runningTradingPromotion: false,
             runningCandidateArenaAction: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
@@ -681,6 +688,38 @@ export function App() {
     }
   }
 
+  async function promoteTradingCandidate() {
+    const candidate = state.selected;
+    if (!candidate || state.runningTradingPromotion) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      runningTradingPromotion: true,
+      tradingPromotionError: undefined,
+      tradingPromotionMessage: undefined
+    }));
+    try {
+      const operator = await submitPromoteCandidateToTrading(candidate.candidate_id);
+      const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      setState((current) => ({
+        ...current,
+        operator,
+        candidateArena: operator.candidate_arena,
+        selected,
+        runningTradingPromotion: false,
+        tradingPromotionMessage: `promoted to Trading review: ${operator.trading_promotion?.status ?? "not_live"}`
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        runningTradingPromotion: false,
+        tradingPromotionError: error instanceof Error ? error.message : "Unknown Trading promotion error"
+      }));
+    }
+  }
+
   async function recordImprovement() {
     const candidate = state.selected;
     if (!candidate || state.recordingImprovement) {
@@ -894,6 +933,7 @@ export function App() {
                 onStartTradingRun={state.selected.ledger
                   ? () => void startTradingRun()
                   : undefined}
+                onPromoteTradingCandidate={() => void promoteTradingCandidate()}
                 onStartRejectedPaperOrder={state.selected.ledger
                   ? () => void startTradingRun("rejected")
                   : undefined}
@@ -910,6 +950,7 @@ export function App() {
                 onRecordPrivateReadinessPosture={(draft) => void recordPrivateReadinessPosture(draft)}
                 runningFullCycle={state.runningFullCycle}
                 runningTradingRun={state.runningTradingRun}
+                runningTradingPromotion={state.runningTradingPromotion}
                 recordingImprovement={state.recordingImprovement}
                 recordingRunControl={state.recordingRunControl}
                 recordingPrivateReadinessPosture={state.recordingPrivateReadinessPosture}
@@ -924,6 +965,8 @@ export function App() {
                 lastFullCycle={state.lastFullCycle}
                 tradingRunError={state.tradingRunError}
                 tradingRunMessage={state.tradingRunMessage}
+                tradingPromotionError={state.tradingPromotionError}
+                tradingPromotionMessage={state.tradingPromotionMessage}
                 improvementError={state.improvementError}
                 improvementMessage={state.improvementMessage}
                 runtimeControlError={state.runtimeControlError}
@@ -1632,6 +1675,84 @@ export function CandidateArenaPanel({
   );
 }
 
+function TradingPromotionBoundaryCard({
+  promotion,
+  selectedCandidate,
+  selectedPaperTradingEvaluation,
+  onPromoteTradingCandidate,
+  runningTradingPromotion
+}: {
+  promotion?: OperatorReadModel["trading_promotion"];
+  selectedCandidate: CandidateInspectReadModel;
+  selectedPaperTradingEvaluation?: PaperTradingEvaluationReadModel;
+  onPromoteTradingCandidate?: () => void;
+  runningTradingPromotion: boolean;
+}) {
+  const hasPaperEvaluation = Boolean(selectedPaperTradingEvaluation?.evaluation_id);
+  const promotedCandidateLabel = promotion?.display_name ?? promotion?.candidate_id ?? "No Trading review candidate";
+  const selectedIsPromoted = promotion?.candidate_id === selectedCandidate.candidate_id;
+  return (
+    <Card aria-label="Trading promotion boundary">
+      <CardHeader>
+        <CardDescription>Promotion boundary</CardDescription>
+        <CardTitle>Trading review candidate</CardTitle>
+        <CardDescription>
+          Arena candidates become Trading review candidates only after selected paper evidence exists. This does not enable live authority.
+        </CardDescription>
+        <CardAction className="flex flex-wrap justify-end gap-2">
+          <Badge variant={promotion?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
+            {promotion?.status ?? "not_promoted"}
+          </Badge>
+          <Badge variant="secondary">{promotion?.readiness_status ?? "paper_required"}</Badge>
+          <Badge variant="secondary">live disabled</Badge>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+        <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <Field label="Trading candidate" value={promotedCandidateLabel} />
+          <Field
+            label="Selected candidate"
+            value={`${selectedCandidate.display_name}${selectedIsPromoted ? " / active Trading review" : ""}`}
+          />
+          <Field
+            label="Paper qualification"
+            value={promotion?.paper_qualification_status ?? selectedPaperTradingEvaluation?.status ?? "paper_required"}
+          />
+          <Field
+            label="Paper net"
+            value={promotion?.paper_profit_loss
+              ? formatUsdt(promotion.paper_profit_loss.net_revenue_usdt)
+              : selectedPaperTradingEvaluation
+                ? formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)
+                : "not evaluated"}
+          />
+          <Field
+            label="Evidence window"
+            value={promotion?.paper_evidence_window
+              ? `${promotion.paper_evidence_window.observation_count} obs / ${promotion.paper_evidence_window.failed_observation_count} failed`
+              : selectedPaperTradingEvaluation
+                ? `${selectedPaperTradingEvaluation.observation_count} observations`
+                : "not started"}
+          />
+          <Field label="Runner" value={promotion?.runner_status ?? "not promoted"} />
+          <Field label="Next action" value={promotion?.next_action ?? "Start paper trading in Arena, then promote the selected candidate."} />
+          <Field label="Authority" value={promotion?.live_disabled_reason ?? "mlp_paper_only"} />
+        </dl>
+        <div className="flex flex-wrap gap-2 lg:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onPromoteTradingCandidate}
+            disabled={!onPromoteTradingCandidate || runningTradingPromotion || !hasPaperEvaluation}
+          >
+            {runningTradingPromotion ? "Moving" : "Move to Trading review"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function formatSelectedPaperEvidenceStatus(
   ledger: LedgerReadModel | undefined,
   runningPaperEvidence = false
@@ -1873,6 +1994,7 @@ export function CandidateDetail({
   onRunCandidateReplay,
   onRunFullCycle,
   onStartTradingRun,
+  onPromoteTradingCandidate,
   onStartRejectedPaperOrder,
   onObserveTradingRun,
   onStopTradingRun,
@@ -1881,6 +2003,7 @@ export function CandidateDetail({
   onRecordPrivateReadinessPosture,
   runningFullCycle = false,
   runningCandidateReplay = false,
+  runningTradingPromotion = false,
   runningCandidateArenaAction = false,
   runningTradingRun = false,
   recordingImprovement = false,
@@ -1895,6 +2018,8 @@ export function CandidateDetail({
   lastFullCycle,
   tradingRunError,
   tradingRunMessage,
+  tradingPromotionError,
+  tradingPromotionMessage,
   improvementError,
   improvementMessage,
   runtimeControlError,
@@ -1933,6 +2058,7 @@ export function CandidateDetail({
   onRunCandidateReplay?: () => void;
   onRunFullCycle?: () => void;
   onStartTradingRun?: () => void;
+  onPromoteTradingCandidate?: () => void;
   onStartRejectedPaperOrder?: () => void;
   onObserveTradingRun?: () => void;
   onStopTradingRun?: () => void;
@@ -1941,6 +2067,7 @@ export function CandidateDetail({
   onRecordPrivateReadinessPosture?: (draft: PrivateReadinessPostureDraft) => void;
   runningFullCycle?: boolean;
   runningCandidateReplay?: boolean;
+  runningTradingPromotion?: boolean;
   runningCandidateArenaAction?: boolean;
   runningTradingRun?: boolean;
   recordingImprovement?: boolean;
@@ -1955,6 +2082,8 @@ export function CandidateDetail({
   lastFullCycle?: FullCycleOutcome;
   tradingRunError?: string;
   tradingRunMessage?: string;
+  tradingPromotionError?: string;
+  tradingPromotionMessage?: string;
   improvementError?: string;
   improvementMessage?: string;
   runtimeControlError?: string;
@@ -2084,6 +2213,7 @@ export function CandidateDetail({
     (agent) => agent.agent === selectedTradingResearchAgent
   );
   const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
+  const tradingPromotion = operator?.trading_promotion;
 
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
@@ -2194,11 +2324,21 @@ export function CandidateDetail({
         </CardContent>
       </Card>
 
-      {(tradingRunMessage || tradingRunError) && (
+      <TradingPromotionBoundaryCard
+        promotion={tradingPromotion}
+        selectedCandidate={candidate}
+        selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
+        onPromoteTradingCandidate={onPromoteTradingCandidate}
+        runningTradingPromotion={runningTradingPromotion}
+      />
+
+      {(tradingRunMessage || tradingRunError || tradingPromotionMessage || tradingPromotionError) && (
         <Card aria-label="Operator messages">
           <CardContent className="grid gap-2">
             {tradingRunMessage && <p className="text-sm text-muted-foreground">{tradingRunMessage}</p>}
             {tradingRunError && <p className="text-sm text-destructive">{tradingRunError}</p>}
+            {tradingPromotionMessage && <p className="text-sm text-muted-foreground">{tradingPromotionMessage}</p>}
+            {tradingPromotionError && <p className="text-sm text-destructive">{tradingPromotionError}</p>}
           </CardContent>
         </Card>
       )}

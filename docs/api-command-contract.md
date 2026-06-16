@@ -26,6 +26,10 @@ Current command groups:
 - `candidate`: select, run candidate evaluation, run candidate replay, and compatibility paper
   evidence readback. `candidate.select` chooses one candidate for proof; primary paper evaluation
   starts through `trading_run.start`.
+- `trading_candidate`: promote a paper-backed candidate into Trading review. `trading_candidate.promote`
+  records `TradingPromotion` state for the operator cockpit after a selected candidate has paper
+  evaluation evidence. It does not bind live authority, submit exchange orders, or bypass
+  `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
@@ -64,7 +68,8 @@ CandidateArena status, research-preflight leaderboard, selected candidate, selec
 active status, interval, next observation time, latest market snapshot, latest public execution
 snapshot, market data mode, local order book sync state, fake paper account, open orders, latest
 fill, latest paper failure, agent/provider status, latest ticks, latest candidates, latest command
-results, and latest TradingSystem paper decision when one has been emitted, and authority flags.
+results, latest `TradingPromotion` state, and latest TradingSystem paper decision when one has
+been emitted, and authority flags.
 
 The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
 `net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
@@ -81,7 +86,9 @@ unknown or omit the promotion gate instead of calling an active evaluation `need
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
 
-Candidate, Paper Evidence, Paper Trading, and Live are separate states in every operator surface.
+Candidate, Paper Evidence, Paper Trading, TradingPromotion, and Live are separate states in every
+operator surface. TradingPromotion moves a paper-backed candidate into Trading review while
+preserving `not_live` authority.
 Replay/backtest is a research tool, not final evaluation authority. `trading_run.start`,
 `trading_run.observe`, and `trading_run.stop` operate the selected candidate's continuous paper
 trading evaluation through the Gateway and `MarketDataPort`. The TradingSystem owns decision

@@ -168,6 +168,7 @@ import type {
   TracePlaceholderRecord,
   TradingSystemCandidateRecord,
   TradingEvaluationResultRecord,
+  TradingPromotionRecord,
   TradingSystemProgramRecord,
   TradingRunTranscriptItemReadModel,
   TradingRunTranscriptReadModel,
@@ -262,6 +263,7 @@ type Collection =
   | "agent-events"
   | "agent-profiles"
   | "researcher-provider-selections"
+  | "trading-promotions"
   | "ouroboros-commands"
   | "provider-readiness-records"
   | "provider-probe-attempts"
@@ -1269,6 +1271,17 @@ export class LocalStore {
 
   async getResearcherProviderSelection(): Promise<ResearcherProviderSelectionRecord | undefined> {
     return this.readOptionalRecord<ResearcherProviderSelectionRecord>("researcher-provider-selections", "researcher");
+  }
+
+  async recordTradingPromotion(promotion: TradingPromotionRecord): Promise<TradingPromotionRecord> {
+    await this.writeJson(this.itemPath("trading-promotions", promotion.trading_promotion_id), promotion);
+    return promotion;
+  }
+
+  async getLatestTradingPromotion(): Promise<TradingPromotionRecord | undefined> {
+    return (await this.readCollection<TradingPromotionRecord>("trading-promotions"))
+      .sort((a, b) => b.promoted_at.localeCompare(a.promoted_at))
+      .at(0);
   }
 
   async recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord> {

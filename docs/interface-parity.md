@@ -62,8 +62,9 @@ instead of falling back to host-local provider state.
 Interface parity does not change authority. Candidate, Paper Evidence, and Live remain visibly separate states.
 The Web UI keeps those states separated by tab:
 
-- `Trading` is the actual trading and realized-profit cockpit. In MLP-01 it must still show
-  live/private exchange authority as disabled.
+- `Trading` is the actual trading and realized-profit cockpit. In MLP-01 it shows the
+  `TradingPromotion` review candidate, paper qualification/readiness, and the reason live/private
+  exchange authority remains disabled.
 - `Arena` is the selected-candidate continuous paper trading arena. CandidateArena controls,
   revenue-cost leaderboard, `PaperTradingEvaluation` board, selected paper account, open orders,
   fills, and Ledger readback live here.
@@ -77,7 +78,8 @@ Web UI tabs support stable QA and remote screenshot entrypoints through
 it must not trigger product commands, refresh candidate state, or change exchange authority.
 
 Paper Trading is the continuous selected-candidate evaluation state between candidate selection and any
-future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
+future live promotion. `trading_candidate.promote` only moves a paper-backed candidate into Trading
+review; it does not create live exchange authority. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
 promotion. Each surface should expose runner active status, next observation time, observation
 count, latest market snapshot, latest paper score, `PaperTradingEvaluation` board rank, and any
