@@ -1989,6 +1989,35 @@ describe("CandidateDetail", () => {
     expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh");
   });
 
+  it("does not label account-position mirror data as paper account readback", () => {
+    const candidate = {
+      ...arenaSelectedCandidate(),
+      trading_substrate: {
+        latest_order_fill_surface: fixtureOrderFillSurface(),
+        latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+        latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+        latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+        private_readiness_posture_history: [fixturePrivateReadinessPosture()],
+        latest_account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface()
+      }
+    };
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+      />
+    );
+
+    expect(html).toContain("Paper equity");
+    expect(html).toContain("not started");
+    expect(html).toContain("Paper account waits for selected paper trading.");
+    expect(html).toContain("Paper position");
+    expect(html).toContain("no paper position");
+    expect(html).not.toContain("1,250.00 USDT");
+    expect(html).not.toContain("BOTH 0.015");
+    expect(html).not.toContain("cross P&amp;L");
+  });
+
   it("scopes Trading review qualification to the selected candidate when another promotion exists", () => {
     const candidate = arenaSelectedCandidate();
     const board = paperTradingBoardFixture();

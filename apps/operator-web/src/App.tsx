@@ -2219,34 +2219,22 @@ export function CandidateDetail({
   const tradingSystemRows = buildTradingSystemRows(candidate, candidates);
   const accountAssetValue = selectedPaperAccount
     ? `${formatBalance(selectedPaperAccount.equity_usdt)} USDT`
-    : accountPositionRiskSurface
-    ? `${formatBalance(accountPositionRiskSurface.total_wallet_balance)} ${accountPositionRiskSurface.asset}`
-    : "not connected";
+    : "not started";
   const accountAssetDetail = selectedPaperAccount
     ? `fake paper account; available ${formatBalance(selectedPaperAccount.available_balance_usdt)} USDT`
-    : accountPositionRiskSurface
-      ? `available ${formatBalance(accountPositionRiskSurface.available_balance)} ${accountPositionRiskSurface.asset}`
-      : "Paper account waits for selected paper trading.";
+    : "Paper account waits for selected paper trading.";
   const todayPnlValue = selectedPaperTradingEvaluation
     ? formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)
-    : accountPositionRiskSurface
-    ? `${formatSignedBalance(accountPositionRiskSurface.unrealized_profit)} USDT`
     : "not measured";
   const todayPnlDetail = selectedPaperTradingEvaluation
     ? `return ${formatPercent(selectedPaperTradingEvaluation.profit_loss.net_return_pct)}; ${selectedPaperTradingEvaluation.observation_count} observations`
-    : accountPositionRiskSurface
-      ? `cross P&L ${formatSignedBalance(accountPositionRiskSurface.total_cross_un_pnl)} USDT`
-      : "No paper P&L series has been measured yet.";
+    : "No paper P&L series has been measured yet.";
   const positionValue = selectedPaperPosition
     ? `${selectedPaperPosition.side} ${selectedPaperPosition.quantity}`
-    : accountPositionRiskSurface
-    ? `${accountPositionRiskSurface.position_side} ${accountPositionRiskSurface.position_amount}`
-    : "no private read";
+    : "no paper position";
   const positionDetail = selectedPaperPosition
     ? `entry ${formatPrice(selectedPaperPosition.average_entry_price)}, mark ${formatPrice(selectedPaperPosition.mark_price)}, open ${selectedPaperAccount?.open_order_count ?? 0}`
-    : accountPositionRiskSurface
-      ? `entry ${formatPrice(accountPositionRiskSurface.entry_price)}, mark ${formatPrice(accountPositionRiskSurface.mark_price)}`
-      : "Position waits for selected paper trading.";
+    : "Position waits for selected paper trading.";
   const readinessDetail = tradingQualificationReasons.length
     ? tradingQualificationReasons.join(", ")
     : tradingQualificationStatus ?? "paper_required";
@@ -2504,7 +2492,7 @@ export function CandidateDetail({
             label="Paper equity"
             value={accountAssetValue}
             detail={accountAssetDetail}
-            tone={selectedPaperAccount || accountPositionRiskSurface ? "good" : "warning"}
+            tone={selectedPaperAccount ? "good" : "warning"}
           />
           <OperatorMetricCard
             label="Paper net revenue"
@@ -2512,13 +2500,13 @@ export function CandidateDetail({
             detail={todayPnlDetail}
             tone={selectedPaperTradingEvaluation
               ? selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
-              : accountPositionRiskSurface ? signedTone(accountPositionRiskSurface.unrealized_profit) : "warning"}
+              : "warning"}
           />
           <OperatorMetricCard
             label="Paper position"
             value={positionValue}
             detail={positionDetail}
-            tone={selectedPaperPosition || accountPositionRiskSurface ? "good" : "neutral"}
+            tone={selectedPaperPosition ? "good" : "neutral"}
           />
           <OperatorMetricCard
             label="Promotion readiness"
