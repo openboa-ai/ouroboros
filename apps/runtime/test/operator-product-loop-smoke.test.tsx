@@ -40,6 +40,107 @@ afterEach(async () => {
 });
 
 describe("operator product loop smoke", () => {
+  it("runs an arena-generated fixture TradingSystem through the real deterministic paper sandbox", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          },
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      const tick = await postCommand(server, {
+        command_kind: "arena.tick",
+        payload: {}
+      });
+      const leader = tick.operator.candidate_arena.leaderboard[0]!;
+
+      await postCommand(server, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: leader.candidate_id }
+      });
+      const started = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: leader.candidate_id }
+      });
+
+      expect(started.operator.selected_candidate_id).toBe(leader.candidate_id);
+      expect(started.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("running");
+      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        observation_count: 1,
+        ledger_chain_complete: true,
+        latest_decision: {
+          decision_kind: "order_request",
+          source_kind: "trading_system_decision",
+          authority_status: "trace_only"
+        },
+        latest_fill: {
+          fill_status: "filled",
+          fill_price: "65001"
+        },
+        paper_account_snapshot: {
+          position: {
+            side: "long"
+          },
+          open_order_count: 0,
+          authority_status: "not_live"
+        },
+        authority_status: "not_live"
+      });
+      expect(started.operator.paper_trading_board.entries[0]).toMatchObject({
+        candidate_id: leader.candidate_id,
+        latest_fill_status: "filled",
+        open_order_count: 0
+      });
+      expect(started.operator.selected_paper_evidence).toMatchObject({
+        status: "ledger_chain_complete",
+        ledger_chain_complete: true,
+        latest_gateway_outcome: "dry_run_only",
+        latest_execution_status: "dry_run_recorded",
+        authority_status: "not_live"
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
@@ -600,6 +701,89 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
       };
     }
   };
+}
+
+function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
+  const replayRunner = networklessReplayArtifactRunner();
+  return {
+    kind: "host_process",
+    async run(input) {
+      await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
+      return replayRunner.run(input);
+    }
+  };
+}
+
+function paperDirectArenaArtifact(): string {
+  return `#!/usr/bin/env python3
+import argparse
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def append_line(line, log_path, heartbeat_path=None):
+    print(line, flush=True)
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\\n")
+    if heartbeat_path is not None:
+        heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+        heartbeat_path.write_text(line + "\\n", encoding="utf-8")
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--ticks", type=int, default=0)
+parser.add_argument("--interval-ms", type=int, default=1000)
+parser.add_argument("--log-file")
+parser.add_argument("--heartbeat-file")
+parser.add_argument("--start-at", required=True)
+parser.add_argument("--paper-order-request", default="valid")
+args = parser.parse_args()
+
+log_path = Path(args.log_file) if args.log_file else None
+heartbeat_path = Path(args.heartbeat_file) if args.heartbeat_file else None
+append_line(json.dumps({
+    "event": "order_request",
+    "event_id": f"{args.instance_id}:order-request:0001",
+    "instance_id": args.instance_id,
+    "at": args.start_at,
+    "authority_status": "trace_only",
+    "intent_kind": "place_order",
+    "symbol": "BTCUSDT",
+    "side": "buy",
+    "order_type": "market",
+    "quantity": "0.001",
+    "reason": "paper-direct arena fixture order",
+}, sort_keys=True), log_path)
+
+tick = 0
+while True:
+    tick += 1
+    append_line(json.dumps({
+        "event": "runtime_heartbeat",
+        "instance_id": args.instance_id,
+        "tick": tick,
+        "at": utc_now(),
+    }, sort_keys=True), log_path, heartbeat_path)
+    if args.ticks and tick >= args.ticks:
+        break
+    time.sleep(args.interval_ms / 1000)
+
+append_line(json.dumps({
+    "event": "runtime_stopped",
+    "instance_id": args.instance_id,
+    "tick": tick,
+    "at": utc_now(),
+}, sort_keys=True), log_path)
+`;
 }
 
 async function networklessReplayTradingApiProvider(

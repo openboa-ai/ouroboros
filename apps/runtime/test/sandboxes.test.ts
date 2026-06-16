@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -514,6 +514,59 @@ describe("sandbox API", () => {
     );
   });
 
+  it("executes allowed generated paper SystemCode with a relative entrypoint inside the arena artifact root", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const artifactDir = path.join(tmpDir, "candidate-arena-runs", "relative-entrypoint");
+    const artifactPath = path.join(artifactDir, "run.py");
+    const relativeEntrypoint = path.relative(process.cwd(), artifactPath);
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(artifactPath, generatedPaperArtifact(), "utf8");
+    await chmod(artifactPath, 0o755);
+
+    await store.recordSystemCode({
+      record_kind: "system_code",
+      version: 1,
+      system_code_id: "system-code-arena-relative-entrypoint",
+      artifact_kind: "python_file",
+      artifact_path: artifactPath,
+      artifact_digest: `sha256:${createHash("sha256").update(await readFile(artifactPath)).digest("hex")}`,
+      runtime_kind: "python",
+      entrypoint: ["python3", relativeEntrypoint],
+      declared_output_contract: {
+        contract_kind: "opaque_runtime_boundary",
+        declared_output_kinds: ["runtime_log", "runtime_heartbeat", "order_request"]
+      },
+      secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+      capability_policy_ref: { record_kind: "capability_policy", id: "candidate-arena-paper-system-code" },
+      provenance_refs: [{ record_kind: "trace_placeholder", id: "trace-generated-relative-entrypoint" }],
+      status: "registered",
+      created_at: "2026-05-21T00:00:00.000Z",
+      authority_status: "not_live"
+    });
+    const server = await buildServer({ store });
+
+    const response = await startSandboxCommand(server, {
+      idempotency_key: "sandbox-generated-relative-entrypoint",
+      sandbox_id: "sandbox-generated-relative-entrypoint",
+      sandbox_name: "ouro-generated-relative-entrypoint",
+      system_code_id: "system-code-arena-relative-entrypoint",
+      trading_run_id: "fixture-trading-run-001",
+      test_ticks: 1,
+      interval_ms: 1,
+      created_at: "2026-05-21T00:00:00.000Z"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe("stopped");
+    expect(response.json().sandbox.lifecycle_status).toBe("stopped");
+    expect(response.json().sandbox.logs[0].lines.join("\n")).toContain("\"event\": \"order_request\"");
+    expect(response.json().sandbox.command_evidence[0]).toMatchObject({
+      exit_code: 0,
+      command: expect.arrayContaining(["python3", relativeEntrypoint])
+    });
+  });
+
   it("rejects raw secret material in sandbox requests", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
@@ -936,6 +989,44 @@ function commandResultResponse(response: Awaited<ReturnType<Awaited<ReturnType<t
       return body.result ?? body;
     }
   };
+}
+
+function generatedPaperArtifact(): string {
+  return `#!/usr/bin/env python3
+import argparse
+import json
+
+
+def emit(payload):
+    print(json.dumps(payload, sort_keys=True), flush=True)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--instance-id", required=True)
+parser.add_argument("--ticks", default="1")
+parser.add_argument("--interval-ms", default="1")
+parser.add_argument("--start-at", required=True)
+parser.add_argument("--paper-order-request", default="valid")
+args = parser.parse_args()
+
+emit({
+    "event": "runtime_heartbeat",
+    "event_id": f"{args.instance_id}:heartbeat:0001",
+    "instance_id": args.instance_id,
+    "at": args.start_at,
+})
+emit({
+    "event": "order_request",
+    "event_id": f"{args.instance_id}:order-request:0001",
+    "intent_kind": "place_order",
+    "symbol": "BTCUSDT",
+    "side": "buy",
+    "order_type": "limit",
+    "quantity": "0.001",
+    "limit_price": "60000",
+    "reason": "generated paper fixture order",
+})
+`;
 }
 
 function restoreEnv(name: string, value: string | undefined): void {
