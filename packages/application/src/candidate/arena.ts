@@ -472,6 +472,7 @@ async function recordArenaSystemCode(input: {
 }): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
   const entrypointPath = input.manifestEntrypoint[1] ?? "run.py";
   const artifactPath = path.resolve(input.artifactDir, entrypointPath);
+  assertArenaEntrypointInsideArtifactDir(input.artifactDir, artifactPath);
   const digest = await fileDigest(artifactPath);
   return input.store.recordSystemCode({
     record_kind: "system_code",
@@ -496,6 +497,14 @@ async function recordArenaSystemCode(input: {
     created_at: new Date().toISOString(),
     authority_status: "not_live"
   }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
+}
+
+function assertArenaEntrypointInsideArtifactDir(artifactDir: string, artifactPath: string): void {
+  const resolvedArtifactDir = path.resolve(artifactDir);
+  const relativePath = path.relative(resolvedArtifactDir, artifactPath);
+  if (relativePath && (relativePath.startsWith("..") || path.isAbsolute(relativePath))) {
+    throw new Error("candidate_arena_entrypoint_escapes_artifact_dir");
+  }
 }
 
 function arenaMaterializationInput(input: {

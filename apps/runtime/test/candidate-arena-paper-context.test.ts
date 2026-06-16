@@ -73,6 +73,35 @@ describe("CandidateArena paper evidence context", () => {
     }
   });
 
+  it("rejects arena SystemCode entrypoints that escape the artifact directory", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new EscapingEntrypointResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.created_candidate_ids).toEqual([]);
+    const tick = outcome.arena.latest_ticks.find((entry) => entry.tick_id === outcome.tick_id);
+    expect(tick).toEqual(expect.objectContaining({
+      status: "failed",
+      created_candidate_ids: []
+    }));
+    expect(tick?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "failed",
+        error: "candidate_arena_entrypoint_escapes_artifact_dir"
+      })
+    ]);
+  });
+
   it("feeds latest paper trading evidence into the next researcher context even before replay leaderboard ranking", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -170,6 +199,30 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
       status: "no_change",
       summary: "Captured arena context without editing the artifact.",
       changed_paths: []
+    };
+  }
+}
+
+class EscapingEntrypointResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-escaping-entrypoint",
+    provider: "codex",
+    model: "escaping-entrypoint",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
+    const outsidePath = path.join(input.artifact_dir, "..", "outside.py");
+    await writeFile(outsidePath, "print('outside artifact root')\n", "utf8");
+    await writeFile(path.join(input.artifact_dir, "manifest.json"), `${JSON.stringify({
+      id: "escaping-entrypoint",
+      api_contract: "trading_api_provider_v1",
+      entrypoint: ["python3", "../outside.py"]
+    }, null, 2)}\n`, "utf8");
+    return {
+      status: "edited",
+      summary: "Repointed manifest outside the artifact root.",
+      changed_paths: ["manifest.json"]
     };
   }
 }
