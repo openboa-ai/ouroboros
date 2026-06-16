@@ -70,8 +70,8 @@ CandidateArena status, research-preflight leaderboard, selected candidate, selec
 active status, interval, next observation time, latest market snapshot, latest public execution
 snapshot, market data mode, local order book sync state, fake paper account, open orders, latest
 fill, latest paper failure, agent/provider status, latest ticks, latest candidates, latest command
-results, latest `TradingPromotion` state, and latest TradingSystem paper decision when one has
-been emitted, and authority flags.
+results, latest `TradingPromotion` state, `TradingReview` active target binding, and latest
+TradingSystem paper decision when one has been emitted, and authority flags.
 
 The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
 `net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
@@ -90,7 +90,10 @@ login, or exchange behavior.
 
 Candidate, Paper Evidence, Paper Trading, TradingPromotion, and Live are separate states in every
 operator surface. TradingPromotion moves a paper-backed candidate into Trading review while
-preserving `not_live` authority.
+preserving `not_live` authority. `trading_review` is the read projection that tells surfaces which
+candidate is the active Trading review target, which Arena candidate is currently selected, and
+whether those ids match. Trading controls must not silently use the Arena selected candidate when
+`selected_matches_trading_review` is false.
 Replay/backtest is a research tool, not final evaluation authority. `trading_run.start`,
 `trading_run.observe`, and `trading_run.stop` operate the selected candidate's continuous paper
 trading evaluation through the Gateway and `MarketDataPort`. The TradingSystem owns decision

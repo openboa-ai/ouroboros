@@ -98,6 +98,7 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Arena: running (3 ticks, 1 candidates)");
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
     expect(result.stdout).toContain("Paper evidence: ledger_chain_complete");
+    expect(result.stdout).toContain("Trading review: promoted_for_trading_review / collecting_paper_evidence / candidate-profitable / selected matches");
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
     expect(result.stdout).toContain("Paper board: #1 candidate-profitable 4.95 USDT / collecting_evidence / gate collecting_paper_evidence");
     expect(result.stdout).toContain("Paper qualification: observations 1, failed 0, elapsed 60000ms / min_observation_count_not_met, min_elapsed_ms_not_met");
@@ -610,6 +611,57 @@ function fixtureOperator(
         }
       ],
       live_disabled: true,
+      authority_status: "not_live"
+    },
+    trading_review: {
+      review_kind: "trading_review",
+      status: "promoted_for_trading_review",
+      readiness_status: "collecting_paper_evidence",
+      active_candidate_id: "candidate-profitable",
+      active_candidate_version_id: "candidate-version-profitable",
+      display_name: "candidate-profitable",
+      paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
+      paper_qualification_status: "collecting_evidence",
+      paper_qualification_reasons: [
+        "min_observation_count_not_met",
+        "min_elapsed_ms_not_met"
+      ],
+      paper_evidence_window: {
+        observation_count: 1,
+        elapsed_ms: 60_000,
+        failed_observation_count: 0
+      },
+      paper_profit_loss: {
+        revenue_usdt: 5,
+        cost_usdt: 0.048,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952
+      },
+      paper_trading_evaluation: {
+        evaluation_kind: "paper_trading_evaluation",
+        status: "running",
+        trading_run_id: "trading-run-candidate-profitable",
+        trading_run_status: "running",
+        runner_active: true,
+        observation_count: 1,
+        ledger_chain_complete: true,
+        profit_loss: {
+          revenue_usdt: 5,
+          cost_usdt: 0.048,
+          net_revenue_usdt: 4.952,
+          net_return_pct: 0.04952
+        },
+        market_data_source: "binance_production_public_websocket",
+        account_provider: "fake_paper_account",
+        executor: "fake_paper_order_executor",
+        score_source: "paper_trading_engine",
+        authority_status: "not_live"
+      },
+      runner_status: "active",
+      selected_candidate_id: "candidate-profitable",
+      selected_matches_trading_review: true,
+      next_action: "Continue paper trading until the evidence window qualifies.",
+      live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"
     },
     researcher_provider: {

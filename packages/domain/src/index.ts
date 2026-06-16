@@ -3054,6 +3054,30 @@ export interface TradingPromotionReadModel {
   authority_status: "not_live";
 }
 
+export interface TradingReviewReadModel {
+  review_kind: "trading_review";
+  status: TradingPromotionStatus;
+  readiness_status: TradingPromotionReadinessStatus;
+  active_candidate_id?: string;
+  active_candidate_version_id?: string;
+  display_name?: string;
+  promoted_at?: string;
+  paper_trading_evaluation_id?: string;
+  paper_qualification_status?: PaperTradingQualificationStatus;
+  paper_qualification_reasons: PaperTradingQualificationReason[];
+  paper_evidence_window?: PaperTradingEvidenceWindowReadModel;
+  paper_profit_loss?: TradingProfitLossReadModel;
+  paper_trading_evaluation: PaperTradingEvaluationReadModel;
+  paper_board_entry?: PaperTradingBoardEntryReadModel;
+  runner_status?: PaperTradingBoardRunnerStatus;
+  latest_failure_reason?: string;
+  selected_candidate_id: string | null;
+  selected_matches_trading_review: boolean;
+  next_action: string;
+  live_disabled_reason: "mlp_paper_only";
+  authority_status: "not_live";
+}
+
 export interface OperatorReadModel {
   operator_kind: "ouroboros_operator";
   command_descriptors: readonly OuroborosCommandDescriptor[];
@@ -3064,6 +3088,7 @@ export interface OperatorReadModel {
   selected_paper_trading_evaluation: PaperTradingEvaluationReadModel;
   paper_trading_board: PaperTradingBoardReadModel;
   trading_promotion?: TradingPromotionReadModel;
+  trading_review: TradingReviewReadModel;
   researcher_provider: ResearcherProviderReadModel;
   agent_profiles: AgentProfileReadModel[];
   latest_commands: OuroborosCommandReadModel[];
