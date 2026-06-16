@@ -1935,6 +1935,48 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("shows why Trading review is blocked until paper qualification is ready", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+        onPromoteTradingCandidate={() => undefined}
+      />
+    );
+    const promotionSection = extractTradingPromotionBoundarySection(html);
+
+    expect(promotionSection).toContain("Trading review candidate");
+    expect(promotionSection).toContain("collecting_evidence");
+    expect(promotionSection).toContain("min_observation_count_not_met");
+    expect(promotionSection).toContain("min_elapsed_ms_not_met");
+    expect(promotionSection).toContain("Continue paper trading until the evidence window qualifies.");
+    expect(promotionSection).toContain("disabled");
+  });
+
   it("renders Codex researcher selection in full-cycle developer controls", () => {
     const candidate = {
       ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
@@ -3625,6 +3667,15 @@ function extractSelectedCandidateArenaSection(html: string): string {
     throw new Error("selected candidate arena section not found");
   }
   return html.slice(start, end);
+}
+
+function extractTradingPromotionBoundarySection(html: string): string {
+  const start = html.indexOf('aria-label="Trading promotion boundary"');
+  const end = html.indexOf('aria-label="Operator messages"', start);
+  if (start < 0) {
+    throw new Error("trading promotion boundary section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
 }
 
 function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {

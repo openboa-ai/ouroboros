@@ -238,6 +238,26 @@ export class OperatorService {
             required_command: `ouroboros candidate paper start ${candidateId}`
           });
         }
+        const observations = await this.options.store.listPaperTradingObservations(
+          evaluation.paper_trading_evaluation_id
+        );
+        const runnerActive = this.options.paperTradingEvaluationRunner?.active(evaluation.trading_run_ref.id) ?? false;
+        const qualification = qualifyPaperTradingEvaluation({
+          evaluation,
+          observations,
+          runnerActive
+        });
+        if (qualification.qualification_status !== "qualified") {
+          throw new OperatorCommandError(409, "paper_trading_qualification_required", {
+            candidate_id: candidateId,
+            paper_trading_evaluation_id: evaluation.paper_trading_evaluation_id,
+            paper_qualification_status: qualification.qualification_status,
+            paper_qualification_reasons: qualification.qualification_reasons,
+            paper_evidence_window: qualification.evidence_window,
+            next_action: tradingPromotionNextAction(qualification.qualification_status),
+            required_command: `ouroboros candidate paper start ${candidateId}`
+          });
+        }
         const promotion = await this.options.store.recordTradingPromotion({
           record_kind: "trading_promotion",
           version: 1,

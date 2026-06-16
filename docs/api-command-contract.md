@@ -27,9 +27,11 @@ Current command groups:
   evidence readback. `candidate.select` chooses one candidate for proof; primary paper evaluation
   starts through `trading_run.start`.
 - `trading_candidate`: promote a paper-backed candidate into Trading review. `trading_candidate.promote`
-  records `TradingPromotion` state for the operator cockpit after a selected candidate has paper
-  evaluation evidence. It does not bind live authority, submit exchange orders, or bypass
-  `PaperTradingQualification`.
+  records `TradingPromotion` state for the operator cockpit only after the selected candidate has
+  `qualified` `PaperTradingQualification` evidence. Collecting, resume-needed, failed, or
+  quality-blocked paper evaluations return a command error with qualification reasons and do not
+  create a promotion record. This command does not bind live authority, submit exchange orders, or
+  bypass `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.

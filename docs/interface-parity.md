@@ -78,8 +78,9 @@ Web UI tabs support stable QA and remote screenshot entrypoints through
 it must not trigger product commands, refresh candidate state, or change exchange authority.
 
 Paper Trading is the continuous selected-candidate evaluation state between candidate selection and any
-future live promotion. `trading_candidate.promote` only moves a paper-backed candidate into Trading
-review; it does not create live exchange authority. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
+future live promotion. `trading_candidate.promote` only moves a `qualified` paper-backed candidate
+into Trading review; collecting, resume-needed, failed, or quality-blocked paper evidence must keep
+the action disabled or return a command error with visible qualification reasons. It does not create live exchange authority. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
 promotion. Each surface should expose runner active status, next observation time, observation
 count, latest market snapshot, latest paper score, `PaperTradingEvaluation` board rank, and any

@@ -1677,18 +1677,33 @@ export function CandidateArenaPanel({
 
 function TradingPromotionBoundaryCard({
   promotion,
+  paperBoardEntry,
   selectedCandidate,
   selectedPaperTradingEvaluation,
   onPromoteTradingCandidate,
   runningTradingPromotion
 }: {
   promotion?: OperatorReadModel["trading_promotion"];
+  paperBoardEntry?: PaperTradingBoardReadModel["entries"][number];
   selectedCandidate: CandidateInspectReadModel;
   selectedPaperTradingEvaluation?: PaperTradingEvaluationReadModel;
   onPromoteTradingCandidate?: () => void;
   runningTradingPromotion: boolean;
 }) {
   const hasPaperEvaluation = Boolean(selectedPaperTradingEvaluation?.evaluation_id);
+  const paperQualificationStatus = promotion?.paper_qualification_status
+    ?? paperBoardEntry?.qualification_status;
+  const paperQualificationReasons = promotion?.paper_qualification_reasons
+    ?? paperBoardEntry?.qualification_reasons
+    ?? [];
+  const paperEvidenceWindow = promotion?.paper_evidence_window ?? paperBoardEntry?.evidence_window;
+  const paperProfitLoss = promotion?.paper_profit_loss ?? paperBoardEntry?.profit_loss;
+  const runnerStatus = promotion?.runner_status ?? paperBoardEntry?.runner_status;
+  const nextAction = promotion?.next_action
+    ?? (paperQualificationStatus
+      ? tradingPromotionNextActionLabel(paperQualificationStatus)
+      : "Start paper trading in Arena, then promote the selected candidate.");
+  const promotionReady = paperQualificationStatus === "qualified";
   const promotedCandidateLabel = promotion?.display_name ?? promotion?.candidate_id ?? "No Trading review candidate";
   const selectedIsPromoted = promotion?.candidate_id === selectedCandidate.candidate_id;
   return (
@@ -1703,7 +1718,7 @@ function TradingPromotionBoundaryCard({
           <Badge variant={promotion?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
             {promotion?.status ?? "not_promoted"}
           </Badge>
-          <Badge variant="secondary">{promotion?.readiness_status ?? "paper_required"}</Badge>
+          <Badge variant="secondary">{promotion?.readiness_status ?? tradingPromotionReadinessLabel(paperQualificationStatus)}</Badge>
           <Badge variant="secondary">live disabled</Badge>
         </CardAction>
       </CardHeader>
@@ -1716,26 +1731,30 @@ function TradingPromotionBoundaryCard({
           />
           <Field
             label="Paper qualification"
-            value={promotion?.paper_qualification_status ?? selectedPaperTradingEvaluation?.status ?? "paper_required"}
+            value={paperQualificationStatus ?? selectedPaperTradingEvaluation?.status ?? "paper_required"}
+          />
+          <Field
+            label="Qualification reasons"
+            value={paperQualificationReasons.length ? paperQualificationReasons.join(", ") : paperQualificationStatus === "qualified" ? "qualified" : "paper_required"}
           />
           <Field
             label="Paper net"
-            value={promotion?.paper_profit_loss
-              ? formatUsdt(promotion.paper_profit_loss.net_revenue_usdt)
+            value={paperProfitLoss
+              ? formatUsdt(paperProfitLoss.net_revenue_usdt)
               : selectedPaperTradingEvaluation
                 ? formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)
                 : "not evaluated"}
           />
           <Field
             label="Evidence window"
-            value={promotion?.paper_evidence_window
-              ? `${promotion.paper_evidence_window.observation_count} obs / ${promotion.paper_evidence_window.failed_observation_count} failed`
+            value={paperEvidenceWindow
+              ? `${paperEvidenceWindow.observation_count} obs / ${paperEvidenceWindow.failed_observation_count} failed`
               : selectedPaperTradingEvaluation
                 ? `${selectedPaperTradingEvaluation.observation_count} observations`
                 : "not started"}
           />
-          <Field label="Runner" value={promotion?.runner_status ?? "not promoted"} />
-          <Field label="Next action" value={promotion?.next_action ?? "Start paper trading in Arena, then promote the selected candidate."} />
+          <Field label="Runner" value={runnerStatus ?? "not promoted"} />
+          <Field label="Next action" value={nextAction} />
           <Field label="Authority" value={promotion?.live_disabled_reason ?? "mlp_paper_only"} />
         </dl>
         <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -1743,7 +1762,7 @@ function TradingPromotionBoundaryCard({
             type="button"
             variant="secondary"
             onClick={onPromoteTradingCandidate}
-            disabled={!onPromoteTradingCandidate || runningTradingPromotion || !hasPaperEvaluation}
+            disabled={!onPromoteTradingCandidate || runningTradingPromotion || !hasPaperEvaluation || !promotionReady}
           >
             {runningTradingPromotion ? "Moving" : "Move to Trading review"}
           </Button>
@@ -1751,6 +1770,39 @@ function TradingPromotionBoundaryCard({
       </CardContent>
     </Card>
   );
+}
+
+function tradingPromotionReadinessLabel(
+  status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"] | undefined
+): NonNullable<OperatorReadModel["trading_promotion"]>["readiness_status"] {
+  if (status === "qualified") {
+    return "ready_to_promote";
+  }
+  if (status === "needs_resume") {
+    return "needs_resume";
+  }
+  if (status === "blocked_by_quality" || status === "paper_failed") {
+    return "blocked_by_quality";
+  }
+  if (status === "collecting_evidence") {
+    return "collecting_paper_evidence";
+  }
+  return "paper_required";
+}
+
+function tradingPromotionNextActionLabel(
+  status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"]
+): string {
+  if (status === "qualified") {
+    return "Move the selected candidate into Trading review while live remains disabled.";
+  }
+  if (status === "needs_resume") {
+    return "Resume paper trading before moving this candidate into Trading review.";
+  }
+  if (status === "blocked_by_quality" || status === "paper_failed") {
+    return "Fix paper evidence quality before this candidate can move into Trading review.";
+  }
+  return "Continue paper trading until the evidence window qualifies.";
 }
 
 function formatSelectedPaperEvidenceStatus(
@@ -2214,6 +2266,13 @@ export function CandidateDetail({
   );
   const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
   const tradingPromotion = operator?.trading_promotion;
+  const selectedPaperEvaluationId = operator?.selected_paper_trading_evaluation.evaluation_id;
+  const selectedPaperBoardEntry = operator?.paper_trading_board.entries.find((entry) =>
+    entry.candidate_id === candidate.candidate_id &&
+    entry.evaluation_id === selectedPaperEvaluationId
+  ) ?? operator?.paper_trading_board.entries.find((entry) =>
+    entry.candidate_id === candidate.candidate_id
+  );
 
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
@@ -2326,6 +2385,7 @@ export function CandidateDetail({
 
       <TradingPromotionBoundaryCard
         promotion={tradingPromotion}
+        paperBoardEntry={selectedPaperBoardEntry}
         selectedCandidate={candidate}
         selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
         onPromoteTradingCandidate={onPromoteTradingCandidate}
