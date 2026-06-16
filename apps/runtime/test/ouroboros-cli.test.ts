@@ -101,6 +101,7 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
     expect(result.stdout).toContain("Paper board: #1 candidate-profitable 4.95 USDT / collecting_evidence / gate collecting_paper_evidence");
     expect(result.stdout).toContain("Paper qualification: observations 1, failed 0, elapsed 60000ms / min_observation_count_not_met, min_elapsed_ms_not_met");
+    expect(result.stdout).toContain("Paper board quality: runner active, market binance_production_public_websocket / websocket_primary, fill filled, open orders 0");
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
     expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
     expect(result.stdout).toContain("Market data: binance_production_public_websocket");

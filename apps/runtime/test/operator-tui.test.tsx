@@ -28,6 +28,8 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("#1 candidate-profitable 4.95 USDT / collecting_evidence / gate");
     expect(output).toContain("collecting_paper_evidence");
     expect(output).toContain("window 1 obs, 0 failed, 60000ms");
+    expect(output).toContain("runner active, market binance_production_public_websocket /");
+    expect(output).toContain("websocket_primary, fill filled, open 0");
     expect(output).toContain("min_observation_count_not_met, min_elapsed_ms_not_met");
     expect(output).toContain("Runner: active / next 2026-05-16T00:01:03.000Z");
     expect(output).toContain("Paper score: 4.95 USDT / observations 1");

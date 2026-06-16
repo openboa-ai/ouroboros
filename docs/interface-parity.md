@@ -66,8 +66,9 @@ control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is re
 promotion. Each surface should expose runner active status, next observation time, observation
 count, latest market snapshot, latest paper score, `PaperTradingEvaluation` board rank, and any
 paper failure from `OperatorReadModel`. Each surface must also expose paper qualification status,
-qualification reasons, and the evidence window so a high `net_revenue_usdt` candidate does not look
-ready when it is still collecting evidence or blocked by market/fill data quality. The
+qualification reasons, evidence window, runner state, market source, latest fill status, and open
+order count in the paper board itself so a high `net_revenue_usdt` candidate does not look ready
+when it is still collecting evidence or blocked by market/fill data quality. The
 CandidateArena leaderboard is research preflight; the paper board is the product evaluation
 authority and must remain visibly distinct in CLI, TUI, and Web UI.
 When a persisted evaluation is still `running` but the in-memory runner is inactive after a runtime

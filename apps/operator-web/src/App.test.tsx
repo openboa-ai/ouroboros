@@ -476,6 +476,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("profit_loss");
     expect(html).toContain("Paper runner");
     expect(html).toContain("Paper Board");
+    expect(html).toContain("sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
+    expect(html).toContain("[overflow-wrap:anywhere]");
     expect(html).toContain("Qualification");
     expect(html).toContain("collecting_evidence");
     expect(html).toContain("Evidence window");
@@ -486,6 +488,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Market snapshot");
     expect(html).toContain("Market data");
     expect(html).toContain("binance_production_public_websocket");
+    expect(html).toContain("Fill quality");
+    expect(html).toContain("filled / open 0");
     expect(html).toContain("Public execution");
     expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
     expect(html).toContain("Order book");
