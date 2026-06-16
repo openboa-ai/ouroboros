@@ -471,7 +471,7 @@ async function recordArenaSystemCode(input: {
   agent: ManagedResearchAgent;
 }): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
   const entrypointPath = input.manifestEntrypoint[1] ?? "run.py";
-  const artifactPath = path.join(input.artifactDir, entrypointPath);
+  const artifactPath = path.resolve(input.artifactDir, entrypointPath);
   const digest = await fileDigest(artifactPath);
   return input.store.recordSystemCode({
     record_kind: "system_code",

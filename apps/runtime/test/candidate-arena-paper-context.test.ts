@@ -33,6 +33,46 @@ afterEach(async () => {
 });
 
 describe("CandidateArena paper evidence context", () => {
+  it("records generated SystemCode paths as absolute when the store root is relative", async () => {
+    const repoRoot = process.cwd();
+    const previousCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const store = new LocalStore(path.join(".ouroboros", "dev-store"));
+      await store.initialize();
+      const outcome = await runCandidateArenaTick({
+        store,
+        directions: ["trend_following"],
+        researchAgent: "codex",
+        agentFactory: () => new CapturingResearchAgent([]),
+        artifactRunner: networklessReplayArtifactRunner(),
+        replayProviderFactory: networklessReplayTradingApiProvider,
+        repoRoot
+      });
+      const candidate = await store.getCandidate(outcome.created_candidate_ids[0]!);
+      const systemCodeId = candidate?.system_code?.ref?.id;
+      if (!systemCodeId) {
+        throw new Error("arena-generated candidate missing SystemCode ref");
+      }
+      const systemCode = await store.getSystemCode(systemCodeId);
+      if (!systemCode || systemCode.artifact_kind !== "python_file") {
+        throw new Error("arena-generated SystemCode missing");
+      }
+
+      expect(path.isAbsolute(systemCode.artifact_path)).toBe(true);
+      expect(path.isAbsolute(systemCode.entrypoint[1]!)).toBe(true);
+      expect(systemCode.entrypoint).toEqual(["python3", systemCode.artifact_path]);
+      expect(systemCode.artifact_path).toContain(path.join(
+        tmpDir,
+        ".ouroboros",
+        "dev-store",
+        "candidate-arena-runs"
+      ));
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
   it("feeds latest paper trading evidence into the next researcher context even before replay leaderboard ranking", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
