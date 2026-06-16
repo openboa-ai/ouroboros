@@ -1691,21 +1691,22 @@ function TradingPromotionBoundaryCard({
   runningTradingPromotion: boolean;
 }) {
   const hasPaperEvaluation = Boolean(selectedPaperTradingEvaluation?.evaluation_id);
-  const paperQualificationStatus = promotion?.paper_qualification_status
+  const selectedIsPromoted = promotion?.candidate_id === selectedCandidate.candidate_id;
+  const activePromotion = selectedIsPromoted ? promotion : undefined;
+  const paperQualificationStatus = activePromotion?.paper_qualification_status
     ?? paperBoardEntry?.qualification_status;
-  const paperQualificationReasons = promotion?.paper_qualification_reasons
+  const paperQualificationReasons = activePromotion?.paper_qualification_reasons
     ?? paperBoardEntry?.qualification_reasons
     ?? [];
-  const paperEvidenceWindow = promotion?.paper_evidence_window ?? paperBoardEntry?.evidence_window;
-  const paperProfitLoss = promotion?.paper_profit_loss ?? paperBoardEntry?.profit_loss;
-  const runnerStatus = promotion?.runner_status ?? paperBoardEntry?.runner_status;
-  const nextAction = promotion?.next_action
+  const paperEvidenceWindow = activePromotion?.paper_evidence_window ?? paperBoardEntry?.evidence_window;
+  const paperProfitLoss = activePromotion?.paper_profit_loss ?? paperBoardEntry?.profit_loss;
+  const runnerStatus = activePromotion?.runner_status ?? paperBoardEntry?.runner_status;
+  const nextAction = activePromotion?.next_action
     ?? (paperQualificationStatus
       ? tradingPromotionNextActionLabel(paperQualificationStatus)
       : "Start paper trading in Arena, then promote the selected candidate.");
   const promotionReady = paperQualificationStatus === "qualified";
   const promotedCandidateLabel = promotion?.display_name ?? promotion?.candidate_id ?? "No Trading review candidate";
-  const selectedIsPromoted = promotion?.candidate_id === selectedCandidate.candidate_id;
   return (
     <Card aria-label="Trading promotion boundary">
       <CardHeader>
@@ -1715,10 +1716,10 @@ function TradingPromotionBoundaryCard({
           Arena candidates become Trading review candidates only after selected paper evidence exists. This does not enable live authority.
         </CardDescription>
         <CardAction className="flex flex-wrap justify-end gap-2">
-          <Badge variant={promotion?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
-            {promotion?.status ?? "not_promoted"}
+          <Badge variant={activePromotion?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
+            {activePromotion?.status ?? "not_promoted"}
           </Badge>
-          <Badge variant="secondary">{promotion?.readiness_status ?? tradingPromotionReadinessLabel(paperQualificationStatus)}</Badge>
+          <Badge variant="secondary">{activePromotion?.readiness_status ?? tradingPromotionReadinessLabel(paperQualificationStatus)}</Badge>
           <Badge variant="secondary">live disabled</Badge>
         </CardAction>
       </CardHeader>
@@ -1755,7 +1756,7 @@ function TradingPromotionBoundaryCard({
           />
           <Field label="Runner" value={runnerStatus ?? "not promoted"} />
           <Field label="Next action" value={nextAction} />
-          <Field label="Authority" value={promotion?.live_disabled_reason ?? "mlp_paper_only"} />
+          <Field label="Authority" value={activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
         </dl>
         <div className="flex flex-wrap gap-2 lg:justify-end">
           <Button
