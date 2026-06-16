@@ -24,6 +24,8 @@ describe("Operator TUI action console", () => {
     expect(output).toContain("Agent profile: Fixture / authenticated");
     expect(output).toContain("> #1 candidate-profitable");
     expect(output).toContain("Trading promotion: promoted_for_trading_review / collecting_paper_evidence");
+    expect(output).toContain("Trading review: promoted_for_trading_review / candidate-profitable / selected");
+    expect(output).toContain("matches");
     expect(output).toContain("PaperTradingEvaluation: running");
     expect(output).toContain("Paper Board");
     expect(output).toContain("#1 candidate-profitable 4.95 USDT / collecting_evidence / gate");
@@ -130,6 +132,31 @@ describe("Operator TUI action console", () => {
     expect(operatorTuiCommandForAction("stop_paper_trading", fixtureOperator(), 0)).toEqual({
       command_kind: "trading_run.stop",
       payload: { trading_run_id: "trading-run-candidate-profitable" }
+    });
+    const mismatchOperator: OperatorReadModel = {
+      ...fixtureOperator(),
+      selected_candidate_id: "candidate-other",
+      selected_paper_trading_evaluation: {
+        ...fixtureOperator().selected_paper_trading_evaluation,
+        trading_run_id: "trading-run-candidate-other"
+      },
+      trading_review: {
+        ...fixtureOperator().trading_review,
+        selected_candidate_id: "candidate-other",
+        selected_matches_trading_review: false,
+        paper_trading_evaluation: {
+          ...fixtureOperator().trading_review.paper_trading_evaluation,
+          trading_run_id: "trading-run-promoted-review"
+        }
+      }
+    };
+    expect(operatorTuiCommandForAction("observe_paper_trading", mismatchOperator, 0)).toEqual({
+      command_kind: "trading_run.observe",
+      payload: { trading_run_id: "trading-run-promoted-review" }
+    });
+    expect(operatorTuiCommandForAction("stop_paper_trading", mismatchOperator, 0)).toEqual({
+      command_kind: "trading_run.stop",
+      payload: { trading_run_id: "trading-run-promoted-review" }
     });
     expect(operatorTuiCommandForAction("toggle_provider", fixtureOperator(), 0)).toEqual({
       command_kind: "researcher.provider.select",
@@ -373,6 +400,58 @@ function fixtureOperator(): OperatorReadModel {
         net_return_pct: 0.04952
       },
       runner_status: "active",
+      next_action: "Continue paper trading until the evidence window qualifies.",
+      live_disabled_reason: "mlp_paper_only",
+      authority_status: "not_live"
+    },
+    trading_review: {
+      review_kind: "trading_review",
+      status: "promoted_for_trading_review",
+      readiness_status: "collecting_paper_evidence",
+      active_candidate_id: "candidate-profitable",
+      active_candidate_version_id: "candidate-version-profitable",
+      display_name: "candidate-profitable",
+      promoted_at: "2026-05-16T00:00:04.000Z",
+      paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
+      paper_qualification_status: "collecting_evidence",
+      paper_qualification_reasons: [
+        "min_observation_count_not_met",
+        "min_elapsed_ms_not_met"
+      ],
+      paper_evidence_window: {
+        observation_count: 1,
+        elapsed_ms: 60_000,
+        failed_observation_count: 0
+      },
+      paper_profit_loss: {
+        revenue_usdt: 5,
+        cost_usdt: 0.048,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952
+      },
+      paper_trading_evaluation: {
+        evaluation_kind: "paper_trading_evaluation",
+        status: "running",
+        trading_run_id: "trading-run-candidate-profitable",
+        trading_run_status: "running",
+        runner_active: true,
+        observation_count: 1,
+        ledger_chain_complete: true,
+        profit_loss: {
+          revenue_usdt: 5,
+          cost_usdt: 0.048,
+          net_revenue_usdt: 4.952,
+          net_return_pct: 0.04952
+        },
+        market_data_source: "binance_production_public_websocket",
+        account_provider: "fake_paper_account",
+        executor: "fake_paper_order_executor",
+        score_source: "paper_trading_engine",
+        authority_status: "not_live"
+      },
+      runner_status: "active",
+      selected_candidate_id: "candidate-profitable",
+      selected_matches_trading_review: true,
       next_action: "Continue paper trading until the evidence window qualifies.",
       live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"

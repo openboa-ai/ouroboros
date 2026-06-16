@@ -83,6 +83,11 @@ export class OperatorService {
       this.options.store,
       this.options.paperTradingEvaluationRunner
     );
+    const tradingPromotion = await buildTradingPromotionReadModel({
+      store: this.options.store,
+      paperTradingBoard,
+      runner: this.options.paperTradingEvaluationRunner
+    });
     if (this.selectedCandidateId && candidateId === this.selectedCandidateId && !selectedCandidate) {
       this.selectedCandidateId = undefined;
     }
@@ -103,8 +108,11 @@ export class OperatorService {
         selectedEvaluationRunnerActive
       ),
       paper_trading_board: paperTradingBoard,
-      trading_promotion: await buildTradingPromotionReadModel({
+      trading_promotion: tradingPromotion,
+      trading_review: await buildTradingReviewReadModel({
         store: this.options.store,
+        selectedCandidateId: selectedCandidate?.candidate_id ?? null,
+        tradingPromotion,
         paperTradingBoard,
         runner: this.options.paperTradingEvaluationRunner
       }),
@@ -687,6 +695,67 @@ async function buildTradingPromotionReadModel(input: {
     next_action: qualification
       ? tradingPromotionNextAction(qualification.qualification_status)
       : "Start continuous paper trading before promotion can be trusted.",
+    live_disabled_reason: "mlp_paper_only",
+    authority_status: "not_live"
+  };
+}
+
+async function buildTradingReviewReadModel(input: {
+  store: OuroborosStorePort;
+  selectedCandidateId: string | null;
+  tradingPromotion: NonNullable<OperatorReadModel["trading_promotion"]>;
+  paperTradingBoard: OperatorReadModel["paper_trading_board"];
+  runner?: OperatorServiceOptions["paperTradingEvaluationRunner"];
+}): Promise<OperatorReadModel["trading_review"]> {
+  const activeCandidateId = input.tradingPromotion.status === "promoted_for_trading_review"
+    ? input.tradingPromotion.candidate_id
+    : undefined;
+  const activeCandidate = activeCandidateId
+    ? await input.store.getCandidate(activeCandidateId)
+    : undefined;
+  const activeEvaluation = activeCandidateId
+    ? await input.store.getLatestPaperTradingEvaluationForCandidate(activeCandidateId)
+    : undefined;
+  const activeObservations = activeEvaluation
+    ? await input.store.listPaperTradingObservations(activeEvaluation.paper_trading_evaluation_id)
+    : [];
+  const activeRunner = activeEvaluation
+    ? input.runner?.active(activeEvaluation.trading_run_ref.id) ?? activeEvaluation.status === "running"
+    : false;
+  const paperBoardEntry = activeCandidateId
+    ? input.paperTradingBoard.entries.find((entry) =>
+        entry.candidate_id === activeCandidateId &&
+        (!input.tradingPromotion.paper_trading_evaluation_id ||
+          entry.evaluation_id === input.tradingPromotion.paper_trading_evaluation_id)
+      ) ?? input.paperTradingBoard.entries.find((entry) => entry.candidate_id === activeCandidateId)
+    : undefined;
+  const paperEvaluation = selectedPaperTradingEvaluation(
+    activeCandidate,
+    activeEvaluation,
+    activeObservations,
+    activeRunner
+  );
+
+  return {
+    review_kind: "trading_review",
+    status: input.tradingPromotion.status,
+    readiness_status: input.tradingPromotion.readiness_status,
+    active_candidate_id: activeCandidateId,
+    active_candidate_version_id: input.tradingPromotion.candidate_version_id,
+    display_name: input.tradingPromotion.display_name ?? activeCandidate?.display_name,
+    promoted_at: input.tradingPromotion.promoted_at,
+    paper_trading_evaluation_id: input.tradingPromotion.paper_trading_evaluation_id,
+    paper_qualification_status: input.tradingPromotion.paper_qualification_status,
+    paper_qualification_reasons: input.tradingPromotion.paper_qualification_reasons,
+    paper_evidence_window: input.tradingPromotion.paper_evidence_window,
+    paper_profit_loss: input.tradingPromotion.paper_profit_loss,
+    paper_trading_evaluation: paperEvaluation,
+    paper_board_entry: paperBoardEntry,
+    runner_status: input.tradingPromotion.runner_status,
+    latest_failure_reason: input.tradingPromotion.latest_failure_reason,
+    selected_candidate_id: input.selectedCandidateId,
+    selected_matches_trading_review: Boolean(activeCandidateId && input.selectedCandidateId === activeCandidateId),
+    next_action: input.tradingPromotion.next_action,
     live_disabled_reason: "mlp_paper_only",
     authority_status: "not_live"
   };

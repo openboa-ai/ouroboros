@@ -63,8 +63,9 @@ Interface parity does not change authority. Candidate, Paper Evidence, and Live 
 The Web UI keeps those states separated by tab:
 
 - `Trading` is the actual trading and realized-profit cockpit. In MLP-01 it shows the
-  `TradingPromotion` review candidate, paper qualification/readiness, and the reason live/private
-  exchange authority remains disabled.
+  `TradingPromotion` review candidate through the `TradingReview` projection, paper
+  qualification/readiness, and the reason live/private exchange authority remains disabled. It must
+  use the active Trading review target, not whichever Arena candidate the operator last clicked.
 - `Arena` is the selected-candidate continuous paper trading arena. CandidateArena controls,
   revenue-cost leaderboard, `PaperTradingEvaluation` board, selected paper account, open orders,
   fills, and Ledger readback live here.
@@ -90,6 +91,8 @@ order count in the paper board itself so a high `net_revenue_usdt` candidate doe
 when it is still collecting evidence or blocked by market/fill data quality. The
 CandidateArena leaderboard is research preflight; the paper board is the product evaluation
 authority and must remain visibly distinct in CLI, TUI, and Web UI.
+If the active Trading review target differs from the Arena selected candidate, every surface must
+show that mismatch and prevent Trading controls from silently acting on the wrong candidate.
 When a persisted evaluation is still `running` but the in-memory runner is inactive after a runtime
 restart, every surface must say `needs resume` instead of making the session look actively scheduled
 or fully stopped. Live/private Binance authority remains disabled.

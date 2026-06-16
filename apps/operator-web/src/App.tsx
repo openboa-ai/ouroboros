@@ -135,6 +135,7 @@ interface AppState {
   selectedTradingResearchAgent: TradingResearchAgentSelection;
   tradingResearchIterations: number;
   selected?: CandidateInspectReadModel;
+  tradingReviewCandidate?: CandidateInspectReadModel;
   replayRuns: ReplayRunEvidenceReadModel[];
   selectedReplayRunId?: string;
   replayRunDetail?: ReplayRunDetailReadModel;
@@ -187,6 +188,20 @@ function readInitialOperatorView(): OperatorView {
   return operatorViewFromSearch(window.location.search);
 }
 
+async function fetchTradingReviewCandidate(
+  operator: OperatorReadModel,
+  selected?: CandidateInspectReadModel
+): Promise<CandidateInspectReadModel | undefined> {
+  const activeCandidateId = operator.trading_review.active_candidate_id;
+  if (!activeCandidateId) {
+    return undefined;
+  }
+  if (selected?.candidate_id === activeCandidateId) {
+    return selected;
+  }
+  return fetchCandidate(activeCandidateId);
+}
+
 export function App() {
   const [operatorView, setOperatorViewState] = useState<OperatorView>(readInitialOperatorView);
   function setOperatorView(view: OperatorView) {
@@ -236,6 +251,7 @@ export function App() {
         ]);
         const first = candidates[0];
         const selected = operator.selected_candidate ?? (first ? await fetchCandidate(first.candidate_id) : undefined);
+        const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
         const replayRuns = selected ? await fetchReplayRunEvidence(selected.candidate_id) : [];
         const replayRunSelection = selected
           ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
@@ -251,6 +267,7 @@ export function App() {
             selectedTradingResearchAgent: tradingResearchRuntime.default_agent,
             tradingResearchIterations: tradingResearchRuntime.iterations,
             selected,
+            tradingReviewCandidate,
             replayRuns,
             selectedReplayRunId: replayRunSelection.selectedReplayRunId,
             replayRunDetail: replayRunSelection.replayRunDetail,
@@ -316,6 +333,7 @@ export function App() {
     try {
       const operator = await selectCandidateForOperator(candidateId);
       const selected = operator.selected_candidate ?? await fetchCandidate(candidateId);
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
       const replayRuns = await fetchReplayRunEvidence(selected.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(selected.candidate_id, replayRuns);
       setState((current) => ({
@@ -323,6 +341,7 @@ export function App() {
         operator,
         candidateArena: operator.candidate_arena,
         selected,
+        tradingReviewCandidate,
         replayRuns,
         selectedReplayRunId: replayRunSelection.selectedReplayRunId,
         replayRunDetail: replayRunSelection.replayRunDetail,
@@ -503,6 +522,7 @@ export function App() {
       const selected = operator.selected_candidate ?? (candidateArena.leaderboard[0]
         ? await fetchCandidate(candidateArena.leaderboard[0].candidate_id)
         : state.selected);
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
       const replayRuns = selected ? await fetchReplayRunEvidence(selected.candidate_id) : state.replayRuns;
       const replayRunSelection = selected
         ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
@@ -519,6 +539,7 @@ export function App() {
         candidateArena,
         candidates,
         selected,
+        tradingReviewCandidate,
         replayRuns,
         selectedReplayRunId: replayRunSelection.selectedReplayRunId,
         replayRunDetail: replayRunSelection.replayRunDetail,
@@ -558,10 +579,12 @@ export function App() {
           : action === "login"
             ? await submitStartAgentProviderLogin(provider)
             : await submitSelectResearcherProvider(selectableResearcherProvider(provider));
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, state.selected);
       setState((current) => ({
         ...current,
         operator,
         candidateArena: operator.candidate_arena,
+        tradingReviewCandidate,
         runningCandidateArenaAction: false,
         candidateArenaMessage: `agent provider ${action}: ${provider}`
       }));
@@ -590,6 +613,7 @@ export function App() {
       const outcome = await submitTradingRun(candidate, { paper_order_request: paperOrderRequest });
       const operator = await fetchOperatorReadModel();
       const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
       const candidateArena = operator.candidate_arena;
       const replayRuns = await fetchReplayRunEvidence(candidate.candidate_id);
       const replayRunSelection = await fetchReplayRunSelection(
@@ -601,6 +625,7 @@ export function App() {
         ...current,
         operator,
         selected,
+        tradingReviewCandidate,
         candidateArena,
         replayRuns,
         selectedReplayRunId: replayRunSelection.selectedReplayRunId,
@@ -638,11 +663,13 @@ export function App() {
       const outcome = await submitObserveTradingRun(candidate);
       const operator = await fetchOperatorReadModel();
       const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
       setState((current) => ({
         ...current,
         operator,
         candidateArena: operator.candidate_arena,
         selected,
+        tradingReviewCandidate,
         runningTradingRun: false,
         tradingRunMessage: `observed: ${outcome.trading_run.lifecycle_status ?? "unknown"} / ${operator.selected_paper_trading_evaluation.observation_count} observations`
       }));
@@ -671,11 +698,13 @@ export function App() {
       const outcome = await submitStopTradingRun(candidate);
       const operator = await fetchOperatorReadModel();
       const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
       setState((current) => ({
         ...current,
         operator,
         candidateArena: operator.candidate_arena,
         selected,
+        tradingReviewCandidate,
         runningTradingRun: false,
         tradingRunMessage: `stopped: ${outcome.trading_run.lifecycle_status ?? "stopped"}`
       }));
@@ -703,11 +732,13 @@ export function App() {
     try {
       const operator = await submitPromoteCandidateToTrading(candidate.candidate_id);
       const selected = operator.selected_candidate ?? await fetchCandidate(candidate.candidate_id);
+      const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
       setState((current) => ({
         ...current,
         operator,
         candidateArena: operator.candidate_arena,
         selected,
+        tradingReviewCandidate,
         runningTradingPromotion: false,
         tradingPromotionMessage: `promoted to Trading review: ${operator.trading_promotion?.status ?? "not_live"}`
       }));
@@ -891,6 +922,7 @@ export function App() {
                 activeView={operatorView}
                 onActiveViewChange={setOperatorView}
                 candidate={state.selected}
+                tradingReviewCandidate={state.tradingReviewCandidate}
                 candidates={state.candidates}
                 operator={state.operator}
                 candidateArena={state.candidateArena}
@@ -1677,36 +1709,62 @@ export function CandidateArenaPanel({
 
 function TradingPromotionBoundaryCard({
   promotion,
+  tradingReview,
   paperBoardEntry,
   selectedCandidate,
+  tradingReviewCandidate,
   selectedPaperTradingEvaluation,
+  onSelectCandidate,
   onPromoteTradingCandidate,
   runningTradingPromotion
 }: {
   promotion?: OperatorReadModel["trading_promotion"];
+  tradingReview?: OperatorReadModel["trading_review"];
   paperBoardEntry?: PaperTradingBoardReadModel["entries"][number];
   selectedCandidate: CandidateInspectReadModel;
+  tradingReviewCandidate?: CandidateInspectReadModel;
   selectedPaperTradingEvaluation?: PaperTradingEvaluationReadModel;
+  onSelectCandidate?: (candidateId: string) => void;
   onPromoteTradingCandidate?: () => void;
   runningTradingPromotion: boolean;
 }) {
   const hasPaperEvaluation = Boolean(selectedPaperTradingEvaluation?.evaluation_id);
-  const selectedIsPromoted = promotion?.candidate_id === selectedCandidate.candidate_id;
+  const selectedIsPromoted = tradingReview?.selected_matches_trading_review ??
+    promotion?.candidate_id === selectedCandidate.candidate_id;
   const activePromotion = selectedIsPromoted ? promotion : undefined;
-  const paperQualificationStatus = activePromotion?.paper_qualification_status
+  const activeReviewCandidateId = tradingReview?.active_candidate_id ?? promotion?.candidate_id;
+  const activeReviewLabel = tradingReview?.display_name ??
+    tradingReviewCandidate?.display_name ??
+    promotion?.display_name ??
+    activeReviewCandidateId ??
+    "No Trading review candidate";
+  const paperQualificationStatus = tradingReview?.paper_qualification_status
+    ?? activePromotion?.paper_qualification_status
     ?? paperBoardEntry?.qualification_status;
-  const paperQualificationReasons = activePromotion?.paper_qualification_reasons
+  const paperQualificationReasons = tradingReview?.paper_qualification_reasons
+    ?? activePromotion?.paper_qualification_reasons
     ?? paperBoardEntry?.qualification_reasons
     ?? [];
-  const paperEvidenceWindow = activePromotion?.paper_evidence_window ?? paperBoardEntry?.evidence_window;
-  const paperProfitLoss = activePromotion?.paper_profit_loss ?? paperBoardEntry?.profit_loss;
-  const runnerStatus = activePromotion?.runner_status ?? paperBoardEntry?.runner_status;
-  const nextAction = activePromotion?.next_action
+  const selectedPromotionQualificationStatus = paperBoardEntry?.qualification_status;
+  const paperEvidenceWindow = tradingReview?.paper_evidence_window ??
+    activePromotion?.paper_evidence_window ??
+    paperBoardEntry?.evidence_window;
+  const paperProfitLoss = tradingReview?.paper_profit_loss ??
+    activePromotion?.paper_profit_loss ??
+    paperBoardEntry?.profit_loss;
+  const runnerStatus = tradingReview?.runner_status ?? activePromotion?.runner_status ?? paperBoardEntry?.runner_status;
+  const reviewMismatch = tradingReview?.status === "promoted_for_trading_review" &&
+    !tradingReview.selected_matches_trading_review;
+  const nextAction = reviewMismatch
+    ? selectedPromotionQualificationStatus === "qualified"
+      ? "Move the selected qualified Arena candidate into Trading review, or open the active target before Trading controls."
+      : "Open the active Trading review candidate before running Trading controls."
+    : tradingReview?.next_action
+    ?? activePromotion?.next_action
     ?? (paperQualificationStatus
       ? tradingPromotionNextActionLabel(paperQualificationStatus)
       : "Start paper trading in Arena, then promote the selected candidate.");
-  const promotionReady = paperQualificationStatus === "qualified";
-  const promotedCandidateLabel = promotion?.display_name ?? promotion?.candidate_id ?? "No Trading review candidate";
+  const promotionReady = selectedPromotionQualificationStatus === "qualified";
   return (
     <Card aria-label="Trading promotion boundary">
       <CardHeader>
@@ -1716,19 +1774,22 @@ function TradingPromotionBoundaryCard({
           Arena candidates become Trading review candidates only after selected paper evidence exists. This does not enable live authority.
         </CardDescription>
         <CardAction className="flex flex-wrap justify-end gap-2">
-          <Badge variant={activePromotion?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
-            {activePromotion?.status ?? "not_promoted"}
+          <Badge variant={tradingReview?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
+            {tradingReview?.status ?? activePromotion?.status ?? "not_promoted"}
           </Badge>
-          <Badge variant="secondary">{activePromotion?.readiness_status ?? tradingPromotionReadinessLabel(paperQualificationStatus)}</Badge>
+          <Badge variant="secondary">{tradingReview?.readiness_status ?? activePromotion?.readiness_status ?? tradingPromotionReadinessLabel(paperQualificationStatus)}</Badge>
+          <Badge variant={reviewMismatch ? "destructive" : "secondary"}>
+            {reviewMismatch ? "Arena selection differs" : selectedIsPromoted ? "active target" : "candidate review"}
+          </Badge>
           <Badge variant="secondary">live disabled</Badge>
         </CardAction>
       </CardHeader>
       <CardContent className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
         <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <Field label="Trading candidate" value={promotedCandidateLabel} />
+          <Field label="Trading review target" value={activeReviewLabel} />
           <Field
-            label="Selected candidate"
-            value={`${selectedCandidate.display_name}${selectedIsPromoted ? " / active Trading review" : ""}`}
+            label="Arena selected candidate"
+            value={`${selectedCandidate.display_name}${selectedIsPromoted ? " / active Trading review" : reviewMismatch ? " / not Trading review" : ""}`}
           />
           <Field
             label="Paper qualification"
@@ -1756,16 +1817,26 @@ function TradingPromotionBoundaryCard({
           />
           <Field label="Runner" value={runnerStatus ?? "not promoted"} />
           <Field label="Next action" value={nextAction} />
-          <Field label="Authority" value={activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
+          <Field label="Authority" value={tradingReview?.live_disabled_reason ?? activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
         </dl>
         <div className="flex flex-wrap gap-2 lg:justify-end">
+          {reviewMismatch && activeReviewCandidateId && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onSelectCandidate?.(activeReviewCandidateId)}
+              disabled={!onSelectCandidate}
+            >
+              Open Trading review candidate
+            </Button>
+          )}
           <Button
             type="button"
             variant="secondary"
             onClick={onPromoteTradingCandidate}
             disabled={!onPromoteTradingCandidate || runningTradingPromotion || !hasPaperEvaluation || !promotionReady}
           >
-            {runningTradingPromotion ? "Moving" : "Move to Trading review"}
+            {runningTradingPromotion ? "Moving" : reviewMismatch ? "Replace Trading review target" : "Move to Trading review"}
           </Button>
         </div>
       </CardContent>
@@ -2031,6 +2102,7 @@ export function CandidateDetail({
   activeView = "details",
   onActiveViewChange,
   candidate,
+  tradingReviewCandidate,
   candidates = [],
   operator,
   candidateArena,
@@ -2095,6 +2167,7 @@ export function CandidateDetail({
   activeView?: OperatorView;
   onActiveViewChange?: (view: OperatorView) => void;
   candidate: CandidateInspectReadModel;
+  tradingReviewCandidate?: CandidateInspectReadModel;
   candidates?: CandidateSummaryReadModel[];
   operator?: OperatorReadModel;
   candidateArena?: CandidateArenaReadModel;
@@ -2179,16 +2252,35 @@ export function CandidateDetail({
   const selectedPaperPosition = selectedPaperAccount?.position;
   const selectedPaperFill = selectedPaperTradingEvaluationWithEvidence?.latest_fill;
   const tradingPromotion = operator?.trading_promotion;
-  const selectedIsTradingReviewCandidate = tradingPromotion?.candidate_id === candidate.candidate_id;
-  const tradingReadinessStatus = selectedIsTradingReviewCandidate
-    ? tradingPromotion?.readiness_status
-    : tradingPromotionReadinessLabel(selectedPaperBoardEntry?.qualification_status);
-  const tradingQualificationStatus = selectedIsTradingReviewCandidate
-    ? tradingPromotion?.paper_qualification_status
-    : selectedPaperBoardEntry?.qualification_status;
-  const tradingQualificationReasons = selectedIsTradingReviewCandidate
-    ? tradingPromotion?.paper_qualification_reasons ?? []
-    : selectedPaperBoardEntry?.qualification_reasons ?? [];
+  const tradingReview = operator?.trading_review;
+  const tradingReviewCandidateId = tradingReview?.active_candidate_id;
+  const activeTradingReviewCandidate = tradingReviewCandidate ??
+    (tradingReviewCandidateId === candidate.candidate_id ? candidate : undefined);
+  const tradingCandidate = activeTradingReviewCandidate ?? candidate;
+  const tradingLedger = tradingCandidate.ledger;
+  const tradingPublicMarketSurface = tradingCandidate.trading_substrate?.latest_public_market_liveness_surface ?? null;
+  const tradingOrderFillSurface = tradingCandidate.trading_substrate?.latest_order_fill_surface ?? null;
+  const tradingAccountPositionRiskSurface =
+    tradingCandidate.trading_substrate?.latest_account_position_risk_mirror_surface ?? null;
+  const tradingPaperTradingEvaluation = tradingReview?.paper_trading_evaluation;
+  const tradingPaperTradingEvaluationWithEvidence = tradingPaperTradingEvaluation?.evaluation_id
+    ? tradingPaperTradingEvaluation
+    : undefined;
+  const tradingPaperBoardEntry = tradingReview?.paper_board_entry ?? selectedPaperBoardEntry;
+  const tradingPaperAccount = tradingPaperTradingEvaluationWithEvidence?.paper_account_snapshot;
+  const tradingPaperPosition = tradingPaperAccount?.position;
+  const tradingPaperFill = tradingPaperTradingEvaluationWithEvidence?.latest_fill;
+  const selectedIsTradingReviewCandidate = tradingReview?.selected_matches_trading_review ??
+    tradingPromotion?.candidate_id === candidate.candidate_id;
+  const tradingReviewMismatch = tradingReview?.status === "promoted_for_trading_review" &&
+    !tradingReview.selected_matches_trading_review;
+  const tradingReadinessStatus = tradingReview?.readiness_status
+    ?? tradingPromotionReadinessLabel(tradingPaperBoardEntry?.qualification_status);
+  const tradingQualificationStatus = tradingReview?.paper_qualification_status
+    ?? tradingPaperBoardEntry?.qualification_status;
+  const tradingQualificationReasons = tradingReview?.paper_qualification_reasons
+    ?? tradingPaperBoardEntry?.qualification_reasons
+    ?? [];
   const visibleFullCycle = lastFullCycle?.next_trading_system.candidate_id === candidate.candidate_id
     ? lastFullCycle
     : undefined;
@@ -2208,10 +2300,15 @@ export function CandidateDetail({
         ...baseProfitSummary.slice(1)
       ]
     : baseProfitSummary;
-  const runStatus = candidate.runtime.runtime_lifecycle_status ?? "registered";
+  const runStatus = tradingCandidate.runtime.runtime_lifecycle_status ?? "registered";
   const ledgerStatus = ledger?.chain_complete
     ? "chain complete"
     : ledger?.has_activity
+      ? "incomplete"
+      : "not recorded";
+  const tradingLedgerStatus = tradingLedger?.chain_complete
+    ? "chain complete"
+    : tradingLedger?.has_activity
       ? "incomplete"
       : "not recorded";
   const improvementStatus = candidate.improvement?.chain_complete
@@ -2220,34 +2317,34 @@ export function CandidateDetail({
       ? "incomplete"
       : "not recorded";
   const tradingSystemRows = buildTradingSystemRows(candidate, candidates);
-  const accountAssetValue = selectedPaperAccount
-    ? `${formatBalance(selectedPaperAccount.equity_usdt)} USDT`
+  const accountAssetValue = tradingPaperAccount
+    ? `${formatBalance(tradingPaperAccount.equity_usdt)} USDT`
     : "not started";
-  const accountAssetDetail = selectedPaperAccount
-    ? `fake paper account; available ${formatBalance(selectedPaperAccount.available_balance_usdt)} USDT`
-    : "Paper account waits for selected paper trading.";
-  const todayPnlValue = selectedPaperTradingEvaluationWithEvidence
-    ? formatUsdt(selectedPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt)
+  const accountAssetDetail = tradingPaperAccount
+    ? `fake paper account; available ${formatBalance(tradingPaperAccount.available_balance_usdt)} USDT`
+    : "Paper account waits for Trading review paper evaluation.";
+  const todayPnlValue = tradingPaperTradingEvaluationWithEvidence
+    ? formatUsdt(tradingPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt)
     : "not measured";
-  const todayPnlDetail = selectedPaperTradingEvaluationWithEvidence
-    ? `return ${formatPercent(selectedPaperTradingEvaluationWithEvidence.profit_loss.net_return_pct)}; ${selectedPaperTradingEvaluationWithEvidence.observation_count} observations`
+  const todayPnlDetail = tradingPaperTradingEvaluationWithEvidence
+    ? `return ${formatPercent(tradingPaperTradingEvaluationWithEvidence.profit_loss.net_return_pct)}; ${tradingPaperTradingEvaluationWithEvidence.observation_count} observations`
     : "No paper P&L series has been measured yet.";
-  const positionValue = selectedPaperPosition
-    ? `${selectedPaperPosition.side} ${selectedPaperPosition.quantity}`
+  const positionValue = tradingPaperPosition
+    ? `${tradingPaperPosition.side} ${tradingPaperPosition.quantity}`
     : "no paper position";
-  const positionDetail = selectedPaperPosition
-    ? `entry ${formatPrice(selectedPaperPosition.average_entry_price)}, mark ${formatPrice(selectedPaperPosition.mark_price)}, open ${selectedPaperAccount?.open_order_count ?? 0}`
-    : "Position waits for selected paper trading.";
+  const positionDetail = tradingPaperPosition
+    ? `entry ${formatPrice(tradingPaperPosition.average_entry_price)}, mark ${formatPrice(tradingPaperPosition.mark_price)}, open ${tradingPaperAccount?.open_order_count ?? 0}`
+    : "Position waits for Trading review paper evaluation.";
   const readinessDetail = tradingQualificationReasons.length
     ? tradingQualificationReasons.join(", ")
     : tradingQualificationStatus ?? "paper_required";
   const operatorDecision = buildOperatorDecision({
-    accountPositionRiskSurface,
-    candidate,
-    ledger,
-    latestReplayRun,
-    orderFillSurface,
-    replayRunDetail
+    accountPositionRiskSurface: tradingAccountPositionRiskSurface,
+    candidate: tradingCandidate,
+    ledger: tradingLedger,
+    latestReplayRun: tradingCandidate.candidate_id === candidate.candidate_id ? latestReplayRun : undefined,
+    orderFillSurface: tradingOrderFillSurface,
+    replayRunDetail: tradingCandidate.candidate_id === candidate.candidate_id ? replayRunDetail : undefined
   });
   const runtimeEnvironment = tradingGatewayEnvironment?.runtime_environment ?? "paper";
   const marketFreshness = publicMarketSurface?.freshness ?? "no market data";
@@ -2384,7 +2481,7 @@ export function CandidateDetail({
             Actual trading and realized-profit cockpit. Live exchange authority remains disabled in this MLP. {operatorDecision.detail}
           </CardDescription>
           <CardAction className="flex flex-wrap justify-end gap-2">
-          <Badge variant="secondary">{formatAuthorityLabel(candidate.runtime.authority_status)}</Badge>
+          <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
           <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
           <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
           <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
@@ -2404,7 +2501,7 @@ export function CandidateDetail({
             <Button
               type="button"
               onClick={onObserveTradingRun}
-              disabled={runningTradingRun}
+              disabled={runningTradingRun || tradingReviewMismatch}
               variant="secondary"
             >
               Observe
@@ -2414,7 +2511,7 @@ export function CandidateDetail({
             <Button
               type="button"
               onClick={onStopTradingRun}
-              disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
+              disabled={runningTradingRun || tradingReviewMismatch || tradingCandidate.runtime.runtime_lifecycle_status === "stopped"}
               variant="outline"
             >
               Stop
@@ -2426,9 +2523,12 @@ export function CandidateDetail({
 
       <TradingPromotionBoundaryCard
         promotion={tradingPromotion}
+        tradingReview={tradingReview}
         paperBoardEntry={selectedPaperBoardEntry}
         selectedCandidate={candidate}
+        tradingReviewCandidate={activeTradingReviewCandidate}
         selectedPaperTradingEvaluation={selectedPaperTradingEvaluationWithEvidence}
+        onSelectCandidate={onSelectCandidate}
         onPromoteTradingCandidate={onPromoteTradingCandidate}
         runningTradingPromotion={runningTradingPromotion}
       />
@@ -2451,17 +2551,17 @@ export function CandidateDetail({
         <Badge variant="secondary">No exchange order</Badge>
         <Badge variant="secondary">No API credentials</Badge>
         <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
-        <span className="text-sm text-muted-foreground">{candidate.fixture_notice.statements[0]}</span>
+        <span className="text-sm text-muted-foreground">{tradingCandidate.fixture_notice.statements[0]}</span>
         </CardContent>
       </Card>
 
       <Card aria-label="Trading cockpit">
         <CardHeader>
           <CardTitle>Trading cockpit</CardTitle>
-          <CardDescription>{candidate.display_name}</CardDescription>
+          <CardDescription>{tradingCandidate.display_name}</CardDescription>
           <CardAction>
-          <Badge variant={publicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
-            {publicMarketSurface?.symbol_status ?? "no market data"}
+          <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
+            {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
           </Badge>
           </CardAction>
         </CardHeader>
@@ -2471,21 +2571,21 @@ export function CandidateDetail({
           <CardHeader>
             <CardTitle>BTCUSDT futures chart</CardTitle>
             <CardDescription>
-              {publicMarketSurface ? "Binance USD-M Futures snapshot" : "Market feed is not connected yet."}
+              {tradingPublicMarketSurface ? "Binance USD-M Futures snapshot" : "Market feed is not connected yet."}
             </CardDescription>
             <CardAction>
-            <Badge variant={publicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
-              {publicMarketSurface?.symbol_status ?? "no market data"}
+            <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
+              {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
             </Badge>
             </CardAction>
           </CardHeader>
           <CardContent className="grid gap-3">
-          <BtcFuturesChart market={publicMarketSurface} />
+          <BtcFuturesChart market={tradingPublicMarketSurface} />
           <div className="grid gap-2 md:grid-cols-4">
-            <MiniStat label="Mark price" value={formatPrice(publicMarketSurface?.mark_price)} />
-            <MiniStat label="Index price" value={formatPrice(publicMarketSurface?.index_price)} />
-            <MiniStat label="Funding" value={publicMarketSurface?.funding_rate ?? "not connected"} />
-            <MiniStat label="Next funding" value={formatCompactDateTime(publicMarketSurface?.next_funding_time)} />
+            <MiniStat label="Mark price" value={formatPrice(tradingPublicMarketSurface?.mark_price)} />
+            <MiniStat label="Index price" value={formatPrice(tradingPublicMarketSurface?.index_price)} />
+            <MiniStat label="Funding" value={tradingPublicMarketSurface?.funding_rate ?? "not connected"} />
+            <MiniStat label="Next funding" value={formatCompactDateTime(tradingPublicMarketSurface?.next_funding_time)} />
           </div>
           </CardContent>
         </Card>
@@ -2495,21 +2595,21 @@ export function CandidateDetail({
             label="Paper equity"
             value={accountAssetValue}
             detail={accountAssetDetail}
-            tone={selectedPaperAccount ? "good" : "warning"}
+            tone={tradingPaperAccount ? "good" : "warning"}
           />
           <OperatorMetricCard
             label="Paper net revenue"
             value={todayPnlValue}
             detail={todayPnlDetail}
-            tone={selectedPaperTradingEvaluationWithEvidence
-              ? selectedPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
+            tone={tradingPaperTradingEvaluationWithEvidence
+              ? tradingPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
               : "warning"}
           />
           <OperatorMetricCard
             label="Paper position"
             value={positionValue}
             detail={positionDetail}
-            tone={selectedPaperPosition ? "good" : "neutral"}
+            tone={tradingPaperPosition ? "good" : "neutral"}
           />
           <OperatorMetricCard
             label="Promotion readiness"
@@ -2522,10 +2622,10 @@ export function CandidateDetail({
         <Card size="sm" aria-label="Trading paper readback">
           <CardHeader>
             <CardDescription>Paper readback</CardDescription>
-            <CardTitle>Selected-candidate evidence</CardTitle>
+            <CardTitle>Trading review evidence</CardTitle>
             <CardAction>
               <Badge variant={selectedIsTradingReviewCandidate ? "default" : "secondary"}>
-                {selectedIsTradingReviewCandidate ? "Trading review" : "Arena selection"}
+                {selectedIsTradingReviewCandidate ? "Trading review" : "Arena selection differs"}
               </Badge>
             </CardAction>
           </CardHeader>
@@ -2533,36 +2633,36 @@ export function CandidateDetail({
             <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <Field
                 label="Paper evaluation"
-                value={selectedPaperTradingEvaluationWithEvidence
-                  ? `${selectedPaperTradingEvaluationWithEvidence.status} / ${selectedPaperTradingEvaluationWithEvidence.observation_count} observations`
+                value={tradingPaperTradingEvaluationWithEvidence
+                  ? `${tradingPaperTradingEvaluationWithEvidence.status} / ${tradingPaperTradingEvaluationWithEvidence.observation_count} observations`
                   : "not started"}
               />
               <Field
                 label="Runner"
-                value={selectedPaperTradingEvaluationWithEvidence
-                  ? paperTradingRunnerStatus(selectedPaperTradingEvaluationWithEvidence)
-                  : selectedPaperBoardEntry?.runner_status ?? "not started"}
+                value={tradingPaperTradingEvaluationWithEvidence
+                  ? paperTradingRunnerStatus(tradingPaperTradingEvaluationWithEvidence)
+                  : tradingPaperBoardEntry?.runner_status ?? "not started"}
               />
               <Field
                 label="Latest fill"
-                value={selectedPaperFill
-                  ? formatPaperFillSummary(selectedPaperFill)
-                  : selectedPaperBoardEntry?.latest_fill_status ?? "none"}
+                value={tradingPaperFill
+                  ? formatPaperFillSummary(tradingPaperFill)
+                  : tradingPaperBoardEntry?.latest_fill_status ?? "none"}
               />
               <Field
                 label="Market source"
-                value={selectedPaperTradingEvaluationWithEvidence?.latest_public_execution_snapshot
-                  ? formatPublicExecutionEvidenceSummary(selectedPaperTradingEvaluationWithEvidence.latest_public_execution_snapshot)
-                  : selectedPaperBoardEntry?.latest_public_execution_source ?? "not connected"}
+                value={tradingPaperTradingEvaluationWithEvidence?.latest_public_execution_snapshot
+                  ? formatPublicExecutionEvidenceSummary(tradingPaperTradingEvaluationWithEvidence.latest_public_execution_snapshot)
+                  : tradingPaperBoardEntry?.latest_public_execution_source ?? "not connected"}
               />
             </dl>
           </CardContent>
         </Card>
 
         <TradeStatusPanel
-          ledgerStatus={ledgerStatus}
-          ledger={ledger}
-          orderFillSurface={orderFillSurface}
+          ledgerStatus={tradingLedgerStatus}
+          ledger={tradingLedger}
+          orderFillSurface={tradingOrderFillSurface}
         />
         </CardContent>
       </Card>

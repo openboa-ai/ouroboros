@@ -410,6 +410,7 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     operator.trading_promotion
       ? `Trading promotion: ${operator.trading_promotion.status} / ${operator.trading_promotion.readiness_status} / ${operator.trading_promotion.display_name ?? operator.trading_promotion.candidate_id ?? "none"}`
       : "Trading promotion: not projected",
+    `Trading review: ${operator.trading_review.status} / ${operator.trading_review.readiness_status} / ${operator.trading_review.display_name ?? operator.trading_review.active_candidate_id ?? "none"} / selected ${operator.trading_review.selected_matches_trading_review ? "matches" : "differs"}`,
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
     `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
     paperLeader

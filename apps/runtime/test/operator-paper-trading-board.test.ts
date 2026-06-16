@@ -266,6 +266,74 @@ describe("operator paper trading board", () => {
       live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"
     });
+    expect(operator.trading_review).toMatchObject({
+      status: "promoted_for_trading_review",
+      readiness_status: "promoted_for_trading_review",
+      active_candidate_id: candidate.candidate_id,
+      active_candidate_version_id: candidate.candidate_version.candidate_version_id,
+      display_name: "Promotion Paper Candidate",
+      paper_trading_evaluation_id: `paper-evaluation-${candidate.candidate_id}`,
+      selected_candidate_id: candidate.candidate_id,
+      selected_matches_trading_review: true,
+      authority_status: "not_live"
+    });
+  });
+
+  it("keeps the Trading review target separate from the Arena selected candidate", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const promoted = await registerCandidate(store, {
+      id: "promoted-review-target",
+      title: "Promoted Review Target"
+    });
+    const arenaSelected = await registerCandidate(store, {
+      id: "arena-selected-after-promotion",
+      title: "Arena Selected After Promotion"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: promoted,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => tradingRunId === promoted.runtime.ref.id
+      }
+    });
+
+    await service.executeCommand("trading_candidate.promote", {
+      candidate_id: promoted.candidate_id
+    });
+    await service.executeCommand("candidate.select", {
+      candidate_id: arenaSelected.candidate_id
+    });
+
+    const operator = await service.readOperator();
+
+    expect(operator.selected_candidate_id).toBe(arenaSelected.candidate_id);
+    expect(operator.trading_review).toMatchObject({
+      status: "promoted_for_trading_review",
+      active_candidate_id: promoted.candidate_id,
+      display_name: "Promoted Review Target",
+      selected_candidate_id: arenaSelected.candidate_id,
+      selected_matches_trading_review: false,
+      paper_trading_evaluation: {
+        candidate_id: promoted.candidate_id,
+        trading_run_id: promoted.runtime.ref.id
+      }
+    });
   });
 
   it("blocks Trading review promotion until paper evidence is qualified", async () => {

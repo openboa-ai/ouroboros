@@ -189,6 +189,9 @@ export function OperatorTuiScreen(props: {
         <Text>
           {`Trading promotion: ${props.operator.trading_promotion?.status ?? "not_promoted"} / ${props.operator.trading_promotion?.readiness_status ?? "paper_required"}`}
         </Text>
+        <Text>
+          {`Trading review: ${props.operator.trading_review.status} / ${props.operator.trading_review.display_name ?? props.operator.trading_review.active_candidate_id ?? "none"} / selected ${props.operator.trading_review.selected_matches_trading_review ? "matches" : "differs"}`}
+        </Text>
         <Text>{`PaperTradingEvaluation: ${paperEvaluation.status}`}</Text>
         <Text>
           {`Runner: ${formatPaperRunner(paperEvaluation)}`}
@@ -432,13 +435,15 @@ export function operatorTuiCommandForAction(
       : undefined;
   }
   if (action === "observe_paper_trading") {
-    const tradingRunId = operator?.selected_paper_trading_evaluation.trading_run_id;
+    const tradingRunId = operator?.trading_review.paper_trading_evaluation.trading_run_id ??
+      operator?.selected_paper_trading_evaluation.trading_run_id;
     return tradingRunId
       ? { command_kind: "trading_run.observe", payload: { trading_run_id: tradingRunId } }
       : undefined;
   }
   if (action === "stop_paper_trading") {
-    const tradingRunId = operator?.selected_paper_trading_evaluation.trading_run_id;
+    const tradingRunId = operator?.trading_review.paper_trading_evaluation.trading_run_id ??
+      operator?.selected_paper_trading_evaluation.trading_run_id;
     return tradingRunId
       ? { command_kind: "trading_run.stop", payload: { trading_run_id: tradingRunId } }
       : undefined;

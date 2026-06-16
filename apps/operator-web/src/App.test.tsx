@@ -413,6 +413,13 @@ describe("operator command API", () => {
           ledger_chain_complete: false
         }),
         paper_trading_board: paperTradingBoardFixture(),
+        trading_review: tradingReviewFixture({
+          paper_trading_evaluation: paperTradingEvaluationFixture({
+            status: "not_started",
+            observation_count: 0,
+            ledger_chain_complete: false
+          })
+        }),
         researcher_provider: {
           selected_provider: "fixture",
           available_providers: ["codex", "fixture"],
@@ -1815,6 +1822,7 @@ describe("CandidateDetail", () => {
           },
           selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
           paper_trading_board: paperTradingBoardFixture(),
+          trading_review: tradingReviewFixture(),
           researcher_provider: {
             selected_provider: "fixture",
             available_providers: ["codex", "fixture"],
@@ -1871,7 +1879,7 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("Paper position");
     expect(tradingHtml).toContain("Promotion readiness");
     expect(tradingHtml).toContain("Trading paper readback");
-    expect(tradingHtml).toContain("Selected-candidate evidence");
+    expect(tradingHtml).toContain("Trading review evidence");
     expect(tradingHtml).toContain("Order / trade status");
     expect(tradingHtml).toContain("OrderRequest");
     expect(tradingHtml).toContain("GatewayResult");
@@ -1956,6 +1964,7 @@ describe("CandidateDetail", () => {
           },
           selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
           paper_trading_board: paperTradingBoardFixture(),
+          trading_review: tradingReviewFixture(),
           researcher_provider: {
             selected_provider: "fixture",
             available_providers: ["codex", "fixture"],
@@ -1984,7 +1993,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("4.952 USDT");
     expect(html).toContain("Paper position");
     expect(html).toContain("long 0.001");
-    expect(html).toContain("Selected-candidate evidence");
+    expect(html).toContain("Trading review evidence");
     expect(html).toContain("filled 0.001 @ 60000");
     expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh");
   });
@@ -2010,7 +2019,7 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Paper equity");
     expect(html).toContain("not started");
-    expect(html).toContain("Paper account waits for selected paper trading.");
+    expect(html).toContain("Paper account waits for Trading review paper evaluation.");
     expect(html).toContain("Paper position");
     expect(html).toContain("no paper position");
     expect(html).not.toContain("1,250.00 USDT");
@@ -2047,6 +2056,31 @@ describe("CandidateDetail", () => {
             ...paperTradingBoardFixture(),
             entries: []
           },
+          trading_review: tradingReviewFixture({
+            status: "not_promoted",
+            readiness_status: "paper_required",
+            active_candidate_id: undefined,
+            active_candidate_version_id: undefined,
+            display_name: undefined,
+            paper_trading_evaluation_id: undefined,
+            paper_qualification_status: undefined,
+            paper_qualification_reasons: [],
+            paper_evidence_window: undefined,
+            paper_profit_loss: undefined,
+            paper_trading_evaluation: paperTradingEvaluationFixture({
+              evaluation_id: undefined,
+              status: "not_started",
+              observation_count: 0,
+              paper_account_snapshot: undefined,
+              latest_fill: undefined,
+              latest_public_execution_snapshot: undefined
+            }),
+            paper_board_entry: undefined,
+            runner_status: undefined,
+            selected_candidate_id: candidate.candidate_id,
+            selected_matches_trading_review: false,
+            next_action: "Promote a selected PaperTradingEvaluation candidate from Arena to Trading review."
+          }),
           researcher_provider: {
             selected_provider: "fixture",
             available_providers: ["codex", "fixture"],
@@ -2123,6 +2157,26 @@ describe("CandidateDetail", () => {
             live_disabled_reason: "mlp_paper_only",
             authority_status: "not_live"
           },
+          trading_review: tradingReviewFixture({
+            readiness_status: "needs_resume",
+            active_candidate_id: "candidate-other",
+            active_candidate_version_id: "candidate-version-other",
+            display_name: "Other Trading System",
+            promoted_at: "2026-05-16T00:40:00.000Z",
+            paper_trading_evaluation_id: "paper-evaluation-other",
+            paper_qualification_status: "needs_resume",
+            paper_qualification_reasons: ["runner_inactive_for_running_evaluation"],
+            paper_trading_evaluation: paperTradingEvaluationFixture({
+              evaluation_id: "paper-evaluation-other",
+              candidate_id: "candidate-other",
+              candidate_version_id: "candidate-version-other",
+              trading_run_id: "trading-run-candidate-other"
+            }),
+            runner_status: "needs_resume",
+            selected_candidate_id: candidate.candidate_id,
+            selected_matches_trading_review: false,
+            next_action: "Resume paper trading before treating this Trading review candidate as current."
+          }),
           researcher_provider: {
             selected_provider: "fixture",
             available_providers: ["codex", "fixture"],
@@ -2140,10 +2194,12 @@ describe("CandidateDetail", () => {
 
     expect(promotionSection).toContain("Other Trading System");
     expect(promotionSection).toContain("Arena trend Trading System");
-    expect(promotionSection).toContain("qualified");
-    expect(promotionSection).toContain("ready_to_promote");
-    expect(promotionSection).not.toContain("runner_inactive_for_running_evaluation");
-    expect(promotionSection).not.toContain("needs_resume");
+    expect(promotionSection).toContain("Arena selection differs");
+    expect(promotionSection).toContain("runner_inactive_for_running_evaluation");
+    expect(promotionSection).toContain("needs_resume");
+    expect(promotionSection).toContain("Open Trading review candidate");
+    expect(promotionSection).toContain("Replace Trading review target");
+    expect(promotionSection).not.toContain("ready_to_promote");
   });
 
   it("renders Codex researcher selection in full-cycle developer controls", () => {
@@ -3963,6 +4019,44 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
     authority_status: "not_live",
     ...overrides
   } as PaperTradingEvaluationReadModel;
+}
+
+function tradingReviewFixture(
+  overrides: Partial<OperatorReadModel["trading_review"]> = {}
+): OperatorReadModel["trading_review"] {
+  return {
+    review_kind: "trading_review",
+    status: "promoted_for_trading_review",
+    readiness_status: "collecting_paper_evidence",
+    active_candidate_id: "candidate-profitable",
+    active_candidate_version_id: "candidate-version-profitable",
+    display_name: "candidate-profitable",
+    paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
+    paper_qualification_status: "collecting_evidence",
+    paper_qualification_reasons: [
+      "min_observation_count_not_met",
+      "min_elapsed_ms_not_met"
+    ],
+    paper_evidence_window: {
+      observation_count: 1,
+      elapsed_ms: 60_000,
+      failed_observation_count: 0
+    },
+    paper_profit_loss: {
+      revenue_usdt: 5,
+      cost_usdt: 0.048,
+      net_revenue_usdt: 4.952,
+      net_return_pct: 0.04952
+    },
+    paper_trading_evaluation: paperTradingEvaluationFixture(),
+    runner_status: "active",
+    selected_candidate_id: "candidate-profitable",
+    selected_matches_trading_review: true,
+    next_action: "Continue paper trading until the evidence window qualifies.",
+    live_disabled_reason: "mlp_paper_only",
+    authority_status: "not_live",
+    ...overrides
+  };
 }
 
 function paperTradingBoardFixture(): PaperTradingBoardReadModel {
