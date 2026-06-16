@@ -2165,16 +2165,19 @@ export function CandidateDetail({
   const accountPositionRiskSurface =
     candidate.trading_substrate?.latest_account_position_risk_mirror_surface ?? null;
   const selectedPaperTradingEvaluation = operator?.selected_paper_trading_evaluation;
-  const selectedPaperEvaluationId = selectedPaperTradingEvaluation?.evaluation_id;
+  const selectedPaperTradingEvaluationWithEvidence = selectedPaperTradingEvaluation?.evaluation_id
+    ? selectedPaperTradingEvaluation
+    : undefined;
+  const selectedPaperEvaluationId = selectedPaperTradingEvaluationWithEvidence?.evaluation_id;
   const selectedPaperBoardEntry = operator?.paper_trading_board.entries.find((entry) =>
     entry.candidate_id === candidate.candidate_id &&
     entry.evaluation_id === selectedPaperEvaluationId
   ) ?? operator?.paper_trading_board.entries.find((entry) =>
     entry.candidate_id === candidate.candidate_id
   );
-  const selectedPaperAccount = selectedPaperTradingEvaluation?.paper_account_snapshot;
+  const selectedPaperAccount = selectedPaperTradingEvaluationWithEvidence?.paper_account_snapshot;
   const selectedPaperPosition = selectedPaperAccount?.position;
-  const selectedPaperFill = selectedPaperTradingEvaluation?.latest_fill;
+  const selectedPaperFill = selectedPaperTradingEvaluationWithEvidence?.latest_fill;
   const tradingPromotion = operator?.trading_promotion;
   const selectedIsTradingReviewCandidate = tradingPromotion?.candidate_id === candidate.candidate_id;
   const tradingReadinessStatus = selectedIsTradingReviewCandidate
@@ -2223,11 +2226,11 @@ export function CandidateDetail({
   const accountAssetDetail = selectedPaperAccount
     ? `fake paper account; available ${formatBalance(selectedPaperAccount.available_balance_usdt)} USDT`
     : "Paper account waits for selected paper trading.";
-  const todayPnlValue = selectedPaperTradingEvaluation
-    ? formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)
+  const todayPnlValue = selectedPaperTradingEvaluationWithEvidence
+    ? formatUsdt(selectedPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt)
     : "not measured";
-  const todayPnlDetail = selectedPaperTradingEvaluation
-    ? `return ${formatPercent(selectedPaperTradingEvaluation.profit_loss.net_return_pct)}; ${selectedPaperTradingEvaluation.observation_count} observations`
+  const todayPnlDetail = selectedPaperTradingEvaluationWithEvidence
+    ? `return ${formatPercent(selectedPaperTradingEvaluationWithEvidence.profit_loss.net_return_pct)}; ${selectedPaperTradingEvaluationWithEvidence.observation_count} observations`
     : "No paper P&L series has been measured yet.";
   const positionValue = selectedPaperPosition
     ? `${selectedPaperPosition.side} ${selectedPaperPosition.quantity}`
@@ -2341,7 +2344,7 @@ export function CandidateDetail({
           agentProfiles={operator?.agent_profiles}
           latestCommands={operator?.latest_commands}
           selectedPaperEvidence={operator?.selected_paper_evidence}
-          selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
+          selectedPaperTradingEvaluation={selectedPaperTradingEvaluationWithEvidence}
           paperTradingBoard={operator?.paper_trading_board}
           onStart={onStartCandidateArena}
           onStop={onStopCandidateArena}
@@ -2425,7 +2428,7 @@ export function CandidateDetail({
         promotion={tradingPromotion}
         paperBoardEntry={selectedPaperBoardEntry}
         selectedCandidate={candidate}
-        selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
+        selectedPaperTradingEvaluation={selectedPaperTradingEvaluationWithEvidence}
         onPromoteTradingCandidate={onPromoteTradingCandidate}
         runningTradingPromotion={runningTradingPromotion}
       />
@@ -2498,8 +2501,8 @@ export function CandidateDetail({
             label="Paper net revenue"
             value={todayPnlValue}
             detail={todayPnlDetail}
-            tone={selectedPaperTradingEvaluation
-              ? selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
+            tone={selectedPaperTradingEvaluationWithEvidence
+              ? selectedPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
               : "warning"}
           />
           <OperatorMetricCard
@@ -2530,14 +2533,14 @@ export function CandidateDetail({
             <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <Field
                 label="Paper evaluation"
-                value={selectedPaperTradingEvaluation
-                  ? `${selectedPaperTradingEvaluation.status} / ${selectedPaperTradingEvaluation.observation_count} observations`
+                value={selectedPaperTradingEvaluationWithEvidence
+                  ? `${selectedPaperTradingEvaluationWithEvidence.status} / ${selectedPaperTradingEvaluationWithEvidence.observation_count} observations`
                   : "not started"}
               />
               <Field
                 label="Runner"
-                value={selectedPaperTradingEvaluation
-                  ? paperTradingRunnerStatus(selectedPaperTradingEvaluation)
+                value={selectedPaperTradingEvaluationWithEvidence
+                  ? paperTradingRunnerStatus(selectedPaperTradingEvaluationWithEvidence)
                   : selectedPaperBoardEntry?.runner_status ?? "not started"}
               />
               <Field
@@ -2548,9 +2551,9 @@ export function CandidateDetail({
               />
               <Field
                 label="Market source"
-                value={selectedPaperTradingEvaluation?.latest_public_execution_snapshot
-                  ? formatPublicExecutionEvidenceSummary(selectedPaperTradingEvaluation.latest_public_execution_snapshot)
-                  : selectedPaperBoardEntry?.latest_public_execution_source ?? selectedPaperTradingEvaluation?.market_data_source ?? "not connected"}
+                value={selectedPaperTradingEvaluationWithEvidence?.latest_public_execution_snapshot
+                  ? formatPublicExecutionEvidenceSummary(selectedPaperTradingEvaluationWithEvidence.latest_public_execution_snapshot)
+                  : selectedPaperBoardEntry?.latest_public_execution_source ?? "not connected"}
               />
             </dl>
           </CardContent>

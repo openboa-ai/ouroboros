@@ -2018,6 +2018,59 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("cross P&amp;L");
   });
 
+  it("does not count a not-started selected paper evaluation placeholder as measured paper evidence", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+            evaluation_id: undefined,
+            status: "not_started",
+            observation_count: 0,
+            paper_account_snapshot: undefined,
+            latest_fill: undefined,
+            latest_public_execution_snapshot: undefined
+          }),
+          paper_trading_board: {
+            ...paperTradingBoardFixture(),
+            entries: []
+          },
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+      />
+    );
+
+    expect(html).toContain("Paper net revenue");
+    expect(html).toContain("not measured");
+    expect(html).toContain("No paper P&amp;L series has been measured yet.");
+    expect(html).toContain("Paper evaluation");
+    expect(html).toContain("not started");
+    expect(html).toContain("Market source");
+    expect(html).toContain("not connected");
+    expect(html).not.toContain("0 observations");
+    expect(html).not.toContain("return 0%");
+  });
+
   it("scopes Trading review qualification to the selected candidate when another promotion exists", () => {
     const candidate = arenaSelectedCandidate();
     const board = paperTradingBoardFixture();
@@ -3797,6 +3850,9 @@ function extractTradingPromotionBoundarySection(html: string): string {
 function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {
   return {
     evaluation_kind: "paper_trading_evaluation",
+    evaluation_id: "paper-evaluation-candidate-profitable",
+    candidate_id: "candidate-profitable",
+    candidate_version_id: "candidate-version-profitable",
     status: "running",
     trading_run_id: "trading-run-candidate-profitable",
     trading_run_status: "running",
