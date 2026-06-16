@@ -476,6 +476,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("profit_loss");
     expect(html).toContain("Paper runner");
     expect(html).toContain("Paper Board");
+    expect(html).toContain("sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
+    expect(html).toContain("[overflow-wrap:anywhere]");
     expect(html).toContain("Qualification");
     expect(html).toContain("collecting_evidence");
     expect(html).toContain("Evidence window");

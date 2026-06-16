@@ -1240,9 +1240,9 @@ export function CandidateArenaPanel({
             <span className="text-xs text-muted-foreground">product authority: continuous paper trading</span>
           </div>
           {paperBoardEntries.length ? (
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-2">
               {paperBoardEntries.slice(0, 6).map((entry) => (
-                <div key={entry.evaluation_id} className="grid gap-2 rounded-md bg-background/35 p-3">
+                <div key={entry.evaluation_id} className="grid min-w-0 gap-2 overflow-hidden rounded-md bg-background/35 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <span className="text-xs font-medium text-muted-foreground">#{entry.rank}</span>
@@ -1252,7 +1252,7 @@ export function CandidateArenaPanel({
                       {entry.status}
                     </Badge>
                   </div>
-                  <dl className="grid gap-2 sm:grid-cols-2">
+                  <dl className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                     <Field label="Paper net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
                     <Field label="Return" value={formatPercent(entry.profit_loss.net_return_pct)} />
                     <Field label="Qualification" value={entry.qualification_status} />
@@ -5960,9 +5960,9 @@ function statusTokens(normalizedValue: string): string[] {
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid min-w-0 gap-1 rounded-md bg-background/35 p-2">
+    <div className="grid min-w-0 gap-1 overflow-hidden rounded-md bg-background/35 p-2">
       <dt className="text-[11px] font-medium uppercase text-muted-foreground">{label}</dt>
-      <dd className="break-words text-sm leading-snug">{value}</dd>
+      <dd className="min-w-0 break-words text-sm leading-snug [overflow-wrap:anywhere]">{value}</dd>
     </div>
   );
 }
