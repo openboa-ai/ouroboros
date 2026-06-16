@@ -1791,6 +1791,18 @@ function tradingPromotionReadinessLabel(
   return "paper_required";
 }
 
+function paperQualificationTone(
+  status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"] | undefined
+): OperatorTone {
+  if (status === "qualified") {
+    return "good";
+  }
+  if (status === "blocked_by_quality" || status === "paper_failed") {
+    return "danger";
+  }
+  return "warning";
+}
+
 function tradingPromotionNextActionLabel(
   status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"]
 ): string {
@@ -2152,6 +2164,31 @@ export function CandidateDetail({
   const orderFillSurface = candidate.trading_substrate?.latest_order_fill_surface ?? null;
   const accountPositionRiskSurface =
     candidate.trading_substrate?.latest_account_position_risk_mirror_surface ?? null;
+  const selectedPaperTradingEvaluation = operator?.selected_paper_trading_evaluation;
+  const selectedPaperTradingEvaluationWithEvidence = selectedPaperTradingEvaluation?.evaluation_id
+    ? selectedPaperTradingEvaluation
+    : undefined;
+  const selectedPaperEvaluationId = selectedPaperTradingEvaluationWithEvidence?.evaluation_id;
+  const selectedPaperBoardEntry = operator?.paper_trading_board.entries.find((entry) =>
+    entry.candidate_id === candidate.candidate_id &&
+    entry.evaluation_id === selectedPaperEvaluationId
+  ) ?? operator?.paper_trading_board.entries.find((entry) =>
+    entry.candidate_id === candidate.candidate_id
+  );
+  const selectedPaperAccount = selectedPaperTradingEvaluationWithEvidence?.paper_account_snapshot;
+  const selectedPaperPosition = selectedPaperAccount?.position;
+  const selectedPaperFill = selectedPaperTradingEvaluationWithEvidence?.latest_fill;
+  const tradingPromotion = operator?.trading_promotion;
+  const selectedIsTradingReviewCandidate = tradingPromotion?.candidate_id === candidate.candidate_id;
+  const tradingReadinessStatus = selectedIsTradingReviewCandidate
+    ? tradingPromotion?.readiness_status
+    : tradingPromotionReadinessLabel(selectedPaperBoardEntry?.qualification_status);
+  const tradingQualificationStatus = selectedIsTradingReviewCandidate
+    ? tradingPromotion?.paper_qualification_status
+    : selectedPaperBoardEntry?.qualification_status;
+  const tradingQualificationReasons = selectedIsTradingReviewCandidate
+    ? tradingPromotion?.paper_qualification_reasons ?? []
+    : selectedPaperBoardEntry?.qualification_reasons ?? [];
   const visibleFullCycle = lastFullCycle?.next_trading_system.candidate_id === candidate.candidate_id
     ? lastFullCycle
     : undefined;
@@ -2183,15 +2220,27 @@ export function CandidateDetail({
       ? "incomplete"
       : "not recorded";
   const tradingSystemRows = buildTradingSystemRows(candidate, candidates);
-  const accountAssetValue = accountPositionRiskSurface
-    ? `${formatBalance(accountPositionRiskSurface.total_wallet_balance)} ${accountPositionRiskSurface.asset}`
-    : "not connected";
-  const todayPnlValue = accountPositionRiskSurface
-    ? `${formatSignedBalance(accountPositionRiskSurface.unrealized_profit)} USDT`
+  const accountAssetValue = selectedPaperAccount
+    ? `${formatBalance(selectedPaperAccount.equity_usdt)} USDT`
+    : "not started";
+  const accountAssetDetail = selectedPaperAccount
+    ? `fake paper account; available ${formatBalance(selectedPaperAccount.available_balance_usdt)} USDT`
+    : "Paper account waits for selected paper trading.";
+  const todayPnlValue = selectedPaperTradingEvaluationWithEvidence
+    ? formatUsdt(selectedPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt)
     : "not measured";
-  const positionValue = accountPositionRiskSurface
-    ? `${accountPositionRiskSurface.position_side} ${accountPositionRiskSurface.position_amount}`
-    : "no private read";
+  const todayPnlDetail = selectedPaperTradingEvaluationWithEvidence
+    ? `return ${formatPercent(selectedPaperTradingEvaluationWithEvidence.profit_loss.net_return_pct)}; ${selectedPaperTradingEvaluationWithEvidence.observation_count} observations`
+    : "No paper P&L series has been measured yet.";
+  const positionValue = selectedPaperPosition
+    ? `${selectedPaperPosition.side} ${selectedPaperPosition.quantity}`
+    : "no paper position";
+  const positionDetail = selectedPaperPosition
+    ? `entry ${formatPrice(selectedPaperPosition.average_entry_price)}, mark ${formatPrice(selectedPaperPosition.mark_price)}, open ${selectedPaperAccount?.open_order_count ?? 0}`
+    : "Position waits for selected paper trading.";
+  const readinessDetail = tradingQualificationReasons.length
+    ? tradingQualificationReasons.join(", ")
+    : tradingQualificationStatus ?? "paper_required";
   const operatorDecision = buildOperatorDecision({
     accountPositionRiskSurface,
     candidate,
@@ -2266,15 +2315,6 @@ export function CandidateDetail({
     (agent) => agent.agent === selectedTradingResearchAgent
   );
   const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
-  const tradingPromotion = operator?.trading_promotion;
-  const selectedPaperEvaluationId = operator?.selected_paper_trading_evaluation.evaluation_id;
-  const selectedPaperBoardEntry = operator?.paper_trading_board.entries.find((entry) =>
-    entry.candidate_id === candidate.candidate_id &&
-    entry.evaluation_id === selectedPaperEvaluationId
-  ) ?? operator?.paper_trading_board.entries.find((entry) =>
-    entry.candidate_id === candidate.candidate_id
-  );
-
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
       <Tabs
@@ -2304,7 +2344,7 @@ export function CandidateDetail({
           agentProfiles={operator?.agent_profiles}
           latestCommands={operator?.latest_commands}
           selectedPaperEvidence={operator?.selected_paper_evidence}
-          selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
+          selectedPaperTradingEvaluation={selectedPaperTradingEvaluationWithEvidence}
           paperTradingBoard={operator?.paper_trading_board}
           onStart={onStartCandidateArena}
           onStop={onStopCandidateArena}
@@ -2388,7 +2428,7 @@ export function CandidateDetail({
         promotion={tradingPromotion}
         paperBoardEntry={selectedPaperBoardEntry}
         selectedCandidate={candidate}
-        selectedPaperTradingEvaluation={operator?.selected_paper_trading_evaluation}
+        selectedPaperTradingEvaluation={selectedPaperTradingEvaluationWithEvidence}
         onPromoteTradingCandidate={onPromoteTradingCandidate}
         runningTradingPromotion={runningTradingPromotion}
       />
@@ -2450,40 +2490,74 @@ export function CandidateDetail({
           </CardContent>
         </Card>
 
-        <section className="grid gap-3 md:grid-cols-4" aria-label="Portfolio and daily profit">
+        <section className="grid gap-3 md:grid-cols-4" aria-label="Paper trading review summary">
           <OperatorMetricCard
-            label="My assets"
+            label="Paper equity"
             value={accountAssetValue}
-            detail={accountPositionRiskSurface
-              ? `available ${formatBalance(accountPositionRiskSurface.available_balance)} ${accountPositionRiskSurface.asset}`
-              : "Private account read is not connected."}
-            tone={accountPositionRiskSurface ? "good" : "warning"}
+            detail={accountAssetDetail}
+            tone={selectedPaperAccount ? "good" : "warning"}
           />
           <OperatorMetricCard
-            label="Today P&L"
+            label="Paper net revenue"
             value={todayPnlValue}
-            detail={accountPositionRiskSurface
-              ? `cross P&L ${formatSignedBalance(accountPositionRiskSurface.total_cross_un_pnl)} USDT`
-              : "No account or paper P&L series has been measured yet."}
-            tone={accountPositionRiskSurface ? signedTone(accountPositionRiskSurface.unrealized_profit) : "warning"}
+            detail={todayPnlDetail}
+            tone={selectedPaperTradingEvaluationWithEvidence
+              ? selectedPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
+              : "warning"}
           />
           <OperatorMetricCard
-            label="Current position"
+            label="Paper position"
             value={positionValue}
-            detail={accountPositionRiskSurface
-              ? `entry ${formatPrice(accountPositionRiskSurface.entry_price)}, mark ${formatPrice(accountPositionRiskSurface.mark_price)}`
-              : "Position status waits for a private-read or paper-account mirror."}
-            tone={accountPositionRiskSurface ? "good" : "neutral"}
+            detail={positionDetail}
+            tone={selectedPaperPosition ? "good" : "neutral"}
           />
           <OperatorMetricCard
-            label="Risk status"
-            value={accountPositionRiskSurface?.risk_status ?? "not measured"}
-            detail={accountPositionRiskSurface
-              ? `liq ${formatPrice(accountPositionRiskSurface.liquidation_price)}, ${accountPositionRiskSurface.leverage}x ${accountPositionRiskSurface.margin_type}`
-              : "Risk waits for account or paper-account mirror."}
-            tone={accountPositionRiskSurface ? riskTone(accountPositionRiskSurface.risk_status) : "warning"}
+            label="Promotion readiness"
+            value={tradingReadinessStatus ?? "paper_required"}
+            detail={readinessDetail}
+            tone={paperQualificationTone(tradingQualificationStatus)}
           />
         </section>
+
+        <Card size="sm" aria-label="Trading paper readback">
+          <CardHeader>
+            <CardDescription>Paper readback</CardDescription>
+            <CardTitle>Selected-candidate evidence</CardTitle>
+            <CardAction>
+              <Badge variant={selectedIsTradingReviewCandidate ? "default" : "secondary"}>
+                {selectedIsTradingReviewCandidate ? "Trading review" : "Arena selection"}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <Field
+                label="Paper evaluation"
+                value={selectedPaperTradingEvaluationWithEvidence
+                  ? `${selectedPaperTradingEvaluationWithEvidence.status} / ${selectedPaperTradingEvaluationWithEvidence.observation_count} observations`
+                  : "not started"}
+              />
+              <Field
+                label="Runner"
+                value={selectedPaperTradingEvaluationWithEvidence
+                  ? paperTradingRunnerStatus(selectedPaperTradingEvaluationWithEvidence)
+                  : selectedPaperBoardEntry?.runner_status ?? "not started"}
+              />
+              <Field
+                label="Latest fill"
+                value={selectedPaperFill
+                  ? formatPaperFillSummary(selectedPaperFill)
+                  : selectedPaperBoardEntry?.latest_fill_status ?? "none"}
+              />
+              <Field
+                label="Market source"
+                value={selectedPaperTradingEvaluationWithEvidence?.latest_public_execution_snapshot
+                  ? formatPublicExecutionEvidenceSummary(selectedPaperTradingEvaluationWithEvidence.latest_public_execution_snapshot)
+                  : selectedPaperBoardEntry?.latest_public_execution_source ?? "not connected"}
+              />
+            </dl>
+          </CardContent>
+        </Card>
 
         <TradeStatusPanel
           ledgerStatus={ledgerStatus}

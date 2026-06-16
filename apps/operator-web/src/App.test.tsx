@@ -1866,10 +1866,12 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("Move to Trading review");
     expect(tradingHtml).toContain("mlp_paper_only");
     expect(tradingHtml).toContain("BTCUSDT futures chart");
-    expect(tradingHtml).toContain("My assets");
-    expect(tradingHtml).toContain("Today P&amp;L");
-    expect(tradingHtml).toContain("Current position");
-    expect(tradingHtml).toContain("Risk status");
+    expect(tradingHtml).toContain("Paper equity");
+    expect(tradingHtml).toContain("Paper net revenue");
+    expect(tradingHtml).toContain("Paper position");
+    expect(tradingHtml).toContain("Promotion readiness");
+    expect(tradingHtml).toContain("Trading paper readback");
+    expect(tradingHtml).toContain("Selected-candidate evidence");
     expect(tradingHtml).toContain("Order / trade status");
     expect(tradingHtml).toContain("OrderRequest");
     expect(tradingHtml).toContain("GatewayResult");
@@ -1975,6 +1977,98 @@ describe("CandidateDetail", () => {
     expect(promotionSection).toContain("min_elapsed_ms_not_met");
     expect(promotionSection).toContain("Continue paper trading until the evidence window qualifies.");
     expect(promotionSection).toContain("disabled");
+    expect(html).toContain("Paper equity");
+    expect(html).toContain("10,004.95 USDT");
+    expect(html).toContain("fake paper account; available 10,003.65 USDT");
+    expect(html).toContain("Paper net revenue");
+    expect(html).toContain("4.952 USDT");
+    expect(html).toContain("Paper position");
+    expect(html).toContain("long 0.001");
+    expect(html).toContain("Selected-candidate evidence");
+    expect(html).toContain("filled 0.001 @ 60000");
+    expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh");
+  });
+
+  it("does not label account-position mirror data as paper account readback", () => {
+    const candidate = {
+      ...arenaSelectedCandidate(),
+      trading_substrate: {
+        latest_order_fill_surface: fixtureOrderFillSurface(),
+        latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+        latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+        latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+        private_readiness_posture_history: [fixturePrivateReadinessPosture()],
+        latest_account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface()
+      }
+    };
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+      />
+    );
+
+    expect(html).toContain("Paper equity");
+    expect(html).toContain("not started");
+    expect(html).toContain("Paper account waits for selected paper trading.");
+    expect(html).toContain("Paper position");
+    expect(html).toContain("no paper position");
+    expect(html).not.toContain("1,250.00 USDT");
+    expect(html).not.toContain("BOTH 0.015");
+    expect(html).not.toContain("cross P&amp;L");
+  });
+
+  it("does not count a not-started selected paper evaluation placeholder as measured paper evidence", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+            evaluation_id: undefined,
+            status: "not_started",
+            observation_count: 0,
+            paper_account_snapshot: undefined,
+            latest_fill: undefined,
+            latest_public_execution_snapshot: undefined
+          }),
+          paper_trading_board: {
+            ...paperTradingBoardFixture(),
+            entries: []
+          },
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+      />
+    );
+
+    expect(html).toContain("Paper net revenue");
+    expect(html).toContain("not measured");
+    expect(html).toContain("No paper P&amp;L series has been measured yet.");
+    expect(html).toContain("Paper evaluation");
+    expect(html).toContain("not started");
+    expect(html).toContain("Market source");
+    expect(html).toContain("not connected");
+    expect(html).not.toContain("0 observations");
+    expect(html).not.toContain("return 0%");
   });
 
   it("scopes Trading review qualification to the selected candidate when another promotion exists", () => {
@@ -3756,6 +3850,9 @@ function extractTradingPromotionBoundarySection(html: string): string {
 function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {
   return {
     evaluation_kind: "paper_trading_evaluation",
+    evaluation_id: "paper-evaluation-candidate-profitable",
+    candidate_id: "candidate-profitable",
+    candidate_version_id: "candidate-version-profitable",
     status: "running",
     trading_run_id: "trading-run-candidate-profitable",
     trading_run_status: "running",
