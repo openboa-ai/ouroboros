@@ -267,6 +267,54 @@ describe("operator paper trading board", () => {
       authority_status: "not_live"
     });
   });
+
+  it("blocks Trading review promotion until paper evidence is qualified", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const candidate = await registerCandidate(store, {
+      id: "collecting-promotion-paper-board",
+      title: "Collecting Promotion Candidate"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: 100,
+      netReturnPct: 1,
+      observationCount: 5,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:05:00.000Z"
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+      }
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: candidate.candidate_id
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      error: "paper_trading_qualification_required",
+      details: {
+        candidate_id: candidate.candidate_id,
+        paper_qualification_status: "collecting_evidence",
+        paper_qualification_reasons: [
+          "min_observation_count_not_met",
+          "min_elapsed_ms_not_met"
+        ],
+        required_command: `ouroboros candidate paper start ${candidate.candidate_id}`
+      }
+    });
+    await expect(store.getLatestTradingPromotion()).resolves.toBeUndefined();
+  });
 });
 
 async function registerCandidate(

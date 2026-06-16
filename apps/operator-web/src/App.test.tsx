@@ -1935,6 +1935,123 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("shows why Trading review is blocked until paper qualification is ready", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+        onPromoteTradingCandidate={() => undefined}
+      />
+    );
+    const promotionSection = extractTradingPromotionBoundarySection(html);
+
+    expect(promotionSection).toContain("Trading review candidate");
+    expect(promotionSection).toContain("collecting_evidence");
+    expect(promotionSection).toContain("min_observation_count_not_met");
+    expect(promotionSection).toContain("min_elapsed_ms_not_met");
+    expect(promotionSection).toContain("Continue paper trading until the evidence window qualifies.");
+    expect(promotionSection).toContain("disabled");
+  });
+
+  it("scopes Trading review qualification to the selected candidate when another promotion exists", () => {
+    const candidate = arenaSelectedCandidate();
+    const board = paperTradingBoardFixture();
+    const selectedEntry = {
+      ...board.entries[0],
+      qualification_status: "qualified" as const,
+      qualification_reasons: [],
+      promotion_gate_status: "paper_evidence_recorded" as const,
+      evidence_window: {
+        observation_count: 30,
+        elapsed_ms: 30 * 60_000,
+        failed_observation_count: 0
+      }
+    };
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+            observation_count: 30
+          }),
+          paper_trading_board: {
+            ...board,
+            entries: [selectedEntry]
+          },
+          trading_promotion: {
+            promotion_kind: "trading_promotion",
+            status: "promoted_for_trading_review",
+            readiness_status: "needs_resume",
+            candidate_id: "candidate-other",
+            candidate_version_id: "candidate-version-other",
+            display_name: "Other Trading System",
+            promoted_at: "2026-05-16T00:40:00.000Z",
+            paper_trading_evaluation_id: "paper-evaluation-other",
+            paper_qualification_status: "needs_resume",
+            paper_qualification_reasons: ["runner_inactive_for_running_evaluation"],
+            runner_status: "needs_resume",
+            next_action: "Resume paper trading before treating this Trading review candidate as current.",
+            live_disabled_reason: "mlp_paper_only",
+            authority_status: "not_live"
+          },
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+        onPromoteTradingCandidate={() => undefined}
+      />
+    );
+    const promotionSection = extractTradingPromotionBoundarySection(html);
+
+    expect(promotionSection).toContain("Other Trading System");
+    expect(promotionSection).toContain("Arena trend Trading System");
+    expect(promotionSection).toContain("qualified");
+    expect(promotionSection).toContain("ready_to_promote");
+    expect(promotionSection).not.toContain("runner_inactive_for_running_evaluation");
+    expect(promotionSection).not.toContain("needs_resume");
+  });
+
   it("renders Codex researcher selection in full-cycle developer controls", () => {
     const candidate = {
       ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
@@ -3625,6 +3742,15 @@ function extractSelectedCandidateArenaSection(html: string): string {
     throw new Error("selected candidate arena section not found");
   }
   return html.slice(start, end);
+}
+
+function extractTradingPromotionBoundarySection(html: string): string {
+  const start = html.indexOf('aria-label="Trading promotion boundary"');
+  const end = html.indexOf('aria-label="Operator messages"', start);
+  if (start < 0) {
+    throw new Error("trading promotion boundary section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
 }
 
 function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {
