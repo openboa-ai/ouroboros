@@ -166,10 +166,36 @@ interface AppState {
   privateReadinessPostureMessage?: string;
 }
 
-type OperatorView = "trading" | "research" | "details";
+export type OperatorView = "trading" | "arena" | "research" | "details";
+
+const OPERATOR_VIEWS: OperatorView[] = ["trading", "arena", "research", "details"];
+
+export function operatorViewFromSearch(search: string | undefined): OperatorView {
+  const view = new URLSearchParams(search ?? "").get("view");
+  return OPERATOR_VIEWS.includes(view as OperatorView) ? (view as OperatorView) : "trading";
+}
+
+function readInitialOperatorView(): OperatorView {
+  if (typeof window === "undefined") {
+    return "trading";
+  }
+
+  return operatorViewFromSearch(window.location.search);
+}
 
 export function App() {
-  const [operatorView, setOperatorView] = useState<OperatorView>("trading");
+  const [operatorView, setOperatorViewState] = useState<OperatorView>(readInitialOperatorView);
+  function setOperatorView(view: OperatorView) {
+    setOperatorViewState(view);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
   const [state, setState] = useState<AppState>({
     candidates: [],
     executionModes: [],
@@ -802,9 +828,11 @@ export function App() {
               <p className="truncate text-xs text-muted-foreground">
                 {operatorView === "trading"
                   ? "Trading"
-                  : operatorView === "research"
-                    ? "Research"
-                    : "System details"}
+                  : operatorView === "arena"
+                    ? "Arena"
+                    : operatorView === "research"
+                      ? "Research"
+                      : "System details"}
               </p>
             </div>
           </header>
@@ -979,6 +1007,16 @@ function OperatorSidebar({
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
+                  isActive={activeView === "arena"}
+                  onClick={() => onSelectView("arena")}
+                >
+                  <BarChart3Icon />
+                  <span>Arena</span>
+                </SidebarMenuButton>
+                <SidebarMenuBadge>{String(candidates.length)}</SidebarMenuBadge>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
                   isActive={activeView === "research"}
                   onClick={() => onSelectView("research")}
                 >
@@ -1010,7 +1048,7 @@ function OperatorSidebar({
                     isActive={selectedCandidateId === candidate.candidate_id}
                     onClick={() => {
                       onSelectCandidate(candidate.candidate_id);
-                      onSelectView("research");
+                      onSelectView("arena");
                     }}
                   >
                     <BarChart3Icon />
@@ -2060,12 +2098,13 @@ export function CandidateDetail({
           </div>
           <TabsList>
             <TabsTrigger value="trading">Trading</TabsTrigger>
+            <TabsTrigger value="arena">Arena</TabsTrigger>
             <TabsTrigger value="research">Research</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="trading" className="flex flex-col gap-4">
+        <TabsContent value="arena" className="flex flex-col gap-4">
       {candidateArena && (
         <CandidateArenaPanel
           arena={candidateArena}
@@ -2094,12 +2133,26 @@ export function CandidateDetail({
           error={tradingRunError ?? candidateArenaError}
         />
       )}
+      {!candidateArena && (
+        <Card aria-label="Arena unavailable">
+          <CardHeader>
+            <CardTitle>Arena</CardTitle>
+            <CardDescription>
+              Continuous paper trading arena state is not projected yet.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+        </TabsContent>
 
+        <TabsContent value="trading" className="flex flex-col gap-4">
       <Card aria-label="Operator decision bar">
         <CardHeader>
           <CardDescription>{workspaceLabel}</CardDescription>
           <CardTitle>Trading</CardTitle>
-          <CardDescription>{operatorDecision.detail}</CardDescription>
+          <CardDescription>
+            Actual trading and realized-profit cockpit. Live exchange authority remains disabled in this MLP. {operatorDecision.detail}
+          </CardDescription>
           <CardAction className="flex flex-wrap justify-end gap-2">
           <Badge variant="secondary">{formatAuthorityLabel(candidate.runtime.authority_status)}</Badge>
           <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
