@@ -1052,7 +1052,7 @@ function isAllowedGeneratedPaperSystemCode(
     return false;
   }
 
-  const artifactPath = path.resolve(artifact.artifact_path);
+  const artifactPath = resolvePythonScriptPath(artifact.artifact_path);
   return isPythonGeneratedCommand(command, artifactPath) &&
     input.allowedArtifactRoots.some((root) => isPathWithin(artifactPath, root));
 }
@@ -1069,7 +1069,11 @@ function isPythonGeneratedCommand(command: string[], artifactPath: string): bool
   if (command.length < 2 || (command[0] !== "python" && command[0] !== "python3")) {
     return false;
   }
-  return path.resolve(command[1]!) === artifactPath;
+  return resolvePythonScriptPath(command[1]!) === artifactPath;
+}
+
+function resolvePythonScriptPath(scriptPath: string): string {
+  return path.isAbsolute(scriptPath) ? path.normalize(scriptPath) : path.resolve(REPO_ROOT, scriptPath);
 }
 
 function isPathWithin(filePath: string, root: string): boolean {

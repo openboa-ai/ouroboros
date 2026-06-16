@@ -567,6 +567,64 @@ describe("sandbox API", () => {
     });
   });
 
+  it("rejects generated paper SystemCode when a relative entrypoint only resolves from process cwd", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixtureArtifact = await store.getSystemCode("fixture-system-code-clock-python-001");
+    if (!fixtureArtifact || fixtureArtifact.artifact_kind !== "python_file") {
+      throw new Error("expected fixture SystemCode");
+    }
+    const artifactDir = path.join(tmpDir, "candidate-arena-runs", "cwd-only-entrypoint");
+    const artifactPath = path.join(artifactDir, "run.py");
+    const cwdOnlyEntrypoint = path.join("candidate-arena-runs", "cwd-only-entrypoint", "run.py");
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(artifactPath, generatedPaperArtifact(), "utf8");
+
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [tmpDir],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+    const previousCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      const started = await adapter.startArtifactInstance({
+        artifact: {
+          ...fixtureArtifact,
+          system_code_id: "system-code-arena-cwd-only-entrypoint",
+          artifact_path: artifactPath,
+          artifact_digest: `sha256:${createHash("sha256").update(await readFile(artifactPath)).digest("hex")}`,
+          entrypoint: ["python3", cwdOnlyEntrypoint],
+          capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+          created_at: "2026-05-21T00:00:00.000Z"
+        },
+        instance_id: "sandbox-generated-cwd-only-entrypoint",
+        sandbox_name: "ouro-generated-cwd-only-entrypoint",
+        runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+        sandbox_placement_id: "sandbox-placement-generated-cwd-only-entrypoint",
+        created_at: "2026-05-21T00:00:00.000Z",
+        test_ticks: 1,
+        interval_ms: 1
+      });
+
+      expect(started.instance.lifecycle_status).toBe("failed");
+      expect(started.command_evidence[0]).toMatchObject({
+        exit_code: 2,
+        command: [
+          "deterministic_test",
+          "reject-non-fixture-system-code",
+          "system-code-arena-cwd-only-entrypoint"
+        ]
+      });
+      expect(started.command_evidence[0]?.stderr).toContain(
+        "deterministic_test only executes fixture SystemCode"
+      );
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
   it("rejects raw secret material in sandbox requests", async () => {
     const server = await buildServer({ store: new LocalStore(tmpDir) });
 
