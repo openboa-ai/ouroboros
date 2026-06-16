@@ -166,10 +166,36 @@ interface AppState {
   privateReadinessPostureMessage?: string;
 }
 
-type OperatorView = "trading" | "arena" | "research" | "details";
+export type OperatorView = "trading" | "arena" | "research" | "details";
+
+const OPERATOR_VIEWS: OperatorView[] = ["trading", "arena", "research", "details"];
+
+export function operatorViewFromSearch(search: string | undefined): OperatorView {
+  const view = new URLSearchParams(search ?? "").get("view");
+  return OPERATOR_VIEWS.includes(view as OperatorView) ? (view as OperatorView) : "trading";
+}
+
+function readInitialOperatorView(): OperatorView {
+  if (typeof window === "undefined") {
+    return "trading";
+  }
+
+  return operatorViewFromSearch(window.location.search);
+}
 
 export function App() {
-  const [operatorView, setOperatorView] = useState<OperatorView>("trading");
+  const [operatorView, setOperatorViewState] = useState<OperatorView>(readInitialOperatorView);
+  function setOperatorView(view: OperatorView) {
+    setOperatorViewState(view);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
   const [state, setState] = useState<AppState>({
     candidates: [],
     executionModes: [],

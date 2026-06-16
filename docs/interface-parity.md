@@ -72,6 +72,10 @@ The Web UI keeps those states separated by tab:
 - `Details` is raw records, developer controls, replay/full-cycle compatibility, substrate
   readbacks, and low-level evidence.
 
+Web UI tabs support stable QA and remote screenshot entrypoints through
+`?view=trading|arena|research|details`. The query parameter only selects the visible cockpit tab;
+it must not trigger product commands, refresh candidate state, or change exchange authority.
+
 Paper Trading is the continuous selected-candidate evaluation state between candidate selection and any
 future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live

@@ -38,6 +38,7 @@ import {
   CandidateDetail,
   CandidateSummaryRow,
   isPositiveRiskDecision,
+  operatorViewFromSearch,
   PrivateReadinessReviewPacketSections,
   TradingGatewayEnvironmentSection,
   TradingExecutionModesSection
@@ -80,6 +81,18 @@ describe("operator status helpers", () => {
     expect(badgeVariant("incomplete")).toBe("outline");
     expect(badgeVariant("chain incomplete")).toBe("outline");
     expect(badgeVariant("invalid_order_request")).toBe("destructive");
+  });
+});
+
+describe("operator view deeplinks", () => {
+  it("opens stable screenshot and QA entrypoints from the view query parameter", () => {
+    expect(operatorViewFromSearch("?view=trading")).toBe("trading");
+    expect(operatorViewFromSearch("?view=arena")).toBe("arena");
+    expect(operatorViewFromSearch("?view=research")).toBe("research");
+    expect(operatorViewFromSearch("?view=details")).toBe("details");
+    expect(operatorViewFromSearch("?view=unknown")).toBe("trading");
+    expect(operatorViewFromSearch("?candidate_id=candidate-1")).toBe("trading");
+    expect(operatorViewFromSearch(undefined)).toBe("trading");
   });
 });
 
