@@ -10,6 +10,7 @@ import type {
   ReplayRunDetailReadModel,
   ReplayRunEvidenceReadModel,
   ReplayRunValidationStateReadModel,
+  OperatorReadModel,
   LedgerSourceRecordsReadModel,
   CandidateArenaReadModel,
   PaperTradingBoardReadModel,
@@ -517,7 +518,7 @@ describe("CandidateDetail", () => {
   it("keeps selected arena candidate paper evidence available before Ledger exists", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
-        activeView="trading"
+        activeView="arena"
         candidate={arenaSelectedCandidate()}
         candidateArena={fixtureCandidateArena}
         onSelectCandidate={() => undefined}
@@ -1776,6 +1777,43 @@ describe("CandidateDetail", () => {
         fullCycleMessage="full cycle completed: running"
       />
     );
+    const arenaHtml = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="arena"
+        candidate={candidate}
+        candidateArena={fixtureCandidateArena}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: "candidate-profitable",
+          selected_candidate: arenaSelectedCandidate(),
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+        onStartCandidateArena={() => undefined}
+        onStopCandidateArena={() => undefined}
+        onTickCandidateArena={() => undefined}
+        onSelectCandidate={() => undefined}
+        onStartTradingRun={() => undefined}
+        onObserveTradingRun={() => undefined}
+        onStopTradingRun={() => undefined}
+      />
+    );
     const researchHtml = renderToStaticMarkup(
       <CandidateDetail
         activeView="research"
@@ -1793,6 +1831,10 @@ describe("CandidateDetail", () => {
     );
 
     expect(tradingHtml).toContain("BTCUSDT operator cockpit");
+    expect(tradingHtml).toContain("Trading");
+    expect(tradingHtml).toContain("Arena");
+    expect(tradingHtml).toContain("Research");
+    expect(tradingHtml).toContain("Details");
     expect(tradingHtml).toContain("Recommended action");
     expect(tradingHtml).not.toContain("Run next cycle");
     expect(tradingHtml).not.toContain("Research iterations");
@@ -1807,8 +1849,24 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("GatewayResult");
     expect(tradingHtml).toContain("ExecutionResult");
     expect(tradingHtml).toContain("Safety boundary");
+    expect(tradingHtml).toContain("Actual trading and realized-profit cockpit");
+    expect(tradingHtml).not.toContain("Candidate Arena cockpit");
+    expect(tradingHtml).not.toContain("Runtime command bar");
+    expect(tradingHtml).not.toContain("Paper Board");
     expect(tradingHtml).not.toContain("full cycle completed: running");
     expect(tradingHtml).not.toContain("Research cycle");
+
+    expect(arenaHtml).toContain("Candidate Arena");
+    expect(arenaHtml).toContain("Candidate Arena cockpit");
+    expect(arenaHtml).toContain("Runtime command bar");
+    expect(arenaHtml).toContain("Revenue-cost leaderboard");
+    expect(arenaHtml).toContain("Paper Board");
+    expect(arenaHtml).toContain("PaperTradingEvaluation");
+    expect(arenaHtml).toContain("Observe now");
+    expect(arenaHtml).toContain("Stop paper trading");
+    expect(arenaHtml).not.toContain("Trading cockpit");
+    expect(arenaHtml).not.toContain("Research cycle");
+    expect(arenaHtml).not.toContain("Agent cycle controls");
 
     expect(researchHtml).toContain("Research");
     expect(researchHtml).toContain("Research cycle");

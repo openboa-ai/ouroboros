@@ -4,7 +4,7 @@ Ouroboros exposes one product loop through three operator surfaces:
 
 - CLI: the baseline human and automation interface.
 - TUI: keyboard action console.
-- Web UI: operator cockpit.
+- Web UI: operator cockpit with four primary tabs: `Trading`, `Arena`, `Research`, and `Details`.
 
 All three surfaces read the same state from `GET /api/operator`. Product loop mutations go through
 `POST /api/commands` and use command names from `OUROBOROS_COMMAND_REGISTRY`.
@@ -60,6 +60,18 @@ instead of falling back to host-local provider state.
 ## Boundary
 
 Interface parity does not change authority. Candidate, Paper Evidence, and Live remain visibly separate states.
+The Web UI keeps those states separated by tab:
+
+- `Trading` is the actual trading and realized-profit cockpit. In MLP-01 it must still show
+  live/private exchange authority as disabled.
+- `Arena` is the selected-candidate continuous paper trading arena. CandidateArena controls,
+  revenue-cost leaderboard, `PaperTradingEvaluation` board, selected paper account, open orders,
+  fills, and Ledger readback live here.
+- `Research` is candidate generation, research lineage, preflight/backtest context, and next
+  candidate handoff.
+- `Details` is raw records, developer controls, replay/full-cycle compatibility, substrate
+  readbacks, and low-level evidence.
+
 Paper Trading is the continuous selected-candidate evaluation state between candidate selection and any
 future live promotion. `trading_run.start`, `trading_run.observe`, and `trading_run.stop`
 control selected-candidate `PaperTradingEvaluation`; Ledger paper evidence is readback, not live
