@@ -19,6 +19,7 @@ import type {
   ResearchFindingRecord,
   SystemCodeRecord,
   TradingEvaluationResultRecord,
+  TradingPromotionRecord,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
   LedgerInput,
@@ -112,6 +113,8 @@ export interface OuroborosStorePort {
   recordAgentProfile(profile: AgentProfileRecord): Promise<AgentProfileRecord>;
   getResearcherProviderSelection(): Promise<ResearcherProviderSelectionRecord | undefined>;
   recordResearcherProviderSelection(selection: ResearcherProviderSelectionRecord): Promise<ResearcherProviderSelectionRecord>;
+  getLatestTradingPromotion(): Promise<TradingPromotionRecord | undefined>;
+  recordTradingPromotion(promotion: TradingPromotionRecord): Promise<TradingPromotionRecord>;
   listOuroborosCommands(): Promise<OuroborosCommandRecord[]>;
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
   recordRunControlAudit(input: RunControlAuditInput): Promise<RunControlAuditOutcome>;

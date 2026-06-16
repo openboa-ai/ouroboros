@@ -134,6 +134,7 @@ ouroboros arena tick
 ouroboros arena start
 ouroboros arena stop
 ouroboros candidate select <candidate-id>
+ouroboros candidate promote <candidate-id>
 ouroboros candidate paper start <candidate-id>
 ouroboros trading-run observe <trading-run-id>
 ouroboros trading-run stop <trading-run-id>

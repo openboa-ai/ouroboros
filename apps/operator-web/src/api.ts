@@ -157,6 +157,14 @@ export async function runPaperEvidenceForCandidate(candidateId: string): Promise
   return body.operator;
 }
 
+export async function promoteCandidateToTrading(candidateId: string): Promise<OperatorReadModel> {
+  const body = await submitOuroborosCommand({
+    command_kind: "trading_candidate.promote",
+    payload: { candidate_id: candidateId }
+  });
+  return body.operator;
+}
+
 export async function setupAgentProvider(provider: AgentProfileProviderKind): Promise<OperatorReadModel> {
   const body = await submitOuroborosCommand({
     command_kind: "agent_provider.setup",

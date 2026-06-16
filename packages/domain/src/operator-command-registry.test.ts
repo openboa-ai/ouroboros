@@ -19,6 +19,12 @@ describe("Ouroboros command registry", () => {
       requires_candidate_id: true,
       authority_status: "not_live"
     });
+    expect(getOuroborosCommandDescriptor("trading_candidate.promote")).toMatchObject({
+      command_kind: "trading_candidate.promote",
+      group: "trading_candidate",
+      requires_candidate_id: true,
+      authority_status: "not_live"
+    });
   });
 
   it("validates command kinds through the shared registry", () => {
@@ -33,6 +39,7 @@ describe("Ouroboros command registry", () => {
       "arena.stop",
       "arena.tick",
       "candidate.select",
+      "trading_candidate.promote",
       "trading_run.start",
       "trading_run.observe",
       "trading_run.stop",

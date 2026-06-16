@@ -225,6 +225,17 @@ export function parseOuroborosCliArgs(args: string[]): OuroborosCliMode {
       }
     };
   }
+  if (domain === "candidate" && action === "promote" && subject && extra === undefined) {
+    return {
+      mode: "command",
+      request: {
+        command_kind: "trading_candidate.promote",
+        payload: {
+          candidate_id: subject
+        }
+      }
+    };
+  }
   if (domain === "candidate" && action === "evidence" && subject === "run" && extra) {
     return {
       mode: "command",
@@ -396,6 +407,9 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       ? `Leader: #${leader.rank} ${leader.display_name} ${formatUsdt(leader.profit_loss.net_revenue_usdt)} (${formatPercent(leader.profit_loss.net_return_pct)})`
       : "Leader: none",
     `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
+    operator.trading_promotion
+      ? `Trading promotion: ${operator.trading_promotion.status} / ${operator.trading_promotion.readiness_status} / ${operator.trading_promotion.display_name ?? operator.trading_promotion.candidate_id ?? "none"}`
+      : "Trading promotion: not projected",
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
     `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
     paperLeader
@@ -593,6 +607,7 @@ function usage(): string {
     "  ouroboros status [--json]",
     "  ouroboros arena status|start|stop|tick",
     "  ouroboros candidate select <candidate-id>",
+    "  ouroboros candidate promote <candidate-id>",
     "  ouroboros candidate paper start <candidate-id>",
     "  ouroboros candidate evidence run <candidate-id>",
     "  ouroboros trading-run observe|stop <trading-run-id>",

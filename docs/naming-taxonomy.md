@@ -17,6 +17,7 @@ that pack every axis into one identifier.
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
+| `TradingPromotion` | Paper-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
 | `TradingSystemDecision` | `OrderRequest`, `hold`, or no-action signal emitted by a selected TradingSystem according to its own decision cadence. |
 | `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
@@ -68,6 +69,8 @@ standard term fits. Record that decision in repo docs and tests.
   events; they consume newly emitted TradingSystemDecision records when present and otherwise record
   no-order continuity.
 - Do not reuse old sandbox output as a fresh paper decision.
+- Do not confuse TradingPromotion with live promotion. TradingPromotion only selects a paper-backed
+  Trading review candidate while live/private authority remains disabled.
 - Do not attach Binance directly to TradingSystem. Public market data goes through Gateway
   `MarketDataPort`; private/live Binance authority remains outside the product loop.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.

@@ -18,6 +18,7 @@ export type OperatorTuiAction =
   | "select_previous"
   | "select_next"
   | "select_current"
+  | "promote_trading_candidate"
   | "start_paper_trading"
   | "observe_paper_trading"
   | "stop_paper_trading"
@@ -165,7 +166,7 @@ export function OperatorTuiScreen(props: {
           {`Agent profile: ${selectedProfile?.label ?? "unknown"} / ${selectedProfile?.status ?? "missing"}`}
         </Text>
         <Text>{`Authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
-        <Text dimColor>Keys: r refresh, t tick, s arena, up/down move, enter select, e paper start, o observe, x stop, p provider, a setup, l login, v probe, q quit</Text>
+        <Text dimColor>Keys: r refresh, t tick, s arena, up/down move, enter select, m promote, e paper start, o observe, x stop, p provider, a setup, l login, v probe, q quit</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Leaderboard</Text>
@@ -185,6 +186,9 @@ export function OperatorTuiScreen(props: {
       <Box flexDirection="column">
         <Text bold>Selected Candidate</Text>
         <Text>{selectedCandidateId ?? "none"}</Text>
+        <Text>
+          {`Trading promotion: ${props.operator.trading_promotion?.status ?? "not_promoted"} / ${props.operator.trading_promotion?.readiness_status ?? "paper_required"}`}
+        </Text>
         <Text>{`PaperTradingEvaluation: ${paperEvaluation.status}`}</Text>
         <Text>
           {`Runner: ${formatPaperRunner(paperEvaluation)}`}
@@ -359,6 +363,9 @@ export function operatorTuiActionForInput(
   if (input === "e") {
     return "start_paper_trading";
   }
+  if (input === "m") {
+    return "promote_trading_candidate";
+  }
   if (input === "o") {
     return "observe_paper_trading";
   }
@@ -415,6 +422,13 @@ export function operatorTuiCommandForAction(
       ?? operator?.candidate_arena.leaderboard[cursor]?.candidate_id;
     return candidateId
       ? { command_kind: "trading_run.start", payload: { candidate_id: candidateId } }
+      : undefined;
+  }
+  if (action === "promote_trading_candidate") {
+    const candidateId = operator?.selected_candidate_id
+      ?? operator?.candidate_arena.leaderboard[cursor]?.candidate_id;
+    return candidateId
+      ? { command_kind: "trading_candidate.promote", payload: { candidate_id: candidateId } }
       : undefined;
   }
   if (action === "observe_paper_trading") {

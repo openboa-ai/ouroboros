@@ -52,6 +52,7 @@ import {
   fetchOperatorReadModel,
   runCandidateArenaCommand,
   runPaperEvidenceForCandidate,
+  promoteCandidateToTrading,
   probeAgentProvider,
   selectCandidateForOperator,
   selectResearcherProvider,
@@ -316,6 +317,7 @@ describe("operator command API", () => {
     await runCandidateArenaCommand("stop");
     await runCandidateArenaCommand("tick");
     await selectCandidateForOperator("candidate-profitable");
+    await promoteCandidateToTrading("candidate-profitable");
     await startTradingRun(arenaSelectedCandidate());
     await observeTradingRun(arenaSelectedCandidate());
     await stopTradingRun(arenaSelectedCandidate());
@@ -331,6 +333,7 @@ describe("operator command API", () => {
       "arena.stop",
       "arena.tick",
       "candidate.select",
+      "trading_candidate.promote",
       "trading_run.start",
       "trading_run.observe",
       "trading_run.stop",
@@ -345,7 +348,7 @@ describe("operator command API", () => {
       init: undefined
     });
     expect(calls.slice(1).map((call) => call.url)).toEqual(Array.from(
-      { length: 13 },
+      { length: 14 },
       () => "http://127.0.0.1:4173/api/commands"
     ));
     expect(calls.slice(1).map((call) => JSON.parse(String(call.init?.body)))).toEqual([
@@ -355,6 +358,10 @@ describe("operator command API", () => {
       { command_kind: "arena.tick" },
       {
         command_kind: "candidate.select",
+        payload: { candidate_id: "candidate-profitable" }
+      },
+      {
+        command_kind: "trading_candidate.promote",
         payload: { candidate_id: "candidate-profitable" }
       },
       {
@@ -1852,6 +1859,12 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).not.toContain("Run next cycle");
     expect(tradingHtml).not.toContain("Research iterations");
     expect(tradingHtml).toContain("Trading cockpit");
+    expect(tradingHtml).toContain("Trading promotion boundary");
+    expect(tradingHtml).toContain("Trading review candidate");
+    expect(tradingHtml).toContain("not_promoted");
+    expect(tradingHtml).toContain("paper_required");
+    expect(tradingHtml).toContain("Move to Trading review");
+    expect(tradingHtml).toContain("mlp_paper_only");
     expect(tradingHtml).toContain("BTCUSDT futures chart");
     expect(tradingHtml).toContain("My assets");
     expect(tradingHtml).toContain("Today P&amp;L");
