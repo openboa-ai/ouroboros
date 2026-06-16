@@ -225,6 +225,7 @@ describe("sandbox API", () => {
 
     try {
       expect(started.instance.lifecycle_status).toBe("running");
+      await sleep(30);
       const restartedAdapter = new DeterministicSandboxAdapter({ commandTimeoutMs: 5_000 });
       const stopped = await restartedAdapter.stopArtifactInstance(started.instance);
       expect(stopped.lifecycle_status).toBe("stopped");
