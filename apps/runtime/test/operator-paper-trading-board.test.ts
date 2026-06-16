@@ -242,8 +242,13 @@ describe("operator paper trading board", () => {
       candidate_id: candidate.candidate_id
     });
     const operator = await service.readOperator();
+    const promotionRecord = await store.getLatestTradingPromotion();
 
     expect(result.summary).toBe(`Promoted ${candidate.candidate_id} to Trading review.`);
+    expect(promotionRecord?.candidate_ref).toEqual({
+      record_kind: "trading_system_candidate",
+      id: candidate.candidate_id
+    });
     expect(operator.selected_candidate_id).toBe(candidate.candidate_id);
     expect(operator.trading_promotion).toMatchObject({
       status: "promoted_for_trading_review",

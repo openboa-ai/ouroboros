@@ -243,7 +243,7 @@ export class OperatorService {
           version: 1,
           trading_promotion_id: "active-trading-promotion",
           status: "promoted_for_trading_review",
-          candidate_ref: ref("candidate", candidate.candidate_id),
+          candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
           candidate_version_ref: ref("candidate_version", candidate.active_version_id),
           paper_trading_evaluation_ref: ref(
             "paper_trading_evaluation",
