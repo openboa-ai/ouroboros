@@ -1745,6 +1745,7 @@ function TradingPromotionBoundaryCard({
     ?? activePromotion?.paper_qualification_reasons
     ?? paperBoardEntry?.qualification_reasons
     ?? [];
+  const selectedPromotionQualificationStatus = paperBoardEntry?.qualification_status;
   const paperEvidenceWindow = tradingReview?.paper_evidence_window ??
     activePromotion?.paper_evidence_window ??
     paperBoardEntry?.evidence_window;
@@ -1755,13 +1756,15 @@ function TradingPromotionBoundaryCard({
   const reviewMismatch = tradingReview?.status === "promoted_for_trading_review" &&
     !tradingReview.selected_matches_trading_review;
   const nextAction = reviewMismatch
-    ? "Open the active Trading review candidate before running Trading controls."
+    ? selectedPromotionQualificationStatus === "qualified"
+      ? "Move the selected qualified Arena candidate into Trading review, or open the active target before Trading controls."
+      : "Open the active Trading review candidate before running Trading controls."
     : tradingReview?.next_action
     ?? activePromotion?.next_action
     ?? (paperQualificationStatus
       ? tradingPromotionNextActionLabel(paperQualificationStatus)
       : "Start paper trading in Arena, then promote the selected candidate.");
-  const promotionReady = paperQualificationStatus === "qualified";
+  const promotionReady = selectedPromotionQualificationStatus === "qualified";
   return (
     <Card aria-label="Trading promotion boundary">
       <CardHeader>
@@ -1831,9 +1834,9 @@ function TradingPromotionBoundaryCard({
             type="button"
             variant="secondary"
             onClick={onPromoteTradingCandidate}
-            disabled={!onPromoteTradingCandidate || runningTradingPromotion || reviewMismatch || !hasPaperEvaluation || !promotionReady}
+            disabled={!onPromoteTradingCandidate || runningTradingPromotion || !hasPaperEvaluation || !promotionReady}
           >
-            {runningTradingPromotion ? "Moving" : "Move to Trading review"}
+            {runningTradingPromotion ? "Moving" : reviewMismatch ? "Replace Trading review target" : "Move to Trading review"}
           </Button>
         </div>
       </CardContent>

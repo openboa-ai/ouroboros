@@ -2198,6 +2198,7 @@ describe("CandidateDetail", () => {
     expect(promotionSection).toContain("runner_inactive_for_running_evaluation");
     expect(promotionSection).toContain("needs_resume");
     expect(promotionSection).toContain("Open Trading review candidate");
+    expect(promotionSection).toContain("Replace Trading review target");
     expect(promotionSection).not.toContain("ready_to_promote");
   });
 
