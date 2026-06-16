@@ -1866,10 +1866,12 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("Move to Trading review");
     expect(tradingHtml).toContain("mlp_paper_only");
     expect(tradingHtml).toContain("BTCUSDT futures chart");
-    expect(tradingHtml).toContain("My assets");
-    expect(tradingHtml).toContain("Today P&amp;L");
-    expect(tradingHtml).toContain("Current position");
-    expect(tradingHtml).toContain("Risk status");
+    expect(tradingHtml).toContain("Paper equity");
+    expect(tradingHtml).toContain("Paper net revenue");
+    expect(tradingHtml).toContain("Paper position");
+    expect(tradingHtml).toContain("Promotion readiness");
+    expect(tradingHtml).toContain("Trading paper readback");
+    expect(tradingHtml).toContain("Selected-candidate evidence");
     expect(tradingHtml).toContain("Order / trade status");
     expect(tradingHtml).toContain("OrderRequest");
     expect(tradingHtml).toContain("GatewayResult");
@@ -1975,6 +1977,16 @@ describe("CandidateDetail", () => {
     expect(promotionSection).toContain("min_elapsed_ms_not_met");
     expect(promotionSection).toContain("Continue paper trading until the evidence window qualifies.");
     expect(promotionSection).toContain("disabled");
+    expect(html).toContain("Paper equity");
+    expect(html).toContain("10,004.95 USDT");
+    expect(html).toContain("fake paper account; available 10,003.65 USDT");
+    expect(html).toContain("Paper net revenue");
+    expect(html).toContain("4.952 USDT");
+    expect(html).toContain("Paper position");
+    expect(html).toContain("long 0.001");
+    expect(html).toContain("Selected-candidate evidence");
+    expect(html).toContain("filled 0.001 @ 60000");
+    expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh");
   });
 
   it("scopes Trading review qualification to the selected candidate when another promotion exists", () => {
