@@ -38,6 +38,7 @@ import type {
   SelectedPaperEvidenceReadModel,
   TradingSystemExecutionModeContractReadModel
 } from "@ouroboros/domain";
+import { buildTradingFirstViewportRecommendation, commandRemediation } from "@ouroboros/domain";
 import {
   fetchCandidate,
   fetchReplayRunComparison,
@@ -1313,7 +1314,7 @@ export function CandidateArenaPanel({
       <CardContent className="grid gap-4">
         <section className="grid gap-3 rounded-md bg-muted/20 p-3 md:grid-cols-[1fr_auto]" aria-label="Arena command bar">
           <div className="grid gap-1">
-            <strong className="text-sm">Runtime command bar</strong>
+            <strong className="text-sm">Arena command bar</strong>
             <span className="text-xs text-muted-foreground">
               {`Provider ${researcherProvider?.selected_provider ?? "unknown"} ${selectedAgentProfile?.status ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
             </span>
@@ -1332,17 +1333,17 @@ export function CandidateArenaPanel({
         </section>
         <div className="grid gap-2 md:grid-cols-3">
           <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
-            <span className="text-xs font-medium text-muted-foreground">Runner</span>
+            <span className="text-xs font-medium text-muted-foreground">Arena runner</span>
             <strong className="text-xl leading-tight">{arena.runner_status}</strong>
             <span className="text-xs text-muted-foreground">{arena.tick_count} ticks</span>
           </div>
           <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
-            <span className="text-xs font-medium text-muted-foreground">Net revenue</span>
+            <span className="text-xs font-medium text-muted-foreground">ResearchPreflight net</span>
             <strong className="text-xl leading-tight">{leader ? formatUsdt(leader.profit_loss.net_revenue_usdt) : "none"}</strong>
             <span className="text-xs text-muted-foreground">revenue - cost</span>
           </div>
           <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
-            <span className="text-xs font-medium text-muted-foreground">Net return</span>
+            <span className="text-xs font-medium text-muted-foreground">ResearchPreflight return</span>
             <strong className="text-xl leading-tight">{leader ? formatPercent(leader.profit_loss.net_return_pct) : "none"}</strong>
             <span className="text-xs text-muted-foreground">secondary rank signal</span>
           </div>
@@ -1367,17 +1368,19 @@ export function CandidateArenaPanel({
                   </div>
                   <dl className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                     <Field label="Paper net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
-                    <Field label="Return" value={formatPercent(entry.profit_loss.net_return_pct)} />
+                    <Field label="Paper return" value={formatPercent(entry.profit_loss.net_return_pct)} />
+                    <Field label="Trend" value={formatPaperBoardTrend(entry)} />
+                    <Field label="Blocker density" value={formatPaperBoardBlockerDensity(entry)} />
                     <Field label="Qualification" value={entry.qualification_status} />
                     <Field label="Evidence window" value={`${entry.evidence_window.observation_count} obs / ${entry.evidence_window.failed_observation_count} failed / ${entry.evidence_window.elapsed_ms}ms`} />
                     <Field
-                      label="Reasons"
+                      label="Qualification reasons"
                       value={entry.qualification_reasons.length ? entry.qualification_reasons.join(", ") : "qualified"}
                     />
-                    <Field label="Gate" value={entry.promotion_gate_status} />
-                    <Field label="Runner" value={entry.runner_status} />
-                    <Field label="Observations" value={String(entry.observation_count)} />
-                    <Field label="Market" value={`${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`} />
+                    <Field label="Promotion gate" value={entry.promotion_gate_status} />
+                    <Field label="Paper runner" value={entry.runner_status} />
+                    <Field label="Paper observations" value={String(entry.observation_count)} />
+                    <Field label="Market provenance" value={`${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`} />
                     <Field label="Fill quality" value={`${entry.latest_fill_status ?? "none"} / open ${entry.open_order_count}`} />
                   </dl>
                 </div>
@@ -1392,8 +1395,8 @@ export function CandidateArenaPanel({
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
         <section className="grid content-start gap-2" aria-label="Candidate Arena leaderboard">
           <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
-            <h3 className="text-sm font-medium">Revenue-cost leaderboard</h3>
-            <span className="text-xs text-muted-foreground">primary rank: net_revenue_usdt</span>
+            <h3 className="text-sm font-medium">ResearchPreflight leaderboard</h3>
+            <span className="text-xs text-muted-foreground">research rank: net_revenue_usdt</span>
           </div>
           <div className="grid gap-2 lg:hidden">
             {arena.leaderboard.map((entry) => (
@@ -1414,8 +1417,8 @@ export function CandidateArenaPanel({
                   </Badge>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Net revenue" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
-                  <Field label="Net return" value={formatPercent(entry.profit_loss.net_return_pct)} />
+                  <Field label="ResearchPreflight net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
+                  <Field label="ResearchPreflight return" value={formatPercent(entry.profit_loss.net_return_pct)} />
                   <Field label="Direction" value={entry.direction_kind} />
                   <Field label="Parent" value={entry.parent_candidate_id ?? "none"} />
                 </div>
@@ -1428,7 +1431,7 @@ export function CandidateArenaPanel({
               <span>Rank</span>
               <span>Candidate</span>
               <span>Direction</span>
-              <span>Net revenue</span>
+              <span>ResearchPreflight net</span>
             </div>
             {arena.leaderboard.map((entry) => (
               <button
@@ -1508,20 +1511,20 @@ export function CandidateArenaPanel({
             <dl className="grid gap-2 sm:grid-cols-2">
               <Field label="Direction" value={selectedDirection} />
               <Field label="Parent" value={selectedParent ?? "none"} />
-              <Field label="SystemCode" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
+              <Field label="System Code" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
               <Field
-                label="Evaluation"
+                label="ResearchPreflight"
                 value={selectedLineage?.evidence
                   ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
                   : selectedStatus}
               />
               <Field
-                label="profit_loss"
+                label="Research leaderboard"
                 value={selectedProfitLoss
                   ? `${formatUsdt(selectedProfitLoss.net_revenue_usdt)} / ${formatPercent(selectedProfitLoss.net_return_pct)}`
                   : "not ranked"}
               />
-              <Field label="PaperTradingEvaluation" value={selectedPaperEvaluationStatus} />
+              <Field label="Paper Trading Evaluation" value={selectedPaperEvaluationStatus} />
               <Field
                 label="Paper runner"
                 value={selectedPaperTradingEvaluation
@@ -1535,28 +1538,22 @@ export function CandidateArenaPanel({
                   : "not started"}
               />
               <Field
-                label="Market snapshot"
-                value={selectedPaperMarketSnapshot
-                  ? `${selectedPaperMarketSnapshot.symbol} ${formatUsdt(selectedPaperMarketSnapshot.price)} @ ${formatCompactDateTime(selectedPaperMarketSnapshot.observed_at)}`
-                  : "not observed"}
+                label="Paper market snapshot"
+                value={formatPaperMarketSnapshotSummary(selectedPaperMarketSnapshot)}
               />
               <Field
-                label="Market data"
-                value={selectedPaperTradingEvaluation
-                  ? `${selectedPaperTradingEvaluation.market_data_source}${selectedPaperMarketSnapshot?.source_priority ? ` / ${selectedPaperMarketSnapshot.source_priority}` : ""}${selectedPaperMarketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}${selectedPaperMarketSnapshot?.ws_connected === true ? " / WS connected" : ""}${selectedPaperMarketSnapshot?.ws_connected === false ? " / WS disconnected" : ""}`
-                  : "not observed"}
+                label="Gateway market data"
+                value={formatGatewayMarketDataSummary(selectedPaperTradingEvaluation)}
               />
               <Field
-                label="Public execution"
+                label="Public execution evidence"
                 value={selectedPaperExecutionSnapshot
                   ? formatPublicExecutionEvidenceSummary(selectedPaperExecutionSnapshot)
                   : "not observed"}
               />
               <Field
-                label="Order book"
-                value={selectedPaperExecutionSnapshot?.order_book
-                  ? `${selectedPaperExecutionSnapshot.order_book.sync_status} / update ${selectedPaperExecutionSnapshot.order_book.last_update_id ?? "unknown"}${selectedPaperExecutionSnapshot.order_book.gap_detected ? " / gap recovered" : ""}`
-                  : "not observed"}
+                label="Public order book evidence"
+                value={formatPublicOrderBookEvidenceSummary(selectedPaperExecutionSnapshot)}
               />
               <Field
                 label="Paper decision"
@@ -1574,19 +1571,19 @@ export function CandidateArenaPanel({
                   ? formatPaperFillSummary(selectedPaperFill)
                   : "none"}
               />
-              {selectedPaperTradingEvaluation?.latest_failure_reason && (
-                <Field label="Paper failure" value={selectedPaperTradingEvaluation.latest_failure_reason} />
+              {(selectedPaperTradingEvaluation?.latest_failure || selectedPaperTradingEvaluation?.latest_failure_reason) && (
+                <Field label="Paper failure" value={formatPaperFailure(selectedPaperTradingEvaluation)} />
               )}
               <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
-              <Field label="TradingRun" value={selectedTradingRunStatus} />
+              <Field label="Trading Run" value={selectedTradingRunStatus} />
               <Field label="Latest finding" value={selectedFinding} />
               <Field
-                label="Lineage"
+                label="Candidate lineage"
                 value={selectedLineage?.source
                   ? `${selectedLineage.source.trading_system_id} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`
                   : `${selectedParent ?? "none"} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`}
               />
-              <Field label="Authority" value={selectedAuthority} />
+              <Field label="Selected candidate authority" value={selectedAuthority} />
               {selectedLedgerSummary?.latest_order_request && (
                 <Field
                   label="OrderRequest"
@@ -1672,26 +1669,41 @@ export function CandidateArenaPanel({
         <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Command log">
           <h3 className="text-sm font-medium">Command log</h3>
           {latestCommands.length
-            ? latestCommands.slice(0, 5).map((command) => (
-                <Field
-                  key={command.command_id}
-                  label={command.command_kind}
-                  value={command.status}
-                />
-              ))
+            ? latestCommands.slice(0, 5).map((command) => {
+                const remediation = commandRemediation(command);
+                return (
+                  <div key={command.command_id} className="grid gap-2 rounded-md bg-background/35 p-2">
+                    <Field
+                      label={command.command_kind}
+                      value={command.error ? `${command.status} / ${command.error}` : command.status}
+                    />
+                    {remediation && (
+                      <>
+                        <Field label="Remediation group" value={remediation.group} />
+                        <Field label="Visible surface" value={remediation.surface} />
+                        <Field label="Remediation next step" value={remediation.remediation} />
+                        <Field label="Command authority" value={remediation.authority_status} />
+                      </>
+                    )}
+                  </div>
+                );
+              })
             : <p className="text-sm text-muted-foreground">No commands recorded.</p>}
         </section>
         <section className="grid gap-2" aria-label="Candidate Arena latest ticks">
           <h3 className="text-sm font-medium">Latest ticks</h3>
           {latestTick ? (
-            <div className="grid gap-2 rounded-md bg-muted/25 p-3 text-sm md:grid-cols-[1fr_1fr_2fr]">
+            <div className="grid gap-2 rounded-md bg-muted/25 p-3 text-sm md:grid-cols-[1fr_1fr_1fr]">
               <Field label="Tick" value={latestTick.tick_id} />
               <Field label="Status" value={latestTick.status} />
+              <Field label="Generated" value={formatCandidateArenaTickGenerated(latestTick)} />
               <Field
-                label="Researchers"
-                value={latestTick.direction_results.map((result) =>
-                  `${result.direction_kind}:${result.status}`
-                ).join(", ")}
+                label="Directions"
+                value={formatCandidateArenaTickDirections(latestTick)}
+              />
+              <Field
+                label="Efficiency"
+                value={formatCandidateArenaTickEfficiency(latestTick)}
               />
             </div>
           ) : (
@@ -1815,9 +1827,9 @@ function TradingPromotionBoundaryCard({
                 ? `${selectedPaperTradingEvaluation.observation_count} observations`
                 : "not started"}
           />
-          <Field label="Runner" value={runnerStatus ?? "not promoted"} />
-          <Field label="Next action" value={nextAction} />
-          <Field label="Authority" value={tradingReview?.live_disabled_reason ?? activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
+          <Field label="Paper runner" value={runnerStatus ?? "not promoted"} />
+          <Field label="Promotion next action" value={nextAction} />
+          <Field label="Review authority" value={tradingReview?.live_disabled_reason ?? activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
         </dl>
         <div className="flex flex-wrap gap-2 lg:justify-end">
           {reviewMismatch && activeReviewCandidateId && (
@@ -1931,6 +1943,161 @@ function formatSelectedTradingRunStatus(
     ?? "recorded";
 }
 
+function formatTradingReviewRunnerSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.runner.runner_status ?? (packet.runner.runner_active ? "active" : "unknown"),
+    packet.runner.trading_run_status ? `run ${packet.runner.trading_run_status}` : undefined,
+    packet.runner.last_observed_at ? `last ${formatCompactDateTime(packet.runner.last_observed_at)}` : undefined,
+    packet.runner.next_observation_at ? `next ${formatCompactDateTime(packet.runner.next_observation_at)}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewSubjectSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.subject.display_name ?? packet.subject.candidate_id ?? "no Trading review target",
+    packet.subject.promoted_at ? `promoted ${formatCompactDateTime(packet.subject.promoted_at)}` : undefined,
+    `selected ${packet.subject.selected_matches_trading_review ? "matches" : "differs"}`
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewEvidenceWindowSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const window = packet.evidence_quality.evidence_window;
+  if (!window) {
+    return "paper required";
+  }
+  return [
+    `${window.observation_count} obs`,
+    `${window.failed_observation_count} failed`,
+    `${window.elapsed_ms}ms`,
+    window.first_observed_at ? `first ${formatCompactDateTime(window.first_observed_at)}` : undefined,
+    window.last_observed_at ? `last ${formatCompactDateTime(window.last_observed_at)}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLedgerSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.ledger.evidence_status,
+    packet.ledger.ledger_chain_complete ? "chain complete" : "chain incomplete",
+    packet.ledger.latest_order_request_id ? `order ${packet.ledger.latest_order_request_id}` : undefined,
+    packet.ledger.latest_gateway_outcome ? `gateway ${packet.ledger.latest_gateway_outcome}` : undefined,
+    packet.ledger.latest_execution_status ? `execution ${packet.ledger.latest_execution_status}` : undefined,
+    packet.ledger.latest_decision_kind ? `decision ${packet.ledger.latest_decision_kind}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewAuthoritySummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const noAuthority = packet.authority.no_authority;
+  return [
+    packet.authority.authority_status,
+    packet.authority.live_disabled_reason,
+    `live_exchange=${String(noAuthority.live_exchange_authority)}, private_read=${String(noAuthority.private_read_authority)}, order_submission=${String(noAuthority.order_submission_authority)}, credentials=${String(noAuthority.credentials)}`
+  ].join(" / ");
+}
+
+function formatTradingReviewBlockerSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  if (packet.evidence_quality.blocker_groups.length === 0) {
+    return "none";
+  }
+  return packet.evidence_quality.blocker_groups
+    .map((group) => [
+      group.group_kind,
+      group.severity,
+      group.blockers.join(", "),
+      group.summary,
+      `next ${group.next_action}`
+    ].join(" / "))
+    .join("; ");
+}
+
+function formatTradingReviewRiskSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.risk.account ? `equity ${packet.risk.account.equity_usdt} USDT` : "account missing",
+    packet.risk.account ? `available ${packet.risk.account.available_balance_usdt} USDT` : undefined,
+    packet.risk.position
+      ? `position ${packet.risk.position.side} ${packet.risk.position.quantity} ${packet.risk.position.symbol} notional ${packet.risk.position.notional_usdt}`
+      : "position missing",
+    `open ${packet.risk.open_order_count}`,
+    `fill ${packet.risk.latest_fill_status ?? "none"}`,
+    packet.risk.latest_failure || packet.risk.latest_failure_reason
+      ? `failure ${formatPaperFailure(packet.risk)}`
+      : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLineageSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.lineage.lineage_status,
+    packet.lineage.direction_kind,
+    packet.lineage.parent_candidate_id ? `parent ${packet.lineage.parent_candidate_id}` : undefined,
+    packet.lineage.latest_finding,
+    packet.lineage.evaluation_status ? `evaluation ${packet.lineage.evaluation_status}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLineageLearningSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const learning = packet.lineage.paper_board_learning;
+  if (!learning) {
+    return "none";
+  }
+  return [
+    learning.rank ? `rank #${learning.rank}` : "unranked",
+    learning.qualification_status,
+    `${learning.net_revenue_usdt} net USDT`,
+    `${learning.observation_count} obs`,
+    learning.top_blocker ? `top ${learning.top_blocker}` : undefined,
+    `next ${learning.next_research_focus}`
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewProvenanceSummary(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const orderBook = packet.provenance.order_book;
+  return [
+    packet.provenance.market_data_source ?? "no market",
+    packet.provenance.latest_public_execution_source ?? "no public execution",
+    packet.provenance.latest_public_execution_freshness,
+    packet.provenance.latest_public_execution_ws_connected === true ? "WS connected" : undefined,
+    packet.provenance.latest_public_execution_ws_connected === false ? "WS disconnected" : undefined,
+    packet.provenance.latest_public_execution_rest_fallback_used ? "REST fallback" : undefined,
+    packet.provenance.latest_public_execution_stream_marker
+      ? `marker ${packet.provenance.latest_public_execution_stream_marker}`
+      : undefined,
+    `fill ${packet.provenance.latest_fill_status ?? "none"}`,
+    orderBook ? formatTradingReviewOrderBookSummary(orderBook) : "order book missing"
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewOrderBookSummary(
+  orderBook: NonNullable<OperatorReadModel["trading_review"]["review_packet"]["provenance"]["order_book"]>
+): string {
+  return [
+    `order book ${orderBook.sync_status}`,
+    orderBook.last_update_id ? `update ${orderBook.last_update_id}` : undefined,
+    orderBook.previous_final_update_id ? `prev ${orderBook.previous_final_update_id}` : undefined,
+    orderBook.depth_level_count !== undefined ? `depth ${orderBook.depth_level_count}` : undefined,
+    orderBook.gap_detected ? "gap recovered" : undefined
+  ].filter(Boolean).join(" ");
+}
+
 function formatLedgerOrderRequestSummary(ledger: LedgerReadModel): string {
   const orderRequest = ledger.latest_order_request;
   if (!orderRequest) {
@@ -1983,6 +2150,28 @@ function paperTradingRunnerStatus(evaluation: PaperTradingEvaluationReadModel): 
   return evaluation.status;
 }
 
+function formatPaperMarketSnapshotSummary(
+  snapshot?: PaperTradingEvaluationReadModel["latest_market_snapshot"]
+): string {
+  return snapshot
+    ? `${snapshot.symbol} ${formatUsdt(snapshot.price)} @ ${formatCompactDateTime(snapshot.observed_at)}`
+    : "not observed";
+}
+
+function formatGatewayMarketDataSummary(evaluation?: PaperTradingEvaluationReadModel): string {
+  if (!evaluation) {
+    return "not observed";
+  }
+  const snapshot = evaluation.latest_market_snapshot;
+  return [
+    evaluation.market_data_source,
+    snapshot?.source_priority,
+    snapshot?.rest_fallback_used ? "REST fallback" : undefined,
+    snapshot?.ws_connected === true ? "WS connected" : undefined,
+    snapshot?.ws_connected === false ? "WS disconnected" : undefined
+  ].filter(Boolean).join(" / ");
+}
+
 function formatPublicExecutionEvidenceSummary(
   snapshot: NonNullable<PaperTradingEvaluationReadModel["latest_public_execution_snapshot"]>
 ): string {
@@ -1998,6 +2187,15 @@ function formatPublicExecutionEvidenceSummary(
   ].filter(Boolean).join(" / ");
 }
 
+function formatPublicOrderBookEvidenceSummary(
+  snapshot?: PaperTradingEvaluationReadModel["latest_public_execution_snapshot"]
+): string {
+  const orderBook = snapshot?.order_book;
+  return orderBook
+    ? `${orderBook.sync_status} / update ${orderBook.last_update_id ?? "unknown"}${orderBook.gap_detected ? " / gap recovered" : ""}`
+    : "not observed";
+}
+
 function formatPaperFillSummary(
   fill: NonNullable<PaperTradingEvaluationReadModel["latest_fill"]>
 ): string {
@@ -2005,6 +2203,16 @@ function formatPaperFillSummary(
     `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
     fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
   ].filter(Boolean).join(" / ");
+}
+
+function formatPaperFailure(input: {
+  latest_failure?: PaperTradingEvaluationReadModel["latest_failure"];
+  latest_failure_reason?: string;
+}): string {
+  if (input.latest_failure) {
+    return `${input.latest_failure.failure_kind} / ${input.latest_failure.summary} / next ${input.latest_failure.next_action} / raw ${input.latest_failure.reason}`;
+  }
+  return input.latest_failure_reason ?? "none";
 }
 
 function FullCycleDeveloperControls({
@@ -2270,6 +2478,9 @@ export function CandidateDetail({
   const tradingPaperAccount = tradingPaperTradingEvaluationWithEvidence?.paper_account_snapshot;
   const tradingPaperPosition = tradingPaperAccount?.position;
   const tradingPaperFill = tradingPaperTradingEvaluationWithEvidence?.latest_fill;
+  const tradingPaperMarketSnapshot = tradingPaperTradingEvaluationWithEvidence?.latest_market_snapshot;
+  const tradingPaperExecutionSnapshot =
+    tradingPaperTradingEvaluationWithEvidence?.latest_public_execution_snapshot;
   const selectedIsTradingReviewCandidate = tradingReview?.selected_matches_trading_review ??
     tradingPromotion?.candidate_id === candidate.candidate_id;
   const tradingReviewMismatch = tradingReview?.status === "promoted_for_trading_review" &&
@@ -2281,6 +2492,7 @@ export function CandidateDetail({
   const tradingQualificationReasons = tradingReview?.paper_qualification_reasons
     ?? tradingPaperBoardEntry?.qualification_reasons
     ?? [];
+  const tradingReviewPacket = tradingReview?.review_packet;
   const visibleFullCycle = lastFullCycle?.next_trading_system.candidate_id === candidate.candidate_id
     ? lastFullCycle
     : undefined;
@@ -2321,7 +2533,7 @@ export function CandidateDetail({
     ? `${formatBalance(tradingPaperAccount.equity_usdt)} USDT`
     : "not started";
   const accountAssetDetail = tradingPaperAccount
-    ? `fake paper account; available ${formatBalance(tradingPaperAccount.available_balance_usdt)} USDT`
+    ? `paper risk account; available ${formatBalance(tradingPaperAccount.available_balance_usdt)} USDT`
     : "Paper account waits for Trading review paper evaluation.";
   const todayPnlValue = tradingPaperTradingEvaluationWithEvidence
     ? formatUsdt(tradingPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt)
@@ -2344,7 +2556,8 @@ export function CandidateDetail({
     ledger: tradingLedger,
     latestReplayRun: tradingCandidate.candidate_id === candidate.candidate_id ? latestReplayRun : undefined,
     orderFillSurface: tradingOrderFillSurface,
-    replayRunDetail: tradingCandidate.candidate_id === candidate.candidate_id ? replayRunDetail : undefined
+    replayRunDetail: tradingCandidate.candidate_id === candidate.candidate_id ? replayRunDetail : undefined,
+    tradingReviewPacket
   });
   const runtimeEnvironment = tradingGatewayEnvironment?.runtime_environment ?? "paper";
   const marketFreshness = publicMarketSurface?.freshness ?? "no market data";
@@ -2412,6 +2625,13 @@ export function CandidateDetail({
     (agent) => agent.agent === selectedTradingResearchAgent
   );
   const selectedResearchAgentBlocked = selectedResearchAgent?.readiness_status === "blocked_or_not_installed";
+  const paperBoardLearning = tradingReviewPacket?.lineage.paper_board_learning;
+  const findingClusters = operator?.candidate_arena.finding_clusters ?? candidateArena?.finding_clusters ?? [];
+  const tabStateBadges = operatorTabStateBadges(operator);
+  const tradingCommandRemediations = (operator?.latest_commands ?? []).flatMap((command) => {
+    const remediation = commandRemediation(command);
+    return remediation ? [{ command, remediation }] : [];
+  });
   return (
     <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
       <Tabs
@@ -2424,9 +2644,39 @@ export function CandidateDetail({
             <h2 className="font-heading text-3xl font-semibold tracking-tight">BTCUSDT operator cockpit</h2>
           </div>
           <TabsList>
-            <TabsTrigger value="trading">Trading</TabsTrigger>
-            <TabsTrigger value="arena">Arena</TabsTrigger>
-            <TabsTrigger value="research">Research</TabsTrigger>
+            <TabsTrigger value="trading">
+              <span>Trading</span>
+              {tabStateBadges.trading && (
+                <span
+                  aria-label="Trading tab state badge"
+                  className="rounded-sm bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
+                >
+                  {tabStateBadges.trading}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="arena">
+              <span>Arena</span>
+              {tabStateBadges.arena && (
+                <span
+                  aria-label="Arena tab state badge"
+                  className="rounded-sm bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
+                >
+                  {tabStateBadges.arena}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="research">
+              <span>Research</span>
+              {tabStateBadges.research && (
+                <span
+                  aria-label="Research tab state badge"
+                  className="rounded-sm bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
+                >
+                  {tabStateBadges.research}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
           </TabsList>
         </div>
@@ -2478,7 +2728,7 @@ export function CandidateDetail({
           <CardDescription>{workspaceLabel}</CardDescription>
           <CardTitle>Trading</CardTitle>
           <CardDescription>
-            Actual trading and realized-profit cockpit. Live exchange authority remains disabled in this MLP. {operatorDecision.detail}
+            Paper Trading review cockpit. Live exchange authority remains disabled in this MLP. {operatorDecision.detail}
           </CardDescription>
           <CardAction className="flex flex-wrap justify-end gap-2">
           <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
@@ -2504,7 +2754,7 @@ export function CandidateDetail({
               disabled={runningTradingRun || tradingReviewMismatch}
               variant="secondary"
             >
-              Observe
+              Observe paper
             </Button>
           )}
           {onStopTradingRun && (
@@ -2514,12 +2764,86 @@ export function CandidateDetail({
               disabled={runningTradingRun || tradingReviewMismatch || tradingCandidate.runtime.runtime_lifecycle_status === "stopped"}
               variant="outline"
             >
-              Stop
+              Stop paper
             </Button>
           )}
         </div>
         </CardContent>
       </Card>
+
+      {tradingReviewPacket && (
+        <Card aria-label="Trading review packet">
+          <CardHeader>
+            <CardDescription>Review packet</CardDescription>
+            <CardTitle>Trading review packet</CardTitle>
+            <CardDescription>
+              Structured evidence for the active Trading review target. This packet is read-only and keeps live authority disabled.
+            </CardDescription>
+            <CardAction>
+              <Badge variant={tradingReviewPacket.verdict.severity === "ready"
+                ? "default"
+                : tradingReviewPacket.verdict.severity === "blocked" ||
+                    tradingReviewPacket.verdict.severity === "failed" ||
+                    tradingReviewPacket.verdict.severity === "mismatch"
+                  ? "destructive"
+                  : "secondary"}
+              >
+                {tradingReviewPacket.verdict.severity}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <Field
+                label="Packet verdict"
+                value={`${tradingReviewPacket.verdict.severity} / ${tradingReviewPacket.verdict.top_blocker ?? "none"}`}
+              />
+              <Field
+                label="Subject"
+                value={formatTradingReviewSubjectSummary(tradingReviewPacket)}
+              />
+              <Field
+                label="Paper rank"
+                value={tradingReviewPacket.performance.rank
+                  ? `#${tradingReviewPacket.performance.rank} / ${formatUsdt(tradingReviewPacket.performance.profit_loss?.net_revenue_usdt ?? 0)}`
+                  : tradingReviewPacket.performance.profit_loss
+                    ? formatUsdt(tradingReviewPacket.performance.profit_loss.net_revenue_usdt)
+                    : "not ranked"}
+              />
+              <Field
+                label="Blocker groups"
+                value={tradingReviewPacket.evidence_quality.blocker_groups.length
+                  ? tradingReviewPacket.evidence_quality.blocker_groups.map((group) => group.group_kind).join(", ")
+                  : "none"}
+              />
+              <Field label="Blocker detail" value={formatTradingReviewBlockerSummary(tradingReviewPacket)} />
+              <Field
+                label="Evidence window"
+                value={formatTradingReviewEvidenceWindowSummary(tradingReviewPacket)}
+              />
+              <Field label="Runner health" value={formatTradingReviewRunnerSummary(tradingReviewPacket)} />
+              <Field label="Ledger" value={formatTradingReviewLedgerSummary(tradingReviewPacket)} />
+              <Field label="Lineage" value={formatTradingReviewLineageSummary(tradingReviewPacket)} />
+              {tradingReviewPacket.lineage.paper_board_learning && (
+                <Field label="Lineage learning" value={formatTradingReviewLineageLearningSummary(tradingReviewPacket)} />
+              )}
+              <Field label="Packet next action" value={tradingReviewPacket.next_action} />
+              <Field
+                label="Packet authority"
+                value={formatTradingReviewAuthoritySummary(tradingReviewPacket)}
+              />
+              <Field
+                label="Provenance"
+                value={formatTradingReviewProvenanceSummary(tradingReviewPacket)}
+              />
+              <Field
+                label="Risk"
+                value={formatTradingReviewRiskSummary(tradingReviewPacket)}
+              />
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       <TradingPromotionBoundaryCard
         promotion={tradingPromotion}
@@ -2533,13 +2857,29 @@ export function CandidateDetail({
         runningTradingPromotion={runningTradingPromotion}
       />
 
-      {(tradingRunMessage || tradingRunError || tradingPromotionMessage || tradingPromotionError) && (
+      {(tradingRunMessage ||
+        tradingRunError ||
+        tradingPromotionMessage ||
+        tradingPromotionError ||
+        tradingCommandRemediations.length > 0) && (
         <Card aria-label="Operator messages">
           <CardContent className="grid gap-2">
             {tradingRunMessage && <p className="text-sm text-muted-foreground">{tradingRunMessage}</p>}
             {tradingRunError && <p className="text-sm text-destructive">{tradingRunError}</p>}
             {tradingPromotionMessage && <p className="text-sm text-muted-foreground">{tradingPromotionMessage}</p>}
             {tradingPromotionError && <p className="text-sm text-destructive">{tradingPromotionError}</p>}
+            {tradingCommandRemediations.map(({ command, remediation }) => (
+              <div key={command.command_id} className="grid gap-1 rounded-md bg-muted/25 p-2 text-sm">
+                <Field
+                  label={command.command_kind}
+                  value={command.error ? `${command.status} / ${command.error}` : command.status}
+                />
+                <Field label="Remediation group" value={remediation.group} />
+                <Field label="Visible surface" value={remediation.surface} />
+                <Field label="Remediation next step" value={remediation.remediation} />
+                <Field label="Command authority" value={remediation.authority_status} />
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
@@ -2555,17 +2895,17 @@ export function CandidateDetail({
         </CardContent>
       </Card>
 
-      <Card aria-label="Trading cockpit">
-        <CardHeader>
-          <CardTitle>Trading cockpit</CardTitle>
-          <CardDescription>{tradingCandidate.display_name}</CardDescription>
-          <CardAction>
+      <section className="grid gap-4" aria-label="Trading cockpit">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="grid gap-1">
+            <h3 className="font-heading text-base font-medium leading-snug">Trading cockpit</h3>
+            <p className="text-sm text-muted-foreground">{tradingCandidate.display_name}</p>
+          </div>
           <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
             {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
           </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="grid gap-4">
+        </div>
+        <div className="grid gap-4">
 
         <Card aria-label="BTCUSDT futures chart">
           <CardHeader>
@@ -2592,13 +2932,13 @@ export function CandidateDetail({
 
         <section className="grid gap-3 md:grid-cols-4" aria-label="Paper trading review summary">
           <OperatorMetricCard
-            label="Paper equity"
+            label="Paper risk equity"
             value={accountAssetValue}
             detail={accountAssetDetail}
             tone={tradingPaperAccount ? "good" : "warning"}
           />
           <OperatorMetricCard
-            label="Paper net revenue"
+            label="Paper score"
             value={todayPnlValue}
             detail={todayPnlDetail}
             tone={tradingPaperTradingEvaluationWithEvidence
@@ -2606,13 +2946,13 @@ export function CandidateDetail({
               : "warning"}
           />
           <OperatorMetricCard
-            label="Paper position"
+            label="Paper risk position"
             value={positionValue}
             detail={positionDetail}
             tone={tradingPaperPosition ? "good" : "neutral"}
           />
           <OperatorMetricCard
-            label="Promotion readiness"
+            label="Review readiness"
             value={tradingReadinessStatus ?? "paper_required"}
             detail={readinessDetail}
             tone={paperQualificationTone(tradingQualificationStatus)}
@@ -2632,29 +2972,55 @@ export function CandidateDetail({
           <CardContent>
             <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <Field
-                label="Paper evaluation"
+                label="Paper Trading Evaluation"
                 value={tradingPaperTradingEvaluationWithEvidence
                   ? `${tradingPaperTradingEvaluationWithEvidence.status} / ${tradingPaperTradingEvaluationWithEvidence.observation_count} observations`
                   : "not started"}
               />
               <Field
-                label="Runner"
+                label="Paper runner"
                 value={tradingPaperTradingEvaluationWithEvidence
                   ? paperTradingRunnerStatus(tradingPaperTradingEvaluationWithEvidence)
                   : tradingPaperBoardEntry?.runner_status ?? "not started"}
               />
               <Field
-                label="Latest fill"
+                label="Paper market snapshot"
+                value={formatPaperMarketSnapshotSummary(tradingPaperMarketSnapshot)}
+              />
+              <Field
+                label="Gateway market data"
+                value={formatGatewayMarketDataSummary(tradingPaperTradingEvaluationWithEvidence)}
+              />
+              <Field
+                label="Paper fill"
                 value={tradingPaperFill
                   ? formatPaperFillSummary(tradingPaperFill)
                   : tradingPaperBoardEntry?.latest_fill_status ?? "none"}
               />
               <Field
-                label="Market source"
-                value={tradingPaperTradingEvaluationWithEvidence?.latest_public_execution_snapshot
-                  ? formatPublicExecutionEvidenceSummary(tradingPaperTradingEvaluationWithEvidence.latest_public_execution_snapshot)
+                label="Public execution evidence"
+                value={tradingPaperExecutionSnapshot
+                  ? formatPublicExecutionEvidenceSummary(tradingPaperExecutionSnapshot)
                   : tradingPaperBoardEntry?.latest_public_execution_source ?? "not connected"}
               />
+              <Field
+                label="Public order book evidence"
+                value={formatPublicOrderBookEvidenceSummary(tradingPaperExecutionSnapshot)}
+              />
+              {(tradingPaperTradingEvaluationWithEvidence?.latest_failure ||
+                tradingPaperTradingEvaluationWithEvidence?.latest_failure_reason ||
+                tradingPaperBoardEntry?.latest_failure ||
+                tradingPaperBoardEntry?.latest_failure_reason) && (
+                <Field
+                  label="Paper failure"
+                  value={formatPaperFailure({
+                    latest_failure: tradingPaperTradingEvaluationWithEvidence?.latest_failure ??
+                      tradingPaperBoardEntry?.latest_failure,
+                    latest_failure_reason: tradingPaperTradingEvaluationWithEvidence?.latest_failure_reason ??
+                      tradingPaperBoardEntry?.latest_failure_reason
+                  })}
+                />
+              )}
             </dl>
           </CardContent>
         </Card>
@@ -2663,29 +3029,123 @@ export function CandidateDetail({
           ledgerStatus={tradingLedgerStatus}
           ledger={tradingLedger}
           orderFillSurface={tradingOrderFillSurface}
+          reviewLedger={tradingReviewPacket?.ledger}
         />
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
         </TabsContent>
 
         <TabsContent value="research" className="flex flex-col gap-4">
-      <Card aria-label="System performance">
+      {paperBoardLearning && (
+        <Card aria-label="Paper evidence learning">
+          <CardHeader>
+            <CardDescription>Paper evidence learning</CardDescription>
+            <CardTitle>Next research focus</CardTitle>
+            <CardDescription>
+              Paper-board evidence guides the next ResearchWorker without replacing qualification or promotion authority.
+            </CardDescription>
+            <CardAction>
+              <Badge variant="secondary">{paperBoardLearning.authority_status}</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <p className="text-sm text-muted-foreground">{paperBoardLearning.summary}</p>
+            <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <Field
+                label="Paper rank"
+                value={paperBoardLearning.rank ? `#${paperBoardLearning.rank}` : "unranked"}
+              />
+              <Field
+                label="Paper score"
+                value={`${formatUsdt(paperBoardLearning.net_revenue_usdt)} / ${formatPercent(paperBoardLearning.net_return_pct)}`}
+              />
+              <Field
+                label="Qualification"
+                value={paperBoardLearning.qualification_status ?? "not qualified"}
+              />
+              <Field
+                label="Top blocker"
+                value={paperBoardLearning.top_blocker ?? "none"}
+              />
+              <Field
+                label="Observations"
+                value={String(paperBoardLearning.observation_count)}
+              />
+              <Field
+                label="Next focus"
+                value={paperBoardLearning.next_research_focus}
+              />
+            </dl>
+          </CardContent>
+        </Card>
+      )}
+      {findingClusters.length > 0 && (
+        <Card aria-label="Finding clusters">
+          <CardHeader>
+            <CardDescription>Finding clusters</CardDescription>
+            <CardTitle>Research learning clusters</CardTitle>
+            <CardDescription>
+              CandidateArena findings grouped for next-generation research. These clusters are read-only and do not replace paper qualification or promotion authority.
+            </CardDescription>
+            <CardAction>
+              <Badge variant="secondary">not_promotion_authority</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {findingClusters.slice(0, 6).map((cluster) => (
+              <div
+                key={[
+                  cluster.direction_kind,
+                  cluster.top_blocker ?? "none",
+                  cluster.market_regime,
+                  cluster.protocol_failure_kind ?? "none"
+                ].join("|")}
+                className="grid gap-2 rounded-md bg-muted/25 p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <strong className="block break-words text-sm leading-snug">
+                      {`${cluster.direction_kind} / ${cluster.market_regime}`}
+                    </strong>
+                    <span className="text-xs text-muted-foreground">
+                      {`${cluster.candidate_count} ${cluster.candidate_count === 1 ? "candidate" : "candidates"} / ${cluster.authority_status}`}
+                    </span>
+                  </div>
+                  <Badge variant="secondary">{cluster.blocker_group_kind ?? "no blocker group"}</Badge>
+                </div>
+                <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <Field label="Top blocker" value={cluster.top_blocker ?? "none"} />
+                  <Field label="Protocol failure" value={cluster.protocol_failure_kind ?? "none"} />
+                  <Field label="Latest finding" value={cluster.latest_finding ?? "none"} />
+                  <Field label="Next focus" value={cluster.next_research_focus} />
+                  <Field label="ResearchWorker input" value="next-generation context only" />
+                  <Field
+                    label="Cluster boundary"
+                    value="no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion"
+                  />
+                </dl>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      <Card aria-label="Research signals">
         <CardHeader>
-          <CardTitle>System performance</CardTitle>
-          <CardDescription>Current system quality, risk posture, and the next action for the operator.</CardDescription>
+          <CardTitle>Research signals</CardTitle>
+          <CardDescription>Research-facing quality, risk posture, and packet signal for the next candidate cycle.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
         <Card size="sm" className={toneCardClass(operatorDecision.tone)}>
           <CardHeader>
-            <CardDescription>Operator decision</CardDescription>
+            <CardDescription>Trading review signal</CardDescription>
             <CardTitle>{operatorDecision.value}</CardTitle>
             <CardDescription>{operatorDecision.detail}</CardDescription>
           </CardHeader>
         </Card>
         <div className="grid gap-3 md:grid-cols-4">
           <OperatorStatusCard
-            label="Profit analysis"
+            label="ResearchPreflight score"
             value={profitSummary[0].value}
             detail={profitSummary[0].detail}
             tone={profitSummary[0].tone}
@@ -2697,7 +3157,7 @@ export function CandidateDetail({
             tone={runStatus === "running" ? "good" : "neutral"}
           />
           <OperatorStatusCard
-            label="Evaluation"
+            label="ResearchPreflight status"
             value={evaluationStatusValue}
             detail={evaluationStatusDetail}
             tone={evaluationStatusTone}
@@ -2716,7 +3176,7 @@ export function CandidateDetail({
         <CardHeader>
           <CardTitle>Research</CardTitle>
           <CardDescription>
-            How the same Trading System is evaluated, improved, and prepared for the next cycle.
+            How CandidateArena evidence, ResearchPreflight, and lineage prepare the next TradingSystem candidate cycle.
           </CardDescription>
           <CardAction>
           <Badge variant="secondary">{String(tradingSystemRows.length)}</Badge>
@@ -2730,12 +3190,12 @@ export function CandidateDetail({
             tone="good"
           />
           <ResearchStage
-            label="Evaluation"
+            label="ResearchPreflight"
             status={researchEvaluationStageStatus}
             tone={researchEvaluationStageTone}
           />
           <ResearchStage
-            label="Improvement output"
+            label="Candidate handoff"
             status={improvementOutputStatus}
             tone={improvementOutputTone}
           />
@@ -2867,6 +3327,28 @@ export function CandidateDetail({
         </CardContent>
       </Card>
 
+      <Card aria-label="Details boundary">
+        <CardHeader>
+          <CardDescription>Raw evidence boundary</CardDescription>
+          <CardTitle>Developer/detail records</CardTitle>
+          <CardDescription>
+            Product decisions stay in Trading, Arena, and Research. Product blockers stay in Trading, Arena, and Research. Details keeps raw records, compatibility tools, and low-level evidence inspectable without creating promotion authority.
+          </CardDescription>
+          <CardAction className="flex flex-wrap justify-end gap-2">
+            <Badge variant="secondary">read only by default</Badge>
+            <Badge variant="secondary">No promotion authority</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Field label="Owns" value="raw records, developer controls, compatibility evidence" />
+            <Field label="Reads" value="Candidate inspect model and low-level substrate records" />
+            <Field label="Never does" value="qualify, promote, or enable live/private exchange authority" />
+            <Field label="Use for" value="inspection after the product loop has named the decision path" />
+          </dl>
+        </CardContent>
+      </Card>
+
       <Card aria-label="Details">
         <CardHeader>
           <CardTitle>Details</CardTitle>
@@ -2904,7 +3386,7 @@ export function CandidateDetail({
           />
 
           <InfoSection
-            title="Trace And Evaluation"
+            title="ResearchPreflight Evidence"
             summary={evaluationStatusLabel(candidate.evaluation)}
             badge={candidate.evaluation.counted_evidence.evidence_disposition}
           >
@@ -2934,7 +3416,7 @@ export function CandidateDetail({
             {candidate.runtime.runtime_lifecycle_status && (
               <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
             )}
-            <Field label="Authority" value={candidate.runtime.authority_status} />
+            <Field label="Trading run authority" value={candidate.runtime.authority_status} />
             <Placeholder item={candidate.runtime.placement} />
             <Placeholder item={candidate.runtime.hands_environment} />
             <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
@@ -3202,6 +3684,31 @@ function isSelectableResearcherProvider(
   return provider === "codex" || provider === "fixture";
 }
 
+function operatorTabStateBadges(
+  operator: OperatorReadModel | undefined
+): Partial<Record<Exclude<OperatorView, "details">, string>> {
+  if (!operator) {
+    return {};
+  }
+
+  const selectedPaperEvaluationId = operator.selected_paper_trading_evaluation.evaluation_id;
+  const selectedPaperBoardEntry = operator.paper_trading_board.entries.find((entry) =>
+    (selectedPaperEvaluationId && entry.evaluation_id === selectedPaperEvaluationId) ||
+    entry.candidate_id === operator.selected_candidate_id
+  );
+  const selectedProviderProfile = operator.agent_profiles.find((profile) =>
+    profile.profile_id === operator.researcher_provider.selected_provider
+  );
+
+  return {
+    trading: operator.trading_review.status === "promoted_for_trading_review" ? "review" : undefined,
+    arena: selectedPaperBoardEntry?.qualification_status === "collecting_evidence" ? "collecting" : undefined,
+    research: selectedProviderProfile && selectedProviderProfile.status !== "authenticated"
+      ? "provider blocked"
+      : undefined
+  };
+}
+
 function selectableResearcherProvider(provider: AgentProfileProviderKind): "codex" | "fixture" {
   if (isSelectableResearcherProvider(provider)) {
     return provider;
@@ -3246,20 +3753,35 @@ function OperatorStatusCard({
 function TradeStatusPanel({
   ledger,
   ledgerStatus,
-  orderFillSurface
+  orderFillSurface,
+  reviewLedger
 }: {
   ledger?: LedgerReadModel;
   ledgerStatus: string;
   orderFillSurface?: OrderFillSurfaceReadModel | null;
+  reviewLedger?: OperatorReadModel["trading_review"]["review_packet"]["ledger"];
 }) {
+  const noOrderCheckpoint = reviewLedger?.evidence_status === "no_order_checkpoint";
   const requestedQuantity = orderFillSurface?.requested_quantity ?? ledger?.latest_order_request?.quantity;
   const filledQuantity = orderFillSurface?.cumulative_filled_quantity ?? "0";
   const fillPercent = calculateFillPercent(filledQuantity, requestedQuantity);
-  const sideAndType = orderFillSurface?.side && orderFillSurface.order_type
+  const sideAndType = noOrderCheckpoint
+    ? `No order emitted / ${reviewLedger.latest_decision_kind ?? "no_order_checkpoint"}`
+    : orderFillSurface?.side && orderFillSurface.order_type
     ? `${orderFillSurface.side} ${orderFillSurface.order_type}`
     : ledger?.latest_order_request
       ? `${ledger.latest_order_request.side} ${ledger.latest_order_request.order_type}`
       : "no order request";
+  const filledValue = noOrderCheckpoint ? "not applicable" : `${filledQuantity}/${requestedQuantity ?? "0"}`;
+  const averagePriceValue = noOrderCheckpoint
+    ? "not applicable"
+    : orderFillSurface?.average_fill_price ?? "not filled";
+  const executionValue = noOrderCheckpoint
+    ? "no execution expected"
+    : ledger?.latest_execution_result?.status ?? "not recorded";
+  const statusBadge = noOrderCheckpoint
+    ? reviewLedger.evidence_status
+    : orderFillSurface?.posture ?? ledgerStatus;
 
   return (
     <Card aria-label="Trade status">
@@ -3267,23 +3789,32 @@ function TradeStatusPanel({
         <CardTitle>Order / trade status</CardTitle>
         <CardDescription>What the current system attempted and what happened.</CardDescription>
         <CardAction>
-        <Badge variant={orderFillSurface ? "default" : ledger?.chain_complete ? "default" : "secondary"}>
-          {orderFillSurface?.posture ?? ledgerStatus}
+        <Badge variant={noOrderCheckpoint || orderFillSurface || ledger?.chain_complete ? "default" : "secondary"}>
+          {statusBadge}
         </Badge>
         </CardAction>
       </CardHeader>
       <CardContent className="grid gap-3">
       <div className="grid gap-2 md:grid-cols-4">
-        <MiniStat label="Side / type" value={sideAndType} />
-        <MiniStat label="Filled" value={`${filledQuantity}/${requestedQuantity ?? "0"}`} />
-        <MiniStat label="Average price" value={orderFillSurface?.average_fill_price ?? "not filled"} />
-        <MiniStat label="Execution" value={ledger?.latest_execution_result?.status ?? "not recorded"} />
+        <MiniStat label="Paper order / decision" value={sideAndType} />
+        <MiniStat label="Paper filled" value={filledValue} />
+        <MiniStat label="Paper average price" value={averagePriceValue} />
+        <MiniStat label="Paper execution" value={executionValue} />
       </div>
-      <Progress value={fillPercent} aria-label="Fill progress" />
+      {!noOrderCheckpoint && <Progress value={fillPercent} aria-label="Fill progress" />}
       <div className="flex flex-wrap gap-2">
-        <Badge variant={ledger?.latest_order_request ? "default" : "secondary"}>OrderRequest</Badge>
-        <Badge variant={ledger?.latest_gateway_result ? "default" : "secondary"}>GatewayResult</Badge>
-        <Badge variant={ledger?.latest_execution_result ? "default" : "secondary"}>ExecutionResult</Badge>
+        {noOrderCheckpoint ? (
+          <>
+            <Badge variant="default">TradingSystemDecision</Badge>
+            <Badge variant="secondary">{reviewLedger.latest_decision_kind ?? "no_order_checkpoint"}</Badge>
+          </>
+        ) : (
+          <>
+            <Badge variant={ledger?.latest_order_request ? "default" : "secondary"}>OrderRequest</Badge>
+            <Badge variant={ledger?.latest_gateway_result ? "default" : "secondary"}>GatewayResult</Badge>
+            <Badge variant={ledger?.latest_execution_result ? "default" : "secondary"}>ExecutionResult</Badge>
+          </>
+        )}
       </div>
       </CardContent>
     </Card>
@@ -3327,6 +3858,15 @@ function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadM
   return (
     <Card>
       <CardContent className="grid gap-3">
+      <dl
+        className="grid gap-2 rounded-md bg-muted/20 p-3 md:grid-cols-4"
+        aria-label="Market data provenance"
+      >
+        <Field label="Source mode" value={formatMarketSourceMode(market)} />
+        <Field label="Freshness / liveness" value={formatMarketFreshness(market)} />
+        <Field label="Observed" value={formatCompactDateTime(market.observed_at)} />
+        <Field label="Boundary" value={`${formatAuthorityLabel(market.authority_status)} / ${market.no_authority_label}`} />
+      </dl>
       <svg
         className="aspect-[16/5] w-full rounded-lg bg-muted"
         viewBox="0 0 520 180"
@@ -3355,6 +3895,43 @@ function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadM
   );
 }
 
+function formatMarketSourceMode(market: PublicMarketLivenessSurfaceReadModel): string {
+  if (market.fixture_backed || market.simulated || market.source_kind === "fixture") {
+    return `fixture / ${market.simulated ? "simulated" : "read-only"}`;
+  }
+  if (market.source_kind === "binance_market_data_rest") {
+    return "Binance market data REST / read-only public";
+  }
+  if (market.source_kind === "binance_production_public_rest") {
+    return "Binance public REST / read-only public";
+  }
+  if (market.source_kind === "binance_production_public_websocket") {
+    return "Binance public WebSocket / read-only public";
+  }
+  if (market.source_kind === "binance_production_public_hybrid") {
+    return "Binance public hybrid / read-only public";
+  }
+  if (market.source_kind === "binance_production_public_stream") {
+    return "Binance public stream / read-only public";
+  }
+  if (market.source_kind === "binance_rest_query") {
+    return "Binance REST query / read-only public";
+  }
+  if (market.source_kind === "binance_user_data_stream") {
+    return "Binance user data stream / read-only";
+  }
+  if (market.source_kind === "local_config") {
+    return "local config / read-only";
+  }
+  const exhaustiveSourceKind: never = market.source_kind;
+  return exhaustiveSourceKind;
+}
+
+function formatMarketFreshness(market: PublicMarketLivenessSurfaceReadModel): string {
+  const base = `${formatFreshnessLabel(market.freshness)} / ${market.liveness}`;
+  return market.degraded_reason ? `${base} / ${market.degraded_reason}` : base;
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <Card size="sm">
@@ -3373,6 +3950,7 @@ interface OperatorDecisionInput {
   latestReplayRun?: ReplayRunEvidenceReadModel;
   orderFillSurface?: OrderFillSurfaceReadModel | null;
   replayRunDetail?: ReplayRunDetailReadModel;
+  tradingReviewPacket?: OperatorReadModel["trading_review"]["review_packet"];
 }
 
 function buildOperatorDecision({
@@ -3381,59 +3959,20 @@ function buildOperatorDecision({
   ledger,
   latestReplayRun,
   orderFillSurface,
-  replayRunDetail
+  replayRunDetail,
+  tradingReviewPacket
 }: OperatorDecisionInput): OperatorMetric {
-  if (accountPositionRiskSurface?.risk_status === "breach") {
-    return {
-      label: "Recommended action",
-      value: "Stop and inspect",
-      detail: "Risk status is breach; stop the Trading Run before considering another cycle.",
-      tone: "danger"
-    };
-  }
-
-  if (candidate.runtime.runtime_lifecycle_status === "running" && accountPositionRiskSurface?.risk_status === "watch") {
-    return {
-      label: "Recommended action",
-      value: "Observe risk",
-      detail: "The Trading Run is active and risk is on watch; inspect position and Ledger before another cycle.",
-      tone: "warning"
-    };
-  }
-
-  if (candidate.improvement?.latest_change_proposal) {
-    return {
-      label: "Recommended action",
-      value: "Run next cycle",
-      detail: `Improvement produced ${candidate.improvement.latest_change_proposal.proposal_id}; review the handoff and start the next paper cycle.`,
-      tone: "good"
-    };
-  }
-
-  if (ledger?.chain_complete || orderFillSurface) {
-    return {
-      label: "Recommended action",
-      value: "Evaluate then improve",
-      detail: "A request/result chain exists; use the outcome to judge whether the next System Code is better.",
-      tone: "good"
-    };
-  }
-
-  if (latestReplayRun || replayRunDetail) {
-    return {
-      label: "Recommended action",
-      value: "Create improvement",
-      detail: "Evaluation evidence exists; produce an Improvement output before starting another run.",
-      tone: "warning"
-    };
-  }
-
-  return {
-    label: "Recommended action",
-    value: "Run first cycle",
-    detail: "No complete request/result chain is visible yet; run the fixture paper cycle to create decision evidence.",
-    tone: "warning"
-  };
+  return buildTradingFirstViewportRecommendation({
+    trading_review_packet: tradingReviewPacket,
+    compatibility: {
+      risk_status: accountPositionRiskSurface?.risk_status,
+      runtime_lifecycle_status: candidate.runtime.runtime_lifecycle_status,
+      has_improvement_proposal: Boolean(candidate.improvement?.latest_change_proposal),
+      improvement_proposal_id: candidate.improvement?.latest_change_proposal?.proposal_id,
+      has_ledger_evidence: Boolean(ledger?.chain_complete || orderFillSurface),
+      has_replay_evidence: Boolean(latestReplayRun || replayRunDetail)
+    }
+  });
 }
 
 function buildOperatorProfitSummary(
@@ -3520,6 +4059,55 @@ function formatPercent(value: number): string {
     maximumFractionDigits: 6,
     minimumFractionDigits: Number.isInteger(value) ? 0 : 4
   })}%`;
+}
+
+function formatPaperBoardTrend(entry: PaperTradingBoardReadModel["entries"][number]): string {
+  return [
+    entry.trend.direction,
+    formatSignedUsdt(entry.trend.net_revenue_delta_usdt),
+    formatSignedPercent(entry.trend.net_return_delta_pct),
+    `${entry.trend.observation_count_delta} obs`,
+    entry.trend.authority_status
+  ].join(" / ");
+}
+
+function formatPaperBoardBlockerDensity(entry: PaperTradingBoardReadModel["entries"][number]): string {
+  return [
+    `${entry.blocker_density.blocker_count} blockers`,
+    `density ${entry.blocker_density.blocker_density}`,
+    `failed ${entry.blocker_density.failed_observation_ratio}`,
+    `top ${entry.blocker_density.top_blocker ?? "none"}`,
+    entry.blocker_density.authority_status
+  ].join(" / ");
+}
+
+function formatSignedUsdt(value: number): string {
+  return `${value > 0 ? "+" : ""}${formatUsdt(value)}`;
+}
+
+function formatSignedPercent(value: number): string {
+  return `${value > 0 ? "+" : ""}${formatPercent(value)}`;
+}
+
+function formatCandidateArenaTickGenerated(tick: CandidateArenaReadModel["latest_ticks"][number]): string {
+  const failedCount = tick.direction_results.filter((result) => result.status === "failed").length;
+  return `${tick.created_candidate_ids.length} created / ${failedCount} failed`;
+}
+
+function formatCandidateArenaTickDirections(tick: CandidateArenaReadModel["latest_ticks"][number]): string {
+  return tick.direction_results.map((result) =>
+    `${result.direction_kind}:${result.status}`
+  ).join(", ");
+}
+
+function formatCandidateArenaTickEfficiency(tick: CandidateArenaReadModel["latest_ticks"][number]): string {
+  const summaries = tick.direction_results
+    .filter((result) => result.research_efficiency)
+    .map((result) => {
+      const efficiency = result.research_efficiency!;
+      return `${result.direction_kind}: ${efficiency.provider_request_total} provider / ${efficiency.runner_command_total} runner / ${efficiency.scenario_count} scenarios / ${efficiency.elapsed_ms}ms / ${efficiency.authority_status}`;
+    });
+  return summaries.length ? summaries.join("; ") : "not recorded";
 }
 
 function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): string {
@@ -3814,7 +4402,7 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
       <Field label="Logs" value={latestLog?.lines.join(" / ") ?? "none"} />
       <Field label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
       <Field label="Command evidence" value={String(sandbox.command_evidence.length)} />
-      <Field label="Authority" value={sandbox.authority_status} />
+      <Field label="Sandbox authority" value={sandbox.authority_status} />
     </InfoSection>
   );
 }
@@ -3841,7 +4429,7 @@ function TradingRunTranscriptSection({
       </div>
       <Field label="Items" value={String(transcript?.item_count ?? 0)} />
       <Field label="Latest" value={transcript?.latest_item?.label ?? "none"} />
-      <Field label="Authority" value={transcript?.authority_status ?? "not_live"} />
+      <Field label="Transcript authority" value={transcript?.authority_status ?? "not_live"} />
 
       {transcript?.items.length ? (
         transcript.items.map((item) => (
@@ -3852,14 +4440,14 @@ function TradingRunTranscriptSection({
             <Field label="Summary" value={item.summary} />
             {item.ref && <Field label="Ref" value={formatRef(item.ref)} />}
             {item.lifecycle_status && <Field label="Lifecycle" value={item.lifecycle_status} />}
-            <Field label="Authority" value={item.authority_status} />
+            <Field label="Transcript event authority" value={item.authority_status} />
           </div>
         ))
       ) : (
         <div className="evaluation-block">
           <h4>Transcript</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_live" />
+          <Field label="Transcript event authority" value="not_live" />
         </div>
       )}
     </InfoSection>
@@ -3892,12 +4480,12 @@ export function TradingExecutionModesSection({
                 <strong>{mode.label}</strong>
                 <span>{mode.support_status}</span>
               </div>
-              <Field label="Mode" value={mode.mode} />
+              <Field label="Execution mode" value={mode.mode} />
               <Field label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
               <Field label="Market data" value={mode.provider_contract.market_data} />
               <Field label="Account" value={mode.provider_contract.account} />
               <Field label="Order plane" value={mode.provider_contract.order_plane} />
-              <Field label="Authority" value={mode.authority.status} />
+              <Field label="Execution mode authority" value={mode.authority.status} />
               <Field label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
               <Field label="Artifact order submission" value={mode.artifact_contract.order_submission} />
             </div>
@@ -3951,19 +4539,21 @@ function ReplayRunsSection({
         <>
           <Field label="Latest run" value={latestRun.run_id} />
           <Field label="Selected run" value={activeRunId ?? "none"} />
-          <Field label="Runner" value={latestRun.runner_kind} />
+          <Field label="Replay runner" value={latestRun.runner_kind} />
           <Field label="Run status" value={latestRun.run_status} />
           <Field label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
           <Field label="Provider requests" value={String(latestRun.provider_request_total)} />
-          <Field label="Runner commands" value={String(latestRun.runner_command_total)} />
+          <Field label="Replay runner commands" value={String(latestRun.runner_command_total)} />
           <Field label="Artifact digest" value={latestRun.artifact_digest} />
           <Field label="Completed" value={latestRun.completed_at} />
-          <Field label="Authority" value={latestRun.authority_status} />
+          <Field label="Replay authority" value={latestRun.authority_status} />
         </>
       ) : (
         <div className="placeholder">
           <strong>No candidate-id replay runs</strong>
           <span>run evidence has not been recorded for this candidate</span>
+          <span>Replay runner: none</span>
+          <span>Replay authority: not_live</span>
           <span>not_live</span>
         </div>
       )}
@@ -4064,8 +4654,8 @@ function ReplayRunComparisonBlock({
       <Field label="Runner command delta" value={formatSignedNumber(comparison.deltas.runner_command_total)} />
       <Field label="Risk transition" value={comparison.risk_transition} />
       <Field label="Reason" value={comparison.verdict_reason} />
-      <Field label="Authority" value={comparison.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(comparison.no_authority)} />
+      <Field label="Replay comparison authority" value={comparison.authority_status} />
+      <Field label="Replay comparison no authority" value={formatNoAuthority(comparison.no_authority)} />
     </div>
   );
 }
@@ -4084,8 +4674,8 @@ function ReplayRunValidationStateBlock({
       <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
       <Field label="Reasons" value={validationState.reasons.join("; ")} />
       <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
-      <Field label="Authority" value={validationState.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(validationState.no_authority)} />
+      <Field label="Replay validation authority" value={validationState.authority_status} />
+      <Field label="Replay validation no authority" value={formatNoAuthority(validationState.no_authority)} />
     </div>
   );
 }
@@ -4104,8 +4694,8 @@ function CandidateLatestValidationStateBlock({
       <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
       <Field label="Reasons" value={validationState.reasons.join("; ")} />
       <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
-      <Field label="Authority" value={validationState.authority_status} />
-      <Field label="No authority" value={formatNoAuthority(validationState.no_authority)} />
+      <Field label="Candidate validation authority" value={validationState.authority_status} />
+      <Field label="Candidate validation no authority" value={formatNoAuthority(validationState.no_authority)} />
     </div>
   );
 }
@@ -4153,7 +4743,7 @@ function ReplayRunDetailBlock({ detail }: { detail: ReplayRunDetailReadModel }) 
       <Field label="Run" value={detail.run_id} />
       <Field label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
       <Field label="Scenario ids" value={detail.scenario_ids.join(", ")} />
-      <Field label="No authority" value={formatNoAuthority(detail.no_authority)} />
+      <Field label="Replay detail no authority" value={formatNoAuthority(detail.no_authority)} />
       <Field label="Promotion" value={detail.provenance.promotion_id ?? "none"} />
       <Field label="Source session" value={detail.provenance.source_session_id ?? "none"} />
       <Field label="Events" value={detail.events_path} />
@@ -4162,11 +4752,11 @@ function ReplayRunDetailBlock({ detail }: { detail: ReplayRunDetailReadModel }) 
         <div className="evaluation-block" key={scenario.scenario_id}>
           <h4>{scenario.scenario_id}</h4>
           <Field label="Status" value={`${scenario.status} / ${scenario.run_status}`} />
-          <Field label="Runner" value={scenario.runner_kind} />
+          <Field label="Replay scenario runner" value={scenario.runner_kind} />
           <Field label="Score / risk" value={`${scenario.score} / ${scenario.risk_decision}`} />
           <Field label="Summary" value={scenario.summary} />
           <Field label="Provider requests" value={String(scenario.provider_request_count)} />
-          <Field label="Runner commands" value={String(scenario.runner_command_count)} />
+          <Field label="Replay scenario runner commands" value={String(scenario.runner_command_count)} />
           {scenario.metrics.map((metric) => (
             <Field
               key={metric.name}
@@ -4362,7 +4952,7 @@ export function TradingGatewayEnvironmentSection({
         ].join(", ")}
       />
       <Field
-        label="Authority"
+        label="Gateway environment authority"
         value={[
           `live_exchange=${String(environment.live_exchange_authority)}`,
           `order_submission=${String(environment.order_submission_authority)}`,
@@ -5222,7 +5812,7 @@ function TradingSubstrateSection({
           <Field label="Order scope" value={orderFillSurface.order_scope_ref} />
           <Field label="Client order" value={orderFillSurface.local_client_order_id ?? "none"} />
           <Field label="Upstream order" value={orderFillSurface.upstream_order_id ?? "none"} />
-          <Field label="Side / type" value={[
+          <Field label="Order side / type" value={[
             orderFillSurface.side ?? "none",
             orderFillSurface.order_type ?? "none",
             orderFillSurface.time_in_force ?? "none"
@@ -5818,13 +6408,13 @@ function RunControlSection({
           <Field label="Status" value={control.latest_command.status} />
           <Field label="Actor" value={control.latest_command.actor_kind} />
           <Field label="Reason" value={control.latest_command.reason} />
-          <Field label="Authority" value={control.latest_command.authority_status} />
+          <Field label="Command authority" value={control.latest_command.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Latest control command</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_live" />
+          <Field label="Command authority" value="not_live" />
         </div>
       )}
 
@@ -5835,13 +6425,13 @@ function RunControlSection({
           <Field label="Reason" value={control.latest_decision.decision_reason} />
           <Field label="Command" value={formatRef(control.latest_decision.command_ref)} />
           <Field label="Lifecycle" value={control.latest_decision.resulting_lifecycle_status ?? "unchanged"} />
-          <Field label="Authority" value={control.latest_decision.authority_status} />
+          <Field label="Decision authority" value={control.latest_decision.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Latest control decision</h4>
           <Field label="Outcome" value="not_evaluated" />
-          <Field label="Authority" value="not_live" />
+          <Field label="Decision authority" value="not_live" />
         </div>
       )}
 
@@ -5852,13 +6442,13 @@ function RunControlSection({
           <Field label="Command" value={control.latest_audit_event.command_ref ? formatRef(control.latest_audit_event.command_ref) : "none"} />
           <Field label="Decision" value={control.latest_audit_event.decision_ref ? formatRef(control.latest_audit_event.decision_ref) : "none"} />
           <Field label="Lifecycle" value={control.latest_audit_event.runtime_lifecycle_status ?? "unchanged"} />
-          <Field label="Authority" value={control.latest_audit_event.authority_status} />
+          <Field label="Audit authority" value={control.latest_audit_event.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Latest audit event</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_live" />
+          <Field label="Audit authority" value="not_live" />
         </div>
       )}
 
@@ -5942,13 +6532,13 @@ function ImprovementSection({
           <Field label="Finding" value={improvement.latest_source_finding.finding_id} />
           <Field label="Kind" value={improvement.latest_source_finding.finding_kind} />
           <Field label="Summary" value={improvement.latest_source_finding.summary} />
-          <Field label="Authority" value={improvement.latest_source_finding.authority_status} />
+          <Field label="Source finding authority" value={improvement.latest_source_finding.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Source finding</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="research_trace_only" />
+          <Field label="Source finding authority" value="research_trace_only" />
         </div>
       )}
 
@@ -5960,13 +6550,13 @@ function ImprovementSection({
           <Field label="System code" value={formatRef(improvement.latest_change_proposal.proposed_system_code_ref)} />
           <Field label="Parent code" value={improvement.latest_change_proposal.parent_system_code_ref ? formatRef(improvement.latest_change_proposal.parent_system_code_ref) : "none"} />
           <Field label="Summary" value={improvement.latest_change_proposal.proposal_summary} />
-          <Field label="Authority" value={improvement.latest_change_proposal.authority_status} />
+          <Field label="Change proposal authority" value={improvement.latest_change_proposal.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Change proposal</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="proposal_only" />
+          <Field label="Change proposal authority" value="proposal_only" />
         </div>
       )}
 
@@ -5976,7 +6566,7 @@ function ImprovementSection({
           <Field label="Attempt" value={improvement.latest_materialization.attempt_id} />
           <Field label="Status" value={improvement.latest_materialization.status} />
           <Field label="Validation" value={improvement.latest_materialization.validation_status} />
-          <Field label="Authority" value={improvement.latest_materialization.authority_status} />
+          <Field label="Materialization authority" value={improvement.latest_materialization.authority_status} />
         </div>
       )}
 
@@ -5986,13 +6576,13 @@ function ImprovementSection({
           <Field label="Experiment" value={improvement.latest_experiment.experiment_id} />
           <Field label="Status" value={improvement.latest_experiment.status} />
           <Field label="System code" value={formatRef(improvement.latest_experiment.system_code_ref)} />
-          <Field label="Authority" value={improvement.latest_experiment.authority_status} />
+          <Field label="Experiment authority" value={improvement.latest_experiment.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Experiment</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_live" />
+          <Field label="Experiment authority" value="not_live" />
         </div>
       )}
 
@@ -6003,13 +6593,13 @@ function ImprovementSection({
           <Field label="Status" value={improvement.latest_evaluation_result.result_status} />
           <Field label="Disposition" value={improvement.latest_evaluation_result.evidence_disposition} />
           <Field label="Score" value={String(improvement.latest_evaluation_result.total_score)} />
-          <Field label="Authority" value={improvement.latest_evaluation_result.authority_status} />
+          <Field label="Evaluation result authority" value={improvement.latest_evaluation_result.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Evaluation result</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_counted" />
+          <Field label="Evaluation result authority" value="not_counted" />
         </div>
       )}
 
@@ -6017,14 +6607,14 @@ function ImprovementSection({
         <h4>Evidence</h4>
         <Field label="Status" value={improvement?.evidence.status ?? "missing"} />
         <Field label="Reason" value={improvement?.evidence.reason ?? "evaluation_required"} />
-        <Field label="Authority" value={improvement?.evidence.authority_status ?? "not_counted"} />
+        <Field label="Improvement evidence authority" value={improvement?.evidence.authority_status ?? "not_counted"} />
       </div>
 
       <div className="evaluation-block">
         <h4>Promotion</h4>
         <Field label="Status" value={improvement?.promotion.status ?? "not_promoted"} />
         <Field label="Reason" value={improvement?.promotion.reason ?? "promotion_requires_sealed_evidence"} />
-        <Field label="Authority" value={improvement?.promotion.authority_status ?? "not_live"} />
+        <Field label="Improvement promotion authority" value={improvement?.promotion.authority_status ?? "not_live"} />
       </div>
 
       {onRecordImprovement && (
@@ -6079,16 +6669,16 @@ function LedgerSection({
           <h4>Order request</h4>
           <Field label="Intent" value={ledger.latest_order_request.intent_kind} />
           <Field label="Status" value={ledger.latest_order_request.status} />
-          <Field label="Side / type" value={`${ledger.latest_order_request.side ?? "none"} / ${ledger.latest_order_request.order_type ?? "none"}`} />
+          <Field label="Order side / type" value={`${ledger.latest_order_request.side ?? "none"} / ${ledger.latest_order_request.order_type ?? "none"}`} />
           <Field label="Quantity" value={ledger.latest_order_request.quantity ?? "none"} />
           <Field label="Limit" value={ledger.latest_order_request.limit_price ?? "none"} />
-          <Field label="Authority" value={ledger.latest_order_request.authority_status} />
+          <Field label="Order request authority" value={ledger.latest_order_request.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Order request</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_submitted" />
+          <Field label="Order request authority" value="not_submitted" />
         </div>
       )}
 
@@ -6098,13 +6688,13 @@ function LedgerSection({
           <Field label="Outcome" value={ledger.latest_gateway_result.decision_outcome} />
           <Field label="Reason" value={ledger.latest_gateway_result.decision_reason} />
           <Field label="Order request" value={formatRef(ledger.latest_gateway_result.order_request_ref)} />
-          <Field label="Authority" value={ledger.latest_gateway_result.authority_status} />
+          <Field label="Gateway result authority" value={ledger.latest_gateway_result.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Gateway result</h4>
           <Field label="Outcome" value="not_evaluated" />
-          <Field label="Authority" value="not_live" />
+          <Field label="Gateway result authority" value="not_live" />
         </div>
       )}
 
@@ -6112,17 +6702,17 @@ function LedgerSection({
         <div className="evaluation-block">
           <h4>Execution result</h4>
           <Field label="Stage" value={ledger.latest_execution_result.stage} />
-          <Field label="Mode" value={ledger.latest_execution_result.execution_mode} />
+          <Field label="Execution result mode" value={ledger.latest_execution_result.execution_mode} />
           <Field label="Status" value={ledger.latest_execution_result.status} />
           <Field label="Reason" value={ledger.latest_execution_result.result_reason} />
           <Field label="Gateway result" value={formatRef(ledger.latest_execution_result.gateway_result_ref)} />
-          <Field label="Authority" value={ledger.latest_execution_result.authority_status} />
+          <Field label="Execution result authority" value={ledger.latest_execution_result.authority_status} />
         </div>
       ) : (
         <div className="evaluation-block">
           <h4>Execution result</h4>
           <Field label="Status" value="none" />
-          <Field label="Authority" value="not_submitted" />
+          <Field label="Execution result authority" value="not_submitted" />
         </div>
       )}
 
@@ -6152,7 +6742,7 @@ function LedgerSection({
               ? `${chain.execution_result.status} / ${chain.execution_result.result_reason}`
               : "not_submitted"}
           />
-          <Field label="Authority" value={chain.authority_status} />
+          <Field label="Ledger chain authority" value={chain.authority_status} />
         </div>
       ))}
 
@@ -6168,74 +6758,75 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
   return (
     <div className="evaluation-stack">
       <div className={`evaluation-status ${evaluationStatusTone(evaluation)}`}>
-        <span>Evaluation state</span>
+        <span>ResearchPreflight state</span>
         <strong>{evaluationStatusLabel(evaluation)}</strong>
         <span>{evaluation.counted_evidence.disposition_reason}</span>
       </div>
 
       {latestRun ? (
         <div className="evaluation-block">
-          <h4>Latest evaluation run</h4>
-          <Field label="Run" value={latestRun.run_id} />
-          <Field label="Status" value={latestRun.status} />
+          <h4>Latest ResearchPreflight run</h4>
+          <Field label="ResearchPreflight run" value={latestRun.run_id} />
+          <Field label="ResearchPreflight status" value={latestRun.status} />
           <Field label="Stage binding" value={`${latestRun.stage ?? "missing"} / ${latestRun.profile ?? "missing"}`} />
           <Field label="Execution mode context" value={latestRun.execution_mode ?? "missing"} />
-          <Field label="Trace" value={formatRef(latestRun.trace_ref)} />
-          <Field label="Authority" value={latestRun.authority_status} />
-          {latestRun.error_state && <Field label="Error" value={latestRun.error_state.message} />}
+          <Field label="ResearchPreflight trace" value={formatRef(latestRun.trace_ref)} />
+          <Field label="ResearchPreflight run authority" value={latestRun.authority_status} />
+          {latestRun.error_state && <Field label="ResearchPreflight error" value={latestRun.error_state.message} />}
         </div>
       ) : (
         <div className="evaluation-block">
-          <h4>No evaluation runs</h4>
-          <Field label="Status" value={evaluation.run.status} />
-          <Field label="Authority" value={evaluation.run.authority_status} />
+          <h4>No ResearchPreflight runs</h4>
+          <Field label="ResearchPreflight status" value={evaluation.run.status} />
+          <Field label="ResearchPreflight run authority" value={evaluation.run.authority_status} />
           <Field label="Reason" value={evaluation.counted_evidence.disposition_reason} />
         </div>
       )}
 
       <div className="evaluation-block">
-        <h4>Comparison set</h4>
+        <h4>ResearchPreflight comparison set</h4>
         {latestComparisonSet ? (
           <>
             <Field label="Comparability" value={latestComparisonSet.comparability_status} />
             <Field label="Reason" value={latestComparisonSet.comparability_reason} />
-            <Field label="Authority" value={latestComparisonSet.authority_status} />
+            <Field label="Comparison set authority" value={latestComparisonSet.authority_status} />
           </>
         ) : (
           <>
-            <Field label="Status" value={evaluation.comparison_set.status} />
-            <Field label="Authority" value={evaluation.comparison_set.authority_status} />
+            <Field label="Comparison set status" value={evaluation.comparison_set.status} />
+            <Field label="Comparison set authority" value={evaluation.comparison_set.authority_status} />
           </>
         )}
       </div>
 
       <div className="evaluation-block">
-        <h4>Trace material</h4>
-        <Field label="State" value={evaluation.trace.state} />
-        <Field label="Trace" value={evaluation.trace.trace_ref ? formatRef(evaluation.trace.trace_ref) : "none"} />
-        <Field label="Authority" value={evaluation.trace.authority_status} />
+        <h4>Provider trace material</h4>
+        <Field label="Trace state" value={evaluation.trace.state} />
+        <Field label="Provider trace" value={evaluation.trace.trace_ref ? formatRef(evaluation.trace.trace_ref) : "none"} />
+        <Field label="Trace material authority" value={evaluation.trace.authority_status} />
         {evaluation.trace.authority_label && <Field label="Label" value={evaluation.trace.authority_label} />}
         <Field label="Provider artifacts" value={formatRefs(evaluation.trace.provider_output_artifact_refs)} />
         <Field label="Debug artifacts" value={formatRefs(evaluation.trace.debug_artifact_refs)} />
       </div>
 
       <div className="evaluation-block">
-        <h4>Evidence state</h4>
-        <Field label="Counted" value={evaluation.counted_evidence.counted ? "yes" : "no"} />
-        <Field label="Disposition" value={evaluation.counted_evidence.evidence_disposition} />
-        <Field label="Reason" value={evaluation.counted_evidence.disposition_reason} />
-        <Field label="Authority" value={evaluation.counted_evidence.authority_status} />
+        <h4>Counted evidence state</h4>
+        <Field label="Counted evidence" value={evaluation.counted_evidence.counted ? "yes" : "no"} />
+        <Field label="Evidence disposition" value={evaluation.counted_evidence.evidence_disposition} />
+        <Field label="Evidence reason" value={evaluation.counted_evidence.disposition_reason} />
+        <Field label="Counted evidence authority" value={evaluation.counted_evidence.authority_status} />
         {evaluation.counted_evidence.sealed_at && <Field label="Sealed at" value={evaluation.counted_evidence.sealed_at} />}
         {latestSealingDecision ? (
           <>
             <Field label="Sealing decision" value={latestSealingDecision.sealing_decision_id} />
             <Field label="Decision disposition" value={latestSealingDecision.evidence_disposition} />
+            <Field label="Sealing decision authority" value={latestSealingDecision.authority_status} />
             <Field label="Decision refs" value={formatRefs(latestSealingDecision.evaluation_run_refs)} />
           </>
         ) : (
           <>
             <Field label="Sealing decision" value={evaluation.sealing_decision.status} />
-            <Field label="Decision authority" value={evaluation.sealing_decision.authority_status} />
+            <Field label="Sealing decision authority" value={evaluation.sealing_decision.authority_status} />
           </>
         )}
       </div>
@@ -6294,7 +6885,7 @@ function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMateria
             <Field label="Result candidate" value={formatRef(attempt.resulting_candidate_ref)} />
           )}
           <Field label="Agent run" value={formatRef(attempt.agent_run_ref)} />
-          <Field label="Trace" value={formatRef(attempt.trace_ref)} />
+          <Field label="Provider trace" value={formatRef(attempt.trace_ref)} />
           <Field label="Authority label" value={attempt.authority_label} />
         </>
       ) : (

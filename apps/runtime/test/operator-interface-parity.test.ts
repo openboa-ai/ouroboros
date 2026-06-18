@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   OUROBOROS_COMMAND_DESCRIPTORS,
   OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS,
@@ -26,6 +27,18 @@ describe("operator interface parity", () => {
       "agent_provider.probe",
       "researcher.provider.select"
     ]);
+  });
+
+  it("documents every primary product-loop command in the interface parity guide", () => {
+    const interfaceParityDoc = readFileSync(new URL("../../../docs/interface-parity.md", import.meta.url), "utf8");
+    const productLoopCommandList = interfaceParityDoc.slice(
+      interfaceParityDoc.indexOf("`packages/domain` marks the primary loop subset"),
+      interfaceParityDoc.indexOf("These are the commands that must stay visible")
+    );
+    const documentedCommandKinds = [...productLoopCommandList.matchAll(/- `([^`]+)`/g)]
+      .map((match) => match[1]);
+
+    expect(documentedCommandKinds).toEqual([...OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS]);
   });
 
   it("maps CLI product loop actions to command requests or the managed local agent controller", async () => {
@@ -226,6 +239,7 @@ function fixtureOperator(): OperatorReadModel {
       ],
       latest_candidates: [],
       latest_ticks: [],
+      finding_clusters: [],
       live_disabled: true,
       authority_status: "not_live"
     },
@@ -287,6 +301,20 @@ function fixtureOperator(): OperatorReadModel {
           },
           risk_summary: {
             open_order_count: 0
+          },
+          trend: {
+            direction: "insufficient_history",
+            net_revenue_delta_usdt: 0,
+            net_return_delta_pct: 0,
+            observation_count_delta: 0,
+            authority_status: "not_promotion_authority"
+          },
+          blocker_density: {
+            blocker_count: 2,
+            blocker_density: 2,
+            failed_observation_ratio: 0,
+            top_blocker: "min_observation_count_not_met",
+            authority_status: "not_promotion_authority"
           },
           observation_count: 1,
           trading_run_id: "trading-run-candidate-profitable",
@@ -351,6 +379,100 @@ function fixtureOperator(): OperatorReadModel {
       runner_status: "active",
       selected_candidate_id: "candidate-profitable",
       selected_matches_trading_review: true,
+      review_packet: {
+        packet_kind: "trading_review_packet",
+        verdict: {
+          readiness_status: "collecting_paper_evidence",
+          qualification_status: "collecting_evidence",
+          severity: "collecting",
+          top_blocker: "min_observation_count_not_met"
+        },
+        subject: {
+          candidate_id: "candidate-profitable",
+          candidate_version_id: "candidate-version-profitable",
+          display_name: "candidate-profitable",
+          paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
+          selected_candidate_id: "candidate-profitable",
+          selected_matches_trading_review: true
+        },
+        performance: {
+          rank: 1,
+          primary_rank_metric: "net_revenue_usdt",
+          secondary_rank_metric: "net_return_pct",
+          profit_loss: {
+            revenue_usdt: 5,
+            cost_usdt: 0.048,
+            net_revenue_usdt: 4.952,
+            net_return_pct: 0.04952
+          }
+        },
+        evidence_quality: {
+          evidence_window: {
+            observation_count: 1,
+            elapsed_ms: 60_000,
+            failed_observation_count: 0
+          },
+          qualification_reasons: [
+            "min_observation_count_not_met",
+            "min_elapsed_ms_not_met"
+          ],
+          blocker_groups: [
+            {
+              group_kind: "evidence_window",
+              severity: "collecting",
+              blockers: [
+                "min_observation_count_not_met",
+                "min_elapsed_ms_not_met"
+              ],
+              summary: "Paper evidence window is not mature enough for review.",
+              next_action: "Continue paper observations until count and elapsed-time gates qualify."
+            }
+          ]
+        },
+        provenance: {
+          market_data_source: "binance_production_public_rest"
+        },
+        risk: {
+          open_order_count: 0
+        },
+        runner: {
+          runner_status: "active",
+          runner_active: true,
+          trading_run_status: "running",
+          next_observation_at: "2026-05-16T00:01:03.000Z",
+          authority_status: "not_live"
+        },
+        ledger: {
+          evidence_status: "complete_chain",
+          ledger_chain_complete: true,
+          latest_gateway_outcome: "dry_run_only",
+          latest_execution_status: "dry_run_recorded",
+          latest_decision_kind: "order_request",
+          authority_status: "not_live"
+        },
+        lineage: {
+          lineage_status: "available",
+          direction_kind: "trend_following",
+          parent_candidate_id: "candidate-parent",
+          parent_candidate_version_id: "candidate-version-parent",
+          generated_by_agent: true,
+          latest_finding: "Candidate produced non-negative net revenue after costs.",
+          evaluation_status: "accepted",
+          evaluation_score: 9.83,
+          authority_status: "lineage_only"
+        },
+        authority: {
+          authority_status: "not_live",
+          live_disabled_reason: "mlp_paper_only",
+          no_authority: {
+            live_exchange_authority: false,
+            private_read_authority: false,
+            order_submission_authority: false,
+            credentials: false
+          }
+        },
+        next_action: "Continue paper trading until the evidence window qualifies."
+      },
       next_action: "Continue paper trading until the evidence window qualifies.",
       live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"

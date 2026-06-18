@@ -8,6 +8,10 @@ generation, and only selected candidates can move into continuous paper trading 
 `Ledger` evidence.
 
 Read [Ouroboros Doctrine](ouroboros-doctrine.md) for the full product thesis.
+Read [Autonomy Model](autonomy-model.md) for the detailed boundary between autonomous research,
+selected paper evaluation, paper qualification, Trading review promotion, and future live authority.
+Read [Product Quality Design](product-quality-design.md) for the product-quality contract that
+turns that direction into review-packet, UX, eval, and implementation-frontier detail.
 
 Two names keep the evaluation boundary stable: `ResearchPreflight` is replay, backtest, or
 simulation inside candidate creation; `PaperTradingEvaluation` is selected-candidate continuous
@@ -65,9 +69,13 @@ time, runner health when known, failed-observation ratio, market snapshot availa
 execution evidence for fills. A candidate can lead the board by paper `net_revenue_usdt` while
 still being `collecting_evidence` or `blocked_by_quality`. That board is also compacted into the
 next researcher context so new candidates are generated from paper evidence, not replay scores
-alone. Researcher context must not pretend to know in-memory runner state when it cannot see the
-active runner; running paper evidence remains running evidence, not an automatic `needs_resume`
-claim.
+alone. The compaction carries paper blockers, remediation guidance, and lineage/finding summaries
+under read-only authority so ResearchWorkers can respond to what paper evidence actually showed.
+`TradingReviewPacket.lineage.paper_board_learning` uses the same compact rank, score,
+qualification, blocker, failure, and next-research-focus summary so operator review and next
+generation context do not drift.
+Researcher context must not pretend to know in-memory runner state when it cannot see the active
+runner; running paper evidence remains running evidence, not an automatic `needs_resume` claim.
 
 TradingSystem owns its decision cadence. The selected `TradingSystem` may decide on timers, market
 events, news or social inputs, tool calls, internal agent loops, or risk gates.
@@ -87,6 +95,12 @@ AI agents improve over time. Codex, Claude Code, Gemini-powered agents, and futu
 plug into the same loop as replaceable research labor rather than changing the product doctrine.
 The stable contract is candidate generation, research-time preflight, findings/lineage memory, and
 selected continuous paper trading evidence.
+
+Ouroboros should become autonomous by automating the loop below the authority boundary, not by
+letting generated systems approve themselves. CandidateArena can run research, selected
+PaperTradingEvaluation can collect proof, and PaperTradingQualification can block weak evidence.
+Trading review promotion remains an operator or explicit-policy decision, and live/private exchange
+authority remains outside MLP-01.
 
 TradingSystem may include an internal agent runtime, model calls, tools, deterministic code, rules,
 and execution logic. TradingSystem may include an internal agent runtime, and it owns when to emit

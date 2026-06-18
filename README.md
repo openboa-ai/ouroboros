@@ -79,6 +79,8 @@ Canonical repo docs:
 
 - [Project Direction](docs/project-direction.md)
 - [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
+- [Autonomy Model](docs/autonomy-model.md)
+- [Product Quality Design](docs/product-quality-design.md)
 - [Architecture Governance](docs/architecture-governance.md)
 - [API And Command Contract](docs/api-command-contract.md)
 - [Interface Parity](docs/interface-parity.md)

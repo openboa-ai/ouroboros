@@ -9,10 +9,12 @@ Start every non-trivial task from:
 
 1. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
 2. [Project Direction](docs/project-direction.md)
-3. [Architecture Governance](docs/architecture-governance.md)
-4. [API And Command Contract](docs/api-command-contract.md)
-5. [Naming Taxonomy](docs/naming-taxonomy.md)
-6. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
+3. [Autonomy Model](docs/autonomy-model.md)
+4. [Product Quality Design](docs/product-quality-design.md)
+5. [Architecture Governance](docs/architecture-governance.md)
+6. [API And Command Contract](docs/api-command-contract.md)
+7. [Naming Taxonomy](docs/naming-taxonomy.md)
+8. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
 
 Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
 it must point back to repo truth instead of replacing it.
@@ -161,14 +163,27 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
+| `FindingCluster` | Read-only CandidateArena grouping of paper-backed findings by direction, blocker, market regime, and protocol failure for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |
-| `Evaluation` | Backtest or evaluation evidence, ranked by `net_revenue_usdt` first and `net_return_pct` second. |
+| `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
+| `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
+| `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
+| `TradingPromotion` | Paper-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
+| `TradingReview` | Operator projection of the active Trading review candidate; it separates promoted Trading review target from the current Arena selected candidate. |
 | `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate the primary CandidateArena workflow. |
+| `TradingReviewPacket` | Structured read-only evidence packet inside `TradingReview` that explains verdict, blocker, paper performance, runner health, Ledger continuity, lineage, provenance, risk, authority, and next action for the active review target. |
+| `TradingSystemDecision` | `OrderRequest`, `hold`, or no-action signal emitted by a selected TradingSystem according to its own decision cadence. |
+| `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
+| `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
+| `Lineage` | Parent, direction, evaluation, finding, and evidence chain that explains why a candidate exists. |
+| `PaperEvidence` | Selected-candidate proof from the paper TradingRun, Gateway, and Ledger path. |
 | `TradingRun` | One execution session for a TradingSystem. |
 | `Sandbox` | Isolated execution boundary for a TradingRun. |
 | `Gateway` | Boundary that handles OrderRequest before exchange authority. |
+| `MarketDataPort` | Gateway-owned public market data boundary; Binance is one adapter behind this port. |
 | `Ledger` | OrderRequest, GatewayResult, and ExecutionResult record chain. |
 | `OuroborosCommand` | Product-facing command envelope shared by CLI, UI, and TUI. |
 | `OperatorReadModel` | Shared operator state returned to CLI, UI, and TUI. |

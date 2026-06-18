@@ -102,6 +102,7 @@ market data, scored by accumulated `revenue - cost`.
 | AlphaEvolve | code candidates plus evaluator plus evolutionary improvement |
 | AlphaProof Nexus | unreliable generation made useful by verification and search |
 | Weak-to-strong | stronger capability elicited through scalable evaluation |
+| Agentic SDLC / factory model | tests, evals, context, harness, and human judgment as the production boundary around agent output |
 | Codex, Claude Code, Gemini agents | external improving agent labor |
 | Ouroboros | apply the pattern to trading, where continuous paper `revenue - cost` is the score |
 
