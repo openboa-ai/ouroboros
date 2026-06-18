@@ -5,6 +5,7 @@ import type {
   OuroborosCommandKind,
   OuroborosCommandRequest
 } from "@ouroboros/domain";
+import { commandRemediation } from "@ouroboros/domain";
 
 type FetchLike = (
   input: string | URL,
@@ -165,7 +166,7 @@ export function OperatorTuiScreen(props: {
         <Text>
           {`Agent profile: ${selectedProfile?.label ?? "unknown"} / ${selectedProfile?.status ?? "missing"}`}
         </Text>
-        <Text>{`Authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
+        <Text>{`Operator authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
         <Text dimColor>Keys: r refresh, t tick, s arena, up/down move, enter select, m promote, e paper start, o observe, x stop, p provider, a setup, l login, v probe, q quit</Text>
       </Box>
       <Box flexDirection="column">
@@ -187,26 +188,64 @@ export function OperatorTuiScreen(props: {
         <Text bold>Selected Candidate</Text>
         <Text>{selectedCandidateId ?? "none"}</Text>
         <Text>
-          {`Trading promotion: ${props.operator.trading_promotion?.status ?? "not_promoted"} / ${props.operator.trading_promotion?.readiness_status ?? "paper_required"}`}
-        </Text>
-        <Text>
           {`Trading review: ${props.operator.trading_review.status} / ${props.operator.trading_review.display_name ?? props.operator.trading_review.active_candidate_id ?? "none"} / selected ${props.operator.trading_review.selected_matches_trading_review ? "matches" : "differs"}`}
         </Text>
-        <Text>{`PaperTradingEvaluation: ${paperEvaluation.status}`}</Text>
         <Text>
-          {`Runner: ${formatPaperRunner(paperEvaluation)}`}
+          {`Trading review packet: ${props.operator.trading_review.review_packet.verdict.severity} / top ${props.operator.trading_review.review_packet.verdict.top_blocker ?? "none"} / next ${props.operator.trading_review.review_packet.next_action}`}
+        </Text>
+        <Text>
+          {`Review subject: ${formatTradingReviewSubject(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review evidence window: ${formatTradingReviewEvidenceWindow(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review blockers: ${formatTradingReviewBlockers(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review authority: ${formatTradingReviewAuthority(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review runner: ${formatTradingReviewRunner(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review ledger: ${formatTradingReviewLedger(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review lineage: ${formatTradingReviewLineage(props.operator.trading_review.review_packet)}`}
+        </Text>
+        {props.operator.trading_review.review_packet.lineage.paper_board_learning ? (
+          <Text>
+            {`Review lineage learning: ${formatTradingReviewLineageLearning(props.operator.trading_review.review_packet)}`}
+          </Text>
+        ) : null}
+        <Text>
+          {`Review provenance: ${formatTradingReviewProvenance(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Review risk: ${formatTradingReviewRisk(props.operator.trading_review.review_packet)}`}
+        </Text>
+        <Text>
+          {`Trading promotion: ${props.operator.trading_promotion?.status ?? "not_promoted"} / ${props.operator.trading_promotion?.readiness_status ?? "paper_required"}`}
+        </Text>
+        <Text>{`Paper Trading Evaluation: ${paperEvaluation.status}`}</Text>
+        <Text>
+          {`Paper runner: ${formatPaperRunner(paperEvaluation)}`}
         </Text>
         <Text>
           {`Paper score: ${paperEvaluation.profit_loss.net_revenue_usdt.toFixed(2)} USDT / observations ${paperEvaluation.observation_count}`}
         </Text>
-        <Text>{`Market: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
-        <Text>{`Market data: ${paperEvaluation.market_data_source}${marketSnapshot?.source_priority ? ` / ${marketSnapshot.source_priority}` : ""}${marketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}${marketSnapshot?.ws_connected === true ? " / WS connected" : ""}${marketSnapshot?.ws_connected === false ? " / WS disconnected" : ""}`}</Text>
-        <Text>{`Public execution: ${formatPublicExecutionEvidence(paperEvaluation)}`}</Text>
-        <Text>{`Order book: ${formatOrderBook(paperEvaluation)}`}</Text>
-        <Text>{`Decision: ${formatPaperDecision(paperDecision)}`}</Text>
-        <Text>{`Account: ${formatPaperAccount(paperEvaluation)}`}</Text>
-        <Text>{`Fill: ${formatPaperFill(paperEvaluation)}`}</Text>
-        <Text>{`Ledger chain: ${paperEvaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
+        <Text>{`Paper market snapshot: ${marketSnapshot ? `${marketSnapshot.symbol} ${marketSnapshot.price.toFixed(2)} @ ${marketSnapshot.observed_at}` : "not observed"}`}</Text>
+        <Text>{`Gateway market data: ${paperEvaluation.market_data_source}${marketSnapshot?.source_priority ? ` / ${marketSnapshot.source_priority}` : ""}${marketSnapshot?.rest_fallback_used ? " / REST fallback" : ""}${marketSnapshot?.ws_connected === true ? " / WS connected" : ""}${marketSnapshot?.ws_connected === false ? " / WS disconnected" : ""}`}</Text>
+        <Text>{`Public execution evidence: ${formatPublicExecutionEvidence(paperEvaluation)}`}</Text>
+        <Text>{`Public order book evidence: ${formatOrderBook(paperEvaluation)}`}</Text>
+        <Text>{`Paper decision: ${formatPaperDecision(paperDecision)}`}</Text>
+        <Text>{`Paper account: ${formatPaperAccount(paperEvaluation)}`}</Text>
+        <Text>{`Paper fill: ${formatPaperFill(paperEvaluation)}`}</Text>
+        {formatPaperFailure(paperEvaluation) ? (
+          <Text>{formatPaperFailure(paperEvaluation)}</Text>
+        ) : null}
+        <Text>{`Paper ledger chain: ${paperEvaluation.ledger_chain_complete ? "complete" : "not complete"}`}</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Paper Board</Text>
@@ -220,7 +259,10 @@ export function OperatorTuiScreen(props: {
                   {`   window ${entry.evidence_window.observation_count} obs, ${entry.evidence_window.failed_observation_count} failed, ${entry.evidence_window.elapsed_ms}ms`}
                 </Text>
                 <Text dimColor>
-                  {`   runner ${entry.runner_status}, market ${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}, fill ${entry.latest_fill_status ?? "none"}, open ${entry.open_order_count}`}
+                  {`   paper runner ${entry.runner_status}, market provenance ${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}, paper fill ${entry.latest_fill_status ?? "none"}, paper open orders ${entry.open_order_count}`}
+                </Text>
+                <Text dimColor>
+                  {`   trend ${formatPaperBoardTrend(entry)}; blockers ${formatPaperBoardBlockerDensity(entry)}`}
                 </Text>
                 {entry.qualification_reasons.length ? (
                   <Text dimColor>{`   ${entry.qualification_reasons.join(", ")}`}</Text>
@@ -238,18 +280,248 @@ export function OperatorTuiScreen(props: {
         ))}
       </Box>
       <Box flexDirection="column">
+        <Text bold>Latest Ticks</Text>
+        {props.operator.candidate_arena.latest_ticks.length
+          ? props.operator.candidate_arena.latest_ticks.slice(0, 3).map((tick) => (
+              <Box key={tick.tick_id} flexDirection="column">
+                <Text>{formatCandidateArenaTickSummary(tick)}</Text>
+                <Text dimColor>{formatCandidateArenaTickDirections(tick)}</Text>
+                <Text dimColor>{formatCandidateArenaTickEfficiency(tick)}</Text>
+              </Box>
+            ))
+          : <Text>No Candidate Arena ticks recorded.</Text>}
+      </Box>
+      <Box flexDirection="column">
         <Text bold>Latest Commands</Text>
         {props.operator.latest_commands.length
-          ? props.operator.latest_commands.slice(0, 4).map((command) => (
-              <Text key={command.command_id}>
-                {`${command.command_kind}: ${command.status}`}
-              </Text>
-            ))
+          ? props.operator.latest_commands.slice(0, 4).map((command) => {
+              const remediation = commandRemediation(command);
+              return (
+                <Box key={command.command_id} flexDirection="column">
+                  <Text>
+                    {`${command.command_kind}: ${command.error ? `${command.status} / ${command.error}` : command.status}`}
+                  </Text>
+                  {remediation ? (
+                    <>
+                      <Text dimColor>{`${remediation.group} / ${remediation.surface}`}</Text>
+                      <Text dimColor>{`${remediation.remediation} / ${remediation.authority_status}`}</Text>
+                    </>
+                  ) : null}
+                </Box>
+              );
+            })
           : <Text>none</Text>}
       </Box>
       {props.message && <Text color="green">{props.message}</Text>}
     </Box>
   );
+}
+
+function formatTradingReviewRunner(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.runner.runner_status ?? (packet.runner.runner_active ? "active" : "unknown"),
+    packet.runner.trading_run_status ? `run ${packet.runner.trading_run_status}` : undefined,
+    packet.runner.last_observed_at ? `last ${packet.runner.last_observed_at}` : undefined,
+    packet.runner.next_observation_at ? `next ${packet.runner.next_observation_at}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatPaperBoardTrend(entry: OperatorReadModel["paper_trading_board"]["entries"][number]): string {
+  return [
+    entry.trend.direction,
+    `delta ${formatSignedFixed(entry.trend.net_revenue_delta_usdt)} USDT`,
+    `return ${formatSignedFixed(entry.trend.net_return_delta_pct)}%`,
+    `${entry.trend.observation_count_delta} obs`,
+    entry.trend.authority_status
+  ].join(" / ");
+}
+
+function formatPaperBoardBlockerDensity(entry: OperatorReadModel["paper_trading_board"]["entries"][number]): string {
+  return [
+    `${entry.blocker_density.blocker_count}`,
+    `density ${entry.blocker_density.blocker_density}`,
+    `failed ${entry.blocker_density.failed_observation_ratio}`,
+    `top ${entry.blocker_density.top_blocker ?? "none"}`,
+    entry.blocker_density.authority_status
+  ].join(" / ");
+}
+
+function formatSignedFixed(value: number): string {
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function formatCandidateArenaTickSummary(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  const failedCount = tick.direction_results.filter((result) => result.status === "failed").length;
+  return [
+    tick.tick_id,
+    tick.status,
+    `${tick.created_candidate_ids.length} created`,
+    `${failedCount} failed`,
+    tick.authority_status
+  ].join(" / ");
+}
+
+function formatCandidateArenaTickDirections(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  return tick.direction_results.map((result) => {
+    const outcome = result.candidate_id ?? result.error ?? result.finding ?? "no output";
+    return `${result.direction_kind}:${result.status} -> ${outcome}`;
+  }).join("; ");
+}
+
+function formatCandidateArenaTickEfficiency(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  const summaries = tick.direction_results
+    .filter((result) => result.research_efficiency)
+    .map((result) => {
+      const efficiency = result.research_efficiency!;
+      return `${result.direction_kind}: ${efficiency.provider_request_total} provider / ${efficiency.runner_command_total} runner / ${efficiency.scenario_count} scenarios / ${efficiency.elapsed_ms}ms / ${efficiency.authority_status}`;
+    });
+  return summaries.length ? summaries.join("; ") : "not recorded";
+}
+
+function formatTradingReviewSubject(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.subject.display_name ?? packet.subject.candidate_id ?? "no Trading review target",
+    packet.subject.promoted_at ? `promoted ${packet.subject.promoted_at}` : undefined,
+    `selected ${packet.subject.selected_matches_trading_review ? "matches" : "differs"}`
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewEvidenceWindow(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const window = packet.evidence_quality.evidence_window;
+  if (!window) {
+    return "paper required";
+  }
+  return [
+    `${window.observation_count} obs`,
+    `${window.failed_observation_count} failed`,
+    `${window.elapsed_ms}ms`,
+    window.first_observed_at ? `first ${window.first_observed_at}` : undefined,
+    window.last_observed_at ? `last ${window.last_observed_at}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewAuthority(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const noAuthority = packet.authority.no_authority;
+  return [
+    packet.authority.authority_status,
+    packet.authority.live_disabled_reason,
+    `live_exchange=${String(noAuthority.live_exchange_authority)}, private_read=${String(noAuthority.private_read_authority)}, order_submission=${String(noAuthority.order_submission_authority)}, credentials=${String(noAuthority.credentials)}`
+  ].join(" / ");
+}
+
+function formatTradingReviewBlockers(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  if (packet.evidence_quality.blocker_groups.length === 0) {
+    return "none";
+  }
+  return packet.evidence_quality.blocker_groups
+    .map((group) => [
+      group.group_kind,
+      group.severity,
+      group.blockers.join(", "),
+      group.summary,
+      `next ${group.next_action}`
+    ].join(" / "))
+    .join("; ");
+}
+
+function formatTradingReviewLedger(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.ledger.evidence_status,
+    packet.ledger.ledger_chain_complete ? "chain complete" : "chain incomplete",
+    packet.ledger.latest_order_request_id ? `order ${packet.ledger.latest_order_request_id}` : undefined,
+    packet.ledger.latest_gateway_outcome ? `gateway ${packet.ledger.latest_gateway_outcome}` : undefined,
+    packet.ledger.latest_execution_status ? `execution ${packet.ledger.latest_execution_status}` : undefined,
+    packet.ledger.latest_decision_kind ? `decision ${packet.ledger.latest_decision_kind}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLineage(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.lineage.lineage_status,
+    packet.lineage.direction_kind,
+    packet.lineage.parent_candidate_id ? `parent ${packet.lineage.parent_candidate_id}` : undefined,
+    packet.lineage.latest_finding,
+    packet.lineage.evaluation_status ? `evaluation ${packet.lineage.evaluation_status}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLineageLearning(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const learning = packet.lineage.paper_board_learning;
+  if (!learning) {
+    return "none";
+  }
+  return [
+    learning.rank ? `rank #${learning.rank}` : "unranked",
+    learning.qualification_status,
+    `${learning.net_revenue_usdt} net USDT`,
+    `${learning.observation_count} obs`,
+    learning.top_blocker ? `top ${learning.top_blocker}` : undefined,
+    `next ${learning.next_research_focus}`
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewProvenance(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const orderBook = packet.provenance.order_book;
+  return [
+    packet.provenance.market_data_source ?? "no market",
+    packet.provenance.latest_public_execution_source ?? "no public execution",
+    packet.provenance.latest_public_execution_freshness,
+    packet.provenance.latest_public_execution_ws_connected === true ? "WS connected" : undefined,
+    packet.provenance.latest_public_execution_ws_connected === false ? "WS disconnected" : undefined,
+    packet.provenance.latest_public_execution_rest_fallback_used ? "REST fallback" : undefined,
+    packet.provenance.latest_public_execution_stream_marker
+      ? `marker ${packet.provenance.latest_public_execution_stream_marker}`
+      : undefined,
+    `fill ${packet.provenance.latest_fill_status ?? "none"}`,
+    orderBook ? formatTradingReviewOrderBook(orderBook) : "order book missing"
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewOrderBook(
+  orderBook: NonNullable<OperatorReadModel["trading_review"]["review_packet"]["provenance"]["order_book"]>
+): string {
+  return [
+    `order book ${orderBook.sync_status}`,
+    orderBook.last_update_id ? `update ${orderBook.last_update_id}` : undefined,
+    orderBook.previous_final_update_id ? `prev ${orderBook.previous_final_update_id}` : undefined,
+    orderBook.depth_level_count !== undefined ? `depth ${orderBook.depth_level_count}` : undefined,
+    orderBook.gap_detected ? "gap recovered" : undefined
+  ].filter(Boolean).join(" ");
+}
+
+function formatTradingReviewRisk(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.risk.account ? `equity ${packet.risk.account.equity_usdt} USDT` : "account missing",
+    packet.risk.account ? `available ${packet.risk.account.available_balance_usdt} USDT` : undefined,
+    packet.risk.position
+      ? `position ${packet.risk.position.side} ${packet.risk.position.quantity} ${packet.risk.position.symbol} notional ${packet.risk.position.notional_usdt}`
+      : "position missing",
+    `open ${packet.risk.open_order_count}`,
+    `fill ${packet.risk.latest_fill_status ?? "none"}`,
+    packet.risk.latest_failure || packet.risk.latest_failure_reason
+      ? `failure ${formatPaperFailure(packet.risk)?.replace(/^Failure: /, "")}`
+      : undefined
+  ].filter(Boolean).join(" / ");
 }
 
 function formatPaperDecision(
@@ -290,6 +562,16 @@ function formatPaperFill(
     `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
     fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
   ].filter(Boolean).join(" / ");
+}
+
+function formatPaperFailure(input: {
+  latest_failure?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_failure"];
+  latest_failure_reason?: string;
+}): string | undefined {
+  if (input.latest_failure) {
+    return `Failure: ${input.latest_failure.failure_kind} / ${input.latest_failure.summary} / next ${input.latest_failure.next_action} / raw ${input.latest_failure.reason}`;
+  }
+  return input.latest_failure_reason ? `Failure: ${input.latest_failure_reason}` : undefined;
 }
 
 function formatPaperRunner(

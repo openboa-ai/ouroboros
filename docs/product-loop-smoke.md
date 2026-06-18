@@ -66,14 +66,23 @@ learn from top, negative, failed, and resume-needed paper evaluations.
   observation count, market snapshot, public execution evidence, fake account/fill state, failures,
   and Ledger summary. This keeps the next candidate generation grounded in paper results instead of
   replay-only leaderboard data.
+- CandidateArena researcher context must include the compact paper board with qualification
+  reasons, grouped blocker severity, trend, blocker density, and next action, so paper evidence
+  changes the next candidate generation instead of staying only in the operator surface.
+- CandidateArena latest ticks and next researcher context must include `ResearchEfficiency`
+  summaries: provider requests, runner commands, scenario count, elapsed milliseconds, and
+  `not_promotion_authority`.
+- CLI, TUI, and Web UI must render latest CandidateArena tick direction status, generated count,
+  failed count, and any `ResearchEfficiency` summary without treating it as promotion authority.
 - `GET /api/operator` must include `paper_trading_board`, ranked by selected-candidate continuous
   paper `net_revenue_usdt`; negative paper candidates remain visible below profitable candidates.
 - `paper_trading_board` entries must expose qualification status, reasons, evidence window,
-  runner state, and market/fill quality so ranking by paper score is not confused with readiness.
+  trend, blocker density, runner state, and market/fill quality so ranking by paper score is not
+  confused with readiness.
 - `GET /api/operator`, CLI JSON, candidate resource readback, and TUI render agree on
   `PaperTradingEvaluation`, `PaperTradingEvaluation` board, runner active status, observation count, latest market snapshot,
   latest public execution evidence, market data mode, order book sync state, latest paper decision,
-  accumulated score, and `ledger_chain_complete`.
+  accumulated score, classified paper failure with raw reason, and `ledger_chain_complete`.
 - Runtime restart smoke must keep persisted paper evidence visible while making scheduler loss
   explicit: `running` evaluation plus inactive in-memory runner is `needs resume`, and `trading_run.start`
   resumes the session instead of creating duplicate runners.

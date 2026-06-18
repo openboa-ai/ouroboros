@@ -19,6 +19,8 @@ export interface PaperTradingQualificationResult {
     observation_count: number;
     elapsed_ms: number;
     failed_observation_count: number;
+    first_observed_at?: string;
+    last_observed_at?: string;
   };
 }
 
@@ -42,10 +44,12 @@ export function qualifyPaperTradingEvaluation(input: {
   const failedObservationCount = input.observations.filter((observation) =>
     observation.status === "failed"
   ).length;
+  const observationBounds = paperEvaluationObservationBounds(input.evaluation, input.observations);
   const evidenceWindow = {
     observation_count: input.evaluation.observation_count,
     elapsed_ms: paperEvaluationElapsedMs(input.evaluation),
-    failed_observation_count: failedObservationCount
+    failed_observation_count: failedObservationCount,
+    ...observationBounds
   };
   const failedRatio = evidenceWindow.observation_count > 0
     ? failedObservationCount / evidenceWindow.observation_count
@@ -117,6 +121,19 @@ function paperEvaluationElapsedMs(evaluation: PaperTradingEvaluationRecord): num
     return 0;
   }
   return ended - started;
+}
+
+function paperEvaluationObservationBounds(
+  evaluation: PaperTradingEvaluationRecord,
+  observations: PaperTradingObservationRecord[]
+): { first_observed_at?: string; last_observed_at?: string } {
+  const ordered = [...observations].sort((a, b) =>
+    a.sequence - b.sequence || a.observed_at.localeCompare(b.observed_at)
+  );
+  return {
+    first_observed_at: ordered[0]?.observed_at,
+    last_observed_at: ordered.at(-1)?.observed_at ?? evaluation.last_observed_at
+  };
 }
 
 function latestMarketSnapshot(

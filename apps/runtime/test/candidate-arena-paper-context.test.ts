@@ -141,6 +141,26 @@ describe("CandidateArena paper evidence context", () => {
         observation_count: number;
         qualification_status: string;
         qualification_reasons: string[];
+        blocker_groups: Array<{
+          group_kind: string;
+          severity: string;
+          blockers: string[];
+          next_action: string;
+        }>;
+        trend: {
+          direction: string;
+          net_revenue_delta_usdt: number;
+          net_return_delta_pct: number;
+          observation_count_delta: number;
+          authority_status: string;
+        };
+        blocker_density: {
+          blocker_count: number;
+          blocker_density: number;
+          failed_observation_ratio: number;
+          top_blocker?: string;
+          authority_status: string;
+        };
         promotion_gate_status?: string;
         authority_status: string;
       }>;
@@ -176,10 +196,243 @@ describe("CandidateArena paper evidence context", () => {
           "min_observation_count_not_met",
           "min_elapsed_ms_not_met"
         ],
+        blocker_groups: [
+          expect.objectContaining({
+            group_kind: "evidence_window",
+            severity: "collecting",
+            blockers: [
+              "min_observation_count_not_met",
+              "min_elapsed_ms_not_met"
+            ],
+            next_action: "Continue paper observations until count and elapsed-time gates qualify."
+          })
+        ],
+        trend: {
+          direction: "insufficient_history",
+          net_revenue_delta_usdt: 0,
+          net_return_delta_pct: 0,
+          observation_count_delta: 0,
+          authority_status: "not_promotion_authority"
+        },
+        blocker_density: {
+          blocker_count: 2,
+          blocker_density: 0.285714,
+          failed_observation_ratio: 0,
+          top_blocker: "min_observation_count_not_met",
+          authority_status: "not_promotion_authority"
+        },
         authority_status: "not_live"
       })
     ]);
     expect(context.paper_trading_board[0]).not.toHaveProperty("promotion_gate_status");
+  });
+
+  it("feeds paper candidate lineage and findings into the next researcher context", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const capturedContexts: string[] = [];
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "lineage-feedback-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const createdCandidate = await store.getCandidate(first.created_candidate_ids[0]!);
+    if (!createdCandidate) {
+      throw new Error("lineage feedback candidate missing");
+    }
+    await seedPaperTradingEvidence(store, createdCandidate);
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "lineage-feedback-tick-2",
+      directions: ["mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(capturedContexts).toHaveLength(2);
+    const context = JSON.parse(capturedContexts[1]!) as {
+      selected_paper_evidence: Array<{
+        candidate_id: string;
+        lineage?: {
+          lineage_status: string;
+          direction_kind?: string;
+          parent_candidate_id?: string;
+          latest_finding?: string;
+          evaluation_status?: string;
+          authority_status: string;
+        };
+        paper_board_learning?: {
+          rank: number;
+          net_revenue_usdt: number;
+          observation_count: number;
+          qualification_status: string;
+          summary: string;
+          next_research_focus: string;
+          authority_status: string;
+        };
+      }>;
+    };
+    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        candidate_id: createdCandidate.candidate_id,
+        lineage: expect.objectContaining({
+          lineage_status: "available",
+          direction_kind: "trend_following",
+          parent_candidate_id: FIXTURE_CANDIDATE_ID,
+          latest_finding: "Candidate was disqualified by evaluation guardrails.",
+          evaluation_status: "disqualified",
+          authority_status: "lineage_only"
+        }),
+        paper_board_learning: expect.objectContaining({
+          rank: 1,
+          net_revenue_usdt: 12.34,
+          observation_count: 7,
+          qualification_status: "collecting_evidence",
+          summary: "Paper board rank #1: 12.34 net_revenue_usdt, 0.1234 net_return_pct, 7 observations, collecting_evidence.",
+          next_research_focus: "Continue paper observations until count and elapsed-time gates qualify.",
+          authority_status: "lineage_only"
+        })
+      })
+    ]));
+  });
+
+  it("clusters findings for the next ResearchWorker by direction, blocker, market regime, and protocol failure", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const capturedContexts: string[] = [];
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "finding-cluster-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const createdCandidate = await store.getCandidate(first.created_candidate_ids[0]!);
+    if (!createdCandidate) {
+      throw new Error("finding cluster candidate missing");
+    }
+    await seedPaperTradingEvidence(store, createdCandidate, {
+      status: "failed",
+      observationStatus: "failed",
+      failureReason: "malformed TradingSystem paper event protocol: invalid order_request",
+      expectedDirection: "long",
+      volatility: 0.024
+    });
+
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "finding-cluster-tick-2",
+      directions: ["execution_cost_robustness"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(capturedContexts).toHaveLength(2);
+    const context = JSON.parse(capturedContexts[1]!) as {
+      finding_clusters: Array<{
+        direction_kind: string;
+        top_blocker?: string;
+        blocker_group_kind?: string;
+        market_regime: string;
+        protocol_failure_kind?: string;
+        candidate_count: number;
+        candidate_ids: string[];
+        latest_finding?: string;
+        next_research_focus: string;
+        authority_status: string;
+      }>;
+    };
+
+    expect(context.finding_clusters).toEqual([
+      {
+        direction_kind: "trend_following",
+        top_blocker: "paper_evaluation_failed",
+        blocker_group_kind: "observation_quality",
+        market_regime: "long",
+        protocol_failure_kind: "trading_system_protocol_error",
+        candidate_count: 1,
+        candidate_ids: [createdCandidate.candidate_id],
+        latest_finding: "Candidate was disqualified by evaluation guardrails.",
+        next_research_focus: "Inspect the latest paper failure and fix the runtime or protocol issue before review.",
+        authority_status: "not_promotion_authority"
+      }
+    ]);
+    expect((second.arena as {
+      finding_clusters?: typeof context.finding_clusters;
+    }).finding_clusters).toEqual(context.finding_clusters);
+  });
+
+  it("feeds previous tick research efficiency into the next researcher context without promotion authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const capturedContexts: string[] = [];
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "efficiency-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    const firstTick = first.arena.latest_ticks.find((entry) => entry.tick_id === first.tick_id);
+    expect(firstTick?.direction_results[0]).toMatchObject({
+      direction_kind: "trend_following",
+      status: "created",
+      research_efficiency: {
+        provider_request_total: 6,
+        runner_command_total: 0,
+        scenario_count: 2,
+        authority_status: "not_promotion_authority"
+      }
+    });
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "efficiency-tick-2",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(capturedContexts).toHaveLength(2);
+    const context = JSON.parse(capturedContexts[1]!) as {
+      latest_research_efficiency: Array<{
+        tick_id: string;
+        direction_kind: string;
+        provider_request_total: number;
+        runner_command_total: number;
+        scenario_count: number;
+        authority_status: string;
+      }>;
+    };
+    expect(context.latest_research_efficiency).toEqual([
+      expect.objectContaining({
+        tick_id: "efficiency-tick-1",
+        direction_kind: "trend_following",
+        provider_request_total: 6,
+        runner_command_total: 0,
+        scenario_count: 2,
+        authority_status: "not_promotion_authority"
+      })
+    ]);
   });
 });
 
@@ -229,9 +482,16 @@ class EscapingEntrypointResearchAgent implements TradingResearchAgentAdapter {
 
 async function seedPaperTradingEvidence(
   store: LocalStore,
-  candidate: CandidateInspectReadModel
+  candidate: CandidateInspectReadModel,
+  options: {
+    status?: PaperTradingEvaluationRecord["status"];
+    observationStatus?: PaperTradingObservationRecord["status"];
+    failureReason?: string;
+    expectedDirection?: "long" | "short" | "flat";
+    volatility?: number;
+  } = {}
 ): Promise<void> {
-  const evaluationId = `paper-trading-evaluation-${FIXTURE_CANDIDATE_ID}-context`;
+  const evaluationId = `paper-trading-evaluation-${candidate.candidate_id}-context`;
   const tradingRunId = candidate.runtime.ref.id;
   const evaluation: PaperTradingEvaluationRecord = {
     record_kind: "paper_trading_evaluation",
@@ -243,7 +503,7 @@ async function seedPaperTradingEvidence(
       id: candidate.candidate_version.candidate_version_id
     },
     trading_run_ref: { record_kind: "trading_run", id: tradingRunId },
-    status: "running",
+    status: options.status ?? "running",
     interval_ms: 60_000,
     observation_count: 7,
     started_at: "2026-05-16T00:00:00.000Z",
@@ -309,6 +569,7 @@ async function seedPaperTradingEvidence(
       }],
       authority_status: "read_only"
     },
+    latest_failure_reason: options.failureReason,
     authority_status: "not_live"
   };
   const observation: PaperTradingObservationRecord = {
@@ -323,11 +584,15 @@ async function seedPaperTradingEvidence(
     },
     trading_run_ref: { record_kind: "trading_run", id: tradingRunId },
     sequence: 7,
-    status: "recorded",
+    status: options.observationStatus ?? "recorded",
     observed_at: "2026-05-16T00:07:00.000Z",
     market_snapshot: {
       symbol: "BTCUSDT",
       price: 65_123,
+      moving_average_fast: 65_180,
+      moving_average_slow: 65_000,
+      volatility: options.volatility,
+      expected_direction: options.expectedDirection,
       observed_at: "2026-05-16T00:07:00.000Z",
       source_kind: "binance_production_public_hybrid",
       source_priority: "websocket_primary",
@@ -358,6 +623,7 @@ async function seedPaperTradingEvidence(
       net_return_pct: 0.0096
     },
     cumulative_score: evaluation.latest_score,
+    failure_reason: options.failureReason,
     authority_status: "not_live"
   };
   await store.recordPaperTradingObservation(observation, evaluation);

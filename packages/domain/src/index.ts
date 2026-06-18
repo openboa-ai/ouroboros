@@ -591,6 +591,10 @@ export type TradingSubstrateSourceKind =
   | "binance_user_data_stream"
   | "binance_market_data_rest"
   | "binance_rest_query"
+  | "binance_production_public_rest"
+  | "binance_production_public_websocket"
+  | "binance_production_public_hybrid"
+  | "binance_production_public_stream"
   | "local_config"
   | "fixture";
 
@@ -2473,6 +2477,41 @@ export interface CandidateArenaLatestCandidateReadModel {
   authority_status: "not_live";
 }
 
+export interface CandidateArenaResearchEfficiencyReadModel {
+  provider_request_total: number;
+  runner_command_total: number;
+  scenario_count: number;
+  elapsed_ms: number;
+  authority_status: "not_promotion_authority";
+}
+
+export type CandidateArenaFindingClusterMarketRegime =
+  | "long"
+  | "short"
+  | "flat"
+  | "volatile"
+  | "unknown";
+
+export type CandidateArenaFindingClusterBlockerGroupKind =
+  | "evidence_window"
+  | "runner_health"
+  | "observation_quality"
+  | "market_provenance"
+  | "fill_provenance";
+
+export interface CandidateArenaFindingClusterReadModel {
+  direction_kind: ResearchDirectionKind;
+  top_blocker?: PaperTradingQualificationReason;
+  blocker_group_kind?: CandidateArenaFindingClusterBlockerGroupKind;
+  market_regime: CandidateArenaFindingClusterMarketRegime;
+  protocol_failure_kind?: PaperTradingFailureKind;
+  candidate_count: number;
+  candidate_ids: string[];
+  latest_finding?: string;
+  next_research_focus: string;
+  authority_status: "not_promotion_authority";
+}
+
 export interface CandidateArenaTickDirectionResultReadModel {
   direction_kind: ResearchDirectionKind;
   status: CandidateArenaDirectionResultStatus;
@@ -2482,6 +2521,7 @@ export interface CandidateArenaTickDirectionResultReadModel {
   finding?: string;
   error?: string;
   net_revenue_usdt?: number;
+  research_efficiency?: CandidateArenaResearchEfficiencyReadModel;
 }
 
 export interface CandidateArenaTickReadModel {
@@ -2514,6 +2554,7 @@ export interface CandidateArenaReadModel {
   leaderboard: CandidateArenaLeaderboardEntryReadModel[];
   latest_candidates: CandidateArenaLatestCandidateReadModel[];
   latest_ticks: CandidateArenaTickReadModel[];
+  finding_clusters: CandidateArenaFindingClusterReadModel[];
   live_disabled: true;
   authority_status: "not_live";
 }
@@ -2864,6 +2905,75 @@ export interface OuroborosCommandReadModel {
   authority_status: "not_live";
 }
 
+export interface OuroborosCommandRemediationReadModel {
+  group: string;
+  surface: string;
+  remediation: string;
+  authority_status: "not_live";
+}
+
+export function commandRemediation(
+  command: OuroborosCommandReadModel
+): OuroborosCommandRemediationReadModel | undefined {
+  if (command.status !== "failed") {
+    return undefined;
+  }
+
+  switch (command.command_kind) {
+    case "trading_candidate.promote":
+      return {
+        group: "Trading review promotion",
+        surface: "Trading review packet, Paper Board",
+        remediation: "Review the Trading review packet blockers and Paper Board qualification before retrying promotion.",
+        authority_status: "not_live"
+      };
+    case "trading_run.start":
+    case "trading_run.observe":
+    case "trading_run.stop":
+      return {
+        group: "Paper trading run",
+        surface: "Selected candidate, Trading review runner",
+        remediation: "Review the selected PaperTradingEvaluation runner state and latest paper failure before retrying the paper command.",
+        authority_status: "not_live"
+      };
+    case "candidate.paper_evidence.run":
+      return {
+        group: "Paper evidence",
+        surface: "Selected candidate, Ledger evidence",
+        remediation: "Review the selected candidate paper failure and Ledger chain before retrying paper evidence.",
+        authority_status: "not_live"
+      };
+    case "agent_provider.status":
+    case "agent_provider.setup":
+    case "agent_provider.login.start":
+    case "agent_provider.probe":
+    case "researcher.provider.select":
+      return {
+        group: "Agent provider",
+        surface: "Agent provider status",
+        remediation: "Review Agent providers and complete setup, login, or probe before running research.",
+        authority_status: "not_live"
+      };
+    case "arena.status":
+    case "arena.start":
+    case "arena.stop":
+    case "arena.tick":
+      return {
+        group: "Candidate Arena",
+        surface: "Candidate Arena cockpit, Latest ticks",
+        remediation: "Review Candidate Arena runner state, latest ticks, provider status, and research failures before retrying the arena command.",
+        authority_status: "not_live"
+      };
+    case "candidate.select":
+      return {
+        group: "Candidate selection",
+        surface: "Selected candidate",
+        remediation: "Review the Candidate Arena leaderboard and selected candidate evidence before retrying selection.",
+        authority_status: "not_live"
+      };
+  }
+}
+
 export interface OuroborosCommandRecord extends BaseRecord {
   record_kind: "ouroboros_command";
   ouroboros_command_id: string;
@@ -2928,6 +3038,7 @@ export interface PaperTradingEvaluationReadModel {
   latest_gateway_outcome?: string;
   latest_execution_status?: string;
   latest_failure_reason?: string;
+  latest_failure?: PaperTradingFailureReadModel;
   market_data_source: PaperTradingMarketDataSourceKind;
   account_provider: "fake_paper_account";
   executor: "fake_paper_order_executor";
@@ -2963,16 +3074,91 @@ export type PaperTradingQualificationReason =
   | "fill_public_execution_evidence_missing"
   | "paper_evaluation_failed";
 
+export interface PaperTradingLearningSummaryReadModel {
+  rank?: number;
+  net_revenue_usdt: number;
+  net_return_pct: number;
+  observation_count: number;
+  qualification_status?: PaperTradingQualificationStatus;
+  qualification_reasons: PaperTradingQualificationReason[];
+  top_blocker?: PaperTradingQualificationReason;
+  latest_failure_kind?: PaperTradingFailureKind;
+  latest_failure_summary?: string;
+  summary: string;
+  next_research_focus: string;
+  authority_status: "lineage_only";
+}
+
+export type PaperTradingFailureKind =
+  | "market_data_gap"
+  | "public_execution_evidence_gap"
+  | "trading_system_protocol_error"
+  | "risk_rejection"
+  | "sandbox_or_runner_failure"
+  | "runner_health_loss"
+  | "ledger_gap"
+  | "authority_boundary_violation"
+  | "unknown_failure";
+
+export interface PaperTradingFailureReadModel {
+  failure_kind: PaperTradingFailureKind;
+  reason: string;
+  summary: string;
+  next_action: string;
+  authority_status: "not_live";
+}
+
 export interface PaperTradingEvidenceWindowReadModel {
   observation_count: number;
   elapsed_ms: number;
   failed_observation_count: number;
+  first_observed_at?: string;
+  last_observed_at?: string;
 }
 
 export interface PaperTradingRiskSummaryReadModel {
   open_order_count: number;
+  account?: {
+    equity_usdt: string;
+    available_balance_usdt: string;
+    wallet_balance_usdt: string;
+    margin_reserved_usdt: string;
+    authority_status: "not_live";
+  };
+  position?: {
+    symbol: "BTCUSDT";
+    side: "long" | "short" | "flat";
+    quantity: string;
+    notional_usdt: string;
+    average_entry_price?: string;
+    mark_price: string;
+    authority_status: "not_live";
+  };
   latest_fill_status?: PaperTradingFillSummary["fill_status"];
   latest_failure_reason?: string;
+  latest_failure?: PaperTradingFailureReadModel;
+}
+
+export type PaperTradingBoardTrendDirection =
+  | "improving"
+  | "declining"
+  | "flat"
+  | "insufficient_history";
+
+export interface PaperTradingBoardTrendReadModel {
+  direction: PaperTradingBoardTrendDirection;
+  net_revenue_delta_usdt: number;
+  net_return_delta_pct: number;
+  observation_count_delta: number;
+  authority_status: "not_promotion_authority";
+}
+
+export interface PaperTradingBoardBlockerDensityReadModel {
+  blocker_count: number;
+  blocker_density: number;
+  failed_observation_ratio: number;
+  top_blocker?: PaperTradingQualificationReason;
+  authority_status: "not_promotion_authority";
 }
 
 export interface PaperTradingBoardEntryReadModel {
@@ -2987,6 +3173,8 @@ export interface PaperTradingBoardEntryReadModel {
   qualification_reasons: PaperTradingQualificationReason[];
   evidence_window: PaperTradingEvidenceWindowReadModel;
   risk_summary: PaperTradingRiskSummaryReadModel;
+  trend: PaperTradingBoardTrendReadModel;
+  blocker_density: PaperTradingBoardBlockerDensityReadModel;
   observation_count: number;
   trading_run_id: string;
   last_observed_at?: string;
@@ -2997,6 +3185,7 @@ export interface PaperTradingBoardEntryReadModel {
   latest_fill_status?: PaperTradingFillSummary["fill_status"];
   open_order_count: number;
   latest_failure_reason?: string;
+  latest_failure?: PaperTradingFailureReadModel;
   authority_status: "not_live";
 }
 
@@ -3054,6 +3243,146 @@ export interface TradingPromotionReadModel {
   authority_status: "not_live";
 }
 
+export type TradingReviewPacketSeverity =
+  | "ready"
+  | "collecting"
+  | "needs_resume"
+  | "blocked"
+  | "failed"
+  | "mismatch";
+
+export type TradingReviewPacketBlocker =
+  | PaperTradingQualificationReason
+  | "arena_selection_mismatch"
+  | "paper_required";
+
+export type TradingReviewPacketBlockerGroupKind =
+  | "evidence_window"
+  | "runner_health"
+  | "observation_quality"
+  | "market_provenance"
+  | "fill_provenance"
+  | "selection";
+
+export interface TradingReviewPacketBlockerGroup {
+  group_kind: TradingReviewPacketBlockerGroupKind;
+  severity: TradingReviewPacketSeverity;
+  blockers: TradingReviewPacketBlocker[];
+  summary: string;
+  next_action: string;
+}
+
+export type TradingReviewPacketLedgerEvidenceStatus =
+  | "not_observed"
+  | "no_order_checkpoint"
+  | "complete_chain"
+  | "incomplete_chain";
+
+export interface TradingReviewPacketRunnerReadModel {
+  runner_status?: PaperTradingBoardRunnerStatus;
+  runner_active: boolean;
+  trading_run_status?: TradingRunLifecycleStatus;
+  last_observed_at?: string;
+  next_observation_at?: string;
+  authority_status: "not_live";
+}
+
+export interface TradingReviewPacketLedgerReadModel {
+  evidence_status: TradingReviewPacketLedgerEvidenceStatus;
+  ledger_chain_complete: boolean;
+  latest_order_request_id?: string;
+  latest_gateway_outcome?: string;
+  latest_execution_status?: string;
+  latest_decision_kind?: PaperTradingDecisionKind;
+  authority_status: "not_live";
+}
+
+export type TradingReviewPacketLineageStatus =
+  | "available"
+  | "blocked"
+  | "missing";
+
+export interface TradingReviewPacketLineageReadModel {
+  lineage_status: TradingReviewPacketLineageStatus;
+  direction_kind?: ResearchDirectionKind;
+  parent_candidate_id?: string;
+  parent_candidate_version_id?: string;
+  source_system_code_ref?: Ref;
+  generated_system_code_ref?: Ref;
+  generated_artifact_digest?: string;
+  generated_by_agent?: true;
+  materialized_candidate_id?: string;
+  materialized_candidate_version_id?: string;
+  latest_finding?: string;
+  evaluation_status?: string;
+  evaluation_score?: number;
+  profit_loss?: TradingProfitLossReadModel;
+  paper_board_learning?: PaperTradingLearningSummaryReadModel;
+  authority_status: "lineage_only";
+}
+
+export interface TradingReviewPacketReadModel {
+  packet_kind: "trading_review_packet";
+  verdict: {
+    readiness_status: TradingPromotionReadinessStatus;
+    qualification_status?: PaperTradingQualificationStatus;
+    severity: TradingReviewPacketSeverity;
+    top_blocker?: TradingReviewPacketBlocker;
+  };
+  subject: {
+    candidate_id?: string;
+    candidate_version_id?: string;
+    display_name?: string;
+    paper_trading_evaluation_id?: string;
+    promoted_at?: string;
+    selected_candidate_id: string | null;
+    selected_matches_trading_review: boolean;
+  };
+  performance: {
+    rank?: number;
+    primary_rank_metric: "net_revenue_usdt";
+    secondary_rank_metric: "net_return_pct";
+    profit_loss?: TradingProfitLossReadModel;
+  };
+  evidence_quality: {
+    evidence_window?: PaperTradingEvidenceWindowReadModel;
+    qualification_reasons: PaperTradingQualificationReason[];
+    blocker_groups: TradingReviewPacketBlockerGroup[];
+  };
+  provenance: {
+    market_data_source?: PaperTradingMarketDataSourceKind;
+    latest_public_execution_source?: PaperTradingMarketDataSourcePriority;
+    latest_public_execution_freshness?: PaperTradingMarketDataFreshness;
+    latest_public_execution_ws_connected?: boolean;
+    latest_public_execution_rest_fallback_used?: boolean;
+    latest_public_execution_stream_marker?: string;
+    latest_fill_status?: PaperTradingFillSummary["fill_status"];
+    order_book?: {
+      sync_status: PaperTradingOrderBookSummary["sync_status"];
+      last_update_id?: string;
+      previous_final_update_id?: string;
+      gap_detected: boolean;
+      depth_level_count?: number;
+      authority_status: "read_only";
+    };
+  };
+  risk: PaperTradingRiskSummaryReadModel;
+  runner: TradingReviewPacketRunnerReadModel;
+  ledger: TradingReviewPacketLedgerReadModel;
+  lineage: TradingReviewPacketLineageReadModel;
+  authority: {
+    authority_status: "not_live";
+    live_disabled_reason: "mlp_paper_only";
+    no_authority: {
+      live_exchange_authority: false;
+      private_read_authority: false;
+      order_submission_authority: false;
+      credentials: false;
+    };
+  };
+  next_action: string;
+}
+
 export interface TradingReviewReadModel {
   review_kind: "trading_review";
   status: TradingPromotionStatus;
@@ -3073,9 +3402,142 @@ export interface TradingReviewReadModel {
   latest_failure_reason?: string;
   selected_candidate_id: string | null;
   selected_matches_trading_review: boolean;
+  review_packet: TradingReviewPacketReadModel;
   next_action: string;
   live_disabled_reason: "mlp_paper_only";
   authority_status: "not_live";
+}
+
+export type TradingFirstViewportRecommendationTone =
+  | "good"
+  | "warning"
+  | "danger"
+  | "neutral";
+
+export interface TradingFirstViewportRecommendationReadModel {
+  label: "Recommended action";
+  value: string;
+  detail: string;
+  tone: TradingFirstViewportRecommendationTone;
+  authority_status: "read_only";
+}
+
+export interface TradingFirstViewportRecommendationInput {
+  trading_review_packet?: TradingReviewPacketReadModel;
+  compatibility?: {
+    risk_status?: AccountPositionRiskMirrorRiskStatus;
+    runtime_lifecycle_status?: TradingRunLifecycleStatus;
+    has_improvement_proposal?: boolean;
+    improvement_proposal_id?: string;
+    has_ledger_evidence?: boolean;
+    has_replay_evidence?: boolean;
+  };
+}
+
+export function buildTradingFirstViewportRecommendation(
+  input: TradingFirstViewportRecommendationInput
+): TradingFirstViewportRecommendationReadModel {
+  const packet = input.trading_review_packet;
+  if (packet) {
+    return {
+      label: "Recommended action",
+      value: packet.next_action,
+      detail: tradingReviewPacketRecommendationDetail(packet),
+      tone: tradingReviewPacketRecommendationTone(packet),
+      authority_status: "read_only"
+    };
+  }
+
+  const compatibility = input.compatibility;
+  if (compatibility?.risk_status === "breach") {
+    return {
+      label: "Recommended action",
+      value: "Stop and inspect",
+      detail: "Risk status is breach; stop the Trading Run before considering another cycle.",
+      tone: "danger",
+      authority_status: "read_only"
+    };
+  }
+
+  if (
+    compatibility?.runtime_lifecycle_status === "running" &&
+    compatibility.risk_status === "watch"
+  ) {
+    return {
+      label: "Recommended action",
+      value: "Observe risk",
+      detail: "The Trading Run is active and risk is on watch; inspect position and Ledger before another cycle.",
+      tone: "warning",
+      authority_status: "read_only"
+    };
+  }
+
+  if (compatibility?.has_improvement_proposal) {
+    const proposalDetail = compatibility.improvement_proposal_id
+      ? `Improvement produced ${compatibility.improvement_proposal_id}; review the handoff and start the next paper cycle.`
+      : "Improvement produced a change proposal; review the handoff and start the next paper cycle.";
+    return {
+      label: "Recommended action",
+      value: "Run next cycle",
+      detail: proposalDetail,
+      tone: "good",
+      authority_status: "read_only"
+    };
+  }
+
+  if (compatibility?.has_ledger_evidence) {
+    return {
+      label: "Recommended action",
+      value: "Evaluate then improve",
+      detail: "A request/result chain exists; use the outcome to judge whether the next System Code is better.",
+      tone: "good",
+      authority_status: "read_only"
+    };
+  }
+
+  if (compatibility?.has_replay_evidence) {
+    return {
+      label: "Recommended action",
+      value: "Create improvement",
+      detail: "Evaluation evidence exists; produce an Improvement output before starting another run.",
+      tone: "warning",
+      authority_status: "read_only"
+    };
+  }
+
+  return {
+    label: "Recommended action",
+    value: "Run first cycle",
+    detail: "No complete request/result chain is visible yet; run the fixture paper cycle to create decision evidence.",
+    tone: "warning",
+    authority_status: "read_only"
+  };
+}
+
+function tradingReviewPacketRecommendationDetail(
+  packet: TradingReviewPacketReadModel
+): string {
+  return [
+    `${packet.verdict.severity} / ${packet.verdict.top_blocker ?? "none"}`,
+    packet.runner.runner_status ? `runner ${packet.runner.runner_status}` : undefined,
+    packet.subject.selected_matches_trading_review ? undefined : "selected target mismatch"
+  ].filter(Boolean).join(" / ");
+}
+
+function tradingReviewPacketRecommendationTone(
+  packet: TradingReviewPacketReadModel
+): TradingFirstViewportRecommendationTone {
+  if (packet.verdict.severity === "ready") {
+    return "good";
+  }
+  if (
+    packet.verdict.severity === "blocked" ||
+    packet.verdict.severity === "failed" ||
+    packet.verdict.severity === "mismatch"
+  ) {
+    return "danger";
+  }
+  return "warning";
 }
 
 export interface OperatorReadModel {

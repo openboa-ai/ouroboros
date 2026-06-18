@@ -8,11 +8,19 @@ import type {
   CandidateArenaTickRecord,
   CandidateArenaTickReadModel,
   CandidateArenaTickStatus,
+  CandidateArenaFindingClusterMarketRegime,
+  CandidateArenaFindingClusterReadModel,
   CandidateArenaReadModel,
+  CandidateArenaResearchEfficiencyReadModel,
   CandidateArenaResearcherReadModel,
   CandidateInspectReadModel,
   CandidateMaterializationInput,
   ExperimentRunRecord,
+  PaperTradingBoardBlockerDensityReadModel,
+  PaperTradingBoardTrendReadModel,
+  PaperTradingMarketSnapshotSummary,
+  PaperTradingQualificationReason,
+  PaperTradingQualificationStatus,
   Ref,
   ResearchDirectionKind,
   ResearchFindingRecord,
@@ -35,9 +43,16 @@ import type {
   AgentEditResult,
   ManagedResearchAgent,
   TradingEvaluationResult,
+  TradingResearchNotebookEntry,
   TradingResearchAgentAdapter
 } from "../trading/research/types";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
+import {
+  paperTradingQualificationBlockerGroups,
+  type PaperTradingQualificationBlockerGroup
+} from "../trading/paper/qualification-blockers";
+import { classifyPaperTradingFailure } from "../trading/paper/failures";
+import { paperTradingLearningSummary } from "../trading/paper/learning";
 import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -193,7 +208,7 @@ export async function runCandidateArenaTick(
     const direction = directions[index]!;
     const settled = settledDirections[index]!;
     if (settled.status === "fulfilled") {
-      const created = settled.value.created;
+      const created = settled.value.created.candidate;
       createdCandidateIds.push(created.candidate_id);
       const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
       directionResults.push({
@@ -205,7 +220,8 @@ export async function runCandidateArenaTick(
           profitLoss,
           created.full_cycle_lineage?.evidence?.evaluation_status
         ),
-        net_revenue_usdt: profitLoss.net_revenue_usdt
+        net_revenue_usdt: profitLoss.net_revenue_usdt,
+        research_efficiency: settled.value.created.research_efficiency
       });
     } else {
       directionResults.push({
@@ -262,7 +278,7 @@ export async function buildCandidateArenaReadModel(
       left.candidate.candidate_id.localeCompare(right.candidate.candidate_id)
     );
 
-  return {
+  const arena: CandidateArenaReadModel = {
     arena_kind: "candidate_arena",
     runner_status: runnerStatus,
     tick_count: tickCount,
@@ -286,8 +302,15 @@ export async function buildCandidateArenaReadModel(
       authority_status: "not_live"
     })),
     latest_ticks: latestTicks,
+    finding_clusters: [],
     live_disabled: true,
     authority_status: "not_live"
+  };
+  const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
+  const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
+  return {
+    ...arena,
+    finding_clusters: arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard)
   };
 }
 
@@ -295,7 +318,10 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
   tickId: string;
-}): Promise<CandidateInspectReadModel> {
+}): Promise<{
+  candidate: CandidateInspectReadModel;
+  research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+}> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
   const artifactSourceDir = await sourceResearchArtifactDir({
@@ -321,6 +347,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   if (!entry) {
     throw new Error("candidate_arena_missing_research_entry");
   }
+  const researchEfficiency = researchEfficiencySummary(entry);
   const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
   const manifest = await readTradingSystemManifest(artifactDir);
   return withArenaStoreMutation(input.store, async () => {
@@ -358,7 +385,10 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     if (!candidate) {
       throw new Error("candidate_arena_projection_failed");
     }
-    return candidate;
+    return {
+      candidate,
+      research_efficiency: researchEfficiency
+    };
   });
 }
 
@@ -673,6 +703,7 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
   const paperEvidenceCandidates = await arenaPaperEvidenceCandidates(store, arena);
   const paperTradingBoard = arenaPaperTradingBoardContext(paperEvidenceCandidates);
+  const findingClusters = arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard);
   return JSON.stringify({
     requested_direction: direction,
     task: "Submit a new TradingSystem candidate into the Candidate Arena. Rank target is revenue minus costs.",
@@ -700,50 +731,79 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
         finding: entry.latest_finding
       })),
+    latest_research_efficiency: arena.latest_ticks
+      .flatMap((tick) => tick.direction_results
+        .filter((result) => result.research_efficiency)
+        .map((result) => ({
+          tick_id: tick.tick_id,
+          direction_kind: result.direction_kind,
+          candidate_id: result.candidate_id,
+          net_revenue_usdt: result.net_revenue_usdt,
+          ...result.research_efficiency
+        })))
+      .slice(0, 8),
     selected_paper_evidence: paperEvidenceCandidates
       .filter(({ candidate, paperEvaluation }) => candidate?.ledger?.has_activity || paperEvaluation)
-      .map(({ entry, candidate, paperEvaluation, paperObservations }) => ({
-        candidate_id: candidate?.candidate_id ?? entry?.candidate_id,
-        direction_kind: entry?.direction_kind ??
-          candidate?.full_cycle_lineage?.evidence?.direction_kind ??
-          "paper_evidence",
-        net_revenue_usdt: entry?.profit_loss.net_revenue_usdt ??
-          paperEvaluation?.latest_score.net_revenue_usdt ??
-          0,
-        paper_trading_status: paperEvaluation?.status,
-        paper_observation_count: paperEvaluation?.observation_count ?? 0,
-        paper_score: paperEvaluation?.latest_score,
-        latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
-        latest_public_execution_snapshot: paperObservations.at(-1)?.public_execution_snapshot ??
-          paperEvaluation?.latest_public_execution_snapshot,
-        latest_paper_account: paperObservations.at(-1)?.paper_account_snapshot ??
-          paperEvaluation?.paper_account_snapshot,
-        latest_open_orders: paperObservations.at(-1)?.open_orders ??
-          paperEvaluation?.open_orders,
-        latest_fill: paperObservations.at(-1)?.latest_fill ??
-          paperEvaluation?.latest_fill,
-        latest_paper_failure: paperEvaluation?.latest_failure_reason,
-        failed_observations: paperObservations
-          .filter((observation) => observation.status === "failed")
-          .slice(-3)
-          .map((observation) => ({
-            sequence: observation.sequence,
-            observed_at: observation.observed_at,
-            failure_reason: observation.failure_reason
-          })),
-        ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
-        ledger_chain_count: candidate?.ledger?.chain_count ?? 0,
-        latest_order_request_id: candidate?.ledger?.latest_order_request?.order_request_id,
-        latest_order_request_side: candidate?.ledger?.latest_order_request?.side,
-        latest_order_request_type: candidate?.ledger?.latest_order_request?.order_type,
-        latest_gateway_outcome: candidate?.ledger?.latest_gateway_result?.decision_outcome,
-        latest_execution_status: candidate?.ledger?.latest_execution_result?.status,
-        trading_run_status: candidate?.trading_run?.lifecycle_status
-          ?? candidate?.runtime.runtime_lifecycle_status
-          ?? "recorded",
-        authority_status: "not_live"
-      })),
+      .map(({ entry, candidate, paperEvaluation, paperObservations }) => {
+        const candidateId = candidate?.candidate_id ?? entry?.candidate_id;
+        const paperBoardEntry = paperTradingBoard.find((boardEntry) => boardEntry.candidate_id === candidateId);
+        return {
+          candidate_id: candidateId,
+          direction_kind: entry?.direction_kind ??
+            candidate?.full_cycle_lineage?.evidence?.direction_kind ??
+            "paper_evidence",
+          net_revenue_usdt: entry?.profit_loss.net_revenue_usdt ??
+            paperEvaluation?.latest_score.net_revenue_usdt ??
+            0,
+          paper_trading_status: paperEvaluation?.status,
+          paper_observation_count: paperEvaluation?.observation_count ?? 0,
+          paper_score: paperEvaluation?.latest_score,
+          lineage: arenaPaperEvidenceLineage(candidate, entry),
+          paper_board_learning: paperBoardEntry && paperEvaluation
+            ? paperTradingLearningSummary({
+                rank: paperBoardEntry.rank,
+                profitLoss: paperEvaluation.latest_score,
+                observationCount: paperEvaluation.observation_count,
+                qualificationStatus: paperBoardEntry.qualification_status,
+                qualificationReasons: paperBoardEntry.qualification_reasons,
+                latestFailure: classifyPaperTradingFailure(
+                  paperObservations.at(-1)?.failure_reason ?? paperEvaluation.latest_failure_reason
+                )
+              })
+            : undefined,
+          latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
+          latest_public_execution_snapshot: paperObservations.at(-1)?.public_execution_snapshot ??
+            paperEvaluation?.latest_public_execution_snapshot,
+          latest_paper_account: paperObservations.at(-1)?.paper_account_snapshot ??
+            paperEvaluation?.paper_account_snapshot,
+          latest_open_orders: paperObservations.at(-1)?.open_orders ??
+            paperEvaluation?.open_orders,
+          latest_fill: paperObservations.at(-1)?.latest_fill ??
+            paperEvaluation?.latest_fill,
+          latest_paper_failure: paperEvaluation?.latest_failure_reason,
+          failed_observations: paperObservations
+            .filter((observation) => observation.status === "failed")
+            .slice(-3)
+            .map((observation) => ({
+              sequence: observation.sequence,
+              observed_at: observation.observed_at,
+              failure_reason: observation.failure_reason
+            })),
+          ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
+          ledger_chain_count: candidate?.ledger?.chain_count ?? 0,
+          latest_order_request_id: candidate?.ledger?.latest_order_request?.order_request_id,
+          latest_order_request_side: candidate?.ledger?.latest_order_request?.side,
+          latest_order_request_type: candidate?.ledger?.latest_order_request?.order_type,
+          latest_gateway_outcome: candidate?.ledger?.latest_gateway_result?.decision_outcome,
+          latest_execution_status: candidate?.ledger?.latest_execution_result?.status,
+          trading_run_status: candidate?.trading_run?.lifecycle_status
+            ?? candidate?.runtime.runtime_lifecycle_status
+            ?? "recorded",
+          authority_status: "not_live"
+        };
+      }),
     paper_trading_board: paperTradingBoard,
+    finding_clusters: findingClusters,
     latest_tick_failures: arena.latest_ticks
       .flatMap((tick) => tick.direction_results
         .filter((result) => result.status === "failed")
@@ -756,6 +816,154 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
   });
 }
 
+function arenaFindingClusters(
+  candidates: Awaited<ReturnType<typeof arenaPaperEvidenceCandidates>>,
+  paperTradingBoard: ReturnType<typeof arenaPaperTradingBoardContext>
+): CandidateArenaFindingClusterReadModel[] {
+  const paperBoardByCandidateId = new Map(
+    paperTradingBoard.flatMap((entry) => entry.candidate_id ? [[entry.candidate_id, entry]] : [])
+  );
+  const clusters = new Map<string, Omit<CandidateArenaFindingClusterReadModel, "candidate_count">>();
+
+  for (const { entry, candidate, paperEvaluation, paperObservations } of candidates) {
+    const candidateId = candidate?.candidate_id ?? entry?.candidate_id;
+    if (!candidateId) {
+      continue;
+    }
+    if (!paperEvaluation && paperObservations.length === 0) {
+      continue;
+    }
+
+    const paperBoardEntry = paperBoardByCandidateId.get(candidateId);
+    const latestObservation = paperObservations.at(-1);
+    const latestFailure = classifyPaperTradingFailure(
+      latestObservation?.failure_reason ?? paperEvaluation?.latest_failure_reason
+    );
+    const lineage = arenaPaperEvidenceLineage(candidate, entry);
+    const directionKind = entry?.direction_kind ?? lineage.direction_kind ?? "other";
+    const blockerGroup = paperBoardEntry?.blocker_groups[0];
+    const topBlocker = paperBoardEntry?.blocker_density.top_blocker ?? blockerGroup?.blockers[0];
+    const paperLearning = paperBoardEntry && paperEvaluation
+      ? paperTradingLearningSummary({
+          rank: paperBoardEntry.rank,
+          profitLoss: paperEvaluation.latest_score,
+          observationCount: paperEvaluation.observation_count,
+          qualificationStatus: paperBoardEntry.qualification_status,
+          qualificationReasons: paperBoardEntry.qualification_reasons,
+          latestFailure
+        })
+      : undefined;
+    const marketRegime = arenaMarketRegime(latestObservation?.market_snapshot);
+    const clusterKey = [
+      directionKind,
+      topBlocker ?? "none",
+      marketRegime,
+      latestFailure?.failure_kind ?? "none"
+    ].join("|");
+    const existing = clusters.get(clusterKey);
+
+    if (existing) {
+      if (!existing.candidate_ids.includes(candidateId)) {
+        existing.candidate_ids.push(candidateId);
+      }
+      continue;
+    }
+
+    clusters.set(clusterKey, {
+      direction_kind: directionKind,
+      top_blocker: topBlocker,
+      blocker_group_kind: blockerGroup?.group_kind,
+      market_regime: marketRegime,
+      protocol_failure_kind: latestFailure?.failure_kind,
+      candidate_ids: [candidateId],
+      latest_finding: lineage.latest_finding,
+      next_research_focus: paperLearning?.next_research_focus ??
+        latestFailure?.next_action ??
+        "Use the accumulated finding as next-generation context without promotion authority.",
+      authority_status: "not_promotion_authority"
+    });
+  }
+
+  return [...clusters.values()]
+    .map((cluster) => ({
+      ...cluster,
+      candidate_ids: [...cluster.candidate_ids].sort(),
+      candidate_count: cluster.candidate_ids.length
+    }))
+    .sort((a, b) =>
+      b.candidate_count - a.candidate_count ||
+      a.direction_kind.localeCompare(b.direction_kind) ||
+      (a.top_blocker ?? "none").localeCompare(b.top_blocker ?? "none") ||
+      a.market_regime.localeCompare(b.market_regime) ||
+      (a.protocol_failure_kind ?? "none").localeCompare(b.protocol_failure_kind ?? "none")
+    )
+    .slice(0, 8);
+}
+
+function arenaMarketRegime(
+  snapshot: PaperTradingMarketSnapshotSummary | undefined
+): CandidateArenaFindingClusterMarketRegime {
+  if (!snapshot) {
+    return "unknown";
+  }
+  if (snapshot.expected_direction) {
+    return snapshot.expected_direction;
+  }
+  if (
+    typeof snapshot.moving_average_fast === "number" &&
+    typeof snapshot.moving_average_slow === "number"
+  ) {
+    if (snapshot.moving_average_fast > snapshot.moving_average_slow) {
+      return "long";
+    }
+    if (snapshot.moving_average_fast < snapshot.moving_average_slow) {
+      return "short";
+    }
+    return "flat";
+  }
+  if (typeof snapshot.volatility === "number" && snapshot.volatility >= 0.02) {
+    return "volatile";
+  }
+  return "unknown";
+}
+
+function arenaPaperEvidenceLineage(
+  candidate: CandidateInspectReadModel | undefined,
+  entry: CandidateArenaReadModel["leaderboard"][number] | undefined
+): {
+  lineage_status: "available" | "blocked" | "missing";
+  direction_kind?: ResearchDirectionKind;
+  parent_candidate_id?: string;
+  parent_candidate_version_id?: string;
+  generated_by_agent?: true;
+  latest_finding?: string;
+  evaluation_status?: string;
+  evaluation_score?: number;
+  authority_status: "lineage_only";
+} {
+  const lineage = candidate?.full_cycle_lineage;
+  if (!lineage) {
+    return {
+      lineage_status: "missing",
+      direction_kind: entry?.direction_kind,
+      parent_candidate_id: entry?.parent_candidate_id,
+      latest_finding: entry?.latest_finding,
+      authority_status: "lineage_only"
+    };
+  }
+  return {
+    lineage_status: lineage.handoff_status === "blocked" ? "blocked" : "available",
+    direction_kind: lineage.evidence?.direction_kind ?? entry?.direction_kind,
+    parent_candidate_id: lineage.source.trading_system_id,
+    parent_candidate_version_id: lineage.source.candidate_version_id,
+    generated_by_agent: lineage.generated?.generated_by_agent,
+    latest_finding: entry?.latest_finding,
+    evaluation_status: lineage.evidence?.evaluation_status,
+    evaluation_score: lineage.evidence?.evaluation_score,
+    authority_status: "lineage_only"
+  };
+}
+
 function arenaPaperTradingBoardContext(
   candidates: Awaited<ReturnType<typeof arenaPaperEvidenceCandidates>>
 ): Array<{
@@ -766,8 +974,11 @@ function arenaPaperTradingBoardContext(
   net_revenue_usdt: number;
   net_return_pct: number;
   observation_count: number;
-  qualification_status: string;
-  qualification_reasons: string[];
+  qualification_status: PaperTradingQualificationStatus;
+  qualification_reasons: PaperTradingQualificationReason[];
+  blocker_groups: PaperTradingQualificationBlockerGroup[];
+  trend: PaperTradingBoardTrendReadModel;
+  blocker_density: PaperTradingBoardBlockerDensityReadModel;
   evidence_window: {
     observation_count: number;
     elapsed_ms: number;
@@ -806,6 +1017,12 @@ function arenaPaperTradingBoardContext(
         observation_count: paperEvaluation?.observation_count ?? 0,
         qualification_status: qualification.qualification_status,
         qualification_reasons: qualification.qualification_reasons,
+        blocker_groups: paperTradingQualificationBlockerGroups(qualification.qualification_reasons),
+        trend: arenaPaperTradingBoardTrend(paperObservations, paperEvaluation?.latest_score ?? ZERO_PROFIT_LOSS),
+        blocker_density: arenaPaperTradingBoardBlockerDensity(
+          qualification.qualification_reasons,
+          qualification.evidence_window
+        ),
         evidence_window: qualification.evidence_window,
         promotion_gate_status: arenaPaperPromotionGateStatus(paperEvaluation),
         market_data_source: latestMarketSnapshot?.source_kind ?? latestPublicExecutionSnapshot?.source_kind,
@@ -822,6 +1039,69 @@ function arenaPaperTradingBoardContext(
     )
     .map((entry, index) => ({ ...entry, rank: index + 1 }))
     .slice(0, 8);
+}
+
+function arenaPaperTradingBoardTrend(
+  observations: Awaited<ReturnType<OuroborosStorePort["listPaperTradingObservations"]>>,
+  latestProfitLoss: TradingProfitLossReadModel
+): PaperTradingBoardTrendReadModel {
+  if (observations.length < 2) {
+    return {
+      direction: "insufficient_history",
+      net_revenue_delta_usdt: 0,
+      net_return_delta_pct: 0,
+      observation_count_delta: 0,
+      authority_status: "not_promotion_authority"
+    };
+  }
+  const firstObservation = observations[0]!;
+  const latestObservation = observations.at(-1)!;
+  const firstProfitLoss = firstObservation.cumulative_score;
+  const latestObservedProfitLoss = latestObservation.cumulative_score ?? latestProfitLoss;
+  const netRevenueDelta = roundPaperBoardContextSignal(
+    latestObservedProfitLoss.net_revenue_usdt - firstProfitLoss.net_revenue_usdt
+  );
+  const netReturnDelta = roundPaperBoardContextSignal(
+    latestObservedProfitLoss.net_return_pct - firstProfitLoss.net_return_pct
+  );
+  return {
+    direction: arenaPaperTrendDirection(netRevenueDelta),
+    net_revenue_delta_usdt: netRevenueDelta,
+    net_return_delta_pct: netReturnDelta,
+    observation_count_delta: Math.max(0, latestObservation.sequence - firstObservation.sequence),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function arenaPaperTradingBoardBlockerDensity(
+  qualificationReasons: PaperTradingQualificationReason[],
+  evidenceWindow: {
+    observation_count: number;
+    failed_observation_count: number;
+  }
+): PaperTradingBoardBlockerDensityReadModel {
+  const observationCount = Math.max(1, evidenceWindow.observation_count);
+  return {
+    blocker_count: qualificationReasons.length,
+    blocker_density: roundPaperBoardContextSignal(qualificationReasons.length / observationCount),
+    failed_observation_ratio: roundPaperBoardContextSignal(evidenceWindow.failed_observation_count / observationCount),
+    top_blocker: qualificationReasons[0],
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function arenaPaperTrendDirection(netRevenueDelta: number): PaperTradingBoardTrendReadModel["direction"] {
+  if (netRevenueDelta > 0) {
+    return "improving";
+  }
+  if (netRevenueDelta < 0) {
+    return "declining";
+  }
+  return "flat";
+}
+
+function roundPaperBoardContextSignal(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function arenaPaperPromotionGateStatus(
@@ -898,6 +1178,32 @@ function arenaResearcher(
     status: latestResult?.status === "failed" ? "failed" : "active",
     authority_status: "research_only"
   };
+}
+
+function researchEfficiencySummary(entry: TradingResearchNotebookEntry): CandidateArenaResearchEfficiencyReadModel {
+  const scenarioResults = entry.evaluation.scenario_results ?? [];
+  return {
+    provider_request_total: scenarioResults.reduce(
+      (total, result) => total + result.provider_request_count,
+      0
+    ),
+    runner_command_total: scenarioResults.reduce(
+      (total, result) => total + result.runner_command_count,
+      0
+    ),
+    scenario_count: scenarioResults.length,
+    elapsed_ms: elapsedMs(entry.started_at, entry.completed_at),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function elapsedMs(startedAt: string, completedAt: string): number {
+  const started = Date.parse(startedAt);
+  const completed = Date.parse(completedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started) {
+    return 0;
+  }
+  return completed - started;
 }
 
 function candidateArenaTickRecord(input: {

@@ -6,6 +6,7 @@ import type {
   OuroborosCommandReadModel,
   OuroborosCommandRequest
 } from "@ouroboros/domain";
+import { commandRemediation } from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 import {
   parseAgentProfileId,
@@ -379,7 +380,7 @@ function formatAgentCommandResult(result: unknown): string {
     `Provider home: ${profile.managed_provider_home}`,
     profile.version ? `Version: ${profile.version}` : undefined,
     profile.failure_reason ? `Failure: ${profile.failure_reason}` : undefined,
-    `Authority: ${profile.authority_status}`
+    `Agent profile authority: ${profile.authority_status}`
   ].filter(Boolean).join("\n");
 }
 
@@ -393,11 +394,23 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
   const selectedProfileNextStep = selectedProfile ? agentProfileNextStep(selectedProfile) : undefined;
   const paper = operator.selected_paper_trading_evaluation;
   const paperLeader = operator.paper_trading_board.entries[0];
+  const latestTick = arena.latest_ticks[0];
   const market = paper.latest_market_snapshot;
   const decision = paper.latest_decision;
+  const tradingReviewPacket = operator.trading_review.review_packet;
+  const lastCommandRemediation = lastCommand ? commandRemediation(lastCommand) : undefined;
   return [
     "Ouroboros status",
     `Arena: ${arena.runner_status} (${arena.tick_count} ticks, ${arena.leaderboard.length} candidates)`,
+    latestTick
+      ? `Latest tick: ${formatCandidateArenaTickSummary(latestTick)}`
+      : undefined,
+    latestTick
+      ? `Latest tick directions: ${formatCandidateArenaTickDirections(latestTick)}`
+      : undefined,
+    latestTick
+      ? `Latest tick efficiency: ${formatCandidateArenaTickEfficiency(latestTick)}`
+      : undefined,
     `Researcher provider: ${operator.researcher_provider.selected_provider} (available: ${operator.researcher_provider.available_providers.join(", ")})`,
     selectedProfile
       ? `Agent profile: ${selectedProfile.label} ${selectedProfile.status}${selectedProfileNextStep ? `; next: ${selectedProfileNextStep}` : ""}`
@@ -407,31 +420,50 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       ? `Leader: #${leader.rank} ${leader.display_name} ${formatUsdt(leader.profit_loss.net_revenue_usdt)} (${formatPercent(leader.profit_loss.net_return_pct)})`
       : "Leader: none",
     `Selected candidate: ${operator.selected_candidate_id ?? "none"}`,
+    `Trading review: ${operator.trading_review.status} / ${operator.trading_review.readiness_status} / ${operator.trading_review.display_name ?? operator.trading_review.active_candidate_id ?? "none"} / selected ${operator.trading_review.selected_matches_trading_review ? "matches" : "differs"}`,
+    `Trading review packet: ${tradingReviewPacket.verdict.severity} / top ${tradingReviewPacket.verdict.top_blocker ?? "none"} / next ${tradingReviewPacket.next_action}`,
+    `Trading review subject: ${formatTradingReviewSubject(tradingReviewPacket)}`,
+    `Trading review evidence window: ${formatTradingReviewEvidenceWindow(tradingReviewPacket)}`,
+    `Trading review blockers: ${formatTradingReviewBlockers(tradingReviewPacket)}`,
+    `Trading review authority: ${formatTradingReviewAuthority(tradingReviewPacket)}`,
+    `Trading review runner: ${formatTradingReviewRunner(tradingReviewPacket)}`,
+    `Trading review ledger: ${formatTradingReviewLedger(tradingReviewPacket)}`,
+    `Trading review lineage: ${formatTradingReviewLineage(tradingReviewPacket)}`,
+    tradingReviewPacket.lineage.paper_board_learning
+      ? `Trading review lineage learning: ${formatTradingReviewLineageLearning(tradingReviewPacket)}`
+      : undefined,
+    `Trading review provenance: ${formatTradingReviewProvenance(tradingReviewPacket)}`,
+    `Trading review risk: ${formatTradingReviewRisk(tradingReviewPacket)}`,
     operator.trading_promotion
       ? `Trading promotion: ${operator.trading_promotion.status} / ${operator.trading_promotion.readiness_status} / ${operator.trading_promotion.display_name ?? operator.trading_promotion.candidate_id ?? "none"}`
       : "Trading promotion: not projected",
-    `Trading review: ${operator.trading_review.status} / ${operator.trading_review.readiness_status} / ${operator.trading_review.display_name ?? operator.trading_review.active_candidate_id ?? "none"} / selected ${operator.trading_review.selected_matches_trading_review ? "matches" : "differs"}`,
     `Paper evidence: ${operator.selected_paper_evidence.status}`,
-    `PaperTradingEvaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
+    `Paper Trading Evaluation: ${paper.status} (${paper.observation_count} observations, ${formatUsdt(paper.profit_loss.net_revenue_usdt)})`,
     paperLeader
       ? `Paper board: #${paperLeader.rank} ${paperLeader.display_name} ${formatUsdt(paperLeader.profit_loss.net_revenue_usdt)} / ${paperLeader.qualification_status} / gate ${paperLeader.promotion_gate_status}`
       : "Paper board: no paper evaluations",
     paperLeader
+      ? `Paper board trend: ${formatPaperBoardTrend(paperLeader)}`
+      : undefined,
+    paperLeader
+      ? `Paper board blockers: ${formatPaperBoardBlockerDensity(paperLeader)}`
+      : undefined,
+    paperLeader
       ? `Paper qualification: observations ${paperLeader.evidence_window.observation_count}, failed ${paperLeader.evidence_window.failed_observation_count}, elapsed ${paperLeader.evidence_window.elapsed_ms}ms / ${paperLeader.qualification_reasons.length ? paperLeader.qualification_reasons.join(", ") : "qualified"}`
       : undefined,
     paperLeader
-      ? `Paper board quality: runner ${paperLeader.runner_status}, market ${paperLeader.market_data_source}${paperLeader.latest_public_execution_source ? ` / ${paperLeader.latest_public_execution_source}` : ""}, fill ${paperLeader.latest_fill_status ?? "none"}, open orders ${paperLeader.open_order_count}`
+      ? `Paper board quality: paper runner ${paperLeader.runner_status}, market provenance ${paperLeader.market_data_source}${paperLeader.latest_public_execution_source ? ` / ${paperLeader.latest_public_execution_source}` : ""}, paper fill ${paperLeader.latest_fill_status ?? "none"}, paper open orders ${paperLeader.open_order_count}`
       : undefined,
     `Paper runner: ${formatPaperRunner(paper)}`,
     market
-      ? `Market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
+      ? `Paper market snapshot: ${market.symbol} ${formatUsdt(market.price)} @ ${market.observed_at}`
       : undefined,
-    `Market data: ${paper.market_data_source}${market?.source_priority ? ` / ${market.source_priority}` : ""}${market?.rest_fallback_used ? " / REST fallback" : ""}${market?.ws_connected === true ? " / WS connected" : ""}${market?.ws_connected === false ? " / WS disconnected" : ""}`,
+    `Gateway market data: ${paper.market_data_source}${market?.source_priority ? ` / ${market.source_priority}` : ""}${market?.rest_fallback_used ? " / REST fallback" : ""}${market?.ws_connected === true ? " / WS connected" : ""}${market?.ws_connected === false ? " / WS disconnected" : ""}`,
     paper.latest_public_execution_snapshot
-      ? `Public execution: ${formatPublicExecutionEvidence(paper.latest_public_execution_snapshot)}`
+      ? `Public execution evidence: ${formatPublicExecutionEvidence(paper.latest_public_execution_snapshot)}`
       : undefined,
     paper.latest_public_execution_snapshot?.order_book
-      ? `Order book: ${paper.latest_public_execution_snapshot.order_book.sync_status} / update ${paper.latest_public_execution_snapshot.order_book.last_update_id ?? "unknown"}${paper.latest_public_execution_snapshot.order_book.gap_detected ? " / gap recovered" : ""}`
+      ? `Public order book evidence: ${paper.latest_public_execution_snapshot.order_book.sync_status} / update ${paper.latest_public_execution_snapshot.order_book.last_update_id ?? "unknown"}${paper.latest_public_execution_snapshot.order_book.gap_detected ? " / gap recovered" : ""}`
       : undefined,
     decision ? `Paper decision: ${formatPaperDecision(decision)}` : undefined,
     paper.paper_account_snapshot
@@ -440,11 +472,180 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
     paper.latest_fill
       ? `Paper fill: ${formatPaperFill(paper.latest_fill)}`
       : undefined,
-    paper.latest_failure_reason ? `Paper failure: ${paper.latest_failure_reason}` : undefined,
+    formatPaperFailure(paper),
     lastCommand
-      ? `Latest command: ${lastCommand.command_kind} ${lastCommand.status}`
-      : "Latest command: none"
+      ? `Latest command: ${lastCommand.command_kind} ${lastCommand.error ? `${lastCommand.status} / ${lastCommand.error}` : lastCommand.status}`
+      : "Latest command: none",
+    lastCommandRemediation
+      ? `Latest command remediation: ${formatCommandRemediation(lastCommandRemediation)}`
+      : undefined
   ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function formatCommandRemediation(
+  remediation: NonNullable<ReturnType<typeof commandRemediation>>
+): string {
+  return [
+    remediation.group,
+    remediation.surface,
+    remediation.remediation,
+    remediation.authority_status
+  ].join(" / ");
+}
+
+function formatTradingReviewRunner(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.runner.runner_status ?? (packet.runner.runner_active ? "active" : "unknown"),
+    packet.runner.trading_run_status ? `run ${packet.runner.trading_run_status}` : undefined,
+    packet.runner.last_observed_at ? `last ${packet.runner.last_observed_at}` : undefined,
+    packet.runner.next_observation_at ? `next ${packet.runner.next_observation_at}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewSubject(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.subject.display_name ?? packet.subject.candidate_id ?? "no Trading review target",
+    packet.subject.promoted_at ? `promoted ${packet.subject.promoted_at}` : undefined,
+    `selected ${packet.subject.selected_matches_trading_review ? "matches" : "differs"}`
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewEvidenceWindow(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const window = packet.evidence_quality.evidence_window;
+  if (!window) {
+    return "paper required";
+  }
+  return [
+    `${window.observation_count} obs`,
+    `${window.failed_observation_count} failed`,
+    `${window.elapsed_ms}ms`,
+    window.first_observed_at ? `first ${window.first_observed_at}` : undefined,
+    window.last_observed_at ? `last ${window.last_observed_at}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewAuthority(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const noAuthority = packet.authority.no_authority;
+  return [
+    packet.authority.authority_status,
+    packet.authority.live_disabled_reason,
+    `live_exchange=${String(noAuthority.live_exchange_authority)}, private_read=${String(noAuthority.private_read_authority)}, order_submission=${String(noAuthority.order_submission_authority)}, credentials=${String(noAuthority.credentials)}`
+  ].join(" / ");
+}
+
+function formatTradingReviewBlockers(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  if (packet.evidence_quality.blocker_groups.length === 0) {
+    return "none";
+  }
+  return packet.evidence_quality.blocker_groups
+    .map((group) => [
+      group.group_kind,
+      group.severity,
+      group.blockers.join(", "),
+      group.summary,
+      `next ${group.next_action}`
+    ].join(" / "))
+    .join("; ");
+}
+
+function formatTradingReviewLedger(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.ledger.evidence_status,
+    packet.ledger.ledger_chain_complete ? "chain complete" : "chain incomplete",
+    packet.ledger.latest_order_request_id ? `order ${packet.ledger.latest_order_request_id}` : undefined,
+    packet.ledger.latest_gateway_outcome ? `gateway ${packet.ledger.latest_gateway_outcome}` : undefined,
+    packet.ledger.latest_execution_status ? `execution ${packet.ledger.latest_execution_status}` : undefined,
+    packet.ledger.latest_decision_kind ? `decision ${packet.ledger.latest_decision_kind}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLineage(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.lineage.lineage_status,
+    packet.lineage.direction_kind,
+    packet.lineage.parent_candidate_id ? `parent ${packet.lineage.parent_candidate_id}` : undefined,
+    packet.lineage.latest_finding,
+    packet.lineage.evaluation_status ? `evaluation ${packet.lineage.evaluation_status}` : undefined
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewLineageLearning(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const learning = packet.lineage.paper_board_learning;
+  if (!learning) {
+    return "none";
+  }
+  return [
+    learning.rank ? `rank #${learning.rank}` : "unranked",
+    learning.qualification_status,
+    `${learning.net_revenue_usdt} net USDT`,
+    `${learning.observation_count} obs`,
+    learning.top_blocker ? `top ${learning.top_blocker}` : undefined,
+    `next ${learning.next_research_focus}`
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewProvenance(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  const orderBook = packet.provenance.order_book;
+  return [
+    packet.provenance.market_data_source ?? "no market",
+    packet.provenance.latest_public_execution_source ?? "no public execution",
+    packet.provenance.latest_public_execution_freshness,
+    packet.provenance.latest_public_execution_ws_connected === true ? "WS connected" : undefined,
+    packet.provenance.latest_public_execution_ws_connected === false ? "WS disconnected" : undefined,
+    packet.provenance.latest_public_execution_rest_fallback_used ? "REST fallback" : undefined,
+    packet.provenance.latest_public_execution_stream_marker
+      ? `marker ${packet.provenance.latest_public_execution_stream_marker}`
+      : undefined,
+    `fill ${packet.provenance.latest_fill_status ?? "none"}`,
+    orderBook ? formatTradingReviewOrderBook(orderBook) : "order book missing"
+  ].filter(Boolean).join(" / ");
+}
+
+function formatTradingReviewOrderBook(
+  orderBook: NonNullable<OperatorReadModel["trading_review"]["review_packet"]["provenance"]["order_book"]>
+): string {
+  return [
+    `order book ${orderBook.sync_status}`,
+    orderBook.last_update_id ? `update ${orderBook.last_update_id}` : undefined,
+    orderBook.previous_final_update_id ? `prev ${orderBook.previous_final_update_id}` : undefined,
+    orderBook.depth_level_count !== undefined ? `depth ${orderBook.depth_level_count}` : undefined,
+    orderBook.gap_detected ? "gap recovered" : undefined
+  ].filter(Boolean).join(" ");
+}
+
+function formatTradingReviewRisk(
+  packet: OperatorReadModel["trading_review"]["review_packet"]
+): string {
+  return [
+    packet.risk.account ? `equity ${packet.risk.account.equity_usdt} USDT` : "account missing",
+    packet.risk.account ? `available ${packet.risk.account.available_balance_usdt} USDT` : undefined,
+    packet.risk.position
+      ? `position ${packet.risk.position.side} ${packet.risk.position.quantity} ${packet.risk.position.symbol} notional ${packet.risk.position.notional_usdt}`
+      : "position missing",
+    `open ${packet.risk.open_order_count}`,
+    `fill ${packet.risk.latest_fill_status ?? "none"}`,
+    packet.risk.latest_failure || packet.risk.latest_failure_reason
+      ? `failure ${formatPaperFailure(packet.risk)?.replace(/^Paper failure: /, "")}`
+      : undefined
+  ].filter(Boolean).join(" / ");
 }
 
 function formatPublicExecutionEvidence(
@@ -496,6 +697,16 @@ function formatPaperFill(
     `${fill.fill_status} ${fill.fill_quantity} @ ${fill.fill_price}`,
     fill.source_trade_id ? `trade ${fill.source_trade_id}` : undefined
   ].filter(Boolean).join(" / ");
+}
+
+function formatPaperFailure(input: {
+  latest_failure?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_failure"];
+  latest_failure_reason?: string;
+}): string | undefined {
+  if (input.latest_failure) {
+    return `Paper failure: ${input.latest_failure.failure_kind} / ${input.latest_failure.summary} / next ${input.latest_failure.next_action} / raw ${input.latest_failure.reason}`;
+  }
+  return input.latest_failure_reason ? `Paper failure: ${input.latest_failure_reason}` : undefined;
 }
 
 function formatPaperDecision(
@@ -557,6 +768,62 @@ function formatUsdt(value: number): string {
 
 function formatPercent(value: number): string {
   return `${value.toFixed(4)}%`;
+}
+
+function formatPaperBoardTrend(entry: OperatorReadModel["paper_trading_board"]["entries"][number]): string {
+  return [
+    entry.trend.direction,
+    `delta ${formatSignedUsdt(entry.trend.net_revenue_delta_usdt)}`,
+    `return ${formatSignedPercent(entry.trend.net_return_delta_pct)}`,
+    `${entry.trend.observation_count_delta} obs`,
+    entry.trend.authority_status
+  ].join(" / ");
+}
+
+function formatPaperBoardBlockerDensity(entry: OperatorReadModel["paper_trading_board"]["entries"][number]): string {
+  return [
+    `${entry.blocker_density.blocker_count} blockers`,
+    `density ${entry.blocker_density.blocker_density}`,
+    `failed ${entry.blocker_density.failed_observation_ratio}`,
+    `top ${entry.blocker_density.top_blocker ?? "none"}`,
+    entry.blocker_density.authority_status
+  ].join(" / ");
+}
+
+function formatSignedUsdt(value: number): string {
+  return `${value > 0 ? "+" : ""}${formatUsdt(value)}`;
+}
+
+function formatSignedPercent(value: number): string {
+  return `${value > 0 ? "+" : ""}${formatPercent(value)}`;
+}
+
+function formatCandidateArenaTickSummary(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  const failedCount = tick.direction_results.filter((result) => result.status === "failed").length;
+  return [
+    tick.tick_id,
+    tick.status,
+    `${tick.created_candidate_ids.length} created`,
+    `${failedCount} failed`,
+    tick.authority_status
+  ].join(" / ");
+}
+
+function formatCandidateArenaTickDirections(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  return tick.direction_results.map((result) => {
+    const outcome = result.candidate_id ?? result.error ?? result.finding ?? "no output";
+    return `${result.direction_kind}:${result.status} -> ${outcome}`;
+  }).join("; ");
+}
+
+function formatCandidateArenaTickEfficiency(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  const summaries = tick.direction_results
+    .filter((result) => result.research_efficiency)
+    .map((result) => {
+      const efficiency = result.research_efficiency!;
+      return `${result.direction_kind}: ${efficiency.provider_request_total} provider / ${efficiency.runner_command_total} runner / ${efficiency.scenario_count} scenarios / ${efficiency.elapsed_ms}ms / ${efficiency.authority_status}`;
+    });
+  return summaries.length ? summaries.join("; ") : "not recorded";
 }
 
 function formatRuntimeFetchError(runtimeBaseUrl: string, error: unknown): string {

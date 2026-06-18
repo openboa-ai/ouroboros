@@ -15,6 +15,7 @@ import type {
   CandidateArenaReadModel,
   PaperTradingBoardReadModel,
   PaperTradingEvaluationReadModel,
+  PublicMarketLivenessSurfaceReadModel,
   RunControlReadModel,
   TradingGatewayEnvironmentReadModel,
   TradingSystemExecutionModeContractReadModel
@@ -65,7 +66,27 @@ import {
   type FullCycleOutcome,
   type TradingResearchRuntimeReadModel
 } from "./api";
+import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
+
+describe("operator UI primitives", () => {
+  it("keeps segmented tabs tall enough for mobile labels", () => {
+    const html = renderToStaticMarkup(
+      <Tabs defaultValue="trading">
+        <TabsList>
+          <TabsTrigger value="trading">Trading</TabsTrigger>
+          <TabsTrigger value="research">Research</TabsTrigger>
+        </TabsList>
+      </Tabs>
+    );
+
+    expect(html).toContain("min-h-9");
+    expect(html).toContain("min-h-8");
+    expect(html).toContain("py-1");
+    expect(html).not.toContain("bottom-[-5px]");
+    expect(html).not.toContain("-right-1");
+  });
+});
 
 describe("operator status helpers", () => {
   it("matches positive replay risk decisions without accepting invalid values by substring", () => {
@@ -488,39 +509,74 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Candidate Arena");
     expect(html).toContain("Operator cockpit");
-    expect(html).toContain("Runtime command bar");
-    expect(html).toContain("Revenue-cost leaderboard");
+    const arenaCommandBar = extractArenaCommandBarSection(html);
+    expect(arenaCommandBar).toContain(">Arena command bar<");
+    expect(arenaCommandBar).not.toContain(">Runtime command bar<");
+    const arenaMetricStrip = extractCandidateArenaMetricStripSection(html);
+    expect(arenaMetricStrip).toContain("Arena runner");
+    expect(arenaMetricStrip).toContain("ResearchPreflight net");
+    expect(arenaMetricStrip).toContain("ResearchPreflight return");
+    expect(arenaMetricStrip).not.toContain(">Net revenue<");
+    expect(arenaMetricStrip).not.toContain(">Net return<");
+    const leaderboardSection = extractCandidateArenaLeaderboardSection(html);
+    expect(leaderboardSection).toContain("ResearchPreflight leaderboard");
+    expect(leaderboardSection).not.toContain("Revenue-cost leaderboard");
+    expect(leaderboardSection).toContain("ResearchPreflight net");
+    expect(leaderboardSection).toContain("ResearchPreflight return");
+    expect(leaderboardSection).not.toContain(">Net revenue<");
+    expect(leaderboardSection).not.toContain(">Net return<");
+    expect(html).toContain("Arena runner");
     expect(html).toContain("running");
-    expect(html).toContain("Net revenue");
-    expect(html).toContain("Net return");
     expect(html).toContain("trend_following");
     expect(html).toContain("9.83 USDT");
     expect(html).toContain("0.0983%");
     expect(html).toContain("Start");
     expect(html).toContain("Stop");
     expect(html).toContain("Selected candidate");
-    expect(html).toContain("SystemCode");
-    expect(html).toContain("Evaluation");
-    expect(html).toContain("profit_loss");
+    expect(html).toContain("System Code");
+    expect(html).not.toContain(">SystemCode<");
+    expect(html).toContain("ResearchPreflight");
+    expect(html).toContain("Research leaderboard");
+    expect(html).not.toContain(">Evaluation<");
+    expect(html).not.toContain("profit_loss");
     expect(html).toContain("Paper runner");
     expect(html).toContain("Paper Board");
     expect(html).toContain("sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
     expect(html).toContain("[overflow-wrap:anywhere]");
+    expect(html).toContain("Paper return");
+    expect(html).not.toContain(">Return<");
     expect(html).toContain("Qualification");
     expect(html).toContain("collecting_evidence");
     expect(html).toContain("Evidence window");
     expect(html).toContain("1 obs / 0 failed / 60000ms");
+    expect(html).toContain("Qualification reasons");
+    expect(html).not.toContain(">Reasons<");
     expect(html).toContain("min_observation_count_not_met, min_elapsed_ms_not_met");
+    expect(html).toContain("Promotion gate");
+    expect(html).not.toContain(">Gate<");
     expect(html).toContain("collecting_paper_evidence");
+    expect(html).toContain("Paper runner");
+    expect(html).not.toContain(">Runner<");
     expect(html).toContain("active / next");
-    expect(html).toContain("Market snapshot");
-    expect(html).toContain("Market data");
+    expect(html).toContain("Paper observations");
+    expect(html).not.toContain(">Observations<");
+    expect(html).toContain("Paper market snapshot");
+    expect(html).not.toContain(">Market snapshot<");
+    expect(html).toContain("Gateway market data");
+    expect(html).not.toContain(">Market data<");
+    expect(html).toContain("Market provenance");
+    expect(html).not.toContain(">Market<");
     expect(html).toContain("binance_production_public_websocket");
     expect(html).toContain("Fill quality");
     expect(html).toContain("filled / open 0");
-    expect(html).toContain("Public execution");
+    expect(html).toContain("Trend");
+    expect(html).toContain("insufficient_history / 0 USDT / 0% / 0 obs / not_promotion_authority");
+    expect(html).toContain("Blocker density");
+    expect(html).toContain("2 blockers / density 2 / failed 0 / top min_observation_count_not_met / not_promotion_authority");
+    expect(html).toContain("Public execution evidence");
     expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
-    expect(html).toContain("Order book");
+    expect(html).toContain("Public order book evidence");
+    expect(html).not.toContain(">Order book<");
     expect(html).toContain("synced / update 11");
     expect(html).toContain("BTCUSDT");
     expect(html).toContain("Paper decision");
@@ -529,7 +585,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("equity 10,004.952 USDT / long 0.001 BTCUSDT / open 0");
     expect(html).toContain("Paper fill");
     expect(html).toContain("filled 0.001 @ 60000 / trade agg-60000-001");
-    expect(html).toContain("Lineage");
+    const selectedCandidateSection = extractSelectedCandidateArenaSection(html);
+    expect(selectedCandidateSection).toContain("Candidate lineage");
+    expect(selectedCandidateSection).not.toContain(">Lineage<");
+    expect(selectedCandidateSection).toContain("Selected candidate authority");
+    expect(selectedCandidateSection).not.toContain(">Authority<");
     expect(html).toContain("Observe now");
     expect(html).toContain("Stop paper trading");
     expect(html).toContain("Agent providers");
@@ -538,8 +598,67 @@ describe("CandidateDetail", () => {
     expect(html).toContain("arena.tick");
     expect(html).toContain("Latest ticks");
     expect(html).toContain("completed");
+    expect(html).toContain("Generated");
+    expect(html).toContain("1 created / 1 failed");
+    expect(html).toContain("trend_following:created");
+    expect(html).toContain("mean_reversion:failed");
+    expect(html).toContain("Efficiency");
+    expect(html).toContain("trend_following: 6 provider / 0 runner / 2 scenarios / 1000ms / not_promotion_authority");
     expect(html).not.toContain("Fixture");
     expect(html).not.toContain("Research iterations");
+  });
+
+  it("points failed promotion commands back to visible blocker surfaces", () => {
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={fixtureCandidateArena}
+        selectedCandidateId="candidate-profitable"
+        selectedCandidate={arenaSelectedCandidate()}
+        researcherProvider={{
+          selected_provider: "codex",
+          available_providers: ["codex", "fixture"],
+          authority_status: "research_only"
+        }}
+        agentProfiles={[]}
+        latestCommands={[{
+          command_id: "command-promote-failed",
+          command_kind: "trading_candidate.promote",
+          status: "failed",
+          requested_at: "2026-05-27T00:00:00.000Z",
+          completed_at: "2026-05-27T00:00:01.000Z",
+          error: "paper_trading_qualification_required",
+          authority_status: "not_live"
+        }]}
+        selectedPaperEvidence={{
+          status: "not_run",
+          ledger_chain_complete: false,
+          authority_status: "not_live"
+        }}
+        selectedPaperTradingEvaluation={paperTradingEvaluationFixture()}
+        paperTradingBoard={paperTradingBoardFixture()}
+        actionPending={false}
+        runningPaperTrading={false}
+      />
+    );
+
+    const commandLog = html.slice(
+      html.indexOf('aria-label="Command log"'),
+      html.indexOf('aria-label="Candidate Arena latest ticks"')
+    );
+    expect(commandLog).toContain("trading_candidate.promote");
+    expect(commandLog).toContain("paper_trading_qualification_required");
+    expect(commandLog).toContain("Remediation group");
+    expect(commandLog).not.toContain(">Group<");
+    expect(commandLog).toContain("Visible surface");
+    expect(commandLog).not.toContain(">Surface<");
+    expect(commandLog).toContain("Remediation next step");
+    expect(commandLog).not.toContain(">Remediation<");
+    expect(commandLog).toContain("Command authority");
+    expect(commandLog).not.toContain(">Authority<");
+    expect(commandLog).toContain("Trading review promotion");
+    expect(commandLog).toContain("Trading review packet, Paper Board");
+    expect(commandLog).toContain("Review the Trading review packet blockers and Paper Board qualification before retrying promotion.");
+    expect(commandLog).toContain("not_live");
   });
 
   it("keeps selected arena candidate paper evidence available before Ledger exists", () => {
@@ -556,7 +675,8 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Selected candidate");
     expect(html).toContain("Start paper trading");
-    expect(html).toContain("PaperTradingEvaluation");
+    expect(html).toContain("Paper Trading Evaluation");
+    expect(html).not.toContain(">PaperTradingEvaluation<");
     expect(html).toContain("not_started");
     expect(html).not.toContain("Research iterations");
   });
@@ -663,9 +783,11 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("PaperTradingEvaluation");
+    expect(html).toContain("Paper Trading Evaluation");
     expect(html).toContain("not run");
-    expect(html).toContain("TradingRun");
+    expect(html).toContain("Trading Run");
+    expect(html).not.toContain(">PaperTradingEvaluation<");
+    expect(html).not.toContain(">TradingRun<");
     expect(html).not.toContain("0 Ledger chains");
     expect(html).not.toContain("registered");
   });
@@ -694,9 +816,11 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("PaperTradingEvaluation");
+    expect(html).toContain("Paper Trading Evaluation");
     expect(html).toContain("Ledger chain complete");
-    expect(html).toContain("TradingRun");
+    expect(html).toContain("Trading Run");
+    expect(html).not.toContain(">PaperTradingEvaluation<");
+    expect(html).not.toContain(">TradingRun<");
     expect(html).toContain("stopped");
     expect(html).toContain("OrderRequest");
     expect(html).toContain("buy limit 0.001");
@@ -720,12 +844,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No candidate-id replay runs");
     expect(html).toContain("Trading run state");
     expect(html).toContain("Request / decision / result");
-    expect(html).toContain("Trace And Evaluation");
-    expect(html).toContain("Evaluation state");
+    expect(html).toContain("ResearchPreflight Evidence");
+    expect(html).toContain("ResearchPreflight state");
     expect(html).toContain("pending");
-    expect(html).toContain("Latest evaluation run");
+    expect(html).toContain("Latest ResearchPreflight run");
     expect(html).toContain("Stage binding");
-    expect(html).toContain("Trace material");
+    expect(html).toContain("Provider trace material");
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
     expectNoOperatorActionControls(html);
@@ -753,6 +877,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("partially_filled");
     expect(html).toContain("PARTIALLY_FILLED");
     expect(html).toContain("TRADE");
+    expect(html).toContain("Order side / type");
+    expect(html).not.toContain(">Side / type<");
     expect(html).toContain("fixture-backed");
     expect(html).toContain("simulated");
     expect(html).toContain("@binance/derivatives-trading-usds-futures");
@@ -1515,6 +1641,10 @@ describe("CandidateDetail", () => {
     expect(detailHtml).toContain("latest-replay-run");
     expect(detailHtml).toContain("baseline-replay-run");
     expect(detailHtml).toContain("validation_state_not_authority");
+    const candidateValidationSection = extractCandidateLatestValidationStateSection(detailHtml);
+    expect(candidateValidationSection).toContain("Candidate validation authority");
+    expect(candidateValidationSection).toContain("Candidate validation no authority");
+    expect(candidateValidationSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(detailHtml).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expectNoOperatorActionControls(detailHtml, { includePrivateAuthorityTerms: true });
   });
@@ -1536,6 +1666,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("live_disabled");
     expect(html).toContain("TradingApiProvider");
     expect(html).toContain("forbidden");
+    const executionModesSection = extractExecutionModesSection(html);
+    expect(executionModesSection).toContain("Execution mode");
+    expect(executionModesSection).not.toMatch(/<dt[^>]*>Mode<\/dt>/);
+    expect(executionModesSection).toContain("Execution mode authority");
+    expect(executionModesSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
@@ -1559,15 +1694,20 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("Candidate Runs");
-    expect(html).toContain("Candidate-id replay evidence");
-    expect(html).toContain("s18-01-sdx-candidate-id-smoke");
-    expect(html).toContain("docker_sandboxes_sbx");
-    expect(html).toContain("2/2 accepted");
-    expect(html).toContain("Provider requests");
-    expect(html).toContain("Runner commands");
-    expect(html).toContain("sha256:fadd2155");
-    expect(html).toContain("not_live");
+    const candidateRunsSection = extractCandidateRunsSection(html);
+    expect(candidateRunsSection).toContain("Candidate Runs");
+    expect(candidateRunsSection).toContain("Candidate-id replay evidence");
+    expect(candidateRunsSection).toContain("s18-01-sdx-candidate-id-smoke");
+    expect(candidateRunsSection).toContain("Replay runner");
+    expect(candidateRunsSection).not.toContain(">Runner<");
+    expect(candidateRunsSection).toContain("docker_sandboxes_sbx");
+    expect(candidateRunsSection).toContain("2/2 accepted");
+    expect(candidateRunsSection).toContain("Provider requests");
+    expect(candidateRunsSection).toContain("Replay runner commands");
+    expect(candidateRunsSection).toContain("sha256:fadd2155");
+    expect(candidateRunsSection).toContain("Replay authority");
+    expect(candidateRunsSection).not.toContain(">Authority<");
+    expect(candidateRunsSection).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
@@ -1584,6 +1724,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("replay-run-detail");
     expect(html).toContain("1 / valid_order_request");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
+    const replayDetailSection = extractReplayRunDetailSection(html);
+    expect(replayDetailSection).toContain("Replay detail no authority");
+    expect(replayDetailSection).toContain("Replay scenario runner");
+    expect(replayDetailSection).toContain("Replay scenario runner commands");
+    expect(replayDetailSection).not.toContain(">Runner<");
+    expect(replayDetailSection).not.toContain(">No authority<");
     expect(html).toContain("promotion-detail");
     expect(html).toContain("research-detail");
     expect(html).toContain("trend_long");
@@ -1677,9 +1823,17 @@ describe("CandidateDetail", () => {
     expect(html).toContain("+0.25");
     expect(html).toContain("+1");
     expect(html).toContain("valid_order_request -&gt; valid_order_request");
+    const replayComparisonSection = extractReplayRunComparisonSection(html);
+    expect(replayComparisonSection).toContain("Replay comparison authority");
+    expect(replayComparisonSection).toContain("Replay comparison no authority");
+    expect(replayComparisonSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).toContain("Validation state");
     expect(html).toContain("Read-only validation state");
     expect(html).toContain("validation_state_not_authority");
+    const replayValidationSection = extractReplayRunValidationStateSection(html);
+    expect(replayValidationSection).toContain("Replay validation authority");
+    expect(replayValidationSection).toContain("Replay validation no authority");
+    expect(replayValidationSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).toContain("human review of replay evidence; future promotion issue with explicit authority scope");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expect(html).toContain("not_live");
@@ -1732,7 +1886,7 @@ describe("CandidateDetail", () => {
     expect(html).toContain("docker_sandboxes_sbx");
     expect(html).toContain("Run replay");
     expect(html).toContain("host_process / replay_only / not_live");
-    expect(html).toContain("No evaluation runs");
+    expect(html).toContain("No ResearchPreflight runs");
     expect(html).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
     expect(html).not.toMatch(/Run trading loop|Record pause control/i);
@@ -1760,11 +1914,28 @@ describe("CandidateDetail", () => {
     expect(html).toContain("api_key=true");
     expect(html).toContain("api_secret=true");
     expect(html).toContain("live_exchange=false");
+    const gatewayEnvironmentSection = extractTradingGatewayEnvironmentSection(html);
+    expect(gatewayEnvironmentSection).toContain("Gateway environment authority");
+    expect(gatewayEnvironmentSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
+    const tradingRunSection = extractTradingRunSection(html);
+    expect(tradingRunSection).toContain("Trading run authority");
+    expect(tradingRunSection).toContain("Memory authority");
+    expect(tradingRunSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).toContain("Ledger");
     expect(html).toContain("Ledger");
     expect(html).toContain("chain complete");
     expect(html).toContain("Order request");
     expect(html).toContain("place_order");
+    expect(html).toContain("Order side / type");
+    expect(html).not.toContain(">Side / type<");
+    const ledgerSection = extractLedgerSection(html);
+    expect(ledgerSection).toContain("Order request authority");
+    expect(ledgerSection).toContain("Gateway result authority");
+    expect(ledgerSection).toContain("Execution result mode");
+    expect(ledgerSection).toContain("Execution result authority");
+    expect(ledgerSection).toContain("Ledger chain authority");
+    expect(ledgerSection).not.toMatch(/<dt[^>]*>Mode<\/dt>/);
+    expect(ledgerSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).toContain("buy / limit");
     expect(html).toContain("Gateway result");
     expect(html).toContain("dry_run_only");
@@ -1777,6 +1948,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Order request");
     expect(html).toContain("Gateway result");
     expect(html).toContain("Sandbox");
+    const sandboxSection = extractSandboxSection(html);
+    expect(sandboxSection).toContain("Sandbox authority");
+    expect(sandboxSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
+    const transcriptSection = extractTradingRunTranscriptSection(html);
+    expect(transcriptSection).toContain("Transcript authority");
+    expect(transcriptSection).toContain("Transcript event authority");
+    expect(transcriptSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).toContain("deterministic_test");
     expect(html).toContain("sandbox-running-fixture");
     expect(html).toContain("runtime_heartbeat");
@@ -1874,10 +2052,10 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("Move to Trading review");
     expect(tradingHtml).toContain("mlp_paper_only");
     expect(tradingHtml).toContain("BTCUSDT futures chart");
-    expect(tradingHtml).toContain("Paper equity");
-    expect(tradingHtml).toContain("Paper net revenue");
-    expect(tradingHtml).toContain("Paper position");
-    expect(tradingHtml).toContain("Promotion readiness");
+    expect(tradingHtml).toContain("Paper risk equity");
+    expect(tradingHtml).toContain("Paper score");
+    expect(tradingHtml).toContain("Paper risk position");
+    expect(tradingHtml).toContain("Review readiness");
     expect(tradingHtml).toContain("Trading paper readback");
     expect(tradingHtml).toContain("Trading review evidence");
     expect(tradingHtml).toContain("Order / trade status");
@@ -1885,7 +2063,10 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("GatewayResult");
     expect(tradingHtml).toContain("ExecutionResult");
     expect(tradingHtml).toContain("Safety boundary");
-    expect(tradingHtml).toContain("Actual trading and realized-profit cockpit");
+    expect(tradingHtml).toContain("Paper Trading review cockpit");
+    expect(tradingHtml).not.toContain("Actual trading");
+    expect(tradingHtml).not.toContain("realized-profit");
+    expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading cockpit")).not.toContain('data-slot="card"');
     expect(tradingHtml).not.toContain("Candidate Arena cockpit");
     expect(tradingHtml).not.toContain("Runtime command bar");
     expect(tradingHtml).not.toContain("Paper Board");
@@ -1894,20 +2075,39 @@ describe("CandidateDetail", () => {
 
     expect(arenaHtml).toContain("Candidate Arena");
     expect(arenaHtml).toContain("Candidate Arena cockpit");
-    expect(arenaHtml).toContain("Runtime command bar");
-    expect(arenaHtml).toContain("Revenue-cost leaderboard");
+    expect(arenaHtml).toContain("Arena command bar");
+    expect(arenaHtml).not.toContain("Runtime command bar");
+    expect(arenaHtml).toContain("ResearchPreflight leaderboard");
+    expect(arenaHtml).not.toContain("Revenue-cost leaderboard");
     expect(arenaHtml).toContain("Paper Board");
-    expect(arenaHtml).toContain("PaperTradingEvaluation");
+    expect(arenaHtml).toContain("Paper Trading Evaluation");
+    expect(arenaHtml).not.toContain(">PaperTradingEvaluation<");
     expect(arenaHtml).toContain("Observe now");
     expect(arenaHtml).toContain("Stop paper trading");
+    expect(arenaHtml).toContain("ResearchPreflight");
+    expect(arenaHtml).toContain("Research leaderboard");
+    expect(arenaHtml).not.toContain(">Evaluation<");
+    expect(arenaHtml).not.toContain("profit_loss");
     expect(arenaHtml).not.toContain("Trading cockpit");
     expect(arenaHtml).not.toContain("Research cycle");
     expect(arenaHtml).not.toContain("Agent cycle controls");
 
     expect(researchHtml).toContain("Research");
     expect(researchHtml).toContain("Research cycle");
-    expect(researchHtml).toContain("System performance");
-    expect(researchHtml).toContain("Profit analysis");
+    expect(researchHtml).toContain("Research signals");
+    expect(researchHtml).not.toContain("System performance");
+    expect(researchHtml).toContain("Research-facing quality, risk posture, and packet signal for the next candidate cycle.");
+    expect(researchHtml).toContain("Trading review signal");
+    expect(researchHtml).not.toContain("Operator decision");
+    expect(researchHtml).not.toContain("next action for the operator");
+    expect(researchHtml).toContain("How CandidateArena evidence, ResearchPreflight, and lineage prepare the next TradingSystem candidate cycle.");
+    expect(researchHtml).toContain(">ResearchPreflight<");
+    expect(researchHtml).not.toContain(">Evaluation<");
+    expect(researchHtml).toContain("Candidate handoff");
+    expect(researchHtml).not.toContain("Improvement output");
+    expect(researchHtml).toContain("ResearchPreflight score");
+    expect(researchHtml).toContain("ResearchPreflight status");
+    expect(researchHtml).not.toContain("Profit analysis");
     expect(researchHtml).toContain("Selected Trading System");
     expect(researchHtml).toContain("backtest accepted");
     expect(researchHtml).toContain("score 1.00");
@@ -1927,6 +2127,16 @@ describe("CandidateDetail", () => {
     expect(researchHtml).not.toContain("Trading cockpit");
 
     expect(detailsHtml).toContain("Details");
+    expect(detailsHtml).toContain("Raw evidence boundary");
+    expect(detailsHtml).toContain("Developer/detail records");
+    expect(detailsHtml).toContain("Product decisions stay in Trading, Arena, and Research.");
+    expect(detailsHtml).toContain("Product blockers stay in Trading, Arena, and Research.");
+    expect(detailsHtml).toContain("No promotion authority");
+    const candidateRunsSection = extractCandidateRunsSection(detailsHtml);
+    expect(candidateRunsSection).toContain("Replay runner");
+    expect(candidateRunsSection).not.toContain(">Runner<");
+    expect(candidateRunsSection).toContain("Replay authority");
+    expect(candidateRunsSection).not.toContain(">Authority<");
     expect(detailsHtml).toContain("Agent cycle controls");
     expect(detailsHtml).toContain("Run next cycle");
     expect(detailsHtml).toContain("full cycle completed: running");
@@ -1943,6 +2153,159 @@ describe("CandidateDetail", () => {
       includePrivateAuthorityTerms: true,
       allowTradingRunControls: true
     });
+  });
+
+  it("shows tab-level state badges only from OperatorReadModel state", () => {
+    const operator: OperatorReadModel = {
+      operator_kind: "ouroboros_operator",
+      command_descriptors: [],
+      candidate_arena: fixtureCandidateArena,
+      selected_candidate_id: "candidate-profitable",
+      selected_candidate: arenaSelectedCandidate(),
+      selected_paper_evidence: {
+        status: "not_run",
+        ledger_chain_complete: false,
+        authority_status: "not_live"
+      },
+      selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+      paper_trading_board: paperTradingBoardFixture(),
+      trading_review: tradingReviewFixture(),
+      researcher_provider: {
+        selected_provider: "codex",
+        available_providers: ["codex", "fixture"],
+        authority_status: "research_only"
+      },
+      agent_profiles: [{
+        profile_id: "codex",
+        label: "Codex",
+        provider: "codex",
+        status: "login_required",
+        managed_home: "/tmp/ouroboros/agent-profiles/codex/home",
+        managed_provider_home: "/tmp/ouroboros/agent-profiles/codex/codex-home",
+        failure_reason: "codex_login_required",
+        authority_status: "no_trading_authority"
+      }],
+      latest_commands: [],
+      live_disabled: true,
+      authority_status: "not_live"
+    };
+
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))}
+        candidateArena={fixtureCandidateArena}
+        operator={operator}
+      />
+    );
+    const tabShell = html.slice(
+      html.indexOf("BTCUSDT operator cockpit"),
+      html.indexOf('data-slot="tabs-content"')
+    );
+
+    expect(tabShell).toContain('aria-label="Trading tab state badge"');
+    expect(tabShell).toContain(">review<");
+    expect(tabShell).toContain('aria-label="Arena tab state badge"');
+    expect(tabShell).toContain(">collecting<");
+    expect(tabShell).toContain('aria-label="Research tab state badge"');
+    expect(tabShell).toContain(">provider blocked<");
+    expect(tabShell).not.toContain('aria-label="Details tab state badge"');
+  });
+
+  it("keeps tab-level state badges absent when OperatorReadModel has no state signal", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))}
+      />
+    );
+    const tabShell = html.slice(
+      html.indexOf("BTCUSDT operator cockpit"),
+      html.indexOf('data-slot="tabs-content"')
+    );
+
+    expect(tabShell).not.toContain("tab state badge");
+  });
+
+  it("shows market freshness and fixture source mode before chart movement", () => {
+    const candidate = candidateWithPublicMarketSurface(fixturePublicMarketLivenessSurface({
+      freshness: "stale",
+      liveness: "degraded",
+      degraded_reason: "fixture_seed_no_live_connector",
+      source_kind: "fixture",
+      fixture_backed: true,
+      simulated: true
+    }));
+
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+      />
+    );
+    const provenance = extractMarketDataProvenanceSection(html);
+
+    expect(provenance).toContain("Source mode");
+    expect(provenance).toContain("fixture / simulated");
+    expect(provenance).toContain("Freshness / liveness");
+    expect(provenance).toContain("market stale / degraded / fixture_seed_no_live_connector");
+    expect(provenance).toContain("Boundary");
+    expect(provenance).toContain("paper only / live_exchange=false, order_submission=false, credentials=false");
+    expect(html.indexOf('aria-label="Market data provenance"')).toBeLessThan(
+      html.indexOf('aria-label="BTCUSDT mark price snapshot"')
+    );
+  });
+
+  it("labels REST market data as read-only public context instead of live chart authority", () => {
+    const candidate = candidateWithPublicMarketSurface(fixturePublicMarketLivenessSurface({
+      freshness: "delayed",
+      liveness: "connected",
+      degraded_reason: "rest_snapshot_fallback",
+      source_kind: "binance_market_data_rest",
+      fixture_backed: false,
+      simulated: false
+    }));
+
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+      />
+    );
+    const provenance = extractMarketDataProvenanceSection(html);
+
+    expect(provenance).toContain("Source mode");
+    expect(provenance).toContain("Binance market data REST / read-only public");
+    expect(provenance).toContain("Freshness / liveness");
+    expect(provenance).toContain("delayed / connected / rest_snapshot_fallback");
+    expect(provenance).toContain("Boundary");
+    expect(provenance).toContain("paper only / live_exchange=false, order_submission=false, credentials=false");
+  });
+
+  it("labels WebSocket market data as primary read-only public context", () => {
+    const candidate = candidateWithPublicMarketSurface(fixturePublicMarketLivenessSurface({
+      freshness: "fresh",
+      liveness: "connected",
+      degraded_reason: undefined,
+      source_kind: "binance_production_public_websocket",
+      fixture_backed: false,
+      simulated: false
+    }));
+
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+      />
+    );
+    const provenance = extractMarketDataProvenanceSection(html);
+
+    expect(provenance).toContain("Source mode");
+    expect(provenance).toContain("Binance public WebSocket / read-only public");
+    expect(provenance).toContain("Freshness / liveness");
+    expect(provenance).toContain("market fresh / connected");
+    expect(provenance).toContain("Boundary");
+    expect(provenance).toContain("paper only / live_exchange=false, order_submission=false, credentials=false");
   });
 
   it("shows why Trading review is blocked until paper qualification is ready", () => {
@@ -1981,21 +2344,285 @@ describe("CandidateDetail", () => {
     const promotionSection = extractTradingPromotionBoundarySection(html);
 
     expect(promotionSection).toContain("Trading review candidate");
+    expect(promotionSection).toContain("Paper runner");
+    expect(promotionSection).not.toContain(">Runner<");
+    expect(promotionSection).toContain("Promotion next action");
+    expect(promotionSection).not.toContain(">Next action<");
+    expect(promotionSection).toContain("Review authority");
+    expect(promotionSection).not.toContain(">Authority<");
     expect(promotionSection).toContain("collecting_evidence");
     expect(promotionSection).toContain("min_observation_count_not_met");
     expect(promotionSection).toContain("min_elapsed_ms_not_met");
     expect(promotionSection).toContain("Continue paper trading until the evidence window qualifies.");
     expect(promotionSection).toContain("disabled");
-    expect(html).toContain("Paper equity");
+    expect(html).toContain("Trading review packet");
+    expect(html.indexOf('aria-label="Trading review packet"')).toBeLessThan(
+      html.indexOf('aria-label="Trading promotion boundary"')
+    );
+    const packetSection = extractTradingReviewPacketSection(html);
+    expect(packetSection.indexOf("Packet verdict")).toBeLessThan(packetSection.indexOf("Subject"));
+    expect(packetSection.indexOf("Subject")).toBeLessThan(packetSection.indexOf("Paper rank"));
+    expect(packetSection.indexOf("Paper rank")).toBeLessThan(packetSection.indexOf("Blocker groups"));
+    expect(packetSection.indexOf("Blocker groups")).toBeLessThan(packetSection.indexOf("Blocker detail"));
+    expect(packetSection.indexOf("Blocker detail")).toBeLessThan(packetSection.indexOf("Evidence window"));
+    expect(packetSection.indexOf("Evidence window")).toBeLessThan(packetSection.indexOf("Runner health"));
+    expect(packetSection.indexOf("Runner health")).toBeLessThan(packetSection.indexOf("Ledger"));
+    expect(packetSection.indexOf("Ledger")).toBeLessThan(packetSection.indexOf("Lineage"));
+    expect(packetSection.indexOf("Lineage")).toBeLessThan(packetSection.indexOf("Packet next action"));
+    expect(packetSection.indexOf("Packet next action")).toBeLessThan(packetSection.indexOf("Packet authority"));
+    expect(packetSection.indexOf("Packet authority")).toBeLessThan(packetSection.indexOf("Provenance"));
+    expect(packetSection.indexOf("Provenance")).toBeLessThan(packetSection.indexOf("Risk"));
+    expect(packetSection).toContain("candidate-profitable / promoted May 16, 00:00 / selected matches");
+    expect(packetSection).toContain("1 obs / 0 failed / 60000ms / first May 16, 00:00 / last May 16, 00:00");
+    expect(packetSection).toContain("binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991 / fill filled / order book synced update 11");
+    expect(packetSection).toContain("equity 10004.952 USDT / available 10003.652 USDT / position long 0.001 BTCUSDT notional 65 / open 0 / fill filled");
+    expect(html).toContain("Packet verdict");
+    expect(html).toContain("collecting / min_observation_count_not_met");
+    expect(html).toContain("Blocker detail");
+    expect(html).toContain("evidence_window / collecting / min_observation_count_not_met, min_elapsed_ms_not_met");
+    expect(html).toContain("Paper evidence window is not mature enough for review. / next Continue paper observations until count and elapsed-time gates qualify.");
+    expect(html).toContain("Paper risk equity");
     expect(html).toContain("10,004.95 USDT");
-    expect(html).toContain("fake paper account; available 10,003.65 USDT");
-    expect(html).toContain("Paper net revenue");
+    expect(html).toContain("paper risk account; available 10,003.65 USDT");
+    expect(html).toContain("Paper score");
     expect(html).toContain("4.952 USDT");
-    expect(html).toContain("Paper position");
+    expect(html).toContain("Runner health");
+    expect(html).toContain("active / run running / next May 16, 00:01");
+    expect(html).toContain("Ledger");
+    expect(html).toContain("complete_chain / chain complete");
+    expect(html).toContain("gateway dry_run_only");
+    expect(html).toContain("execution dry_run_recorded");
+    expect(html).toContain("Lineage");
+    expect(html).toContain("available / trend_following / parent candidate-parent");
+    expect(html).toContain("Candidate produced non-negative net revenue after costs.");
+    expect(packetSection).toContain("rank #1 / collecting_evidence / 4.952 net USDT / 1 obs / top min_observation_count_not_met / next Continue paper observations until count and elapsed-time gates qualify.");
+    expect(html).toContain("Packet authority");
+    expect(html).toContain("not_live / mlp_paper_only / live_exchange=false, private_read=false, order_submission=false, credentials=false");
+    expect(html).toContain("Paper risk position");
     expect(html).toContain("long 0.001");
     expect(html).toContain("Trading review evidence");
-    expect(html).toContain("filled 0.001 @ 60000");
-    expect(html).toContain("binance_production_public_websocket / websocket_primary / fresh");
+    const paperReadbackSection = extractTradingPaperReadbackSection(html);
+    expect(paperReadbackSection).toContain("Paper market snapshot");
+    expect(paperReadbackSection).toContain("BTCUSDT 65,000 USDT @ May 16, 00:00");
+    expect(paperReadbackSection).toContain("Gateway market data");
+    const gatewayMarketDataField = paperReadbackSection.slice(
+      paperReadbackSection.indexOf("Gateway market data"),
+      paperReadbackSection.indexOf("Paper fill")
+    );
+    expect(gatewayMarketDataField).toContain("binance_production_public_websocket");
+    expect(paperReadbackSection).toContain("Paper fill");
+    expect(paperReadbackSection).toContain("filled 0.001 @ 60000");
+    expect(paperReadbackSection).toContain("Public execution evidence");
+    expect(paperReadbackSection).toContain("binance_production_public_websocket / websocket_primary / fresh");
+    expect(paperReadbackSection).toContain("Public order book evidence");
+    expect(paperReadbackSection).toContain("synced / update 11");
+    expect(paperReadbackSection).not.toContain(">Market snapshot<");
+    expect(paperReadbackSection).not.toContain(">Market data<");
+    expect(paperReadbackSection).not.toContain(">Order book<");
+  });
+
+  it("keeps failed promotion command remediation in the Trading first viewport", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          trading_review: tradingReviewFixture(),
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [{
+            command_id: "command-promote-failed",
+            command_kind: "trading_candidate.promote",
+            status: "failed",
+            requested_at: "2026-05-27T00:00:00.000Z",
+            completed_at: "2026-05-27T00:00:01.000Z",
+            error: "paper_trading_qualification_required",
+            authority_status: "not_live"
+          }],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+      />
+    );
+    const messagesSection = extractOperatorMessagesSection(html);
+
+    expect(html.indexOf('aria-label="Trading review packet"')).toBeLessThan(
+      html.indexOf('aria-label="Operator messages"')
+    );
+    expect(html.indexOf('aria-label="Operator messages"')).toBeLessThan(
+      html.indexOf('aria-label="Safety boundary"')
+    );
+    expect(messagesSection).toContain("trading_candidate.promote");
+    expect(messagesSection).toContain("paper_trading_qualification_required");
+    expect(messagesSection).toContain("Remediation group");
+    expect(messagesSection).not.toContain(">Group<");
+    expect(messagesSection).toContain("Visible surface");
+    expect(messagesSection).not.toContain(">Surface<");
+    expect(messagesSection).toContain("Remediation next step");
+    expect(messagesSection).not.toContain(">Remediation<");
+    expect(messagesSection).toContain("Command authority");
+    expect(messagesSection).not.toContain(">Authority<");
+    expect(messagesSection).toContain("Trading review promotion");
+    expect(messagesSection).toContain("Trading review packet, Paper Board");
+    expect(messagesSection).toContain("Review the Trading review packet blockers and Paper Board qualification before retrying promotion.");
+    expect(messagesSection).toContain("not_live");
+  });
+
+  it("renders classified paper failure remediation in the Trading review packet", () => {
+    const candidate = arenaSelectedCandidate();
+    const latestFailure = {
+      failure_kind: "public_execution_evidence_gap" as const,
+      reason: "fake public execution stream unavailable",
+      summary: "Paper fill or execution evidence could not be tied to public execution data.",
+      next_action: "Restore public execution evidence before trusting fills or paper score.",
+      authority_status: "not_live" as const
+    };
+    const paperEvaluation = paperTradingEvaluationFixture({
+      latest_failure_reason: latestFailure.reason,
+      latest_failure: latestFailure
+    });
+    const review = tradingReviewFixture({
+      paper_trading_evaluation: paperEvaluation
+    });
+    review.review_packet.risk.latest_failure_reason = latestFailure.reason;
+    review.review_packet.risk.latest_failure = latestFailure;
+
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "failed",
+            ledger_chain_complete: false,
+            failure_reason: latestFailure.reason,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperEvaluation,
+          paper_trading_board: paperTradingBoardFixture(),
+          trading_review: review,
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+        onPromoteTradingCandidate={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Paper failure");
+    expect(html).toContain("public_execution_evidence_gap");
+    expect(html).toContain("Paper fill or execution evidence could not be tied to public execution data.");
+    expect(html).toContain("Restore public execution evidence before trusting fills or paper score.");
+    expect(html).toContain("raw fake public execution stream unavailable");
+  });
+
+  it("renders no-order checkpoints as valid Trade status evidence", () => {
+    const candidate = arenaSelectedCandidate();
+    const paperEvaluation = paperTradingEvaluationFixture({
+      ledger_chain_complete: false,
+      latest_order_request_id: undefined,
+      latest_gateway_outcome: undefined,
+      latest_execution_status: undefined,
+      latest_fill: undefined,
+      latest_decision: {
+        decision_kind: "hold",
+        source_kind: "trading_system_decision",
+        reason: "risk_window_closed",
+        observed_at: "2026-05-16T00:00:03.000Z",
+        authority_status: "trace_only"
+      }
+    });
+    const review = tradingReviewFixture({
+      paper_trading_evaluation: paperEvaluation
+    });
+    review.review_packet.ledger = {
+      ...review.review_packet.ledger,
+      evidence_status: "no_order_checkpoint",
+      ledger_chain_complete: false,
+      latest_order_request_id: undefined,
+      latest_gateway_outcome: undefined,
+      latest_execution_status: undefined,
+      latest_decision_kind: "hold"
+    };
+
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "not_run",
+            ledger_chain_complete: false,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperEvaluation,
+          paper_trading_board: paperTradingBoardFixture(),
+          trading_review: review,
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+      />
+    );
+    const tradeStatus = extractTradeStatusSection(html);
+
+    expect(tradeStatus).toContain("no_order_checkpoint");
+    expect(tradeStatus).toContain("TradingSystemDecision");
+    expect(tradeStatus).toContain("hold");
+    expect(tradeStatus).toContain("No order emitted");
+    expect(tradeStatus).toContain("Paper order / decision");
+    expect(tradeStatus).not.toContain(">Side / type<");
+    expect(tradeStatus).toContain("Paper filled");
+    expect(tradeStatus).not.toContain(">Filled<");
+    expect(tradeStatus).toContain("Paper average price");
+    expect(tradeStatus).not.toContain(">Average price<");
+    expect(tradeStatus).toContain("Paper execution");
+    expect(tradeStatus).not.toContain(">Execution<");
+    expect(tradeStatus).toContain("not applicable");
+    expect(tradeStatus).toContain("no execution expected");
+    expect(tradeStatus).not.toContain("no order request");
+    expect(tradeStatus).not.toContain("&gt;OrderRequest&lt;");
+    expect(tradeStatus).not.toContain("&gt;GatewayResult&lt;");
+    expect(tradeStatus).not.toContain("&gt;ExecutionResult&lt;");
   });
 
   it("does not label account-position mirror data as paper account readback", () => {
@@ -2017,10 +2644,10 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("Paper equity");
+    expect(html).toContain("Paper risk equity");
     expect(html).toContain("not started");
     expect(html).toContain("Paper account waits for Trading review paper evaluation.");
-    expect(html).toContain("Paper position");
+    expect(html).toContain("Paper risk position");
     expect(html).toContain("no paper position");
     expect(html).not.toContain("1,250.00 USDT");
     expect(html).not.toContain("BOTH 0.015");
@@ -2079,7 +2706,7 @@ describe("CandidateDetail", () => {
             runner_status: undefined,
             selected_candidate_id: candidate.candidate_id,
             selected_matches_trading_review: false,
-            next_action: "Promote a selected PaperTradingEvaluation candidate from Arena to Trading review."
+            next_action: "Promote a selected Paper Trading Evaluation candidate from Arena to Trading review."
           }),
           researcher_provider: {
             selected_provider: "fixture",
@@ -2094,13 +2721,27 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("Paper net revenue");
+    expect(html).toContain("Paper score");
     expect(html).toContain("not measured");
     expect(html).toContain("No paper P&amp;L series has been measured yet.");
-    expect(html).toContain("Paper evaluation");
+    const paperReadbackSection = extractTradingPaperReadbackSection(html);
+    expect(paperReadbackSection).toContain("Paper Trading Evaluation");
+    expect(paperReadbackSection).not.toContain("Paper evaluation");
+    expect(paperReadbackSection).toContain("Paper runner");
+    expect(paperReadbackSection).not.toContain(">Runner<");
+    expect(paperReadbackSection).toContain("Paper market snapshot");
+    expect(paperReadbackSection).not.toContain(">Market snapshot<");
+    expect(paperReadbackSection).toContain("Gateway market data");
+    expect(paperReadbackSection).not.toContain(">Market data<");
+    expect(paperReadbackSection).toContain("Paper fill");
+    expect(paperReadbackSection).not.toContain("Latest fill");
+    expect(paperReadbackSection).toContain("Public execution evidence");
+    expect(paperReadbackSection).toContain("Public order book evidence");
+    expect(paperReadbackSection).not.toContain(">Order book<");
+    expect(paperReadbackSection).not.toContain("Market source");
     expect(html).toContain("not started");
-    expect(html).toContain("Market source");
     expect(html).toContain("not connected");
+    expect(paperReadbackSection).toContain("not observed");
     expect(html).not.toContain("0 observations");
     expect(html).not.toContain("return 0%");
   });
@@ -2202,6 +2843,60 @@ describe("CandidateDetail", () => {
     expect(promotionSection).not.toContain("ready_to_promote");
   });
 
+  it("derives Trading first-viewport recommendation from the Trading review packet", () => {
+    const candidate = arenaSelectedCandidate();
+    const review = tradingReviewFixture({
+      readiness_status: "collecting_paper_evidence",
+      paper_qualification_status: "collecting_evidence",
+      paper_qualification_reasons: ["min_observation_count_not_met"],
+      next_action: "Continue paper trading until the evidence window qualifies."
+    });
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="trading"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          trading_review: review,
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+        onObserveTradingRun={() => undefined}
+        onStopTradingRun={() => undefined}
+      />
+    );
+    const decisionSection = extractOperatorDecisionBarSection(html);
+
+    expect(decisionSection).toContain("Recommended action");
+    expect(decisionSection).toContain("Continue paper trading until the evidence window qualifies.");
+    expect(decisionSection).toContain("collecting / min_observation_count_not_met");
+    expect(decisionSection).toContain(">Observe paper<");
+    expect(decisionSection).toContain(">Stop paper<");
+    expect(decisionSection).not.toContain(">Observe<");
+    expect(decisionSection).not.toContain(">Stop<");
+    expect(decisionSection).not.toContain("Run first cycle");
+    expect(decisionSection).not.toContain("Create improvement");
+    expect(decisionSection).not.toContain("Evaluate then improve");
+  });
+
   it("renders Codex researcher selection in full-cycle developer controls", () => {
     const candidate = {
       ...candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
@@ -2286,6 +2981,120 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("2/2 scenarios accepted");
   });
 
+  it("surfaces paper evidence learning in Research without creating promotion authority", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: fixtureCandidateArena,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            ledger_chain_count: 1,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          trading_review: tradingReviewFixture(),
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+      />
+    );
+
+    expect(html).toContain("Paper evidence learning");
+    expect(html).toContain("Paper board rank #1");
+    expect(html).toContain("Continue paper observations until count and elapsed-time gates qualify.");
+    expect(html).toContain("lineage_only");
+    expect(html).not.toContain("Move to Trading review");
+    expectNoOperatorActionControls(html, {
+      includePrivateAuthorityTerms: true,
+      allowTradingRunControls: false
+    });
+  });
+
+  it("surfaces finding clusters in Research without creating promotion authority", () => {
+    const candidate = arenaSelectedCandidate();
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={candidate}
+        operator={{
+          operator_kind: "ouroboros_operator",
+          command_descriptors: [],
+          candidate_arena: {
+            ...fixtureCandidateArena,
+            finding_clusters: [
+              {
+                direction_kind: "trend_following",
+                top_blocker: "paper_evaluation_failed",
+                blocker_group_kind: "observation_quality",
+                market_regime: "long",
+                protocol_failure_kind: "trading_system_protocol_error",
+                candidate_count: 2,
+                candidate_ids: ["candidate-profitable", "candidate-protocol-failed"],
+                latest_finding: "Candidate was disqualified by evaluation guardrails.",
+                next_research_focus: "Inspect the latest paper failure and fix the runtime or protocol issue before review.",
+                authority_status: "not_promotion_authority"
+              }
+            ]
+          } as CandidateArenaReadModel,
+          selected_candidate_id: candidate.candidate_id,
+          selected_candidate: candidate,
+          selected_paper_evidence: {
+            status: "ledger_chain_complete",
+            ledger_chain_complete: true,
+            ledger_chain_count: 1,
+            authority_status: "not_live"
+          },
+          selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+          paper_trading_board: paperTradingBoardFixture(),
+          trading_review: tradingReviewFixture(),
+          researcher_provider: {
+            selected_provider: "fixture",
+            available_providers: ["codex", "fixture"],
+            authority_status: "research_only"
+          },
+          agent_profiles: [],
+          latest_commands: [],
+          live_disabled: true,
+          authority_status: "not_live"
+        } as OperatorReadModel}
+      />
+    );
+
+    expect(html).toContain("Finding clusters");
+    expect(html).toContain("trend_following / long");
+    expect(html).toContain("paper_evaluation_failed");
+    expect(html).toContain("observation_quality");
+    expect(html).toContain("trading_system_protocol_error");
+    expect(html).toContain("2 candidates");
+    expect(html).toContain("Inspect the latest paper failure and fix the runtime or protocol issue before review.");
+    expect(html).toContain("ResearchWorker input");
+    expect(html).toContain("next-generation context only");
+    expect(html).toContain("Cluster boundary");
+    expect(html).toContain("no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion");
+    expect(html).toContain("not_promotion_authority");
+    expect(html).not.toContain("Move to Trading review");
+    expectNoOperatorActionControls(html, {
+      includePrivateAuthorityTerms: true,
+      allowTradingRunControls: false
+    });
+  });
+
   it("keeps agent-created Trading System evidence visible after reload", () => {
     const candidate = candidateWithAgentCycleMaterialization(
       candidateWithSandbox(candidateWithLedgerSource(ledgerSourceRecords()))
@@ -2336,6 +3145,15 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Evaluation result");
     expect(html).toContain("accepted");
     expect(html).toContain("not_counted");
+    const improvementSection = extractImprovementSection(html);
+    expect(improvementSection).toContain("Source finding authority");
+    expect(improvementSection).toContain("Change proposal authority");
+    expect(improvementSection).toContain("Materialization authority");
+    expect(improvementSection).toContain("Experiment authority");
+    expect(improvementSection).toContain("Evaluation result authority");
+    expect(improvementSection).toContain("Improvement evidence authority");
+    expect(improvementSection).toContain("Improvement promotion authority");
+    expect(improvementSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).toContain("Evidence");
     expect(html).toContain("not_sealed");
     expect(html).toContain("Promotion");
@@ -2356,6 +3174,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("OUROBOROS_BINANCE_API_KEY");
     expect(html).not.toContain("OUROBOROS_TRADING_GATEWAY_MODE");
     expect(html).toContain("api_secret=true");
+    const gatewayEnvironmentSection = extractTradingGatewayEnvironmentSection(html);
+    expect(gatewayEnvironmentSection).toContain("Gateway environment authority");
+    expect(gatewayEnvironmentSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expect(html).not.toContain("secretKey");
     expect(html).not.toContain("signature=");
   });
@@ -2389,6 +3210,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Record pause");
     expect(html).toContain("control_only");
     expect(html).toContain("audit_only");
+    const runControlSection = extractRunControlSection(html);
+    expect(runControlSection).toContain("Command authority");
+    expect(runControlSection).toContain("Decision authority");
+    expect(runControlSection).toContain("Audit authority");
+    expect(runControlSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
     expect(html).not.toMatch(/\bKill\b/i);
   });
@@ -2582,10 +3408,13 @@ describe("CandidateDetail", () => {
       />
     );
 
-    expect(html).toContain("Materialization Attempt");
-    expect(html).toContain("codex_cli / gpt-5.4");
-    expect(html).toContain("provider_output_not_evidence");
-    expect(html).not.toMatch(/Counted evidence|Promotion approved|Live authority/);
+    const materializationAttemptSection = extractMaterializationAttemptSection(html);
+    expect(materializationAttemptSection).toContain("Materialization Attempt");
+    expect(materializationAttemptSection).toContain("codex_cli / gpt-5.4");
+    expect(materializationAttemptSection).toContain("Provider trace");
+    expect(materializationAttemptSection).not.toMatch(/<dt[^>]*>Trace<\/dt>/);
+    expect(materializationAttemptSection).toContain("provider_output_not_evidence");
+    expect(materializationAttemptSection).not.toMatch(/Counted evidence|Promotion approved|Live authority/);
   });
 
   it("renders an empty evaluation state separately from failure", () => {
@@ -2593,9 +3422,9 @@ describe("CandidateDetail", () => {
       <CandidateDetail candidate={candidateWithEvaluation(emptyEvaluation())} />
     );
 
-    expect(html).toContain("Evaluation state");
+    expect(html).toContain("ResearchPreflight state");
     expect(html).toContain("empty");
-    expect(html).toContain("No evaluation runs");
+    expect(html).toContain("No ResearchPreflight runs");
     expect(html).toContain("no_evaluation_runs");
     expect(html).not.toContain("evaluation_failed");
   });
@@ -2605,7 +3434,7 @@ describe("CandidateDetail", () => {
       <CandidateDetail candidate={candidateWithEvaluation(failedEvaluation())} />
     );
 
-    expect(html).toContain("Evaluation state");
+    expect(html).toContain("ResearchPreflight state");
     expect(html).toContain("failed");
     expect(html).toContain("evaluation engine rejected metrics");
     expect(html).not.toContain("No evaluation runs");
@@ -2622,6 +3451,13 @@ describe("CandidateDetail", () => {
     expect(html).toContain("sealed_counted_fixture_only_allowed_by_test");
     expect(html).toContain("partial_trace");
     expect(html).toContain("evidence_sealing_decision:fixture-sealing");
+    const researchPreflightEvidenceSection = extractResearchPreflightEvidenceSection(html);
+    expect(researchPreflightEvidenceSection).toContain("ResearchPreflight run authority");
+    expect(researchPreflightEvidenceSection).toContain("Comparison set authority");
+    expect(researchPreflightEvidenceSection).toContain("Trace material authority");
+    expect(researchPreflightEvidenceSection).toContain("Counted evidence authority");
+    expect(researchPreflightEvidenceSection).toContain("Sealing decision authority");
+    expect(researchPreflightEvidenceSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expectNoOperatorActionControls(html);
   });
 });
@@ -3867,12 +4703,25 @@ const fixtureCandidateArena: CandidateArenaReadModel = {
           status: "created",
           candidate_id: "candidate-profitable",
           finding: "Positive net revenue after costs.",
-          net_revenue_usdt: 9.83
+          net_revenue_usdt: 9.83,
+          research_efficiency: {
+            provider_request_total: 6,
+            runner_command_total: 0,
+            scenario_count: 2,
+            elapsed_ms: 1000,
+            authority_status: "not_promotion_authority"
+          }
+        },
+        {
+          direction_kind: "mean_reversion",
+          status: "failed",
+          error: "fixture direction failed"
         }
       ],
       authority_status: "not_live"
     }
   ],
+  finding_clusters: [],
   live_disabled: true
 };
 
@@ -3894,6 +4743,33 @@ function extractSelectedCandidateArenaSection(html: string): string {
   return html.slice(start, end);
 }
 
+function extractArenaCommandBarSection(html: string): string {
+  const start = html.indexOf('aria-label="Arena command bar"');
+  const end = html.indexOf('aria-label="Paper trading board"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("arena command bar section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractCandidateArenaMetricStripSection(html: string): string {
+  const start = html.indexOf(">Arena runner<");
+  const end = html.indexOf('aria-label="Paper trading board"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("candidate arena metric strip not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractCandidateArenaLeaderboardSection(html: string): string {
+  const start = html.indexOf('aria-label="Candidate Arena leaderboard"');
+  const end = html.indexOf('aria-label="Candidate Arena inspector"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("candidate arena leaderboard section not found");
+  }
+  return html.slice(start, end);
+}
+
 function extractTradingPromotionBoundarySection(html: string): string {
   const start = html.indexOf('aria-label="Trading promotion boundary"');
   const end = html.indexOf('aria-label="Operator messages"', start);
@@ -3901,6 +4777,245 @@ function extractTradingPromotionBoundarySection(html: string): string {
     throw new Error("trading promotion boundary section not found");
   }
   return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractOperatorDecisionBarSection(html: string): string {
+  const start = html.indexOf('aria-label="Operator decision bar"');
+  const packetStart = html.indexOf('aria-label="Trading review packet"', start);
+  const promotionStart = html.indexOf('aria-label="Trading promotion boundary"', start);
+  const endCandidates = [packetStart, promotionStart].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : -1;
+  if (start < 0) {
+    throw new Error("operator decision bar section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractTradingReviewPacketSection(html: string): string {
+  const start = html.indexOf('aria-label="Trading review packet"');
+  const promotionStart = html.indexOf('aria-label="Trading promotion boundary"', start);
+  const messagesStart = html.indexOf('aria-label="Operator messages"', start);
+  const endCandidates = [promotionStart, messagesStart].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : -1;
+  if (start < 0) {
+    throw new Error("trading review packet section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractTradingPaperReadbackSection(html: string): string {
+  const start = html.indexOf('aria-label="Trading paper readback"');
+  const tradeStatusStart = html.indexOf('aria-label="Order / trade status"', start);
+  if (start < 0) {
+    throw new Error("trading paper readback section not found");
+  }
+  return html.slice(start, tradeStatusStart < 0 ? undefined : tradeStatusStart);
+}
+
+function extractOperatorMessagesSection(html: string): string {
+  const start = html.indexOf('aria-label="Operator messages"');
+  const end = html.indexOf('aria-label="Safety boundary"', start);
+  if (start < 0) {
+    throw new Error("operator messages section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractCandidateRunsSection(html: string): string {
+  const start = html.indexOf("Candidate Runs");
+  const endCandidates = [
+    html.indexOf("Run history", start),
+    html.indexOf("Agent cycle controls", start)
+  ].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : -1;
+  if (start < 0) {
+    throw new Error("candidate runs section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractReplayRunComparisonSection(html: string): string {
+  const start = html.indexOf("<h4>Run comparison</h4>");
+  const end = html.indexOf("<h4>Validation state</h4>", start);
+  if (start < 0 || end < 0) {
+    throw new Error("replay run comparison section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractReplayRunValidationStateSection(html: string): string {
+  const start = html.indexOf("<h4>Validation state</h4>");
+  const endCandidates = [
+    html.indexOf("<h4>Scenarios</h4>", start),
+    html.indexOf(">Run replay<", start)
+  ].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : -1;
+  if (start < 0) {
+    throw new Error("replay run validation state section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractReplayRunDetailSection(html: string): string {
+  const start = html.indexOf("<h4>Selected run detail</h4>");
+  const end = html.indexOf(">Run replay<", start);
+  if (start < 0) {
+    throw new Error("replay run detail section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractCandidateLatestValidationStateSection(html: string): string {
+  const start = html.indexOf("<h4>Candidate latest validation state</h4>");
+  const end = html.indexOf(">Spec</div>", start);
+  if (start < 0) {
+    throw new Error("candidate latest validation state section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractRunControlSection(html: string): string {
+  const start = html.indexOf("Run Control");
+  const end = html.indexOf(">Improvement<", start);
+  if (start < 0) {
+    throw new Error("run control section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractLedgerSection(html: string): string {
+  const start = html.indexOf(">Ledger</div>");
+  const end = html.indexOf("Trading gateway contract", start);
+  if (start < 0) {
+    throw new Error("ledger section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractTradingRunSection(html: string): string {
+  const start = html.indexOf(">Trading Run</div>");
+  const end = html.indexOf(">Ledger</div>", start);
+  if (start < 0) {
+    throw new Error("trading run section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractTradingGatewayEnvironmentSection(html: string): string {
+  const start = html.indexOf(">Trading gateway environment</div>");
+  const end = html.indexOf(">Sandbox</div>", start);
+  if (start < 0) {
+    throw new Error("trading gateway environment section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractImprovementSection(html: string): string {
+  const start = html.indexOf(">Improvement</div>");
+  const end = html.indexOf(">Trading Run<", start);
+  if (start < 0) {
+    throw new Error("improvement section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractResearchPreflightEvidenceSection(html: string): string {
+  const start = html.indexOf(">ResearchPreflight Evidence</div>");
+  const end = html.indexOf(">Improvement<", start);
+  if (start < 0) {
+    throw new Error("research preflight evidence section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractMaterializationAttemptSection(html: string): string {
+  const start = html.indexOf(">Materialization Attempt</div>");
+  const end = html.indexOf(">Trading Substrate<", start);
+  if (start < 0) {
+    throw new Error("materialization attempt section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractSandboxSection(html: string): string {
+  const start = html.indexOf(">Sandbox</div>");
+  const end = html.indexOf("Trading Run Transcript", start);
+  if (start < 0) {
+    throw new Error("sandbox section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractTradingRunTranscriptSection(html: string): string {
+  const start = html.indexOf("Trading Run Transcript");
+  const end = html.indexOf(">Trading System<", start);
+  if (start < 0) {
+    throw new Error("trading run transcript section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractExecutionModesSection(html: string): string {
+  const start = html.indexOf('aria-label="Trading execution modes"');
+  if (start < 0) {
+    throw new Error("trading execution modes section not found");
+  }
+  return html.slice(start);
+}
+
+function extractMarketDataProvenanceSection(html: string): string {
+  const start = html.indexOf('aria-label="Market data provenance"');
+  const end = html.indexOf('aria-label="BTCUSDT mark price snapshot"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("market data provenance section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractTradeStatusSection(html: string): string {
+  const start = html.indexOf('aria-label="Trade status"');
+  const end = html.indexOf('data-slot="tabs-content"', start + 1);
+  if (start < 0) {
+    throw new Error("trade status section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractOpeningTagForAriaLabel(html: string, label: string): string {
+  const labelIndex = html.indexOf(`aria-label="${label}"`);
+  const start = html.lastIndexOf("<", labelIndex);
+  const end = html.indexOf(">", labelIndex);
+  if (labelIndex < 0 || start < 0 || end < 0) {
+    throw new Error(`${label} opening tag not found`);
+  }
+  return html.slice(start, end + 1);
+}
+
+function candidateWithPublicMarketSurface(
+  surface: PublicMarketLivenessSurfaceReadModel
+): CandidateInspectReadModel {
+  const baseCandidate = arenaSelectedCandidate();
+  return {
+    ...baseCandidate,
+    trading_substrate: {
+      latest_order_fill_surface: baseCandidate.trading_substrate?.latest_order_fill_surface ?? null,
+      latest_public_market_liveness_surface: surface,
+      latest_private_readiness_preflight_surface:
+        baseCandidate.trading_substrate?.latest_private_readiness_preflight_surface ?? null,
+      latest_private_readiness_posture:
+        baseCandidate.trading_substrate?.latest_private_readiness_posture ?? null,
+      private_readiness_posture_history:
+        baseCandidate.trading_substrate?.private_readiness_posture_history ?? [],
+      latest_private_readiness_policy_decision:
+        baseCandidate.trading_substrate?.latest_private_readiness_policy_decision ?? null,
+      latest_private_read_gate_decision:
+        baseCandidate.trading_substrate?.latest_private_read_gate_decision ?? null,
+      latest_trading_gateway_contract:
+        baseCandidate.trading_substrate?.latest_trading_gateway_contract ?? null,
+      latest_account_position_risk_mirror_surface:
+        baseCandidate.trading_substrate?.latest_account_position_risk_mirror_surface ?? null
+    }
+  };
 }
 
 function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) {
@@ -4024,13 +5139,14 @@ function paperTradingEvaluationFixture(overrides: Record<string, unknown> = {}) 
 function tradingReviewFixture(
   overrides: Partial<OperatorReadModel["trading_review"]> = {}
 ): OperatorReadModel["trading_review"] {
-  return {
+  const reviewBase: Omit<OperatorReadModel["trading_review"], "review_packet"> = {
     review_kind: "trading_review",
     status: "promoted_for_trading_review",
     readiness_status: "collecting_paper_evidence",
     active_candidate_id: "candidate-profitable",
     active_candidate_version_id: "candidate-version-profitable",
     display_name: "candidate-profitable",
+    promoted_at: "2026-05-16T00:00:04.000Z",
     paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
     paper_qualification_status: "collecting_evidence",
     paper_qualification_reasons: [
@@ -4040,7 +5156,9 @@ function tradingReviewFixture(
     paper_evidence_window: {
       observation_count: 1,
       elapsed_ms: 60_000,
-      failed_observation_count: 0
+      failed_observation_count: 0,
+      first_observed_at: "2026-05-16T00:00:03.000Z",
+      last_observed_at: "2026-05-16T00:00:03.000Z"
     },
     paper_profit_loss: {
       revenue_usdt: 5,
@@ -4054,8 +5172,163 @@ function tradingReviewFixture(
     selected_matches_trading_review: true,
     next_action: "Continue paper trading until the evidence window qualifies.",
     live_disabled_reason: "mlp_paper_only",
-    authority_status: "not_live",
+    authority_status: "not_live"
+  };
+  const review = {
+    ...reviewBase,
     ...overrides
+  };
+  return {
+    ...review,
+    review_packet: overrides.review_packet ?? tradingReviewPacketFixture(review)
+  };
+}
+
+function tradingReviewPacketFixture(
+  review: Omit<OperatorReadModel["trading_review"], "review_packet">
+): OperatorReadModel["trading_review"]["review_packet"] {
+  const topBlocker = review.paper_qualification_reasons[0];
+  const publicExecutionSnapshot = review.paper_trading_evaluation.latest_public_execution_snapshot;
+  return {
+    packet_kind: "trading_review_packet",
+    verdict: {
+      readiness_status: review.readiness_status,
+      qualification_status: review.paper_qualification_status,
+      severity: review.selected_matches_trading_review ? "collecting" : "mismatch",
+      top_blocker: review.selected_matches_trading_review ? topBlocker : "arena_selection_mismatch"
+    },
+    subject: {
+      candidate_id: review.active_candidate_id,
+      candidate_version_id: review.active_candidate_version_id,
+      display_name: review.display_name,
+      paper_trading_evaluation_id: review.paper_trading_evaluation_id,
+      promoted_at: review.promoted_at,
+      selected_candidate_id: review.selected_candidate_id,
+      selected_matches_trading_review: review.selected_matches_trading_review
+    },
+    performance: {
+      rank: 1,
+      primary_rank_metric: "net_revenue_usdt",
+      secondary_rank_metric: "net_return_pct",
+      profit_loss: review.paper_profit_loss
+    },
+    evidence_quality: {
+      evidence_window: review.paper_evidence_window,
+      qualification_reasons: review.paper_qualification_reasons,
+      blocker_groups: topBlocker ? [
+        {
+          group_kind: "evidence_window",
+          severity: "collecting",
+          blockers: review.paper_qualification_reasons,
+          summary: "Paper evidence window is not mature enough for review.",
+          next_action: "Continue paper observations until count and elapsed-time gates qualify."
+        }
+      ] : []
+    },
+    provenance: {
+      market_data_source: review.paper_trading_evaluation.market_data_source,
+      latest_public_execution_source: publicExecutionSnapshot?.source_priority,
+      latest_public_execution_freshness: publicExecutionSnapshot?.freshness,
+      latest_public_execution_ws_connected: publicExecutionSnapshot?.ws_connected,
+      latest_public_execution_rest_fallback_used: publicExecutionSnapshot?.rest_fallback_used,
+      latest_public_execution_stream_marker: publicExecutionSnapshot?.stream_marker,
+      latest_fill_status: review.paper_trading_evaluation.latest_fill?.fill_status,
+      order_book: publicExecutionSnapshot?.order_book
+        ? {
+            sync_status: publicExecutionSnapshot.order_book.sync_status,
+            last_update_id: publicExecutionSnapshot.order_book.last_update_id,
+            previous_final_update_id: publicExecutionSnapshot.order_book.previous_final_update_id,
+            gap_detected: publicExecutionSnapshot.order_book.gap_detected,
+            depth_level_count: publicExecutionSnapshot.order_book.depth_level_count,
+            authority_status: "read_only"
+          }
+        : undefined
+    },
+    risk: tradingReviewPacketRiskFixture(review),
+    runner: {
+      runner_status: review.runner_status,
+      runner_active: review.paper_trading_evaluation.runner_active,
+      trading_run_status: review.paper_trading_evaluation.trading_run_status,
+      last_observed_at: review.paper_trading_evaluation.last_observed_at,
+      next_observation_at: review.paper_trading_evaluation.next_observation_at,
+      authority_status: "not_live"
+    },
+    ledger: {
+      evidence_status: review.paper_trading_evaluation.ledger_chain_complete
+        ? "complete_chain"
+        : "incomplete_chain",
+      ledger_chain_complete: review.paper_trading_evaluation.ledger_chain_complete,
+      latest_order_request_id: review.paper_trading_evaluation.latest_order_request_id,
+      latest_gateway_outcome: review.paper_trading_evaluation.latest_gateway_outcome,
+      latest_execution_status: review.paper_trading_evaluation.latest_execution_status,
+      latest_decision_kind: review.paper_trading_evaluation.latest_decision?.decision_kind,
+      authority_status: "not_live"
+    },
+    lineage: {
+      lineage_status: "available",
+      direction_kind: "trend_following",
+      parent_candidate_id: "candidate-parent",
+      parent_candidate_version_id: "candidate-version-parent",
+      generated_by_agent: true,
+      latest_finding: "Candidate produced non-negative net revenue after costs.",
+      evaluation_status: "accepted",
+      evaluation_score: 9.83,
+      paper_board_learning: {
+        rank: 1,
+        net_revenue_usdt: 4.952,
+        net_return_pct: 0.04952,
+        observation_count: 1,
+        qualification_status: "collecting_evidence",
+        qualification_reasons: review.paper_qualification_reasons,
+        top_blocker: "min_observation_count_not_met",
+        summary: "Paper board rank #1: 4.952 net_revenue_usdt, 0.04952 net_return_pct, 1 observations, collecting_evidence.",
+        next_research_focus: "Continue paper observations until count and elapsed-time gates qualify.",
+        authority_status: "lineage_only"
+      },
+      authority_status: "lineage_only"
+    },
+    authority: {
+      authority_status: "not_live",
+      live_disabled_reason: "mlp_paper_only",
+      no_authority: {
+        live_exchange_authority: false,
+        private_read_authority: false,
+        order_submission_authority: false,
+        credentials: false
+      }
+    },
+    next_action: review.next_action
+  };
+}
+
+function tradingReviewPacketRiskFixture(
+  review: Omit<OperatorReadModel["trading_review"], "review_packet">
+): OperatorReadModel["trading_review"]["review_packet"]["risk"] {
+  const accountSnapshot = review.paper_trading_evaluation.paper_account_snapshot;
+  return {
+    open_order_count: review.paper_trading_evaluation.open_orders?.length ?? 0,
+    account: accountSnapshot
+      ? {
+          equity_usdt: accountSnapshot.equity_usdt,
+          available_balance_usdt: accountSnapshot.available_balance_usdt,
+          wallet_balance_usdt: accountSnapshot.wallet_balance_usdt,
+          margin_reserved_usdt: accountSnapshot.margin_reserved_usdt,
+          authority_status: "not_live"
+        }
+      : undefined,
+    position: accountSnapshot
+      ? {
+          symbol: accountSnapshot.position.symbol,
+          side: accountSnapshot.position.side,
+          quantity: accountSnapshot.position.quantity,
+          notional_usdt: accountSnapshot.position.notional_usdt,
+          average_entry_price: accountSnapshot.position.average_entry_price,
+          mark_price: accountSnapshot.position.mark_price,
+          authority_status: "not_live"
+        }
+      : undefined,
+    latest_fill_status: review.paper_trading_evaluation.latest_fill?.fill_status,
+    latest_failure_reason: review.latest_failure_reason
   };
 }
 
@@ -4087,6 +5360,20 @@ function paperTradingBoardFixture(): PaperTradingBoardReadModel {
         risk_summary: {
           open_order_count: 0,
           latest_fill_status: "filled"
+        },
+        trend: {
+          direction: "insufficient_history",
+          net_revenue_delta_usdt: 0,
+          net_return_delta_pct: 0,
+          observation_count_delta: 0,
+          authority_status: "not_promotion_authority"
+        },
+        blocker_density: {
+          blocker_count: 2,
+          blocker_density: 2,
+          failed_observation_ratio: 0,
+          top_blocker: "min_observation_count_not_met",
+          authority_status: "not_promotion_authority"
         },
         observation_count: 1,
         trading_run_id: "trading-run-candidate-profitable",

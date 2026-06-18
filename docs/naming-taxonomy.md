@@ -12,16 +12,20 @@ that pack every axis into one identifier.
 | `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
+| `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
 | `TradingPromotion` | Paper-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
 | `TradingReview` | Operator projection of the active Trading review candidate; it separates promoted Trading review target from the current Arena selected candidate. |
+| `TradingReviewPacket` | Structured read-only evidence packet inside `TradingReview` that explains verdict, blocker, paper performance, runner health, Ledger continuity, lineage, provenance, risk, authority, and next action. |
 | `TradingSystemDecision` | `OrderRequest`, `hold`, or no-action signal emitted by a selected TradingSystem according to its own decision cadence. |
 | `Evaluation` | Generic evidence noun; qualify it as ResearchPreflight or PaperTradingEvaluation when authority matters. |
 | `Finding` | Research observation from a candidate, failed direction, negative result, or paper evidence summary. |
+| `FindingCluster` | Read-only CandidateArena grouping of findings by direction, blocker, market regime, and protocol failure for the next ResearchWorker context. |
 | `Lineage` | Parent, direction, evaluation, finding, and evidence chain that explains why a candidate exists. |
 | `PaperEvidence` | Selected-candidate proof from the paper TradingRun, Gateway, and Ledger path. |
 | `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate CandidateArena. |
@@ -75,6 +79,14 @@ standard term fits. Record that decision in repo docs and tests.
 - Do not bind Trading controls to the current Arena selected candidate when a different
   TradingReview target is active. Arena selection is research inspection; TradingReview is the
   promoted paper-backed target for Trading review.
+- Do not let `TradingReviewPacket` become a command, promotion record, or authority gate.
+  It is read-only decision support over existing paper evidence and `not_live` authority.
+- Do not replace raw `PaperTradingFailure` reasons with classifier labels. Keep both: stable
+  failure kind for product action and raw reason for debugging.
+- Do not let `ResearchEfficiency` become a rank metric or promotion gate. It is a cost and latency
+  comparison signal for improving CandidateArena autonomy.
+- Do not let `FindingCluster` become a rank metric, qualification gate, or Trading review blocker.
+  It is read-only generation context for the next ResearchWorker.
 - Do not attach Binance directly to TradingSystem. Public market data goes through Gateway
   `MarketDataPort`; private/live Binance authority remains outside the product loop.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.

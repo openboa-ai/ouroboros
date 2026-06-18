@@ -10,7 +10,8 @@ import {
   type PaperTradingEvaluationRecord,
   type PaperTradingObservationRecord,
   type Ref,
-  type ResearcherProviderReadModel
+  type ResearcherProviderReadModel,
+  type TradingProfitLossReadModel
 } from "@ouroboros/domain";
 import {
   listAgentProfileReadModels,
@@ -30,6 +31,9 @@ import type {
 import type { OuroborosStorePort } from "../ports/store";
 import { safeId } from "../safe-id";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
+import { classifyPaperTradingFailure } from "../trading/paper/failures";
+import { paperTradingLearningSummary } from "../trading/paper/learning";
+import { paperTradingQualificationBlockerGroups } from "../trading/paper/qualification-blockers";
 import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
 
 export class OperatorCommandError extends Error {
@@ -111,6 +115,7 @@ export class OperatorService {
       trading_promotion: tradingPromotion,
       trading_review: await buildTradingReviewReadModel({
         store: this.options.store,
+        candidateArena: arena,
         selectedCandidateId: selectedCandidate?.candidate_id ?? null,
         tradingPromotion,
         paperTradingBoard,
@@ -255,9 +260,21 @@ export class OperatorService {
           observations,
           runnerActive
         });
+        const previousPromotion = await this.options.store.getLatestTradingPromotion();
+        const activeTradingReviewCandidateId = previousPromotion?.candidate_ref.id;
+        const attemptedReplacementCandidateId =
+          activeTradingReviewCandidateId && activeTradingReviewCandidateId !== candidateId
+            ? candidateId
+            : undefined;
         if (qualification.qualification_status !== "qualified") {
           throw new OperatorCommandError(409, "paper_trading_qualification_required", {
             candidate_id: candidateId,
+            ...(attemptedReplacementCandidateId
+              ? {
+                  active_trading_review_candidate_id: activeTradingReviewCandidateId,
+                  attempted_replacement_candidate_id: attemptedReplacementCandidateId
+                }
+              : {}),
             paper_trading_evaluation_id: evaluation.paper_trading_evaluation_id,
             paper_qualification_status: qualification.qualification_status,
             paper_qualification_reasons: qualification.qualification_reasons,
@@ -280,10 +297,15 @@ export class OperatorService {
           promoted_at: new Date().toISOString(),
           authority_status: "not_live"
         });
+        const replacedCandidateId = previousPromotion?.candidate_ref.id !== candidateId
+          ? previousPromotion?.candidate_ref.id
+          : undefined;
         this.selectedCandidateId = candidateId;
         return {
           result: { trading_promotion: promotion },
-          summary: `Promoted ${candidateId} to Trading review.`
+          summary: replacedCandidateId
+            ? `Replaced Trading review target ${replacedCandidateId} with ${candidateId}.`
+            : `Promoted ${candidateId} to Trading review.`
         };
       },
       "candidate.paper_evidence.run": async (payload) => {
@@ -556,6 +578,7 @@ async function buildPaperTradingBoard(
       evaluation.open_orders?.length ??
       evaluation.paper_account_snapshot?.open_order_count ??
       0;
+    const paperAccountSnapshot = latestObservation?.paper_account_snapshot ?? evaluation.paper_account_snapshot;
     const qualification = qualifyPaperTradingEvaluation({
       evaluation,
       observations,
@@ -563,6 +586,7 @@ async function buildPaperTradingBoard(
     });
     const latestFillStatus = (latestObservation?.latest_fill ?? evaluation.latest_fill)?.fill_status;
     const latestFailureReason = latestObservation?.failure_reason ?? evaluation.latest_failure_reason;
+    const latestFailure = classifyPaperTradingFailure(latestFailureReason);
     return {
       rank: 0,
       candidate_id: evaluation.candidate_ref.id,
@@ -574,11 +598,18 @@ async function buildPaperTradingBoard(
       qualification_status: qualification.qualification_status,
       qualification_reasons: qualification.qualification_reasons,
       evidence_window: qualification.evidence_window,
-      risk_summary: {
-        open_order_count: openOrderCount,
-        latest_fill_status: latestFillStatus,
-        latest_failure_reason: latestFailureReason
-      },
+      risk_summary: paperTradingRiskSummary({
+        openOrderCount,
+        paperAccountSnapshot,
+        latestFillStatus,
+        latestFailureReason,
+        latestFailure
+      }),
+      trend: paperTradingBoardTrend(observations, evaluation.latest_score),
+      blocker_density: paperTradingBoardBlockerDensity(
+        qualification.qualification_reasons,
+        qualification.evidence_window
+      ),
       observation_count: evaluation.observation_count,
       trading_run_id: evaluation.trading_run_ref.id,
       last_observed_at: evaluation.last_observed_at,
@@ -591,6 +622,7 @@ async function buildPaperTradingBoard(
       latest_fill_status: latestFillStatus,
       open_order_count: openOrderCount,
       latest_failure_reason: latestFailureReason,
+      latest_failure: latestFailure,
       authority_status: "not_live" as const
     };
   }));
@@ -615,6 +647,105 @@ async function buildPaperTradingBoard(
   };
 }
 
+function paperTradingBoardTrend(
+  observations: PaperTradingObservationRecord[],
+  latestProfitLoss: TradingProfitLossReadModel
+): OperatorReadModel["paper_trading_board"]["entries"][number]["trend"] {
+  if (observations.length < 2) {
+    return {
+      direction: "insufficient_history",
+      net_revenue_delta_usdt: 0,
+      net_return_delta_pct: 0,
+      observation_count_delta: 0,
+      authority_status: "not_promotion_authority"
+    };
+  }
+  const firstObservation = observations[0]!;
+  const latestObservation = observations.at(-1)!;
+  const firstProfitLoss = firstObservation.cumulative_score;
+  const latestObservedProfitLoss = latestObservation.cumulative_score ?? latestProfitLoss;
+  const netRevenueDelta = roundPaperSignal(
+    latestObservedProfitLoss.net_revenue_usdt - firstProfitLoss.net_revenue_usdt
+  );
+  const netReturnDelta = roundPaperSignal(
+    latestObservedProfitLoss.net_return_pct - firstProfitLoss.net_return_pct
+  );
+  return {
+    direction: paperTrendDirection(netRevenueDelta),
+    net_revenue_delta_usdt: netRevenueDelta,
+    net_return_delta_pct: netReturnDelta,
+    observation_count_delta: Math.max(0, latestObservation.sequence - firstObservation.sequence),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function paperTradingBoardBlockerDensity(
+  qualificationReasons: OperatorReadModel["paper_trading_board"]["entries"][number]["qualification_reasons"],
+  evidenceWindow: OperatorReadModel["paper_trading_board"]["entries"][number]["evidence_window"]
+): OperatorReadModel["paper_trading_board"]["entries"][number]["blocker_density"] {
+  const observationCount = Math.max(1, evidenceWindow.observation_count);
+  return {
+    blocker_count: qualificationReasons.length,
+    blocker_density: roundPaperSignal(qualificationReasons.length / observationCount),
+    failed_observation_ratio: roundPaperSignal(evidenceWindow.failed_observation_count / observationCount),
+    top_blocker: qualificationReasons[0],
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function paperTrendDirection(netRevenueDelta: number): OperatorReadModel["paper_trading_board"]["entries"][number]["trend"]["direction"] {
+  if (netRevenueDelta > 0) {
+    return "improving";
+  }
+  if (netRevenueDelta < 0) {
+    return "declining";
+  }
+  return "flat";
+}
+
+function roundPaperSignal(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function paperTradingRiskSummary(input: {
+  openOrderCount: number;
+  paperAccountSnapshot?: OperatorReadModel["selected_paper_trading_evaluation"]["paper_account_snapshot"];
+  latestFillStatus?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_fill"] extends infer Fill
+    ? Fill extends { fill_status: infer Status } ? Status : never
+    : never;
+  latestFailureReason?: string;
+  latestFailure?: OperatorReadModel["selected_paper_trading_evaluation"]["latest_failure"];
+}): OperatorReadModel["paper_trading_board"]["entries"][number]["risk_summary"] {
+  const account = input.paperAccountSnapshot
+    ? {
+        equity_usdt: input.paperAccountSnapshot.equity_usdt,
+        available_balance_usdt: input.paperAccountSnapshot.available_balance_usdt,
+        wallet_balance_usdt: input.paperAccountSnapshot.wallet_balance_usdt,
+        margin_reserved_usdt: input.paperAccountSnapshot.margin_reserved_usdt,
+        authority_status: "not_live" as const
+      }
+    : undefined;
+  const position = input.paperAccountSnapshot
+    ? {
+        symbol: input.paperAccountSnapshot.position.symbol,
+        side: input.paperAccountSnapshot.position.side,
+        quantity: input.paperAccountSnapshot.position.quantity,
+        notional_usdt: input.paperAccountSnapshot.position.notional_usdt,
+        average_entry_price: input.paperAccountSnapshot.position.average_entry_price,
+        mark_price: input.paperAccountSnapshot.position.mark_price,
+        authority_status: "not_live" as const
+      }
+    : undefined;
+  return {
+    open_order_count: input.openOrderCount,
+    account,
+    position,
+    latest_fill_status: input.latestFillStatus,
+    latest_failure_reason: input.latestFailureReason,
+    latest_failure: input.latestFailure
+  };
+}
+
 async function buildTradingPromotionReadModel(input: {
   store: OuroborosStorePort;
   paperTradingBoard: OperatorReadModel["paper_trading_board"];
@@ -627,7 +758,7 @@ async function buildTradingPromotionReadModel(input: {
       status: "not_promoted",
       readiness_status: "paper_required",
       paper_qualification_reasons: [],
-      next_action: "Promote a selected PaperTradingEvaluation candidate from Arena to Trading review.",
+      next_action: "Promote a selected Paper Trading Evaluation candidate from Arena to Trading review.",
       live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"
     };
@@ -702,6 +833,7 @@ async function buildTradingPromotionReadModel(input: {
 
 async function buildTradingReviewReadModel(input: {
   store: OuroborosStorePort;
+  candidateArena: OperatorReadModel["candidate_arena"];
   selectedCandidateId: string | null;
   tradingPromotion: NonNullable<OperatorReadModel["trading_promotion"]>;
   paperTradingBoard: OperatorReadModel["paper_trading_board"];
@@ -729,12 +861,16 @@ async function buildTradingReviewReadModel(input: {
           entry.evaluation_id === input.tradingPromotion.paper_trading_evaluation_id)
       ) ?? input.paperTradingBoard.entries.find((entry) => entry.candidate_id === activeCandidateId)
     : undefined;
+  const arenaEntry = activeCandidateId
+    ? input.candidateArena.leaderboard.find((entry) => entry.candidate_id === activeCandidateId)
+    : undefined;
   const paperEvaluation = selectedPaperTradingEvaluation(
     activeCandidate,
     activeEvaluation,
     activeObservations,
     activeRunner
   );
+  const selectedMatchesTradingReview = Boolean(activeCandidateId && input.selectedCandidateId === activeCandidateId);
 
   return {
     review_kind: "trading_review",
@@ -754,11 +890,273 @@ async function buildTradingReviewReadModel(input: {
     runner_status: input.tradingPromotion.runner_status,
     latest_failure_reason: input.tradingPromotion.latest_failure_reason,
     selected_candidate_id: input.selectedCandidateId,
-    selected_matches_trading_review: Boolean(activeCandidateId && input.selectedCandidateId === activeCandidateId),
+    selected_matches_trading_review: selectedMatchesTradingReview,
+    review_packet: buildTradingReviewPacket({
+      tradingPromotion: input.tradingPromotion,
+      activeCandidate,
+      arenaEntry,
+      paperEvaluation,
+      paperBoardEntry,
+      selectedCandidateId: input.selectedCandidateId,
+      selectedMatchesTradingReview
+    }),
     next_action: input.tradingPromotion.next_action,
     live_disabled_reason: "mlp_paper_only",
     authority_status: "not_live"
   };
+}
+
+function buildTradingReviewPacket(input: {
+  tradingPromotion: NonNullable<OperatorReadModel["trading_promotion"]>;
+  activeCandidate?: CandidateInspectReadModel;
+  arenaEntry?: OperatorReadModel["candidate_arena"]["leaderboard"][number];
+  paperEvaluation: OperatorReadModel["trading_review"]["paper_trading_evaluation"];
+  paperBoardEntry?: OperatorReadModel["paper_trading_board"]["entries"][number];
+  selectedCandidateId: string | null;
+  selectedMatchesTradingReview: boolean;
+}): OperatorReadModel["trading_review"]["review_packet"] {
+  const qualificationStatus = input.tradingPromotion.paper_qualification_status ??
+    input.paperBoardEntry?.qualification_status;
+  const qualificationReasons = input.tradingPromotion.paper_qualification_reasons.length > 0
+    ? input.tradingPromotion.paper_qualification_reasons
+    : input.paperBoardEntry?.qualification_reasons ?? [];
+  const reviewMismatch = input.tradingPromotion.status === "promoted_for_trading_review" &&
+    !input.selectedMatchesTradingReview;
+  const blockerGroups = tradingReviewPacketBlockerGroups({
+    reviewMismatch,
+    qualificationStatus,
+    qualificationReasons,
+    promotionStatus: input.tradingPromotion.status
+  });
+  const risk = input.paperBoardEntry?.risk_summary ?? paperTradingRiskSummary({
+    openOrderCount: input.paperEvaluation.open_orders?.length ??
+      input.paperEvaluation.paper_account_snapshot?.open_order_count ??
+      0,
+    paperAccountSnapshot: input.paperEvaluation.paper_account_snapshot,
+    latestFillStatus: input.paperEvaluation.latest_fill?.fill_status,
+    latestFailureReason: input.paperEvaluation.latest_failure_reason,
+    latestFailure: input.paperEvaluation.latest_failure
+  });
+  const latestPublicExecutionSnapshot = input.paperEvaluation.latest_public_execution_snapshot;
+  const paperBoardLearning = input.paperBoardEntry
+    ? paperTradingLearningSummary({
+        rank: input.paperBoardEntry.rank,
+        profitLoss: input.paperBoardEntry.profit_loss,
+        observationCount: input.paperBoardEntry.observation_count,
+        qualificationStatus: input.paperBoardEntry.qualification_status,
+        qualificationReasons: input.paperBoardEntry.qualification_reasons,
+        latestFailure: input.paperBoardEntry.latest_failure
+      })
+    : undefined;
+
+  return {
+    packet_kind: "trading_review_packet",
+    verdict: {
+      readiness_status: input.tradingPromotion.readiness_status,
+      qualification_status: qualificationStatus,
+      severity: tradingReviewPacketSeverity({
+        reviewMismatch,
+        qualificationStatus,
+        promotionStatus: input.tradingPromotion.status
+      }),
+      top_blocker: blockerGroups[0]?.blockers[0]
+    },
+    subject: {
+      candidate_id: input.tradingPromotion.candidate_id,
+      candidate_version_id: input.tradingPromotion.candidate_version_id,
+      display_name: input.tradingPromotion.display_name,
+      paper_trading_evaluation_id: input.tradingPromotion.paper_trading_evaluation_id,
+      promoted_at: input.tradingPromotion.promoted_at,
+      selected_candidate_id: input.selectedCandidateId,
+      selected_matches_trading_review: input.selectedMatchesTradingReview
+    },
+    performance: {
+      rank: input.paperBoardEntry?.rank,
+      primary_rank_metric: "net_revenue_usdt",
+      secondary_rank_metric: "net_return_pct",
+      profit_loss: input.tradingPromotion.paper_profit_loss ??
+        input.paperBoardEntry?.profit_loss ??
+        (input.paperEvaluation.evaluation_id ? input.paperEvaluation.profit_loss : undefined)
+    },
+    evidence_quality: {
+      evidence_window: input.tradingPromotion.paper_evidence_window ?? input.paperBoardEntry?.evidence_window,
+      qualification_reasons: qualificationReasons,
+      blocker_groups: blockerGroups
+    },
+    provenance: {
+      market_data_source: input.paperBoardEntry?.market_data_source ?? input.paperEvaluation.market_data_source,
+      latest_public_execution_source: input.paperBoardEntry?.latest_public_execution_source ??
+        latestPublicExecutionSnapshot?.source_priority,
+      latest_public_execution_freshness: latestPublicExecutionSnapshot?.freshness,
+      latest_public_execution_ws_connected: latestPublicExecutionSnapshot?.ws_connected,
+      latest_public_execution_rest_fallback_used: latestPublicExecutionSnapshot?.rest_fallback_used,
+      latest_public_execution_stream_marker: latestPublicExecutionSnapshot?.stream_marker,
+      latest_fill_status: input.paperBoardEntry?.latest_fill_status ?? input.paperEvaluation.latest_fill?.fill_status,
+      order_book: latestPublicExecutionSnapshot?.order_book
+        ? {
+            sync_status: latestPublicExecutionSnapshot.order_book.sync_status,
+            last_update_id: latestPublicExecutionSnapshot.order_book.last_update_id,
+            previous_final_update_id: latestPublicExecutionSnapshot.order_book.previous_final_update_id,
+            gap_detected: latestPublicExecutionSnapshot.order_book.gap_detected,
+            depth_level_count: latestPublicExecutionSnapshot.order_book.depth_level_count,
+            authority_status: "read_only"
+          }
+        : undefined
+    },
+    risk,
+    runner: {
+      runner_status: input.tradingPromotion.runner_status ??
+        input.paperBoardEntry?.runner_status ??
+        (input.paperEvaluation.evaluation_id ? tradingReviewPacketRunnerStatus(input.paperEvaluation) : undefined),
+      runner_active: input.paperEvaluation.runner_active,
+      trading_run_status: input.paperEvaluation.trading_run_status,
+      last_observed_at: input.paperBoardEntry?.last_observed_at ?? input.paperEvaluation.last_observed_at,
+      next_observation_at: input.paperBoardEntry?.next_observation_at ?? input.paperEvaluation.next_observation_at,
+      authority_status: "not_live"
+    },
+    ledger: {
+      evidence_status: tradingReviewPacketLedgerEvidenceStatus(input.paperEvaluation),
+      ledger_chain_complete: input.paperEvaluation.ledger_chain_complete,
+      latest_order_request_id: input.paperEvaluation.latest_order_request_id,
+      latest_gateway_outcome: input.paperEvaluation.latest_gateway_outcome,
+      latest_execution_status: input.paperEvaluation.latest_execution_status,
+      latest_decision_kind: input.paperEvaluation.latest_decision?.decision_kind,
+      authority_status: "not_live"
+    },
+    lineage: tradingReviewPacketLineage(input.activeCandidate, input.arenaEntry, paperBoardLearning),
+    authority: {
+      authority_status: "not_live",
+      live_disabled_reason: "mlp_paper_only",
+      no_authority: {
+        live_exchange_authority: false,
+        private_read_authority: false,
+        order_submission_authority: false,
+        credentials: false
+      }
+    },
+    next_action: input.tradingPromotion.next_action
+  };
+}
+
+function tradingReviewPacketLineage(
+  activeCandidate: CandidateInspectReadModel | undefined,
+  arenaEntry: OperatorReadModel["candidate_arena"]["leaderboard"][number] | undefined,
+  paperBoardLearning: OperatorReadModel["trading_review"]["review_packet"]["lineage"]["paper_board_learning"]
+): OperatorReadModel["trading_review"]["review_packet"]["lineage"] {
+  const lineage = activeCandidate?.full_cycle_lineage;
+  if (!lineage) {
+    return {
+      lineage_status: "missing",
+      direction_kind: arenaEntry?.direction_kind,
+      parent_candidate_id: arenaEntry?.parent_candidate_id,
+      latest_finding: arenaEntry?.latest_finding,
+      paper_board_learning: paperBoardLearning,
+      authority_status: "lineage_only"
+    };
+  }
+
+  return {
+    lineage_status: lineage.handoff_status === "blocked" ? "blocked" : "available",
+    direction_kind: lineage.evidence?.direction_kind ?? arenaEntry?.direction_kind,
+    parent_candidate_id: lineage.source.trading_system_id,
+    parent_candidate_version_id: lineage.source.candidate_version_id,
+    source_system_code_ref: lineage.source.system_code_ref,
+    generated_system_code_ref: lineage.generated?.system_code_ref,
+    generated_artifact_digest: lineage.generated?.artifact_digest,
+    generated_by_agent: lineage.generated?.generated_by_agent,
+    materialized_candidate_id: lineage.materialized?.trading_system_id,
+    materialized_candidate_version_id: lineage.materialized?.candidate_version_id,
+    latest_finding: arenaEntry?.latest_finding,
+    evaluation_status: lineage.evidence?.evaluation_status,
+    evaluation_score: lineage.evidence?.evaluation_score,
+    profit_loss: lineage.evidence?.profit_loss,
+    paper_board_learning: paperBoardLearning,
+    authority_status: "lineage_only"
+  };
+}
+
+function tradingReviewPacketRunnerStatus(
+  paperEvaluation: OperatorReadModel["trading_review"]["paper_trading_evaluation"]
+): OperatorReadModel["trading_review"]["review_packet"]["runner"]["runner_status"] {
+  if (paperEvaluation.runner_active) {
+    return "active";
+  }
+  return paperEvaluation.status === "running" ? "needs_resume" : "inactive";
+}
+
+function tradingReviewPacketLedgerEvidenceStatus(
+  paperEvaluation: OperatorReadModel["trading_review"]["paper_trading_evaluation"]
+): OperatorReadModel["trading_review"]["review_packet"]["ledger"]["evidence_status"] {
+  if (paperEvaluation.ledger_chain_complete) {
+    return "complete_chain";
+  }
+  const latestDecisionKind = paperEvaluation.latest_decision?.decision_kind;
+  if (latestDecisionKind === "hold" || latestDecisionKind === "no_action") {
+    return "no_order_checkpoint";
+  }
+  if (
+    paperEvaluation.latest_order_request_id ||
+    paperEvaluation.latest_gateway_outcome ||
+    paperEvaluation.latest_execution_status ||
+    paperEvaluation.latest_fill
+  ) {
+    return "incomplete_chain";
+  }
+  return "not_observed";
+}
+
+function tradingReviewPacketSeverity(input: {
+  reviewMismatch: boolean;
+  qualificationStatus: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"];
+  promotionStatus: NonNullable<OperatorReadModel["trading_promotion"]>["status"];
+}): OperatorReadModel["trading_review"]["review_packet"]["verdict"]["severity"] {
+  if (input.reviewMismatch) {
+    return "mismatch";
+  }
+  if (input.qualificationStatus === "qualified") {
+    return "ready";
+  }
+  if (input.qualificationStatus === "needs_resume") {
+    return "needs_resume";
+  }
+  if (input.qualificationStatus === "paper_failed") {
+    return "failed";
+  }
+  if (input.qualificationStatus === "blocked_by_quality") {
+    return "blocked";
+  }
+  return "collecting";
+}
+
+function tradingReviewPacketBlockerGroups(input: {
+  reviewMismatch: boolean;
+  qualificationStatus: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"];
+  qualificationReasons: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_reasons"];
+  promotionStatus: NonNullable<OperatorReadModel["trading_promotion"]>["status"];
+}): OperatorReadModel["trading_review"]["review_packet"]["evidence_quality"]["blocker_groups"] {
+  const groups: OperatorReadModel["trading_review"]["review_packet"]["evidence_quality"]["blocker_groups"] = [];
+  if (input.reviewMismatch) {
+    groups.push({
+      group_kind: "selection",
+      severity: "mismatch",
+      blockers: ["arena_selection_mismatch"],
+      summary: "Arena selection differs from the active Trading review target.",
+      next_action: "Open the active Trading review target or replace it with a qualified selected candidate."
+    });
+  }
+  groups.push(...paperTradingQualificationBlockerGroups(input.qualificationReasons));
+
+  if (input.promotionStatus === "not_promoted" && !input.qualificationStatus) {
+    groups.push({
+      group_kind: "evidence_window",
+      severity: "collecting",
+      blockers: ["paper_required"],
+      summary: "No paper-backed Trading review target has been promoted.",
+      next_action: "Start or continue Paper Trading Evaluation, then promote a qualified candidate to Trading review."
+    });
+  }
+
+  return groups;
 }
 
 function tradingPromotionReadinessFromQualification(
@@ -845,6 +1243,7 @@ export function selectedPaperTradingEvaluation(
   const latestDecision = [...observations].reverse()
     .find((observation) => observation.decision)?.decision;
   if (evaluation) {
+    const latestFailureReason = latestObservation?.failure_reason ?? evaluation.latest_failure_reason;
     return paperTradingEvaluationReadModel({
       evaluationId: evaluation.paper_trading_evaluation_id,
       candidateId: evaluation.candidate_ref.id,
@@ -871,7 +1270,7 @@ export function selectedPaperTradingEvaluation(
       latestOrderRequestId: ledger?.latest_order_request?.order_request_id,
       latestGatewayOutcome: ledger?.latest_gateway_result?.decision_outcome,
       latestExecutionStatus: ledger?.latest_execution_result?.status,
-      latestFailureReason: evaluation.latest_failure_reason
+      latestFailureReason
     });
   }
 
@@ -973,6 +1372,7 @@ function paperTradingEvaluationReadModel(input: {
   latestExecutionStatus?: string;
   latestFailureReason?: string;
 }): OperatorReadModel["selected_paper_trading_evaluation"] {
+  const latestFailure = classifyPaperTradingFailure(input.latestFailureReason);
   return {
     evaluation_kind: "paper_trading_evaluation",
     evaluation_id: input.evaluationId,
@@ -1000,6 +1400,7 @@ function paperTradingEvaluationReadModel(input: {
     latest_gateway_outcome: input.latestGatewayOutcome,
     latest_execution_status: input.latestExecutionStatus,
     latest_failure_reason: input.latestFailureReason,
+    latest_failure: latestFailure,
     market_data_source: input.latestMarketSnapshot?.source_kind ??
       input.latestPublicExecutionSnapshot?.source_kind ??
       "binance_production_public_rest",

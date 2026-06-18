@@ -193,7 +193,10 @@ describe("operator product loop smoke", () => {
       expect(initialStatus.stdout).toContain("Arena: stopped");
       expect(initialStatus.stdout).toContain("Selected candidate: none");
       expect(initialStatus.stdout).toContain("Paper evidence: not_run");
-      expect(initialStatus.stdout).toContain("PaperTradingEvaluation: not_started");
+      expect(initialStatus.stdout).toContain("Paper Trading Evaluation: not_started");
+      expect(initialStatus.stdout).toContain("Promote a selected Paper Trading Evaluation candidate from Arena to Trading review.");
+      expect(initialStatus.stdout).toContain("Start or continue Paper Trading Evaluation, then promote a qualified candidate to Trading review.");
+      expect(initialStatus.stdout).not.toContain("PaperTradingEvaluation");
       expect(initialStatus.stdout).toContain("Live authority: disabled / not_live");
 
       await postCommand(server, {
@@ -384,9 +387,14 @@ describe("operator product loop smoke", () => {
         fetch: fetcher
       });
       expect(humanStatus.exitCode, humanStatus.stderr).toBe(0);
-      expect(humanStatus.stdout).toContain("PaperTradingEvaluation: running");
-      expect(humanStatus.stdout).toContain("Market data:");
-      expect(humanStatus.stdout).toContain("Public execution:");
+      expect(humanStatus.stdout).toContain("Paper Trading Evaluation: running");
+      expect(humanStatus.stdout).not.toContain("PaperTradingEvaluation:");
+      expect(humanStatus.stdout).toContain("Paper market snapshot:");
+      expect(humanStatus.stdout).not.toContain("Market snapshot:");
+      expect(humanStatus.stdout).toContain("Gateway market data:");
+      expect(humanStatus.stdout).not.toContain("Market data:");
+      expect(humanStatus.stdout).toContain("Public execution evidence:");
+      expect(humanStatus.stdout).not.toContain("Public execution:");
       expect(humanStatus.stdout).toContain("Paper decision: hold");
       expect(humanStatus.stdout).toContain("Paper account: equity");
       expect(humanStatus.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade product-loop-fill");
@@ -444,7 +452,8 @@ describe("operator product loop smoke", () => {
             cursor={0}
           />
         );
-        expect(restartedTui).toContain("Runner: needs resume / persisted running, timer inactive");
+        expect(restartedTui).toContain("Paper runner: needs resume / persisted running, timer inactive");
+        expect(restartedTui).not.toContain("Runner: needs resume / persisted running, timer inactive");
         const resumed = await restartedServer.inject({
           method: "POST",
           url: "/api/commands",
@@ -495,15 +504,26 @@ describe("operator product loop smoke", () => {
       );
       expect(tui).toContain("Ouroboros Action Console");
       expect(tui).toContain("Researcher provider: fixture");
-      expect(tui).toContain("Authority: not_live / live disabled");
+      expect(tui).toContain("Operator authority: not_live / live disabled");
+      expect(tui).not.toContain("Authority: not_live / live disabled");
       expect(tui).toContain(`Selected Candidate\n${leader.candidate_id}`);
-      expect(tui).toContain("PaperTradingEvaluation: running");
-      expect(tui).toContain("Decision: hold");
-      expect(tui).toContain("Account: equity");
-      expect(tui).toContain("Public execution:");
-      expect(tui).toContain("runner active, market binance_production_public_rest / websocket_primary,");
-      expect(tui).toContain("fill filled, open 0");
-      expect(tui).toContain("Ledger chain: complete");
+      expect(tui).toContain("Paper Trading Evaluation: running");
+      expect(tui).not.toContain("PaperTradingEvaluation:");
+      expect(tui).toContain("Paper decision: hold");
+      expect(tui).toContain("Paper account: equity");
+      expect(tui).not.toContain("Decision: hold");
+      expect(tui).not.toContain("Account: equity");
+      expect(tui).toContain("Paper market snapshot:");
+      expect(tui).not.toContain("Market:");
+      expect(tui).toContain("Gateway market data:");
+      expect(tui).not.toContain("Market data:");
+      expect(tui).toContain("Public execution evidence:");
+      expect(tui).not.toContain("Public execution:");
+      expect(tui).toContain("paper runner active, market provenance binance_production_public_rest /");
+      expect(tui).toContain("websocket_primary, paper fill filled, paper open orders 0");
+      expect(tui).not.toContain("   runner active, market");
+      expect(tui).toContain("Paper ledger chain: complete");
+      expect(tui).not.toContain("Ledger chain: complete");
       expect(tui).toContain("trading_run.observe: succeeded");
     } finally {
       await server.close();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  commandRemediation,
   getOuroborosCommandDescriptor,
   isOuroborosCommandKind,
   OUROBOROS_COMMAND_DESCRIPTORS,
@@ -55,5 +56,22 @@ describe("Ouroboros command registry", () => {
       expect(OUROBOROS_COMMAND_KINDS).toContain(commandKind);
       expect(descriptor.authority_status).not.toBe("live");
     }
+  });
+
+  it("groups failed commands by product surface and visible remediation", () => {
+    expect(commandRemediation({
+      command_id: "command-promote-failed",
+      command_kind: "trading_candidate.promote",
+      status: "failed",
+      requested_at: "2026-05-27T00:00:00.000Z",
+      completed_at: "2026-05-27T00:00:01.000Z",
+      error: "paper_trading_qualification_required",
+      authority_status: "not_live"
+    })).toEqual({
+      group: "Trading review promotion",
+      surface: "Trading review packet, Paper Board",
+      remediation: "Review the Trading review packet blockers and Paper Board qualification before retrying promotion.",
+      authority_status: "not_live"
+    });
   });
 });

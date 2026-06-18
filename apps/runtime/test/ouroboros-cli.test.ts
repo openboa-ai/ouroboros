@@ -96,21 +96,90 @@ describe("ouroboros CLI", () => {
     expect(calls).toEqual([{ url: "http://runtime.test/api/operator", init: undefined }]);
     expect(result.stdout).toContain("Ouroboros status");
     expect(result.stdout).toContain("Arena: running (3 ticks, 1 candidates)");
+    expect(result.stdout).toContain("Latest tick: tick-1 / completed / 1 created / 1 failed / not_live");
+    expect(result.stdout).toContain("Latest tick directions: trend_following:created -> candidate-profitable; mean_reversion:failed -> fixture direction failed");
+    expect(result.stdout).toContain("Latest tick efficiency: trend_following: 6 provider / 0 runner / 2 scenarios / 1000ms / not_promotion_authority");
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
     expect(result.stdout).toContain("Paper evidence: ledger_chain_complete");
     expect(result.stdout).toContain("Trading review: promoted_for_trading_review / collecting_paper_evidence / candidate-profitable / selected matches");
-    expect(result.stdout).toContain("PaperTradingEvaluation: running (1 observations, 4.95 USDT)");
+    expect(result.stdout).toContain("Trading review packet: collecting / top min_observation_count_not_met / next Continue paper trading until the evidence window qualifies.");
+    expect(result.stdout.indexOf("Trading review packet:")).toBeLessThan(
+      result.stdout.indexOf("Trading promotion:")
+    );
+    expect(result.stdout).toContain("Trading review subject: candidate-profitable / promoted 2026-05-16T00:00:04.000Z / selected matches");
+    expect(result.stdout).toContain("Trading review evidence window: 1 obs / 0 failed / 60000ms / first 2026-05-16T00:00:03.000Z / last 2026-05-16T00:00:03.000Z");
+    expect(result.stdout).toContain("Trading review blockers: evidence_window / collecting / min_observation_count_not_met, min_elapsed_ms_not_met / Paper evidence window is not mature enough for review. / next Continue paper observations until count and elapsed-time gates qualify.");
+    expect(result.stdout).toContain("Trading review authority: not_live / mlp_paper_only / live_exchange=false, private_read=false, order_submission=false, credentials=false");
+    expect(result.stdout).toContain("Trading review runner: active / run running / next 2026-05-16T00:01:03.000Z");
+    expect(result.stdout).toContain("Trading review ledger: complete_chain / chain complete / gateway dry_run_only / execution dry_run_recorded");
+    expect(result.stdout).toContain("Trading review lineage: available / trend_following / parent candidate-parent / Candidate produced non-negative net revenue after costs.");
+    expect(result.stdout).toContain("Trading review lineage learning: rank #1 / collecting_evidence / 4.952 net USDT / 1 obs / top min_observation_count_not_met / next Continue paper observations until count and elapsed-time gates qualify.");
+    expect(result.stdout).toContain("Trading review provenance: binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991 / fill filled / order book synced update 11");
+    expect(result.stdout).toContain("Trading review risk: equity 10004.952 USDT / available 10003.652 USDT / position long 0.001 BTCUSDT notional 65 / open 0 / fill filled");
+    expect(result.stdout).toContain("Paper Trading Evaluation: running (1 observations, 4.95 USDT)");
+    expect(result.stdout).not.toContain("PaperTradingEvaluation:");
     expect(result.stdout).toContain("Paper board: #1 candidate-profitable 4.95 USDT / collecting_evidence / gate collecting_paper_evidence");
+    expect(result.stdout).toContain("Paper board trend: insufficient_history / delta 0.00 USDT / return 0.0000% / 0 obs / not_promotion_authority");
+    expect(result.stdout).toContain("Paper board blockers: 2 blockers / density 2 / failed 0 / top min_observation_count_not_met / not_promotion_authority");
     expect(result.stdout).toContain("Paper qualification: observations 1, failed 0, elapsed 60000ms / min_observation_count_not_met, min_elapsed_ms_not_met");
-    expect(result.stdout).toContain("Paper board quality: runner active, market binance_production_public_websocket / websocket_primary, fill filled, open orders 0");
+    expect(result.stdout).toContain("Paper board quality: paper runner active, market provenance binance_production_public_websocket / websocket_primary, paper fill filled, paper open orders 0");
+    expect(result.stdout).not.toContain("Paper board quality: runner active, market");
     expect(result.stdout).toContain("Paper runner: active / interval 60000ms / next 2026-05-16T00:01:03.000Z");
-    expect(result.stdout).toContain("Market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
-    expect(result.stdout).toContain("Market data: binance_production_public_websocket");
-    expect(result.stdout).toContain("Public execution: binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
-    expect(result.stdout).toContain("Order book: synced / update 11");
+    expect(result.stdout).toContain("Paper market snapshot: BTCUSDT 65000.00 USDT @ 2026-05-16T00:00:03.000Z");
+    expect(result.stdout).not.toContain("Market snapshot: BTCUSDT 65000.00 USDT");
+    expect(result.stdout).toContain("Gateway market data: binance_production_public_websocket");
+    expect(result.stdout).not.toContain("Market data: binance_production_public_websocket");
+    expect(result.stdout).toContain("Public execution evidence: binance_production_public_websocket / websocket_primary / fresh / WS connected / marker binance-ws-aggTrade-991");
+    expect(result.stdout).not.toContain("Public execution: binance_production_public_websocket");
+    expect(result.stdout).toContain("Public order book evidence: synced / update 11");
+    expect(result.stdout).not.toContain("Order book: synced / update 11");
     expect(result.stdout).toContain("Paper decision: order_request buy limit 0.001 @ 65000 (trading_system_order_request)");
     expect(result.stdout).toContain("Paper account: equity 10004.95 USDT / long 0.001 BTCUSDT @ 60000 / open orders 0");
     expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade agg-60000-001");
+  });
+
+  it("points failed promotion commands back to visible blocker surfaces", async () => {
+    const result = await runOuroborosCli(["status"], {
+      fetch: async () => jsonResponse({
+        operator: fixtureOperator({
+          latest_commands: [{
+            command_id: "command-promote-failed",
+            command_kind: "trading_candidate.promote",
+            status: "failed",
+            requested_at: "2026-05-27T00:00:00.000Z",
+            completed_at: "2026-05-27T00:00:01.000Z",
+            error: "paper_trading_qualification_required",
+            authority_status: "not_live"
+          }]
+        })
+      }),
+      runtimeBaseUrl: "http://runtime.test"
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Latest command: trading_candidate.promote failed / paper_trading_qualification_required");
+    expect(result.stdout).toContain("Latest command remediation: Trading review promotion / Trading review packet, Paper Board / Review the Trading review packet blockers and Paper Board qualification before retrying promotion. / not_live");
+  });
+
+  it("formats classified paper failure remediation before raw failure text", async () => {
+    const operator = fixtureOperator();
+    operator.selected_paper_trading_evaluation.latest_failure_reason = "fake public execution stream unavailable";
+    operator.selected_paper_trading_evaluation.latest_failure = {
+      failure_kind: "public_execution_evidence_gap",
+      reason: "fake public execution stream unavailable",
+      summary: "Paper fill or execution evidence could not be tied to public execution data.",
+      next_action: "Restore public execution evidence before trusting fills or paper score.",
+      authority_status: "not_live"
+    };
+    const result = await runOuroborosCli(["status"], {
+      fetch: async () => jsonResponse({ operator }),
+      runtimeBaseUrl: "http://runtime.test"
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      "Paper failure: public_execution_evidence_gap / Paper fill or execution evidence could not be tied to public execution data. / next Restore public execution evidence before trusting fills or paper score. / raw fake public execution stream unavailable"
+    );
   });
 
   it("formats restart recovery when a persisted paper evaluation needs a runner resume", async () => {
@@ -190,6 +259,8 @@ describe("ouroboros CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(calls).toEqual([]);
     expect(result.stdout).toContain("OK Agent provider codex: configured");
+    expect(result.stdout).toContain("Agent profile authority:");
+    expect(result.stdout).not.toContain("\nAuthority:");
     expect(result.stdout).toContain(path.join(tmpDir, "agent-profiles", "codex", "codex-home"));
   });
 
@@ -440,7 +511,38 @@ function fixtureOperator(
         }
       ],
       latest_candidates: [],
-      latest_ticks: [],
+      latest_ticks: [
+        {
+          tick_id: "tick-1",
+          started_at: "2026-05-24T00:00:00.000Z",
+          completed_at: "2026-05-24T00:00:01.000Z",
+          status: "completed",
+          created_candidate_ids: ["candidate-profitable"],
+          direction_results: [
+            {
+              direction_kind: "trend_following",
+              status: "created",
+              candidate_id: "candidate-profitable",
+              finding: "Positive revenue after cost.",
+              net_revenue_usdt: 9.83,
+              research_efficiency: {
+                provider_request_total: 6,
+                runner_command_total: 0,
+                scenario_count: 2,
+                elapsed_ms: 1000,
+                authority_status: "not_promotion_authority"
+              }
+            },
+            {
+              direction_kind: "mean_reversion",
+              status: "failed",
+              error: "fixture direction failed"
+            }
+          ],
+          authority_status: "not_live"
+        }
+      ],
+      finding_clusters: [],
       live_disabled: true,
       authority_status: "not_live"
     },
@@ -587,11 +689,27 @@ function fixtureOperator(
           evidence_window: {
             observation_count: 1,
             elapsed_ms: 60_000,
-            failed_observation_count: 0
+            failed_observation_count: 0,
+            first_observed_at: "2026-05-16T00:00:03.000Z",
+            last_observed_at: "2026-05-16T00:00:03.000Z"
           },
           risk_summary: {
             open_order_count: 0,
             latest_fill_status: "filled"
+          },
+          trend: {
+            direction: "insufficient_history",
+            net_revenue_delta_usdt: 0,
+            net_return_delta_pct: 0,
+            observation_count_delta: 0,
+            authority_status: "not_promotion_authority"
+          },
+          blocker_density: {
+            blocker_count: 2,
+            blocker_density: 2,
+            failed_observation_ratio: 0,
+            top_blocker: "min_observation_count_not_met",
+            authority_status: "not_promotion_authority"
           },
           observation_count: 1,
           trading_run_id: "trading-run-candidate-profitable",
@@ -620,6 +738,7 @@ function fixtureOperator(
       active_candidate_id: "candidate-profitable",
       active_candidate_version_id: "candidate-version-profitable",
       display_name: "candidate-profitable",
+      promoted_at: "2026-05-16T00:00:04.000Z",
       paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
       paper_qualification_status: "collecting_evidence",
       paper_qualification_reasons: [
@@ -629,7 +748,9 @@ function fixtureOperator(
       paper_evidence_window: {
         observation_count: 1,
         elapsed_ms: 60_000,
-        failed_observation_count: 0
+        failed_observation_count: 0,
+        first_observed_at: "2026-05-16T00:00:03.000Z",
+        last_observed_at: "2026-05-16T00:00:03.000Z"
       },
       paper_profit_loss: {
         revenue_usdt: 5,
@@ -660,6 +781,147 @@ function fixtureOperator(
       runner_status: "active",
       selected_candidate_id: "candidate-profitable",
       selected_matches_trading_review: true,
+      review_packet: {
+        packet_kind: "trading_review_packet",
+        verdict: {
+          readiness_status: "collecting_paper_evidence",
+          qualification_status: "collecting_evidence",
+          severity: "collecting",
+          top_blocker: "min_observation_count_not_met"
+        },
+        subject: {
+          candidate_id: "candidate-profitable",
+          candidate_version_id: "candidate-version-profitable",
+          display_name: "candidate-profitable",
+          paper_trading_evaluation_id: "paper-evaluation-candidate-profitable",
+          promoted_at: "2026-05-16T00:00:04.000Z",
+          selected_candidate_id: "candidate-profitable",
+          selected_matches_trading_review: true
+        },
+        performance: {
+          rank: 1,
+          primary_rank_metric: "net_revenue_usdt",
+          secondary_rank_metric: "net_return_pct",
+          profit_loss: {
+            revenue_usdt: 5,
+            cost_usdt: 0.048,
+            net_revenue_usdt: 4.952,
+            net_return_pct: 0.04952
+          }
+        },
+        evidence_quality: {
+          evidence_window: {
+            observation_count: 1,
+            elapsed_ms: 60_000,
+            failed_observation_count: 0,
+            first_observed_at: "2026-05-16T00:00:03.000Z",
+            last_observed_at: "2026-05-16T00:00:03.000Z"
+          },
+          qualification_reasons: [
+            "min_observation_count_not_met",
+            "min_elapsed_ms_not_met"
+          ],
+          blocker_groups: [
+            {
+              group_kind: "evidence_window",
+              severity: "collecting",
+              blockers: [
+                "min_observation_count_not_met",
+                "min_elapsed_ms_not_met"
+              ],
+              summary: "Paper evidence window is not mature enough for review.",
+              next_action: "Continue paper observations until count and elapsed-time gates qualify."
+            }
+          ]
+        },
+        provenance: {
+          market_data_source: "binance_production_public_websocket",
+          latest_public_execution_source: "websocket_primary",
+          latest_public_execution_freshness: "fresh",
+          latest_public_execution_ws_connected: true,
+          latest_public_execution_rest_fallback_used: false,
+          latest_public_execution_stream_marker: "binance-ws-aggTrade-991",
+          latest_fill_status: "filled",
+          order_book: {
+            sync_status: "synced",
+            last_update_id: "11",
+            gap_detected: false,
+            authority_status: "read_only"
+          }
+        },
+        risk: {
+          open_order_count: 0,
+          account: {
+            equity_usdt: "10004.952",
+            available_balance_usdt: "10003.652",
+            wallet_balance_usdt: "9999.952",
+            margin_reserved_usdt: "1.3",
+            authority_status: "not_live"
+          },
+          position: {
+            symbol: "BTCUSDT",
+            side: "long",
+            quantity: "0.001",
+            notional_usdt: "65",
+            average_entry_price: "60000",
+            mark_price: "65000",
+            authority_status: "not_live"
+          },
+          latest_fill_status: "filled"
+        },
+        runner: {
+          runner_status: "active",
+          runner_active: true,
+          trading_run_status: "running",
+          next_observation_at: "2026-05-16T00:01:03.000Z",
+          authority_status: "not_live"
+        },
+        ledger: {
+          evidence_status: "complete_chain",
+          ledger_chain_complete: true,
+          latest_gateway_outcome: "dry_run_only",
+          latest_execution_status: "dry_run_recorded",
+          latest_decision_kind: "order_request",
+          authority_status: "not_live"
+        },
+        lineage: {
+          lineage_status: "available",
+          direction_kind: "trend_following",
+          parent_candidate_id: "candidate-parent",
+          parent_candidate_version_id: "candidate-version-parent",
+          generated_by_agent: true,
+          latest_finding: "Candidate produced non-negative net revenue after costs.",
+          evaluation_status: "accepted",
+          evaluation_score: 9.83,
+          paper_board_learning: {
+            rank: 1,
+            net_revenue_usdt: 4.952,
+            net_return_pct: 0.04952,
+            observation_count: 1,
+            qualification_status: "collecting_evidence",
+            qualification_reasons: [
+              "min_observation_count_not_met",
+              "min_elapsed_ms_not_met"
+            ],
+            top_blocker: "min_observation_count_not_met",
+            summary: "Paper board rank #1: 4.952 net_revenue_usdt, 0.04952 net_return_pct, 1 observations, collecting_evidence.",
+            next_research_focus: "Continue paper observations until count and elapsed-time gates qualify.",
+            authority_status: "lineage_only"
+          },
+          authority_status: "lineage_only"
+        },
+        authority: {
+          authority_status: "not_live",
+          live_disabled_reason: "mlp_paper_only",
+          no_authority: {
+            live_exchange_authority: false,
+            private_read_authority: false,
+            order_submission_authority: false,
+            credentials: false
+          }
+        },
+        next_action: "Continue paper trading until the evidence window qualifies."
+      },
       next_action: "Continue paper trading until the evidence window qualifies.",
       live_disabled_reason: "mlp_paper_only",
       authority_status: "not_live"

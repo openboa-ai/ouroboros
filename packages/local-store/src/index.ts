@@ -5890,12 +5890,15 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     finding?: unknown;
     error?: unknown;
     net_revenue_usdt?: unknown;
+    research_efficiency?: unknown;
   };
   const hasCandidateId = raw.candidate_id === undefined || nonEmpty(raw.candidate_id);
   const hasFinding = raw.finding === undefined || nonEmpty(raw.finding);
   const hasError = raw.error === undefined || nonEmpty(raw.error);
   const hasNetRevenue = raw.net_revenue_usdt === undefined ||
     (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
+  const hasResearchEfficiency = raw.research_efficiency === undefined ||
+    isCandidateArenaResearchEfficiency(raw.research_efficiency);
   return (
     isCandidateArenaResearchDirection(raw.direction_kind) &&
     isCandidateArenaDirectionResultStatus(raw.status) &&
@@ -5903,11 +5906,34 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     hasFinding &&
     hasError &&
     hasNetRevenue &&
+    hasResearchEfficiency &&
     (
       raw.status === "created"
         ? nonEmpty(raw.candidate_id)
         : nonEmpty(raw.error)
     )
+  );
+}
+
+function isCandidateArenaResearchEfficiency(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Record<string, unknown>;
+  return (
+    typeof raw.provider_request_total === "number" &&
+    Number.isFinite(raw.provider_request_total) &&
+    raw.provider_request_total >= 0 &&
+    typeof raw.runner_command_total === "number" &&
+    Number.isFinite(raw.runner_command_total) &&
+    raw.runner_command_total >= 0 &&
+    typeof raw.scenario_count === "number" &&
+    Number.isFinite(raw.scenario_count) &&
+    raw.scenario_count >= 0 &&
+    typeof raw.elapsed_ms === "number" &&
+    Number.isFinite(raw.elapsed_ms) &&
+    raw.elapsed_ms >= 0 &&
+    raw.authority_status === "not_promotion_authority"
   );
 }
 

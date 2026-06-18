@@ -179,6 +179,61 @@ describe("LocalStore", () => {
     expect(candidate?.trading_substrate?.latest_public_market_liveness_surface).toEqual(latest);
   });
 
+  it("accepts Binance production public WebSocket and hybrid market source modes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const seeded = await readStoreJson<PublicMarketLivenessSurfaceRecord>(
+      "substrate-state-surfaces",
+      "items",
+      "fixture-binance-btcusdt-public-market-liveness-surface-001.json"
+    );
+
+    const websocket = await store.recordPublicMarketLivenessSurface({
+      ...seeded,
+      public_market_liveness_surface_id: "binance-btcusdt-public-market-websocket-001",
+      source_kind: "binance_production_public_websocket",
+      source_ref: ref("binance_websocket_stream", "btcusdt-bookTicker-depth"),
+      source_timestamp: "2026-05-16T00:00:05.000Z",
+      observed_at: "2026-05-16T00:00:05.000Z",
+      updated_at: "2026-05-16T00:00:05.000Z",
+      freshness: "fresh",
+      liveness: "connected",
+      degraded_reason: undefined,
+      fixture_backed: false,
+      simulated: false,
+      authority_status: "read_only"
+    });
+    const hybrid = await store.recordPublicMarketLivenessSurface({
+      ...seeded,
+      public_market_liveness_surface_id: "binance-btcusdt-public-market-hybrid-001",
+      source_kind: "binance_production_public_hybrid",
+      source_ref: ref("binance_public_market_hybrid", "btcusdt-rest-plus-websocket"),
+      source_timestamp: "2026-05-16T00:00:06.000Z",
+      observed_at: "2026-05-16T00:00:06.000Z",
+      updated_at: "2026-05-16T00:00:06.000Z",
+      freshness: "fresh",
+      liveness: "connected",
+      degraded_reason: undefined,
+      fixture_backed: false,
+      simulated: false,
+      authority_status: "read_only"
+    });
+
+    const latest = await store.getLatestPublicMarketLivenessSurface(BINANCE_BTCUSDT_QUERY);
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+
+    expect(websocket.source_kind).toBe("binance_production_public_websocket");
+    expect(hybrid.source_kind).toBe("binance_production_public_hybrid");
+    expect(latest).toMatchObject({
+      surface_id: "binance-btcusdt-public-market-hybrid-001",
+      source_kind: "binance_production_public_hybrid",
+      fixture_backed: false,
+      simulated: false,
+      authority_status: "read_only"
+    });
+    expect(candidate?.trading_substrate?.latest_public_market_liveness_surface).toEqual(latest);
+  });
+
   it("seeds a Binance BTCUSDT private-readiness preflight surface into candidate inspect read models", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

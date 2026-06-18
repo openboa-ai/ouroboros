@@ -12,6 +12,8 @@ active = [Path(p) for p in ["AGENTS.md", "README.md", "ARCHITECTURE.md", "LINEAR
 active += [Path(p) for p in [
   "docs/project-direction.md",
   "docs/ouroboros-doctrine.md",
+  "docs/autonomy-model.md",
+  "docs/product-quality-design.md",
   "docs/architecture-governance.md",
   "docs/api-command-contract.md",
   "docs/naming-taxonomy.md"

@@ -4,7 +4,15 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CandidateArenaRunner } from "@ouroboros/application/candidate/arena";
 import { OperatorService } from "@ouroboros/application/services/operator";
-import type { CandidateMaterializationInput, OperatorReadModel, PaperTradingEvaluationRecord, PaperTradingObservationRecord, SystemCodeRecord } from "@ouroboros/domain";
+import type {
+  CandidateMaterializationInput,
+  OperatorReadModel,
+  PaperTradingEvaluationRecord,
+  PaperTradingObservationRecord,
+  ResearchDirectionKind,
+  SystemCodeRecord,
+  TradingProfitLossReadModel
+} from "@ouroboros/domain";
 import { LocalStore } from "@ouroboros/local-store";
 
 let tmpDir: string;
@@ -49,6 +57,18 @@ describe("operator paper trading board", () => {
       runnerActive: false,
       sourcePriority: "rest_fallback"
     });
+    await seedPriorPaperObservation(store, winning.candidate_id, {
+      netRevenueUsdt: 11.4,
+      netReturnPct: 0.114,
+      sequence: 1,
+      observedAt: "2026-05-16T00:01:00.000Z"
+    });
+    await seedPriorPaperObservation(store, losing.candidate_id, {
+      netRevenueUsdt: -13.7,
+      netReturnPct: -0.137,
+      sequence: 1,
+      observedAt: "2026-05-16T00:01:00.000Z"
+    });
 
     const service = new OperatorService({
       store,
@@ -72,16 +92,24 @@ describe("operator paper trading board", () => {
       authority_status: "not_live"
     });
     expect(operator.paper_trading_board.entries.map((entry) => ({
-      rank: entry.rank,
-      candidate_id: entry.candidate_id,
-      net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
-      runner_status: entry.runner_status,
-      promotion_gate_status: entry.promotion_gate_status
-    }))).toEqual([
+        rank: entry.rank,
+        candidate_id: entry.candidate_id,
+        net_revenue_usdt: entry.profit_loss.net_revenue_usdt,
+        net_revenue_delta_usdt: entry.trend.net_revenue_delta_usdt,
+        trend_direction: entry.trend.direction,
+        blocker_count: entry.blocker_density.blocker_count,
+        blocker_density: entry.blocker_density.blocker_density,
+        runner_status: entry.runner_status,
+        promotion_gate_status: entry.promotion_gate_status
+      }))).toEqual([
       {
         rank: 1,
         candidate_id: winning.candidate_id,
         net_revenue_usdt: 19.4,
+        net_revenue_delta_usdt: 8,
+        trend_direction: "improving",
+        blocker_count: 2,
+        blocker_density: 0.25,
         runner_status: "active",
         promotion_gate_status: "collecting_paper_evidence"
       },
@@ -89,6 +117,10 @@ describe("operator paper trading board", () => {
         rank: 2,
         candidate_id: losing.candidate_id,
         net_revenue_usdt: -3.7,
+        net_revenue_delta_usdt: 10,
+        trend_direction: "improving",
+        blocker_count: 2,
+        blocker_density: 0.333333,
         runner_status: "inactive",
         promotion_gate_status: "paper_evidence_recorded"
       }
@@ -101,6 +133,59 @@ describe("operator paper trading board", () => {
       open_order_count: 0,
       latest_fill_status: "filled"
     });
+  });
+
+  it("classifies latest paper failures into operator remediation groups without weakening qualification", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "paper-failure-classified",
+      title: "Paper Failure Classified Candidate"
+    });
+    await seedPaperEvaluation(store, {
+      candidate,
+      netRevenueUsdt: -3,
+      netReturnPct: -0.03,
+      observationCount: 30,
+      status: "failed",
+      runnerActive: false,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z",
+      failureReason: "fake public execution stream unavailable"
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: () => false
+      }
+    });
+
+    const operator = await service.readOperator();
+    expect(operator.paper_trading_board.entries[0]).toMatchObject({
+      candidate_id: candidate.candidate_id,
+      qualification_status: "paper_failed",
+      qualification_reasons: ["paper_evaluation_failed"],
+      risk_summary: {
+        latest_failure_reason: "fake public execution stream unavailable",
+        latest_failure: {
+          failure_kind: "public_execution_evidence_gap",
+          reason: "fake public execution stream unavailable",
+          summary: "Paper fill or execution evidence could not be tied to public execution data.",
+          next_action: "Restore public execution evidence before trusting fills or paper score.",
+          authority_status: "not_live"
+        }
+      },
+      latest_failure: {
+        failure_kind: "public_execution_evidence_gap",
+        next_action: "Restore public execution evidence before trusting fills or paper score."
+      }
+    });
+    expect(operator.selected_paper_trading_evaluation.latest_failure).toBeUndefined();
   });
 
   it("exposes qualification state separately from paper net revenue rank", async () => {
@@ -214,7 +299,20 @@ describe("operator paper trading board", () => {
 
     const candidate = await registerCandidate(store, {
       id: "promotion-paper-board",
-      title: "Promotion Paper Candidate"
+      title: "Promotion Paper Candidate",
+      fullCycleLineage: {
+        parentCandidateId: "candidate-parent-alpha",
+        parentCandidateVersionId: "candidate-version-parent-alpha",
+        directionKind: "trend_following",
+        evaluationStatus: "accepted",
+        evaluationScore: 14.2,
+        profitLoss: {
+          revenue_usdt: 14.8,
+          cost_usdt: 0.6,
+          net_revenue_usdt: 14.2,
+          net_return_pct: 0.142
+        }
+      }
     });
     await seedPaperEvaluation(store, {
       candidate,
@@ -225,6 +323,29 @@ describe("operator paper trading board", () => {
       runnerActive: true,
       sourcePriority: "websocket_primary",
       observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    await store.recordLedger({
+      idempotency_key: "promotion-review-ledger-complete",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      runtime_id: candidate.runtime.ref.id,
+      intent: {
+        intent_kind: "place_order",
+        side: "buy",
+        order_type: "limit",
+        quantity: "0.001",
+        limit_price: "65200"
+      },
+      gateway_result: {
+        decision_outcome: "dry_run_only",
+        decision_reason: "dry_run_allowed"
+      },
+      execution_result: {
+        status: "dry_run_recorded",
+        result_reason: "dry_run_allowed",
+        completed_at: "2026-05-16T00:31:01.000Z"
+      },
+      created_at: "2026-05-16T00:31:00.000Z"
     });
 
     const service = new OperatorService({
@@ -275,6 +396,132 @@ describe("operator paper trading board", () => {
       paper_trading_evaluation_id: `paper-evaluation-${candidate.candidate_id}`,
       selected_candidate_id: candidate.candidate_id,
       selected_matches_trading_review: true,
+      review_packet: {
+        packet_kind: "trading_review_packet",
+        verdict: {
+          readiness_status: "promoted_for_trading_review",
+          qualification_status: "qualified",
+          severity: "ready"
+        },
+        subject: {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: candidate.candidate_version.candidate_version_id,
+          display_name: "Promotion Paper Candidate",
+          paper_trading_evaluation_id: `paper-evaluation-${candidate.candidate_id}`,
+          promoted_at: promotionRecord?.promoted_at,
+          selected_candidate_id: candidate.candidate_id,
+          selected_matches_trading_review: true
+        },
+        performance: {
+          rank: 1,
+          primary_rank_metric: "net_revenue_usdt",
+          secondary_rank_metric: "net_return_pct",
+          profit_loss: {
+            net_revenue_usdt: 14.2,
+            net_return_pct: 0.142
+          }
+        },
+        evidence_quality: {
+          evidence_window: {
+            observation_count: 30,
+            failed_observation_count: 0,
+            elapsed_ms: 31 * 60_000,
+            first_observed_at: "2026-05-16T00:31:00.000Z",
+            last_observed_at: "2026-05-16T00:31:00.000Z"
+          },
+          qualification_reasons: [],
+          blocker_groups: []
+        },
+        provenance: {
+          market_data_source: "binance_production_public_hybrid",
+          latest_public_execution_source: "websocket_primary",
+          latest_public_execution_freshness: "fresh",
+          latest_public_execution_ws_connected: true,
+          latest_public_execution_rest_fallback_used: false,
+          latest_public_execution_stream_marker: `websocket_primary-${candidate.candidate_id}`,
+          latest_fill_status: "filled",
+          order_book: {
+            sync_status: "synced",
+            last_update_id: "65200",
+            previous_final_update_id: "65199",
+            gap_detected: false,
+            depth_level_count: 100,
+            authority_status: "read_only"
+          }
+        },
+        risk: {
+          open_order_count: 0,
+          account: {
+            equity_usdt: "10014.2",
+            available_balance_usdt: "10014.2",
+            wallet_balance_usdt: "10014.2",
+            margin_reserved_usdt: "0",
+            authority_status: "not_live"
+          },
+          position: {
+            symbol: "BTCUSDT",
+            side: "long",
+            quantity: "0.001",
+            notional_usdt: "65.2",
+            average_entry_price: "65000",
+            mark_price: "65200",
+            authority_status: "not_live"
+          },
+          latest_fill_status: "filled"
+        },
+        runner: {
+          runner_status: "active",
+          runner_active: true,
+          trading_run_status: "registered",
+          last_observed_at: "2026-05-16T00:31:00.000Z",
+          next_observation_at: "2026-05-16T00:09:00.000Z",
+          authority_status: "not_live"
+        },
+        ledger: {
+          evidence_status: "complete_chain",
+          ledger_chain_complete: true,
+          latest_order_request_id: expect.any(String),
+          latest_gateway_outcome: "dry_run_only",
+          latest_execution_status: "dry_run_recorded",
+          authority_status: "not_live"
+        },
+        lineage: {
+          lineage_status: "available",
+          direction_kind: "trend_following",
+          parent_candidate_id: "candidate-parent-alpha",
+          parent_candidate_version_id: "candidate-version-parent-alpha",
+          generated_by_agent: true,
+          latest_finding: "Candidate produced non-negative net revenue after costs.",
+          evaluation_status: "accepted",
+          evaluation_score: 14.2,
+          profit_loss: {
+            net_revenue_usdt: 14.2,
+            net_return_pct: 0.142
+          },
+          paper_board_learning: {
+            rank: 1,
+            net_revenue_usdt: 14.2,
+            net_return_pct: 0.142,
+            observation_count: 30,
+            qualification_status: "qualified",
+            qualification_reasons: [],
+            summary: "Paper board rank #1: 14.2 net_revenue_usdt, 0.142 net_return_pct, 30 observations, qualified.",
+            next_research_focus: "Preserve the profitable lineage and generate controlled variants under paper evidence.",
+            authority_status: "lineage_only"
+          },
+          authority_status: "lineage_only"
+        },
+        authority: {
+          authority_status: "not_live",
+          live_disabled_reason: "mlp_paper_only",
+          no_authority: {
+            live_exchange_authority: false,
+            private_read_authority: false,
+            order_submission_authority: false,
+            credentials: false
+          }
+        }
+      },
       authority_status: "not_live"
     });
   });
@@ -329,9 +576,134 @@ describe("operator paper trading board", () => {
       display_name: "Promoted Review Target",
       selected_candidate_id: arenaSelected.candidate_id,
       selected_matches_trading_review: false,
+      review_packet: {
+        verdict: {
+          severity: "mismatch",
+          top_blocker: "arena_selection_mismatch"
+        },
+        subject: {
+          candidate_id: promoted.candidate_id,
+          selected_candidate_id: arenaSelected.candidate_id,
+          selected_matches_trading_review: false
+        },
+        evidence_quality: {
+          blocker_groups: [
+            {
+              group_kind: "selection",
+              severity: "mismatch",
+              blockers: ["arena_selection_mismatch"]
+            }
+          ]
+        },
+        runner: {
+          runner_status: "active",
+          runner_active: true,
+          trading_run_status: "registered",
+          last_observed_at: "2026-05-16T00:31:00.000Z",
+          next_observation_at: "2026-05-16T00:09:00.000Z",
+          authority_status: "not_live"
+        },
+        ledger: {
+          evidence_status: "incomplete_chain",
+          ledger_chain_complete: false,
+          authority_status: "not_live"
+        }
+      },
       paper_trading_evaluation: {
         candidate_id: promoted.candidate_id,
         trading_run_id: promoted.runtime.ref.id
+      }
+    });
+  });
+
+  it("makes qualified Trading review target replacement explicit", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const activeTarget = await registerCandidate(store, {
+      id: "active-review-target-before-replacement",
+      title: "Active Review Target Before Replacement"
+    });
+    const replacement = await registerCandidate(store, {
+      id: "qualified-review-replacement",
+      title: "Qualified Review Replacement"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: activeTarget,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: replacement,
+      netRevenueUsdt: 18.4,
+      netReturnPct: 0.184,
+      observationCount: 32,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:40:00.000Z"
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) =>
+          tradingRunId === activeTarget.runtime.ref.id || tradingRunId === replacement.runtime.ref.id
+      }
+    });
+
+    await service.executeCommand("trading_candidate.promote", {
+      candidate_id: activeTarget.candidate_id
+    });
+    await service.executeCommand("candidate.select", {
+      candidate_id: replacement.candidate_id
+    });
+    const result = await service.executeCommand("trading_candidate.promote", {
+      candidate_id: replacement.candidate_id
+    });
+    const operator = await service.readOperator();
+    const promotionRecord = await store.getLatestTradingPromotion();
+
+    expect(result.summary).toBe(
+      `Replaced Trading review target ${activeTarget.candidate_id} with ${replacement.candidate_id}.`
+    );
+    expect(promotionRecord?.candidate_ref).toEqual({
+      record_kind: "trading_system_candidate",
+      id: replacement.candidate_id
+    });
+    expect(promotionRecord?.authority_status).toBe("not_live");
+    expect(operator.selected_candidate_id).toBe(replacement.candidate_id);
+    expect(operator.trading_review).toMatchObject({
+      status: "promoted_for_trading_review",
+      readiness_status: "promoted_for_trading_review",
+      active_candidate_id: replacement.candidate_id,
+      display_name: "Qualified Review Replacement",
+      selected_candidate_id: replacement.candidate_id,
+      selected_matches_trading_review: true,
+      authority_status: "not_live",
+      review_packet: {
+        verdict: {
+          qualification_status: "qualified",
+          severity: "ready"
+        },
+        subject: {
+          candidate_id: replacement.candidate_id,
+          selected_candidate_id: replacement.candidate_id,
+          selected_matches_trading_review: true
+        },
+        authority: {
+          authority_status: "not_live",
+          live_disabled_reason: "mlp_paper_only"
+        }
       }
     });
   });
@@ -383,11 +755,267 @@ describe("operator paper trading board", () => {
     });
     await expect(store.getLatestTradingPromotion()).resolves.toBeUndefined();
   });
+
+  it("keeps the active Trading review target when replacement paper evidence is not qualified", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const activeTarget = await registerCandidate(store, {
+      id: "active-review-target-kept",
+      title: "Active Review Target Kept"
+    });
+    const collectingReplacement = await registerCandidate(store, {
+      id: "collecting-review-replacement",
+      title: "Collecting Review Replacement"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: activeTarget,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    await seedPaperEvaluation(store, {
+      candidate: collectingReplacement,
+      netRevenueUsdt: 100,
+      netReturnPct: 1,
+      observationCount: 5,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:05:00.000Z"
+    });
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: (tradingRunId) =>
+          tradingRunId === activeTarget.runtime.ref.id ||
+          tradingRunId === collectingReplacement.runtime.ref.id
+      }
+    });
+
+    await service.executeCommand("trading_candidate.promote", {
+      candidate_id: activeTarget.candidate_id
+    });
+    await service.executeCommand("candidate.select", {
+      candidate_id: collectingReplacement.candidate_id
+    });
+
+    await expect(service.executeCommand("trading_candidate.promote", {
+      candidate_id: collectingReplacement.candidate_id
+    })).rejects.toMatchObject({
+      statusCode: 409,
+      error: "paper_trading_qualification_required",
+      details: {
+        active_trading_review_candidate_id: activeTarget.candidate_id,
+        attempted_replacement_candidate_id: collectingReplacement.candidate_id,
+        candidate_id: collectingReplacement.candidate_id,
+        paper_qualification_status: "collecting_evidence",
+        paper_qualification_reasons: [
+          "min_observation_count_not_met",
+          "min_elapsed_ms_not_met"
+        ],
+        next_action: "Continue paper trading until the evidence window qualifies."
+      }
+    });
+
+    const operator = await service.readOperator();
+    expect(operator.selected_candidate_id).toBe(collectingReplacement.candidate_id);
+    expect(operator.trading_review).toMatchObject({
+      active_candidate_id: activeTarget.candidate_id,
+      selected_candidate_id: collectingReplacement.candidate_id,
+      selected_matches_trading_review: false,
+      authority_status: "not_live"
+    });
+  });
+
+  it("projects Trading review packet blockers for not-promoted, needs-resume, blocked, and failed states", async () => {
+    const emptyStore = new LocalStore(path.join(tmpDir, "empty"));
+    await emptyStore.initialize();
+    const emptyOperator = await new OperatorService({
+      store: emptyStore,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      }
+    }).readOperator();
+    expect(emptyOperator.trading_review.review_packet).toMatchObject({
+      verdict: {
+        severity: "collecting",
+        top_blocker: "paper_required"
+      },
+      evidence_quality: {
+        blocker_groups: [
+          {
+            group_kind: "evidence_window",
+            severity: "collecting",
+            blockers: ["paper_required"]
+          }
+        ]
+      }
+    });
+
+    const resumeStore = new LocalStore(path.join(tmpDir, "resume"));
+    await resumeStore.initialize();
+    const resume = await registerCandidate(resumeStore, {
+      id: "resume-packet-state",
+      title: "Resume Packet Candidate"
+    });
+    await seedPaperEvaluation(resumeStore, {
+      candidate: resume,
+      netRevenueUsdt: 14.2,
+      netReturnPct: 0.142,
+      observationCount: 30,
+      status: "running",
+      runnerActive: true,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    let resumeRunnerActive = true;
+    const resumeService = new OperatorService({
+      store: resumeStore,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      },
+      paperTradingEvaluationRunner: {
+        active: () => resumeRunnerActive
+      }
+    });
+    await resumeService.executeCommand("trading_candidate.promote", {
+      candidate_id: resume.candidate_id
+    });
+    resumeRunnerActive = false;
+    const resumeOperator = await resumeService.readOperator();
+    expect(resumeOperator.trading_review.review_packet).toMatchObject({
+      verdict: {
+        severity: "needs_resume",
+        top_blocker: "runner_inactive_for_running_evaluation"
+      },
+      evidence_quality: {
+        blocker_groups: [
+          {
+            group_kind: "runner_health",
+            severity: "needs_resume",
+            blockers: ["runner_inactive_for_running_evaluation"]
+          }
+        ]
+      }
+    });
+
+    const blockedStore = new LocalStore(path.join(tmpDir, "blocked"));
+    await blockedStore.initialize();
+    const blocked = await registerCandidate(blockedStore, {
+      id: "blocked-packet-state",
+      title: "Blocked Packet Candidate"
+    });
+    await seedPaperEvaluation(blockedStore, {
+      candidate: blocked,
+      netRevenueUsdt: 8,
+      netReturnPct: 0.08,
+      observationCount: 30,
+      status: "stopped",
+      runnerActive: false,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z",
+      includePublicExecution: false
+    });
+    await recordTradingPromotionForCandidate(blockedStore, blocked);
+    const blockedService = new OperatorService({
+      store: blockedStore,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      }
+    });
+    await blockedService.executeCommand("candidate.select", {
+      candidate_id: blocked.candidate_id
+    });
+    const blockedOperator = await blockedService.readOperator();
+    expect(blockedOperator.trading_review.review_packet).toMatchObject({
+      verdict: {
+        severity: "blocked",
+        top_blocker: "fill_public_execution_evidence_missing"
+      },
+      evidence_quality: {
+        blocker_groups: [
+          {
+            group_kind: "fill_provenance",
+            severity: "blocked",
+            blockers: ["fill_public_execution_evidence_missing"]
+          }
+        ]
+      }
+    });
+
+    const failedStore = new LocalStore(path.join(tmpDir, "failed"));
+    await failedStore.initialize();
+    const failed = await registerCandidate(failedStore, {
+      id: "failed-packet-state",
+      title: "Failed Packet Candidate"
+    });
+    await seedPaperEvaluation(failedStore, {
+      candidate: failed,
+      netRevenueUsdt: -4,
+      netReturnPct: -0.04,
+      observationCount: 30,
+      status: "failed",
+      runnerActive: false,
+      sourcePriority: "websocket_primary",
+      observedAt: "2026-05-16T00:31:00.000Z"
+    });
+    await recordTradingPromotionForCandidate(failedStore, failed);
+    const failedService = new OperatorService({
+      store: failedStore,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      }
+    });
+    await failedService.executeCommand("candidate.select", {
+      candidate_id: failed.candidate_id
+    });
+    const failedOperator = await failedService.readOperator();
+    expect(failedOperator.trading_review.review_packet).toMatchObject({
+      verdict: {
+        severity: "failed",
+        top_blocker: "paper_evaluation_failed"
+      },
+      evidence_quality: {
+        blocker_groups: [
+          {
+            group_kind: "observation_quality",
+            severity: "failed",
+            blockers: ["paper_evaluation_failed"]
+          }
+        ]
+      }
+    });
+  });
 });
 
 async function registerCandidate(
   store: LocalStore,
-  input: { id: string; title: string }
+  input: {
+    id: string;
+    title: string;
+    fullCycleLineage?: {
+      parentCandidateId: string;
+      parentCandidateVersionId: string;
+      directionKind: ResearchDirectionKind;
+      evaluationStatus: string;
+      evaluationScore: number;
+      profitLoss: TradingProfitLossReadModel;
+    };
+  }
 ): Promise<NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>> {
   const systemCode: SystemCodeRecord = {
     record_kind: "system_code",
@@ -422,7 +1050,18 @@ async function registerCandidate(
 }
 
 function candidateMaterializationInput(
-  input: { id: string; title: string },
+  input: {
+    id: string;
+    title: string;
+    fullCycleLineage?: {
+      parentCandidateId: string;
+      parentCandidateVersionId: string;
+      directionKind: ResearchDirectionKind;
+      evaluationStatus: string;
+      evaluationScore: number;
+      profitLoss: TradingProfitLossReadModel;
+    };
+  },
   systemCodeId: string
 ): CandidateMaterializationInput {
   return {
@@ -459,7 +1098,27 @@ function candidateMaterializationInput(
       forbidden_contents: ["exchange_credentials", "signed_requests", "live_order_authority"]
     },
     artifact_refs: [{ record_kind: "test_fixture", id: input.id }],
-    system_code_ref: { record_kind: "system_code", id: systemCodeId }
+    system_code_ref: { record_kind: "system_code", id: systemCodeId },
+    full_cycle_lineage: input.fullCycleLineage
+      ? {
+          source: {
+            trading_system_id: input.fullCycleLineage.parentCandidateId,
+            candidate_version_id: input.fullCycleLineage.parentCandidateVersionId,
+            system_code_ref: { record_kind: "system_code", id: `system-code-${input.fullCycleLineage.parentCandidateId}` }
+          },
+          generated: {
+            system_code_ref: { record_kind: "system_code", id: systemCodeId },
+            artifact_digest: `sha256:${input.id}`,
+            generated_by_agent: true
+          },
+          evaluation: {
+            status: input.fullCycleLineage.evaluationStatus,
+            score: input.fullCycleLineage.evaluationScore,
+            profit_loss: input.fullCycleLineage.profitLoss,
+            direction_kind: input.fullCycleLineage.directionKind
+          }
+        }
+      : undefined
   };
 }
 
@@ -475,6 +1134,7 @@ async function seedPaperEvaluation(
     sourcePriority: "websocket_primary" | "rest_fallback";
     observedAt?: string;
     includePublicExecution?: boolean;
+    failureReason?: string;
   }
 ): Promise<void> {
   const evaluationId = `paper-evaluation-${input.candidate.candidate_id}`;
@@ -515,6 +1175,21 @@ async function seedPaperEvaluation(
       quantity: "0.001",
       trade_time: observedAt
     }],
+    order_book: {
+      symbol: "BTCUSDT" as const,
+      observed_at: observedAt,
+      source_kind: "binance_production_public_hybrid" as const,
+      sync_status: "synced" as const,
+      last_update_id: "65200",
+      previous_final_update_id: "65199",
+      top_bid_price: "65199.5",
+      top_bid_quantity: "0.8",
+      top_ask_price: "65200.5",
+      top_ask_quantity: "0.9",
+      depth_level_count: 100,
+      gap_detected: false,
+      authority_status: "read_only" as const
+    },
     authority_status: "read_only" as const
   };
   const account = {
@@ -571,6 +1246,7 @@ async function seedPaperEvaluation(
     open_orders: [],
     latest_fill: latestFill,
     latest_public_execution_snapshot: input.includePublicExecution === false ? undefined : executionSnapshot,
+    latest_failure_reason: input.failureReason,
     authority_status: "not_live"
   };
   const observation: PaperTradingObservationRecord = {
@@ -588,7 +1264,7 @@ async function seedPaperEvaluation(
     },
     trading_run_ref: input.candidate.runtime.ref,
     sequence: input.observationCount,
-    status: "recorded",
+    status: input.failureReason ? "failed" : "recorded",
     observed_at: observedAt,
     market_snapshot: marketSnapshot,
     public_execution_snapshot: input.includePublicExecution === false ? undefined : executionSnapshot,
@@ -597,9 +1273,69 @@ async function seedPaperEvaluation(
     latest_fill: latestFill,
     score_delta: score,
     cumulative_score: score,
+    failure_reason: input.failureReason,
     authority_status: "not_live"
   };
   await store.recordPaperTradingObservation(observation, evaluation);
+}
+
+async function seedPriorPaperObservation(
+  store: LocalStore,
+  candidateId: string,
+  input: {
+    netRevenueUsdt: number;
+    netReturnPct: number;
+    sequence: number;
+    observedAt: string;
+  }
+): Promise<void> {
+  const evaluation = await store.getLatestPaperTradingEvaluationForCandidate(candidateId);
+  if (!evaluation) {
+    throw new Error(`missing paper evaluation for ${candidateId}`);
+  }
+  const latestObservation = (await store.listPaperTradingObservations(
+    evaluation.paper_trading_evaluation_id
+  )).at(-1);
+  if (!latestObservation) {
+    throw new Error(`missing paper observation for ${candidateId}`);
+  }
+  const score = {
+    revenue_usdt: input.netRevenueUsdt + 0.6,
+    cost_usdt: 0.6,
+    net_revenue_usdt: input.netRevenueUsdt,
+    net_return_pct: input.netReturnPct
+  };
+  await store.recordPaperTradingObservation({
+    ...latestObservation,
+    paper_trading_observation_id: `paper-observation-${candidateId}-prior-${input.sequence}`,
+    sequence: input.sequence,
+    observed_at: input.observedAt,
+    score_delta: score,
+    cumulative_score: score
+  }, evaluation);
+}
+
+async function recordTradingPromotionForCandidate(
+  store: LocalStore,
+  candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>
+): Promise<void> {
+  await store.recordTradingPromotion({
+    record_kind: "trading_promotion",
+    version: 1,
+    trading_promotion_id: `promotion-${candidate.candidate_id}`,
+    status: "promoted_for_trading_review",
+    candidate_ref: { record_kind: "trading_system_candidate", id: candidate.candidate_id },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: candidate.candidate_version.candidate_version_id
+    },
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: `paper-evaluation-${candidate.candidate_id}`
+    },
+    promoted_at: "2026-05-16T00:32:00.000Z",
+    authority_status: "not_live"
+  });
 }
 
 function fakeArenaRunner() {

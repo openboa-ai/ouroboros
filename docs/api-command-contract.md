@@ -69,21 +69,46 @@ CandidateArena status, research-preflight leaderboard, selected candidate, selec
 `PaperTradingEvaluation`, product `PaperTradingEvaluation` board, paper evidence readback, runner
 active status, interval, next observation time, latest market snapshot, latest public execution
 snapshot, market data mode, local order book sync state, fake paper account, open orders, latest
-fill, latest paper failure, agent/provider status, latest ticks, latest candidates, latest command
-results, latest `TradingPromotion` state, `TradingReview` active target binding, and latest
-TradingSystem paper decision when one has been emitted, and authority flags.
+fill, latest classified paper failure, agent/provider status, latest ticks, latest candidates,
+latest command results, latest `TradingPromotion` state, `TradingReview` active target binding, and latest
+TradingSystem paper decision when one has been emitted, research-efficiency summaries for latest
+CandidateArena ticks, and authority flags.
+
+`ResearchEfficiency` is not a leaderboard or promotion metric. It summarizes provider request
+count, runner command count, scenario count, and elapsed milliseconds for a CandidateArena
+direction result with `not_promotion_authority`, so researchers can compare autonomy efficiency
+without weakening paper evidence or Trading review authority.
 
 The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
 `net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
 (`active`, `needs_resume`, or `inactive`), exposes qualification status and reasons, and exposes
-promotion-gate state without enabling live authority. Qualification is not the rank metric. It is
+promotion-gate state without enabling live authority. Each row also exposes `trend` and
+`blocker_density` as `not_promotion_authority` explanation signals; these fields do not participate
+in rank, qualification, or promotion policy. Latest paper failures must preserve the raw
+reason and add `PaperTradingFailure` kind, summary, and next action for operator remediation.
+CLI, TUI, and Web surfaces must render the classified kind, human summary, and next action before
+raw failure text.
+Qualification is not the rank metric. It is
 the evidence-quality gate: observation window size, elapsed time, runner health when known, failed
 observation ratio, market snapshot presence, and public execution evidence for fills. UI, CLI, TUI,
 and researcher context must treat this board as product evaluation evidence, while CandidateArena
 leaderboard remains research preflight.
 When compacting this board into researcher context, do not invent runner authority: if the current
 process cannot see the in-memory runner, keep the paper status and score but mark runner state as
-unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`.
+unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`. The
+compacted researcher context should include deterministic blocker groups and next actions derived
+from qualification reasons, so the next CandidateArena tick can respond to evidence-window,
+runner-health, market-provenance, fill-provenance, and observation-quality failures without making
+those groups a second promotion gate. Selected paper evidence should also carry a compact
+`lineage` summary: lineage status, research direction, parent candidate, latest finding,
+evaluation status, and `lineage_only` authority. That lets the next ResearchWorker react to
+paper-backed lineage evidence without treating lineage as promotion authority.
+`CandidateArenaReadModel` and CandidateArena researcher context should also carry
+`finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
+protocol failure. These clusters are `not_promotion_authority`: they guide next candidate
+generation only and must not change paper ranking, qualification, Trading review readiness,
+direction scheduling, or promotion decisions. Operator surfaces may render them in Research as
+read-only next-generation context, but they must not treat them as a blocker, rank, or action.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
@@ -92,7 +117,19 @@ Candidate, Paper Evidence, Paper Trading, TradingPromotion, and Live are separat
 operator surface. TradingPromotion moves a paper-backed candidate into Trading review while
 preserving `not_live` authority. `trading_review` is the read projection that tells surfaces which
 candidate is the active Trading review target, which Arena candidate is currently selected, and
-whether those ids match. Trading controls must not silently use the Arena selected candidate when
+whether those ids match. `trading_review.review_packet` is the structured read-only evidence
+packet for that target: verdict, top blocker, subject, paper performance, evidence quality,
+runner health, Ledger continuity, lineage, provenance, risk, authority, and next action.
+Provenance includes market source, public execution source, freshness, WebSocket connection state,
+REST fallback state, stream marker, latest fill status, and order-book sync summary when public
+paper evidence provides it. Lineage includes `paper_board_learning`, a compact rank, score,
+qualification, blocker, failure, and next-research-focus summary shared with CandidateArena
+researcher context under `lineage_only` authority. Subject includes promoted time, and evidence
+quality includes first/last observed times when available, so operator surfaces can explain both
+when the target entered review and which paper evidence interval is being judged. Its authority
+section must keep the disabled capability set explicit: no live exchange authority, no private read
+authority, no order submission authority, and no credentials.
+Trading controls must not silently use the Arena selected candidate when
 `selected_matches_trading_review` is false.
 Replay/backtest is a research tool, not final evaluation authority. `trading_run.start`,
 `trading_run.observe`, and `trading_run.stop` operate the selected candidate's continuous paper
