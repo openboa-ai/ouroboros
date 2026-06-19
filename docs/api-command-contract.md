@@ -156,6 +156,7 @@ Canonical resource reads:
 - `GET /api/sandboxes/:sandbox_id`
 - `GET /api/sandboxes/:sandbox_id/logs`
 - `GET /api/gateway/environment`
+- `GET /api/trading-system/execution-mode-contracts`
 - `GET /api/trading-substrate/order-fill/latest`
 - `GET /api/trading-substrate/public-market/latest`
 - `GET /api/trading-substrate/private-readiness/latest`

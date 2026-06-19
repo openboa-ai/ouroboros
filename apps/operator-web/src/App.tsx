@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   AccountPositionRiskMirrorSurfaceReadModel,
   CandidateArenaReadModel,
@@ -48,7 +48,7 @@ import {
   fetchCandidateSummaries,
   fetchTradingGatewayEnvironment,
   fetchTradingExecutionModeContracts,
-  fetchTradingResearchRuntime,
+  buildTradingResearchRuntimeFromOperator,
   fetchCandidateArena,
   fetchOperatorReadModel,
   selectCandidateForOperator,
@@ -85,14 +85,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -124,9 +116,26 @@ import {
   formatPrivateReadinessCheckedGatePosture
 } from "./private-readiness-review-packet";
 import type { PrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
+import {
+  OPERATOR_DESIGN_TOKENS,
+  OperatorActionRow,
+  OperatorCallout,
+  OperatorEmptyState,
+  OperatorEvidenceBlock,
+  OperatorEvidenceRow,
+  OperatorEvidenceStack,
+  OperatorEvidenceStatus,
+  OperatorField,
+  OperatorPage,
+  OperatorPageHeader,
+  OperatorPanel,
+  OperatorSectionHeader,
+  OperatorStat,
+  OperatorTabBadge
+} from "./design-system";
 import "./styles.css";
 
-interface AppState {
+export interface AppState {
   candidates: CandidateSummaryReadModel[];
   executionModes: TradingSystemExecutionModeContractReadModel[];
   tradingGatewayEnvironment?: TradingGatewayEnvironmentReadModel;
@@ -175,6 +184,13 @@ interface AppState {
 export type OperatorView = "trading" | "arena" | "research" | "details";
 
 const OPERATOR_VIEWS: OperatorView[] = ["trading", "arena", "research", "details"];
+export const OPERATOR_REFRESH_INTERVAL_MS = 5_000;
+const RAW_EVIDENCE_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2";
+const RAW_EVIDENCE_ROW_CLASS = [
+  "grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2",
+  "[overflow-wrap:anywhere]",
+  "[&>*]:min-w-0 [&>*]:max-w-full [&>*]:break-words"
+].join(" ");
 
 export function operatorViewFromSearch(search: string | undefined): OperatorView {
   const view = new URLSearchParams(search ?? "").get("view");
@@ -201,6 +217,30 @@ async function fetchTradingReviewCandidate(
     return selected;
   }
   return fetchCandidate(activeCandidateId);
+}
+
+export function applyOperatorRefreshState(
+  current: AppState,
+  operator: OperatorReadModel,
+  selected: CandidateInspectReadModel | null | undefined = operator.selected_candidate ?? current.selected,
+  tradingReviewCandidate?: CandidateInspectReadModel
+): AppState {
+  const tradingResearchRuntime = buildTradingResearchRuntimeFromOperator(operator);
+  const selectedTradingResearchAgent = tradingResearchRuntime.available_agents.includes(
+    current.selectedTradingResearchAgent
+  )
+    ? current.selectedTradingResearchAgent
+    : tradingResearchRuntime.default_agent;
+
+  return {
+    ...current,
+    operator,
+    candidateArena: operator.candidate_arena,
+    tradingResearchRuntime,
+    selectedTradingResearchAgent,
+    selected: selected ?? undefined,
+    tradingReviewCandidate
+  };
 }
 
 export function App() {
@@ -232,6 +272,11 @@ export function App() {
     runningTradingPromotion: false,
     runningCandidateArenaAction: false
   });
+  const selectedCandidateIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    selectedCandidateIdRef.current = state.selected?.candidate_id;
+  }, [state.selected?.candidate_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,15 +286,14 @@ export function App() {
           candidates,
           executionModes,
           tradingGatewayEnvironment,
-          tradingResearchRuntime,
           operator
         ] = await Promise.all([
           fetchCandidateSummaries(),
           fetchTradingExecutionModeContracts(),
           fetchTradingGatewayEnvironment(),
-          fetchTradingResearchRuntime(),
           fetchOperatorReadModel()
         ]);
+        const tradingResearchRuntime = buildTradingResearchRuntimeFromOperator(operator);
         const first = candidates[0];
         const selected = operator.selected_candidate ?? (first ? await fetchCandidate(first.candidate_id) : undefined);
         const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
@@ -258,6 +302,7 @@ export function App() {
           ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
           : {};
         if (!cancelled) {
+          selectedCandidateIdRef.current = selected?.candidate_id;
           setState({
             candidates,
             executionModes,
@@ -309,8 +354,67 @@ export function App() {
       }
     }
     void load();
+    const refreshIntervalId = typeof window === "undefined"
+      ? undefined
+      : window.setInterval(() => {
+          void refreshOperatorReadModel();
+        }, OPERATOR_REFRESH_INTERVAL_MS);
+
+    async function refreshOperatorReadModel() {
+      try {
+        const operator = await fetchOperatorReadModel();
+        const selected = operator.selected_candidate ?? (
+          operator.selected_candidate_id &&
+            operator.selected_candidate_id !== selectedCandidateIdRef.current
+            ? await fetchCandidate(operator.selected_candidate_id)
+            : undefined
+        );
+        const tradingReviewCandidate = await fetchTradingReviewCandidate(operator, selected);
+        const selectedChanged = Boolean(
+          selected?.candidate_id &&
+          selected.candidate_id !== selectedCandidateIdRef.current
+        );
+        const replayRuns = selectedChanged && selected
+          ? await fetchReplayRunEvidence(selected.candidate_id)
+          : undefined;
+        const replayRunSelection = selectedChanged && selected && replayRuns
+          ? await fetchReplayRunSelection(selected.candidate_id, replayRuns)
+          : undefined;
+        if (!cancelled) {
+          if (selectedChanged) {
+            selectedCandidateIdRef.current = selected?.candidate_id;
+          }
+          setState((current) => ({
+            ...applyOperatorRefreshState(
+              current,
+              operator,
+              selected ?? current.selected,
+              tradingReviewCandidate
+            ),
+            ...(selectedChanged
+              ? {
+                  replayRuns: replayRuns ?? [],
+                  selectedReplayRunId: replayRunSelection?.selectedReplayRunId,
+                  replayRunDetail: replayRunSelection?.replayRunDetail,
+                  replayRunComparison: replayRunSelection?.replayRunComparison,
+                  replayRunComparisonBaselineId: replayRunSelection?.replayRunComparisonBaselineId,
+                  replayRunValidationState: replayRunSelection?.replayRunValidationState,
+                  replayRunError: undefined,
+                  replayRunMessage: undefined
+                }
+              : {})
+          }));
+        }
+      } catch (_error) {
+        // Keep the last known operator read model visible; command actions surface explicit errors.
+      }
+    }
+
     return () => {
       cancelled = true;
+      if (refreshIntervalId !== undefined) {
+        window.clearInterval(refreshIntervalId);
+      }
     };
   }, []);
 
@@ -885,15 +989,16 @@ export function App() {
         <OperatorSidebar
           activeView={operatorView}
           candidates={state.candidates}
+          loading={state.loading && state.candidates.length === 0}
           selectedCandidateId={state.selected?.candidate_id}
           selectedCandidateName={state.selected?.display_name}
           onSelectCandidate={(candidateId) => void selectCandidate(candidateId)}
           onSelectView={setOperatorView}
         />
         <SidebarInset>
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+          <header data-operator-ui="app-header" className={OPERATOR_DESIGN_TOKENS.layout.appHeader}>
             <SidebarTrigger />
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className={OPERATOR_DESIGN_TOKENS.layout.appHeaderSeparator} />
             <div className="min-w-0">
               <p className="text-sm font-medium">Ouroboros Operator</p>
               <p className="truncate text-xs text-muted-foreground">
@@ -907,16 +1012,22 @@ export function App() {
               </p>
             </div>
           </header>
-          <main className="min-h-[calc(100svh-3.5rem)] bg-background p-4">
+          <main data-operator-ui="app-main" className={OPERATOR_DESIGN_TOKENS.layout.appMain}>
             {state.loading && (
-              <Card>
-                <CardContent>Loading fixture read model...</CardContent>
-              </Card>
+              <OperatorPanel aria-label="Loading read model">
+                <OperatorSectionHeader
+                  title="Loading read model"
+                  description="Loading fixture read model..."
+                />
+              </OperatorPanel>
             )}
             {state.error && (
-              <Card>
-                <CardContent className="text-destructive">{state.error}</CardContent>
-              </Card>
+              <OperatorPanel aria-label="Read model error">
+                <OperatorSectionHeader
+                  title="Read model error"
+                  description={state.error}
+                />
+              </OperatorPanel>
             )}
             {!state.loading && !state.error && state.selected && (
               <CandidateDetail
@@ -1042,6 +1153,7 @@ export function CandidateSummaryRow({
 function OperatorSidebar({
   activeView,
   candidates,
+  loading,
   selectedCandidateId,
   selectedCandidateName,
   onSelectCandidate,
@@ -1049,11 +1161,15 @@ function OperatorSidebar({
 }: {
   activeView: OperatorView;
   candidates: CandidateSummaryReadModel[];
+  loading: boolean;
   selectedCandidateId?: string;
   selectedCandidateName?: string;
   onSelectCandidate: (candidateId: string) => void;
   onSelectView: (view: OperatorView) => void;
 }) {
+  const candidateCountLabel = loading ? "..." : String(candidates.length);
+  const selectedName = loading ? "Loading workspace" : selectedCandidateName ?? "No Trading System selected";
+
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
@@ -1089,7 +1205,7 @@ function OperatorSidebar({
                   <BarChart3Icon />
                   <span>Arena</span>
                 </SidebarMenuButton>
-                <SidebarMenuBadge>{String(candidates.length)}</SidebarMenuBadge>
+                <SidebarMenuBadge>{candidateCountLabel}</SidebarMenuBadge>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -1099,7 +1215,7 @@ function OperatorSidebar({
                   <FlaskConicalIcon />
                   <span>Research</span>
                 </SidebarMenuButton>
-                <SidebarMenuBadge>{String(candidates.length)}</SidebarMenuBadge>
+                <SidebarMenuBadge>{candidateCountLabel}</SidebarMenuBadge>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -1118,7 +1234,15 @@ function OperatorSidebar({
           <SidebarGroupLabel>Trading Systems</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {candidates.map((candidate) => (
+              {loading && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton disabled>
+                    <BarChart3Icon />
+                    <span>Loading trading systems</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {!loading && candidates.map((candidate) => (
                 <SidebarMenuItem key={candidate.candidate_id}>
                   <SidebarMenuButton
                     isActive={selectedCandidateId === candidate.candidate_id}
@@ -1141,7 +1265,7 @@ function OperatorSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton>
               <PanelLeftIcon />
-              <span>{selectedCandidateName ?? "No Trading System selected"}</span>
+              <span>{selectedName}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -1292,85 +1416,88 @@ export function CandidateArenaPanel({
     ? "Resume paper trading"
     : "Start paper trading";
   return (
-    <Card aria-label="Candidate Arena cockpit" className="candidate-arena-cockpit">
-      <CardHeader className="gap-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <CardDescription>Operator cockpit</CardDescription>
-            <CardTitle>Candidate Arena</CardTitle>
-            <CardDescription>
-              {leader
-                ? `${leader.display_name} leads by ${formatUsdt(leader.profit_loss.net_revenue_usdt)} net revenue.`
-                : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
-            </CardDescription>
-          </div>
+    <OperatorPanel
+      variant="elevated"
+      aria-label="Candidate Arena cockpit"
+      className="candidate-arena-cockpit gap-3 p-3 sm:gap-4 sm:p-4"
+    >
+      <OperatorSectionHeader
+        eyebrow="Operator cockpit"
+        title="Candidate Arena"
+        description={leader
+          ? `${leader.display_name} leads by ${formatUsdt(leader.profit_loss.net_revenue_usdt)} net revenue.`
+          : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
+        actions={(
           <div className="flex flex-wrap gap-2 lg:justify-end" aria-label="Candidate Arena authority summary">
             <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
             <Badge variant="secondary">{researcherProvider?.selected_provider ?? "provider pending"}</Badge>
             <Badge variant="secondary">not_live</Badge>
           </div>
+        )}
+      />
+      <div className="grid gap-4">
+        <OperatorPanel aria-label="Arena command bar" className="gap-2">
+          <OperatorSectionHeader
+            title="Arena command bar"
+            description="Researcher orchestration stays below live authority and only writes through shared commands."
+            actions={(
+              <>
+                <Button type="button" onClick={onStart} disabled={actionPending || !onStart}>
+                  Start arena
+                </Button>
+                <Button type="button" onClick={onStop} disabled={actionPending || !onStop} variant="secondary">
+                  Stop arena
+                </Button>
+                <Button type="button" onClick={onTick} disabled={actionPending || !onTick} variant="outline">
+                  Run tick
+                </Button>
+              </>
+            )}
+          />
+          <OperatorCallout
+            label="Research provider"
+            value={`Provider ${researcherProvider?.selected_provider ?? "unknown"} ${selectedAgentProfile?.status ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
+          />
+        </OperatorPanel>
+        <div data-operator-ui="metric-strip" className={OPERATOR_DESIGN_TOKENS.layout.statGrid}>
+          <OperatorStat
+            label="Arena runner"
+            value={arena.runner_status}
+            detail={`${arena.tick_count} ticks`}
+          />
+          <OperatorStat
+            label="ResearchPreflight net"
+            value={leader ? formatUsdt(leader.profit_loss.net_revenue_usdt) : "none"}
+            detail="revenue - cost"
+          />
+          <OperatorStat
+            label="ResearchPreflight return"
+            value={leader ? formatPercent(leader.profit_loss.net_return_pct) : "none"}
+            detail="secondary rank signal"
+          />
         </div>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <section className="grid gap-3 rounded-md bg-muted/20 p-3 md:grid-cols-[1fr_auto]" aria-label="Arena command bar">
-          <div className="grid gap-1">
-            <strong className="text-sm">Arena command bar</strong>
-            <span className="text-xs text-muted-foreground">
-              {`Provider ${researcherProvider?.selected_provider ?? "unknown"} ${selectedAgentProfile?.status ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2 md:justify-end">
-          <Button type="button" onClick={onStart} disabled={actionPending || !onStart}>
-            Start arena
-          </Button>
-          <Button type="button" onClick={onStop} disabled={actionPending || !onStop} variant="secondary">
-            Stop arena
-          </Button>
-          <Button type="button" onClick={onTick} disabled={actionPending || !onTick} variant="outline">
-            Run tick
-          </Button>
-          </div>
-        </section>
-        <div className="grid gap-2 md:grid-cols-3">
-          <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
-            <span className="text-xs font-medium text-muted-foreground">Arena runner</span>
-            <strong className="text-xl leading-tight">{arena.runner_status}</strong>
-            <span className="text-xs text-muted-foreground">{arena.tick_count} ticks</span>
-          </div>
-          <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
-            <span className="text-xs font-medium text-muted-foreground">ResearchPreflight net</span>
-            <strong className="text-xl leading-tight">{leader ? formatUsdt(leader.profit_loss.net_revenue_usdt) : "none"}</strong>
-            <span className="text-xs text-muted-foreground">revenue - cost</span>
-          </div>
-          <div className="grid min-h-24 gap-1 rounded-md bg-muted/35 p-3">
-            <span className="text-xs font-medium text-muted-foreground">ResearchPreflight return</span>
-            <strong className="text-xl leading-tight">{leader ? formatPercent(leader.profit_loss.net_return_pct) : "none"}</strong>
-            <span className="text-xs text-muted-foreground">secondary rank signal</span>
-          </div>
-        </div>
-        <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Paper trading board">
-          <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
-            <h3 className="text-sm font-medium">Paper Board</h3>
-            <span className="text-xs text-muted-foreground">product authority: continuous paper trading</span>
-          </div>
+        <OperatorPanel aria-label="Paper trading board">
+          <OperatorSectionHeader
+            title="Paper Board"
+            description="product authority: continuous paper trading"
+          />
           {paperBoardEntries.length ? (
-            <div className="grid gap-2 md:grid-cols-2">
+            <OperatorEvidenceStack className={paperBoardEntries.length > 1 ? "md:grid-cols-2" : undefined}>
               {paperBoardEntries.slice(0, 6).map((entry) => (
-                <div key={entry.evaluation_id} className="grid min-w-0 gap-2 overflow-hidden rounded-md bg-background/35 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="text-xs font-medium text-muted-foreground">#{entry.rank}</span>
-                      <strong className="block break-words text-sm leading-snug">{entry.display_name}</strong>
-                    </div>
-                    <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
-                      {entry.status}
-                    </Badge>
-                  </div>
-                  <dl className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <OperatorEvidenceBlock title={entry.display_name} key={entry.evaluation_id}>
+                  <OperatorEvidenceStatus
+                    label={`#${entry.rank}`}
+                    value={entry.status}
+                    detail={entry.qualification_status}
+                    tone={entry.profit_loss.net_revenue_usdt >= 0 ? "counted" : "neutral"}
+                  />
+                  <OperatorEvidenceRow>
                     <Field label="Paper net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
                     <Field label="Paper return" value={formatPercent(entry.profit_loss.net_return_pct)} />
                     <Field label="Trend" value={formatPaperBoardTrend(entry)} />
                     <Field label="Blocker density" value={formatPaperBoardBlockerDensity(entry)} />
+                  </OperatorEvidenceRow>
+                  <OperatorEvidenceRow>
                     <Field label="Qualification" value={entry.qualification_status} />
                     <Field label="Evidence window" value={`${entry.evidence_window.observation_count} obs / ${entry.evidence_window.failed_observation_count} failed / ${entry.evidence_window.elapsed_ms}ms`} />
                     <Field
@@ -1378,20 +1505,24 @@ export function CandidateArenaPanel({
                       value={entry.qualification_reasons.length ? entry.qualification_reasons.join(", ") : "qualified"}
                     />
                     <Field label="Promotion gate" value={entry.promotion_gate_status} />
+                  </OperatorEvidenceRow>
+                  <OperatorEvidenceRow>
                     <Field label="Paper runner" value={entry.runner_status} />
                     <Field label="Paper observations" value={String(entry.observation_count)} />
                     <Field label="Market provenance" value={`${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`} />
                     <Field label="Fill quality" value={`${entry.latest_fill_status ?? "none"} / open ${entry.open_order_count}`} />
-                  </dl>
-                </div>
+                  </OperatorEvidenceRow>
+                </OperatorEvidenceBlock>
               ))}
-            </div>
+            </OperatorEvidenceStack>
           ) : (
-            <div className="placeholder">
-              No paper evaluations yet. Select a candidate and start paper trading to create product evidence.
-            </div>
+            <OperatorEmptyState
+              title="No paper evaluations yet"
+              description="Select a candidate and start paper trading to create product evidence."
+              detail="not_live"
+            />
           )}
-        </section>
+        </OperatorPanel>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
         <section className="grid content-start gap-2" aria-label="Candidate Arena leaderboard">
           <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
@@ -1400,12 +1531,13 @@ export function CandidateArenaPanel({
           </div>
           <div className="grid gap-2 lg:hidden">
             {arena.leaderboard.map((entry) => (
-              <button
+              <Button
                 type="button"
                 key={entry.candidate_id}
                 onClick={() => onSelectCandidate?.(entry.candidate_id)}
                 aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
-                className={`grid gap-3 rounded-md p-3 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
+                variant={selectedEntry?.candidate_id === entry.candidate_id ? "secondary" : "ghost"}
+                className="grid h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left"
               >
                 <div className="grid gap-2 sm:flex sm:items-start sm:justify-between sm:gap-3">
                   <div className="min-w-0">
@@ -1423,7 +1555,7 @@ export function CandidateArenaPanel({
                   <Field label="Parent" value={entry.parent_candidate_id ?? "none"} />
                 </div>
                 <p className="break-words text-xs text-muted-foreground">{entry.latest_finding}</p>
-              </button>
+              </Button>
             ))}
           </div>
           <div className="hidden lg:grid lg:gap-2">
@@ -1434,12 +1566,13 @@ export function CandidateArenaPanel({
               <span>ResearchPreflight net</span>
             </div>
             {arena.leaderboard.map((entry) => (
-              <button
+              <Button
                 type="button"
                 key={entry.candidate_id}
                 onClick={() => onSelectCandidate?.(entry.candidate_id)}
                 aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
-                className={`grid grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] items-start gap-2 rounded-md p-2 text-left text-sm transition ${selectedEntry?.candidate_id === entry.candidate_id ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/35 hover:bg-muted/60"}`}
+                variant={selectedEntry?.candidate_id === entry.candidate_id ? "secondary" : "ghost"}
+                className="grid h-auto w-full grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] items-start justify-start gap-2 whitespace-normal p-2 text-left"
               >
                 <span>#{entry.rank}</span>
                 <span className="grid gap-1">
@@ -1457,58 +1590,55 @@ export function CandidateArenaPanel({
                     {entry.status}
                   </Badge>
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
           {!arena.leaderboard.length && (
-            <div className="placeholder lg:min-w-[640px]">
-              No candidates yet. Run tick to generate the first TradingSystem candidates.
-            </div>
+            <OperatorEmptyState
+              title="No candidates yet"
+              description="Run tick to generate the first TradingSystem candidates."
+              detail="research_only"
+              className="lg:min-w-[640px]"
+            />
           )}
         </section>
         <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
         {inspectorVisible && (
-          <section className="grid gap-3 rounded-md bg-muted/25 p-3" aria-label="Selected Candidate Arena candidate">
-            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
-                <h3 className="text-sm font-medium">Selected candidate</h3>
-                <p className="break-words text-sm text-muted-foreground">
-                  {selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 md:justify-end">
-                {paperRunnerActive ? (
-                  <>
-                    <Button
-                      type="button"
-                      onClick={onObservePaperTrading}
-                      disabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
-                      variant="secondary"
-                    >
-                      {runningPaperTrading ? "Updating paper trading" : "Observe now"}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={onStopPaperTrading}
-                      disabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
-                      variant="outline"
-                    >
-                      Stop paper trading
-                    </Button>
-                  </>
-                ) : (
+          <OperatorPanel aria-label="Selected Candidate Arena candidate">
+            <OperatorSectionHeader
+              title="Selected candidate"
+              description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
+              actions={paperRunnerActive ? (
+                <>
                   <Button
                     type="button"
-                    onClick={onStartPaperTrading}
-                    disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
+                    onClick={onObservePaperTrading}
+                    disabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
                     variant="secondary"
                   >
-                    {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
+                    {runningPaperTrading ? "Updating paper trading" : "Observe now"}
                   </Button>
-                )}
-              </div>
-            </div>
-            <dl className="grid gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    onClick={onStopPaperTrading}
+                    disabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
+                    variant="outline"
+                  >
+                    Stop paper trading
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={onStartPaperTrading}
+                  disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
+                  variant="secondary"
+                >
+                  {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
+                </Button>
+              )}
+            />
+            <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
               <Field label="Direction" value={selectedDirection} />
               <Field label="Parent" value={selectedParent ?? "none"} />
               <Field label="System Code" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
@@ -1603,17 +1733,29 @@ export function CandidateArenaPanel({
                 />
               )}
             </dl>
-          </section>
+          </OperatorPanel>
         )}
-        <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Agent provider status">
-          <h3 className="text-sm font-medium">Agent providers</h3>
-          <Field label="Researcher" value={researcherProvider?.selected_provider ?? "not selected"} />
-          <Field label="Selected status" value={selectedAgentProfile?.status ?? "missing"} />
-          <Field label="Available" value={researcherProvider?.available_providers.join(", ") ?? "unknown"} />
-          {selectedAgentProfile?.failure_reason && (
-            <Field label="Failure" value={selectedAgentProfile.failure_reason} />
-          )}
-          <div className="flex flex-wrap gap-2">
+        <OperatorPanel aria-label="Agent provider status">
+          <OperatorSectionHeader
+            title="Agent providers"
+            description="Research provider status and local setup controls."
+          />
+          <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+            <Field label="Researcher" value={researcherProvider?.selected_provider ?? "not selected"} />
+            <Field label="Selected status" value={selectedAgentProfile?.status ?? "missing"} />
+            <Field label="Available" value={researcherProvider?.available_providers.join(", ") ?? "unknown"} />
+            {selectedAgentProfile?.failure_reason && (
+              <Field label="Failure" value={selectedAgentProfile.failure_reason} />
+            )}
+            {agentProfiles.slice(0, 3).map((profile) => (
+              <Field
+                key={profile.profile_id}
+                label={profile.label}
+                value={`${profile.status} / ${profile.provider}`}
+              />
+            ))}
+          </dl>
+          <OperatorActionRow>
             {researcherProvider?.available_providers.map((provider) => (
               <Button
                 key={provider}
@@ -1628,8 +1770,8 @@ export function CandidateArenaPanel({
                 {provider}
               </Button>
             ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
+          </OperatorActionRow>
+          <OperatorActionRow>
             <Button
               type="button"
               variant="outline"
@@ -1657,43 +1799,51 @@ export function CandidateArenaPanel({
             >
               Login
             </Button>
-          </div>
-          {agentProfiles.slice(0, 3).map((profile) => (
-            <Field
-              key={profile.profile_id}
-              label={profile.label}
-              value={`${profile.status} / ${profile.provider}`}
-            />
-          ))}
-        </section>
-        <section className="grid gap-2 rounded-md bg-muted/25 p-3" aria-label="Command log">
-          <h3 className="text-sm font-medium">Command log</h3>
+          </OperatorActionRow>
+        </OperatorPanel>
+        <OperatorPanel aria-label="Command log">
+          <OperatorSectionHeader
+            title="Command log"
+            description="Recent operator command outcomes and visible remediation surfaces."
+          />
           {latestCommands.length
-            ? latestCommands.slice(0, 5).map((command) => {
+            ? (
+              <OperatorEvidenceStack>
+                {latestCommands.slice(0, 5).map((command) => {
                 const remediation = commandRemediation(command);
                 return (
-                  <div key={command.command_id} className="grid gap-2 rounded-md bg-background/35 p-2">
-                    <Field
-                      label={command.command_kind}
-                      value={command.error ? `${command.status} / ${command.error}` : command.status}
-                    />
-                    {remediation && (
-                      <>
-                        <Field label="Remediation group" value={remediation.group} />
-                        <Field label="Visible surface" value={remediation.surface} />
-                        <Field label="Remediation next step" value={remediation.remediation} />
-                        <Field label="Command authority" value={remediation.authority_status} />
-                      </>
-                    )}
-                  </div>
+                  <OperatorEvidenceBlock
+                    key={command.command_id}
+                    title={command.command_kind}
+                  >
+                    <OperatorEvidenceRow>
+                      <Field
+                        label="Status"
+                        value={command.error ? `${command.status} / ${command.error}` : command.status}
+                      />
+                      {remediation && (
+                        <>
+                          <Field label="Remediation group" value={remediation.group} />
+                          <Field label="Visible surface" value={remediation.surface} />
+                          <Field label="Remediation next step" value={remediation.remediation} />
+                          <Field label="Command authority" value={remediation.authority_status} />
+                        </>
+                      )}
+                    </OperatorEvidenceRow>
+                  </OperatorEvidenceBlock>
                 );
-              })
+              })}
+              </OperatorEvidenceStack>
+            )
             : <p className="text-sm text-muted-foreground">No commands recorded.</p>}
-        </section>
-        <section className="grid gap-2" aria-label="Candidate Arena latest ticks">
-          <h3 className="text-sm font-medium">Latest ticks</h3>
+        </OperatorPanel>
+        <OperatorPanel aria-label="Candidate Arena latest ticks">
+          <OperatorSectionHeader
+            title="Latest ticks"
+            description="Recent CandidateArena generation evidence."
+          />
           {latestTick ? (
-            <div className="grid gap-2 rounded-md bg-muted/25 p-3 text-sm md:grid-cols-[1fr_1fr_1fr]">
+            <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
               <Field label="Tick" value={latestTick.tick_id} />
               <Field label="Status" value={latestTick.status} />
               <Field label="Generated" value={formatCandidateArenaTickGenerated(latestTick)} />
@@ -1705,17 +1855,21 @@ export function CandidateArenaPanel({
                 label="Efficiency"
                 value={formatCandidateArenaTickEfficiency(latestTick)}
               />
-            </div>
+            </dl>
           ) : (
-            <div className="placeholder">No Candidate Arena ticks recorded.</div>
+            <OperatorEmptyState
+              title="No Candidate Arena ticks recorded."
+              description="Run a CandidateArena tick to create generation evidence."
+              detail="research_only"
+            />
           )}
-        </section>
+        </OperatorPanel>
         </aside>
         </div>
         {message && <div className="inline-status">{message}</div>}
         {error && <div className="inline-status error">{error}</div>}
-      </CardContent>
-    </Card>
+      </div>
+    </OperatorPanel>
   );
 }
 
@@ -1767,25 +1921,24 @@ function TradingPromotionBoundaryCard({
   const runnerStatus = tradingReview?.runner_status ?? activePromotion?.runner_status ?? paperBoardEntry?.runner_status;
   const reviewMismatch = tradingReview?.status === "promoted_for_trading_review" &&
     !tradingReview.selected_matches_trading_review;
-  const nextAction = reviewMismatch
+  const promotionCondition = reviewMismatch
     ? selectedPromotionQualificationStatus === "qualified"
-      ? "Move the selected qualified Arena candidate into Trading review, or open the active target before Trading controls."
-      : "Open the active Trading review candidate before running Trading controls."
-    : tradingReview?.next_action
-    ?? activePromotion?.next_action
-    ?? (paperQualificationStatus
-      ? tradingPromotionNextActionLabel(paperQualificationStatus)
-      : "Start paper trading in Arena, then promote the selected candidate.");
+      ? "selected qualified Arena candidate can replace active Trading review target"
+      : "selected Arena candidate is not the active Trading review target"
+    : paperQualificationStatus
+      ? `${paperQualificationStatus}${paperQualificationReasons.length ? ` / ${paperQualificationReasons.join(", ")}` : ""}`
+      : hasPaperEvaluation
+        ? "paper evidence present"
+        : "paper evidence required";
   const promotionReady = selectedPromotionQualificationStatus === "qualified";
   return (
-    <Card aria-label="Trading promotion boundary">
-      <CardHeader>
-        <CardDescription>Promotion boundary</CardDescription>
-        <CardTitle>Trading review candidate</CardTitle>
-        <CardDescription>
-          Arena candidates become Trading review candidates only after selected paper evidence exists. This does not enable live authority.
-        </CardDescription>
-        <CardAction className="flex flex-wrap justify-end gap-2">
+    <OperatorPanel aria-label="Trading promotion boundary">
+      <OperatorSectionHeader
+        eyebrow="Promotion boundary"
+        title="Trading review candidate"
+        description="Arena candidates become Trading review candidates only after selected paper evidence exists. This does not enable live authority."
+        actions={(
+          <>
           <Badge variant={tradingReview?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
             {tradingReview?.status ?? activePromotion?.status ?? "not_promoted"}
           </Badge>
@@ -1794,10 +1947,11 @@ function TradingPromotionBoundaryCard({
             {reviewMismatch ? "Arena selection differs" : selectedIsPromoted ? "active target" : "candidate review"}
           </Badge>
           <Badge variant="secondary">live disabled</Badge>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-        <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          </>
+        )}
+      />
+      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+        <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
           <Field label="Trading review target" value={activeReviewLabel} />
           <Field
             label="Arena selected candidate"
@@ -1828,10 +1982,10 @@ function TradingPromotionBoundaryCard({
                 : "not started"}
           />
           <Field label="Paper runner" value={runnerStatus ?? "not promoted"} />
-          <Field label="Promotion next action" value={nextAction} />
+          <Field label="Promotion condition" value={promotionCondition} />
           <Field label="Review authority" value={tradingReview?.live_disabled_reason ?? activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
         </dl>
-        <div className="flex flex-wrap gap-2 lg:justify-end">
+        <OperatorActionRow className="lg:justify-end">
           {reviewMismatch && activeReviewCandidateId && (
             <Button
               type="button"
@@ -1850,9 +2004,9 @@ function TradingPromotionBoundaryCard({
           >
             {runningTradingPromotion ? "Moving" : reviewMismatch ? "Replace Trading review target" : "Move to Trading review"}
           </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </OperatorActionRow>
+      </div>
+    </OperatorPanel>
   );
 }
 
@@ -1884,21 +2038,6 @@ function paperQualificationTone(
     return "danger";
   }
   return "warning";
-}
-
-function tradingPromotionNextActionLabel(
-  status: NonNullable<OperatorReadModel["trading_promotion"]>["paper_qualification_status"]
-): string {
-  if (status === "qualified") {
-    return "Move the selected candidate into Trading review while live remains disabled.";
-  }
-  if (status === "needs_resume") {
-    return "Resume paper trading before moving this candidate into Trading review.";
-  }
-  if (status === "blocked_by_quality" || status === "paper_failed") {
-    return "Fix paper evidence quality before this candidate can move into Trading review.";
-  }
-  return "Continue paper trading until the evidence window qualifies.";
 }
 
 function formatSelectedPaperEvidenceStatus(
@@ -2633,53 +2772,50 @@ export function CandidateDetail({
     return remediation ? [{ command, remediation }] : [];
   });
   return (
-    <article className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
+    <OperatorPage>
       <Tabs
         value={activeView}
         onValueChange={(value) => onActiveViewChange?.(value as OperatorView)}
       >
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{workspaceLabel}</p>
-            <h2 className="font-heading text-3xl font-semibold tracking-tight">BTCUSDT operator cockpit</h2>
-          </div>
-          <TabsList>
-            <TabsTrigger value="trading">
-              <span>Trading</span>
-              {tabStateBadges.trading && (
-                <span
-                  aria-label="Trading tab state badge"
-                  className="rounded-sm bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
-                >
-                  {tabStateBadges.trading}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="arena">
-              <span>Arena</span>
-              {tabStateBadges.arena && (
-                <span
-                  aria-label="Arena tab state badge"
-                  className="rounded-sm bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
-                >
-                  {tabStateBadges.arena}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="research">
-              <span>Research</span>
-              {tabStateBadges.research && (
-                <span
-                  aria-label="Research tab state badge"
-                  className="rounded-sm bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
-                >
-                  {tabStateBadges.research}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="details">Details</TabsTrigger>
-          </TabsList>
-        </div>
+        <OperatorPageHeader
+          eyebrow={workspaceLabel}
+          title="BTCUSDT operator cockpit"
+          actions={(
+            <TabsList>
+              <TabsTrigger value="trading">
+                <span>Trading</span>
+                {tabStateBadges.trading && (
+                  <OperatorTabBadge
+                    aria-label="Trading tab state badge"
+                  >
+                    {tabStateBadges.trading}
+                  </OperatorTabBadge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="arena">
+                <span>Arena</span>
+                {tabStateBadges.arena && (
+                  <OperatorTabBadge
+                    aria-label="Arena tab state badge"
+                  >
+                    {tabStateBadges.arena}
+                  </OperatorTabBadge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="research">
+                <span>Research</span>
+                {tabStateBadges.research && (
+                  <OperatorTabBadge
+                    aria-label="Research tab state badge"
+                  >
+                    {tabStateBadges.research}
+                  </OperatorTabBadge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
+            </TabsList>
+          )}
+        />
 
         <TabsContent value="arena" className="flex flex-col gap-4">
       {candidateArena && (
@@ -2711,42 +2847,39 @@ export function CandidateDetail({
         />
       )}
       {!candidateArena && (
-        <Card aria-label="Arena unavailable">
-          <CardHeader>
-            <CardTitle>Arena</CardTitle>
-            <CardDescription>
-              Continuous paper trading arena state is not projected yet.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <OperatorPanel aria-label="Arena unavailable">
+          <OperatorSectionHeader
+            title="Arena"
+            description="Continuous paper trading arena state is not projected yet."
+          />
+        </OperatorPanel>
       )}
         </TabsContent>
 
         <TabsContent value="trading" className="flex flex-col gap-4">
-      <Card aria-label="Operator decision bar">
-        <CardHeader>
-          <CardDescription>{workspaceLabel}</CardDescription>
-          <CardTitle>Trading</CardTitle>
-          <CardDescription>
-            Paper Trading review cockpit. Live exchange authority remains disabled in this MLP. {operatorDecision.detail}
-          </CardDescription>
-          <CardAction className="flex flex-wrap justify-end gap-2">
-          <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
-          <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
-          <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
-          <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
-            {formatFreshnessLabel(marketFreshness)}
-          </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-        <Card size="sm" className={toneCardClass(operatorDecision.tone)}>
-          <CardHeader>
-            <CardDescription>Recommended action</CardDescription>
-            <CardTitle>{operatorDecision.value}</CardTitle>
-          </CardHeader>
-        </Card>
-        <div className="flex flex-wrap items-center gap-2">
+      <OperatorPanel variant="elevated" aria-label="Operator decision bar">
+        <OperatorSectionHeader
+          eyebrow={workspaceLabel}
+          title="Trading"
+          description={`Paper Trading review cockpit. Live exchange authority remains disabled in this MLP. ${operatorDecision.detail}`}
+          actions={(
+            <>
+              <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
+              <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
+              <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
+              <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
+                {formatFreshnessLabel(marketFreshness)}
+              </Badge>
+            </>
+          )}
+        />
+        <div className="grid min-w-0 gap-3 md:grid-cols-[1fr_auto] md:items-center">
+        <OperatorCallout
+          label="Recommended action"
+          value={operatorDecision.value}
+          className={toneCardClass(operatorDecision.tone)}
+        />
+        <OperatorActionRow>
           {onObserveTradingRun && (
             <Button
               type="button"
@@ -2767,19 +2900,17 @@ export function CandidateDetail({
               Stop paper
             </Button>
           )}
+        </OperatorActionRow>
         </div>
-        </CardContent>
-      </Card>
+      </OperatorPanel>
 
       {tradingReviewPacket && (
-        <Card aria-label="Trading review packet">
-          <CardHeader>
-            <CardDescription>Review packet</CardDescription>
-            <CardTitle>Trading review packet</CardTitle>
-            <CardDescription>
-              Structured evidence for the active Trading review target. This packet is read-only and keeps live authority disabled.
-            </CardDescription>
-            <CardAction>
+        <OperatorPanel aria-label="Trading review packet">
+          <OperatorSectionHeader
+            eyebrow="Review packet"
+            title="Trading review packet"
+            description="Structured evidence for the active Trading review target. This packet is read-only and keeps live authority disabled."
+            actions={(
               <Badge variant={tradingReviewPacket.verdict.severity === "ready"
                 ? "default"
                 : tradingReviewPacket.verdict.severity === "blocked" ||
@@ -2790,10 +2921,9 @@ export function CandidateDetail({
               >
                 {tradingReviewPacket.verdict.severity}
               </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            )}
+          />
+            <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
               <Field
                 label="Packet verdict"
                 value={`${tradingReviewPacket.verdict.severity} / ${tradingReviewPacket.verdict.top_blocker ?? "none"}`}
@@ -2841,8 +2971,7 @@ export function CandidateDetail({
                 value={formatTradingReviewRiskSummary(tradingReviewPacket)}
               />
             </dl>
-          </CardContent>
-        </Card>
+        </OperatorPanel>
       )}
 
       <TradingPromotionBoundaryCard
@@ -2862,38 +2991,51 @@ export function CandidateDetail({
         tradingPromotionMessage ||
         tradingPromotionError ||
         tradingCommandRemediations.length > 0) && (
-        <Card aria-label="Operator messages">
-          <CardContent className="grid gap-2">
+        <OperatorPanel aria-label="Operator messages">
+          <OperatorSectionHeader
+            title="Operator messages"
+            description="Recent Trading command outcomes and remediation surfaces."
+          />
+          <div className="grid min-w-0 gap-2">
             {tradingRunMessage && <p className="text-sm text-muted-foreground">{tradingRunMessage}</p>}
             {tradingRunError && <p className="text-sm text-destructive">{tradingRunError}</p>}
             {tradingPromotionMessage && <p className="text-sm text-muted-foreground">{tradingPromotionMessage}</p>}
             {tradingPromotionError && <p className="text-sm text-destructive">{tradingPromotionError}</p>}
-            {tradingCommandRemediations.map(({ command, remediation }) => (
-              <div key={command.command_id} className="grid gap-1 rounded-md bg-muted/25 p-2 text-sm">
-                <Field
-                  label={command.command_kind}
-                  value={command.error ? `${command.status} / ${command.error}` : command.status}
-                />
-                <Field label="Remediation group" value={remediation.group} />
-                <Field label="Visible surface" value={remediation.surface} />
-                <Field label="Remediation next step" value={remediation.remediation} />
-                <Field label="Command authority" value={remediation.authority_status} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+            {tradingCommandRemediations.length > 0 && (
+              <OperatorEvidenceStack>
+                {tradingCommandRemediations.map(({ command, remediation }) => (
+                  <OperatorEvidenceBlock
+                    key={command.command_id}
+                    title={command.command_kind}
+                  >
+                    <OperatorEvidenceRow>
+                      <Field
+                        label="Status"
+                        value={command.error ? `${command.status} / ${command.error}` : command.status}
+                      />
+                      <Field label="Remediation group" value={remediation.group} />
+                      <Field label="Visible surface" value={remediation.surface} />
+                      <Field label="Remediation next step" value={remediation.remediation} />
+                      <Field label="Command authority" value={remediation.authority_status} />
+                    </OperatorEvidenceRow>
+                  </OperatorEvidenceBlock>
+                ))}
+              </OperatorEvidenceStack>
+            )}
+          </div>
+        </OperatorPanel>
       )}
 
-      <Card aria-label="Safety boundary">
-        <CardContent className="flex flex-wrap items-center gap-2">
+      <OperatorPanel aria-label="Safety boundary">
+        <OperatorActionRow>
         <Badge variant="outline">Safety boundary</Badge>
         <Badge variant="secondary">Paper mode</Badge>
         <Badge variant="secondary">No exchange order</Badge>
         <Badge variant="secondary">No API credentials</Badge>
         <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
         <span className="text-sm text-muted-foreground">{tradingCandidate.fixture_notice.statements[0]}</span>
-        </CardContent>
-      </Card>
+        </OperatorActionRow>
+      </OperatorPanel>
 
       <section className="grid gap-4" aria-label="Trading cockpit">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2907,19 +3049,18 @@ export function CandidateDetail({
         </div>
         <div className="grid gap-4">
 
-        <Card aria-label="BTCUSDT futures chart">
-          <CardHeader>
-            <CardTitle>BTCUSDT futures chart</CardTitle>
-            <CardDescription>
-              {tradingPublicMarketSurface ? "Binance USD-M Futures snapshot" : "Market feed is not connected yet."}
-            </CardDescription>
-            <CardAction>
-            <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
-              {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
-            </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+        <OperatorPanel aria-label="BTCUSDT futures chart">
+          <OperatorSectionHeader
+            title="BTCUSDT futures chart"
+            description={tradingPublicMarketSurface
+              ? "Binance USD-M Futures snapshot"
+              : "Market feed is not connected yet."}
+            actions={(
+              <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
+                {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
+              </Badge>
+            )}
+          />
           <BtcFuturesChart market={tradingPublicMarketSurface} />
           <div className="grid gap-2 md:grid-cols-4">
             <MiniStat label="Mark price" value={formatPrice(tradingPublicMarketSurface?.mark_price)} />
@@ -2927,8 +3068,7 @@ export function CandidateDetail({
             <MiniStat label="Funding" value={tradingPublicMarketSurface?.funding_rate ?? "not connected"} />
             <MiniStat label="Next funding" value={formatCompactDateTime(tradingPublicMarketSurface?.next_funding_time)} />
           </div>
-          </CardContent>
-        </Card>
+        </OperatorPanel>
 
         <section className="grid gap-3 md:grid-cols-4" aria-label="Paper trading review summary">
           <OperatorMetricCard
@@ -2959,18 +3099,17 @@ export function CandidateDetail({
           />
         </section>
 
-        <Card size="sm" aria-label="Trading paper readback">
-          <CardHeader>
-            <CardDescription>Paper readback</CardDescription>
-            <CardTitle>Trading review evidence</CardTitle>
-            <CardAction>
+        <OperatorPanel aria-label="Trading paper readback">
+          <OperatorSectionHeader
+            eyebrow="Paper readback"
+            title="Trading review evidence"
+            actions={(
               <Badge variant={selectedIsTradingReviewCandidate ? "default" : "secondary"}>
                 {selectedIsTradingReviewCandidate ? "Trading review" : "Arena selection differs"}
               </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            )}
+          />
+            <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
               <Field
                 label="Paper Trading Evaluation"
                 value={tradingPaperTradingEvaluationWithEvidence
@@ -3022,8 +3161,7 @@ export function CandidateDetail({
                 />
               )}
             </dl>
-          </CardContent>
-        </Card>
+        </OperatorPanel>
 
         <TradeStatusPanel
           ledgerStatus={tradingLedgerStatus}
@@ -3038,20 +3176,18 @@ export function CandidateDetail({
 
         <TabsContent value="research" className="flex flex-col gap-4">
       {paperBoardLearning && (
-        <Card aria-label="Paper evidence learning">
-          <CardHeader>
-            <CardDescription>Paper evidence learning</CardDescription>
-            <CardTitle>Next research focus</CardTitle>
-            <CardDescription>
-              Paper-board evidence guides the next ResearchWorker without replacing qualification or promotion authority.
-            </CardDescription>
-            <CardAction>
+        <OperatorPanel aria-label="Paper evidence learning">
+          <OperatorSectionHeader
+            eyebrow="Paper evidence learning"
+            title="Next research focus"
+            description="Paper-board evidence guides the next ResearchWorker without replacing qualification or promotion authority."
+            actions={(
               <Badge variant="secondary">{paperBoardLearning.authority_status}</Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+            )}
+          />
+          <div className="grid gap-3">
             <p className="text-sm text-muted-foreground">{paperBoardLearning.summary}</p>
-            <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
               <Field
                 label="Paper rank"
                 value={paperBoardLearning.rank ? `#${paperBoardLearning.rank}` : "unranked"}
@@ -3077,72 +3213,66 @@ export function CandidateDetail({
                 value={paperBoardLearning.next_research_focus}
               />
             </dl>
-          </CardContent>
-        </Card>
+          </div>
+        </OperatorPanel>
       )}
       {findingClusters.length > 0 && (
-        <Card aria-label="Finding clusters">
-          <CardHeader>
-            <CardDescription>Finding clusters</CardDescription>
-            <CardTitle>Research learning clusters</CardTitle>
-            <CardDescription>
-              CandidateArena findings grouped for next-generation research. These clusters are read-only and do not replace paper qualification or promotion authority.
-            </CardDescription>
-            <CardAction>
+        <OperatorPanel aria-label="Finding clusters">
+          <OperatorSectionHeader
+            eyebrow="Finding clusters"
+            title="Research learning clusters"
+            description="CandidateArena findings grouped for next-generation research. These clusters are read-only and do not replace paper qualification or promotion authority."
+            actions={(
               <Badge variant="secondary">not_promotion_authority</Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+            )}
+          />
+          <OperatorEvidenceStack>
             {findingClusters.slice(0, 6).map((cluster) => (
-              <div
+              <OperatorEvidenceBlock
                 key={[
                   cluster.direction_kind,
                   cluster.top_blocker ?? "none",
                   cluster.market_regime,
                   cluster.protocol_failure_kind ?? "none"
                 ].join("|")}
-                className="grid gap-2 rounded-md bg-muted/25 p-3"
+                title={`${cluster.direction_kind} / ${cluster.market_regime}`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <strong className="block break-words text-sm leading-snug">
-                      {`${cluster.direction_kind} / ${cluster.market_regime}`}
-                    </strong>
-                    <span className="text-xs text-muted-foreground">
-                      {`${cluster.candidate_count} ${cluster.candidate_count === 1 ? "candidate" : "candidates"} / ${cluster.authority_status}`}
-                    </span>
-                  </div>
-                  <Badge variant="secondary">{cluster.blocker_group_kind ?? "no blocker group"}</Badge>
-                </div>
-                <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <OperatorEvidenceStatus
+                  label="Finding cluster"
+                  value={cluster.blocker_group_kind ?? "no blocker group"}
+                  detail={`${cluster.candidate_count} ${cluster.candidate_count === 1 ? "candidate" : "candidates"} / ${cluster.authority_status}`}
+                  tone="neutral"
+                />
+                <OperatorEvidenceRow>
                   <Field label="Top blocker" value={cluster.top_blocker ?? "none"} />
                   <Field label="Protocol failure" value={cluster.protocol_failure_kind ?? "none"} />
                   <Field label="Latest finding" value={cluster.latest_finding ?? "none"} />
                   <Field label="Next focus" value={cluster.next_research_focus} />
+                </OperatorEvidenceRow>
+                <OperatorEvidenceRow>
                   <Field label="ResearchWorker input" value="next-generation context only" />
                   <Field
                     label="Cluster boundary"
                     value="no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion"
                   />
-                </dl>
-              </div>
+                </OperatorEvidenceRow>
+              </OperatorEvidenceBlock>
             ))}
-          </CardContent>
-        </Card>
+          </OperatorEvidenceStack>
+        </OperatorPanel>
       )}
-      <Card aria-label="Research signals">
-        <CardHeader>
-          <CardTitle>Research signals</CardTitle>
-          <CardDescription>Research-facing quality, risk posture, and packet signal for the next candidate cycle.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-        <Card size="sm" className={toneCardClass(operatorDecision.tone)}>
-          <CardHeader>
-            <CardDescription>Trading review signal</CardDescription>
-            <CardTitle>{operatorDecision.value}</CardTitle>
-            <CardDescription>{operatorDecision.detail}</CardDescription>
-          </CardHeader>
-        </Card>
+      <OperatorPanel aria-label="Research signals">
+        <OperatorSectionHeader
+          title="Research signals"
+          description="Research-facing quality, risk posture, and packet signal for the next candidate cycle."
+        />
+        <div className="grid gap-3">
+        <OperatorStat
+          label="Trading review signal"
+          value={operatorDecision.value}
+          detail={operatorDecision.detail}
+          className={toneCardClass(operatorDecision.tone)}
+        />
         <div className="grid gap-3 md:grid-cols-4">
           <OperatorStatusCard
             label="ResearchPreflight score"
@@ -3169,20 +3299,16 @@ export function CandidateDetail({
             tone={visibleFullCycle || recoveredAgentCycle || candidate.improvement?.latest_change_proposal ? "good" : "warning"}
           />
         </div>
-        </CardContent>
-      </Card>
+        </div>
+      </OperatorPanel>
 
-      <Card aria-label="Research cycle">
-        <CardHeader>
-          <CardTitle>Research</CardTitle>
-          <CardDescription>
-            How CandidateArena evidence, ResearchPreflight, and lineage prepare the next TradingSystem candidate cycle.
-          </CardDescription>
-          <CardAction>
-          <Badge variant="secondary">{String(tradingSystemRows.length)}</Badge>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="grid gap-3">
+      <OperatorPanel aria-label="Research cycle">
+        <OperatorSectionHeader
+          title="Research"
+          description="How CandidateArena evidence, ResearchPreflight, and lineage prepare the next TradingSystem candidate cycle."
+          actions={<Badge variant="secondary">{String(tradingSystemRows.length)}</Badge>}
+        />
+        <div className="grid gap-3">
         <div className="grid gap-3 md:grid-cols-4" aria-label="Research cycle">
           <ResearchStage
             label="Current System Code"
@@ -3207,33 +3333,34 @@ export function CandidateDetail({
         </div>
         <div className="grid gap-2">
           {tradingSystemRows.map((row) => (
-            <Card size="sm" key={row.id} className={row.active ? "border-primary/40" : ""}>
-              <CardHeader>
-                <CardDescription>{row.status}</CardDescription>
-                <CardTitle className="text-sm">{row.name}</CardTitle>
-                <CardDescription>{row.evaluation}</CardDescription>
-                <CardAction>
-              <Badge variant={row.active ? "default" : "secondary"}>{row.active ? "running view" : "queued"}</Badge>
-                </CardAction>
-              </CardHeader>
-            </Card>
+            <div
+              key={row.id}
+              className={`${OPERATOR_DESIGN_TOKENS.surface.field} ${row.active ? "border-primary/40 bg-primary/5" : ""}`}
+            >
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="grid min-w-0 gap-1">
+                  <span className={OPERATOR_DESIGN_TOKENS.typography.label}>{row.status}</span>
+                  <strong className={OPERATOR_DESIGN_TOKENS.typography.value}>{row.name}</strong>
+                  <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>{row.evaluation}</span>
+                </div>
+                <Badge variant={row.active ? "default" : "secondary"}>{row.active ? "running view" : "queued"}</Badge>
+              </div>
+            </div>
           ))}
         </div>
-        </CardContent>
-      </Card>
+        </div>
+      </OperatorPanel>
 
       {visibleFullCycle && (
-        <Card aria-label="Agent generated Trading System">
-          <CardHeader>
-            <CardTitle>Agent generated Trading System</CardTitle>
-            <CardDescription>
-              {visibleFullCycle.agent_research.agent.provider} produced SystemCode, backtest accepted it, and paper trading recorded a Ledger chain.
-            </CardDescription>
-            <CardAction>
+        <OperatorPanel aria-label="Agent generated Trading System">
+          <OperatorSectionHeader
+            title="Agent generated Trading System"
+            description={`${visibleFullCycle.agent_research.agent.provider} produced SystemCode, backtest accepted it, and paper trading recorded a Ledger chain.`}
+            actions={(
               <Badge variant="default">{visibleFullCycle.agent_research.latest_decision}</Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+            )}
+          />
+          <div className="grid gap-3">
             <div className="grid gap-3 md:grid-cols-4">
               <OperatorStatusCard
                 label="System Code"
@@ -3261,22 +3388,20 @@ export function CandidateDetail({
               />
             </div>
             {visibleFullCycleLineage && <FullCycleLineageSection lineage={visibleFullCycleLineage} />}
-          </CardContent>
-        </Card>
+          </div>
+        </OperatorPanel>
       )}
 
       {!visibleFullCycle && recoveredAgentCycle && (
-        <Card aria-label="Agent generated Trading System">
-          <CardHeader>
-            <CardTitle>Agent generated Trading System</CardTitle>
-            <CardDescription>
-              {recoveredAgentCycle.providerLabel} produced SystemCode, paper trading recorded a Ledger chain, and the Trading System is ready for the next cycle.
-            </CardDescription>
-            <CardAction>
+        <OperatorPanel aria-label="Agent generated Trading System">
+          <OperatorSectionHeader
+            title="Agent generated Trading System"
+            description={`${recoveredAgentCycle.providerLabel} produced SystemCode, paper trading recorded a Ledger chain, and the Trading System is ready for the next cycle.`}
+            actions={(
               <Badge variant="default">materialized</Badge>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+            )}
+          />
+          <div className="grid gap-3">
             <div className="grid gap-3 md:grid-cols-4">
               <OperatorStatusCard
                 label="System Code"
@@ -3306,56 +3431,56 @@ export function CandidateDetail({
             {recoveredAgentCycle.fullCycleLineage && (
               <FullCycleLineageSection lineage={recoveredAgentCycle.fullCycleLineage} />
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </OperatorPanel>
       )}
 
         </TabsContent>
 
         <TabsContent value="details" className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{candidate.display_name}</CardTitle>
-          <CardDescription>Fixture dry-run only - why the first screen does not show real P&L yet</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Badge variant="outline">{candidate.fixture_notice.label}</Badge>
-          <Badge variant="outline">fixture mode: {candidate.fixture_notice.mode}</Badge>
+      <OperatorPanel aria-label="Fixture notice">
+        <OperatorSectionHeader
+          title={candidate.display_name}
+          description="Fixture dry-run only - why the first screen does not show real P&L yet"
+          actions={(
+            <>
+              <Badge variant="outline">{candidate.fixture_notice.label}</Badge>
+              <Badge variant="outline">fixture mode: {candidate.fixture_notice.mode}</Badge>
+            </>
+          )}
+        />
+        <OperatorActionRow className="justify-start">
           {candidate.fixture_notice.statements.map((statement) => (
             <Badge key={statement} variant="outline">{statement}</Badge>
           ))}
-        </CardContent>
-      </Card>
+        </OperatorActionRow>
+      </OperatorPanel>
 
-      <Card aria-label="Details boundary">
-        <CardHeader>
-          <CardDescription>Raw evidence boundary</CardDescription>
-          <CardTitle>Developer/detail records</CardTitle>
-          <CardDescription>
-            Product decisions stay in Trading, Arena, and Research. Product blockers stay in Trading, Arena, and Research. Details keeps raw records, compatibility tools, and low-level evidence inspectable without creating promotion authority.
-          </CardDescription>
-          <CardAction className="flex flex-wrap justify-end gap-2">
+      <OperatorPanel aria-label="Details boundary">
+        <OperatorSectionHeader
+          eyebrow="Raw evidence boundary"
+          title="Developer/detail records"
+          description="Product decisions stay in Trading, Arena, and Research. Product blockers stay in Trading, Arena, and Research. Details keeps raw records, compatibility tools, and low-level evidence inspectable without creating promotion authority."
+          actions={(
+            <>
             <Badge variant="secondary">read only by default</Badge>
             <Badge variant="secondary">No promotion authority</Badge>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            </>
+          )}
+        />
+          <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
             <Field label="Owns" value="raw records, developer controls, compatibility evidence" />
             <Field label="Reads" value="Candidate inspect model and low-level substrate records" />
             <Field label="Never does" value="qualify, promote, or enable live/private exchange authority" />
             <Field label="Use for" value="inspection after the product loop has named the decision path" />
           </dl>
-        </CardContent>
-      </Card>
+      </OperatorPanel>
 
-      <Card aria-label="Details">
-        <CardHeader>
-          <CardTitle>Details</CardTitle>
-          <CardDescription>Open only the area you need. Raw refs and implementation records stay below this line.</CardDescription>
-        </CardHeader>
-        <CardContent>
-
+      <OperatorPanel aria-label="Details">
+        <OperatorSectionHeader
+          title="Details"
+          description="Open only the area you need. Raw refs and implementation records stay below this line."
+        />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <ReplayRunsSection
             runs={replayRuns}
@@ -3406,70 +3531,71 @@ export function CandidateDetail({
             summary={`${runStatus} / ${candidate.runtime.authority_status}`}
             badge={runStatus}
           >
-            <div className={`evaluation-status ${runStatus === "running" ? "counted" : "neutral"}`}>
-              <span>Lifecycle</span>
-              <strong>{runStatus}</strong>
-              <span>{candidate.runtime.authority_status}</span>
-            </div>
-            <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
-            <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
-            {candidate.runtime.runtime_lifecycle_status && (
-              <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
-            )}
-            <Field label="Trading run authority" value={candidate.runtime.authority_status} />
-            <Placeholder item={candidate.runtime.placement} />
-            <Placeholder item={candidate.runtime.hands_environment} />
-            <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
-            <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
-            <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
-            {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
-              <div className="runtime-command">
-                {onStartTradingRun && (
-                  <Button
-                    className="runtime-command-button"
-                    type="button"
-                    onClick={onStartTradingRun}
-                    disabled={runningTradingRun}
-                  >
-                    {runningTradingRun ? "Working trading run" : "Start trading run"}
-                  </Button>
+            <OperatorEvidenceStack>
+              <OperatorEvidenceStatus
+                label="Lifecycle"
+                value={runStatus}
+                detail={candidate.runtime.authority_status}
+                tone={runStatus === "running" ? "counted" : "neutral"}
+              />
+              <OperatorEvidenceRow>
+                <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
+                <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
+                {candidate.runtime.runtime_lifecycle_status && (
+                  <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
                 )}
-                {onStartRejectedPaperOrder && (
-                  <Button
-                    className="runtime-command-button"
-                    type="button"
-                    onClick={onStartRejectedPaperOrder}
-                    disabled={runningTradingRun}
-                    variant="outline"
-                  >
-                    Run rejected paper order
-                  </Button>
-                )}
-                {onObserveTradingRun && (
-                  <Button
-                    className="runtime-command-button"
-                    type="button"
-                    onClick={onObserveTradingRun}
-                    disabled={runningTradingRun}
-                    variant="secondary"
-                  >
-                    Observe
-                  </Button>
-                )}
-                {onStopTradingRun && (
-                  <Button
-                    className="runtime-command-button"
-                    type="button"
-                    onClick={onStopTradingRun}
-                    disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
-                    variant="outline"
-                  >
-                    Stop
-                  </Button>
-                )}
-                <span>run_control / fixture_paper / not_live</span>
-              </div>
-            )}
+                <Field label="Trading run authority" value={candidate.runtime.authority_status} />
+                <Placeholder item={candidate.runtime.placement} />
+                <Placeholder item={candidate.runtime.hands_environment} />
+                <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
+                <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
+                <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
+              </OperatorEvidenceRow>
+              {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
+                <OperatorActionRow>
+                  {onStartTradingRun && (
+                    <Button
+                      type="button"
+                      onClick={onStartTradingRun}
+                      disabled={runningTradingRun}
+                    >
+                      {runningTradingRun ? "Working trading run" : "Start trading run"}
+                    </Button>
+                  )}
+                  {onStartRejectedPaperOrder && (
+                    <Button
+                      type="button"
+                      onClick={onStartRejectedPaperOrder}
+                      disabled={runningTradingRun}
+                      variant="outline"
+                    >
+                      Run rejected paper order
+                    </Button>
+                  )}
+                  {onObserveTradingRun && (
+                    <Button
+                      type="button"
+                      onClick={onObserveTradingRun}
+                      disabled={runningTradingRun}
+                      variant="secondary"
+                    >
+                      Observe
+                    </Button>
+                  )}
+                  {onStopTradingRun && (
+                    <Button
+                      type="button"
+                      onClick={onStopTradingRun}
+                      disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
+                      variant="outline"
+                    >
+                      Stop
+                    </Button>
+                  )}
+                  <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>run_control / fixture_paper / not_live</span>
+                </OperatorActionRow>
+              )}
+            </OperatorEvidenceStack>
           </InfoSection>
 
           <LedgerSection ledger={ledger} />
@@ -3580,11 +3706,10 @@ export function CandidateDetail({
             runtimeControlMessage={runtimeControlMessage}
           />
         </div>
-        </CardContent>
-      </Card>
+      </OperatorPanel>
         </TabsContent>
       </Tabs>
-    </article>
+    </OperatorPage>
   );
 }
 
@@ -3723,13 +3848,7 @@ function OperatorMetricCard({
   tone
 }: OperatorMetric) {
   return (
-    <Card size="sm" className={toneCardClass(tone)}>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
-      </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">{detail}</CardContent>
-    </Card>
+    <OperatorStat label={label} value={value} detail={detail} className={toneCardClass(tone)} />
   );
 }
 
@@ -3740,13 +3859,7 @@ function OperatorStatusCard({
   tone
 }: OperatorMetric) {
   return (
-    <Card size="sm" className={toneCardClass(tone)}>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle>{value}</CardTitle>
-      </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">{detail}</CardContent>
-    </Card>
+    <OperatorStat label={label} value={value} detail={detail} className={toneCardClass(tone)} />
   );
 }
 
@@ -3784,17 +3897,17 @@ function TradeStatusPanel({
     : orderFillSurface?.posture ?? ledgerStatus;
 
   return (
-    <Card aria-label="Trade status">
-      <CardHeader>
-        <CardTitle>Order / trade status</CardTitle>
-        <CardDescription>What the current system attempted and what happened.</CardDescription>
-        <CardAction>
+    <OperatorPanel aria-label="Trade status">
+      <OperatorSectionHeader
+        title="Order / trade status"
+        description="What the current system attempted and what happened."
+        actions={(
         <Badge variant={noOrderCheckpoint || orderFillSurface || ledger?.chain_complete ? "default" : "secondary"}>
           {statusBadge}
         </Badge>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+        )}
+      />
+      <div className="grid gap-3">
       <div className="grid gap-2 md:grid-cols-4">
         <MiniStat label="Paper order / decision" value={sideAndType} />
         <MiniStat label="Paper filled" value={filledValue} />
@@ -3816,8 +3929,8 @@ function TradeStatusPanel({
           </>
         )}
       </div>
-      </CardContent>
-    </Card>
+      </div>
+    </OperatorPanel>
   );
 }
 
@@ -3831,42 +3944,29 @@ function ResearchStage({
   tone: OperatorTone;
 }) {
   return (
-    <Card size="sm" className={toneCardClass(tone)}>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-sm">{status}</CardTitle>
-      </CardHeader>
-    </Card>
+    <OperatorStat label={label} value={status} className={toneCardClass(tone)} />
   );
 }
 
 function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadModel | null }) {
   if (!market) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Market feed not connected</CardTitle>
-          <CardDescription>
-            Connect Binance USD-M Futures public market data to render the live BTCUSDT chart.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+        <Field label="Market feed" value="not connected" />
+        <Field label="Required boundary" value="Gateway-owned MarketDataPort" />
+      </dl>
     );
   }
 
   const points = marketChartPoints(market);
   return (
-    <Card>
-      <CardContent className="grid gap-3">
-      <dl
-        className="grid gap-2 rounded-md bg-muted/20 p-3 md:grid-cols-4"
-        aria-label="Market data provenance"
-      >
+    <div className="grid gap-3">
+      <OperatorEvidenceRow className="md:grid-cols-4" aria-label="Market data provenance">
         <Field label="Source mode" value={formatMarketSourceMode(market)} />
         <Field label="Freshness / liveness" value={formatMarketFreshness(market)} />
         <Field label="Observed" value={formatCompactDateTime(market.observed_at)} />
         <Field label="Boundary" value={`${formatAuthorityLabel(market.authority_status)} / ${market.no_authority_label}`} />
-      </dl>
+      </OperatorEvidenceRow>
       <svg
         className="aspect-[16/5] w-full rounded-lg bg-muted"
         viewBox="0 0 520 180"
@@ -3890,8 +3990,7 @@ function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadM
         <strong>{market.instrument} {market.contract_type}</strong>
         <span>snapshot only / {formatFreshnessLabel(market.freshness)} / {formatAuthorityLabel(market.authority_status)}</span>
       </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
@@ -3933,14 +4032,7 @@ function formatMarketFreshness(market: PublicMarketLivenessSurfaceReadModel): st
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-sm">{value}</CardTitle>
-      </CardHeader>
-    </Card>
-  );
+  return <OperatorStat label={label} value={value} />;
 }
 
 interface OperatorDecisionInput {
@@ -4370,11 +4462,14 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
   if (!sandbox) {
     return (
       <InfoSection title="Sandbox" summary="not linked / not_live" badge="not linked">
-        <div className="evaluation-status neutral">
-          <span>Lifecycle</span>
-          <strong>not linked</strong>
-          <span>not_live</span>
-        </div>
+        <OperatorEvidenceStack>
+          <OperatorEvidenceStatus
+            label="Lifecycle"
+            value="not linked"
+            detail="not_live"
+            tone="neutral"
+          />
+        </OperatorEvidenceStack>
       </InfoSection>
     );
   }
@@ -4387,22 +4482,27 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
       summary={`${sandbox.lifecycle_status} / ${sandbox.adapter_kind}`}
       badge={sandbox.lifecycle_status}
     >
-      <div className={`evaluation-status ${sandbox.lifecycle_status === "running" ? "counted" : "neutral"}`}>
-        <span>Lifecycle</span>
-        <strong>{sandbox.lifecycle_status}</strong>
-        <span>{sandbox.authority_status}</span>
-      </div>
-      <Field label="Ref" value={sandbox.sandbox_id} />
-      <Field label="Adapter" value={sandbox.adapter_kind} />
-      <Field label="Name" value={sandbox.sandbox_name} />
-      <Field label="Runtime" value={sandbox.runtime_ref ? formatRef(sandbox.runtime_ref) : "none"} />
-      <Field label="System Code" value={formatRef(sandbox.system_code_ref)} />
-      <Field label="Placement" value={formatRef(sandbox.sandbox_placement_ref)} />
-      <Field label="Last heartbeat" value={sandbox.last_heartbeat_at ?? "none"} />
-      <Field label="Logs" value={latestLog?.lines.join(" / ") ?? "none"} />
-      <Field label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
-      <Field label="Command evidence" value={String(sandbox.command_evidence.length)} />
-      <Field label="Sandbox authority" value={sandbox.authority_status} />
+      <OperatorEvidenceStack>
+        <OperatorEvidenceStatus
+          label="Lifecycle"
+          value={sandbox.lifecycle_status}
+          detail={sandbox.authority_status}
+          tone={sandbox.lifecycle_status === "running" ? "counted" : "neutral"}
+        />
+        <OperatorEvidenceRow>
+          <Field label="Ref" value={sandbox.sandbox_id} />
+          <Field label="Adapter" value={sandbox.adapter_kind} />
+          <Field label="Name" value={sandbox.sandbox_name} />
+          <Field label="Runtime" value={sandbox.runtime_ref ? formatRef(sandbox.runtime_ref) : "none"} />
+          <Field label="System Code" value={formatRef(sandbox.system_code_ref)} />
+          <Field label="Placement" value={formatRef(sandbox.sandbox_placement_ref)} />
+          <Field label="Last heartbeat" value={sandbox.last_heartbeat_at ?? "none"} />
+          <Field label="Logs" value={latestLog?.lines.join(" / ") ?? "none"} />
+          <Field label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
+          <Field label="Command evidence" value={String(sandbox.command_evidence.length)} />
+          <Field label="Sandbox authority" value={sandbox.authority_status} />
+        </OperatorEvidenceRow>
+      </OperatorEvidenceStack>
     </InfoSection>
   );
 }
@@ -4422,34 +4522,40 @@ function TradingRunTranscriptSection({
       summary={`${statusLabel} / ${transcript?.authority_status ?? "not_live"}`}
       badge={transcript?.has_activity ? "activity" : "none"}
     >
-      <div className={`evaluation-status ${transcript?.has_activity ? "counted" : "neutral"}`}>
-        <span>Readback</span>
-        <strong>{statusLabel}</strong>
-        <span>{transcript?.authority_status ?? "not_live"}</span>
-      </div>
-      <Field label="Items" value={String(transcript?.item_count ?? 0)} />
-      <Field label="Latest" value={transcript?.latest_item?.label ?? "none"} />
-      <Field label="Transcript authority" value={transcript?.authority_status ?? "not_live"} />
+      <OperatorEvidenceStack>
+        <OperatorEvidenceStatus
+          label="Readback"
+          value={statusLabel}
+          detail={transcript?.authority_status ?? "not_live"}
+          tone={transcript?.has_activity ? "counted" : "neutral"}
+        />
+        <OperatorEvidenceRow>
+          <Field label="Items" value={String(transcript?.item_count ?? 0)} />
+          <Field label="Latest" value={transcript?.latest_item?.label ?? "none"} />
+          <Field label="Transcript authority" value={transcript?.authority_status ?? "not_live"} />
+        </OperatorEvidenceRow>
 
-      {transcript?.items.length ? (
-        transcript.items.map((item) => (
-          <div className="evaluation-block" key={item.item_id}>
-            <h4>{item.label}</h4>
-            <Field label="When" value={item.occurred_at} />
-            <Field label="Kind" value={item.item_kind} />
-            <Field label="Summary" value={item.summary} />
-            {item.ref && <Field label="Ref" value={formatRef(item.ref)} />}
-            {item.lifecycle_status && <Field label="Lifecycle" value={item.lifecycle_status} />}
-            <Field label="Transcript event authority" value={item.authority_status} />
-          </div>
-        ))
-      ) : (
-        <div className="evaluation-block">
-          <h4>Transcript</h4>
-          <Field label="Status" value="none" />
-          <Field label="Transcript event authority" value="not_live" />
-        </div>
-      )}
+        {transcript?.items.length ? (
+          transcript.items.map((item) => (
+            <OperatorEvidenceBlock title={item.label} key={item.item_id}>
+              <OperatorEvidenceRow>
+                <Field label="When" value={item.occurred_at} />
+                <Field label="Kind" value={item.item_kind} />
+                <Field label="Summary" value={item.summary} />
+                {item.ref && <Field label="Ref" value={formatRef(item.ref)} />}
+                {item.lifecycle_status && <Field label="Lifecycle" value={item.lifecycle_status} />}
+                <Field label="Transcript event authority" value={item.authority_status} />
+              </OperatorEvidenceRow>
+            </OperatorEvidenceBlock>
+          ))
+        ) : (
+          <OperatorEmptyState
+            title="Transcript"
+            description="none"
+            detail="Transcript event authority: not_live"
+          />
+        )}
+      </OperatorEvidenceStack>
     </InfoSection>
   );
 }
@@ -4464,35 +4570,41 @@ export function TradingExecutionModesSection({
   }
 
   return (
-    <Card className="execution-mode-panel" aria-label="Trading execution modes">
-      <details className="info-details">
-        <summary className="info-summary">
-          <div>
-            <CardTitle>Backtest / paper / live contract</CardTitle>
-            <p>Execution modes: {modes.map((mode) => mode.mode).join(", ")}</p>
-          </div>
-          <Badge variant="secondary">{String(modes.length)}</Badge>
-        </summary>
-        <CardContent className="execution-mode-grid">
-          {modes.map((mode) => (
-            <div className="execution-mode-card" key={mode.mode}>
-              <div className="execution-mode-card-header">
-                <strong>{mode.label}</strong>
-                <span>{mode.support_status}</span>
-              </div>
+    <OperatorPanel className="execution-mode-panel" aria-label="Trading execution modes">
+      <OperatorSectionHeader
+        title="Backtest / paper / live contract"
+        description={`Execution modes: ${modes.map((mode) => mode.mode).join(", ")}`}
+        actions={<Badge variant="secondary">{String(modes.length)}</Badge>}
+      />
+      <OperatorEvidenceStack className="execution-mode-grid">
+        {modes.map((mode) => (
+          <OperatorEvidenceBlock
+            title={mode.label}
+            key={mode.mode}
+            aria-label={`${mode.label} execution mode`}
+          >
+            <OperatorEvidenceStatus
+              label="Execution mode support"
+              value={mode.support_status}
+              detail={mode.authority.status}
+              tone={mode.support_status === "available" ? "counted" : "neutral"}
+            />
+            <OperatorEvidenceRow>
               <Field label="Execution mode" value={mode.mode} />
               <Field label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
               <Field label="Market data" value={mode.provider_contract.market_data} />
               <Field label="Account" value={mode.provider_contract.account} />
+            </OperatorEvidenceRow>
+            <OperatorEvidenceRow>
               <Field label="Order plane" value={mode.provider_contract.order_plane} />
               <Field label="Execution mode authority" value={mode.authority.status} />
               <Field label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
               <Field label="Artifact order submission" value={mode.artifact_contract.order_submission} />
-            </div>
-          ))}
-        </CardContent>
-      </details>
-    </Card>
+            </OperatorEvidenceRow>
+          </OperatorEvidenceBlock>
+        ))}
+      </OperatorEvidenceStack>
+    </OperatorPanel>
   );
 }
 
@@ -4529,86 +4641,95 @@ function ReplayRunsSection({
       summary={latestRun ? `${latestRun.status} / ${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted` : "no replay runs"}
       badge={latestRun?.status ?? "none"}
     >
-      <div className="evaluation-status neutral">
-        <span>Candidate-id replay evidence</span>
-        <strong>{latestRun ? latestRun.status : "none"}</strong>
-        <span>{latestRun?.authority_status ?? "not_live"}</span>
-      </div>
+      <OperatorEvidenceStack>
+        <OperatorEvidenceStatus
+          label="Candidate-id replay evidence"
+          value={latestRun ? latestRun.status : "none"}
+          detail={latestRun?.authority_status ?? "not_live"}
+          tone={latestRun?.status === "succeeded" ? "counted" : latestRun?.status === "failed" ? "failed" : "neutral"}
+        />
 
-      {latestRun ? (
-        <>
-          <Field label="Latest run" value={latestRun.run_id} />
-          <Field label="Selected run" value={activeRunId ?? "none"} />
-          <Field label="Replay runner" value={latestRun.runner_kind} />
-          <Field label="Run status" value={latestRun.run_status} />
-          <Field label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
-          <Field label="Provider requests" value={String(latestRun.provider_request_total)} />
-          <Field label="Replay runner commands" value={String(latestRun.runner_command_total)} />
-          <Field label="Artifact digest" value={latestRun.artifact_digest} />
-          <Field label="Completed" value={latestRun.completed_at} />
-          <Field label="Replay authority" value={latestRun.authority_status} />
-        </>
-      ) : (
-        <div className="placeholder">
-          <strong>No candidate-id replay runs</strong>
-          <span>run evidence has not been recorded for this candidate</span>
-          <span>Replay runner: none</span>
-          <span>Replay authority: not_live</span>
-          <span>not_live</span>
-        </div>
-      )}
-
-      {runs.length > 0 && (
-        <div className="evaluation-block">
-          <h4>Run history</h4>
-          <div className="run-history-list">
-            {runs.map((run) => (
-              <Button
-                aria-pressed={activeRunId === run.run_id}
-                className={`run-history-row ${activeRunId === run.run_id ? "active" : ""}`}
-                key={run.run_id}
-                type="button"
-                onClick={() => onSelectRun?.(run.run_id)}
-                variant="ghost"
-              >
-                <span>{run.run_id}</span>
-                <small>
-                  {run.status} / {run.runner_kind} / {run.authority_status}
-                </small>
-                <small>
-                  {run.scenario_accepted}/{run.scenario_total} accepted · {run.completed_at}
-                </small>
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <ReplayRunComparisonBlock
-        comparison={comparison}
-        selectedRunId={activeRunId}
-        baselineRunId={comparisonBaselineId}
-      />
-
-      {validationState && <ReplayRunValidationStateBlock validationState={validationState} />}
-
-      {detail && <ReplayRunDetailBlock detail={detail} />}
-
-      {onRunCandidateReplay && (
-        <div className="runtime-command">
-          <Button
-            className="runtime-command-button"
-            type="button"
-            onClick={onRunCandidateReplay}
-            disabled={runningCandidateReplay}
+        {latestRun ? (
+          <OperatorEvidenceBlock title="Latest replay run" aria-label="Latest replay run">
+            <OperatorEvidenceRow>
+              <Field label="Latest run" value={latestRun.run_id} />
+              <Field label="Selected run" value={activeRunId ?? "none"} />
+              <Field label="Replay runner" value={latestRun.runner_kind} />
+              <Field label="Run status" value={latestRun.run_status} />
+              <Field label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
+              <Field label="Provider requests" value={String(latestRun.provider_request_total)} />
+              <Field label="Replay runner commands" value={String(latestRun.runner_command_total)} />
+              <Field label="Artifact digest" value={latestRun.artifact_digest} />
+              <Field label="Completed" value={latestRun.completed_at} />
+              <Field label="Replay authority" value={latestRun.authority_status} />
+            </OperatorEvidenceRow>
+          </OperatorEvidenceBlock>
+        ) : (
+          <OperatorEmptyState
+            title="No candidate-id replay runs"
+            description="run evidence has not been recorded for this candidate"
+            detail="not_live"
           >
-            {runningCandidateReplay ? "Running replay" : "Run replay"}
-          </Button>
-          <span>host_process / replay_only / not_live</span>
-        </div>
-      )}
-      {replayRunMessage && <div className="inline-status">{replayRunMessage}</div>}
-      {replayRunError && <div className="inline-status error">{replayRunError}</div>}
+            <span>Replay runner: none</span>
+            <span>Replay authority: not_live</span>
+          </OperatorEmptyState>
+        )}
+
+        {runs.length > 0 && (
+          <OperatorEvidenceBlock title="Run history" aria-label="Run history">
+            <OperatorEvidenceStack>
+              {runs.map((run) => (
+                <Button
+                  aria-pressed={activeRunId === run.run_id}
+                  className={[
+                    OPERATOR_DESIGN_TOKENS.surface.selectionItem,
+                    activeRunId === run.run_id
+                      ? OPERATOR_DESIGN_TOKENS.surface.selectionItemActive
+                      : OPERATOR_DESIGN_TOKENS.surface.selectionItemIdle
+                  ].join(" ")}
+                  key={run.run_id}
+                  type="button"
+                  onClick={() => onSelectRun?.(run.run_id)}
+                  variant="ghost"
+                >
+                  <span className={OPERATOR_DESIGN_TOKENS.typography.value}>{run.run_id}</span>
+                  <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>
+                    {run.status} / {run.runner_kind} / {run.authority_status}
+                  </small>
+                  <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>
+                    {run.scenario_accepted}/{run.scenario_total} accepted · {run.completed_at}
+                  </small>
+                </Button>
+              ))}
+            </OperatorEvidenceStack>
+          </OperatorEvidenceBlock>
+        )}
+
+        <ReplayRunComparisonBlock
+          comparison={comparison}
+          selectedRunId={activeRunId}
+          baselineRunId={comparisonBaselineId}
+        />
+
+        {validationState && <ReplayRunValidationStateBlock validationState={validationState} />}
+
+        {detail && <ReplayRunDetailBlock detail={detail} />}
+
+        {onRunCandidateReplay && (
+          <OperatorActionRow>
+            <Button
+              type="button"
+              onClick={onRunCandidateReplay}
+              disabled={runningCandidateReplay}
+            >
+              {runningCandidateReplay ? "Running replay" : "Run replay"}
+            </Button>
+            <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>host_process / replay_only / not_live</span>
+          </OperatorActionRow>
+        )}
+        {replayRunMessage && <div className="inline-status">{replayRunMessage}</div>}
+        {replayRunError && <div className="inline-status error">{replayRunError}</div>}
+      </OperatorEvidenceStack>
     </InfoSection>
   );
 }
@@ -4627,36 +4748,37 @@ function ReplayRunComparisonBlock({
   }
   if (!comparison) {
     return (
-      <div className="evaluation-block">
-        <h4>Run comparison</h4>
-        <div className="placeholder">
-          <strong>No comparison baseline</strong>
-          <span>{baselineRunId ?? "single replay-run history"}</span>
-          <span>comparison_not_authority</span>
-        </div>
-      </div>
+      <OperatorEvidenceBlock title="Run comparison" aria-label="Run comparison">
+        <OperatorEmptyState
+          title="No comparison baseline"
+          description={baselineRunId ?? "single replay-run history"}
+          detail="comparison_not_authority"
+        />
+      </OperatorEvidenceBlock>
     );
   }
 
   return (
-    <div className="evaluation-block">
-      <h4>Run comparison</h4>
-      <div className={`evaluation-status ${comparison.verdict === "regressed" ? "failed" : "counted"}`}>
-        <span>Selected vs baseline replay evidence</span>
-        <strong>{comparison.verdict}</strong>
-        <span>{comparison.validation_label}</span>
-      </div>
-      <Field label="Selected run" value={comparison.selected.run_id} />
-      <Field label="Baseline run" value={comparison.baseline.run_id} />
-      <Field label="Score delta" value={formatSignedNumber(comparison.deltas.score)} />
-      <Field label="Accepted scenario delta" value={formatSignedNumber(comparison.deltas.scenario_accepted)} />
-      <Field label="Provider request delta" value={formatSignedNumber(comparison.deltas.provider_request_total)} />
-      <Field label="Runner command delta" value={formatSignedNumber(comparison.deltas.runner_command_total)} />
-      <Field label="Risk transition" value={comparison.risk_transition} />
-      <Field label="Reason" value={comparison.verdict_reason} />
-      <Field label="Replay comparison authority" value={comparison.authority_status} />
-      <Field label="Replay comparison no authority" value={formatNoAuthority(comparison.no_authority)} />
-    </div>
+    <OperatorEvidenceBlock title="Run comparison" aria-label="Run comparison">
+      <OperatorEvidenceStatus
+        label="Selected vs baseline replay evidence"
+        value={comparison.verdict}
+        detail={comparison.validation_label}
+        tone={comparison.verdict === "regressed" ? "failed" : "counted"}
+      />
+      <OperatorEvidenceRow>
+        <Field label="Selected run" value={comparison.selected.run_id} />
+        <Field label="Baseline run" value={comparison.baseline.run_id} />
+        <Field label="Score delta" value={formatSignedNumber(comparison.deltas.score)} />
+        <Field label="Accepted scenario delta" value={formatSignedNumber(comparison.deltas.scenario_accepted)} />
+        <Field label="Provider request delta" value={formatSignedNumber(comparison.deltas.provider_request_total)} />
+        <Field label="Runner command delta" value={formatSignedNumber(comparison.deltas.runner_command_total)} />
+        <Field label="Risk transition" value={comparison.risk_transition} />
+        <Field label="Reason" value={comparison.verdict_reason} />
+        <Field label="Replay comparison authority" value={comparison.authority_status} />
+        <Field label="Replay comparison no authority" value={formatNoAuthority(comparison.no_authority)} />
+      </OperatorEvidenceRow>
+    </OperatorEvidenceBlock>
   );
 }
 
@@ -4666,17 +4788,18 @@ function ReplayRunValidationStateBlock({
   validationState: ReplayRunValidationStateReadModel;
 }) {
   return (
-    <div className="evaluation-block">
-      <h4>Validation state</h4>
+    <OperatorEvidenceBlock title="Validation state" aria-label="Validation state">
       <ValidationStateStatus validationState={validationState} />
-      <Field label="Selected run" value={validationState.selected_run_id} />
-      <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
-      <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
-      <Field label="Reasons" value={validationState.reasons.join("; ")} />
-      <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
-      <Field label="Replay validation authority" value={validationState.authority_status} />
-      <Field label="Replay validation no authority" value={formatNoAuthority(validationState.no_authority)} />
-    </div>
+      <OperatorEvidenceRow>
+        <Field label="Selected run" value={validationState.selected_run_id} />
+        <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
+        <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
+        <Field label="Reasons" value={validationState.reasons.join("; ")} />
+        <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
+        <Field label="Replay validation authority" value={validationState.authority_status} />
+        <Field label="Replay validation no authority" value={formatNoAuthority(validationState.no_authority)} />
+      </OperatorEvidenceRow>
+    </OperatorEvidenceBlock>
   );
 }
 
@@ -4686,17 +4809,18 @@ function CandidateLatestValidationStateBlock({
   validationState: CandidateLatestValidationStateReadModel;
 }) {
   return (
-    <div className="evaluation-block">
-      <h4>Candidate latest validation state</h4>
+    <OperatorEvidenceBlock title="Candidate latest validation state" aria-label="Candidate latest validation state">
       <ValidationStateStatus validationState={validationState} />
-      <Field label="Selected run" value={validationState.selected_run_id ?? "none"} />
-      <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
-      <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
-      <Field label="Reasons" value={validationState.reasons.join("; ")} />
-      <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
-      <Field label="Candidate validation authority" value={validationState.authority_status} />
-      <Field label="Candidate validation no authority" value={formatNoAuthority(validationState.no_authority)} />
-    </div>
+      <OperatorEvidenceRow>
+        <Field label="Selected run" value={validationState.selected_run_id ?? "none"} />
+        <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
+        <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
+        <Field label="Reasons" value={validationState.reasons.join("; ")} />
+        <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
+        <Field label="Candidate validation authority" value={validationState.authority_status} />
+        <Field label="Candidate validation no authority" value={formatNoAuthority(validationState.no_authority)} />
+      </OperatorEvidenceRow>
+    </OperatorEvidenceBlock>
   );
 }
 
@@ -4708,11 +4832,12 @@ function ValidationStateStatus({
   compact?: boolean;
 }) {
   return (
-    <div className={`evaluation-status ${compact ? "compact" : ""} ${validationStateStatusClass(validationState.validation_state)}`}>
-      <span>{compact ? "Latest validation state" : "Read-only validation state"}</span>
-      <strong>{validationState.validation_state}</strong>
-      <span>{validationState.validation_label}</span>
-    </div>
+    <OperatorEvidenceStatus
+      label={compact ? "Latest validation state" : "Read-only validation state"}
+      value={validationState.validation_state}
+      detail={validationState.validation_label}
+      tone={validationStateStatusClass(validationState.validation_state)}
+    />
   );
 }
 
@@ -4722,7 +4847,7 @@ function latestValidationStateLabel(validationState: CandidateLatestValidationSt
 
 function validationStateStatusClass(
   validationState: CandidateLatestValidationStateReadModel["validation_state"]
-): string {
+): "neutral" | "counted" | "failed" | "sealed" {
   switch (validationState) {
     case "passes_replay_checks":
       return "counted";
@@ -4738,42 +4863,46 @@ function validationStateStatusClass(
 
 function ReplayRunDetailBlock({ detail }: { detail: ReplayRunDetailReadModel }) {
   return (
-    <div className="evaluation-block">
-      <h4>Selected run detail</h4>
-      <Field label="Run" value={detail.run_id} />
-      <Field label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
-      <Field label="Scenario ids" value={detail.scenario_ids.join(", ")} />
-      <Field label="Replay detail no authority" value={formatNoAuthority(detail.no_authority)} />
-      <Field label="Promotion" value={detail.provenance.promotion_id ?? "none"} />
-      <Field label="Source session" value={detail.provenance.source_session_id ?? "none"} />
-      <Field label="Events" value={detail.events_path} />
+    <>
+      <OperatorEvidenceBlock title="Selected run detail" aria-label="Selected run detail">
+        <OperatorEvidenceRow>
+          <Field label="Run" value={detail.run_id} />
+          <Field label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
+          <Field label="Scenario ids" value={detail.scenario_ids.join(", ")} />
+          <Field label="Replay detail no authority" value={formatNoAuthority(detail.no_authority)} />
+          <Field label="Promotion" value={detail.provenance.promotion_id ?? "none"} />
+          <Field label="Source session" value={detail.provenance.source_session_id ?? "none"} />
+          <Field label="Events" value={detail.events_path} />
+        </OperatorEvidenceRow>
+      </OperatorEvidenceBlock>
 
       {detail.scenarios.map((scenario) => (
-        <div className="evaluation-block" key={scenario.scenario_id}>
-          <h4>{scenario.scenario_id}</h4>
-          <Field label="Status" value={`${scenario.status} / ${scenario.run_status}`} />
-          <Field label="Replay scenario runner" value={scenario.runner_kind} />
-          <Field label="Score / risk" value={`${scenario.score} / ${scenario.risk_decision}`} />
-          <Field label="Summary" value={scenario.summary} />
-          <Field label="Provider requests" value={String(scenario.provider_request_count)} />
-          <Field label="Replay scenario runner commands" value={String(scenario.runner_command_count)} />
-          {scenario.metrics.map((metric) => (
-            <Field
-              key={metric.name}
-              label={`Metric ${metric.name}`}
-              value={`${metric.score}: ${metric.detail}`}
-            />
-          ))}
-          {scenario.runner_command_evidence.map((evidence, index) => (
-            <Field
-              key={`${scenario.scenario_id}-command-${index}`}
-              label={`Command ${index + 1}`}
-              value={`${evidence.command.join(" ")} -> ${evidence.exit_code ?? "signal"}`}
-            />
-          ))}
-        </div>
+        <OperatorEvidenceBlock title={scenario.scenario_id} key={scenario.scenario_id}>
+          <OperatorEvidenceRow>
+            <Field label="Status" value={`${scenario.status} / ${scenario.run_status}`} />
+            <Field label="Replay scenario runner" value={scenario.runner_kind} />
+            <Field label="Score / risk" value={`${scenario.score} / ${scenario.risk_decision}`} />
+            <Field label="Summary" value={scenario.summary} />
+            <Field label="Provider requests" value={String(scenario.provider_request_count)} />
+            <Field label="Replay scenario runner commands" value={String(scenario.runner_command_count)} />
+            {scenario.metrics.map((metric) => (
+              <Field
+                key={metric.name}
+                label={`Metric ${metric.name}`}
+                value={`${metric.score}: ${metric.detail}`}
+              />
+            ))}
+            {scenario.runner_command_evidence.map((evidence, index) => (
+              <Field
+                key={`${scenario.scenario_id}-command-${index}`}
+                label={`Command ${index + 1}`}
+                value={`${evidence.command.join(" ")} -> ${evidence.exit_code ?? "signal"}`}
+              />
+            ))}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -4831,11 +4960,11 @@ function TradingGatewayContractSection({
   if (!contract) {
     return (
       <InfoSection title="Trading gateway contract" summary="not projected / not_live" badge="none">
-        <div className="placeholder">
-          <strong>No trading gateway contract</strong>
-          <span>BTCUSDT gateway contract has not been projected</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No trading gateway contract"
+          description="BTCUSDT gateway contract has not been projected"
+          detail="not_live"
+        />
       </InfoSection>
     );
   }
@@ -5043,13 +5172,15 @@ function TradingSubstrateSection({
       summary={`${publicMarketSurface?.symbol_status ?? "public unknown"} / ${privateReadinessSurface?.credential_gate.status ?? "private not ready"}`}
       badge={privateReadinessPolicyDecision?.status ?? "not_ready"}
     >
+      <OperatorEvidenceStack>
       {publicMarketSurface ? (
-        <>
-          <div className={`evaluation-status ${publicMarketStatusTone(publicMarketSurface)}`}>
-            <span>Public market posture</span>
-            <strong>{publicMarketSurface.symbol_status}</strong>
-            <span>{publicMarketSurface.authority_status}</span>
-          </div>
+        <OperatorEvidenceBlock title="Public market posture" aria-label="Public market posture">
+          <OperatorEvidenceStatus
+            label="Public market posture"
+            value={publicMarketSurface.symbol_status}
+            detail={publicMarketSurface.authority_status}
+            tone={publicMarketStatusTone(publicMarketSurface)}
+          />
           <Field label="Public surface" value={publicMarketSurface.surface_label} />
           <Field label="Venue" value={`${publicMarketSurface.venue} / ${publicMarketSurface.product_category}`} />
           <Field label="Instrument" value={publicMarketSurface.instrument} />
@@ -5093,21 +5224,22 @@ function TradingSubstrateSection({
           )}
           <Field label="Public no authority" value={publicMarketSurface.no_authority_label} />
           <Field label="Public authority" value={publicMarketSurface.authority_status} />
-        </>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="placeholder">
-          <strong>No public market surface</strong>
-          <span>BTCUSDT market posture has not been recorded</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No public market surface"
+          description="BTCUSDT market posture has not been recorded"
+          detail="not_live"
+        />
       )}
       {privateReadinessSurface ? (
-        <>
-          <div className={`evaluation-status ${privateReadinessStatusTone(privateReadinessSurface)}`}>
-            <span>Private readiness preflight</span>
-            <strong>{privateReadinessSurface.credential_gate.status}</strong>
-            <span>{privateReadinessSurface.authority_status}</span>
-          </div>
+        <OperatorEvidenceBlock title="Private readiness preflight" aria-label="Private readiness preflight">
+          <OperatorEvidenceStatus
+            label="Private readiness preflight"
+            value={privateReadinessSurface.credential_gate.status}
+            detail={privateReadinessSurface.authority_status}
+            tone={privateReadinessStatusTone(privateReadinessSurface)}
+          />
           <Field label="Private surface" value={privateReadinessSurface.surface_label} />
           <Field
             label="Private venue"
@@ -5170,21 +5302,22 @@ function TradingSubstrateSection({
           )}
           <Field label="Private no authority" value={privateReadinessSurface.no_authority_label} />
           <Field label="Private authority" value={privateReadinessSurface.authority_status} />
-        </>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="placeholder">
-          <strong>No private readiness preflight</strong>
-          <span>BTCUSDT private-read gates have not been recorded</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No private readiness preflight"
+          description="BTCUSDT private-read gates have not been recorded"
+          detail="not_live"
+        />
       )}
       {privateReadinessPosture ? (
-        <>
-          <div className={`evaluation-status ${privateReadinessPostureStatusTone(privateReadinessPosture)}`}>
-            <span>Private-readiness posture</span>
-            <strong>{privateReadinessPosture.live_binding_gate.status}</strong>
-            <span>{privateReadinessPosture.authority_status}</span>
-          </div>
+        <OperatorEvidenceBlock title="Private-readiness posture" aria-label="Private-readiness posture">
+          <OperatorEvidenceStatus
+            label="Private-readiness posture"
+            value={privateReadinessPosture.live_binding_gate.status}
+            detail={privateReadinessPosture.authority_status}
+            tone={privateReadinessPostureStatusTone(privateReadinessPosture)}
+          />
           <Field label="Local posture" value={privateReadinessPosture.posture_label} />
           <Field
             label="Posture venue"
@@ -5226,17 +5359,18 @@ function TradingSubstrateSection({
           <Field label="Posture no authority" value={privateReadinessPosture.no_authority_label} />
           <Field label="Posture authority" value={privateReadinessPosture.authority_status} />
           {privateReadinessPostureHistory && privateReadinessPostureHistory.length > 0 && (
-            <div className="posture-history" aria-label="Private-readiness posture history">
-              <h4>Recent posture history</h4>
+            <OperatorEvidenceBlock title="Recent posture history" aria-label="Private-readiness posture history">
+              <OperatorEvidenceStack>
               {privateReadinessPostureHistory.map((posture) => (
-                <div className="posture-history-row" key={posture.posture_id}>
-                  <strong>{posture.posture_id}</strong>
-                  <span>{posture.source_kind} / {posture.updated_at}</span>
-                  <span>{formatPrivateReadinessPostureGateSummary(posture)}</span>
-                  <span>{posture.no_authority_label} / {posture.authority_status}</span>
-                </div>
+                <OperatorEvidenceRow key={posture.posture_id}>
+                  <Field label="Posture" value={posture.posture_id} />
+                  <Field label="Source / updated" value={`${posture.source_kind} / ${posture.updated_at}`} />
+                  <Field label="Gate summary" value={formatPrivateReadinessPostureGateSummary(posture)} />
+                  <Field label="Authority" value={`${posture.no_authority_label} / ${posture.authority_status}`} />
+                </OperatorEvidenceRow>
               ))}
-            </div>
+              </OperatorEvidenceStack>
+            </OperatorEvidenceBlock>
           )}
           {previousPosture && (
             <div className="posture-delta" aria-label="Private-readiness posture delta summary">
@@ -5259,61 +5393,61 @@ function TradingSubstrateSection({
               />
             </div>
           )}
-        </>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="placeholder">
-          <strong>No private-readiness posture</strong>
-          <span>BTCUSDT local private-readiness gates have not been recorded</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No private-readiness posture"
+          description="BTCUSDT local private-readiness gates have not been recorded"
+          detail="not_live"
+        />
       )}
       {onRecordPrivateReadinessPosture && (
-        <form
-          aria-label="Local private-readiness posture edit form"
-          className="posture-edit-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onRecordPrivateReadinessPosture(postureDraft);
-          }}
-        >
-          <h4>Local posture edit</h4>
-          <div className="posture-edit-grid">
-            {PRIVATE_READINESS_POSTURE_GATE_FIELDS.map((field) => (
-              <label className="posture-edit-row" key={field.key}>
-                <span>{field.label}</span>
-                <select
-                  value={postureDraft[field.key].status}
-                  onChange={(event) =>
-                    updatePostureDraftGate(field.key, {
-                      status: event.currentTarget.value as PrivateReadinessPolicyGateInput["status"]
-                    })}
-                >
-                  {PRIVATE_READINESS_GATE_STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
-                <input
-                  aria-label={`${field.label} reason`}
-                  value={postureDraft[field.key].reason}
-                  onChange={(event) =>
-                    updatePostureDraftGate(field.key, {
-                      reason: event.currentTarget.value
-                    })}
-                />
-              </label>
-            ))}
-          </div>
-          <div className="runtime-command">
-            <Button
-              className="runtime-command-button"
-              type="submit"
-              disabled={recordingPrivateReadinessPosture}
-            >
-              {recordingPrivateReadinessPosture ? "Saving posture" : "Save local posture"}
-            </Button>
-            <span>local_config / no_secret / not_live</span>
-          </div>
-        </form>
+        <OperatorEvidenceBlock title="Local posture edit" aria-label="Local posture edit">
+          <form
+            aria-label="Local private-readiness posture edit form"
+            className="posture-edit-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onRecordPrivateReadinessPosture(postureDraft);
+            }}
+          >
+            <div className="posture-edit-grid">
+              {PRIVATE_READINESS_POSTURE_GATE_FIELDS.map((field) => (
+                <label className="posture-edit-row" key={field.key}>
+                  <span>{field.label}</span>
+                  <select
+                    value={postureDraft[field.key].status}
+                    onChange={(event) =>
+                      updatePostureDraftGate(field.key, {
+                        status: event.currentTarget.value as PrivateReadinessPolicyGateInput["status"]
+                      })}
+                  >
+                    {PRIVATE_READINESS_GATE_STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label={`${field.label} reason`}
+                    value={postureDraft[field.key].reason}
+                    onChange={(event) =>
+                      updatePostureDraftGate(field.key, {
+                        reason: event.currentTarget.value
+                      })}
+                  />
+                </label>
+              ))}
+            </div>
+            <OperatorActionRow>
+              <Button
+                type="submit"
+                disabled={recordingPrivateReadinessPosture}
+              >
+                {recordingPrivateReadinessPosture ? "Saving posture" : "Save local posture"}
+              </Button>
+              <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>local_config / no_secret / not_live</span>
+            </OperatorActionRow>
+          </form>
+        </OperatorEvidenceBlock>
       )}
       {privateReadinessPostureMessage && (
         <div className="inline-status">{privateReadinessPostureMessage}</div>
@@ -5322,12 +5456,13 @@ function TradingSubstrateSection({
         <div className="inline-status error">{privateReadinessPostureError}</div>
       )}
       {privateReadinessPolicyDecision ? (
-        <>
-          <div className={`evaluation-status ${privateReadinessPolicyStatusTone(privateReadinessPolicyDecision)}`}>
-            <span>Private-readiness policy</span>
-            <strong>{privateReadinessPolicyDecision.status}</strong>
-            <span>{privateReadinessPolicyDecision.authority_status}</span>
-          </div>
+        <OperatorEvidenceBlock title="Private-readiness policy" aria-label="Private-readiness policy">
+          <OperatorEvidenceStatus
+            label="Private-readiness policy"
+            value={privateReadinessPolicyDecision.status}
+            detail={privateReadinessPolicyDecision.authority_status}
+            tone={privateReadinessPolicyStatusTone(privateReadinessPolicyDecision)}
+          />
           <Field label="Policy decision" value={privateReadinessPolicyDecision.decision_kind} />
           <Field label="Policy venue" value={[
             privateReadinessPolicyDecision.venue,
@@ -5485,26 +5620,29 @@ function TradingSubstrateSection({
               projection={reviewPacketProjection}
             />
           )}
-          <div className="checked-gate-matrix" aria-label="Private-readiness checked-gate matrix">
+          <div
+            className={`checked-gate-matrix ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
+            aria-label="Private-readiness checked-gate matrix"
+          >
             <h4>Private-readiness checked-gate matrix</h4>
             {privateReadinessPolicyDecision.checked_gates.length > 0 ? (
               privateReadinessPolicyDecision.checked_gates.map((gate) => (
-                <div className="checked-gate-row" key={gate.dimension}>
+                <OperatorEvidenceRow className={`checked-gate-row ${RAW_EVIDENCE_ROW_CLASS}`} key={gate.dimension}>
                   <strong>{gate.dimension}</strong>
                   <span>{gate.status}</span>
                   <span>{gate.reason_code}</span>
                   <span>{gate.reason}</span>
                   <span>{formatPrivateReadinessCheckedGatePosture(gate.status)}</span>
-                </div>
+                </OperatorEvidenceRow>
               ))
             ) : (
-              <div className="checked-gate-row">
+              <OperatorEvidenceRow className={`checked-gate-row ${RAW_EVIDENCE_ROW_CLASS}`}>
                 <strong>no_checked_gates</strong>
                 <span>none</span>
                 <span>none</span>
                 <span>policy_decision_contains_no_checked_gates</span>
                 <span>inspection_only</span>
-              </div>
+              </OperatorEvidenceRow>
             )}
             <Field label="Matrix boundary" value="checked_gate_matrix_inspection_only" />
             <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
@@ -5513,26 +5651,29 @@ function TradingSubstrateSection({
               value="not_private_read_permission_or_execution_authority"
             />
           </div>
-          <div className="remediation-action-map" aria-label="Private-readiness remediation/action map">
+          <div
+            className={`remediation-action-map ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
+            aria-label="Private-readiness remediation/action map"
+          >
             <h4>Private-readiness remediation/action map</h4>
             {remediationActionRows.length > 0 ? (
               remediationActionRows.map((row) => (
-                <div className="remediation-action-row" key={row.action}>
+                <OperatorEvidenceRow className={`remediation-action-row ${RAW_EVIDENCE_ROW_CLASS}`} key={row.action}>
                   <strong>{row.action}</strong>
                   <span>{row.target}</span>
                   <span>{row.posture}</span>
                   <span>{row.detail}</span>
                   <span>{row.guidanceBoundary}</span>
-                </div>
+                </OperatorEvidenceRow>
               ))
             ) : (
-              <div className="remediation-action-row">
+              <OperatorEvidenceRow className={`remediation-action-row ${RAW_EVIDENCE_ROW_CLASS}`}>
                 <strong>no_required_next_actions</strong>
                 <span>none</span>
                 <span>none</span>
                 <span>policy_decision_contains_no_required_next_actions</span>
                 <span>read_only_remediation_guidance</span>
-              </div>
+              </OperatorEvidenceRow>
             )}
             <Field label="Map boundary" value="remediation_action_map_guidance_only" />
             <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
@@ -5542,7 +5683,7 @@ function TradingSubstrateSection({
             />
           </div>
           <div
-            className="remediation-progress-summary"
+            className={`remediation-progress-summary ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
             aria-label="Private-readiness remediation progress summary"
           >
             <h4>Private-readiness remediation progress summary</h4>
@@ -5559,7 +5700,10 @@ function TradingSubstrateSection({
           </div>
           {privateReadinessPosture && (
             <>
-              <div className="policy-impact" aria-label="Private-readiness policy impact interpretation">
+              <div
+                className={`policy-impact ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
+                aria-label="Private-readiness policy impact interpretation"
+              >
                 <h4>Policy impact interpretation</h4>
                 <Field label="Policy input posture" value={privateReadinessPosture.posture_id} />
                 <Field label="History role" value="inspection_context_only" />
@@ -5587,7 +5731,10 @@ function TradingSubstrateSection({
                   value="not_private_read_permission_or_execution_authority"
                 />
               </div>
-              <div className="review-handoff" aria-label="Private-readiness review handoff">
+              <div
+                className={`review-handoff ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
+                aria-label="Private-readiness review handoff"
+              >
                 <h4>Private-readiness review handoff</h4>
                 <Field
                   label="Review scope"
@@ -5681,21 +5828,22 @@ function TradingSubstrateSection({
               </div>
             </>
           )}
-        </>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="placeholder">
-          <strong>No private-readiness policy</strong>
-          <span>BTCUSDT private-readiness decision has not been projected</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No private-readiness policy"
+          description="BTCUSDT private-readiness decision has not been projected"
+          detail="not_live"
+        />
       )}
       {accountPositionRiskSurface ? (
-        <>
-          <div className={`evaluation-status ${accountPositionRiskStatusTone(accountPositionRiskSurface)}`}>
-            <span>Account position risk mirror</span>
-            <strong>{accountPositionRiskSurface.risk_status}</strong>
-            <span>{accountPositionRiskSurface.authority_status}</span>
-          </div>
+        <OperatorEvidenceBlock title="Account position risk mirror" aria-label="Account position risk mirror">
+          <OperatorEvidenceStatus
+            label="Account position risk mirror"
+            value={accountPositionRiskSurface.risk_status}
+            detail={accountPositionRiskSurface.authority_status}
+            tone={accountPositionRiskStatusTone(accountPositionRiskSurface)}
+          />
           <Field label="Account risk surface" value={accountPositionRiskSurface.surface_label} />
           <Field
             label="Account risk venue"
@@ -5787,21 +5935,22 @@ function TradingSubstrateSection({
           )}
           <Field label="Account risk no authority" value={accountPositionRiskSurface.no_authority_label} />
           <Field label="Account risk authority" value={accountPositionRiskSurface.authority_status} />
-        </>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="placeholder">
-          <strong>No account position risk mirror</strong>
-          <span>BTCUSDT account, position, and risk posture has not been recorded</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No account position risk mirror"
+          description="BTCUSDT account, position, and risk posture has not been recorded"
+          detail="not_live"
+        />
       )}
       {orderFillSurface ? (
-        <>
-          <div className={`evaluation-status ${orderFillStatusTone(orderFillSurface)}`}>
-            <span>Order-fill posture</span>
-            <strong>{orderFillSurface.posture}</strong>
-            <span>{orderFillSurface.authority_status}</span>
-          </div>
+        <OperatorEvidenceBlock title="Order-fill posture" aria-label="Order-fill posture">
+          <OperatorEvidenceStatus
+            label="Order-fill posture"
+            value={orderFillSurface.posture}
+            detail={orderFillSurface.authority_status}
+            tone={orderFillStatusTone(orderFillSurface)}
+          />
           <Field label="Order-fill surface" value={orderFillSurface.surface_label} />
           <Field label="Order venue" value={`${orderFillSurface.venue} / ${orderFillSurface.product_category}`} />
           <Field label="Order instrument" value={orderFillSurface.instrument} />
@@ -5842,14 +5991,15 @@ function TradingSubstrateSection({
           {orderFillSurface.degraded_reason && <Field label="Order reason" value={orderFillSurface.degraded_reason} />}
           <Field label="Order no authority" value={orderFillSurface.no_authority_label} />
           <Field label="Order authority" value={orderFillSurface.authority_status} />
-        </>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="placeholder">
-          <strong>No order-fill surface</strong>
-          <span>BTCUSDT posture has not been recorded</span>
-          <span>not_live</span>
-        </div>
+        <OperatorEmptyState
+          title="No order-fill surface"
+          description="BTCUSDT posture has not been recorded"
+          detail="not_live"
+        />
       )}
+      </OperatorEvidenceStack>
     </InfoSection>
   );
 }
@@ -5898,7 +6048,7 @@ export function PrivateReadinessReviewPacketSections({
         label="Private-readiness review packet index"
       >
         {projection.indexEntries.map((entry) => (
-          <div className="review-packet-index-row" key={entry.step}>
+          <div className={`review-packet-index-row ${RAW_EVIDENCE_ROW_CLASS}`} key={entry.step}>
             <strong>{entry.step}</strong>
             <span>{entry.surface}</span>
             <span>{entry.role}</span>
@@ -5924,7 +6074,7 @@ export function PrivateReadinessReviewPacketSections({
         label="Private-readiness review packet availability summary"
       >
         {projection.availabilitySummary.rows.map((row) => (
-          <div className="review-packet-availability-row" key={row.step}>
+          <div className={`review-packet-availability-row ${RAW_EVIDENCE_ROW_CLASS}`} key={row.step}>
             <strong>{row.step}</strong>
             <span>{row.availability}</span>
             <span>{row.detail}</span>
@@ -5959,7 +6109,7 @@ export function PrivateReadinessReviewPacketSections({
         label="Private-readiness review packet resolution checklist"
       >
         {projection.resolutionChecklist.items.map((item) => (
-          <div className="review-packet-resolution-row" key={`${item.item}-${item.source}`}>
+          <div className={`review-packet-resolution-row ${RAW_EVIDENCE_ROW_CLASS}`} key={`${item.item}-${item.source}`}>
             <strong>{item.item}</strong>
             <span>{item.source}</span>
             <span>{item.status}</span>
@@ -5990,7 +6140,7 @@ export function PrivateReadinessReviewPacketSections({
         label="Private-readiness review packet source/provenance summary"
       >
         {projection.sourceProvenanceSummary.rows.map((row) => (
-          <div className="review-packet-source-provenance-row" key={`${row.item}-${row.source}`}>
+          <div className={`review-packet-source-provenance-row ${RAW_EVIDENCE_ROW_CLASS}`} key={`${row.item}-${row.source}`}>
             <strong>{row.item}</strong>
             <span>{row.source}</span>
             <span>{row.provenance}</span>
@@ -6029,7 +6179,7 @@ function ReviewPacketPanel({
   label: string;
 }) {
   return (
-    <div className={className} aria-label={label}>
+    <div className={`${className} ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`} aria-label={label}>
       <h4>{label}</h4>
       {children}
     </div>
@@ -6364,107 +6514,121 @@ function RunControlSection({
       summary={`${statusLabel} / ${control?.audit_event.authority_status ?? "not_live"}`}
       badge={control?.latest_command?.action ?? statusLabel}
     >
-      <div className={`evaluation-status ${control?.chain_complete ? "counted" : "neutral"}`}>
-        <span>Trading run state</span>
-        <strong>{statusLabel}</strong>
-        <span>{control?.audit_event.authority_status ?? "not_live"}</span>
-      </div>
+      <OperatorEvidenceStack>
+        <OperatorEvidenceStatus
+          label="Trading run state"
+          value={statusLabel}
+          detail={control?.audit_event.authority_status ?? "not_live"}
+          tone={control?.chain_complete ? "counted" : "neutral"}
+        />
 
-      <Field label="Activity" value={control?.has_activity ? "recorded" : "none"} />
-      <Field label="Complete chain" value={control?.chain_complete ? "yes" : "no"} />
-      <Field label="Command" value={control?.command.status ?? "pending_decision"} />
-      <Field label="Decision" value={control?.decision.status ?? "not_evaluated"} />
-      <Field label="Audit event" value={control?.audit_event.status ?? "not_recorded"} />
+        <OperatorEvidenceRow>
+          <Field label="Activity" value={control?.has_activity ? "recorded" : "none"} />
+          <Field label="Complete chain" value={control?.chain_complete ? "yes" : "no"} />
+          <Field label="Command" value={control?.command.status ?? "pending_decision"} />
+          <Field label="Decision" value={control?.decision.status ?? "not_evaluated"} />
+          <Field label="Audit event" value={control?.audit_event.status ?? "not_recorded"} />
+        </OperatorEvidenceRow>
 
-      {privateReadinessPolicyDecision && (
-        <div className="evaluation-block" aria-label="Run-control private-readiness policy alignment">
-          <h4>Private-readiness policy alignment</h4>
-          <Field
-            label="Policy alignment"
-            value={runtimeControlPolicyAlignment(privateReadinessPolicyDecision)}
-          />
-          <Field label="Policy status" value={privateReadinessPolicyDecision.status} />
-          <Field
-            label="Policy reason codes"
-            value={formatPolicyListSummary(privateReadinessPolicyDecision.reason_codes)}
-          />
-          <Field
-            label="Required next actions"
-            value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
-          />
-          <Field label="Control boundary" value="control_only / audit_only / not_live" />
-          <Field label="Authority boundary" value="not_private_read_permission_or_execution_authority" />
-          <Field
-            label="Execution boundary"
-            value="not_order_request_gateway_result_evidence_or_promotion"
-          />
-        </div>
-      )}
-
-      {control?.latest_command ? (
-        <div className="evaluation-block">
-          <h4>Latest control command</h4>
-          <Field label="Action" value={control.latest_command.action} />
-          <Field label="Status" value={control.latest_command.status} />
-          <Field label="Actor" value={control.latest_command.actor_kind} />
-          <Field label="Reason" value={control.latest_command.reason} />
-          <Field label="Command authority" value={control.latest_command.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Latest control command</h4>
-          <Field label="Status" value="none" />
-          <Field label="Command authority" value="not_live" />
-        </div>
-      )}
-
-      {control?.latest_decision ? (
-        <div className="evaluation-block">
-          <h4>Latest control decision</h4>
-          <Field label="Outcome" value={control.latest_decision.decision_outcome} />
-          <Field label="Reason" value={control.latest_decision.decision_reason} />
-          <Field label="Command" value={formatRef(control.latest_decision.command_ref)} />
-          <Field label="Lifecycle" value={control.latest_decision.resulting_lifecycle_status ?? "unchanged"} />
-          <Field label="Decision authority" value={control.latest_decision.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Latest control decision</h4>
-          <Field label="Outcome" value="not_evaluated" />
-          <Field label="Decision authority" value="not_live" />
-        </div>
-      )}
-
-      {control?.latest_audit_event ? (
-        <div className="evaluation-block">
-          <h4>Latest audit event</h4>
-          <Field label="Event" value={control.latest_audit_event.event_kind} />
-          <Field label="Command" value={control.latest_audit_event.command_ref ? formatRef(control.latest_audit_event.command_ref) : "none"} />
-          <Field label="Decision" value={control.latest_audit_event.decision_ref ? formatRef(control.latest_audit_event.decision_ref) : "none"} />
-          <Field label="Lifecycle" value={control.latest_audit_event.runtime_lifecycle_status ?? "unchanged"} />
-          <Field label="Audit authority" value={control.latest_audit_event.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Latest audit event</h4>
-          <Field label="Status" value="none" />
-          <Field label="Audit authority" value="not_live" />
-        </div>
-      )}
-
-      {onRecordRunControl && (
-        <div className="runtime-command">
-          <Button
-            className="runtime-command-button"
-            type="button"
-            onClick={onRecordRunControl}
-            disabled={recordingRunControl}
+        {privateReadinessPolicyDecision && (
+          <OperatorEvidenceBlock
+            title="Private-readiness policy alignment"
+            aria-label="Run-control private-readiness policy alignment"
           >
-            {recordingRunControl ? "Recording pause" : "Record pause"}
-          </Button>
-          <span>control_only / audit_only / not_live</span>
-        </div>
-      )}
+            <OperatorEvidenceRow>
+              <Field
+                label="Policy alignment"
+                value={runtimeControlPolicyAlignment(privateReadinessPolicyDecision)}
+              />
+              <Field label="Policy status" value={privateReadinessPolicyDecision.status} />
+              <Field
+                label="Policy reason codes"
+                value={formatPolicyListSummary(privateReadinessPolicyDecision.reason_codes)}
+              />
+              <Field
+                label="Required next actions"
+                value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
+              />
+              <Field label="Control boundary" value="control_only / audit_only / not_live" />
+              <Field label="Authority boundary" value="not_private_read_permission_or_execution_authority" />
+              <Field
+                label="Execution boundary"
+                value="not_order_request_gateway_result_evidence_or_promotion"
+              />
+            </OperatorEvidenceRow>
+          </OperatorEvidenceBlock>
+        )}
+
+        <OperatorEvidenceBlock title="Latest control command">
+          <OperatorEvidenceRow>
+            {control?.latest_command ? (
+              <>
+                <Field label="Action" value={control.latest_command.action} />
+                <Field label="Status" value={control.latest_command.status} />
+                <Field label="Actor" value={control.latest_command.actor_kind} />
+                <Field label="Reason" value={control.latest_command.reason} />
+                <Field label="Command authority" value={control.latest_command.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Command authority" value="not_live" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
+
+        <OperatorEvidenceBlock title="Latest control decision">
+          <OperatorEvidenceRow>
+            {control?.latest_decision ? (
+              <>
+                <Field label="Outcome" value={control.latest_decision.decision_outcome} />
+                <Field label="Reason" value={control.latest_decision.decision_reason} />
+                <Field label="Command" value={formatRef(control.latest_decision.command_ref)} />
+                <Field label="Lifecycle" value={control.latest_decision.resulting_lifecycle_status ?? "unchanged"} />
+                <Field label="Decision authority" value={control.latest_decision.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Outcome" value="not_evaluated" />
+                <Field label="Decision authority" value="not_live" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
+
+        <OperatorEvidenceBlock title="Latest audit event">
+          <OperatorEvidenceRow>
+            {control?.latest_audit_event ? (
+              <>
+                <Field label="Event" value={control.latest_audit_event.event_kind} />
+                <Field label="Command" value={control.latest_audit_event.command_ref ? formatRef(control.latest_audit_event.command_ref) : "none"} />
+                <Field label="Decision" value={control.latest_audit_event.decision_ref ? formatRef(control.latest_audit_event.decision_ref) : "none"} />
+                <Field label="Lifecycle" value={control.latest_audit_event.runtime_lifecycle_status ?? "unchanged"} />
+                <Field label="Audit authority" value={control.latest_audit_event.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Audit authority" value="not_live" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
+
+        {onRecordRunControl && (
+          <OperatorActionRow>
+            <Button
+              type="button"
+              onClick={onRecordRunControl}
+              disabled={recordingRunControl}
+            >
+              {recordingRunControl ? "Recording pause" : "Record pause"}
+            </Button>
+            <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>control_only / audit_only / not_live</span>
+          </OperatorActionRow>
+        )}
+      </OperatorEvidenceStack>
       {runtimeControlMessage && <div className="inline-status">{runtimeControlMessage}</div>}
       {runtimeControlError && <div className="inline-status error">{runtimeControlError}</div>}
     </InfoSection>
@@ -6515,121 +6679,136 @@ function ImprovementSection({
       summary={`proposal ${improvement?.proposal_chain_complete ? "complete" : "incomplete"} / evaluation ${improvement?.evaluation_chain_complete ? "complete" : "incomplete"}`}
       badge={statusLabel}
     >
-      <div className={`evaluation-status ${improvement?.chain_complete ? "counted" : "neutral"}`}>
-        <span>Proposal / experiment / evaluation</span>
-        <strong>{statusLabel}</strong>
-        <span>{improvement?.promotion.authority_status ?? "not_live"}</span>
-      </div>
+      <OperatorEvidenceStack>
+        <OperatorEvidenceStatus
+          label="Proposal / experiment / evaluation"
+          value={statusLabel}
+          detail={improvement?.promotion.authority_status ?? "not_live"}
+          tone={improvement?.chain_complete ? "counted" : "neutral"}
+        />
 
-      <Field label="Source model" value={improvement?.source_model ?? "automated_alignment_researcher"} />
-      <Field label="Proposal chain" value={improvement?.proposal_chain_complete ? "complete" : "incomplete"} />
-      <Field label="Evaluation chain" value={improvement?.evaluation_chain_complete ? "complete" : "incomplete"} />
-      <Field label="No-authority boundary" value={`live_exchange=${String(improvement?.no_authority.live_exchange ?? false)}, order_authority=${String(improvement?.no_authority.order_authority ?? false)}, credentials=${String(improvement?.no_authority.credentials ?? false)}`} />
+        <OperatorEvidenceRow>
+          <Field label="Source model" value={improvement?.source_model ?? "automated_alignment_researcher"} />
+          <Field label="Proposal chain" value={improvement?.proposal_chain_complete ? "complete" : "incomplete"} />
+          <Field label="Evaluation chain" value={improvement?.evaluation_chain_complete ? "complete" : "incomplete"} />
+          <Field label="No-authority boundary" value={`live_exchange=${String(improvement?.no_authority.live_exchange ?? false)}, order_authority=${String(improvement?.no_authority.order_authority ?? false)}, credentials=${String(improvement?.no_authority.credentials ?? false)}`} />
+        </OperatorEvidenceRow>
 
-      {improvement?.latest_source_finding ? (
-        <div className="evaluation-block">
-          <h4>Source finding</h4>
-          <Field label="Finding" value={improvement.latest_source_finding.finding_id} />
-          <Field label="Kind" value={improvement.latest_source_finding.finding_kind} />
-          <Field label="Summary" value={improvement.latest_source_finding.summary} />
-          <Field label="Source finding authority" value={improvement.latest_source_finding.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Source finding</h4>
-          <Field label="Status" value="none" />
-          <Field label="Source finding authority" value="research_trace_only" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Source finding">
+          <OperatorEvidenceRow>
+            {improvement?.latest_source_finding ? (
+              <>
+                <Field label="Finding" value={improvement.latest_source_finding.finding_id} />
+                <Field label="Kind" value={improvement.latest_source_finding.finding_kind} />
+                <Field label="Summary" value={improvement.latest_source_finding.summary} />
+                <Field label="Source finding authority" value={improvement.latest_source_finding.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Source finding authority" value="research_trace_only" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {improvement?.latest_change_proposal ? (
-        <div className="evaluation-block">
-          <h4>Change proposal</h4>
-          <Field label="Proposal" value={improvement.latest_change_proposal.proposal_id} />
-          <Field label="Status" value={improvement.latest_change_proposal.status} />
-          <Field label="System code" value={formatRef(improvement.latest_change_proposal.proposed_system_code_ref)} />
-          <Field label="Parent code" value={improvement.latest_change_proposal.parent_system_code_ref ? formatRef(improvement.latest_change_proposal.parent_system_code_ref) : "none"} />
-          <Field label="Summary" value={improvement.latest_change_proposal.proposal_summary} />
-          <Field label="Change proposal authority" value={improvement.latest_change_proposal.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Change proposal</h4>
-          <Field label="Status" value="none" />
-          <Field label="Change proposal authority" value="proposal_only" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Change proposal">
+          <OperatorEvidenceRow>
+            {improvement?.latest_change_proposal ? (
+              <>
+                <Field label="Proposal" value={improvement.latest_change_proposal.proposal_id} />
+                <Field label="Status" value={improvement.latest_change_proposal.status} />
+                <Field label="System code" value={formatRef(improvement.latest_change_proposal.proposed_system_code_ref)} />
+                <Field label="Parent code" value={improvement.latest_change_proposal.parent_system_code_ref ? formatRef(improvement.latest_change_proposal.parent_system_code_ref) : "none"} />
+                <Field label="Summary" value={improvement.latest_change_proposal.proposal_summary} />
+                <Field label="Change proposal authority" value={improvement.latest_change_proposal.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Change proposal authority" value="proposal_only" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {improvement?.latest_materialization && (
-        <div className="evaluation-block">
-          <h4>Materialization</h4>
-          <Field label="Attempt" value={improvement.latest_materialization.attempt_id} />
-          <Field label="Status" value={improvement.latest_materialization.status} />
-          <Field label="Validation" value={improvement.latest_materialization.validation_status} />
-          <Field label="Materialization authority" value={improvement.latest_materialization.authority_status} />
-        </div>
-      )}
+        {improvement?.latest_materialization && (
+          <OperatorEvidenceBlock title="Materialization">
+            <OperatorEvidenceRow>
+              <Field label="Attempt" value={improvement.latest_materialization.attempt_id} />
+              <Field label="Status" value={improvement.latest_materialization.status} />
+              <Field label="Validation" value={improvement.latest_materialization.validation_status} />
+              <Field label="Materialization authority" value={improvement.latest_materialization.authority_status} />
+            </OperatorEvidenceRow>
+          </OperatorEvidenceBlock>
+        )}
 
-      {improvement?.latest_experiment ? (
-        <div className="evaluation-block">
-          <h4>Experiment</h4>
-          <Field label="Experiment" value={improvement.latest_experiment.experiment_id} />
-          <Field label="Status" value={improvement.latest_experiment.status} />
-          <Field label="System code" value={formatRef(improvement.latest_experiment.system_code_ref)} />
-          <Field label="Experiment authority" value={improvement.latest_experiment.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Experiment</h4>
-          <Field label="Status" value="none" />
-          <Field label="Experiment authority" value="not_live" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Experiment">
+          <OperatorEvidenceRow>
+            {improvement?.latest_experiment ? (
+              <>
+                <Field label="Experiment" value={improvement.latest_experiment.experiment_id} />
+                <Field label="Status" value={improvement.latest_experiment.status} />
+                <Field label="System code" value={formatRef(improvement.latest_experiment.system_code_ref)} />
+                <Field label="Experiment authority" value={improvement.latest_experiment.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Experiment authority" value="not_live" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {improvement?.latest_evaluation_result ? (
-        <div className="evaluation-block">
-          <h4>Evaluation result</h4>
-          <Field label="Result" value={improvement.latest_evaluation_result.result_id} />
-          <Field label="Status" value={improvement.latest_evaluation_result.result_status} />
-          <Field label="Disposition" value={improvement.latest_evaluation_result.evidence_disposition} />
-          <Field label="Score" value={String(improvement.latest_evaluation_result.total_score)} />
-          <Field label="Evaluation result authority" value={improvement.latest_evaluation_result.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Evaluation result</h4>
-          <Field label="Status" value="none" />
-          <Field label="Evaluation result authority" value="not_counted" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Evaluation result">
+          <OperatorEvidenceRow>
+            {improvement?.latest_evaluation_result ? (
+              <>
+                <Field label="Result" value={improvement.latest_evaluation_result.result_id} />
+                <Field label="Status" value={improvement.latest_evaluation_result.result_status} />
+                <Field label="Disposition" value={improvement.latest_evaluation_result.evidence_disposition} />
+                <Field label="Score" value={String(improvement.latest_evaluation_result.total_score)} />
+                <Field label="Evaluation result authority" value={improvement.latest_evaluation_result.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Evaluation result authority" value="not_counted" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      <div className="evaluation-block">
-        <h4>Evidence</h4>
-        <Field label="Status" value={improvement?.evidence.status ?? "missing"} />
-        <Field label="Reason" value={improvement?.evidence.reason ?? "evaluation_required"} />
-        <Field label="Improvement evidence authority" value={improvement?.evidence.authority_status ?? "not_counted"} />
-      </div>
+        <OperatorEvidenceBlock title="Evidence">
+          <OperatorEvidenceRow>
+            <Field label="Status" value={improvement?.evidence.status ?? "missing"} />
+            <Field label="Reason" value={improvement?.evidence.reason ?? "evaluation_required"} />
+            <Field label="Improvement evidence authority" value={improvement?.evidence.authority_status ?? "not_counted"} />
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      <div className="evaluation-block">
-        <h4>Promotion</h4>
-        <Field label="Status" value={improvement?.promotion.status ?? "not_promoted"} />
-        <Field label="Reason" value={improvement?.promotion.reason ?? "promotion_requires_sealed_evidence"} />
-        <Field label="Improvement promotion authority" value={improvement?.promotion.authority_status ?? "not_live"} />
-      </div>
+        <OperatorEvidenceBlock title="Promotion">
+          <OperatorEvidenceRow>
+            <Field label="Status" value={improvement?.promotion.status ?? "not_promoted"} />
+            <Field label="Reason" value={improvement?.promotion.reason ?? "promotion_requires_sealed_evidence"} />
+            <Field label="Improvement promotion authority" value={improvement?.promotion.authority_status ?? "not_live"} />
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {onRecordImprovement && (
-        <div className="runtime-command">
-          <Button
-            className="runtime-command-button"
-            type="button"
-            onClick={onRecordImprovement}
-            disabled={recordingImprovement}
-          >
-            {recordingImprovement ? "Recording improvement" : "Record improvement"}
-          </Button>
-          <span>proposal_only / sandbox_evaluation / not_live</span>
-        </div>
-      )}
+        {onRecordImprovement && (
+          <OperatorActionRow>
+            <Button
+              type="button"
+              onClick={onRecordImprovement}
+              disabled={recordingImprovement}
+            >
+              {recordingImprovement ? "Recording improvement" : "Record improvement"}
+            </Button>
+            <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>proposal_only / sandbox_evaluation / not_live</span>
+          </OperatorActionRow>
+        )}
+      </OperatorEvidenceStack>
       {improvementMessage && <div className="inline-status">{improvementMessage}</div>}
       {improvementError && <div className="inline-status error">{improvementError}</div>}
     </InfoSection>
@@ -6653,98 +6832,111 @@ function LedgerSection({
       summary={`Order request -> Gateway result -> Execution result: ${statusLabel}`}
       badge={statusLabel}
     >
-      <div className={`evaluation-status ${ledger?.chain_complete ? "counted" : "neutral"}`}>
-        <span>Request / decision / result</span>
-        <strong>{statusLabel}</strong>
-        <span>{ledger?.authority_status ?? "not_live"}</span>
-      </div>
+      <OperatorEvidenceStack>
+        <OperatorEvidenceStatus
+          label="Request / decision / result"
+          value={statusLabel}
+          detail={ledger?.authority_status ?? "not_live"}
+          tone={ledger?.chain_complete ? "counted" : "neutral"}
+        />
 
-      <Field label="Complete chain" value={ledger?.chain_complete ? "yes" : "no"} />
-      <Field label="Order request" value={ledger?.order_request.status ?? "not_submitted"} />
-      <Field label="Gateway result" value={ledger?.gateway_result.status ?? "not_evaluated"} />
-      <Field label="Execution result" value={ledger?.execution_result.status ?? "not_submitted"} />
+        <OperatorEvidenceRow>
+          <Field label="Complete chain" value={ledger?.chain_complete ? "yes" : "no"} />
+          <Field label="Order request" value={ledger?.order_request.status ?? "not_submitted"} />
+          <Field label="Gateway result" value={ledger?.gateway_result.status ?? "not_evaluated"} />
+          <Field label="Execution result" value={ledger?.execution_result.status ?? "not_submitted"} />
+        </OperatorEvidenceRow>
 
-      {ledger?.latest_order_request ? (
-        <div className="evaluation-block">
-          <h4>Order request</h4>
-          <Field label="Intent" value={ledger.latest_order_request.intent_kind} />
-          <Field label="Status" value={ledger.latest_order_request.status} />
-          <Field label="Order side / type" value={`${ledger.latest_order_request.side ?? "none"} / ${ledger.latest_order_request.order_type ?? "none"}`} />
-          <Field label="Quantity" value={ledger.latest_order_request.quantity ?? "none"} />
-          <Field label="Limit" value={ledger.latest_order_request.limit_price ?? "none"} />
-          <Field label="Order request authority" value={ledger.latest_order_request.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Order request</h4>
-          <Field label="Status" value="none" />
-          <Field label="Order request authority" value="not_submitted" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Order request">
+          <OperatorEvidenceRow>
+            {ledger?.latest_order_request ? (
+              <>
+                <Field label="Intent" value={ledger.latest_order_request.intent_kind} />
+                <Field label="Status" value={ledger.latest_order_request.status} />
+                <Field label="Order side / type" value={`${ledger.latest_order_request.side ?? "none"} / ${ledger.latest_order_request.order_type ?? "none"}`} />
+                <Field label="Quantity" value={ledger.latest_order_request.quantity ?? "none"} />
+                <Field label="Limit" value={ledger.latest_order_request.limit_price ?? "none"} />
+                <Field label="Order request authority" value={ledger.latest_order_request.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Order request authority" value="not_submitted" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {ledger?.latest_gateway_result ? (
-        <div className="evaluation-block">
-          <h4>Gateway result</h4>
-          <Field label="Outcome" value={ledger.latest_gateway_result.decision_outcome} />
-          <Field label="Reason" value={ledger.latest_gateway_result.decision_reason} />
-          <Field label="Order request" value={formatRef(ledger.latest_gateway_result.order_request_ref)} />
-          <Field label="Gateway result authority" value={ledger.latest_gateway_result.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Gateway result</h4>
-          <Field label="Outcome" value="not_evaluated" />
-          <Field label="Gateway result authority" value="not_live" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Gateway result">
+          <OperatorEvidenceRow>
+            {ledger?.latest_gateway_result ? (
+              <>
+                <Field label="Outcome" value={ledger.latest_gateway_result.decision_outcome} />
+                <Field label="Reason" value={ledger.latest_gateway_result.decision_reason} />
+                <Field label="Order request" value={formatRef(ledger.latest_gateway_result.order_request_ref)} />
+                <Field label="Gateway result authority" value={ledger.latest_gateway_result.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Outcome" value="not_evaluated" />
+                <Field label="Gateway result authority" value="not_live" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {ledger?.latest_execution_result ? (
-        <div className="evaluation-block">
-          <h4>Execution result</h4>
-          <Field label="Stage" value={ledger.latest_execution_result.stage} />
-          <Field label="Execution result mode" value={ledger.latest_execution_result.execution_mode} />
-          <Field label="Status" value={ledger.latest_execution_result.status} />
-          <Field label="Reason" value={ledger.latest_execution_result.result_reason} />
-          <Field label="Gateway result" value={formatRef(ledger.latest_execution_result.gateway_result_ref)} />
-          <Field label="Execution result authority" value={ledger.latest_execution_result.authority_status} />
-        </div>
-      ) : (
-        <div className="evaluation-block">
-          <h4>Execution result</h4>
-          <Field label="Status" value="none" />
-          <Field label="Execution result authority" value="not_submitted" />
-        </div>
-      )}
+        <OperatorEvidenceBlock title="Execution result">
+          <OperatorEvidenceRow>
+            {ledger?.latest_execution_result ? (
+              <>
+                <Field label="Stage" value={ledger.latest_execution_result.stage} />
+                <Field label="Execution result mode" value={ledger.latest_execution_result.execution_mode} />
+                <Field label="Status" value={ledger.latest_execution_result.status} />
+                <Field label="Reason" value={ledger.latest_execution_result.result_reason} />
+                <Field label="Gateway result" value={formatRef(ledger.latest_execution_result.gateway_result_ref)} />
+                <Field label="Execution result authority" value={ledger.latest_execution_result.authority_status} />
+              </>
+            ) : (
+              <>
+                <Field label="Status" value="none" />
+                <Field label="Execution result authority" value="not_submitted" />
+              </>
+            )}
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      <div className="evaluation-block">
-        <h4>Ledger history</h4>
-        <Field label="Chains" value={`${ledger?.chain_count ?? 0} chains`} />
-        <Field label="Latest first" value={ledger?.chains.length ? "yes" : "none"} />
-      </div>
+        <OperatorEvidenceBlock title="Ledger history">
+          <OperatorEvidenceRow>
+            <Field label="Chains" value={`${ledger?.chain_count ?? 0} chains`} />
+            <Field label="Latest first" value={ledger?.chains.length ? "yes" : "none"} />
+          </OperatorEvidenceRow>
+        </OperatorEvidenceBlock>
 
-      {ledger?.chains.map((chain, index) => (
-        <div className="evaluation-block" key={chain.chain_id}>
-          <h4>{`Ledger chain ${index + 1}`}</h4>
-          <Field label="Complete" value={chain.chain_complete ? "yes" : "no"} />
-          <Field
-            label="Order request"
-            value={`${chain.order_request.side ?? "none"} / ${chain.order_request.order_type ?? "none"} / ${chain.order_request.quantity ?? "none"} @ ${chain.order_request.limit_price ?? "none"}`}
-          />
-          <Field
-            label="Gateway result"
-            value={chain.gateway_result
-              ? `${chain.gateway_result.decision_outcome} / ${chain.gateway_result.decision_reason}`
-              : "not_evaluated"}
-          />
-          <Field
-            label="Execution result"
-            value={chain.execution_result
-              ? `${chain.execution_result.status} / ${chain.execution_result.result_reason}`
-              : "not_submitted"}
-          />
-          <Field label="Ledger chain authority" value={chain.authority_status} />
-        </div>
-      ))}
+        {ledger?.chains.map((chain, index) => (
+          <OperatorEvidenceBlock title={`Ledger chain ${index + 1}`} key={chain.chain_id}>
+            <OperatorEvidenceRow>
+              <Field label="Complete" value={chain.chain_complete ? "yes" : "no"} />
+              <Field
+                label="Order request"
+                value={`${chain.order_request.side ?? "none"} / ${chain.order_request.order_type ?? "none"} / ${chain.order_request.quantity ?? "none"} @ ${chain.order_request.limit_price ?? "none"}`}
+              />
+              <Field
+                label="Gateway result"
+                value={chain.gateway_result
+                  ? `${chain.gateway_result.decision_outcome} / ${chain.gateway_result.decision_reason}`
+                  : "not_evaluated"}
+              />
+              <Field
+                label="Execution result"
+                value={chain.execution_result
+                  ? `${chain.execution_result.status} / ${chain.execution_result.result_reason}`
+                  : "not_submitted"}
+              />
+              <Field label="Ledger chain authority" value={chain.authority_status} />
+            </OperatorEvidenceRow>
+          </OperatorEvidenceBlock>
+        ))}
+      </OperatorEvidenceStack>
 
     </InfoSection>
   );
@@ -6756,16 +6948,16 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
   const latestSealingDecision = evaluation.latest_sealing_decision;
 
   return (
-    <div className="evaluation-stack">
-      <div className={`evaluation-status ${evaluationStatusTone(evaluation)}`}>
-        <span>ResearchPreflight state</span>
-        <strong>{evaluationStatusLabel(evaluation)}</strong>
-        <span>{evaluation.counted_evidence.disposition_reason}</span>
-      </div>
+    <OperatorEvidenceStack>
+      <OperatorEvidenceStatus
+        label="ResearchPreflight state"
+        value={evaluationStatusLabel(evaluation)}
+        detail={evaluation.counted_evidence.disposition_reason}
+        tone={evaluationStatusTone(evaluation)}
+      />
 
       {latestRun ? (
-        <div className="evaluation-block">
-          <h4>Latest ResearchPreflight run</h4>
+        <OperatorEvidenceBlock title="Latest ResearchPreflight run">
           <Field label="ResearchPreflight run" value={latestRun.run_id} />
           <Field label="ResearchPreflight status" value={latestRun.status} />
           <Field label="Stage binding" value={`${latestRun.stage ?? "missing"} / ${latestRun.profile ?? "missing"}`} />
@@ -6773,18 +6965,16 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
           <Field label="ResearchPreflight trace" value={formatRef(latestRun.trace_ref)} />
           <Field label="ResearchPreflight run authority" value={latestRun.authority_status} />
           {latestRun.error_state && <Field label="ResearchPreflight error" value={latestRun.error_state.message} />}
-        </div>
+        </OperatorEvidenceBlock>
       ) : (
-        <div className="evaluation-block">
-          <h4>No ResearchPreflight runs</h4>
+        <OperatorEvidenceBlock title="No ResearchPreflight runs">
           <Field label="ResearchPreflight status" value={evaluation.run.status} />
           <Field label="ResearchPreflight run authority" value={evaluation.run.authority_status} />
           <Field label="Reason" value={evaluation.counted_evidence.disposition_reason} />
-        </div>
+        </OperatorEvidenceBlock>
       )}
 
-      <div className="evaluation-block">
-        <h4>ResearchPreflight comparison set</h4>
+      <OperatorEvidenceBlock title="ResearchPreflight comparison set">
         {latestComparisonSet ? (
           <>
             <Field label="Comparability" value={latestComparisonSet.comparability_status} />
@@ -6797,20 +6987,18 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
             <Field label="Comparison set authority" value={evaluation.comparison_set.authority_status} />
           </>
         )}
-      </div>
+      </OperatorEvidenceBlock>
 
-      <div className="evaluation-block">
-        <h4>Provider trace material</h4>
+      <OperatorEvidenceBlock title="Provider trace material">
         <Field label="Trace state" value={evaluation.trace.state} />
         <Field label="Provider trace" value={evaluation.trace.trace_ref ? formatRef(evaluation.trace.trace_ref) : "none"} />
         <Field label="Trace material authority" value={evaluation.trace.authority_status} />
         {evaluation.trace.authority_label && <Field label="Label" value={evaluation.trace.authority_label} />}
         <Field label="Provider artifacts" value={formatRefs(evaluation.trace.provider_output_artifact_refs)} />
         <Field label="Debug artifacts" value={formatRefs(evaluation.trace.debug_artifact_refs)} />
-      </div>
+      </OperatorEvidenceBlock>
 
-      <div className="evaluation-block">
-        <h4>Counted evidence state</h4>
+      <OperatorEvidenceBlock title="Counted evidence state">
         <Field label="Counted evidence" value={evaluation.counted_evidence.counted ? "yes" : "no"} />
         <Field label="Evidence disposition" value={evaluation.counted_evidence.evidence_disposition} />
         <Field label="Evidence reason" value={evaluation.counted_evidence.disposition_reason} />
@@ -6829,24 +7017,23 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
             <Field label="Sealing decision authority" value={evaluation.sealing_decision.authority_status} />
           </>
         )}
-      </div>
+      </OperatorEvidenceBlock>
 
-      <div className="evaluation-block">
-        <h4>Evidence classifications</h4>
+      <OperatorEvidenceBlock title="Evidence classifications">
         {evaluation.evidence_classifications.length > 0 ? (
-          <div className="classification-list">
+          <OperatorEvidenceStack>
             {evaluation.evidence_classifications.map((classification) => (
               <EvidenceClassificationItem
                 classification={classification}
                 key={classification.classification_id}
               />
             ))}
-          </div>
+          </OperatorEvidenceStack>
         ) : (
           <Field label="Classifications" value="none" />
         )}
-      </div>
-    </div>
+      </OperatorEvidenceBlock>
+    </OperatorEvidenceStack>
   );
 }
 
@@ -6856,14 +7043,14 @@ function EvidenceClassificationItem({
   classification: CandidateEvidenceClassificationReadModel;
 }) {
   return (
-    <div className="classification-row">
+    <OperatorEvidenceRow>
       <strong>{classification.classification_kind}</strong>
       <span>{classification.classification_status}</span>
       <span>{formatRef(classification.classified_ref)}</span>
       <span>{classification.classification_reason}</span>
       <span>{classification.authority_status}</span>
       {classification.sealed_by_decision_ref && <span>{formatRef(classification.sealed_by_decision_ref)}</span>}
-    </div>
+    </OperatorEvidenceRow>
   );
 }
 
@@ -6889,11 +7076,11 @@ function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMateria
           <Field label="Authority label" value={attempt.authority_label} />
         </>
       ) : (
-        <div className="placeholder">
-          <strong>No materialization attempt</strong>
-          <span>provider output has not created a candidate</span>
-          <span>provider_output_not_evidence</span>
-        </div>
+        <OperatorEmptyState
+          title="No materialization attempt"
+          description="provider output has not created a candidate"
+          detail="provider_output_not_evidence"
+        />
       )}
     </InfoSection>
   );
@@ -6913,18 +7100,16 @@ function InfoSection({
   children: React.ReactNode;
 }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {summary && <CardDescription>{summary}</CardDescription>}
-        {badge && (
-          <CardAction>
+    <OperatorPanel aria-label={title}>
+      <OperatorSectionHeader
+        title={title}
+        description={summary}
+        actions={badge && (
             <Badge variant={badgeVariant(badge)}>{badge}</Badge>
-          </CardAction>
         )}
-      </CardHeader>
-      <CardContent className="grid gap-2">{children}</CardContent>
-    </Card>
+      />
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">{children}</div>
+    </OperatorPanel>
   );
 }
 
@@ -6978,21 +7163,16 @@ function statusTokens(normalizedValue: string): string[] {
 }
 
 function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid min-w-0 gap-1 overflow-hidden rounded-md bg-background/35 p-2">
-      <dt className="text-[11px] font-medium uppercase text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words text-sm leading-snug [overflow-wrap:anywhere]">{value}</dd>
-    </div>
-  );
+  return <OperatorField label={label} value={value} />;
 }
 
 function Placeholder({ item }: { item: PlaceholderSummary }) {
   return (
-    <div className="placeholder">
-      <strong>{item.label}</strong>
-      <span>{formatRef(item.ref)}</span>
-      <span>{item.authority_status}</span>
-    </div>
+    <OperatorEmptyState
+      title={item.label}
+      description={formatRef(item.ref)}
+      detail={item.authority_status}
+    />
   );
 }
 

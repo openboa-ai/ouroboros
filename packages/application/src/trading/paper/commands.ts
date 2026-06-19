@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   CandidateInspectReadModel,
+  PaperTradingEvaluationRecord,
   SandboxAdapterKind,
   SandboxDetailReadModel,
   TradingGatewayEnvironmentReadModel,
@@ -23,8 +24,11 @@ import {
 } from "../gateway/runtime-binding";
 import type { AccountState, ReplayTradingApiProviderSession } from "../research/types";
 import { PaperTradingEvaluationRunner } from "./evaluation-runner";
+import { classifyPaperTradingFailure } from "./failures";
 import {
+  canRestartFailedPaperTradingEvaluation,
   recordPaperTradingEvaluationObservation,
+  tradingSystemEventIdsFromCandidate,
   tradingRunLifecycleAuditInput
 } from "./observation";
 
@@ -136,6 +140,26 @@ export class PaperTradingCommandService {
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
     const tradingRunId = candidate.runtime.ref.id;
     const existingEvaluation = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    const failedSessionEventIds = restartFailedPaperTradingEvaluationProcessedEventIds({
+      candidate,
+      evaluation: existingEvaluation
+    });
+    if (
+      existingEvaluation?.status === "failed" &&
+      !canRestartFailedPaperTradingEvaluation(existingEvaluation)
+    ) {
+      const response = await tradingRunResponse(this.options.store, tradingRunId);
+      return {
+        statusCode: 409,
+        body: {
+          error: "paper_trading_evaluation_failed_requires_repair",
+          status: "failed_requires_repair",
+          ...response,
+          paper_trading_evaluation: existingEvaluation,
+          runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
+        }
+      };
+    }
     if (existingEvaluation?.status === "running") {
       if (!this.runner.active(tradingRunId)) {
         const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
@@ -205,6 +229,8 @@ export class PaperTradingCommandService {
         gatewayRuntimeBinding,
         appendLedger: true,
         intervalMs: this.intervalMs,
+        restartFailedEvaluation: true,
+        restartFailedEvaluationProcessedEventIds: failedSessionEventIds,
         refreshCandidate: (candidate) => this.refreshPaperTradingSandbox(candidate)
       });
       if (paperTradingEvaluation.evaluation.status === "running") {
@@ -688,6 +714,26 @@ function startPaperOrderRequest(body: StartPaperTradingRunPayload | undefined): 
 
 function paperOrderRequestFromCandidateRuntime(candidate: CandidateInspectReadModel): PaperOrderRequestFixture {
   return candidate.runtime.sandbox?.sandbox_name?.endsWith("-rejected") ? "rejected" : "valid";
+}
+
+function restartFailedPaperTradingEvaluationProcessedEventIds(input: {
+  candidate: CandidateInspectReadModel;
+  evaluation: PaperTradingEvaluationRecord | undefined;
+}): string[] {
+  if (
+    input.evaluation?.status !== "failed" ||
+    !canRestartFailedPaperTradingEvaluation(input.evaluation)
+  ) {
+    return [];
+  }
+  const failure = classifyPaperTradingFailure(input.evaluation.latest_failure_reason);
+  if (
+    failure?.failure_kind !== "sandbox_or_runner_failure" &&
+    failure?.failure_kind !== "runner_health_loss"
+  ) {
+    return [];
+  }
+  return tradingSystemEventIdsFromCandidate(input.candidate);
 }
 
 function startRuntimeEnvironment(

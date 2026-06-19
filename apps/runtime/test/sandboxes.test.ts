@@ -565,8 +565,72 @@ describe("sandbox API", () => {
     expect(response.json().sandbox.logs[0].lines.join("\n")).toContain("\"event\": \"order_request\"");
     expect(response.json().sandbox.command_evidence[0]).toMatchObject({
       exit_code: 0,
-      command: expect.arrayContaining(["python3", relativeEntrypoint])
+      command: expect.arrayContaining(["python3", expect.stringContaining("relative-entrypoint/run.py")])
     });
+  });
+
+  it("executes generated paper SystemCode stored under a relative runtime dev-store root", async () => {
+    const runtimeCwd = path.join(tmpDir, "apps/runtime");
+    const relativeStoreRoot = path.join(".ouroboros", "dev-store");
+    const relativeArtifactPath = path.join(
+      relativeStoreRoot,
+      "candidate-arena-runs",
+      "relative-runtime-store",
+      "run.py"
+    );
+    const artifactPath = path.join(runtimeCwd, relativeArtifactPath);
+    const capabilityPolicyId = "candidate-arena-paper-system-code";
+    await mkdir(path.dirname(artifactPath), { recursive: true });
+    await writeFile(artifactPath, generatedPaperArtifact(), "utf8");
+    await chmod(artifactPath, 0o755);
+
+    const adapter = new DeterministicSandboxAdapter({
+      commandTimeoutMs: 5_000,
+      allowedArtifactRoots: [path.join(relativeStoreRoot, "candidate-arena-runs")],
+      allowedCapabilityPolicyIds: [capabilityPolicyId]
+    });
+    const previousCwd = process.cwd();
+    process.chdir(runtimeCwd);
+    try {
+      const started = await adapter.startArtifactInstance({
+        artifact: {
+          record_kind: "system_code",
+          version: 1,
+          system_code_id: "system-code-arena-relative-runtime-store",
+          artifact_kind: "python_file",
+          artifact_path: relativeArtifactPath,
+          artifact_digest: `sha256:${createHash("sha256").update(await readFile(artifactPath)).digest("hex")}`,
+          runtime_kind: "python",
+          entrypoint: ["python3", relativeArtifactPath],
+          declared_output_contract: {
+            contract_kind: "opaque_runtime_boundary",
+            declared_output_kinds: ["runtime_log", "runtime_heartbeat", "order_request"]
+          },
+          secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+          capability_policy_ref: { record_kind: "capability_policy", id: capabilityPolicyId },
+          provenance_refs: [{ record_kind: "trace_placeholder", id: "trace-relative-runtime-store" }],
+          status: "registered",
+          created_at: "2026-05-21T00:00:00.000Z",
+          authority_status: "not_live"
+        },
+        instance_id: "sandbox-generated-relative-runtime-store",
+        sandbox_name: "ouro-generated-relative-runtime-store",
+        runtime_ref: { record_kind: "trading_run", id: "fixture-trading-run-001" },
+        sandbox_placement_id: "sandbox-placement-generated-relative-runtime-store",
+        created_at: "2026-05-21T00:00:00.000Z",
+        test_ticks: 1,
+        interval_ms: 1
+      });
+
+      expect(started.instance.lifecycle_status).toBe("stopped");
+      expect(started.logs[0]?.lines.join("\n")).toContain("\"event\": \"order_request\"");
+      expect(started.command_evidence[0]).toMatchObject({
+        exit_code: 0,
+        command: expect.arrayContaining(["python3", expect.stringContaining("relative-runtime-store/run.py")])
+      });
+    } finally {
+      process.chdir(previousCwd);
+    }
   });
 
   it("rejects generated paper SystemCode when a relative entrypoint only resolves from process cwd", async () => {

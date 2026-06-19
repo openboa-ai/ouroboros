@@ -73,6 +73,34 @@ describe("runtime canonical operator API", () => {
         }
       });
 
+      const executionModeContracts = await server.inject({
+        method: "GET",
+        url: "/api/trading-system/execution-mode-contracts"
+      });
+      expect(executionModeContracts.statusCode).toBe(200);
+      expect(executionModeContracts.json()).toMatchObject({
+        trading_system_execution_mode_contracts: [
+          expect.objectContaining({
+            mode: "backtest",
+            authority: expect.objectContaining({
+              status: "not_live"
+            })
+          }),
+          expect.objectContaining({
+            mode: "paper",
+            authority: expect.objectContaining({
+              status: "paper_only"
+            })
+          }),
+          expect.objectContaining({
+            mode: "live",
+            authority: expect.objectContaining({
+              status: "live_disabled"
+            })
+          })
+        ]
+      });
+
       const operator = await server.inject({ method: "GET", url: "/api/operator" });
       expect(operator.statusCode).toBe(200);
       expect(operator.json()).toMatchObject({
@@ -1227,6 +1255,32 @@ describe("runtime canonical operator API", () => {
       });
       expect(observed.statusCode, observed.body).toBe(200);
       expect(observed.json()).toMatchObject({
+        operator: {
+          selected_paper_trading_evaluation: {
+            status: "failed",
+            observation_count: 1,
+            latest_failure_reason: "forbidden_private_or_live_authority"
+          }
+        }
+      });
+
+      const restarted = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+      expect(restarted.statusCode, restarted.body).toBe(409);
+      expect(restarted.json()).toMatchObject({
+        error: "paper_trading_evaluation_failed_requires_repair",
+        status: "failed_requires_repair",
+        paper_trading_evaluation: {
+          status: "failed",
+          observation_count: 1,
+          latest_failure_reason: "forbidden_private_or_live_authority"
+        },
         operator: {
           selected_paper_trading_evaluation: {
             status: "failed",

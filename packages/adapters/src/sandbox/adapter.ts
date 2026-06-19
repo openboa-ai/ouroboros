@@ -99,7 +99,10 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
     const tickCount = Math.max(1, input.test_ticks ?? 2);
     const intervalMs = input.interval_ms ?? 1_000;
     const placement = sandboxPlacement(input.sandbox_placement_id);
-    const command = systemCodeCommand(input.artifact);
+    const command = normalizedSystemCodeCommand(input.artifact, systemCodeCommand(input.artifact), {
+      allowedArtifactRoots: this.allowedArtifactRoots,
+      allowedCapabilityPolicyIds: this.allowedCapabilityPolicyIds
+    });
     if (!isDeterministicRunnableSystemCode(input.artifact, command, {
       allowedSystemCodeIds: this.allowedSystemCodeIds,
       allowedArtifactRoots: this.allowedArtifactRoots,
@@ -1052,8 +1055,8 @@ function isAllowedGeneratedPaperSystemCode(
     return false;
   }
 
-  const artifactPath = resolvePythonScriptPath(artifact.artifact_path);
-  return isPythonGeneratedCommand(command, artifactPath) &&
+  const artifactPath = resolveGeneratedPaperScriptPath(artifact.artifact_path, input.allowedArtifactRoots);
+  return isPythonGeneratedCommand(command, artifactPath, input.allowedArtifactRoots) &&
     input.allowedArtifactRoots.some((root) => isPathWithin(artifactPath, root));
 }
 
@@ -1065,20 +1068,74 @@ function isPythonFixtureCommand(command: string[]): boolean {
   );
 }
 
-function isPythonGeneratedCommand(command: string[], artifactPath: string): boolean {
+function isPythonGeneratedCommand(
+  command: string[],
+  artifactPath: string,
+  allowedArtifactRoots: readonly string[] = []
+): boolean {
   if (command.length < 2 || (command[0] !== "python" && command[0] !== "python3")) {
     return false;
   }
-  return resolvePythonScriptPath(command[1]!) === artifactPath;
+  return resolvePythonScriptPathCandidates(command[1]!, allowedArtifactRoots).includes(path.normalize(artifactPath));
 }
 
 function resolvePythonScriptPath(scriptPath: string): string {
   return path.isAbsolute(scriptPath) ? path.normalize(scriptPath) : path.resolve(REPO_ROOT, scriptPath);
 }
 
+function normalizedSystemCodeCommand(
+  artifact: SystemCodeRecord,
+  command: string[],
+  input: {
+    allowedArtifactRoots: readonly string[];
+    allowedCapabilityPolicyIds: readonly string[];
+  }
+): string[] {
+  if (
+    artifact.artifact_kind !== "python_file" ||
+    artifact.runtime_kind !== "python" ||
+    !artifact.capability_policy_ref ||
+    !input.allowedCapabilityPolicyIds.includes(artifact.capability_policy_ref.id) ||
+    command.length < 2 ||
+    (command[0] !== "python" && command[0] !== "python3")
+  ) {
+    return command;
+  }
+  const artifactPath = resolveGeneratedPaperScriptPath(artifact.artifact_path, input.allowedArtifactRoots);
+  return isPythonGeneratedCommand(command, artifactPath, input.allowedArtifactRoots)
+    ? [command[0]!, artifactPath, ...command.slice(2)]
+    : command;
+}
+
+function resolveGeneratedPaperScriptPath(scriptPath: string, allowedArtifactRoots: readonly string[]): string {
+  return resolvePythonScriptPathCandidates(scriptPath, allowedArtifactRoots)
+    .find((candidate) => allowedArtifactRoots.some((root) => isPathWithin(candidate, root)))
+    ?? resolvePythonScriptPath(scriptPath);
+}
+
+function resolvePythonScriptPathCandidates(
+  scriptPath: string,
+  allowedArtifactRoots: readonly string[] = []
+): string[] {
+  if (path.isAbsolute(scriptPath)) {
+    return [path.normalize(scriptPath)];
+  }
+  const candidates = allowedArtifactRoots.some((root) =>
+    !path.isAbsolute(root) && isRelativePathWithin(scriptPath, root)
+  )
+    ? [path.resolve(scriptPath), path.resolve(REPO_ROOT, scriptPath)]
+    : [path.resolve(REPO_ROOT, scriptPath)];
+  return [...new Set(candidates.map((candidate) => path.normalize(candidate)))];
+}
+
 function isPathWithin(filePath: string, root: string): boolean {
   const resolvedRoot = path.resolve(root);
   const relativePath = path.relative(resolvedRoot, filePath);
+  return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+}
+
+function isRelativePathWithin(filePath: string, root: string): boolean {
+  const relativePath = path.relative(path.normalize(root), path.normalize(filePath));
   return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
 }
 

@@ -209,6 +209,112 @@ describe("long-running paper TradingSystem sessions", () => {
     }
   });
 
+  it("retries uncheckpointed paper events after public execution evidence recovers", async () => {
+    const store = new LocalStore(tmpDir);
+    const eventId = "retryable-execution-gap-order-0001";
+    const firstSandbox = queuedLongRunningSandboxAdapter([
+      [paperOrderLine(eventId, "2026-05-16T00:00:03.000Z")]
+    ]);
+    const failedServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: firstSandbox
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, observed_at: "2026-05-16T00:00:03.000Z" }
+        ],
+        failPublicExecutionSnapshot: true
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    let evaluationId = "";
+    try {
+      await postCommand(failedServer, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      const started = await postCommand(failedServer, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+      const failedEvaluation = started.operator.selected_paper_trading_evaluation;
+
+      expect(failedEvaluation).toMatchObject({
+        status: "failed",
+        runner_active: false,
+        observation_count: 1,
+        latest_failure_reason: "fake public execution stream unavailable"
+      });
+      if (!failedEvaluation) {
+        throw new Error("selected paper TradingEvaluation missing after execution evidence failure");
+      }
+      expect(failedEvaluation.evaluation_id).toEqual(expect.any(String));
+      evaluationId = failedEvaluation.evaluation_id ?? "";
+      const failedObservations = await store.listPaperTradingObservations(evaluationId);
+      expect(failedObservations.at(-1)).toMatchObject({
+        status: "failed"
+      });
+      expect(failedObservations.at(-1)?.processed_trading_system_event_ids).toEqual([]);
+    } finally {
+      await failedServer.close();
+    }
+
+    const repairedSandbox = queuedLongRunningSandboxAdapter([
+      [paperOrderLine(eventId, "2026-05-16T00:01:03.000Z")]
+    ]);
+    const repairedServer = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: repairedSandbox
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_100, observed_at: "2026-05-16T00:01:03.000Z" }
+        ],
+        executionSnapshots: [{
+          agg_trades: [{
+            trade_id: "retryable-execution-gap-fill-0001",
+            price: "60000",
+            quantity: "0.001",
+            trade_time: "2026-05-16T00:01:03.500Z"
+          }]
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const restarted = await postCommand(repairedServer, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      expect(restarted.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        observation_count: 2,
+        latest_decision: {
+          decision_kind: "order_request",
+          reason: "long_running_session_limit_order"
+        }
+      });
+      expect(restarted.operator.selected_paper_trading_evaluation.latest_failure_reason).toBeUndefined();
+      const repairedObservations = await store.listPaperTradingObservations(evaluationId);
+      expect(repairedObservations.at(-1)).toMatchObject({
+        status: "recorded",
+        processed_trading_system_event_ids: [eventId]
+      });
+      expect(repairedSandbox.startCalls()).toBe(1);
+    } finally {
+      await repairedServer.close();
+    }
+  });
+
   it("stops the linked sandbox when trading run start fails after sandbox launch", async () => {
     const store = new LocalStore(tmpDir);
     store.recordRunControlAudit = (async () => {
@@ -437,6 +543,96 @@ describe("long-running paper TradingSystem sessions", () => {
         latest_failure_reason: "paper_trading_sandbox_failed"
       });
       expect(observed.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("stopped");
+      expect(sandboxAdapter.stopCalls()).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("restarts paper evidence after a sandbox failure has been repaired", async () => {
+    const store = new LocalStore(tmpDir);
+    const sandboxAdapter = queuedLongRunningSandboxAdapter(
+      [
+        [paperOrderLine("repaired-session-order-0001", "2026-05-16T00:00:03.000Z")],
+        [paperOrderLine("repaired-session-stale-order-0002", "2026-05-16T00:01:03.000Z")],
+        [paperOrderLine("repaired-session-order-0003", "2026-05-16T00:02:03.000Z")]
+      ],
+      [undefined, "failed", undefined]
+    );
+    const server = await buildServer({
+      store,
+      sandboxAdapters: {
+        deterministic_test: sandboxAdapter
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          { price: 65_000, observed_at: "2026-05-16T00:00:03.000Z" },
+          { price: 65_100, observed_at: "2026-05-16T00:01:03.000Z" },
+          { price: 65_200, observed_at: "2026-05-16T00:02:03.000Z" }
+        ],
+        executionSnapshots: [
+          {
+            agg_trades: [{
+              trade_id: "repaired-session-fill-0001",
+              price: "60000",
+              quantity: "0.001",
+              trade_time: "2026-05-16T00:00:03.500Z"
+            }]
+          },
+          {
+            agg_trades: [{
+              trade_id: "repaired-session-fill-0002",
+              price: "60050",
+              quantity: "0.001",
+              trade_time: "2026-05-16T00:02:03.500Z"
+            }]
+          }
+        ]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      const started = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        observation_count: 1
+      });
+
+      const tradingRunId = started.operator.selected_paper_trading_evaluation.trading_run_id;
+      const failed = await postCommand(server, {
+        command_kind: "trading_run.observe",
+        payload: { trading_run_id: tradingRunId }
+      });
+      expect(failed.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "failed",
+        observation_count: 2,
+        latest_failure_reason: "paper_trading_sandbox_failed"
+      });
+
+      const restarted = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+
+      expect(restarted.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        observation_count: 3
+      });
+      expect(restarted.operator.selected_paper_trading_evaluation.latest_failure_reason).toBeUndefined();
+      const candidateAfterRestart = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+      expect(candidateAfterRestart?.ledger?.chain_count).toBe(2);
+      expect(sandboxAdapter.startCalls()).toBe(2);
       expect(sandboxAdapter.stopCalls()).toBe(1);
     } finally {
       await server.close();

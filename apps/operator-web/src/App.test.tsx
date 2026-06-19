@@ -1,4 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildLedgerReadModel, OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS } from "@ouroboros/domain";
 import type {
@@ -34,6 +37,8 @@ import {
   ref
 } from "../../../test/support/binance-no-authority";
 import {
+  App,
+  applyOperatorRefreshState,
   badgeVariant,
   CandidateArenaPanel,
   CandidateDetail,
@@ -51,6 +56,7 @@ import {
   ledgerCommandPayload,
   runControlPausePayload,
   fetchOperatorReadModel,
+  buildTradingResearchRuntimeFromOperator,
   runCandidateArenaCommand,
   runPaperEvidenceForCandidate,
   promoteCandidateToTrading,
@@ -66,10 +72,257 @@ import {
   type FullCycleOutcome,
   type TradingResearchRuntimeReadModel
 } from "./api";
+import { CardAction, CardHeader } from "./components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
+import {
+  OPERATOR_DESIGN_TOKENS,
+  OperatorActionRow,
+  OperatorCallout,
+  OperatorField,
+  OperatorPage,
+  OperatorPageHeader,
+  OperatorPanel,
+  OperatorSectionHeader,
+  OperatorStat
+} from "./design-system";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
+const operatorWebSrcDir = dirname(fileURLToPath(import.meta.url));
+
+describe("operator design system contract", () => {
+  it("keeps operator UI radius, surface, and typography tokens centralized", () => {
+    expect(OPERATOR_DESIGN_TOKENS.radius.panel).toBe("var(--radius-lg)");
+    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("rounded-lg");
+    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("bg-card");
+    expect(OPERATOR_DESIGN_TOKENS.typography.label).toContain("text-[11px]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid).toContain("xl:grid-cols-4");
+
+    const exportedClasses = JSON.stringify(OPERATOR_DESIGN_TOKENS);
+
+    expect(exportedClasses).not.toMatch(/rounded-(xl|2xl|3xl|4xl)/);
+    expect(exportedClasses).not.toMatch(/space-[xy]-/);
+  });
+
+  it("keeps reusable operator primitives in a directory-based design-system entrypoint", () => {
+    const designSystemDir = join(operatorWebSrcDir, "design-system");
+    const componentDir = join(designSystemDir, "components");
+    const componentFiles = readdirSync(componentDir)
+      .filter((fileName) => fileName.endsWith(".tsx"))
+      .sort();
+
+    expect(existsSync(join(operatorWebSrcDir, "operator-ui.tsx"))).toBe(false);
+    expect(existsSync(join(operatorWebSrcDir, "design-system.ts"))).toBe(false);
+    expect(existsSync(join(designSystemDir, "index.ts"))).toBe(true);
+    expect(existsSync(join(designSystemDir, "tokens.ts"))).toBe(true);
+    expect(componentFiles).toEqual(expect.arrayContaining([
+      "action-row.tsx",
+      "callout.tsx",
+      "empty-state.tsx",
+      "evidence.tsx",
+      "field.tsx",
+      "page.tsx",
+      "panel.tsx",
+      "section-header.tsx",
+      "stat.tsx",
+      "tab-badge.tsx"
+    ]));
+
+    const indexSource = readFileSync(join(designSystemDir, "index.ts"), "utf8");
+    expect(indexSource).toContain('export { OPERATOR_DESIGN_TOKENS } from "./tokens"');
+
+    for (const fileName of componentFiles) {
+      const source = readFileSync(join(componentDir, fileName), "utf8");
+
+      expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).toContain("../tokens");
+    }
+
+    for (const fileName of ["callout.tsx", "empty-state.tsx", "evidence.tsx", "field.tsx", "panel.tsx", "stat.tsx"]) {
+      expect(readFileSync(join(componentDir, fileName), "utf8")).toContain("@/components/ui/card");
+    }
+    expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
+  });
+
+  it("renders evidence fields and stats from shared primitives without clipping long values", () => {
+    const longEvidenceValue = "binance_production_public_rest / public_execution_bookTicker / none_open_0";
+    const html = renderToStaticMarkup(
+      <div>
+        <OperatorField label="Market provenance" value={longEvidenceValue} />
+        <OperatorStat label="Paper net" value="2.839997 USDT" detail="revenue - cost" />
+      </div>
+    );
+
+    expect(html).toContain("data-operator-ui=\"field\"");
+    expect(html).toContain("data-operator-ui=\"stat\"");
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain('data-size="sm"');
+    expect(html).toContain('data-slot="card-content"');
+    expect(html).toContain("[overflow-wrap:anywhere]");
+    expect(html).toContain("min-w-0");
+    expect(html).toContain("break-words");
+    expect(html).not.toContain("truncate");
+  });
+
+  it("keeps high-level metric strips compact and mobile-first", () => {
+    const html = renderToStaticMarkup(
+      <div data-operator-ui="metric-strip" className={OPERATOR_DESIGN_TOKENS.layout.statGrid}>
+        <OperatorStat label="Arena runner" value="running" detail="3 ticks" />
+        <OperatorStat label="ResearchPreflight net" value="9.83 USDT" detail="revenue - cost" />
+        <OperatorStat label="ResearchPreflight return" value="0.0983%" detail="secondary rank signal" />
+      </div>
+    );
+
+    expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("repeat(auto-fit");
+    expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).not.toContain("md:grid-cols-3");
+    expect(OPERATOR_DESIGN_TOKENS.surface.stat).not.toMatch(/bg-card\/|ring-border\/|rounded-md/);
+    expect(OPERATOR_DESIGN_TOKENS.typography.statValue).toContain("text-lg");
+    expect(OPERATOR_DESIGN_TOKENS.typography.statValue).not.toContain("text-[1.35rem]");
+    expect(html).toContain('data-operator-ui="metric-strip"');
+    expect(html).toContain('data-operator-ui="stat"');
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain("repeat(auto-fit");
+    expect(html).not.toContain("md:grid-cols-3");
+    expect(html).not.toContain("text-[1.35rem]");
+  });
+
+  it("keeps nested evidence surfaces flat instead of rendering card-in-card chrome", () => {
+    expect(OPERATOR_DESIGN_TOKENS.surface.evidenceBlock).toContain("bg-transparent");
+    expect(OPERATOR_DESIGN_TOKENS.surface.evidenceBlock).not.toMatch(/ring-1|shadow|bg-background/);
+    expect(OPERATOR_DESIGN_TOKENS.surface.field).toContain("bg-transparent");
+    expect(OPERATOR_DESIGN_TOKENS.surface.field).toContain("border-t");
+    expect(OPERATOR_DESIGN_TOKENS.surface.field).not.toMatch(/ring-1|rounded-(md|lg)|bg-background/);
+    expect(OPERATOR_DESIGN_TOKENS.surface.emptyState).toContain("bg-transparent");
+    expect(OPERATOR_DESIGN_TOKENS.surface.emptyState).not.toMatch(/ring-1|bg-muted/);
+  });
+
+  it("renders operator callouts without oversized metric typography", () => {
+    const html = renderToStaticMarkup(
+      <OperatorCallout
+        label="Recommended action"
+        value="Promote a selected Paper Trading Evaluation candidate from Arena to Trading review."
+      />
+    );
+
+    expect(html).toContain("data-operator-ui=\"callout\"");
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain('data-slot="card-content"');
+    expect(html).toContain("uppercase");
+    expect(html).toContain("text-sm");
+    expect(OPERATOR_DESIGN_TOKENS.surface.callout).toContain("py-2");
+    expect(OPERATOR_DESIGN_TOKENS.surface.callout).not.toContain("bg-background/20");
+    expect(html).not.toContain("text-[1.35rem]");
+  });
+
+  it("renders page and section chrome through operator UI primitives", () => {
+    const html = renderToStaticMarkup(
+      <OperatorPage>
+        <OperatorPageHeader
+          eyebrow="Paper workspace"
+          title="BTCUSDT operator cockpit"
+          actions={<OperatorActionRow><span>Trading</span><span>Arena</span></OperatorActionRow>}
+        />
+        <OperatorSectionHeader
+          eyebrow="Review packet"
+          title="Trading review packet"
+          description="Structured evidence for the active Trading review target."
+          actions={<span>collecting</span>}
+        />
+      </OperatorPage>
+    );
+
+    expect(html).toContain("data-operator-ui=\"page\"");
+    expect(html).toContain("data-operator-ui=\"page-header\"");
+    expect(html).toContain("data-operator-ui=\"section-header\"");
+    expect(html).toContain("data-operator-ui=\"action-row\"");
+    expect(html).toContain("max-w-[1500px]");
+    expect(html).toContain("sm:flex-row");
+    expect(html).toContain("tracking-normal");
+    expect(html).not.toContain("tracking-tight");
+  });
+
+  it("keeps operator panels constrained to one shrinkable grid column", () => {
+    const html = renderToStaticMarkup(
+      <OperatorPanel aria-label="ResearchPreflight Evidence">
+        <OperatorSectionHeader
+          title="ResearchPreflight Evidence"
+          description="pending"
+          actions={<span>not_counted</span>}
+        />
+      </OperatorPanel>
+    );
+
+    expect(html).toContain("data-operator-ui=\"panel\"");
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain('data-size="sm"');
+    expect(html).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(html).toContain("content-start");
+  });
+
+  it("keeps the app shell and page title mobile-first through shared tokens", () => {
+    const tokens = OPERATOR_DESIGN_TOKENS as {
+      layout: Record<string, string>;
+      surface: Record<string, string>;
+    };
+    const exportedClasses = JSON.stringify(OPERATOR_DESIGN_TOKENS);
+    const html = renderToStaticMarkup(<App />);
+
+    expect(tokens.layout.appHeader).toBeTypeOf("string");
+    expect(tokens.layout.appHeader).toContain("h-12");
+    expect(tokens.layout.appHeader).not.toContain("border-b");
+    expect(tokens.layout.appMain).toBeTypeOf("string");
+    expect(tokens.layout.appMain).toContain("p-3");
+    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-2xl");
+    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-3xl");
+    expect(exportedClasses).not.toMatch(/text-\[clamp|vw/);
+    expect(html).toContain('data-operator-ui="app-header"');
+    expect(html).toContain('data-operator-ui="app-main"');
+    expect(html).not.toContain("h-14 shrink-0 items-center gap-3 border-b px-4");
+    expect(html).not.toContain("min-h-[calc(100svh-3.5rem)] bg-background p-4");
+  });
+
+  it("renders the app loading fallback through operator primitives", () => {
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("Loading fixture read model...");
+    expect(html).toContain("Loading trading systems");
+    expect(html).toContain('aria-label="Loading read model"');
+    expect(html).toContain('data-operator-ui="panel"');
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain('data-operator-ui="section-header"');
+    expect(html).not.toContain("No Trading System selected");
+  });
+});
+
+describe("operator refresh contract", () => {
+  it("refreshes replay evidence when the interval observes a different selected candidate", () => {
+    const source = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+
+    expect(source).toContain("const selectedCandidateIdRef = useRef<string | undefined>(undefined)");
+    expect(source).toContain("const selectedChanged = Boolean(");
+    expect(source).toContain("fetchReplayRunEvidence(selected.candidate_id)");
+    expect(source).toContain("fetchReplayRunSelection(selected.candidate_id, replayRuns)");
+  });
+});
+
 describe("operator UI primitives", () => {
+  it("keeps card actions from squeezing copy on mobile", () => {
+    const html = renderToStaticMarkup(
+      <CardHeader>
+        <div>
+          <p>Paper Trading review cockpit. Live exchange authority remains disabled.</p>
+        </div>
+        <CardAction>
+          <span>paper only</span>
+        </CardAction>
+      </CardHeader>
+    );
+
+    expect(html).toContain("sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]");
+    expect(html).toContain("sm:col-start-2");
+    expect(html).toContain("sm:justify-self-end");
+    expect(html).not.toContain("has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]");
+  });
+
   it("keeps segmented tabs tall enough for mobile labels", () => {
     const html = renderToStaticMarkup(
       <Tabs defaultValue="trading">
@@ -85,6 +338,70 @@ describe("operator UI primitives", () => {
     expect(html).toContain("py-1");
     expect(html).not.toContain("bottom-[-5px]");
     expect(html).not.toContain("-right-1");
+  });
+});
+
+describe("operator app refresh", () => {
+  it("merges refreshed paper board state without resetting pending controls", () => {
+    const staleOperator = operatorReadModelFixture({
+      selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+        runner_active: false,
+        observation_count: 11,
+        latest_failure_reason: "runner_inactive_for_running_evaluation"
+      }),
+      paper_trading_board: paperTradingBoardFixture({
+        runner_status: "needs_resume",
+        promotion_gate_status: "needs_resume",
+        qualification_status: "blocked_by_quality",
+        qualification_reasons: [
+          "runner_inactive_for_running_evaluation",
+          "failed_observation_ratio_exceeded"
+        ],
+        observation_count: 11
+      })
+    });
+    const freshOperator = operatorReadModelFixture({
+      selected_paper_trading_evaluation: paperTradingEvaluationFixture({
+        runner_active: true,
+        observation_count: 12,
+        latest_failure_reason: undefined
+      }),
+      paper_trading_board: paperTradingBoardFixture({
+        runner_status: "active",
+        promotion_gate_status: "collecting_paper_evidence",
+        qualification_status: "blocked_by_quality",
+        qualification_reasons: ["failed_observation_ratio_exceeded"],
+        observation_count: 12
+      })
+    });
+    const currentState = {
+      candidates: [],
+      executionModes: tradingExecutionModes(),
+      replayRuns: [],
+      selectedTradingResearchAgent: "codex" as const,
+      tradingResearchIterations: 1,
+      loading: false,
+      runningFullCycle: false,
+      runningTradingRun: true,
+      recordingImprovement: false,
+      recordingRunControl: false,
+      recordingPrivateReadinessPosture: false,
+      runningCandidateReplay: false,
+      runningTradingPromotion: false,
+      runningCandidateArenaAction: false,
+      operator: staleOperator,
+      candidateArena: staleOperator.candidate_arena,
+      selected: staleOperator.selected_candidate ?? undefined,
+      tradingResearchRuntime: buildTradingResearchRuntimeFromOperator(staleOperator)
+    };
+
+    const refreshed = applyOperatorRefreshState(currentState, freshOperator);
+
+    expect(refreshed.operator?.paper_trading_board.entries[0]?.runner_status).toBe("active");
+    expect(refreshed.operator?.paper_trading_board.entries[0]?.observation_count).toBe(12);
+    expect(refreshed.operator?.selected_paper_trading_evaluation?.runner_active).toBe(true);
+    expect(refreshed.operator?.selected_paper_trading_evaluation?.latest_failure_reason).toBeUndefined();
+    expect(refreshed.runningTradingRun).toBe(true);
   });
 });
 
@@ -459,6 +776,43 @@ describe("operator command API", () => {
     expect(operator.selected_candidate_id).toBe("candidate-profitable");
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:4173/api/operator");
   });
+
+  it("derives trading research runtime from an already-loaded operator model", () => {
+    const operator = {
+      researcher_provider: {
+        selected_provider: "fixture",
+        available_providers: ["codex", "fixture"],
+        authority_status: "research_only"
+      },
+      agent_profiles: [{
+        profile_id: "codex",
+        provider: "codex",
+        label: "Codex",
+        status: "login_required",
+        managed_home: "/tmp/ouroboros/agent-profiles/codex/home",
+        managed_provider_home: "/tmp/ouroboros/agent-profiles/codex/codex-home",
+        authority_status: "no_trading_authority",
+        failure_reason: "login_required"
+      }]
+    } satisfies Pick<OperatorReadModel, "researcher_provider" | "agent_profiles">;
+
+    const runtime = buildTradingResearchRuntimeFromOperator(operator);
+
+    expect(runtime.default_agent).toBe("fixture");
+    expect(runtime.available_agents).toEqual(["codex", "fixture"]);
+    expect(runtime.agents).toEqual([
+      expect.objectContaining({
+        agent: "codex",
+        readiness_status: "blocked_or_not_installed",
+        failure_reason: "login_required"
+      }),
+      expect.objectContaining({
+        agent: "fixture",
+        readiness_status: "active_verified",
+        model: "scripted-fixture"
+      })
+    ]);
+  });
 });
 
 describe("CandidateDetail", () => {
@@ -509,10 +863,20 @@ describe("CandidateDetail", () => {
 
     expect(html).toContain("Candidate Arena");
     expect(html).toContain("Operator cockpit");
+    expect(html).toContain('data-slot="card"');
     const arenaCommandBar = extractArenaCommandBarSection(html);
     expect(arenaCommandBar).toContain(">Arena command bar<");
+    expect(arenaCommandBar).toContain('data-operator-ui="panel"');
+    expect(arenaCommandBar).toContain('data-operator-ui="section-header"');
+    expect(arenaCommandBar).toContain('data-operator-ui="callout"');
+    expect(arenaCommandBar).toContain('data-operator-ui="action-row"');
     expect(arenaCommandBar).not.toContain(">Runtime command bar<");
     const arenaMetricStrip = extractCandidateArenaMetricStripSection(html);
+    expect(arenaMetricStrip).toContain('data-operator-ui="metric-strip"');
+    expect(arenaMetricStrip).toContain('data-slot="card"');
+    expect(arenaMetricStrip).toContain("repeat(auto-fit");
+    expect(arenaMetricStrip).not.toContain("md:grid-cols-3");
+    expect(arenaMetricStrip).not.toContain("text-[1.35rem]");
     expect(arenaMetricStrip).toContain("Arena runner");
     expect(arenaMetricStrip).toContain("ResearchPreflight net");
     expect(arenaMetricStrip).toContain("ResearchPreflight return");
@@ -520,7 +884,10 @@ describe("CandidateDetail", () => {
     expect(arenaMetricStrip).not.toContain(">Net return<");
     const leaderboardSection = extractCandidateArenaLeaderboardSection(html);
     expect(leaderboardSection).toContain("ResearchPreflight leaderboard");
+    expect(leaderboardSection).toContain('data-slot="button"');
     expect(leaderboardSection).not.toContain("Revenue-cost leaderboard");
+    expect(leaderboardSection).not.toContain("bg-muted/35");
+    expect(leaderboardSection).not.toContain("ring-primary/30");
     expect(leaderboardSection).toContain("ResearchPreflight net");
     expect(leaderboardSection).toContain("ResearchPreflight return");
     expect(leaderboardSection).not.toContain(">Net revenue<");
@@ -541,6 +908,16 @@ describe("CandidateDetail", () => {
     expect(html).not.toContain("profit_loss");
     expect(html).toContain("Paper runner");
     expect(html).toContain("Paper Board");
+    const paperBoardSection = extractCandidateArenaPaperBoardSection(html);
+    expect(paperBoardSection).toContain('data-operator-ui="panel"');
+    expect(paperBoardSection).toContain('data-operator-ui="evidence-stack"');
+    expect(paperBoardSection).toContain('data-operator-ui="evidence-block"');
+    expect(paperBoardSection).toContain('data-operator-ui="evidence-status"');
+    expect(paperBoardSection).toContain('data-operator-ui="evidence-row"');
+    expect(paperBoardSection).not.toContain('class="grid gap-2 md:grid-cols-2"');
+    expect(paperBoardSection).not.toContain('class="placeholder"');
+    expect(paperBoardSection).not.toContain("bg-background/55");
+    expect(paperBoardSection).not.toContain("ring-border/35");
     expect(html).toContain("sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
     expect(html).toContain("[overflow-wrap:anywhere]");
     expect(html).toContain("Paper return");
@@ -586,6 +963,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Paper fill");
     expect(html).toContain("filled 0.001 @ 60000 / trade agg-60000-001");
     const selectedCandidateSection = extractSelectedCandidateArenaSection(html);
+    expect(selectedCandidateSection).toContain('data-operator-ui="panel"');
+    expect(selectedCandidateSection).toContain('data-operator-ui="section-header"');
+    expect(selectedCandidateSection).toContain('data-operator-ui="action-row"');
+    expect(selectedCandidateSection).toContain("sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
+    expect(selectedCandidateSection).not.toContain("rounded-md bg-muted/25 p-3");
     expect(selectedCandidateSection).toContain("Candidate lineage");
     expect(selectedCandidateSection).not.toContain(">Lineage<");
     expect(selectedCandidateSection).toContain("Selected candidate authority");
@@ -593,10 +975,26 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Observe now");
     expect(html).toContain("Stop paper trading");
     expect(html).toContain("Agent providers");
+    const agentProviderSection = extractAgentProviderStatusSection(html);
+    expect(agentProviderSection).toContain('data-operator-ui="panel"');
+    expect(agentProviderSection).toContain('data-operator-ui="section-header"');
+    expect(agentProviderSection).toContain('data-operator-ui="action-row"');
+    expect(agentProviderSection).not.toContain("rounded-md bg-muted/25 p-3");
     expect(html).toContain("Codex");
     expect(html).toContain("Command log");
+    const commandLogSection = extractCommandLogSection(html);
+    expect(commandLogSection).toContain('data-operator-ui="panel"');
+    expect(commandLogSection).toContain('data-operator-ui="section-header"');
+    expect(commandLogSection).not.toContain("rounded-md bg-muted/25 p-3");
+    expect(commandLogSection).not.toContain("rounded-md bg-background/55");
+    expect(commandLogSection).not.toContain("ring-border/30");
     expect(html).toContain("arena.tick");
     expect(html).toContain("Latest ticks");
+    const latestTicksSection = extractCandidateArenaLatestTicksSection(html);
+    expect(latestTicksSection).toContain('data-operator-ui="panel"');
+    expect(latestTicksSection).toContain('data-operator-ui="section-header"');
+    expect(latestTicksSection).toContain("sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]");
+    expect(latestTicksSection).not.toContain("rounded-md bg-muted/25 p-3");
     expect(html).toContain("completed");
     expect(html).toContain("Generated");
     expect(html).toContain("1 created / 1 failed");
@@ -710,6 +1108,54 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Resume paper trading");
     expect(html).toContain("needs resume / persisted running, timer inactive / next");
     expect(html).not.toContain("Stop paper trading");
+  });
+
+  it("renders empty Candidate Arena states through operator empty states", () => {
+    const emptyArena: CandidateArenaReadModel = {
+      ...fixtureCandidateArena,
+      leaderboard: [],
+      latest_candidates: [],
+      latest_ticks: []
+    };
+    const emptyPaperBoard: PaperTradingBoardReadModel = {
+      ...paperTradingBoardFixture(),
+      entries: []
+    };
+    const html = renderToStaticMarkup(
+      <CandidateArenaPanel
+        arena={emptyArena}
+        selectedCandidateId={fixtureCandidate.candidate_id}
+        selectedCandidate={fixtureCandidate}
+        selectedPaperEvidence={{
+          status: "not_run",
+          ledger_chain_complete: false,
+          authority_status: "not_live"
+        }}
+        selectedPaperTradingEvaluation={paperTradingEvaluationFixture()}
+        paperTradingBoard={emptyPaperBoard}
+        onStart={() => undefined}
+        onStop={() => undefined}
+        onTick={() => undefined}
+        onSelectCandidate={() => undefined}
+        onStartPaperTrading={() => undefined}
+        actionPending={false}
+        runningPaperTrading={false}
+      />
+    );
+
+    const paperBoardSection = extractCandidateArenaPaperBoardSection(html);
+    const leaderboardSection = extractCandidateArenaLeaderboardSection(html);
+    const latestTicksSection = extractCandidateArenaLatestTicksSection(html);
+
+    expect(paperBoardSection).toContain('data-operator-ui="empty-state"');
+    expect(paperBoardSection).toContain("No paper evaluations yet");
+    expect(paperBoardSection).not.toContain('class="placeholder"');
+    expect(leaderboardSection).toContain('data-operator-ui="empty-state"');
+    expect(leaderboardSection).toContain("No candidates yet");
+    expect(leaderboardSection).not.toContain('class="placeholder');
+    expect(latestTicksSection).toContain('data-operator-ui="empty-state"');
+    expect(latestTicksSection).toContain("No Candidate Arena ticks recorded.");
+    expect(latestTicksSection).not.toContain('class="placeholder"');
   });
 
   it("keeps the cockpit inspector bound to the operator-selected candidate even outside the arena leaderboard", () => {
@@ -852,7 +1298,33 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Provider trace material");
     expect(html).toContain("Evidence classifications");
     expect(html).toContain("trace_debug_material");
+    const gatewayContractSection = extractDetailsInfoSection(html, "Trading gateway contract");
+    expect(gatewayContractSection).toContain('data-operator-ui="empty-state"');
+    expect(gatewayContractSection).toContain("No trading gateway contract");
+    expect(gatewayContractSection).not.toContain('class="placeholder"');
+    const materializationAttemptSection = extractMaterializationAttemptSection(html);
+    expect(materializationAttemptSection).toContain('data-operator-ui="empty-state"');
+    expect(materializationAttemptSection).toContain("No materialization attempt");
+    expect(materializationAttemptSection).not.toContain('class="placeholder"');
     expectNoOperatorActionControls(html);
+  });
+
+  it("renders the Arena unavailable fallback through operator primitives", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="arena"
+        candidate={fixtureCandidate}
+      />
+    );
+
+    const arenaUnavailableStart = startOfOpeningTagForAriaLabel(html, "Arena unavailable");
+    const arenaUnavailableEnd = html.indexOf("</section>", arenaUnavailableStart);
+    const arenaUnavailable = html.slice(arenaUnavailableStart, arenaUnavailableEnd);
+
+    expect(arenaUnavailable).toContain('data-operator-ui="panel"');
+    expect(arenaUnavailable).toContain('data-operator-ui="section-header"');
+    expect(arenaUnavailable).toContain("Continuous paper trading arena state is not projected yet.");
+    expect(arenaUnavailable).toContain('data-slot="card"');
   });
 
   it("renders Binance BTCUSDT order-fill substrate posture without action controls", () => {
@@ -890,6 +1362,55 @@ describe("CandidateDetail", () => {
     expectNoOperatorActionControls(html, {
       includePrivateAuthorityTerms: true
     });
+  });
+
+  it("renders the trading substrate section through operator UI primitives", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        candidate={{
+          ...fixtureCandidate,
+          trading_substrate: {
+            latest_order_fill_surface: fixtureOrderFillSurface(),
+            latest_public_market_liveness_surface: fixturePublicMarketLivenessSurface(),
+            latest_private_readiness_preflight_surface: fixturePrivateReadinessPreflightSurface(),
+            latest_private_readiness_posture: fixturePrivateReadinessPosture(),
+            private_readiness_posture_history: [
+              fixturePrivateReadinessPosture(),
+              fixturePrivateReadinessPosture({
+                posture_id: "fixture-binance-btcusdt-private-readiness-posture-previous"
+              })
+            ],
+            latest_trading_gateway_contract: fixtureTradingGatewayContract(),
+            latest_private_readiness_policy_decision: fixturePrivateReadinessPolicyDecision(),
+            latest_private_read_gate_decision: fixturePrivateReadGateDecision(),
+            latest_account_position_risk_mirror_surface: fixtureAccountPositionRiskMirrorSurface()
+          }
+        }}
+        onRecordPrivateReadinessPosture={() => undefined}
+      />
+    );
+
+    const substrateSection = extractDetailsInfoSection(html, "Trading Substrate");
+
+    expect(substrateSection).toContain("Public market posture");
+    expect(substrateSection).toContain("Private readiness preflight");
+    expect(substrateSection).toContain("Private-readiness posture");
+    expect(substrateSection).toContain("Private-readiness policy");
+    expect(substrateSection).toContain("Account position risk mirror");
+    expect(substrateSection).toContain("Order-fill posture");
+    expect(substrateSection).toContain("Save local posture");
+    expect(substrateSection).toContain('data-operator-ui="evidence-stack"');
+    expect(substrateSection).toContain('data-operator-ui="evidence-status"');
+    expect(substrateSection).toContain('data-operator-ui="evidence-block"');
+    expect(substrateSection).toContain('data-operator-ui="evidence-row"');
+    expect(substrateSection).toContain('data-operator-ui="action-row"');
+    expect(substrateSection).not.toContain("posture-history");
+    expect(substrateSection).not.toContain("posture-history-row");
+    expect(substrateSection).not.toContain('class="evaluation-status');
+    expect(substrateSection).not.toContain('class="runtime-command');
+    expect(substrateSection).not.toContain('class="runtime-command-button');
+    expect(substrateSection).not.toContain('class="placeholder"');
+    expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
   it("renders Binance BTCUSDT public market and liveness posture without action controls", () => {
@@ -1399,6 +1920,8 @@ describe("CandidateDetail", () => {
     expect(html).toContain("completion_readiness_remediation_actions_present");
     expect(html).toContain("review_packet_index_ready_for_operator_scan");
     expect(html).toContain("review_packet_source_provenance_navigation_only");
+    expect(html).toContain("review-packet-index-row grid min-w-0");
+    expect(html).toContain("[&amp;&gt;*]:break-words");
     expect(html).toContain("not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
     expect(html.indexOf("Private-readiness review packet completion/readiness summary")).toBeLessThan(
@@ -1671,6 +2194,12 @@ describe("CandidateDetail", () => {
     expect(executionModesSection).not.toMatch(/<dt[^>]*>Mode<\/dt>/);
     expect(executionModesSection).toContain("Execution mode authority");
     expect(executionModesSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
+    expect(executionModesSection).toContain('data-operator-ui="evidence-stack"');
+    expect(executionModesSection).toContain('data-operator-ui="evidence-block"');
+    expect(executionModesSection).toContain('data-operator-ui="evidence-status"');
+    expect(executionModesSection).toContain('data-operator-ui="evidence-row"');
+    expect(executionModesSection).not.toContain('class="execution-mode-card');
+    expect(executionModesSection).not.toContain('class="execution-mode-card-header');
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
@@ -1705,6 +2234,12 @@ describe("CandidateDetail", () => {
     expect(candidateRunsSection).toContain("Provider requests");
     expect(candidateRunsSection).toContain("Replay runner commands");
     expect(candidateRunsSection).toContain("sha256:fadd2155");
+    expect(candidateRunsSection).toContain('data-operator-ui="evidence-block"');
+    expect(candidateRunsSection).toContain('data-operator-ui="evidence-stack"');
+    expect(candidateRunsSection).toContain('data-operator-ui="evidence-row"');
+    expect(candidateRunsSection).not.toContain('class="evaluation-block"');
+    expect(candidateRunsSection).not.toContain("run-history-list");
+    expect(candidateRunsSection).not.toContain("run-history-row");
     expect(candidateRunsSection).toContain("Replay authority");
     expect(candidateRunsSection).not.toContain(">Authority<");
     expect(candidateRunsSection).toContain("not_live");
@@ -1738,6 +2273,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("0.2: market/account/order validation went through the external provider");
     expect(html).toContain("sbx version");
     expect(html).toContain("not_live");
+    expect(replayDetailSection).toContain('data-operator-ui="evidence-block"');
+    expect(replayDetailSection).toContain('data-operator-ui="evidence-row"');
+    expect(replayDetailSection).not.toContain('class="evaluation-block"');
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
   });
 
@@ -1773,6 +2311,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("older-sdx-run");
     expect(html).toContain("Run history");
     expect(html).toContain("aria-pressed=\"true\"");
+    expect(html).toContain('data-operator-ui="evidence-stack"');
+    const runHistorySection = extractReplayRunHistorySection(html);
+    expect(runHistorySection).not.toContain("bg-background/35");
+    expect(runHistorySection).not.toContain("ring-border/30");
+    expect(html).not.toContain("run-history-list");
+    expect(html).not.toContain("run-history-row");
     expect(html).toContain("docker_sandboxes_sbx");
     expect(html).toContain("Selected run detail");
     expect(html).toContain("trend_long");
@@ -1827,6 +2371,11 @@ describe("CandidateDetail", () => {
     expect(replayComparisonSection).toContain("Replay comparison authority");
     expect(replayComparisonSection).toContain("Replay comparison no authority");
     expect(replayComparisonSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
+    expect(replayComparisonSection).toContain('data-operator-ui="evidence-block"');
+    expect(replayComparisonSection).toContain('data-operator-ui="evidence-status"');
+    expect(replayComparisonSection).toContain('data-operator-ui="evidence-row"');
+    expect(replayComparisonSection).not.toContain('class="evaluation-block"');
+    expect(replayComparisonSection).not.toContain('class="evaluation-status');
     expect(html).toContain("Validation state");
     expect(html).toContain("Read-only validation state");
     expect(html).toContain("validation_state_not_authority");
@@ -1834,6 +2383,11 @@ describe("CandidateDetail", () => {
     expect(replayValidationSection).toContain("Replay validation authority");
     expect(replayValidationSection).toContain("Replay validation no authority");
     expect(replayValidationSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
+    expect(replayValidationSection).toContain('data-operator-ui="evidence-block"');
+    expect(replayValidationSection).toContain('data-operator-ui="evidence-status"');
+    expect(replayValidationSection).toContain('data-operator-ui="evidence-row"');
+    expect(replayValidationSection).not.toContain('class="evaluation-block"');
+    expect(replayValidationSection).not.toContain('class="evaluation-status');
     expect(html).toContain("human review of replay evidence; future promotion issue with explicit authority scope");
     expect(html).toContain("live_exchange=false, order_authority=false, credentials=false, paper_trading=false");
     expect(html).toContain("not_live");
@@ -1855,6 +2409,10 @@ describe("CandidateDetail", () => {
     expect(html).toContain("No comparison baseline");
     expect(html).toContain("single replay-run history");
     expect(html).toContain("comparison_not_authority");
+    const replayComparisonSection = extractReplayRunComparisonSection(html);
+    expect(replayComparisonSection).toContain('data-operator-ui="empty-state"');
+    expect(replayComparisonSection).not.toContain('class="evaluation-block"');
+    expect(replayComparisonSection).not.toContain('class="placeholder"');
     expect(html).toContain("Validation state");
     expect(html).toContain("comparison_required");
     expect(html).toContain("record at least one baseline replay run; compare selected run against baseline before posture review");
@@ -1886,6 +2444,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("docker_sandboxes_sbx");
     expect(html).toContain("Run replay");
     expect(html).toContain("host_process / replay_only / not_live");
+    const candidateRunsSection = extractCandidateRunsSection(html);
+    expect(candidateRunsSection).toContain('data-operator-ui="action-row"');
+    expect(candidateRunsSection).not.toContain('class="runtime-command');
     expect(html).toContain("No ResearchPreflight runs");
     expect(html).toContain("not_live");
     expectNoOperatorActionControls(html, { includePrivateAuthorityTerms: true });
@@ -2031,6 +2592,7 @@ describe("CandidateDetail", () => {
       <CandidateDetail
         activeView="details"
         candidate={candidate}
+        executionModes={tradingExecutionModes()}
         onRunFullCycle={() => undefined}
         fullCycleMessage="full cycle completed: running"
       />
@@ -2066,7 +2628,38 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("Paper Trading review cockpit");
     expect(tradingHtml).not.toContain("Actual trading");
     expect(tradingHtml).not.toContain("realized-profit");
+    const decisionSection = extractOperatorDecisionBarSection(tradingHtml);
+    expect(decisionSection).toContain('data-operator-ui="panel"');
+    expect(decisionSection).toContain('data-operator-ui="section-header"');
+    expect(decisionSection).toContain('data-operator-ui="callout"');
+    expect(decisionSection).toContain('data-operator-ui="action-row"');
+    expect(decisionSection).toContain('data-slot="card"');
+    const promotionBoundary = extractTradingPromotionBoundarySection(tradingHtml);
+    expect(promotionBoundary).toContain('data-operator-ui="panel"');
+    expect(promotionBoundary).toContain('data-operator-ui="section-header"');
+    expect(promotionBoundary).toContain('data-operator-ui="action-row"');
+    expect(promotionBoundary).toContain('data-slot="card"');
+    const safetyBoundary = extractSafetyBoundarySection(tradingHtml);
+    expect(safetyBoundary).toContain('data-operator-ui="panel"');
+    expect(safetyBoundary).toContain('data-operator-ui="action-row"');
+    expect(safetyBoundary).toContain('data-slot="card"');
     expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading cockpit")).not.toContain('data-slot="card"');
+    const futuresChart = extractTradingChartSection(tradingHtml);
+    expect(futuresChart).toContain('data-operator-ui="panel"');
+    expect(futuresChart).toContain('data-operator-ui="section-header"');
+    expect(futuresChart).toContain('data-operator-ui="field"');
+    expect(futuresChart).toContain('data-operator-ui="stat"');
+    expect(futuresChart).toContain('data-slot="card"');
+    const paperReadback = extractTradingPaperReadbackSection(tradingHtml);
+    expect(paperReadback).toContain('data-operator-ui="panel"');
+    expect(paperReadback).toContain('data-operator-ui="section-header"');
+    expect(paperReadback).toContain('data-operator-ui="field"');
+    expect(paperReadback).toContain('data-slot="card"');
+    const tradeStatus = extractTradeStatusSection(tradingHtml);
+    expect(tradeStatus).toContain('data-operator-ui="panel"');
+    expect(tradeStatus).toContain('data-operator-ui="section-header"');
+    expect(tradeStatus).toContain('data-operator-ui="stat"');
+    expect(tradeStatus).toContain('data-slot="card"');
     expect(tradingHtml).not.toContain("Candidate Arena cockpit");
     expect(tradingHtml).not.toContain("Runtime command bar");
     expect(tradingHtml).not.toContain("Paper Board");
@@ -2107,6 +2700,14 @@ describe("CandidateDetail", () => {
     expect(researchHtml).not.toContain("Improvement output");
     expect(researchHtml).toContain("ResearchPreflight score");
     expect(researchHtml).toContain("ResearchPreflight status");
+    const researchSignals = extractResearchSignalsSection(researchHtml);
+    expect(researchSignals).toContain('data-operator-ui="panel"');
+    expect(researchSignals).toContain('data-operator-ui="section-header"');
+    expect(researchSignals).toContain('data-slot="card"');
+    const researchCycle = extractResearchCycleSection(researchHtml);
+    expect(researchCycle).toContain('data-operator-ui="panel"');
+    expect(researchCycle).toContain('data-operator-ui="section-header"');
+    expect(researchCycle).toContain('data-slot="card"');
     expect(researchHtml).not.toContain("Profit analysis");
     expect(researchHtml).toContain("Selected Trading System");
     expect(researchHtml).toContain("backtest accepted");
@@ -2132,8 +2733,38 @@ describe("CandidateDetail", () => {
     expect(detailsHtml).toContain("Product decisions stay in Trading, Arena, and Research.");
     expect(detailsHtml).toContain("Product blockers stay in Trading, Arena, and Research.");
     expect(detailsHtml).toContain("No promotion authority");
+    const fixtureNoticeSection = extractFixtureNoticeSection(detailsHtml);
+    expect(fixtureNoticeSection).toContain('data-operator-ui="panel"');
+    expect(fixtureNoticeSection).toContain('data-slot="card"');
+    const detailsBoundary = extractDetailsBoundarySection(detailsHtml);
+    expect(detailsBoundary).toContain('data-operator-ui="panel"');
+    expect(detailsBoundary).toContain('data-operator-ui="section-header"');
+    expect(detailsBoundary).toContain('data-slot="card"');
+    const detailsShell = extractDetailsShellSection(detailsHtml);
+    expect(detailsShell).toContain('data-operator-ui="panel"');
+    expect(detailsShell).toContain('data-operator-ui="section-header"');
+    expect(detailsShell).toContain('data-slot="card"');
+    const researchPreflightDetails = extractDetailsInfoSection(detailsHtml, "ResearchPreflight Evidence");
+    expect(researchPreflightDetails).toContain('data-operator-ui="panel"');
+    expect(researchPreflightDetails).toContain('data-operator-ui="section-header"');
+    expect(researchPreflightDetails).toContain('data-operator-ui="evidence-stack"');
+    expect(researchPreflightDetails).toContain('data-operator-ui="evidence-status"');
+    expect(researchPreflightDetails).toContain('data-operator-ui="evidence-block"');
+    expect(researchPreflightDetails).toContain('data-operator-ui="evidence-row"');
+    expect(researchPreflightDetails).not.toContain('class="evaluation-status');
+    expect(researchPreflightDetails).not.toContain('class="evaluation-block"');
+    expect(researchPreflightDetails).not.toContain("classification-row");
+    expect(researchPreflightDetails).toContain('data-slot="card"');
+    const executionModesSection = extractExecutionModesSection(detailsHtml);
+    expect(executionModesSection).toContain('data-operator-ui="panel"');
+    expect(executionModesSection).toContain('data-operator-ui="section-header"');
+    expect(executionModesSection).toContain('data-slot="card"');
     const candidateRunsSection = extractCandidateRunsSection(detailsHtml);
     expect(candidateRunsSection).toContain("Replay runner");
+    expect(candidateRunsSection).toContain('data-operator-ui="evidence-status"');
+    expect(candidateRunsSection).toContain('data-operator-ui="empty-state"');
+    expect(candidateRunsSection).not.toContain('class="evaluation-status');
+    expect(candidateRunsSection).not.toContain('class="placeholder"');
     expect(candidateRunsSection).not.toContain(">Runner<");
     expect(candidateRunsSection).toContain("Replay authority");
     expect(candidateRunsSection).not.toContain(">Authority<");
@@ -2148,6 +2779,50 @@ describe("CandidateDetail", () => {
     expect(detailsHtml).toContain("Trading Run");
     expect(detailsHtml).toContain("Sandbox");
     expect(detailsHtml).toContain("Ledger");
+    const tradingRunSection = extractTradingRunSection(detailsHtml);
+    expect(tradingRunSection).toContain('data-operator-ui="evidence-stack"');
+    expect(tradingRunSection).toContain('data-operator-ui="evidence-status"');
+    expect(tradingRunSection).toContain('data-operator-ui="evidence-row"');
+    expect(tradingRunSection).toContain('data-operator-ui="action-row"');
+    expect(tradingRunSection).not.toContain('class="evaluation-status');
+    expect(tradingRunSection).not.toContain('class="runtime-command');
+    const sandboxSection = extractSandboxSection(detailsHtml);
+    expect(sandboxSection).toContain('data-operator-ui="evidence-stack"');
+    expect(sandboxSection).toContain('data-operator-ui="evidence-status"');
+    expect(sandboxSection).toContain('data-operator-ui="evidence-row"');
+    expect(sandboxSection).not.toContain('class="evaluation-status');
+    const ledgerSection = extractLedgerSection(detailsHtml);
+    expect(ledgerSection).toContain('data-operator-ui="evidence-stack"');
+    expect(ledgerSection).toContain('data-operator-ui="evidence-status"');
+    expect(ledgerSection).toContain('data-operator-ui="evidence-block"');
+    expect(ledgerSection).toContain('data-operator-ui="evidence-row"');
+    expect(ledgerSection).not.toContain('class="evaluation-status');
+    expect(ledgerSection).not.toContain('class="evaluation-block"');
+    const runControlSection = extractDetailsInfoSection(detailsHtml, "Run Control");
+    expect(runControlSection).toContain('data-operator-ui="evidence-stack"');
+    expect(runControlSection).toContain('data-operator-ui="evidence-status"');
+    expect(runControlSection).toContain('data-operator-ui="evidence-block"');
+    expect(runControlSection).toContain('data-operator-ui="evidence-row"');
+    expect(runControlSection).toContain('data-operator-ui="action-row"');
+    expect(runControlSection).not.toContain('class="evaluation-status');
+    expect(runControlSection).not.toContain('class="evaluation-block"');
+    expect(runControlSection).not.toContain('class="runtime-command');
+    const improvementSection = extractImprovementSection(detailsHtml);
+    expect(improvementSection).toContain('data-operator-ui="evidence-stack"');
+    expect(improvementSection).toContain('data-operator-ui="evidence-status"');
+    expect(improvementSection).toContain('data-operator-ui="evidence-block"');
+    expect(improvementSection).toContain('data-operator-ui="evidence-row"');
+    expect(improvementSection).toContain('data-operator-ui="action-row"');
+    expect(improvementSection).not.toContain('class="evaluation-status');
+    expect(improvementSection).not.toContain('class="evaluation-block"');
+    expect(improvementSection).not.toContain('class="runtime-command');
+    const tradingRunTranscriptSection = extractDetailsInfoSection(detailsHtml, "Trading Run Transcript");
+    expect(tradingRunTranscriptSection).toContain('data-operator-ui="evidence-stack"');
+    expect(tradingRunTranscriptSection).toContain('data-operator-ui="evidence-status"');
+    expect(tradingRunTranscriptSection).toContain('data-operator-ui="evidence-block"');
+    expect(tradingRunTranscriptSection).toContain('data-operator-ui="evidence-row"');
+    expect(tradingRunTranscriptSection).not.toContain('class="evaluation-status');
+    expect(tradingRunTranscriptSection).not.toContain('class="evaluation-block"');
     expect(detailsHtml).not.toContain("Trading cockpit");
     expectNoOperatorActionControls(`${tradingHtml}${researchHtml}${detailsHtml}`, {
       includePrivateAuthorityTerms: true,
@@ -2209,6 +2884,8 @@ describe("CandidateDetail", () => {
     expect(tabShell).toContain(">collecting<");
     expect(tabShell).toContain('aria-label="Research tab state badge"');
     expect(tabShell).toContain(">provider blocked<");
+    expect(tabShell).toContain('data-operator-ui="tab-badge"');
+    expect(tabShell).not.toContain("rounded-sm bg-muted px-1 py-0.5");
     expect(tabShell).not.toContain('aria-label="Details tab state badge"');
   });
 
@@ -2251,6 +2928,9 @@ describe("CandidateDetail", () => {
     expect(provenance).toContain("market stale / degraded / fixture_seed_no_live_connector");
     expect(provenance).toContain("Boundary");
     expect(provenance).toContain("paper only / live_exchange=false, order_submission=false, credentials=false");
+    expect(provenance).toContain('data-operator-ui="evidence-row"');
+    expect(provenance).not.toContain("bg-muted/20");
+    expect(provenance).not.toContain("bg-muted/20 p-3");
     expect(html.indexOf('aria-label="Market data provenance"')).toBeLessThan(
       html.indexOf('aria-label="BTCUSDT mark price snapshot"')
     );
@@ -2346,20 +3026,25 @@ describe("CandidateDetail", () => {
     expect(promotionSection).toContain("Trading review candidate");
     expect(promotionSection).toContain("Paper runner");
     expect(promotionSection).not.toContain(">Runner<");
-    expect(promotionSection).toContain("Promotion next action");
+    expect(promotionSection).toContain("Promotion condition");
+    expect(promotionSection).not.toContain("Promotion next action");
     expect(promotionSection).not.toContain(">Next action<");
     expect(promotionSection).toContain("Review authority");
     expect(promotionSection).not.toContain(">Authority<");
     expect(promotionSection).toContain("collecting_evidence");
     expect(promotionSection).toContain("min_observation_count_not_met");
     expect(promotionSection).toContain("min_elapsed_ms_not_met");
-    expect(promotionSection).toContain("Continue paper trading until the evidence window qualifies.");
+    expect(promotionSection).not.toContain("Continue paper trading until the evidence window qualifies.");
     expect(promotionSection).toContain("disabled");
     expect(html).toContain("Trading review packet");
     expect(html.indexOf('aria-label="Trading review packet"')).toBeLessThan(
       html.indexOf('aria-label="Trading promotion boundary"')
     );
     const packetSection = extractTradingReviewPacketSection(html);
+    expect(packetSection).toContain('data-operator-ui="panel"');
+    expect(packetSection).toContain('data-operator-ui="section-header"');
+    expect(packetSection).toContain("sm:grid-cols-2 xl:grid-cols-4");
+    expect(packetSection).toContain('data-slot="card"');
     expect(packetSection.indexOf("Packet verdict")).toBeLessThan(packetSection.indexOf("Subject"));
     expect(packetSection.indexOf("Subject")).toBeLessThan(packetSection.indexOf("Paper rank"));
     expect(packetSection.indexOf("Paper rank")).toBeLessThan(packetSection.indexOf("Blocker groups"));
@@ -2470,6 +3155,12 @@ describe("CandidateDetail", () => {
       html.indexOf('aria-label="Safety boundary"')
     );
     expect(messagesSection).toContain("trading_candidate.promote");
+    expect(messagesSection).toContain('data-operator-ui="panel"');
+    expect(messagesSection).toContain('data-operator-ui="section-header"');
+    expect(messagesSection).toContain('data-slot="card"');
+    expect(messagesSection).not.toContain("rounded-md bg-muted/25 p-2");
+    expect(messagesSection).not.toContain("rounded-md bg-background/55");
+    expect(messagesSection).not.toContain("ring-border/30");
     expect(messagesSection).toContain("paper_trading_qualification_required");
     expect(messagesSection).toContain("Remediation group");
     expect(messagesSection).not.toContain(">Group<");
@@ -3088,6 +3779,12 @@ describe("CandidateDetail", () => {
     expect(html).toContain("Cluster boundary");
     expect(html).toContain("no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion");
     expect(html).toContain("not_promotion_authority");
+    const findingClustersSection = extractFindingClustersSection(html);
+    expect(findingClustersSection).toContain('data-operator-ui="evidence-stack"');
+    expect(findingClustersSection).toContain('data-operator-ui="evidence-block"');
+    expect(findingClustersSection).toContain('data-operator-ui="evidence-status"');
+    expect(findingClustersSection).toContain('data-operator-ui="evidence-row"');
+    expect(findingClustersSection).not.toContain("rounded-md bg-muted/25 p-3");
     expect(html).not.toContain("Move to Trading review");
     expectNoOperatorActionControls(html, {
       includePrivateAuthorityTerms: true,
@@ -3457,6 +4154,13 @@ describe("CandidateDetail", () => {
     expect(researchPreflightEvidenceSection).toContain("Trace material authority");
     expect(researchPreflightEvidenceSection).toContain("Counted evidence authority");
     expect(researchPreflightEvidenceSection).toContain("Sealing decision authority");
+    expect(researchPreflightEvidenceSection).toContain('data-operator-ui="evidence-stack"');
+    expect(researchPreflightEvidenceSection).toContain('data-operator-ui="evidence-status"');
+    expect(researchPreflightEvidenceSection).toContain('data-operator-ui="evidence-block"');
+    expect(researchPreflightEvidenceSection).toContain('data-operator-ui="evidence-row"');
+    expect(researchPreflightEvidenceSection).not.toContain('class="evaluation-status');
+    expect(researchPreflightEvidenceSection).not.toContain('class="evaluation-block"');
+    expect(researchPreflightEvidenceSection).not.toContain("classification-row");
     expect(researchPreflightEvidenceSection).not.toMatch(/<dt[^>]*>Authority<\/dt>/);
     expectNoOperatorActionControls(html);
   });
@@ -4735,10 +5439,41 @@ function jsonResponse(body: unknown): Response {
 }
 
 function extractSelectedCandidateArenaSection(html: string): string {
-  const start = html.indexOf('aria-label="Selected Candidate Arena candidate"');
-  const end = html.indexOf('aria-label="Agent provider status"', start);
-  if (start < 0 || end < 0) {
+  const ariaStart = html.indexOf('aria-label="Selected Candidate Arena candidate"');
+  const start = html.lastIndexOf("<section", ariaStart);
+  const end = html.indexOf('aria-label="Agent provider status"', ariaStart);
+  if (ariaStart < 0 || start < 0 || end < 0) {
     throw new Error("selected candidate arena section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractAgentProviderStatusSection(html: string): string {
+  const ariaStart = html.indexOf('aria-label="Agent provider status"');
+  const start = html.lastIndexOf("<section", ariaStart);
+  const end = html.indexOf('aria-label="Command log"', ariaStart);
+  if (ariaStart < 0 || start < 0 || end < 0) {
+    throw new Error("agent provider status section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractCommandLogSection(html: string): string {
+  const ariaStart = html.indexOf('aria-label="Command log"');
+  const start = html.lastIndexOf("<section", ariaStart);
+  const end = html.indexOf('aria-label="Candidate Arena latest ticks"', ariaStart);
+  if (ariaStart < 0 || start < 0 || end < 0) {
+    throw new Error("command log section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractCandidateArenaLatestTicksSection(html: string): string {
+  const ariaStart = html.indexOf('aria-label="Candidate Arena latest ticks"');
+  const start = html.lastIndexOf("<section", ariaStart);
+  const end = html.indexOf("</aside>", ariaStart);
+  if (ariaStart < 0 || start < 0 || end < 0) {
+    throw new Error("candidate arena latest ticks section not found");
   }
   return html.slice(start, end);
 }
@@ -4752,10 +5487,22 @@ function extractArenaCommandBarSection(html: string): string {
   return html.slice(start, end);
 }
 
+function extractCandidateArenaPaperBoardSection(html: string): string {
+  const ariaStart = html.indexOf('aria-label="Paper trading board"');
+  const start = html.lastIndexOf("<section", ariaStart);
+  const end = html.indexOf('aria-label="Candidate Arena leaderboard"', ariaStart);
+  if (ariaStart < 0 || start < 0 || end < 0) {
+    throw new Error("candidate arena paper board section not found");
+  }
+  return html.slice(start, end);
+}
+
 function extractCandidateArenaMetricStripSection(html: string): string {
-  const start = html.indexOf(">Arena runner<");
-  const end = html.indexOf('aria-label="Paper trading board"', start);
-  if (start < 0 || end < 0) {
+  const labelStart = html.indexOf(">Arena runner<");
+  const wrapperStart = html.lastIndexOf('data-operator-ui="metric-strip"', labelStart);
+  const start = html.lastIndexOf("<div", wrapperStart);
+  const end = html.indexOf('aria-label="Paper trading board"', labelStart);
+  if (labelStart < 0 || wrapperStart < 0 || start < 0 || end < 0) {
     throw new Error("candidate arena metric strip not found");
   }
   return html.slice(start, end);
@@ -4771,8 +5518,11 @@ function extractCandidateArenaLeaderboardSection(html: string): string {
 }
 
 function extractTradingPromotionBoundarySection(html: string): string {
-  const start = html.indexOf('aria-label="Trading promotion boundary"');
-  const end = html.indexOf('aria-label="Operator messages"', start);
+  const start = startOfOpeningTagForAriaLabel(html, "Trading promotion boundary");
+  const messagesStart = html.indexOf('aria-label="Operator messages"', start);
+  const safetyStart = html.indexOf('aria-label="Safety boundary"', start);
+  const endCandidates = [messagesStart, safetyStart].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : -1;
   if (start < 0) {
     throw new Error("trading promotion boundary section not found");
   }
@@ -4780,7 +5530,7 @@ function extractTradingPromotionBoundarySection(html: string): string {
 }
 
 function extractOperatorDecisionBarSection(html: string): string {
-  const start = html.indexOf('aria-label="Operator decision bar"');
+  const start = startOfOpeningTagForAriaLabel(html, "Operator decision bar");
   const packetStart = html.indexOf('aria-label="Trading review packet"', start);
   const promotionStart = html.indexOf('aria-label="Trading promotion boundary"', start);
   const endCandidates = [packetStart, promotionStart].filter((index) => index >= 0);
@@ -4792,7 +5542,7 @@ function extractOperatorDecisionBarSection(html: string): string {
 }
 
 function extractTradingReviewPacketSection(html: string): string {
-  const start = html.indexOf('aria-label="Trading review packet"');
+  const start = startOfOpeningTagForAriaLabel(html, "Trading review packet");
   const promotionStart = html.indexOf('aria-label="Trading promotion boundary"', start);
   const messagesStart = html.indexOf('aria-label="Operator messages"', start);
   const endCandidates = [promotionStart, messagesStart].filter((index) => index >= 0);
@@ -4804,21 +5554,113 @@ function extractTradingReviewPacketSection(html: string): string {
 }
 
 function extractTradingPaperReadbackSection(html: string): string {
-  const start = html.indexOf('aria-label="Trading paper readback"');
-  const tradeStatusStart = html.indexOf('aria-label="Order / trade status"', start);
+  const start = startOfOpeningTagForAriaLabel(html, "Trading paper readback");
+  const tradeStatusStart = html.indexOf('aria-label="Trade status"', start);
   if (start < 0) {
     throw new Error("trading paper readback section not found");
   }
   return html.slice(start, tradeStatusStart < 0 ? undefined : tradeStatusStart);
 }
 
+function extractTradingChartSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "BTCUSDT futures chart");
+  const paperSummaryStart = html.indexOf('aria-label="Paper trading review summary"', start);
+  if (start < 0) {
+    throw new Error("trading chart section not found");
+  }
+  return html.slice(start, paperSummaryStart < 0 ? undefined : paperSummaryStart);
+}
+
+function extractResearchSignalsSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Research signals");
+  const end = html.indexOf('aria-label="Research cycle"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("research signals section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractFindingClustersSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Finding clusters");
+  const end = html.indexOf('aria-label="Research signals"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("finding clusters section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractResearchCycleSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Research cycle");
+  const end = html.indexOf('aria-label="Agent generated Trading System"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("research cycle section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractFixtureNoticeSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Fixture notice");
+  const end = html.indexOf('aria-label="Details boundary"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("fixture notice section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractDetailsBoundarySection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Details boundary");
+  const end = html.indexOf('aria-label="Details"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("details boundary section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractDetailsShellSection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Details");
+  const end = html.indexOf('aria-label="ResearchPreflight Evidence"', start);
+  if (start < 0 || end < 0) {
+    throw new Error("details shell section not found");
+  }
+  return html.slice(start, end);
+}
+
+function extractDetailsInfoSection(html: string, label: string): string {
+  const ariaStart = html.indexOf(`aria-label="${label}"`);
+  const start = startOfOpeningTagForAriaLabel(html, label);
+  if (ariaStart < 0 || start < 0) {
+    throw new Error(`${label} section not found`);
+  }
+  const nextPanel = html.indexOf('<section data-operator-ui="panel"', ariaStart + label.length);
+  return html.slice(start, nextPanel < 0 ? undefined : nextPanel);
+}
+
 function extractOperatorMessagesSection(html: string): string {
-  const start = html.indexOf('aria-label="Operator messages"');
+  const start = startOfOpeningTagForAriaLabel(html, "Operator messages");
   const end = html.indexOf('aria-label="Safety boundary"', start);
   if (start < 0) {
     throw new Error("operator messages section not found");
   }
   return html.slice(start, end < 0 ? undefined : end);
+}
+
+function extractSafetyBoundarySection(html: string): string {
+  const start = startOfOpeningTagForAriaLabel(html, "Safety boundary");
+  const end = html.indexOf('aria-label="Trading cockpit"', start);
+  if (start < 0) {
+    throw new Error("safety boundary section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function startOfOpeningTagForAriaLabel(html: string, label: string): number {
+  const ariaStart = html.indexOf(`aria-label="${label}"`);
+  if (ariaStart < 0) {
+    return -1;
+  }
+  const sectionStart = html.lastIndexOf("<section", ariaStart);
+  const divStart = html.lastIndexOf("<div", ariaStart);
+  return Math.max(sectionStart, divStart);
 }
 
 function extractCandidateRunsSection(html: string): string {
@@ -4835,8 +5677,8 @@ function extractCandidateRunsSection(html: string): string {
 }
 
 function extractReplayRunComparisonSection(html: string): string {
-  const start = html.indexOf("<h4>Run comparison</h4>");
-  const end = html.indexOf("<h4>Validation state</h4>", start);
+  const start = startOfOpeningTagForAriaLabel(html, "Run comparison");
+  const end = startOfOpeningTagForAriaLabel(html, "Validation state");
   if (start < 0 || end < 0) {
     throw new Error("replay run comparison section not found");
   }
@@ -4844,9 +5686,11 @@ function extractReplayRunComparisonSection(html: string): string {
 }
 
 function extractReplayRunValidationStateSection(html: string): string {
-  const start = html.indexOf("<h4>Validation state</h4>");
+  const start = startOfOpeningTagForAriaLabel(html, "Validation state");
   const endCandidates = [
-    html.indexOf("<h4>Scenarios</h4>", start),
+    startOfOpeningTagForAriaLabel(html.slice(start), "Selected run detail") >= 0
+      ? start + startOfOpeningTagForAriaLabel(html.slice(start), "Selected run detail")
+      : -1,
     html.indexOf(">Run replay<", start)
   ].filter((index) => index >= 0);
   const end = endCandidates.length ? Math.min(...endCandidates) : -1;
@@ -4857,16 +5701,33 @@ function extractReplayRunValidationStateSection(html: string): string {
 }
 
 function extractReplayRunDetailSection(html: string): string {
-  const start = html.indexOf("<h4>Selected run detail</h4>");
-  const end = html.indexOf(">Run replay<", start);
+  const start = startOfOpeningTagForAriaLabel(html, "Selected run detail");
+  const endCandidates = [
+    html.indexOf(">Run replay<", start),
+    startOfOpeningTagForAriaLabel(html.slice(start), "ResearchPreflight Evidence") >= 0
+      ? start + startOfOpeningTagForAriaLabel(html.slice(start), "ResearchPreflight Evidence")
+      : -1
+  ].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : -1;
   if (start < 0) {
     throw new Error("replay run detail section not found");
   }
   return html.slice(start, end < 0 ? undefined : end);
 }
 
+function extractReplayRunHistorySection(html: string): string {
+  const start = html.indexOf(">Run history<");
+  const end = startOfOpeningTagForAriaLabel(html.slice(start), "Selected run detail") >= 0
+    ? start + startOfOpeningTagForAriaLabel(html.slice(start), "Selected run detail")
+    : -1;
+  if (start < 0) {
+    throw new Error("replay run history section not found");
+  }
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
 function extractCandidateLatestValidationStateSection(html: string): string {
-  const start = html.indexOf("<h4>Candidate latest validation state</h4>");
+  const start = startOfOpeningTagForAriaLabel(html, "Candidate latest validation state");
   const end = html.indexOf(">Spec</div>", start);
   if (start < 0) {
     throw new Error("candidate latest validation state section not found");
@@ -4884,66 +5745,31 @@ function extractRunControlSection(html: string): string {
 }
 
 function extractLedgerSection(html: string): string {
-  const start = html.indexOf(">Ledger</div>");
-  const end = html.indexOf("Trading gateway contract", start);
-  if (start < 0) {
-    throw new Error("ledger section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "Ledger");
 }
 
 function extractTradingRunSection(html: string): string {
-  const start = html.indexOf(">Trading Run</div>");
-  const end = html.indexOf(">Ledger</div>", start);
-  if (start < 0) {
-    throw new Error("trading run section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "Trading Run");
 }
 
 function extractTradingGatewayEnvironmentSection(html: string): string {
-  const start = html.indexOf(">Trading gateway environment</div>");
-  const end = html.indexOf(">Sandbox</div>", start);
-  if (start < 0) {
-    throw new Error("trading gateway environment section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "Trading gateway environment");
 }
 
 function extractImprovementSection(html: string): string {
-  const start = html.indexOf(">Improvement</div>");
-  const end = html.indexOf(">Trading Run<", start);
-  if (start < 0) {
-    throw new Error("improvement section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "Improvement");
 }
 
 function extractResearchPreflightEvidenceSection(html: string): string {
-  const start = html.indexOf(">ResearchPreflight Evidence</div>");
-  const end = html.indexOf(">Improvement<", start);
-  if (start < 0) {
-    throw new Error("research preflight evidence section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "ResearchPreflight Evidence");
 }
 
 function extractMaterializationAttemptSection(html: string): string {
-  const start = html.indexOf(">Materialization Attempt</div>");
-  const end = html.indexOf(">Trading Substrate<", start);
-  if (start < 0) {
-    throw new Error("materialization attempt section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "Materialization Attempt");
 }
 
 function extractSandboxSection(html: string): string {
-  const start = html.indexOf(">Sandbox</div>");
-  const end = html.indexOf("Trading Run Transcript", start);
-  if (start < 0) {
-    throw new Error("sandbox section not found");
-  }
-  return html.slice(start, end < 0 ? undefined : end);
+  return extractDetailsInfoSection(html, "Sandbox");
 }
 
 function extractTradingRunTranscriptSection(html: string): string {
@@ -4964,7 +5790,7 @@ function extractExecutionModesSection(html: string): string {
 }
 
 function extractMarketDataProvenanceSection(html: string): string {
-  const start = html.indexOf('aria-label="Market data provenance"');
+  const start = startOfOpeningTagForAriaLabel(html, "Market data provenance");
   const end = html.indexOf('aria-label="BTCUSDT mark price snapshot"', start);
   if (start < 0 || end < 0) {
     throw new Error("market data provenance section not found");
@@ -4973,7 +5799,7 @@ function extractMarketDataProvenanceSection(html: string): string {
 }
 
 function extractTradeStatusSection(html: string): string {
-  const start = html.indexOf('aria-label="Trade status"');
+  const start = startOfOpeningTagForAriaLabel(html, "Trade status");
   const end = html.indexOf('data-slot="tabs-content"', start + 1);
   if (start < 0) {
     throw new Error("trade status section not found");
@@ -5332,7 +6158,9 @@ function tradingReviewPacketRiskFixture(
   };
 }
 
-function paperTradingBoardFixture(): PaperTradingBoardReadModel {
+function paperTradingBoardFixture(
+  entryOverrides: Partial<PaperTradingBoardReadModel["entries"][number]> = {}
+): PaperTradingBoardReadModel {
   return {
     board_kind: "paper_trading_board",
     primary_rank_metric: "net_revenue_usdt",
@@ -5389,11 +6217,40 @@ function paperTradingBoardFixture(): PaperTradingBoardReadModel {
         latest_public_execution_source: "websocket_primary",
         latest_fill_status: "filled",
         open_order_count: 0,
-        authority_status: "not_live"
+        authority_status: "not_live",
+        ...entryOverrides
       }
     ],
     live_disabled: true,
     authority_status: "not_live"
+  };
+}
+
+function operatorReadModelFixture(overrides: Partial<OperatorReadModel> = {}): OperatorReadModel {
+  return {
+    operator_kind: "ouroboros_operator",
+    command_descriptors: [],
+    candidate_arena: fixtureCandidateArena,
+    selected_candidate_id: "candidate-profitable",
+    selected_candidate: arenaSelectedCandidate(),
+    selected_paper_evidence: {
+      status: "not_run",
+      ledger_chain_complete: false,
+      authority_status: "not_live"
+    },
+    selected_paper_trading_evaluation: paperTradingEvaluationFixture(),
+    paper_trading_board: paperTradingBoardFixture(),
+    trading_review: tradingReviewFixture(),
+    researcher_provider: {
+      selected_provider: "codex",
+      available_providers: ["codex", "fixture"],
+      authority_status: "research_only"
+    },
+    agent_profiles: [],
+    latest_commands: [],
+    live_disabled: true,
+    authority_status: "not_live",
+    ...overrides
   };
 }
 

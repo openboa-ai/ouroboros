@@ -50,7 +50,14 @@ export async function fetchCandidateMaterializationAttempts(): Promise<Candidate
 }
 
 export async function fetchTradingExecutionModeContracts(): Promise<TradingSystemExecutionModeContractReadModel[]> {
-  return [];
+  const response = await fetch(`${runtimeBaseUrl}/api/trading-system/execution-mode-contracts`);
+  if (!response.ok) {
+    throw new Error(`Failed to load trading-system execution mode contracts: ${response.status}`);
+  }
+  const body = (await response.json()) as {
+    trading_system_execution_mode_contracts: TradingSystemExecutionModeContractReadModel[];
+  };
+  return body.trading_system_execution_mode_contracts;
 }
 
 export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEnvironmentReadModel> {
@@ -82,8 +89,9 @@ export interface TradingResearchRuntimeReadModel {
   }>;
 }
 
-export async function fetchTradingResearchRuntime(): Promise<TradingResearchRuntimeReadModel> {
-  const operator = await fetchOperatorReadModel();
+export function buildTradingResearchRuntimeFromOperator(
+  operator: Pick<OperatorReadModel, "researcher_provider" | "agent_profiles">
+): TradingResearchRuntimeReadModel {
   const selected = operator.researcher_provider.selected_provider;
   return {
     default_agent: selected === "fixture" ? "fixture" : "codex",
@@ -104,6 +112,11 @@ export async function fetchTradingResearchRuntime(): Promise<TradingResearchRunt
       };
     })
   };
+}
+
+export async function fetchTradingResearchRuntime(): Promise<TradingResearchRuntimeReadModel> {
+  const operator = await fetchOperatorReadModel();
+  return buildTradingResearchRuntimeFromOperator(operator);
 }
 
 export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
