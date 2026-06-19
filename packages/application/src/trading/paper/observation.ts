@@ -31,6 +31,7 @@ import {
   type PaperTradingSystemEvent,
   type ParsedTradingSystemPaperEvent
 } from "./events";
+import { classifyPaperTradingFailure } from "./failures";
 
 export class PaperTradingObservationError extends Error {
   constructor(
@@ -50,6 +51,8 @@ export interface RecordPaperTradingEvaluationObservationInput {
   appendLedger: boolean;
   intervalMs: number;
   refreshCandidate?: (candidate: CandidateInspectReadModel) => Promise<CandidateInspectReadModel>;
+  restartFailedEvaluation?: boolean;
+  restartFailedEvaluationProcessedEventIds?: string[];
 }
 
 export interface RecordPaperTradingEvaluationObservationResult {
@@ -70,12 +73,19 @@ export async function recordPaperTradingEvaluationObservation(
   }
   const now = new Date().toISOString();
   const existingEvaluation = await input.store.getLatestPaperTradingEvaluationForTradingRun(input.tradingRunId);
-  const baseEvaluation = existingEvaluation ?? paperTradingEvaluationRecord({
-    candidate: candidateBefore,
-    tradingRunId: input.tradingRunId,
-    intervalMs: input.intervalMs,
-    startedAt: now
-  });
+  const failedSessionEventIds = existingEvaluation?.status === "failed" && input.restartFailedEvaluation
+    ? input.restartFailedEvaluationProcessedEventIds ?? []
+    : [];
+  const baseEvaluation = existingEvaluation?.status === "failed" &&
+    input.restartFailedEvaluation &&
+    canRestartFailedPaperTradingEvaluation(existingEvaluation)
+    ? restartFailedPaperTradingEvaluation(existingEvaluation, now, input.intervalMs, failedSessionEventIds)
+    : existingEvaluation ?? paperTradingEvaluationRecord({
+      candidate: candidateBefore,
+      tradingRunId: input.tradingRunId,
+      intervalMs: input.intervalMs,
+      startedAt: now
+    });
   if (baseEvaluation.status === "failed") {
     return recordTerminalFailedObservation({
       store: input.store,
@@ -586,6 +596,43 @@ function paperTradingEvaluationRecord(input: {
   };
 }
 
+function restartFailedPaperTradingEvaluation(
+  evaluation: PaperTradingEvaluationRecord,
+  restartedAt: string,
+  intervalMs: number,
+  failedSessionEventIds: string[]
+): PaperTradingEvaluationRecord {
+  return {
+    ...evaluation,
+    status: "running",
+    interval_ms: intervalMs,
+    stopped_at: undefined,
+    next_observation_at: new Date(Date.parse(restartedAt) + intervalMs).toISOString(),
+    latest_failure_reason: undefined,
+    processed_trading_system_event_ids: uniqueIds([
+      ...(evaluation.processed_trading_system_event_ids ?? []),
+      ...failedSessionEventIds
+    ])
+  };
+}
+
+export function canRestartFailedPaperTradingEvaluation(
+  evaluation: Pick<PaperTradingEvaluationRecord, "status" | "latest_failure_reason">
+): boolean {
+  if (evaluation.status !== "failed") {
+    return true;
+  }
+  const failure = classifyPaperTradingFailure(evaluation.latest_failure_reason);
+  return failure?.failure_kind === "market_data_gap" ||
+    failure?.failure_kind === "public_execution_evidence_gap" ||
+    failure?.failure_kind === "sandbox_or_runner_failure" ||
+    failure?.failure_kind === "runner_health_loss";
+}
+
+function uniqueIds(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
 function paperTradingEvaluationUpdate(input: {
   evaluation: PaperTradingEvaluationRecord;
   status: PaperTradingEvaluationRecord["status"];
@@ -767,6 +814,10 @@ function tradingSystemEventsFromCandidate(
     seen.add(event.event_id);
     return true;
   });
+}
+
+export function tradingSystemEventIdsFromCandidate(candidate: CandidateInspectReadModel): string[] {
+  return tradingSystemEventsFromCandidate(candidate).map((event) => event.event_id);
 }
 
 function paperNoActionDecision(

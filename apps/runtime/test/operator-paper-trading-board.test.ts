@@ -9,7 +9,12 @@ import type {
   OperatorReadModel,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
+  RuntimeHeartbeatRecord,
   ResearchDirectionKind,
+  SandboxCommandEvidenceRecord,
+  SandboxLogRecord,
+  SandboxPlacementRecord,
+  SandboxRecord,
   SystemCodeRecord,
   TradingProfitLossReadModel
 } from "@ouroboros/domain";
@@ -186,6 +191,47 @@ describe("operator paper trading board", () => {
       }
     });
     expect(operator.selected_paper_trading_evaluation.latest_failure).toBeUndefined();
+  });
+
+  it("keeps embedded selected candidate runtime evidence in the operator inspect model", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await registerCandidate(store, {
+      id: "operator-selected-candidate-preview",
+      title: "Operator Selected Candidate Preview"
+    });
+    await seedLargeSandboxHistory(store, candidate, 30);
+
+    const service = new OperatorService({
+      store,
+      candidateArenaRunner: fakeArenaRunner() as unknown as CandidateArenaRunner,
+      paperEvidenceAdapter: {
+        run: async () => ({ statusCode: 500, body: { error: "unused" } })
+      }
+    });
+    await service.executeCommand("candidate.select", {
+      candidate_id: candidate.candidate_id
+    });
+
+    const operator = await service.readOperator();
+    const selected = operator.selected_candidate;
+
+    expect(selected?.candidate_id).toBe(candidate.candidate_id);
+    expect(selected?.runtime.transcript?.item_count).toBeGreaterThan(20);
+    expect(selected?.runtime.transcript?.items).toHaveLength(selected?.runtime.transcript?.item_count ?? 0);
+    expect(selected?.runtime.sandbox?.logs).toHaveLength(30);
+    expect(selected?.runtime.sandbox?.heartbeats).toHaveLength(30);
+    expect(selected?.runtime.sandbox?.command_evidence).toHaveLength(30);
+    expect(selected?.runtime.sandbox?.log_refs).toHaveLength(30);
+    expect(selected?.runtime.sandbox?.heartbeat_refs).toHaveLength(30);
+    expect(selected?.runtime.sandbox?.command_evidence_refs).toHaveLength(30);
+    expect(selected?.runtime.sandbox?.lifecycle_status).toBe("running");
+    expect(selected?.runtime.sandbox?.last_heartbeat_at).toBe("2026-05-16T00:00:29.000Z");
+    expect(Math.max(...selected!.runtime.sandbox!.logs.map((log) => log.lines.length))).toBe(30);
+    expect(Math.max(...selected!.runtime.sandbox!.logs.flatMap((log) => log.lines.map((line) => line.length))))
+      .toBeGreaterThan(2_000);
+    expect(Math.max(...selected!.runtime.sandbox!.command_evidence.map((evidence) => evidence.stdout.length)))
+      .toBeGreaterThan(2_000);
   });
 
   it("exposes qualification state separately from paper net revenue rank", async () => {
@@ -1277,6 +1323,93 @@ async function seedPaperEvaluation(
     authority_status: "not_live"
   };
   await store.recordPaperTradingObservation(observation, evaluation);
+}
+
+async function seedLargeSandboxHistory(
+  store: LocalStore,
+  candidate: NonNullable<Awaited<ReturnType<LocalStore["getCandidate"]>>>,
+  count: number
+): Promise<void> {
+  const sandboxId = `sandbox-${candidate.candidate_id}`;
+  const sandboxRef = { record_kind: "sandbox", id: sandboxId };
+  const placement: SandboxPlacementRecord = {
+    record_kind: "sandbox_placement",
+    version: 1,
+    sandbox_placement_id: `sandbox-placement-${candidate.candidate_id}`,
+    placement_kind: "host_local",
+    tooling_kind: "host_process",
+    authority_status: "not_launched"
+  };
+  const logs: SandboxLogRecord[] = Array.from({ length: count }, (_, index) => ({
+    record_kind: "sandbox_log",
+    version: 1,
+    sandbox_log_id: `sandbox-log-${candidate.candidate_id}-${index}`,
+    sandbox_ref: sandboxRef,
+    lines: Array.from({ length: 30 }, (_, lineIndex) =>
+      `runtime log line ${index}:${lineIndex} ${"x".repeat(3_000)}`
+    ),
+    captured_at: timestampAt(index),
+    authority_status: "trace_only"
+  }));
+  const heartbeats: RuntimeHeartbeatRecord[] = Array.from({ length: count }, (_, index) => ({
+    record_kind: "runtime_heartbeat",
+    version: 1,
+    runtime_heartbeat_id: `runtime-heartbeat-${candidate.candidate_id}-${index}`,
+    sandbox_ref: sandboxRef,
+    heartbeat_line: `runtime heartbeat ${index}`,
+    observed_at: timestampAt(index),
+    authority_status: "trace_only"
+  }));
+  const commandEvidence: SandboxCommandEvidenceRecord[] = Array.from({ length: count }, (_, index) => ({
+    record_kind: "sandbox_command_evidence",
+    version: 1,
+    sandbox_command_evidence_id: `sandbox-command-evidence-${candidate.candidate_id}-${index}`,
+    sandbox_ref: sandboxRef,
+    command: ["python3", `candidate-${index}.py`],
+    exit_code: 0,
+    stdout: `sandbox stdout ${index} ${"y".repeat(3_000)}`,
+    stderr: `sandbox stderr ${index} ${"z".repeat(3_000)}`,
+    started_at: timestampAt(index),
+    completed_at: timestampAt(index),
+    authority_status: "trace_only"
+  }));
+  const sandbox: SandboxRecord = {
+    record_kind: "sandbox",
+    version: 1,
+    sandbox_id: sandboxId,
+    adapter_kind: "deterministic_test",
+    system_code_ref: candidate.system_code?.ref ?? candidate.program.ref,
+    runtime_ref: candidate.runtime.ref,
+    sandbox_placement_ref: { record_kind: "sandbox_placement", id: placement.sandbox_placement_id },
+    lifecycle_status: "running",
+    sandbox_name: `ouro-${candidate.candidate_id}`,
+    sandbox_ref: sandboxRef,
+    created_at: timestampAt(0),
+    started_at: timestampAt(0),
+    last_heartbeat_at: timestampAt(count - 1),
+    log_refs: logs.map((log) => ({ record_kind: "sandbox_log", id: log.sandbox_log_id })),
+    heartbeat_refs: heartbeats.map((heartbeat) => ({
+      record_kind: "runtime_heartbeat",
+      id: heartbeat.runtime_heartbeat_id
+    })),
+    command_evidence_refs: commandEvidence.map((evidence) => ({
+      record_kind: "sandbox_command_evidence",
+      id: evidence.sandbox_command_evidence_id
+    })),
+    authority_status: "not_live"
+  };
+
+  await store.recordSandboxStart({
+    instance: sandbox,
+    placement,
+    logs,
+    heartbeats,
+    command_evidence: commandEvidence
+  });
+}
+
+function timestampAt(index: number): string {
+  return `2026-05-16T00:00:${String(index).padStart(2, "0")}.000Z`;
 }
 
 async function seedPriorPaperObservation(

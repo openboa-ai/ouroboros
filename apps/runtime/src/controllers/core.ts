@@ -4,6 +4,7 @@ import type {
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { OperatorController } from "@ouroboros/application/controllers/operator";
+import { listTradingSystemExecutionModeContracts } from "@ouroboros/application/trading/execution-mode-contracts";
 
 export interface CoreControllerRoutesContext {
   operatorController: OperatorController;
@@ -26,6 +27,10 @@ export function registerCoreControllerRoutes(context: CoreControllerRoutesContex
 
     server.get("/api/gateway/environment", async () => ({
       trading_gateway_environment: context.tradingGatewayEnvironment
+    }));
+
+    server.get("/api/trading-system/execution-mode-contracts", async () => ({
+      trading_system_execution_mode_contracts: listTradingSystemExecutionModeContracts()
     }));
 
     server.get(

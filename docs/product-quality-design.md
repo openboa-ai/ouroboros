@@ -844,10 +844,12 @@ action, and authority. This preserves the target order that judgment evidence pr
 affordances.
 
 Current P1 promotion-boundary label evidence: the Web Trading promotion boundary now scopes its
-lower bridge fields as `Paper runner`, `Promotion next action`, and `Review authority` instead of
+lower bridge fields as `Paper runner`, `Promotion condition`, and `Review authority` instead of
 generic `Runner`, `Next action`, and `Authority`. The card still sits below the
 `TradingReviewPacket`; the labels make clear that the bridge is moving a paper-qualified candidate
-into Trading review under disabled live authority, not granting live exchange control.
+into Trading review under disabled live authority, not granting live exchange control. It no longer
+renders a separate first-viewport next-action sentence, so operator recommendation wording remains
+owned by the decision bar and `TradingReviewPacket.next_action`.
 
 Current P1 CLI/TUI packet-priority evidence: CLI `ouroboros status` and the Ink TUI now print
 `TradingReviewPacket` summary and detail lines before the `TradingPromotion` status line. This keeps
@@ -1091,6 +1093,97 @@ paper-backed candidate deserves continued promotion attention. The second pass s
 after Trading remains coherent, because Arena can otherwise drift into a second review surface.
 Research and Details come next because they are most useful when their limits are visible:
 Research learns, Details explains raw records. Neither decides promotion.
+
+### Trading First-Viewport Element Audit Frontier
+
+The implementation frontier selected after PR #174 is **Trading first-viewport element audit**.
+
+Goal: prove the Trading first viewport has exactly one operator recommendation source, keeps
+`TradingReviewPacket` as the judgment object, and assigns every other visible Trading element to
+`keep`, `refine`, `relocate`, `remove`, or `reroute` based on evidence and authority.
+
+Context evidence:
+
+- The scan-order audit already identifies Trading as the strongest authority surface and requires
+  judgment evidence before chart, account, or lower readback detail.
+- `buildTradingFirstViewportRecommendation` already reads `TradingReviewPacket.next_action` before
+  compatibility fallback signals.
+- Web tests already cover packet-before-promotion ordering, blocker detail, authority, provenance,
+  risk, mismatch behavior, and command remediation in the Trading first viewport.
+- CandidateArena, Research, and Details now have boundaries that depend on Trading remaining the
+  only promotion-judgment surface.
+
+Owned boundary:
+
+- `apps/operator-web/src/App.tsx`
+- `apps/operator-web/src/App.test.tsx`
+- `packages/domain/src/trading-first-viewport-recommendation.test.ts`
+- `packages/domain/src/index.ts`, only if the shared recommendation helper needs a stricter
+  contract
+- CLI/TUI parity tests, only if the audit changes shared packet meaning rather than Web layout
+- `docs/product-quality-design.md` for the final keep/refine/relocate/remove/reroute record
+
+Non-goals:
+
+- Do not add a new Trading recommendation card, chart gate, score gate, or UI-only readiness label.
+- Do not move Arena selection, Research learning, Details raw records, or private-readiness preview
+  into Trading first-viewport authority.
+- Do not weaken `PaperTradingQualification`, paper rank, `TradingPromotion`, `not_live` authority,
+  or the disabled live/private capability set.
+- Do not refactor large UI or read-model files unless the audit finds duplicated business meaning
+  that tests cannot otherwise protect.
+
+Acceptance criteria:
+
+- The Web Trading first viewport has one recommendation source derived from
+  `TradingReviewPacket.next_action`; lower sections may explain but cannot introduce competing next
+  actions.
+- The first viewport order remains decision bar, `TradingReviewPacket`, Trading promotion boundary,
+  command messages, safety boundary, then lower Trading context/readback.
+- Each visible first-viewport element has a documented `keep`, `refine`, `relocate`, `remove`, or
+  `reroute` decision with owner, source, authority, and removal condition.
+- Tests prove chart/account/provenance/readback content stays subordinate to packet judgment and
+  cannot appear as a promotion gate.
+- If shared packet meaning changes, CLI and TUI tests prove the same blocker, authority, mismatch,
+  provenance, and next-action semantics.
+
+Validation plan:
+
+- `npm test -- apps/operator-web/src/App.test.tsx`
+- `npm test -- packages/domain/src/trading-first-viewport-recommendation.test.ts`
+- CLI/TUI/runtime parity tests only when the shared packet or recommendation helper changes
+- `bash scripts/check-docs.sh`
+- `npm run check:architecture`
+- `npm run check:naming`
+- `bash scripts/check-env-files.sh --tracked`
+- `bash scripts/check-secrets.sh`
+- `git diff --check`
+- `npm run typecheck --workspaces --if-present`
+- `npm test`
+- `npm run build`
+
+Writeback target: update this section with the completed element decisions and evidence before the
+frontier is promoted or merged.
+
+Completed audit decision record:
+
+| Visible Trading element | Decision | Owner and source | Authority | Removal condition and evidence |
+| --- | --- | --- | --- | --- |
+| Operator decision bar | `keep` | Web renders `buildTradingFirstViewportRecommendation`, sourced from `TradingReviewPacket.next_action` before compatibility fallback. | Read-only recommendation plus scoped paper observe/stop controls. | Remove only if the packet itself becomes the sole compact first sentence. Web tests keep `Recommended action` sourced from the packet helper. |
+| `TradingReviewPacket` | `keep` | `OperatorReadModel.trading_review.review_packet`. | Read-only judgment object for verdict, blocker, paper evidence, runner, Ledger, lineage, provenance, risk, authority, and next action. | Do not remove until a shared replacement object exists across CLI, TUI, and Web. Web tests keep packet before promotion and assert packet field order. |
+| Trading promotion boundary | `refine` | `TradingPromotion`, `TradingReview`, selected paper board row, and command registry. | Review-selection bridge through `trading_candidate.promote`; live remains `not_live`. | The boundary now renders `Promotion condition`, not `Promotion next action`, so it cannot compete with packet next-action wording. |
+| Operator messages | `keep` | Latest command response state and command remediation projection. | Transient command evidence only; points back to packet and Paper Board. | Keep only while messages or remediations exist. Web tests keep messages after packet/promotion and before safety. |
+| Safety boundary | `keep` | Runtime authority flags and fixture notices. | No command authority; repeats paper-only disabled live/private authority. | Keep wherever promotion wording is visible. Web tests keep it before lower cockpit/readback. |
+| Trading cockpit wrapper | `keep` | Web presentation section over active review context. | Read-only context grouping below safety. | Remove only if lower context can remain grouped without becoming a framed judgment card. Existing tests keep it below first-scan elements. |
+| BTCUSDT futures chart | `keep` | Gateway-owned public market data readback. | Read-only market context; chart is not a gate. | Relocate only if it rises above packet judgment. Web tests keep chart below safety and outside packet/promotion sections. |
+| Paper trading review summary | `keep` | Paper account, paper score, position, and readiness readback aligned to packet risk/provenance. | Read-only supporting facts, not a recommendation or readiness policy. | Remove or relocate if it introduces a separate score gate. Web tests keep labels as paper risk/score/readiness below the packet. |
+| Trading paper readback | `keep` | `PaperTradingEvaluation`, Gateway market data, public execution evidence, public order-book evidence, and paper failure classification. | Read-only evidence explanation below packet judgment. | Relocate only if a blocker or next action appears only in readback. Web tests keep readback scoped and subordinate. |
+| Trade status | `keep` | Ledger and `TradingReviewPacket.ledger` fallback for paper order, Gateway, execution, and no-order continuity. | Read-only paper execution evidence, never live exchange execution. | Remove only if packet Ledger fully replaces lower order-chain explanation. Current labels remain paper-scoped. |
+
+Completed audit evidence: the Web test was first tightened to fail while the promotion boundary
+still rendered `Promotion next action`; the implementation then replaced that field with
+`Promotion condition` and removed the unused promotion next-action helper. Targeted Web validation
+passed with `npm test -- apps/operator-web/src/App.test.tsx`.
 
 ## Autonomous Quality Rubric
 
