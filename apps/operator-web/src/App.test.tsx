@@ -3050,7 +3050,7 @@ describe("CandidateDetail", () => {
     expect(provenance).not.toContain("bg-muted/20");
     expect(provenance).not.toContain("bg-muted/20 p-3");
     expect(html.indexOf('aria-label="Market data provenance"')).toBeLessThan(
-      html.indexOf('aria-label="BTCUSDT mark price snapshot"')
+      html.indexOf('aria-label="BTCUSDT public market snapshot"')
     );
   });
 
@@ -5910,7 +5910,7 @@ function extractExecutionModesSection(html: string): string {
 
 function extractMarketDataProvenanceSection(html: string): string {
   const start = startOfOpeningTagForAriaLabel(html, "Market data provenance");
-  const end = html.indexOf('aria-label="BTCUSDT mark price snapshot"', start);
+  const end = html.indexOf('aria-label="BTCUSDT public market snapshot"', start);
   if (start < 0 || end < 0) {
     throw new Error("market data provenance section not found");
   }

@@ -3844,7 +3844,7 @@ function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): Tradin
   ];
   return values
     .filter(([, value]) => Number.isFinite(value))
-    .map(([label, markPrice]) => ({ label, markPrice }));
+    .map(([label, price]) => ({ label, price }));
 }
 
 function parseNumber(value: string): number {

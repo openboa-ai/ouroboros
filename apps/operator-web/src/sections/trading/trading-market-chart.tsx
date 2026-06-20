@@ -18,7 +18,7 @@ export interface TradingMarketChartField {
 
 export interface TradingMarketChartPoint {
   label: string;
-  markPrice: number;
+  price: number;
 }
 
 export interface TradingMarketChartProps {
@@ -29,8 +29,8 @@ export interface TradingMarketChartProps {
 }
 
 const chartConfig = {
-  markPrice: {
-    label: "Mark price",
+  price: {
+    label: "Public market price",
     color: "var(--chart-1)"
   }
 } satisfies ChartConfig;
@@ -64,7 +64,7 @@ export function TradingMarketChart({
         config={chartConfig}
         className="aspect-[16/5] min-h-[180px] w-full rounded-lg bg-muted/60 p-3"
         role="img"
-        aria-label="BTCUSDT mark price snapshot"
+        aria-label="BTCUSDT public market snapshot"
       >
         <AreaChart
           accessibilityLayer
@@ -86,11 +86,11 @@ export function TradingMarketChart({
             content={<ChartTooltipContent indicator="line" hideLabel />}
           />
           <Area
-            dataKey="markPrice"
+            dataKey="price"
             type="linear"
-            fill="var(--color-markPrice)"
+            fill="var(--color-price)"
             fillOpacity={0.18}
-            stroke="var(--color-markPrice)"
+            stroke="var(--color-price)"
             strokeWidth={2.5}
             dot={false}
             isAnimationActive={false}
@@ -108,7 +108,7 @@ export function TradingMarketChart({
 }
 
 function marketChartDomain(points: TradingMarketChartPoint[]): [number, number] {
-  const values = points.map((point) => point.markPrice);
+  const values = points.map((point) => point.price);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
