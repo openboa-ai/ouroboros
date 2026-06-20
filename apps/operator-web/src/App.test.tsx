@@ -192,7 +192,8 @@ describe("operator design system contract", () => {
       "arena-command-log-section.tsx",
       "arena-leaderboard-section.tsx",
       "arena-latest-ticks-section.tsx",
-      "arena-paper-board-section.tsx"
+      "arena-paper-board-section.tsx",
+      "arena-selected-candidate-section.tsx"
     ]));
 
     for (const fileName of sectionFiles) {
@@ -210,6 +211,9 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-agent-provider-section.tsx"), "utf8")).toContain("OperatorActionRow");
     expect(readFileSync(join(arenaSectionDir, "arena-command-log-section.tsx"), "utf8")).toContain("OperatorEvidenceBlock");
     expect(readFileSync(join(arenaSectionDir, "arena-latest-ticks-section.tsx"), "utf8")).toContain("OperatorEmptyState");
+    expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorActionRow");
+    expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorField");
   });
 
   it("keeps operator shell navigation as a reusable UI-only module", () => {

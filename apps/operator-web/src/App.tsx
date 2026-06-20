@@ -135,6 +135,10 @@ import {
   ArenaPaperBoardSection,
   type ArenaPaperBoardEntry
 } from "@/sections/arena/arena-paper-board-section";
+import {
+  ArenaSelectedCandidateSection,
+  type ArenaSelectedCandidateField
+} from "@/sections/arena/arena-selected-candidate-section";
 import { PaperReviewSummarySection } from "@/sections/trading/paper-review-summary-section";
 import { TradingMarketSection } from "@/sections/trading/trading-market-section";
 import {
@@ -1377,6 +1381,85 @@ export function CandidateArenaPanel({
   const paperStartActionLabel = paperRunnerStatus === "needs resume"
     ? "Resume paper trading"
     : "Start paper trading";
+  const selectedCandidateIdentity = selectedCandidateId
+    ?? selectedCandidate?.candidate_id
+    ?? selectedEntry?.candidate_id
+    ?? "unknown";
+  const arenaSelectedCandidateFields: ArenaSelectedCandidateField[] = [
+    { label: "Direction", value: selectedDirection },
+    { label: "Parent", value: selectedParent ?? "none" },
+    { label: "System Code", value: selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate" },
+    {
+      label: "ResearchPreflight",
+      value: selectedLineage?.evidence
+        ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
+        : selectedStatus
+    },
+    {
+      label: "Research leaderboard",
+      value: selectedProfitLoss
+        ? `${formatUsdt(selectedProfitLoss.net_revenue_usdt)} / ${formatPercent(selectedProfitLoss.net_return_pct)}`
+        : "not ranked"
+    },
+    { label: "Paper Trading Evaluation", value: selectedPaperEvaluationStatus },
+    {
+      label: "Paper runner",
+      value: selectedPaperTradingEvaluation
+        ? formatPaperRunnerSummary(selectedPaperTradingEvaluation)
+        : "not started"
+    },
+    {
+      label: "Paper score",
+      value: selectedPaperTradingEvaluation
+        ? `${formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)} / ${selectedPaperTradingEvaluation.observation_count} observations`
+        : "not started"
+    },
+    { label: "Paper market snapshot", value: formatPaperMarketSnapshotSummary(selectedPaperMarketSnapshot) },
+    { label: "Gateway market data", value: formatGatewayMarketDataSummary(selectedPaperTradingEvaluation) },
+    {
+      label: "Public execution evidence",
+      value: selectedPaperExecutionSnapshot
+        ? formatPublicExecutionEvidenceSummary(selectedPaperExecutionSnapshot)
+        : "not observed"
+    },
+    {
+      label: "Public order book evidence",
+      value: formatPublicOrderBookEvidenceSummary(selectedPaperExecutionSnapshot)
+    },
+    { label: "Paper decision", value: formatPaperDecisionSummary(selectedPaperDecision) },
+    {
+      label: "Paper account",
+      value: selectedPaperAccount
+        ? `equity ${formatUsdt(Number(selectedPaperAccount.equity_usdt))} / ${selectedPaperAccount.position.side} ${selectedPaperAccount.position.quantity} BTCUSDT / open ${selectedPaperAccount.open_order_count}`
+        : "not observed"
+    },
+    {
+      label: "Paper fill",
+      value: selectedPaperFill ? formatPaperFillSummary(selectedPaperFill) : "none"
+    },
+    ...(selectedPaperTradingEvaluation?.latest_failure || selectedPaperTradingEvaluation?.latest_failure_reason
+      ? [{ label: "Paper failure", value: formatPaperFailure(selectedPaperTradingEvaluation) }]
+      : []),
+    { label: "Paper evidence", value: selectedPaperEvidenceStatus },
+    { label: "Trading Run", value: selectedTradingRunStatus },
+    { label: "Latest finding", value: selectedFinding },
+    {
+      label: "Candidate lineage",
+      value: selectedLineage?.source
+        ? `${selectedLineage.source.trading_system_id} -> ${selectedCandidateIdentity}`
+        : `${selectedParent ?? "none"} -> ${selectedCandidateIdentity}`
+    },
+    { label: "Selected candidate authority", value: selectedAuthority },
+    ...(selectedLedgerSummary?.latest_order_request
+      ? [{ label: "OrderRequest", value: formatLedgerOrderRequestSummary(selectedLedgerSummary) }]
+      : []),
+    ...(selectedLedgerSummary?.latest_gateway_result
+      ? [{ label: "GatewayResult", value: selectedLedgerSummary.latest_gateway_result.decision_outcome }]
+      : []),
+    ...(selectedLedgerSummary?.latest_execution_result
+      ? [{ label: "ExecutionResult", value: selectedLedgerSummary.latest_execution_result.status }]
+      : [])
+  ];
   return (
     <OperatorPanel
       variant="elevated"
@@ -1447,136 +1530,19 @@ export function CandidateArenaPanel({
           />
           <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
             {inspectorVisible && (
-              <OperatorPanel aria-label="Selected Candidate Arena candidate">
-                <OperatorSectionHeader
-                  title="Selected candidate"
-                  description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
-                  actions={paperRunnerActive ? (
-                    <>
-                      <Button
-                        type="button"
-                        onClick={onObservePaperTrading}
-                        disabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
-                        variant="secondary"
-                      >
-                        {runningPaperTrading ? "Updating paper trading" : "Observe now"}
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={onStopPaperTrading}
-                        disabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
-                        variant="outline"
-                      >
-                        Stop paper trading
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      type="button"
-                      onClick={onStartPaperTrading}
-                      disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
-                      variant="secondary"
-                    >
-                      {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
-                    </Button>
-                  )}
-                />
-                <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
-                  <Field label="Direction" value={selectedDirection} />
-                  <Field label="Parent" value={selectedParent ?? "none"} />
-                  <Field label="System Code" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
-                  <Field
-                    label="ResearchPreflight"
-                    value={selectedLineage?.evidence
-                      ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
-                      : selectedStatus}
-                  />
-                  <Field
-                    label="Research leaderboard"
-                    value={selectedProfitLoss
-                      ? `${formatUsdt(selectedProfitLoss.net_revenue_usdt)} / ${formatPercent(selectedProfitLoss.net_return_pct)}`
-                      : "not ranked"}
-                  />
-                  <Field label="Paper Trading Evaluation" value={selectedPaperEvaluationStatus} />
-                  <Field
-                    label="Paper runner"
-                    value={selectedPaperTradingEvaluation
-                      ? formatPaperRunnerSummary(selectedPaperTradingEvaluation)
-                      : "not started"}
-                  />
-                  <Field
-                    label="Paper score"
-                    value={selectedPaperTradingEvaluation
-                      ? `${formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)} / ${selectedPaperTradingEvaluation.observation_count} observations`
-                      : "not started"}
-                  />
-                  <Field
-                    label="Paper market snapshot"
-                    value={formatPaperMarketSnapshotSummary(selectedPaperMarketSnapshot)}
-                  />
-                  <Field
-                    label="Gateway market data"
-                    value={formatGatewayMarketDataSummary(selectedPaperTradingEvaluation)}
-                  />
-                  <Field
-                    label="Public execution evidence"
-                    value={selectedPaperExecutionSnapshot
-                      ? formatPublicExecutionEvidenceSummary(selectedPaperExecutionSnapshot)
-                      : "not observed"}
-                  />
-                  <Field
-                    label="Public order book evidence"
-                    value={formatPublicOrderBookEvidenceSummary(selectedPaperExecutionSnapshot)}
-                  />
-                  <Field
-                    label="Paper decision"
-                    value={formatPaperDecisionSummary(selectedPaperDecision)}
-                  />
-                  <Field
-                    label="Paper account"
-                    value={selectedPaperAccount
-                      ? `equity ${formatUsdt(Number(selectedPaperAccount.equity_usdt))} / ${selectedPaperAccount.position.side} ${selectedPaperAccount.position.quantity} BTCUSDT / open ${selectedPaperAccount.open_order_count}`
-                      : "not observed"}
-                  />
-                  <Field
-                    label="Paper fill"
-                    value={selectedPaperFill
-                      ? formatPaperFillSummary(selectedPaperFill)
-                      : "none"}
-                  />
-                  {(selectedPaperTradingEvaluation?.latest_failure || selectedPaperTradingEvaluation?.latest_failure_reason) && (
-                    <Field label="Paper failure" value={formatPaperFailure(selectedPaperTradingEvaluation)} />
-                  )}
-                  <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
-                  <Field label="Trading Run" value={selectedTradingRunStatus} />
-                  <Field label="Latest finding" value={selectedFinding} />
-                  <Field
-                    label="Candidate lineage"
-                    value={selectedLineage?.source
-                      ? `${selectedLineage.source.trading_system_id} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`
-                      : `${selectedParent ?? "none"} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`}
-                  />
-                  <Field label="Selected candidate authority" value={selectedAuthority} />
-                  {selectedLedgerSummary?.latest_order_request && (
-                    <Field
-                      label="OrderRequest"
-                      value={formatLedgerOrderRequestSummary(selectedLedgerSummary)}
-                    />
-                  )}
-                  {selectedLedgerSummary?.latest_gateway_result && (
-                    <Field
-                      label="GatewayResult"
-                      value={selectedLedgerSummary.latest_gateway_result.decision_outcome}
-                    />
-                  )}
-                  {selectedLedgerSummary?.latest_execution_result && (
-                    <Field
-                      label="ExecutionResult"
-                      value={selectedLedgerSummary.latest_execution_result.status}
-                    />
-                  )}
-                </dl>
-              </OperatorPanel>
+              <ArenaSelectedCandidateSection
+                description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
+                fields={arenaSelectedCandidateFields}
+                paperRunnerActive={paperRunnerActive}
+                runningPaperTrading={runningPaperTrading}
+                paperStartActionLabel={paperStartActionLabel}
+                startPaperDisabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
+                observePaperDisabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
+                stopPaperDisabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
+                onStartPaperTrading={onStartPaperTrading}
+                onObservePaperTrading={onObservePaperTrading}
+                onStopPaperTrading={onStopPaperTrading}
+              />
             )}
             <ArenaAgentProviderSection
               researcher={researcherProvider?.selected_provider ?? "not selected"}
