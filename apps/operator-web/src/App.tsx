@@ -74,34 +74,14 @@ import {
   type TradingResearchAgentSelection,
   type TradingResearchRuntimeReadModel
 } from "./api";
-import {
-  ActivityIcon,
-  BarChart3Icon,
-  FlaskConicalIcon,
-  ListChecksIcon,
-  PanelLeftIcon,
-  ShieldCheckIcon
-} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
-  SidebarRail,
   SidebarTrigger
 } from "@/components/ui/sidebar";
 import {
@@ -145,7 +125,15 @@ import {
   TradingReviewPacketSection,
   type TradingReviewPacketField
 } from "@/sections/trading/trading-review-packet-section";
+import {
+  OPERATOR_VIEWS,
+  OperatorSidebar,
+  type OperatorSidebarCandidate,
+  type OperatorView
+} from "@/shell/operator-sidebar";
 import "./styles.css";
+
+export type { OperatorView } from "@/shell/operator-sidebar";
 
 export interface AppState {
   candidates: CandidateSummaryReadModel[];
@@ -193,9 +181,6 @@ export interface AppState {
   privateReadinessPostureMessage?: string;
 }
 
-export type OperatorView = "trading" | "arena" | "research" | "details";
-
-const OPERATOR_VIEWS: OperatorView[] = ["trading", "arena", "research", "details"];
 export const OPERATOR_REFRESH_INTERVAL_MS = 5_000;
 const RAW_EVIDENCE_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2";
 const RAW_EVIDENCE_ROW_CLASS = [
@@ -995,12 +980,17 @@ export function App() {
     }
   }
 
+  const sidebarCandidates: OperatorSidebarCandidate[] = state.candidates.map((candidate) => ({
+    candidateId: candidate.candidate_id,
+    displayName: candidate.display_name
+  }));
+
   return (
     <TooltipProvider>
       <SidebarProvider>
         <OperatorSidebar
           activeView={operatorView}
-          candidates={state.candidates}
+          candidates={sidebarCandidates}
           loading={state.loading && state.candidates.length === 0}
           selectedCandidateId={state.selected?.candidate_id}
           selectedCandidateName={state.selected?.display_name}
@@ -1159,131 +1149,6 @@ export function CandidateSummaryRow({
         {candidate.status} · latest validation state: {latestValidationStateLabel(candidate.latest_validation_state)}
       </small>
     </Button>
-  );
-}
-
-function OperatorSidebar({
-  activeView,
-  candidates,
-  loading,
-  selectedCandidateId,
-  selectedCandidateName,
-  onSelectCandidate,
-  onSelectView
-}: {
-  activeView: OperatorView;
-  candidates: CandidateSummaryReadModel[];
-  loading: boolean;
-  selectedCandidateId?: string;
-  selectedCandidateName?: string;
-  onSelectCandidate: (candidateId: string) => void;
-  onSelectView: (view: OperatorView) => void;
-}) {
-  const candidateCountLabel = loading ? "..." : String(candidates.length);
-  const selectedName = loading ? "Loading workspace" : selectedCandidateName ?? "No Trading System selected";
-
-  return (
-    <Sidebar collapsible="icon" variant="inset">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" isActive>
-              <ShieldCheckIcon />
-              <span>ouroboros</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Operator workspace</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={activeView === "trading"}
-                  onClick={() => onSelectView("trading")}
-                >
-                  <ActivityIcon />
-                  <span>Trading</span>
-                </SidebarMenuButton>
-                <SidebarMenuBadge>1</SidebarMenuBadge>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={activeView === "arena"}
-                  onClick={() => onSelectView("arena")}
-                >
-                  <BarChart3Icon />
-                  <span>Arena</span>
-                </SidebarMenuButton>
-                <SidebarMenuBadge>{candidateCountLabel}</SidebarMenuBadge>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={activeView === "research"}
-                  onClick={() => onSelectView("research")}
-                >
-                  <FlaskConicalIcon />
-                  <span>Research</span>
-                </SidebarMenuButton>
-                <SidebarMenuBadge>{candidateCountLabel}</SidebarMenuBadge>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={activeView === "details"}
-                  onClick={() => onSelectView("details")}
-                >
-                  <ListChecksIcon />
-                  <span>Details</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Trading Systems</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {loading && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton disabled>
-                    <BarChart3Icon />
-                    <span>Loading trading systems</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-              {!loading && candidates.map((candidate) => (
-                <SidebarMenuItem key={candidate.candidate_id}>
-                  <SidebarMenuButton
-                    isActive={selectedCandidateId === candidate.candidate_id}
-                    onClick={() => {
-                      onSelectCandidate(candidate.candidate_id);
-                      onSelectView("arena");
-                    }}
-                  >
-                    <BarChart3Icon />
-                    <span className="truncate" title={candidate.display_name}>{candidate.display_name}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton>
-              <PanelLeftIcon />
-              <span>{selectedName}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
   );
 }
 
