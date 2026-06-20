@@ -2824,7 +2824,7 @@ export function CandidateDetail({
           eyebrow={workspaceLabel}
           title="BTCUSDT operator cockpit"
           actions={(
-            <TabsList>
+            <TabsList className="max-w-full justify-start overflow-x-auto overscroll-x-contain">
               <TabsTrigger value="trading">
                 <span>Trading</span>
                 {tabStateBadges.trading && (

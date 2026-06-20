@@ -217,6 +217,7 @@ describe("operator design system contract", () => {
 
     expect(html).toContain("data-operator-ui=\"callout\"");
     expect(html).toContain('data-slot="alert"');
+    expect(html).toContain('role="note"');
     expect(html).toContain('data-slot="alert-title"');
     expect(html).toContain('data-slot="alert-description"');
     expect(html).toContain("uppercase");
@@ -2615,6 +2616,8 @@ describe("CandidateDetail", () => {
     expect(tradingHtml).toContain("Arena");
     expect(tradingHtml).toContain("Research");
     expect(tradingHtml).toContain("Details");
+    expect(tradingHtml).toContain("overflow-x-auto");
+    expect(tradingHtml).toContain("overscroll-x-contain");
     expect(tradingHtml).toContain("Recommended action");
     expect(tradingHtml).not.toContain("Run next cycle");
     expect(tradingHtml).not.toContain("Research iterations");

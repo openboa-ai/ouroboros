@@ -12,7 +12,11 @@ export function OperatorCallout({
   className?: string;
 }) {
   return (
-    <Alert data-operator-ui="callout" className={cn(OPERATOR_DESIGN_TOKENS.surface.callout, className)}>
+    <Alert
+      data-operator-ui="callout"
+      role="note"
+      className={cn(OPERATOR_DESIGN_TOKENS.surface.callout, className)}
+    >
       <AlertTitle className={OPERATOR_DESIGN_TOKENS.typography.label}>{label}</AlertTitle>
       <AlertDescription className={OPERATOR_DESIGN_TOKENS.typography.calloutValue}>
         {value}
