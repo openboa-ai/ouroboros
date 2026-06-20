@@ -148,9 +148,10 @@ describe("operator design system contract", () => {
     for (const fileName of ["evidence.tsx", "stat.tsx"]) {
       expect(readFileSync(join(componentDir, fileName), "utf8")).toContain("@/components/ui/card");
     }
-    for (const fileName of ["field.tsx", "panel.tsx"]) {
+    for (const fileName of ["field.tsx"]) {
       expect(readFileSync(join(componentDir, fileName), "utf8")).not.toContain("@/components/ui/card");
     }
+    expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
   });
 
@@ -339,7 +340,7 @@ describe("operator design system contract", () => {
     expect(html).not.toContain("text-[1.35rem]");
   });
 
-  it("keeps layout panels flat while evidence cards own local shadcn chrome", () => {
+  it("builds operator panels from the shadcn Card primitive while keeping semantic sections", () => {
     const panelHtml = renderToStaticMarkup(
       <OperatorPanel aria-label="Trading review packet">
         <OperatorSectionHeader title="Trading review packet" />
@@ -347,7 +348,16 @@ describe("operator design system contract", () => {
     );
 
     expect(panelHtml).toContain('data-operator-ui="panel"');
-    expect(extractOpeningTagForAriaLabel(panelHtml, "Trading review packet")).not.toContain('data-slot="card"');
+    const panelTag = extractOpeningTagForAriaLabel(panelHtml, "Trading review packet");
+    const panelSource = readFileSync(
+      join(operatorWebSrcDir, "design-system", "components", "panel.tsx"),
+      "utf8"
+    );
+
+    expect(panelTag).toContain("<section");
+    expect(panelTag).toContain('data-slot="card"');
+    expect(panelSource).toContain("@/components/ui/card");
+    expect(panelSource).toContain("asChild");
     expect(OPERATOR_DESIGN_TOKENS.surface.evidenceBlock).toContain("bg-card");
     expect(OPERATOR_DESIGN_TOKENS.surface.evidenceBlock).toContain("ring-1");
     expect(OPERATOR_DESIGN_TOKENS.surface.field).toContain("bg-transparent");
@@ -415,7 +425,7 @@ describe("operator design system contract", () => {
     );
 
     expect(html).toContain("data-operator-ui=\"panel\"");
-    expect(extractOpeningTagForAriaLabel(html, "ResearchPreflight Evidence")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(html, "ResearchPreflight Evidence")).toContain('data-slot="card"');
     expect(html).toContain("grid-cols-[minmax(0,1fr)]");
     expect(html).toContain("content-start");
   });
@@ -451,7 +461,7 @@ describe("operator design system contract", () => {
     expect(html).toContain('aria-label="Loading read model"');
     expect(html).toContain('data-operator-ui="panel"');
     expect(html).toContain('data-operator-ui="section-header"');
-    expect(extractOpeningTagForAriaLabel(html, "Loading read model")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(html, "Loading read model")).toContain('data-slot="card"');
     expect(html).not.toContain("Loading trading systems");
     expect(html).not.toContain("No Trading System selected");
   });
@@ -1488,7 +1498,7 @@ describe("CandidateDetail", () => {
     expect(arenaUnavailable).toContain('data-operator-ui="panel"');
     expect(arenaUnavailable).toContain('data-operator-ui="section-header"');
     expect(arenaUnavailable).toContain("Continuous paper trading arena state is not projected yet.");
-    expect(extractOpeningTagForAriaLabel(arenaUnavailable, "Arena unavailable")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(arenaUnavailable, "Arena unavailable")).toContain('data-slot="card"');
   });
 
   it("renders Binance BTCUSDT order-fill substrate posture without action controls", () => {
@@ -2800,16 +2810,16 @@ describe("CandidateDetail", () => {
     expect(decisionSection).toContain('data-operator-ui="callout"');
     expect(decisionSection).toContain('data-operator-ui="action-row"');
     expect(decisionSection).toContain('data-slot="alert"');
-    expect(extractOpeningTagForAriaLabel(tradingHtml, "Operator decision bar")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(tradingHtml, "Operator decision bar")).toContain('data-slot="card"');
     const promotionBoundary = extractTradingPromotionBoundarySection(tradingHtml);
     expect(promotionBoundary).toContain('data-operator-ui="panel"');
     expect(promotionBoundary).toContain('data-operator-ui="section-header"');
     expect(promotionBoundary).toContain('data-operator-ui="action-row"');
-    expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading promotion boundary")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading promotion boundary")).toContain('data-slot="card"');
     const safetyBoundary = extractSafetyBoundarySection(tradingHtml);
     expect(safetyBoundary).toContain('data-operator-ui="panel"');
     expect(safetyBoundary).toContain('data-operator-ui="action-row"');
-    expect(extractOpeningTagForAriaLabel(tradingHtml, "Safety boundary")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(tradingHtml, "Safety boundary")).toContain('data-slot="card"');
     expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading cockpit")).not.toContain('data-slot="card"');
     const futuresChart = extractTradingChartSection(tradingHtml);
     expect(futuresChart).toContain('data-operator-ui="panel"');
@@ -2821,7 +2831,7 @@ describe("CandidateDetail", () => {
     expect(paperReadback).toContain('data-operator-ui="panel"');
     expect(paperReadback).toContain('data-operator-ui="section-header"');
     expect(paperReadback).toContain('data-operator-ui="field"');
-    expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading paper readback")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(tradingHtml, "Trading paper readback")).toContain('data-slot="card"');
     const tradeStatus = extractTradeStatusSection(tradingHtml);
     expect(tradeStatus).toContain('data-operator-ui="panel"');
     expect(tradeStatus).toContain('data-operator-ui="section-header"');
@@ -2902,15 +2912,15 @@ describe("CandidateDetail", () => {
     expect(detailsHtml).toContain("No promotion authority");
     const fixtureNoticeSection = extractFixtureNoticeSection(detailsHtml);
     expect(fixtureNoticeSection).toContain('data-operator-ui="panel"');
-    expect(extractOpeningTagForAriaLabel(detailsHtml, "Fixture notice")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(detailsHtml, "Fixture notice")).toContain('data-slot="card"');
     const detailsBoundary = extractDetailsBoundarySection(detailsHtml);
     expect(detailsBoundary).toContain('data-operator-ui="panel"');
     expect(detailsBoundary).toContain('data-operator-ui="section-header"');
-    expect(extractOpeningTagForAriaLabel(detailsHtml, "Details boundary")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(detailsHtml, "Details boundary")).toContain('data-slot="card"');
     const detailsShell = extractDetailsShellSection(detailsHtml);
     expect(detailsShell).toContain('data-operator-ui="panel"');
     expect(detailsShell).toContain('data-operator-ui="section-header"');
-    expect(extractOpeningTagForAriaLabel(detailsHtml, "Details")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(detailsHtml, "Details")).toContain('data-slot="card"');
     const researchPreflightDetails = extractDetailsInfoSection(detailsHtml, "ResearchPreflight Evidence");
     expect(researchPreflightDetails).toContain('data-operator-ui="panel"');
     expect(researchPreflightDetails).toContain('data-operator-ui="section-header"');
@@ -2925,7 +2935,7 @@ describe("CandidateDetail", () => {
     const executionModesSection = extractExecutionModesSection(detailsHtml);
     expect(executionModesSection).toContain('data-operator-ui="panel"');
     expect(executionModesSection).toContain('data-operator-ui="section-header"');
-    expect(extractOpeningTagForAriaLabel(detailsHtml, "Trading execution modes")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(detailsHtml, "Trading execution modes")).toContain('data-slot="card"');
     const candidateRunsSection = extractCandidateRunsSection(detailsHtml);
     expect(candidateRunsSection).toContain("Replay runner");
     expect(candidateRunsSection).toContain('data-operator-ui="evidence-status"');
@@ -3212,7 +3222,7 @@ describe("CandidateDetail", () => {
     expect(packetSection).toContain('data-operator-ui="section-header"');
     expect(packetSection).toContain("sm:grid-cols-2 xl:grid-cols-4");
     expect(packetSection).toContain('data-operator-ui="field"');
-    expect(extractOpeningTagForAriaLabel(html, "Trading review packet")).not.toContain('data-slot="card"');
+    expect(extractOpeningTagForAriaLabel(html, "Trading review packet")).toContain('data-slot="card"');
     expect(packetSection.indexOf("Packet verdict")).toBeLessThan(packetSection.indexOf("Subject"));
     expect(packetSection.indexOf("Subject")).toBeLessThan(packetSection.indexOf("Paper rank"));
     expect(packetSection.indexOf("Paper rank")).toBeLessThan(packetSection.indexOf("Blocker groups"));
