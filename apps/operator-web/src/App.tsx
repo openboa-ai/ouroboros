@@ -149,6 +149,11 @@ import {
   TradingPaperReadbackSection,
   type TradingReadbackField
 } from "@/sections/trading/trading-paper-readback-section";
+import {
+  TradingPromotionBoundarySection,
+  type TradingPromotionBoundaryBadge,
+  type TradingPromotionBoundaryField
+} from "@/sections/trading/trading-promotion-boundary-section";
 import type { TradingSummaryMetric } from "@/sections/trading/trading-metrics";
 import {
   TradingReviewPacketSection,
@@ -1622,82 +1627,84 @@ function TradingPromotionBoundaryCard({
         ? "paper evidence present"
         : "paper evidence required";
   const promotionReady = selectedPromotionQualificationStatus === "qualified";
+  const promotionBoundaryBadges: TradingPromotionBoundaryBadge[] = [
+    {
+      label: tradingReview?.status ?? activePromotion?.status ?? "not_promoted",
+      variant: tradingReview?.status === "promoted_for_trading_review" ? "default" : "secondary"
+    },
+    {
+      label: tradingReview?.readiness_status ??
+        activePromotion?.readiness_status ??
+        tradingPromotionReadinessLabel(paperQualificationStatus),
+      variant: "secondary"
+    },
+    {
+      label: reviewMismatch
+        ? "Arena selection differs"
+        : selectedIsPromoted
+          ? "active target"
+          : "candidate review",
+      variant: reviewMismatch ? "destructive" : "secondary"
+    },
+    {
+      label: "live disabled",
+      variant: "secondary"
+    }
+  ];
+  const promotionBoundaryFields: TradingPromotionBoundaryField[] = [
+    { label: "Trading review target", value: activeReviewLabel },
+    {
+      label: "Arena selected candidate",
+      value: `${selectedCandidate.display_name}${selectedIsPromoted ? " / active Trading review" : reviewMismatch ? " / not Trading review" : ""}`
+    },
+    {
+      label: "Paper qualification",
+      value: paperQualificationStatus ?? selectedPaperTradingEvaluation?.status ?? "paper_required"
+    },
+    {
+      label: "Qualification reasons",
+      value: paperQualificationReasons.length
+        ? paperQualificationReasons.join(", ")
+        : paperQualificationStatus === "qualified"
+          ? "qualified"
+          : "paper_required"
+    },
+    {
+      label: "Paper net",
+      value: paperProfitLoss
+        ? formatUsdt(paperProfitLoss.net_revenue_usdt)
+        : selectedPaperTradingEvaluation
+          ? formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)
+          : "not evaluated"
+    },
+    {
+      label: "Evidence window",
+      value: paperEvidenceWindow
+        ? `${paperEvidenceWindow.observation_count} obs / ${paperEvidenceWindow.failed_observation_count} failed`
+        : selectedPaperTradingEvaluation
+          ? `${selectedPaperTradingEvaluation.observation_count} observations`
+          : "not started"
+    },
+    { label: "Paper runner", value: runnerStatus ?? "not promoted" },
+    { label: "Promotion condition", value: promotionCondition },
+    {
+      label: "Review authority",
+      value: tradingReview?.live_disabled_reason ?? activePromotion?.live_disabled_reason ?? "mlp_paper_only"
+    }
+  ];
   return (
-    <OperatorPanel aria-label="Trading promotion boundary">
-      <OperatorSectionHeader
-        eyebrow="Promotion boundary"
-        title="Trading review candidate"
-        description="Arena candidates become Trading review candidates only after selected paper evidence exists. This does not enable live authority."
-        actions={(
-          <>
-          <Badge variant={tradingReview?.status === "promoted_for_trading_review" ? "default" : "secondary"}>
-            {tradingReview?.status ?? activePromotion?.status ?? "not_promoted"}
-          </Badge>
-          <Badge variant="secondary">{tradingReview?.readiness_status ?? activePromotion?.readiness_status ?? tradingPromotionReadinessLabel(paperQualificationStatus)}</Badge>
-          <Badge variant={reviewMismatch ? "destructive" : "secondary"}>
-            {reviewMismatch ? "Arena selection differs" : selectedIsPromoted ? "active target" : "candidate review"}
-          </Badge>
-          <Badge variant="secondary">live disabled</Badge>
-          </>
-        )}
-      />
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-        <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
-          <Field label="Trading review target" value={activeReviewLabel} />
-          <Field
-            label="Arena selected candidate"
-            value={`${selectedCandidate.display_name}${selectedIsPromoted ? " / active Trading review" : reviewMismatch ? " / not Trading review" : ""}`}
-          />
-          <Field
-            label="Paper qualification"
-            value={paperQualificationStatus ?? selectedPaperTradingEvaluation?.status ?? "paper_required"}
-          />
-          <Field
-            label="Qualification reasons"
-            value={paperQualificationReasons.length ? paperQualificationReasons.join(", ") : paperQualificationStatus === "qualified" ? "qualified" : "paper_required"}
-          />
-          <Field
-            label="Paper net"
-            value={paperProfitLoss
-              ? formatUsdt(paperProfitLoss.net_revenue_usdt)
-              : selectedPaperTradingEvaluation
-                ? formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)
-                : "not evaluated"}
-          />
-          <Field
-            label="Evidence window"
-            value={paperEvidenceWindow
-              ? `${paperEvidenceWindow.observation_count} obs / ${paperEvidenceWindow.failed_observation_count} failed`
-              : selectedPaperTradingEvaluation
-                ? `${selectedPaperTradingEvaluation.observation_count} observations`
-                : "not started"}
-          />
-          <Field label="Paper runner" value={runnerStatus ?? "not promoted"} />
-          <Field label="Promotion condition" value={promotionCondition} />
-          <Field label="Review authority" value={tradingReview?.live_disabled_reason ?? activePromotion?.live_disabled_reason ?? "mlp_paper_only"} />
-        </dl>
-        <OperatorActionRow className="lg:justify-end">
-          {reviewMismatch && activeReviewCandidateId && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onSelectCandidate?.(activeReviewCandidateId)}
-              disabled={!onSelectCandidate}
-            >
-              Open Trading review candidate
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onPromoteTradingCandidate}
-            disabled={!onPromoteTradingCandidate || runningTradingPromotion || !hasPaperEvaluation || !promotionReady}
-          >
-            {runningTradingPromotion ? "Moving" : reviewMismatch ? "Replace Trading review target" : "Move to Trading review"}
-          </Button>
-        </OperatorActionRow>
-      </div>
-    </OperatorPanel>
+    <TradingPromotionBoundarySection
+      badges={promotionBoundaryBadges}
+      fields={promotionBoundaryFields}
+      showOpenActiveTarget={reviewMismatch && Boolean(activeReviewCandidateId)}
+      openActiveTargetDisabled={!onSelectCandidate}
+      promoteDisabled={runningTradingPromotion || !hasPaperEvaluation || !promotionReady}
+      promoteLabel={runningTradingPromotion ? "Moving" : reviewMismatch ? "Replace Trading review target" : "Move to Trading review"}
+      onOpenActiveTarget={activeReviewCandidateId && onSelectCandidate
+        ? () => onSelectCandidate(activeReviewCandidateId)
+        : undefined}
+      onPromoteTradingCandidate={onPromoteTradingCandidate}
+    />
   );
 }
 

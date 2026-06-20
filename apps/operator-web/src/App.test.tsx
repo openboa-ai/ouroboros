@@ -166,6 +166,7 @@ describe("operator design system contract", () => {
       "trading-market-section.tsx",
       "trading-metrics.tsx",
       "trading-paper-readback-section.tsx",
+      "trading-promotion-boundary-section.tsx",
       "trading-review-packet-section.tsx"
     ]));
 
@@ -178,6 +179,10 @@ describe("operator design system contract", () => {
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
+    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("OperatorField");
+    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("OperatorActionRow");
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
   });
 
