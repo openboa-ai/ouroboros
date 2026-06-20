@@ -163,12 +163,14 @@ describe("operator design system contract", () => {
     expect(sectionFiles).toEqual(expect.arrayContaining([
       "operator-decision-panel.tsx",
       "paper-review-summary-section.tsx",
+      "trading-cockpit-section.tsx",
       "trading-market-chart.tsx",
       "trading-order-status-section.tsx",
       "trading-market-section.tsx",
       "trading-metrics.tsx",
       "trading-paper-readback-section.tsx",
       "trading-promotion-boundary-section.tsx",
+      "trading-safety-boundary-section.tsx",
       "trading-review-packet-section.tsx"
     ]));
 
@@ -180,6 +182,10 @@ describe("operator design system contract", () => {
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
+    expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
+    expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("OperatorPanel");
+    expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("@/components/ui/chart");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceRow");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorField");
@@ -195,6 +201,8 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
     expect(readFileSync(join(operatorWebSrcDir, "components", "ui", "chart.tsx"), "utf8")).toContain("recharts");
     expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain("function BtcFuturesChart");
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('<OperatorPanel aria-label="Safety boundary">');
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('<section className="grid gap-4" aria-label="Trading cockpit">');
   });
 
   it("keeps Trading market chart evidence limited to sourced market prices", () => {
