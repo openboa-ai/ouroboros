@@ -286,6 +286,39 @@ async function fetchTradingReviewCandidate(
   return fetchCandidate(activeCandidateId);
 }
 
+export function candidateNeedsDetailFetch(candidate: CandidateInspectReadModel | null | undefined): boolean {
+  if (!candidate) {
+    return false;
+  }
+  const transcript = candidate.runtime.transcript;
+  if (transcript && transcript.items.length < transcript.item_count) {
+    return true;
+  }
+  const sandbox = candidate.runtime.sandbox;
+  return Boolean(
+    sandbox && (
+      sandbox.logs.length < sandbox.log_refs.length ||
+      sandbox.heartbeats.length < sandbox.heartbeat_refs.length ||
+      sandbox.command_evidence.length < sandbox.command_evidence_refs.length
+    )
+  );
+}
+
+function selectedCandidateForState(
+  current: AppState,
+  selected: CandidateInspectReadModel | null | undefined
+): CandidateInspectReadModel | undefined {
+  if (
+    selected &&
+    current.selected?.candidate_id === selected.candidate_id &&
+    candidateNeedsDetailFetch(selected) &&
+    !candidateNeedsDetailFetch(current.selected)
+  ) {
+    return current.selected;
+  }
+  return selected ?? undefined;
+}
+
 export function applyOperatorRefreshState(
   current: AppState,
   operator: OperatorReadModel,
@@ -305,7 +338,7 @@ export function applyOperatorRefreshState(
     candidateArena: operator.candidate_arena,
     tradingResearchRuntime,
     selectedTradingResearchAgent,
-    selected: selected ?? undefined,
+    selected: selectedCandidateForState(current, selected),
     tradingReviewCandidate
   };
 }
@@ -484,6 +517,42 @@ export function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const selectedCandidate = state.selected;
+    if (operatorView !== "details" || !selectedCandidate || !candidateNeedsDetailFetch(selectedCandidate)) {
+      return;
+    }
+    const selectedCandidateId = selectedCandidate.candidate_id;
+    let cancelled = false;
+
+    async function loadSelectedCandidateDetail() {
+      try {
+        const selected = await fetchCandidate(selectedCandidateId);
+        if (cancelled) {
+          return;
+        }
+        setState((current) => current.selected?.candidate_id === selected.candidate_id
+          ? {
+              ...current,
+              selected
+            }
+          : current);
+      } catch (error) {
+        if (!cancelled) {
+          setState((current) => ({
+            ...current,
+            error: error instanceof Error ? error.message : "Unknown candidate detail error"
+          }));
+        }
+      }
+    }
+
+    void loadSelectedCandidateDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [operatorView, state.selected?.candidate_id]);
 
   async function selectCandidate(candidateId: string) {
     setState((current) => ({

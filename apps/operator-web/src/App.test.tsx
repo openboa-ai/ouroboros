@@ -43,6 +43,7 @@ import {
   CandidateArenaPanel,
   CandidateDetail,
   CandidateSummaryRow,
+  candidateNeedsDetailFetch,
   isPositiveRiskDecision,
   operatorViewFromSearch,
   PrivateReadinessReviewPacketSections,
@@ -624,6 +625,53 @@ describe("operator UI primitives", () => {
 });
 
 describe("operator app refresh", () => {
+  it("keeps full selected candidate details when the operator overview refresh is bounded", () => {
+    const fullCandidate = selectedCandidateWithTranscript(2);
+    const boundedCandidate = {
+      ...fullCandidate,
+      runtime: {
+        ...fullCandidate.runtime,
+        transcript: fullCandidate.runtime.transcript
+          ? {
+              ...fullCandidate.runtime.transcript,
+              items: fullCandidate.runtime.transcript.items.slice(-1)
+            }
+          : undefined
+      }
+    };
+    const operator = operatorReadModelFixture({
+      selected_candidate_id: fullCandidate.candidate_id,
+      selected_candidate: boundedCandidate
+    });
+    const currentState = {
+      candidates: [],
+      executionModes: tradingExecutionModes(),
+      replayRuns: [],
+      selectedTradingResearchAgent: "codex" as const,
+      tradingResearchIterations: 1,
+      loading: false,
+      runningFullCycle: false,
+      runningTradingRun: false,
+      recordingImprovement: false,
+      recordingRunControl: false,
+      recordingPrivateReadinessPosture: false,
+      runningCandidateReplay: false,
+      runningTradingPromotion: false,
+      runningCandidateArenaAction: false,
+      operator,
+      candidateArena: operator.candidate_arena,
+      selected: fullCandidate,
+      tradingResearchRuntime: buildTradingResearchRuntimeFromOperator(operator)
+    };
+
+    expect(candidateNeedsDetailFetch(boundedCandidate)).toBe(true);
+    expect(candidateNeedsDetailFetch(fullCandidate)).toBe(false);
+
+    const refreshed = applyOperatorRefreshState(currentState, operator);
+
+    expect(refreshed.selected?.runtime.transcript?.items).toHaveLength(2);
+  });
+
   it("merges refreshed paper board state without resetting pending controls", () => {
     const staleOperator = operatorReadModelFixture({
       selected_paper_trading_evaluation: paperTradingEvaluationFixture({
@@ -6601,6 +6649,40 @@ function arenaSelectedCandidate(
         }
       : undefined,
     ...overrides
+  };
+}
+
+function selectedCandidateWithTranscript(itemCount: number): CandidateInspectReadModel {
+  const candidate = arenaSelectedCandidate();
+  const items = Array.from({ length: itemCount }, (_, index) => ({
+    item_id: `transcript-item-${index + 1}`,
+    item_kind: "sandbox_log" as const,
+    occurred_at: `2026-05-16T00:00:${String(index + 1).padStart(2, "0")}.000Z`,
+    label: `Sandbox log ${index + 1}`,
+    summary: `Sandbox log summary ${index + 1}`,
+    ref: { record_kind: "sandbox_log", id: `sandbox-log-${index + 1}` },
+    authority_status: "trace_only"
+  }));
+
+  return {
+    ...candidate,
+    runtime: {
+      ...candidate.runtime,
+      transcript: {
+        transcript_kind: "trading_run_transcript",
+        has_activity: true,
+        item_count: items.length,
+        latest_item: items.at(-1) ?? null,
+        items,
+        authority_status: "not_live",
+        no_authority: {
+          live_exchange_authority: false,
+          private_read_authority: false,
+          order_submission_authority: false,
+          credentials: false
+        }
+      }
+    }
   };
 }
 
