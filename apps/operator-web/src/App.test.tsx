@@ -105,23 +105,36 @@ import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness
 const operatorWebSrcDir = dirname(fileURLToPath(import.meta.url));
 
 describe("operator design system contract", () => {
-  it("keeps operator UI radius, surface, and typography tokens centralized", () => {
-    expect(OPERATOR_DESIGN_TOKENS.radius.panel).toBe("var(--radius-lg)");
-    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("rounded-lg");
+  it("keeps operator UI color, size, radius, and typography tokens centralized", () => {
+    expect(OPERATOR_DESIGN_TOKENS.color.canvas).toBe("bg-background text-foreground");
+    expect(OPERATOR_DESIGN_TOKENS.color.surface).toBe("bg-card text-card-foreground");
+    expect(OPERATOR_DESIGN_TOKENS.color.surfaceMuted).toContain("bg-card/70");
+    expect(OPERATOR_DESIGN_TOKENS.color.borderSubtle).toContain("ring-border/60");
+    expect(OPERATOR_DESIGN_TOKENS.size.pageMaxWidth).toBe("max-w-[1360px]");
+    expect(OPERATOR_DESIGN_TOKENS.size.appHeaderHeight).toBe("h-11");
+    expect(OPERATOR_DESIGN_TOKENS.size.panelPadding).toContain("p-3");
+    expect(OPERATOR_DESIGN_TOKENS.radius.panel).toBe("rounded-lg");
+    expect(OPERATOR_DESIGN_TOKENS.radius.control).toBe("rounded-md");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("min-w-0");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("max-w-full");
-    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("bg-card");
+    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain(OPERATOR_DESIGN_TOKENS.color.surface);
+    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain(OPERATOR_DESIGN_TOKENS.radius.panel);
     expect(OPERATOR_DESIGN_TOKENS.typography.label).toContain("text-[11px]");
     expect(OPERATOR_DESIGN_TOKENS.typography.detail).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.typography.calloutValue).toContain("[overflow-wrap:anywhere]");
     expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain(OPERATOR_DESIGN_TOKENS.size.pageMaxWidth);
     expect(OPERATOR_DESIGN_TOKENS.layout.sectionHeader).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid).toContain("xl:grid-cols-4");
+    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
+    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-2xl");
 
     const exportedClasses = JSON.stringify(OPERATOR_DESIGN_TOKENS);
 
     expect(exportedClasses).not.toMatch(/rounded-(xl|2xl|3xl|4xl)/);
     expect(exportedClasses).not.toMatch(/space-[xy]-/);
+    expect(exportedClasses).not.toContain("sm:text-3xl");
+    expect(exportedClasses).not.toContain("max-w-[1500px]");
   });
 
   it("keeps reusable operator primitives in a directory-based design-system entrypoint", () => {
@@ -532,10 +545,28 @@ describe("operator design system contract", () => {
     expect(html).toContain("data-operator-ui=\"page-header\"");
     expect(html).toContain("data-operator-ui=\"section-header\"");
     expect(html).toContain("data-operator-ui=\"action-row\"");
-    expect(html).toContain("max-w-[1500px]");
+    expect(html).toContain(OPERATOR_DESIGN_TOKENS.size.pageMaxWidth);
     expect(html).toContain("sm:flex-row");
     expect(html).toContain("tracking-normal");
     expect(html).not.toContain("tracking-tight");
+    expect(html).not.toContain("max-w-[1500px]");
+    expect(html).not.toContain("sm:text-3xl");
+  });
+
+  it("keeps page, panel, and section chrome assembled from semantic design tokens", () => {
+    const designSystemDir = join(operatorWebSrcDir, "design-system");
+    const pageSource = readFileSync(join(designSystemDir, "components/page.tsx"), "utf8");
+    const panelSource = readFileSync(join(designSystemDir, "components/panel.tsx"), "utf8");
+    const sectionHeaderSource = readFileSync(join(designSystemDir, "components/section-header.tsx"), "utf8");
+
+    expect(pageSource).not.toContain("max-w-[1500px]");
+    expect(panelSource).not.toContain("grid min-w-0 content-start grid-cols-[minmax(0,1fr)] gap-3 p-3 sm:p-4");
+    expect(sectionHeaderSource).not.toContain("text-sm text-muted-foreground");
+    expect(sectionHeaderSource).not.toContain("sm:justify-end");
+    expect(pageSource).toContain("OPERATOR_DESIGN_TOKENS.layout.pageEyebrow");
+    expect(panelSource).toContain("OPERATOR_DESIGN_TOKENS.layout.panel");
+    expect(sectionHeaderSource).toContain("OPERATOR_DESIGN_TOKENS.typography.eyebrow");
+    expect(sectionHeaderSource).toContain("OPERATOR_DESIGN_TOKENS.layout.sectionHeaderActions");
   });
 
   it("keeps operator panels constrained to one shrinkable grid column", () => {
@@ -564,13 +595,14 @@ describe("operator design system contract", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(tokens.layout.appHeader).toBeTypeOf("string");
-    expect(tokens.layout.appHeader).toContain("h-12");
+    expect(tokens.layout.appHeader).toContain(OPERATOR_DESIGN_TOKENS.size.appHeaderHeight);
     expect(tokens.layout.appHeader).toContain("border-b");
     expect(tokens.layout.appMain).toBeTypeOf("string");
     expect(tokens.layout.appMain).toContain("p-3");
-    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-2xl");
-    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-3xl");
+    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
+    expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-2xl");
     expect(exportedClasses).not.toMatch(/text-\[clamp|vw/);
+    expect(exportedClasses).not.toContain("sm:text-3xl");
     expect(html).toContain('data-operator-ui="app-header"');
     expect(html).toContain('data-operator-ui="app-main"');
     expect(html).not.toContain("h-14 shrink-0 items-center gap-3 border-b px-4");
