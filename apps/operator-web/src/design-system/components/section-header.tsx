@@ -19,11 +19,11 @@ export function OperatorSectionHeader({
   return (
     <div data-operator-ui="section-header" className={cn(OPERATOR_DESIGN_TOKENS.layout.sectionHeader, className)}>
       <div className={OPERATOR_DESIGN_TOKENS.layout.sectionHeaderCopy}>
-        {eyebrow && <p className="text-sm text-muted-foreground">{eyebrow}</p>}
+        {eyebrow && <p className={OPERATOR_DESIGN_TOKENS.typography.eyebrow}>{eyebrow}</p>}
         <h3 className={OPERATOR_DESIGN_TOKENS.layout.sectionTitle}>{title}</h3>
         {description && <p className={OPERATOR_DESIGN_TOKENS.typography.detail}>{description}</p>}
       </div>
-      {actions && <OperatorActionRow className="sm:justify-end">{actions}</OperatorActionRow>}
+      {actions && <OperatorActionRow className={OPERATOR_DESIGN_TOKENS.layout.sectionHeaderActions}>{actions}</OperatorActionRow>}
     </div>
   );
 }

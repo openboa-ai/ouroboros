@@ -36,10 +36,10 @@ export function OperatorPageHeader({
   return (
     <div data-operator-ui="page-header" className={cn(OPERATOR_DESIGN_TOKENS.layout.pageHeader, className)}>
       <div className={OPERATOR_DESIGN_TOKENS.layout.pageHeaderCopy}>
-        {eyebrow && <p className="text-sm text-muted-foreground">{eyebrow}</p>}
+        {eyebrow && <p className={OPERATOR_DESIGN_TOKENS.layout.pageEyebrow}>{eyebrow}</p>}
         <h2 className={OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle}>{title}</h2>
       </div>
-      {actions && <OperatorActionRow>{actions}</OperatorActionRow>}
+      {actions && <OperatorActionRow className={OPERATOR_DESIGN_TOKENS.layout.pageHeaderActions}>{actions}</OperatorActionRow>}
     </div>
   );
 }
