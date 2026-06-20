@@ -254,6 +254,39 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorField");
   });
 
+  it("keeps Research screen sections as reusable UI-only modules", () => {
+    const researchSectionDir = join(operatorWebSrcDir, "sections", "research");
+    const sectionFiles = readdirSync(researchSectionDir)
+      .filter((fileName) => fileName.endsWith(".tsx"))
+      .sort();
+
+    expect(sectionFiles).toEqual(expect.arrayContaining([
+      "research-agent-cycle-section.tsx",
+      "research-cycle-section.tsx",
+      "research-finding-clusters-section.tsx",
+      "research-paper-learning-section.tsx",
+      "research-signals-section.tsx"
+    ]));
+
+    for (const fileName of sectionFiles) {
+      const source = readFileSync(join(researchSectionDir, fileName), "utf8");
+
+      expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).toContain("@/design-system");
+    }
+
+    expect(readFileSync(join(researchSectionDir, "research-paper-learning-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("OperatorEvidenceBlock");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("max-w-[calc(100vw-4.5rem)]");
+    expect(readFileSync(join(researchSectionDir, "research-signals-section.tsx"), "utf8")).toContain("OperatorStat");
+    expect(readFileSync(join(researchSectionDir, "research-cycle-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
+    expect(readFileSync(join(researchSectionDir, "research-agent-cycle-section.tsx"), "utf8")).toContain("OperatorField");
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('<OperatorPanel aria-label="Paper evidence learning">');
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('<OperatorPanel aria-label="Research signals">');
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('function FullCycleLineageSection');
+  });
+
   it("keeps operator shell navigation as a reusable UI-only module", () => {
     const shellDir = join(operatorWebSrcDir, "shell");
     const operatorSidebarSource = readFileSync(join(shellDir, "operator-sidebar.tsx"), "utf8");
@@ -3956,6 +3989,25 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("keeps pending Research next-cycle state neutral instead of failed", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={fixtureCandidate}
+      />
+    );
+    const researchCycle = extractResearchCycleSection(html);
+
+    expect(researchCycle).toContain("Next cycle");
+    expect(researchCycle).toContain("not produced");
+    expect(researchCycle).toMatch(
+      /data-operator-ui="evidence-status" data-tone="neutral"(?:(?!data-operator-ui="evidence-status")[\s\S])*?>Next cycle</
+    );
+    expect(researchCycle).not.toMatch(
+      /data-operator-ui="evidence-status" data-tone="failed"(?:(?!data-operator-ui="evidence-status")[\s\S])*?>Next cycle</
+    );
+  });
+
   it("renders Improvement without promotion or trading authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
@@ -5726,11 +5778,20 @@ function extractFindingClustersSection(html: string): string {
 
 function extractResearchCycleSection(html: string): string {
   const start = startOfOpeningTagForAriaLabel(html, "Research cycle");
-  const end = html.indexOf('aria-label="Agent generated Trading System"', start);
-  if (start < 0 || end < 0) {
+  const end = firstPositiveIndex([
+    html.indexOf('aria-label="Agent generated Trading System"', start),
+    html.indexOf('aria-label="Fixture notice"', start),
+    html.indexOf('aria-label="Details boundary"', start)
+  ]);
+  if (start < 0) {
     throw new Error("research cycle section not found");
   }
-  return html.slice(start, end);
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function firstPositiveIndex(indexes: number[]): number {
+  const positives = indexes.filter((index) => index >= 0);
+  return positives.length ? Math.min(...positives) : -1;
 }
 
 function extractFixtureNoticeSection(html: string): string {

@@ -142,6 +142,28 @@ import {
   ArenaSelectedCandidateSection,
   type ArenaSelectedCandidateField
 } from "@/sections/arena/arena-selected-candidate-section";
+import {
+  ResearchAgentCycleSection,
+  type ResearchAgentCycleLineageField,
+  type ResearchAgentCycleMetric
+} from "@/sections/research/research-agent-cycle-section";
+import {
+  ResearchCycleSection,
+  type ResearchCycleRow,
+  type ResearchCycleStage
+} from "@/sections/research/research-cycle-section";
+import {
+  ResearchFindingClustersSection,
+  type ResearchFindingClusterEntry
+} from "@/sections/research/research-finding-clusters-section";
+import {
+  ResearchPaperLearningSection,
+  type ResearchPaperLearningField
+} from "@/sections/research/research-paper-learning-section";
+import {
+  ResearchSignalsSection,
+  type ResearchSignalMetric
+} from "@/sections/research/research-signals-section";
 import { PaperReviewSummarySection } from "@/sections/trading/paper-review-summary-section";
 import { TradingCockpitSection } from "@/sections/trading/trading-cockpit-section";
 import {
@@ -2639,6 +2661,183 @@ export function CandidateDetail({
         }]
       : [])
   ];
+  const paperLearningFields: ResearchPaperLearningField[] = paperBoardLearning
+    ? [
+        {
+          label: "Paper rank",
+          value: paperBoardLearning.rank ? `#${paperBoardLearning.rank}` : "unranked"
+        },
+        {
+          label: "Paper score",
+          value: `${formatUsdt(paperBoardLearning.net_revenue_usdt)} / ${formatPercent(paperBoardLearning.net_return_pct)}`
+        },
+        {
+          label: "Qualification",
+          value: paperBoardLearning.qualification_status ?? "not qualified"
+        },
+        {
+          label: "Top blocker",
+          value: paperBoardLearning.top_blocker ?? "none"
+        },
+        {
+          label: "Observations",
+          value: String(paperBoardLearning.observation_count)
+        },
+        {
+          label: "Next focus",
+          value: paperBoardLearning.next_research_focus
+        }
+      ]
+    : [];
+  const researchFindingClusterEntries: ResearchFindingClusterEntry[] = findingClusters.slice(0, 6).map((cluster) => ({
+    id: [
+      cluster.direction_kind,
+      cluster.top_blocker ?? "none",
+      cluster.market_regime,
+      cluster.protocol_failure_kind ?? "none"
+    ].join("|"),
+    title: `${cluster.direction_kind} / ${cluster.market_regime}`,
+    value: cluster.blocker_group_kind ?? "no blocker group",
+    detail: `${cluster.candidate_count} ${cluster.candidate_count === 1 ? "candidate" : "candidates"} / ${cluster.authority_status}`,
+    fields: [
+      { label: "Top blocker", value: cluster.top_blocker ?? "none" },
+      { label: "Protocol failure", value: cluster.protocol_failure_kind ?? "none" },
+      { label: "Latest finding", value: cluster.latest_finding ?? "none" },
+      { label: "Next focus", value: cluster.next_research_focus }
+    ],
+    boundaryFields: [
+      { label: "ResearchWorker input", value: "next-generation context only" },
+      {
+        label: "Cluster boundary",
+        value: "no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion"
+      }
+    ]
+  }));
+  const researchReviewSignal: ResearchSignalMetric = {
+    label: "Trading review signal",
+    value: operatorDecision.value,
+    detail: operatorDecision.detail,
+    className: toneCardClass(operatorDecision.tone)
+  };
+  const researchSignalMetrics: ResearchSignalMetric[] = [
+    {
+      label: "ResearchPreflight score",
+      value: profitSummary[0].value,
+      detail: profitSummary[0].detail,
+      className: toneCardClass(profitSummary[0].tone)
+    },
+    {
+      label: "Selected Trading System",
+      value: runStatus,
+      detail: `${candidate.display_name}; ${candidate.runtime.stage_binding_profile} / ${candidate.runtime.authority_status}`,
+      className: toneCardClass(runStatus === "running" ? "good" : "neutral")
+    },
+    {
+      label: "ResearchPreflight status",
+      value: evaluationStatusValue,
+      detail: evaluationStatusDetail,
+      className: toneCardClass(evaluationStatusTone)
+    },
+    {
+      label: "Next cycle handoff",
+      value: nextCycleStatus,
+      detail: nextCycleDetail,
+      className: toneCardClass(visibleFullCycle || recoveredAgentCycle || candidate.improvement?.latest_change_proposal
+        ? "good"
+        : "warning")
+    }
+  ];
+  const researchCycleStages: ResearchCycleStage[] = [
+    {
+      label: "Current System Code",
+      status: candidate.program.summary,
+      tone: "counted"
+    },
+    {
+      label: "ResearchPreflight",
+      status: researchEvaluationStageStatus,
+      tone: researchCycleTone(researchEvaluationStageTone)
+    },
+    {
+      label: "Candidate handoff",
+      status: improvementOutputStatus,
+      tone: researchCycleTone(improvementOutputTone)
+    },
+    {
+      label: "Next cycle",
+      status: nextCycleStatus,
+      tone: researchNextCycleTone(nextCycleStatus)
+    }
+  ];
+  const researchCycleRows: ResearchCycleRow[] = tradingSystemRows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    name: row.name,
+    evaluation: row.evaluation,
+    active: row.active
+  }));
+  const visibleFullCycleMetrics: ResearchAgentCycleMetric[] = visibleFullCycle
+    ? [
+        {
+          label: "System Code",
+          value: visibleFullCycle.system_code_handoff.system_code_id,
+          detail: visibleFullCycle.system_code_handoff.runtime_kind,
+          className: toneCardClass("good")
+        },
+        {
+          label: "Backtest",
+          value: formatScore(visibleFullCycle.backtest.score),
+          detail: visibleFullCycle.backtest.summary,
+          className: toneCardClass(visibleFullCycle.backtest.status === "accepted" ? "good" : "warning")
+        },
+        {
+          label: "Paper Trading Run",
+          value: visibleFullCycle.trading_run.lifecycle_status ?? "registered",
+          detail: `${visibleFullCycle.paper_trading.provider_request_count} provider calls`,
+          className: toneCardClass(visibleFullCycle.trading_run.lifecycle_status === "running" ? "good" : "neutral")
+        },
+        {
+          label: "Ledger",
+          value: visibleFullCycle.ledger.chain_complete ? "chain complete" : "incomplete",
+          detail: "OrderRequest -> GatewayResult -> ExecutionResult",
+          className: toneCardClass(visibleFullCycle.ledger.chain_complete ? "good" : "warning")
+        }
+      ]
+    : [];
+  const visibleFullCycleLineageFields = visibleFullCycleLineage
+    ? fullCycleLineageFields(visibleFullCycleLineage)
+    : undefined;
+  const recoveredAgentCycleMetrics: ResearchAgentCycleMetric[] = recoveredAgentCycle
+    ? [
+        {
+          label: "System Code",
+          value: recoveredAgentCycle.systemCodeId,
+          detail: candidate.system_code?.declared_runtime ?? candidate.program.manifest.declared_runtime,
+          className: toneCardClass("good")
+        },
+        {
+          label: "Backtest",
+          value: "recorded",
+          detail: recoveredAgentCycle.evaluationDetail,
+          className: toneCardClass("good")
+        },
+        {
+          label: "Paper Trading Run",
+          value: runStatus,
+          detail: "Ledger chain is visible in the current Trading Run.",
+          className: toneCardClass(ledger?.chain_complete ? "good" : "neutral")
+        },
+        {
+          label: "Ledger",
+          value: ledger?.chain_complete ? "chain complete" : "incomplete",
+          detail: "OrderRequest -> GatewayResult -> ExecutionResult",
+          className: toneCardClass(ledger?.chain_complete ? "good" : "warning")
+        }
+      ]
+    : [];
+  const recoveredAgentCycleLineageFields = recoveredAgentCycle?.fullCycleLineage
+    ? fullCycleLineageFields(recoveredAgentCycle.fullCycleLineage)
+    : undefined;
   return (
     <OperatorPage>
       <Tabs
@@ -2875,263 +3074,41 @@ export function CandidateDetail({
 
         <TabsContent value="research" className="flex flex-col gap-4">
       {paperBoardLearning && (
-        <OperatorPanel aria-label="Paper evidence learning">
-          <OperatorSectionHeader
-            eyebrow="Paper evidence learning"
-            title="Next research focus"
-            description="Paper-board evidence guides the next ResearchWorker without replacing qualification or promotion authority."
-            actions={(
-              <Badge variant="secondary">{paperBoardLearning.authority_status}</Badge>
-            )}
-          />
-          <div className="grid gap-3">
-            <p className="text-sm text-muted-foreground">{paperBoardLearning.summary}</p>
-            <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
-              <Field
-                label="Paper rank"
-                value={paperBoardLearning.rank ? `#${paperBoardLearning.rank}` : "unranked"}
-              />
-              <Field
-                label="Paper score"
-                value={`${formatUsdt(paperBoardLearning.net_revenue_usdt)} / ${formatPercent(paperBoardLearning.net_return_pct)}`}
-              />
-              <Field
-                label="Qualification"
-                value={paperBoardLearning.qualification_status ?? "not qualified"}
-              />
-              <Field
-                label="Top blocker"
-                value={paperBoardLearning.top_blocker ?? "none"}
-              />
-              <Field
-                label="Observations"
-                value={String(paperBoardLearning.observation_count)}
-              />
-              <Field
-                label="Next focus"
-                value={paperBoardLearning.next_research_focus}
-              />
-            </dl>
-          </div>
-        </OperatorPanel>
+        <ResearchPaperLearningSection
+          authorityStatus={paperBoardLearning.authority_status}
+          summary={paperBoardLearning.summary}
+          fields={paperLearningFields}
+        />
       )}
-      {findingClusters.length > 0 && (
-        <OperatorPanel aria-label="Finding clusters">
-          <OperatorSectionHeader
-            eyebrow="Finding clusters"
-            title="Research learning clusters"
-            description="CandidateArena findings grouped for next-generation research. These clusters are read-only and do not replace paper qualification or promotion authority."
-            actions={(
-              <Badge variant="secondary">not_promotion_authority</Badge>
-            )}
-          />
-          <OperatorEvidenceStack>
-            {findingClusters.slice(0, 6).map((cluster) => (
-              <OperatorEvidenceBlock
-                key={[
-                  cluster.direction_kind,
-                  cluster.top_blocker ?? "none",
-                  cluster.market_regime,
-                  cluster.protocol_failure_kind ?? "none"
-                ].join("|")}
-                title={`${cluster.direction_kind} / ${cluster.market_regime}`}
-              >
-                <OperatorEvidenceStatus
-                  label="Finding cluster"
-                  value={cluster.blocker_group_kind ?? "no blocker group"}
-                  detail={`${cluster.candidate_count} ${cluster.candidate_count === 1 ? "candidate" : "candidates"} / ${cluster.authority_status}`}
-                  tone="neutral"
-                />
-                <OperatorEvidenceRow>
-                  <Field label="Top blocker" value={cluster.top_blocker ?? "none"} />
-                  <Field label="Protocol failure" value={cluster.protocol_failure_kind ?? "none"} />
-                  <Field label="Latest finding" value={cluster.latest_finding ?? "none"} />
-                  <Field label="Next focus" value={cluster.next_research_focus} />
-                </OperatorEvidenceRow>
-                <OperatorEvidenceRow>
-                  <Field label="ResearchWorker input" value="next-generation context only" />
-                  <Field
-                    label="Cluster boundary"
-                    value="no rank, no qualification, no Trading review blocker, no direction scheduling, no promotion"
-                  />
-                </OperatorEvidenceRow>
-              </OperatorEvidenceBlock>
-            ))}
-          </OperatorEvidenceStack>
-        </OperatorPanel>
+      {researchFindingClusterEntries.length > 0 && (
+        <ResearchFindingClustersSection entries={researchFindingClusterEntries} />
       )}
-      <OperatorPanel aria-label="Research signals">
-        <OperatorSectionHeader
-          title="Research signals"
-          description="Research-facing quality, risk posture, and packet signal for the next candidate cycle."
-        />
-        <div className="grid gap-3">
-        <OperatorStat
-          label="Trading review signal"
-          value={operatorDecision.value}
-          detail={operatorDecision.detail}
-          className={toneCardClass(operatorDecision.tone)}
-        />
-        <div className="grid gap-3 md:grid-cols-4">
-          <OperatorStatusCard
-            label="ResearchPreflight score"
-            value={profitSummary[0].value}
-            detail={profitSummary[0].detail}
-            tone={profitSummary[0].tone}
-          />
-          <OperatorStatusCard
-            label="Selected Trading System"
-            value={runStatus}
-            detail={`${candidate.display_name}; ${candidate.runtime.stage_binding_profile} / ${candidate.runtime.authority_status}`}
-            tone={runStatus === "running" ? "good" : "neutral"}
-          />
-          <OperatorStatusCard
-            label="ResearchPreflight status"
-            value={evaluationStatusValue}
-            detail={evaluationStatusDetail}
-            tone={evaluationStatusTone}
-          />
-          <OperatorStatusCard
-            label="Next cycle handoff"
-            value={nextCycleStatus}
-            detail={nextCycleDetail}
-            tone={visibleFullCycle || recoveredAgentCycle || candidate.improvement?.latest_change_proposal ? "good" : "warning"}
-          />
-        </div>
-        </div>
-      </OperatorPanel>
-
-      <OperatorPanel aria-label="Research cycle">
-        <OperatorSectionHeader
-          title="Research"
-          description="How CandidateArena evidence, ResearchPreflight, and lineage prepare the next TradingSystem candidate cycle."
-          actions={<Badge variant="secondary">{String(tradingSystemRows.length)}</Badge>}
-        />
-        <div className="grid gap-3">
-        <div className="grid gap-3 md:grid-cols-4" aria-label="Research cycle">
-          <ResearchStage
-            label="Current System Code"
-            status={candidate.program.summary}
-            tone="good"
-          />
-          <ResearchStage
-            label="ResearchPreflight"
-            status={researchEvaluationStageStatus}
-            tone={researchEvaluationStageTone}
-          />
-          <ResearchStage
-            label="Candidate handoff"
-            status={improvementOutputStatus}
-            tone={improvementOutputTone}
-          />
-          <ResearchStage
-            label="Next cycle"
-            status={nextCycleStatus}
-            tone={nextCycleStatus === "handoff ready" || nextCycleStatus === "agent handoff ready" ? "good" : "warning"}
-          />
-        </div>
-        <div className="grid gap-2">
-          {tradingSystemRows.map((row) => (
-            <div
-              key={row.id}
-              className={`${OPERATOR_DESIGN_TOKENS.surface.field} ${row.active ? "border-primary/40 bg-primary/5" : ""}`}
-            >
-              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="grid min-w-0 gap-1">
-                  <span className={OPERATOR_DESIGN_TOKENS.typography.label}>{row.status}</span>
-                  <strong className={OPERATOR_DESIGN_TOKENS.typography.value}>{row.name}</strong>
-                  <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>{row.evaluation}</span>
-                </div>
-                <Badge variant={row.active ? "default" : "secondary"}>{row.active ? "running view" : "queued"}</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-        </div>
-      </OperatorPanel>
-
+      <ResearchSignalsSection
+        reviewSignal={researchReviewSignal}
+        metrics={researchSignalMetrics}
+      />
+      <ResearchCycleSection
+        rowCount={tradingSystemRows.length}
+        stages={researchCycleStages}
+        rows={researchCycleRows}
+      />
       {visibleFullCycle && (
-        <OperatorPanel aria-label="Agent generated Trading System">
-          <OperatorSectionHeader
-            title="Agent generated Trading System"
-            description={`${visibleFullCycle.agent_research.agent.provider} produced SystemCode, backtest accepted it, and paper trading recorded a Ledger chain.`}
-            actions={(
-              <Badge variant="default">{visibleFullCycle.agent_research.latest_decision}</Badge>
-            )}
-          />
-          <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
-              <OperatorStatusCard
-                label="System Code"
-                value={visibleFullCycle.system_code_handoff.system_code_id}
-                detail={visibleFullCycle.system_code_handoff.runtime_kind}
-                tone="good"
-              />
-              <OperatorStatusCard
-                label="Backtest"
-                value={formatScore(visibleFullCycle.backtest.score)}
-                detail={visibleFullCycle.backtest.summary}
-                tone={visibleFullCycle.backtest.status === "accepted" ? "good" : "warning"}
-              />
-              <OperatorStatusCard
-                label="Paper Trading Run"
-                value={visibleFullCycle.trading_run.lifecycle_status ?? "registered"}
-                detail={`${visibleFullCycle.paper_trading.provider_request_count} provider calls`}
-                tone={visibleFullCycle.trading_run.lifecycle_status === "running" ? "good" : "neutral"}
-              />
-              <OperatorStatusCard
-                label="Ledger"
-                value={visibleFullCycle.ledger.chain_complete ? "chain complete" : "incomplete"}
-                detail="OrderRequest -> GatewayResult -> ExecutionResult"
-                tone={visibleFullCycle.ledger.chain_complete ? "good" : "warning"}
-              />
-            </div>
-            {visibleFullCycleLineage && <FullCycleLineageSection lineage={visibleFullCycleLineage} />}
-          </div>
-        </OperatorPanel>
+        <ResearchAgentCycleSection
+          title="Agent generated Trading System"
+          description={`${visibleFullCycle.agent_research.agent.provider} produced SystemCode, backtest accepted it, and paper trading recorded a Ledger chain.`}
+          badgeLabel={visibleFullCycle.agent_research.latest_decision}
+          metrics={visibleFullCycleMetrics}
+          lineageFields={visibleFullCycleLineageFields}
+        />
       )}
-
       {!visibleFullCycle && recoveredAgentCycle && (
-        <OperatorPanel aria-label="Agent generated Trading System">
-          <OperatorSectionHeader
-            title="Agent generated Trading System"
-            description={`${recoveredAgentCycle.providerLabel} produced SystemCode, paper trading recorded a Ledger chain, and the Trading System is ready for the next cycle.`}
-            actions={(
-              <Badge variant="default">materialized</Badge>
-            )}
-          />
-          <div className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
-              <OperatorStatusCard
-                label="System Code"
-                value={recoveredAgentCycle.systemCodeId}
-                detail={candidate.system_code?.declared_runtime ?? candidate.program.manifest.declared_runtime}
-                tone="good"
-              />
-              <OperatorStatusCard
-                label="Backtest"
-                value="recorded"
-                detail={recoveredAgentCycle.evaluationDetail}
-                tone="good"
-              />
-              <OperatorStatusCard
-                label="Paper Trading Run"
-                value={runStatus}
-                detail="Ledger chain is visible in the current Trading Run."
-                tone={ledger?.chain_complete ? "good" : "neutral"}
-              />
-              <OperatorStatusCard
-                label="Ledger"
-                value={ledger?.chain_complete ? "chain complete" : "incomplete"}
-                detail="OrderRequest -> GatewayResult -> ExecutionResult"
-                tone={ledger?.chain_complete ? "good" : "warning"}
-              />
-            </div>
-            {recoveredAgentCycle.fullCycleLineage && (
-              <FullCycleLineageSection lineage={recoveredAgentCycle.fullCycleLineage} />
-            )}
-          </div>
-        </OperatorPanel>
+        <ResearchAgentCycleSection
+          title="Agent generated Trading System"
+          description={`${recoveredAgentCycle.providerLabel} produced SystemCode, paper trading recorded a Ledger chain, and the Trading System is ready for the next cycle.`}
+          badgeLabel="materialized"
+          metrics={recoveredAgentCycleMetrics}
+          lineageFields={recoveredAgentCycleLineageFields}
+        />
       )}
 
         </TabsContent>
@@ -3455,38 +3432,31 @@ function buildRecoveredAgentCycleEvidence(
   };
 }
 
-function FullCycleLineageSection({
-  lineage
-}: {
-  lineage: NonNullable<CandidateInspectReadModel["full_cycle_lineage"]>;
-}) {
-  return (
-    <section className="grid gap-2" aria-label="Full-cycle lineage">
-      <h4 className="text-sm font-medium">Full-cycle lineage</h4>
-      <dl className="grid gap-2 md:grid-cols-4">
-        <Field
-          label="Source Trading System"
-          value={lineage.source.trading_system_id}
-        />
-        <Field
-          label="Source System Code"
-          value={lineage.source.system_code_ref
-            ? formatRef(lineage.source.system_code_ref)
-            : "none"}
-        />
-        <Field
-          label="Next Trading System"
-          value={lineage.materialized?.trading_system_id ?? "not materialized"}
-        />
-        <Field
-          label="Evidence Chain"
-          value={lineage.evidence?.ledger_chain_complete
-            ? "Ledger chain complete"
-            : lineage.blocked_stage ?? "pending"}
-        />
-      </dl>
-    </section>
-  );
+function fullCycleLineageFields(
+  lineage: NonNullable<CandidateInspectReadModel["full_cycle_lineage"]>
+): ResearchAgentCycleLineageField[] {
+  return [
+    {
+      label: "Source Trading System",
+      value: lineage.source.trading_system_id
+    },
+    {
+      label: "Source System Code",
+      value: lineage.source.system_code_ref
+        ? formatRef(lineage.source.system_code_ref)
+        : "none"
+    },
+    {
+      label: "Next Trading System",
+      value: lineage.materialized?.trading_system_id ?? "not materialized"
+    },
+    {
+      label: "Evidence Chain",
+      value: lineage.evidence?.ledger_chain_complete
+        ? "Ledger chain complete"
+        : lineage.blocked_stage ?? "pending"
+    }
+  ];
 }
 
 function providerKindLabel(providerKind?: string): string {
@@ -3611,20 +3581,6 @@ function TradeStatusPanel({
       progressValue={noOrderCheckpoint ? undefined : fillPercent}
       chainBadges={chainBadges}
     />
-  );
-}
-
-function ResearchStage({
-  label,
-  status,
-  tone
-}: {
-  label: string;
-  status: string;
-  tone: OperatorTone;
-}) {
-  return (
-    <OperatorStat label={label} value={status} className={toneCardClass(tone)} />
   );
 }
 
@@ -3997,6 +3953,23 @@ function toneCardClass(tone: OperatorTone): string {
     return "border-primary/20 bg-card";
   }
   return "bg-card";
+}
+
+function researchCycleTone(tone: OperatorTone): ResearchCycleStage["tone"] {
+  if (tone === "good") {
+    return "counted";
+  }
+  if (tone === "danger") {
+    return "failed";
+  }
+  if (tone === "warning") {
+    return "failed";
+  }
+  return "neutral";
+}
+
+function researchNextCycleTone(status: string): ResearchCycleStage["tone"] {
+  return status === "handoff ready" || status === "agent handoff ready" ? "counted" : "neutral";
 }
 
 function tradingReviewSeverityVariant(severity: string): "default" | "destructive" | "secondary" {
