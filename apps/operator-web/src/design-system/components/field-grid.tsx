@@ -9,17 +9,20 @@ export function OperatorFieldGrid({
   ...props
 }: {
   children: ReactNode;
-  density?: "default" | "dense";
+  density?: "default" | "dense" | "compact";
   className?: string;
 } & Omit<ComponentProps<"dl">, "className">) {
+  const densityClass = density === "dense"
+    ? OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid
+    : density === "compact"
+      ? OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid
+      : OPERATOR_DESIGN_TOKENS.layout.fieldGrid;
+
   return (
     <dl
       data-operator-ui="field-grid"
       data-density={density}
-      className={cn(
-        density === "dense" ? OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid : OPERATOR_DESIGN_TOKENS.layout.fieldGrid,
-        className
-      )}
+      className={cn(densityClass, className)}
       {...props}
     >
       {children}
