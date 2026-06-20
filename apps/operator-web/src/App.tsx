@@ -143,6 +143,7 @@ import {
   type ArenaSelectedCandidateField
 } from "@/sections/arena/arena-selected-candidate-section";
 import { PaperReviewSummarySection } from "@/sections/trading/paper-review-summary-section";
+import { TradingCockpitSection } from "@/sections/trading/trading-cockpit-section";
 import {
   TradingOrderStatusSection,
   type TradingOrderStatusBadge,
@@ -163,6 +164,10 @@ import {
   type TradingPromotionBoundaryBadge,
   type TradingPromotionBoundaryField
 } from "@/sections/trading/trading-promotion-boundary-section";
+import {
+  TradingSafetyBoundarySection,
+  type TradingSafetyBoundaryBadge
+} from "@/sections/trading/trading-safety-boundary-section";
 import type { TradingSummaryMetric } from "@/sections/trading/trading-metrics";
 import {
   TradingReviewPacketSection,
@@ -2547,6 +2552,13 @@ export function CandidateDetail({
   const tradingMarketFooterDetail = tradingPublicMarketSurface
     ? `snapshot only / ${formatFreshnessLabel(tradingPublicMarketSurface.freshness)} / ${formatAuthorityLabel(tradingPublicMarketSurface.authority_status)}`
     : "Gateway-owned MarketDataPort";
+  const tradingSafetyBoundaryBadges: TradingSafetyBoundaryBadge[] = [
+    { label: "Safety boundary", variant: "outline" },
+    { label: "Paper mode", variant: "secondary" },
+    { label: "No exchange order", variant: "secondary" },
+    { label: "No API credentials", variant: "secondary" },
+    { label: formatRuntimeEnvironment(runtimeEnvironment), variant: "secondary" }
+  ];
   const paperReviewSummaryMetrics: TradingSummaryMetric[] = [
     {
       label: "Paper risk equity",
@@ -2816,28 +2828,16 @@ export function CandidateDetail({
         </OperatorPanel>
       )}
 
-      <OperatorPanel aria-label="Safety boundary">
-        <OperatorActionRow>
-        <Badge variant="outline">Safety boundary</Badge>
-        <Badge variant="secondary">Paper mode</Badge>
-        <Badge variant="secondary">No exchange order</Badge>
-        <Badge variant="secondary">No API credentials</Badge>
-        <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
-        <span className="text-sm text-muted-foreground">{tradingCandidate.fixture_notice.statements[0]}</span>
-        </OperatorActionRow>
-      </OperatorPanel>
+      <TradingSafetyBoundarySection
+        badges={tradingSafetyBoundaryBadges}
+        detail={tradingCandidate.fixture_notice.statements[0]}
+      />
 
-      <section className="grid gap-4" aria-label="Trading cockpit">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="grid gap-1">
-            <h3 className="font-heading text-base font-medium leading-snug">Trading cockpit</h3>
-            <p className="text-sm text-muted-foreground">{tradingCandidate.display_name}</p>
-          </div>
-          <Badge variant={tradingMarketStatusVariant}>
-            {tradingMarketStatus}
-          </Badge>
-        </div>
-        <div className="grid gap-4">
+      <TradingCockpitSection
+        candidateName={tradingCandidate.display_name}
+        status={tradingMarketStatus}
+        statusVariant={tradingMarketStatusVariant}
+      >
 
         <TradingMarketSection
           description={tradingPublicMarketSurface
@@ -2869,8 +2869,7 @@ export function CandidateDetail({
           orderFillSurface={tradingOrderFillSurface}
           reviewLedger={tradingReviewPacket?.ledger}
         />
-        </div>
-      </section>
+      </TradingCockpitSection>
 
         </TabsContent>
 
