@@ -163,6 +163,7 @@ describe("operator design system contract", () => {
     expect(sectionFiles).toEqual(expect.arrayContaining([
       "operator-decision-panel.tsx",
       "paper-review-summary-section.tsx",
+      "trading-order-status-section.tsx",
       "trading-market-section.tsx",
       "trading-metrics.tsx",
       "trading-paper-readback-section.tsx",
@@ -183,6 +184,10 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("OperatorActionRow");
+    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/progress");
+    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorPanel");
+    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStat");
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
   });
 

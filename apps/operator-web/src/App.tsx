@@ -77,7 +77,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -144,6 +143,11 @@ import {
   type ArenaSelectedCandidateField
 } from "@/sections/arena/arena-selected-candidate-section";
 import { PaperReviewSummarySection } from "@/sections/trading/paper-review-summary-section";
+import {
+  TradingOrderStatusSection,
+  type TradingOrderStatusBadge,
+  type TradingOrderStatusStat
+} from "@/sections/trading/trading-order-status-section";
 import { TradingMarketSection } from "@/sections/trading/trading-market-section";
 import {
   TradingPaperReadbackSection,
@@ -3544,45 +3548,37 @@ function TradeStatusPanel({
   const executionValue = noOrderCheckpoint
     ? "no execution expected"
     : ledger?.latest_execution_result?.status ?? "not recorded";
-  const statusBadge = noOrderCheckpoint
+  const statusBadgeLabel = noOrderCheckpoint
     ? reviewLedger.evidence_status
     : orderFillSurface?.posture ?? ledgerStatus;
+  const statusBadge: TradingOrderStatusBadge = {
+    label: statusBadgeLabel,
+    variant: noOrderCheckpoint || orderFillSurface || ledger?.chain_complete ? "default" : "secondary"
+  };
+  const stats: TradingOrderStatusStat[] = [
+    { label: "Paper order / decision", value: sideAndType },
+    { label: "Paper filled", value: filledValue },
+    { label: "Paper average price", value: averagePriceValue },
+    { label: "Paper execution", value: executionValue }
+  ];
+  const chainBadges: TradingOrderStatusBadge[] = noOrderCheckpoint
+    ? [
+      { label: "TradingSystemDecision", variant: "default" },
+      { label: reviewLedger.latest_decision_kind ?? "no_order_checkpoint", variant: "secondary" }
+    ]
+    : [
+      { label: "OrderRequest", variant: ledger?.latest_order_request ? "default" : "secondary" },
+      { label: "GatewayResult", variant: ledger?.latest_gateway_result ? "default" : "secondary" },
+      { label: "ExecutionResult", variant: ledger?.latest_execution_result ? "default" : "secondary" }
+    ];
 
   return (
-    <OperatorPanel aria-label="Trade status">
-      <OperatorSectionHeader
-        title="Order / trade status"
-        description="What the current system attempted and what happened."
-        actions={(
-        <Badge variant={noOrderCheckpoint || orderFillSurface || ledger?.chain_complete ? "default" : "secondary"}>
-          {statusBadge}
-        </Badge>
-        )}
-      />
-      <div className="grid gap-3">
-      <div className="grid gap-2 md:grid-cols-4">
-        <MiniStat label="Paper order / decision" value={sideAndType} />
-        <MiniStat label="Paper filled" value={filledValue} />
-        <MiniStat label="Paper average price" value={averagePriceValue} />
-        <MiniStat label="Paper execution" value={executionValue} />
-      </div>
-      {!noOrderCheckpoint && <Progress value={fillPercent} aria-label="Fill progress" />}
-      <div className="flex flex-wrap gap-2">
-        {noOrderCheckpoint ? (
-          <>
-            <Badge variant="default">TradingSystemDecision</Badge>
-            <Badge variant="secondary">{reviewLedger.latest_decision_kind ?? "no_order_checkpoint"}</Badge>
-          </>
-        ) : (
-          <>
-            <Badge variant={ledger?.latest_order_request ? "default" : "secondary"}>OrderRequest</Badge>
-            <Badge variant={ledger?.latest_gateway_result ? "default" : "secondary"}>GatewayResult</Badge>
-            <Badge variant={ledger?.latest_execution_result ? "default" : "secondary"}>ExecutionResult</Badge>
-          </>
-        )}
-      </div>
-      </div>
-    </OperatorPanel>
+    <TradingOrderStatusSection
+      statusBadge={statusBadge}
+      stats={stats}
+      progressValue={noOrderCheckpoint ? undefined : fillPercent}
+      chainBadges={chainBadges}
+    />
   );
 }
 
@@ -3681,10 +3677,6 @@ function formatMarketSourceMode(market: PublicMarketLivenessSurfaceReadModel): s
 function formatMarketFreshness(market: PublicMarketLivenessSurfaceReadModel): string {
   const base = `${formatFreshnessLabel(market.freshness)} / ${market.liveness}`;
   return market.degraded_reason ? `${base} / ${market.degraded_reason}` : base;
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return <OperatorStat label={label} value={value} />;
 }
 
 interface OperatorDecisionInput {
