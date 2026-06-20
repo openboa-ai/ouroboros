@@ -22,9 +22,9 @@ export function OperatorAppShell({
   return (
     <TooltipProvider>
       <SidebarProvider
+        {...props}
         data-operator-ui="app-shell"
         className={cn(OPERATOR_DESIGN_TOKENS.layout.appShell, className)}
-        {...props}
       >
         {sidebar}
         <SidebarInset>
@@ -66,9 +66,9 @@ export function OperatorAppMain({
 } & Omit<ComponentProps<"main">, "className" | "children">) {
   return (
     <main
+      {...props}
       data-operator-ui="app-main"
       className={cn(OPERATOR_DESIGN_TOKENS.layout.appMain, className)}
-      {...props}
     >
       {children}
     </main>

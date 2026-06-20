@@ -21,9 +21,9 @@ export function OperatorStatusStack({
   }
   return (
     <div
+      {...props}
       data-operator-ui="status-stack"
       className={cn(OPERATOR_DESIGN_TOKENS.layout.statusStack, className)}
-      {...props}
     >
       {messages.map((message) => {
         const tone = message.tone ?? "info";

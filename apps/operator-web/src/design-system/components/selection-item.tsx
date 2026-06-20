@@ -21,6 +21,7 @@ export function OperatorSelectionItem({
 } & Omit<ComponentProps<typeof Button>, "className" | "children" | "variant">) {
   return (
     <Button
+      {...props}
       data-operator-ui="selection-item"
       data-active={active ? "true" : "false"}
       aria-pressed={active}
@@ -30,7 +31,6 @@ export function OperatorSelectionItem({
         className
       )}
       variant="ghost"
-      {...props}
     >
       <span className={OPERATOR_DESIGN_TOKENS.typography.value}>{title}</span>
       {detail && <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>{detail}</small>}

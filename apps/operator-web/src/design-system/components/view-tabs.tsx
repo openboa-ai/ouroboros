@@ -25,9 +25,9 @@ export function OperatorViewTabs<TValue extends string = string>({
 } & Omit<ComponentProps<typeof TabsList>, "className" | "children">) {
   return (
     <TabsList
+      {...props}
       data-operator-ui="view-tabs"
       className={cn(OPERATOR_DESIGN_TOKENS.layout.viewTabsList, className)}
-      {...props}
     >
       {items.map((item) => (
         <TabsTrigger key={item.value} value={item.value}>
@@ -53,9 +53,9 @@ export function OperatorTabPanel({
 } & Omit<ComponentProps<typeof TabsContent>, "className" | "children">) {
   return (
     <TabsContent
+      {...props}
       data-operator-ui="tab-panel"
       className={cn(OPERATOR_DESIGN_TOKENS.layout.tabPanel, className)}
-      {...props}
     >
       {children}
     </TabsContent>
