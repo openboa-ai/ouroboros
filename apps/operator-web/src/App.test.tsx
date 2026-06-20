@@ -254,6 +254,39 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorField");
   });
 
+  it("keeps Research screen sections as reusable UI-only modules", () => {
+    const researchSectionDir = join(operatorWebSrcDir, "sections", "research");
+    const sectionFiles = readdirSync(researchSectionDir)
+      .filter((fileName) => fileName.endsWith(".tsx"))
+      .sort();
+
+    expect(sectionFiles).toEqual(expect.arrayContaining([
+      "research-agent-cycle-section.tsx",
+      "research-cycle-section.tsx",
+      "research-finding-clusters-section.tsx",
+      "research-paper-learning-section.tsx",
+      "research-signals-section.tsx"
+    ]));
+
+    for (const fileName of sectionFiles) {
+      const source = readFileSync(join(researchSectionDir, fileName), "utf8");
+
+      expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).toContain("@/design-system");
+    }
+
+    expect(readFileSync(join(researchSectionDir, "research-paper-learning-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("OperatorEvidenceBlock");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("max-w-[calc(100vw-4.5rem)]");
+    expect(readFileSync(join(researchSectionDir, "research-signals-section.tsx"), "utf8")).toContain("OperatorStat");
+    expect(readFileSync(join(researchSectionDir, "research-cycle-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
+    expect(readFileSync(join(researchSectionDir, "research-agent-cycle-section.tsx"), "utf8")).toContain("OperatorField");
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('<OperatorPanel aria-label="Paper evidence learning">');
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('<OperatorPanel aria-label="Research signals">');
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain('function FullCycleLineageSection');
+  });
+
   it("keeps operator shell navigation as a reusable UI-only module", () => {
     const shellDir = join(operatorWebSrcDir, "shell");
     const operatorSidebarSource = readFileSync(join(shellDir, "operator-sidebar.tsx"), "utf8");
