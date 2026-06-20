@@ -3836,11 +3836,10 @@ function formatCandidateArenaTickEfficiency(tick: CandidateArenaReadModel["lates
 function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): TradingMarketChartPoint[] {
   const values: Array<[string, number]> = [
     ["index", parseNumber(market.index_price)],
-    ["settle", parseNumber(market.estimated_settle_price ?? market.index_price)],
-    ["mark", parseNumber(market.mark_price)],
-    ["carry", parseNumber(market.mark_price) * 1.00025],
-    ["basis", parseNumber(market.index_price) * 0.99985],
-    ["latest", parseNumber(market.mark_price)]
+    ...(market.estimated_settle_price
+      ? [["settle", parseNumber(market.estimated_settle_price)] as [string, number]]
+      : []),
+    ["mark", parseNumber(market.mark_price)]
   ];
   return values
     .filter(([, value]) => Number.isFinite(value))

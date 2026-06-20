@@ -197,6 +197,14 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain("function BtcFuturesChart");
   });
 
+  it("keeps Trading market chart evidence limited to sourced market prices", () => {
+    const appSource = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+
+    expect(appSource).not.toContain("estimated_settle_price ?? market.index_price");
+    expect(appSource).not.toContain("* 1.00025");
+    expect(appSource).not.toContain("* 0.99985");
+  });
+
   it("keeps Candidate Arena screen sections as reusable UI-only modules", () => {
     const arenaSectionDir = join(operatorWebSrcDir, "sections", "arena");
     const sectionFiles = readdirSync(arenaSectionDir)
