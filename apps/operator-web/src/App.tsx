@@ -346,9 +346,182 @@ function selectedCandidateForState(
     candidateNeedsDetailFetch(selected) &&
     !candidateNeedsDetailFetch(current.selected)
   ) {
-    return current.selected;
+    return mergeSelectedCandidateOverviewWithFullDetail(current.selected, selected);
   }
   return selected ?? undefined;
+}
+
+function mergeSelectedCandidateOverviewWithFullDetail(
+  fullCandidate: CandidateInspectReadModel,
+  overviewCandidate: CandidateInspectReadModel
+): CandidateInspectReadModel {
+  return {
+    ...fullCandidate,
+    ...overviewCandidate,
+    runtime: {
+      ...fullCandidate.runtime,
+      ...overviewCandidate.runtime,
+      sandbox: mergeSandboxOverviewWithFullDetail(
+        fullCandidate.runtime.sandbox,
+        overviewCandidate.runtime.sandbox
+      ),
+      transcript: mergeTranscriptOverviewWithFullDetail(
+        fullCandidate.runtime.transcript,
+        overviewCandidate.runtime.transcript
+      )
+    }
+  };
+}
+
+function mergeTranscriptOverviewWithFullDetail(
+  fullTranscript: CandidateInspectReadModel["runtime"]["transcript"],
+  overviewTranscript: CandidateInspectReadModel["runtime"]["transcript"]
+): CandidateInspectReadModel["runtime"]["transcript"] {
+  if (!overviewTranscript) {
+    return fullTranscript;
+  }
+  if (!fullTranscript) {
+    return overviewTranscript;
+  }
+  const items = mergeRecordsByKey(
+    fullTranscript.items,
+    overviewTranscript.items,
+    (item) => item.item_id,
+    mergeTranscriptItemOverviewWithFullDetail
+  );
+
+  return {
+    ...fullTranscript,
+    ...overviewTranscript,
+    latest_item: overviewTranscript.latest_item
+      ? mergeTranscriptLatestItemOverviewWithFullDetail(items, overviewTranscript.latest_item)
+      : overviewTranscript.latest_item,
+    items
+  };
+}
+
+function mergeTranscriptLatestItemOverviewWithFullDetail(
+  mergedItems: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"],
+  latestItem: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+) {
+  return mergedItems.find((item) => item.item_id === latestItem.item_id) ?? latestItem;
+}
+
+function mergeTranscriptItemOverviewWithFullDetail(
+  fullItem: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number],
+  overviewItem: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+) {
+  return {
+    ...fullItem,
+    ...overviewItem,
+    label: isRuntimeOverviewTruncatedText(overviewItem.label) ? fullItem.label : overviewItem.label,
+    summary: isRuntimeOverviewTruncatedText(overviewItem.summary) ? fullItem.summary : overviewItem.summary
+  };
+}
+
+function mergeSandboxOverviewWithFullDetail(
+  fullSandbox: CandidateInspectReadModel["runtime"]["sandbox"],
+  overviewSandbox: CandidateInspectReadModel["runtime"]["sandbox"]
+): CandidateInspectReadModel["runtime"]["sandbox"] {
+  if (!overviewSandbox) {
+    return fullSandbox;
+  }
+  if (!fullSandbox) {
+    return overviewSandbox;
+  }
+  return {
+    ...fullSandbox,
+    ...overviewSandbox,
+    logs: mergeRecordsByKey(
+      fullSandbox.logs,
+      overviewSandbox.logs,
+      (log) => refKey(log.log_ref),
+      mergeSandboxLogOverviewWithFullDetail
+    ),
+    heartbeats: mergeRecordsByKey(
+      fullSandbox.heartbeats,
+      overviewSandbox.heartbeats,
+      (heartbeat) => refKey(heartbeat.heartbeat_ref),
+      (_fullHeartbeat, overviewHeartbeat) => overviewHeartbeat
+    ),
+    command_evidence: mergeRecordsByKey(
+      fullSandbox.command_evidence,
+      overviewSandbox.command_evidence,
+      (evidence) => refKey(evidence.command_evidence_ref),
+      mergeSandboxCommandEvidenceOverviewWithFullDetail
+    )
+  };
+}
+
+function mergeSandboxLogOverviewWithFullDetail(
+  fullLog: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["logs"][number],
+  overviewLog: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["logs"][number]
+) {
+  return {
+    ...fullLog,
+    ...overviewLog,
+    lines: mergeRuntimeTextLines(fullLog.lines, overviewLog.lines)
+  };
+}
+
+function mergeSandboxCommandEvidenceOverviewWithFullDetail(
+  fullEvidence: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["command_evidence"][number],
+  overviewEvidence: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["command_evidence"][number]
+) {
+  return {
+    ...fullEvidence,
+    ...overviewEvidence,
+    stdout: mergeRuntimeText(fullEvidence.stdout, overviewEvidence.stdout),
+    stderr: mergeRuntimeText(fullEvidence.stderr, overviewEvidence.stderr)
+  };
+}
+
+function mergeRuntimeTextLines(fullLines: string[], overviewLines: string[]): string[] {
+  if (!overviewLines.some(isRuntimeOverviewTruncatedText)) {
+    return overviewLines;
+  }
+  const mergedLines = [...fullLines];
+  for (const line of overviewLines) {
+    if (isRuntimeOverviewTruncatedText(line) || mergedLines.includes(line)) {
+      continue;
+    }
+    mergedLines.push(line);
+  }
+  return mergedLines;
+}
+
+function mergeRuntimeText(fullText: string, overviewText: string): string {
+  return isRuntimeOverviewTruncatedText(overviewText) && !isRuntimeOverviewTruncatedText(fullText)
+    ? fullText
+    : overviewText;
+}
+
+function mergeRecordsByKey<T>(
+  fullRecords: T[],
+  overviewRecords: T[],
+  keyFor: (record: T) => string,
+  mergeRecord: (fullRecord: T, overviewRecord: T) => T
+): T[] {
+  const mergedRecords = [...fullRecords];
+  const indexByKey = new Map<string, number>();
+  fullRecords.forEach((record, index) => {
+    indexByKey.set(keyFor(record), index);
+  });
+  for (const overviewRecord of overviewRecords) {
+    const key = keyFor(overviewRecord);
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex === undefined) {
+      indexByKey.set(key, mergedRecords.length);
+      mergedRecords.push(overviewRecord);
+      continue;
+    }
+    mergedRecords[existingIndex] = mergeRecord(mergedRecords[existingIndex]!, overviewRecord);
+  }
+  return mergedRecords;
+}
+
+function refKey(ref: { record_kind: string; id: string }): string {
+  return `${ref.record_kind}:${ref.id}`;
 }
 
 export function applyOperatorRefreshState(

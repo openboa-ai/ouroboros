@@ -626,12 +626,14 @@ describe("operator UI primitives", () => {
 });
 
 describe("operator app refresh", () => {
-  it("keeps full selected candidate details when the operator overview refresh is bounded", () => {
+  it("keeps full selected candidate details while merging fresh bounded overview fields", () => {
     const fullCandidate = selectedCandidateWithTranscript(2);
+    fullCandidate.runtime.runtime_lifecycle_status = "running";
     const boundedCandidate = {
       ...fullCandidate,
       runtime: {
         ...fullCandidate.runtime,
+        runtime_lifecycle_status: "paused" as const,
         transcript: fullCandidate.runtime.transcript
           ? {
               ...fullCandidate.runtime.transcript,
@@ -672,6 +674,7 @@ describe("operator app refresh", () => {
     const refreshed = applyOperatorRefreshState(currentState, operator);
 
     expect(refreshed.selected?.runtime.transcript?.items).toHaveLength(2);
+    expect(refreshed.selected?.runtime.runtime_lifecycle_status).toBe("paused");
   });
 
   it("treats truncated overview text as needing full candidate details", () => {
