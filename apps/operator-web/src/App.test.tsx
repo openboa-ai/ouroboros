@@ -79,6 +79,9 @@ import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
   OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
+  OperatorAppHeader,
+  OperatorAppMain,
+  OperatorAppShell,
   OperatorCallout,
   OperatorDataTable,
   OperatorDetailText,
@@ -89,9 +92,13 @@ import {
   OperatorPageHeader,
   OperatorPanel,
   OperatorSectionHeader,
+  OperatorSelectionItem,
   OperatorSectionStack,
   OperatorStat,
-  OperatorStatGrid
+  OperatorStatGrid,
+  OperatorStatusStack,
+  OperatorTabPanel,
+  OperatorViewTabs
 } from "./design-system";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -130,6 +137,7 @@ describe("operator design system contract", () => {
     expect(existsSync(join(designSystemDir, "tokens.ts"))).toBe(true);
     expect(componentFiles).toEqual(expect.arrayContaining([
       "action-row.tsx",
+      "app-shell.tsx",
       "callout.tsx",
       "empty-state.tsx",
       "evidence.tsx",
@@ -140,11 +148,14 @@ describe("operator design system contract", () => {
       "page.tsx",
       "panel.tsx",
       "section-header.tsx",
+      "selection-item.tsx",
       "section-stack.tsx",
       "stat.tsx",
       "stat-grid.tsx",
+      "status-stack.tsx",
       "text.tsx",
-      "tab-badge.tsx"
+      "tab-badge.tsx",
+      "view-tabs.tsx"
     ]));
 
     const indexSource = readFileSync(join(designSystemDir, "index.ts"), "utf8");
@@ -177,6 +188,10 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorSectionStack } from "./components/section-stack"');
     expect(indexSource).toContain('export { OperatorStatGrid } from "./components/stat-grid"');
     expect(indexSource).toContain('export { OperatorDetailText } from "./components/text"');
+    expect(indexSource).toContain('export { OperatorAppShell, OperatorAppHeader, OperatorAppMain } from "./components/app-shell"');
+    expect(indexSource).toContain('export { OperatorSelectionItem } from "./components/selection-item"');
+    expect(indexSource).toContain('export { OperatorStatusStack } from "./components/status-stack"');
+    expect(indexSource).toContain('export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -560,6 +575,57 @@ describe("operator design system contract", () => {
     expect(html).toContain('data-operator-ui="app-main"');
     expect(html).not.toContain("h-14 shrink-0 items-center gap-3 border-b px-4");
     expect(html).not.toContain("min-h-[calc(100svh-3.5rem)] bg-background p-4");
+  });
+
+  it("keeps app shell, tabs, status, and selection chrome behind design-system primitives", () => {
+    const appSource = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+    const html = renderToStaticMarkup(
+      <OperatorAppShell sidebar={<aside data-testid="sidebar" />}>
+        <OperatorAppHeader title="Ouroboros Operator" subtitle="Trading" />
+        <OperatorAppMain>
+          <Tabs value="trading">
+            <OperatorViewTabs
+              items={[
+                { value: "trading", label: "Trading", badge: "active", badgeAriaLabel: "Trading tab state badge" },
+                { value: "arena", label: "Arena" }
+              ]}
+            />
+            <OperatorTabPanel value="trading">
+              <OperatorStatusStack
+                aria-label="Operator messages"
+                messages={[
+                  { id: "message", tone: "info", value: "Paper observation recorded." },
+                  { id: "error", tone: "error", value: "Runner inactive." }
+                ]}
+              />
+              <OperatorSelectionItem
+                active
+                title="replay-run-1"
+                detail="accepted / fixture / replay_only"
+                meta="3/4 accepted"
+              />
+            </OperatorTabPanel>
+          </Tabs>
+        </OperatorAppMain>
+      </OperatorAppShell>
+    );
+
+    expect(appSource).not.toContain("OPERATOR_DESIGN_TOKENS");
+    expect(html).toContain('data-operator-ui="app-shell"');
+    expect(html).toContain('data-operator-ui="app-header"');
+    expect(html).toContain('data-operator-ui="app-main"');
+    expect(html).toContain('data-operator-ui="view-tabs"');
+    expect(html).toContain('data-operator-ui="tab-panel"');
+    expect(html).toContain('data-operator-ui="status-stack"');
+    expect(html).toContain('data-operator-ui="status-message"');
+    expect(html).toContain('data-tone="error"');
+    expect(html).toContain('data-operator-ui="selection-item"');
+    expect(html).toContain('data-active="true"');
+    expect(html).toContain('data-slot="tabs-list"');
+    expect(html).toContain('data-slot="tabs-trigger"');
+    expect(html).toContain('data-slot="separator"');
+    expect(html).toContain('data-slot="button"');
+    expect(html).not.toContain("inline-status");
   });
 
   it("renders the app loading fallback through operator primitives", () => {

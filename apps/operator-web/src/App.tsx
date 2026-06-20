@@ -77,39 +77,36 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger
-} from "@/components/ui/sidebar";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger
-} from "@/components/ui/tabs";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tabs } from "@/components/ui/tabs";
 import {
   buildPrivateReadinessReviewPacketProjection,
   formatPrivateReadinessCheckedGatePosture
 } from "./private-readiness-review-packet";
 import type { PrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
+  OperatorAppHeader,
+  OperatorAppMain,
+  OperatorAppShell,
   OperatorEmptyState,
   OperatorEvidenceBlock,
   OperatorEvidenceRow,
   OperatorEvidenceStack,
   OperatorEvidenceStatus,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
   OperatorSectionHeader,
+  OperatorSelectionItem,
   OperatorStat,
-  OperatorTabBadge
+  OperatorStatusStack,
+  OperatorTabPanel,
+  OperatorViewTabs,
+  OperatorDetailText,
+  type OperatorStatusStackMessage,
+  type OperatorViewTabItem
 } from "./design-system";
 import { OperatorDecisionPanel } from "@/sections/trading/operator-decision-panel";
 import {
@@ -258,6 +255,12 @@ const RAW_EVIDENCE_ROW_CLASS = [
   "[overflow-wrap:anywhere]",
   "[&>*]:min-w-0 [&>*]:max-w-full [&>*]:break-words"
 ].join(" ");
+
+function operatorStatusMessages(
+  ...messages: Array<OperatorStatusStackMessage | undefined>
+): OperatorStatusStackMessage[] {
+  return messages.filter((message): message is OperatorStatusStackMessage => Boolean(message));
+}
 
 export function operatorViewFromSearch(search: string | undefined): OperatorView {
   const view = new URLSearchParams(search ?? "").get("view");
@@ -1331,8 +1334,8 @@ export function App() {
   }));
 
   return (
-    <TooltipProvider>
-      <SidebarProvider>
+    <OperatorAppShell
+      sidebar={(
         <OperatorSidebar
           activeView={operatorView}
           candidates={sidebarCandidates}
@@ -1342,24 +1345,19 @@ export function App() {
           onSelectCandidate={(candidateId) => void selectCandidate(candidateId)}
           onSelectView={setOperatorView}
         />
-        <SidebarInset>
-          <header data-operator-ui="app-header" className={OPERATOR_DESIGN_TOKENS.layout.appHeader}>
-            <SidebarTrigger />
-            <Separator orientation="vertical" className={OPERATOR_DESIGN_TOKENS.layout.appHeaderSeparator} />
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Ouroboros Operator</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {operatorView === "trading"
-                  ? "Trading"
-                  : operatorView === "arena"
-                    ? "Arena"
-                    : operatorView === "research"
-                      ? "Research"
-                      : "System details"}
-              </p>
-            </div>
-          </header>
-          <main data-operator-ui="app-main" className={OPERATOR_DESIGN_TOKENS.layout.appMain}>
+      )}
+    >
+      <OperatorAppHeader
+        title="Ouroboros Operator"
+        subtitle={operatorView === "trading"
+          ? "Trading"
+          : operatorView === "arena"
+            ? "Arena"
+            : operatorView === "research"
+              ? "Research"
+              : "System details"}
+      />
+          <OperatorAppMain>
             {state.loading && (
               <OperatorPanel aria-label="Loading read model">
                 <OperatorSectionHeader
@@ -1466,10 +1464,8 @@ export function App() {
                 privateReadinessPostureMessage={state.privateReadinessPostureMessage}
               />
             )}
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
+          </OperatorAppMain>
+    </OperatorAppShell>
   );
 }
 
@@ -1873,8 +1869,16 @@ export function CandidateArenaPanel({
             <ArenaLatestTicksSection tick={arenaLatestTickSummary} />
           </aside>
         </div>
-        {message && <div className="inline-status">{message}</div>}
-        {error && <div className="inline-status error">{error}</div>}
+        <OperatorStatusStack
+          messages={operatorStatusMessages(
+            message
+              ? { id: "arena-message", value: message }
+              : undefined,
+            error
+              ? { id: "arena-error", tone: "error", value: error }
+              : undefined
+          )}
+        />
       </div>
     </OperatorPanel>
   );
@@ -3113,6 +3117,30 @@ export function CandidateDetail({
   const recoveredAgentCycleLineageFields = recoveredAgentCycle?.fullCycleLineage
     ? fullCycleLineageFields(recoveredAgentCycle.fullCycleLineage)
     : undefined;
+  const viewTabs: OperatorViewTabItem<OperatorView>[] = [
+    {
+      value: "trading",
+      label: "Trading",
+      badge: tabStateBadges.trading,
+      badgeAriaLabel: "Trading tab state badge"
+    },
+    {
+      value: "arena",
+      label: "Arena",
+      badge: tabStateBadges.arena,
+      badgeAriaLabel: "Arena tab state badge"
+    },
+    {
+      value: "research",
+      label: "Research",
+      badge: tabStateBadges.research,
+      badgeAriaLabel: "Research tab state badge"
+    },
+    {
+      value: "details",
+      label: "Details"
+    }
+  ];
   return (
     <OperatorPage>
       <Tabs
@@ -3123,43 +3151,11 @@ export function CandidateDetail({
           eyebrow={workspaceLabel}
           title="BTCUSDT operator cockpit"
           actions={(
-            <TabsList className="max-w-full justify-start overflow-x-auto overscroll-x-contain">
-              <TabsTrigger value="trading">
-                <span>Trading</span>
-                {tabStateBadges.trading && (
-                  <OperatorTabBadge
-                    aria-label="Trading tab state badge"
-                  >
-                    {tabStateBadges.trading}
-                  </OperatorTabBadge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="arena">
-                <span>Arena</span>
-                {tabStateBadges.arena && (
-                  <OperatorTabBadge
-                    aria-label="Arena tab state badge"
-                  >
-                    {tabStateBadges.arena}
-                  </OperatorTabBadge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="research">
-                <span>Research</span>
-                {tabStateBadges.research && (
-                  <OperatorTabBadge
-                    aria-label="Research tab state badge"
-                  >
-                    {tabStateBadges.research}
-                  </OperatorTabBadge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="details">Details</TabsTrigger>
-            </TabsList>
+            <OperatorViewTabs items={viewTabs} />
           )}
         />
 
-        <TabsContent value="arena" className="flex flex-col gap-4">
+        <OperatorTabPanel value="arena">
       {candidateArena && (
         <CandidateArenaPanel
           arena={candidateArena}
@@ -3196,9 +3192,9 @@ export function CandidateDetail({
           />
         </OperatorPanel>
       )}
-        </TabsContent>
+        </OperatorTabPanel>
 
-        <TabsContent value="trading" className="flex flex-col gap-4">
+        <OperatorTabPanel value="trading">
       <OperatorDecisionPanel
         workspaceLabel={workspaceLabel}
         detail={operatorDecision.detail}
@@ -3272,11 +3268,22 @@ export function CandidateDetail({
             title="Operator messages"
             description="Recent Trading command outcomes and remediation surfaces."
           />
-          <div className="grid min-w-0 gap-2">
-            {tradingRunMessage && <p className="text-sm text-muted-foreground">{tradingRunMessage}</p>}
-            {tradingRunError && <p className="text-sm text-destructive">{tradingRunError}</p>}
-            {tradingPromotionMessage && <p className="text-sm text-muted-foreground">{tradingPromotionMessage}</p>}
-            {tradingPromotionError && <p className="text-sm text-destructive">{tradingPromotionError}</p>}
+          <OperatorStatusStack
+            messages={operatorStatusMessages(
+              tradingRunMessage
+                ? { id: "trading-run-message", value: tradingRunMessage }
+                : undefined,
+              tradingRunError
+                ? { id: "trading-run-error", tone: "error", value: tradingRunError }
+                : undefined,
+              tradingPromotionMessage
+                ? { id: "trading-promotion-message", value: tradingPromotionMessage }
+                : undefined,
+              tradingPromotionError
+                ? { id: "trading-promotion-error", tone: "error", value: tradingPromotionError }
+                : undefined
+            )}
+          />
             {tradingCommandRemediations.length > 0 && (
               <OperatorEvidenceStack>
                 {tradingCommandRemediations.map(({ command, remediation }) => (
@@ -3298,7 +3305,6 @@ export function CandidateDetail({
                 ))}
               </OperatorEvidenceStack>
             )}
-          </div>
         </OperatorPanel>
       )}
 
@@ -3345,9 +3351,9 @@ export function CandidateDetail({
         />
       </TradingCockpitSection>
 
-        </TabsContent>
+        </OperatorTabPanel>
 
-        <TabsContent value="research" className="flex flex-col gap-4">
+        <OperatorTabPanel value="research">
       {paperBoardLearning && (
         <ResearchPaperLearningSection
           authorityStatus={paperBoardLearning.authority_status}
@@ -3386,9 +3392,9 @@ export function CandidateDetail({
         />
       )}
 
-        </TabsContent>
+        </OperatorTabPanel>
 
-        <TabsContent value="details" className="flex flex-col gap-4">
+        <OperatorTabPanel value="details">
       <OperatorPanel aria-label="Fixture notice">
         <OperatorSectionHeader
           title={candidate.display_name}
@@ -3419,12 +3425,12 @@ export function CandidateDetail({
             </>
           )}
         />
-          <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
+          <OperatorFieldGrid density="dense">
             <Field label="Owns" value="raw records, developer controls, compatibility evidence" />
             <Field label="Reads" value="Candidate inspect model and low-level substrate records" />
             <Field label="Never does" value="qualify, promote, or enable live/private exchange authority" />
             <Field label="Use for" value="inspection after the product loop has named the decision path" />
-          </dl>
+          </OperatorFieldGrid>
       </OperatorPanel>
 
       <OperatorPanel aria-label="Details">
@@ -3543,7 +3549,7 @@ export function CandidateDetail({
                       Stop
                     </Button>
                   )}
-                  <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>run_control / fixture_paper / not_live</span>
+                  <OperatorDetailText as="span">run_control / fixture_paper / not_live</OperatorDetailText>
                 </OperatorActionRow>
               )}
             </OperatorEvidenceStack>
@@ -3658,7 +3664,7 @@ export function CandidateDetail({
           />
         </div>
       </OperatorPanel>
-        </TabsContent>
+        </OperatorTabPanel>
       </Tabs>
     </OperatorPage>
   );
@@ -4556,27 +4562,15 @@ function ReplayRunsSection({
           <OperatorEvidenceBlock title="Run history" aria-label="Run history">
             <OperatorEvidenceStack>
               {runs.map((run) => (
-                <Button
-                  aria-pressed={activeRunId === run.run_id}
-                  className={[
-                    OPERATOR_DESIGN_TOKENS.surface.selectionItem,
-                    activeRunId === run.run_id
-                      ? OPERATOR_DESIGN_TOKENS.surface.selectionItemActive
-                      : OPERATOR_DESIGN_TOKENS.surface.selectionItemIdle
-                  ].join(" ")}
+                <OperatorSelectionItem
+                  active={activeRunId === run.run_id}
                   key={run.run_id}
                   type="button"
                   onClick={() => onSelectRun?.(run.run_id)}
-                  variant="ghost"
-                >
-                  <span className={OPERATOR_DESIGN_TOKENS.typography.value}>{run.run_id}</span>
-                  <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>
-                    {run.status} / {run.runner_kind} / {run.authority_status}
-                  </small>
-                  <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>
-                    {run.scenario_accepted}/{run.scenario_total} accepted · {run.completed_at}
-                  </small>
-                </Button>
+                  title={run.run_id}
+                  detail={`${run.status} / ${run.runner_kind} / ${run.authority_status}`}
+                  meta={`${run.scenario_accepted}/${run.scenario_total} accepted · ${run.completed_at}`}
+                />
               ))}
             </OperatorEvidenceStack>
           </OperatorEvidenceBlock>
@@ -4601,11 +4595,19 @@ function ReplayRunsSection({
             >
               {runningCandidateReplay ? "Running replay" : "Run replay"}
             </Button>
-            <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>host_process / replay_only / not_live</span>
+            <OperatorDetailText as="span">host_process / replay_only / not_live</OperatorDetailText>
           </OperatorActionRow>
         )}
-        {replayRunMessage && <div className="inline-status">{replayRunMessage}</div>}
-        {replayRunError && <div className="inline-status error">{replayRunError}</div>}
+        <OperatorStatusStack
+          messages={operatorStatusMessages(
+            replayRunMessage
+              ? { id: "replay-run-message", value: replayRunMessage }
+              : undefined,
+            replayRunError
+              ? { id: "replay-run-error", tone: "error", value: replayRunError }
+              : undefined
+          )}
+        />
       </OperatorEvidenceStack>
     </InfoSection>
   );
@@ -5321,17 +5323,21 @@ function TradingSubstrateSection({
               >
                 {recordingPrivateReadinessPosture ? "Saving posture" : "Save local posture"}
               </Button>
-              <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>local_config / no_secret / not_live</span>
+              <OperatorDetailText as="span">local_config / no_secret / not_live</OperatorDetailText>
             </OperatorActionRow>
           </form>
         </OperatorEvidenceBlock>
       )}
-      {privateReadinessPostureMessage && (
-        <div className="inline-status">{privateReadinessPostureMessage}</div>
-      )}
-      {privateReadinessPostureError && (
-        <div className="inline-status error">{privateReadinessPostureError}</div>
-      )}
+      <OperatorStatusStack
+        messages={operatorStatusMessages(
+          privateReadinessPostureMessage
+            ? { id: "private-readiness-posture-message", value: privateReadinessPostureMessage }
+            : undefined,
+          privateReadinessPostureError
+            ? { id: "private-readiness-posture-error", tone: "error", value: privateReadinessPostureError }
+            : undefined
+        )}
+      />
       {privateReadinessPolicyDecision ? (
         <OperatorEvidenceBlock title="Private-readiness policy" aria-label="Private-readiness policy">
           <OperatorEvidenceStatus
@@ -6502,12 +6508,20 @@ function RunControlSection({
             >
               {recordingRunControl ? "Recording pause" : "Record pause"}
             </Button>
-            <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>control_only / audit_only / not_live</span>
+            <OperatorDetailText as="span">control_only / audit_only / not_live</OperatorDetailText>
           </OperatorActionRow>
         )}
       </OperatorEvidenceStack>
-      {runtimeControlMessage && <div className="inline-status">{runtimeControlMessage}</div>}
-      {runtimeControlError && <div className="inline-status error">{runtimeControlError}</div>}
+      <OperatorStatusStack
+        messages={operatorStatusMessages(
+          runtimeControlMessage
+            ? { id: "run-control-message", value: runtimeControlMessage }
+            : undefined,
+          runtimeControlError
+            ? { id: "run-control-error", tone: "error", value: runtimeControlError }
+            : undefined
+        )}
+      />
     </InfoSection>
   );
 }
@@ -6682,12 +6696,20 @@ function ImprovementSection({
             >
               {recordingImprovement ? "Recording improvement" : "Record improvement"}
             </Button>
-            <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>proposal_only / sandbox_evaluation / not_live</span>
+            <OperatorDetailText as="span">proposal_only / sandbox_evaluation / not_live</OperatorDetailText>
           </OperatorActionRow>
         )}
       </OperatorEvidenceStack>
-      {improvementMessage && <div className="inline-status">{improvementMessage}</div>}
-      {improvementError && <div className="inline-status error">{improvementError}</div>}
+      <OperatorStatusStack
+        messages={operatorStatusMessages(
+          improvementMessage
+            ? { id: "improvement-message", value: improvementMessage }
+            : undefined,
+          improvementError
+            ? { id: "improvement-error", tone: "error", value: improvementError }
+            : undefined
+        )}
+      />
     </InfoSection>
   );
 }

@@ -1,5 +1,6 @@
 export { OPERATOR_DESIGN_TOKENS } from "./tokens";
 export { OperatorActionRow } from "./components/action-row";
+export { OperatorAppShell, OperatorAppHeader, OperatorAppMain } from "./components/app-shell";
 export { OperatorCallout } from "./components/callout";
 export { OperatorEmptyState } from "./components/empty-state";
 export {
@@ -17,9 +18,14 @@ export type { OperatorMetricStripItem } from "./components/metric-strip";
 export { OperatorPage, OperatorPageHeader } from "./components/page";
 export { OperatorPanel } from "./components/panel";
 export { OperatorSectionHeader } from "./components/section-header";
+export { OperatorSelectionItem } from "./components/selection-item";
 export { OperatorSectionStack } from "./components/section-stack";
 export { OperatorStat } from "./components/stat";
 export { OperatorStatGrid } from "./components/stat-grid";
 export type { OperatorStatGridItem } from "./components/stat-grid";
+export { OperatorStatusStack } from "./components/status-stack";
+export type { OperatorStatusStackMessage } from "./components/status-stack";
 export { OperatorTabBadge } from "./components/tab-badge";
 export { OperatorDetailText } from "./components/text";
+export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs";
+export type { OperatorViewTabItem } from "./components/view-tabs";
