@@ -98,12 +98,15 @@ export class OperatorService {
     const latestCommands = (await this.options.store.listOuroborosCommands())
       .slice(0, 8)
       .map(toOuroborosCommandReadModel);
+    const selectedCandidateOverview = selectedCandidate
+      ? toOperatorSelectedCandidateOverview(selectedCandidate)
+      : undefined;
     return {
       operator_kind: "ouroboros_operator",
       command_descriptors: OUROBOROS_COMMAND_DESCRIPTORS,
       candidate_arena: arena,
       selected_candidate_id: selectedCandidate?.candidate_id ?? null,
-      selected_candidate: selectedCandidate ?? null,
+      selected_candidate: selectedCandidateOverview ?? null,
       selected_paper_evidence: selectedPaperEvidence(selectedCandidate),
       selected_paper_trading_evaluation: selectedPaperTradingEvaluation(
         selectedCandidate,
@@ -515,6 +518,80 @@ function requiredResearcherProvider(payload: Record<string, unknown> | undefined
 
 export function isTradingResearchRuntimeAgent(value: unknown): value is TradingResearchRuntimeAgent {
   return value === "codex" || value === "fixture";
+}
+
+const OPERATOR_SANDBOX_ENTRY_LIMIT = 5;
+const OPERATOR_SANDBOX_LOG_LINE_LIMIT = 5;
+const OPERATOR_TRANSCRIPT_ITEM_LIMIT = 20;
+const OPERATOR_RUNTIME_TEXT_LIMIT = 500;
+const OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER = "[runtime overview truncated: full detail available from candidate inspect]";
+
+function toOperatorSelectedCandidateOverview(candidate: CandidateInspectReadModel): CandidateInspectReadModel {
+  const sandbox = candidate.runtime.sandbox
+    ? {
+        ...candidate.runtime.sandbox,
+        logs: tail(candidate.runtime.sandbox.logs, OPERATOR_SANDBOX_ENTRY_LIMIT).map((log) => ({
+          ...log,
+          lines: runtimeOverviewLogLines(log.lines)
+        })),
+        heartbeats: tail(candidate.runtime.sandbox.heartbeats, OPERATOR_SANDBOX_ENTRY_LIMIT),
+        command_evidence: tail(candidate.runtime.sandbox.command_evidence, OPERATOR_SANDBOX_ENTRY_LIMIT)
+          .map((evidence) => ({
+            ...evidence,
+            stdout: truncateRuntimeOverviewText(evidence.stdout),
+            stderr: truncateRuntimeOverviewText(evidence.stderr)
+          }))
+      }
+    : undefined;
+  const transcript = candidate.runtime.transcript
+    ? {
+        ...candidate.runtime.transcript,
+        latest_item: candidate.runtime.transcript.latest_item
+          ? toOperatorTranscriptItemOverview(candidate.runtime.transcript.latest_item)
+          : null,
+        items: tail(candidate.runtime.transcript.items, OPERATOR_TRANSCRIPT_ITEM_LIMIT)
+          .map(toOperatorTranscriptItemOverview)
+      }
+    : undefined;
+
+  return {
+    ...candidate,
+    runtime: {
+      ...candidate.runtime,
+      sandbox,
+      transcript
+    }
+  };
+}
+
+function toOperatorTranscriptItemOverview(
+  item: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+): NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number] {
+  return {
+    ...item,
+    label: truncateRuntimeOverviewText(item.label),
+    summary: truncateRuntimeOverviewText(item.summary)
+  };
+}
+
+function tail<T>(items: T[], limit: number): T[] {
+  return items.length <= limit ? items : items.slice(-limit);
+}
+
+function runtimeOverviewLogLines(lines: string[]): string[] {
+  if (lines.length <= OPERATOR_SANDBOX_LOG_LINE_LIMIT) {
+    return lines.map(truncateRuntimeOverviewText);
+  }
+  return [
+    OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER,
+    ...tail(lines, OPERATOR_SANDBOX_LOG_LINE_LIMIT - 1).map(truncateRuntimeOverviewText)
+  ];
+}
+
+function truncateRuntimeOverviewText(value: string): string {
+  return value.length <= OPERATOR_RUNTIME_TEXT_LIMIT
+    ? value
+    : `${value.slice(0, OPERATOR_RUNTIME_TEXT_LIMIT)}...`;
 }
 
 export function toOuroborosCommandReadModel(record: OuroborosCommandRecord): OuroborosCommandReadModel {

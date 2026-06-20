@@ -2,9 +2,9 @@ import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader
 } from "@/design-system";
@@ -55,11 +55,11 @@ export function TradingPromotionBoundarySection({
         )}
       />
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-        <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
+        <OperatorFieldGrid density="dense">
           {fields.map((field) => (
             <OperatorField key={field.label} label={field.label} value={field.value} />
           ))}
-        </dl>
+        </OperatorFieldGrid>
         <OperatorActionRow className="lg:justify-end">
           {showOpenActiveTarget && (
             <Button

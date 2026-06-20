@@ -1,9 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import {
-  OPERATOR_DESIGN_TOKENS,
+  OperatorDetailText,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
-  OperatorSectionHeader
+  OperatorSectionHeader,
+  OperatorSectionStack
 } from "@/design-system";
 
 export interface ResearchPaperLearningField {
@@ -28,14 +30,14 @@ export function ResearchPaperLearningSection({
         description="Paper-board evidence guides the next ResearchWorker without replacing qualification or promotion authority."
         actions={<Badge variant="secondary">{authorityStatus}</Badge>}
       />
-      <div className="grid min-w-0 gap-3">
-        <p className={OPERATOR_DESIGN_TOKENS.typography.detail}>{summary}</p>
-        <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
+      <OperatorSectionStack>
+        <OperatorDetailText>{summary}</OperatorDetailText>
+        <OperatorFieldGrid density="dense">
           {fields.map((field) => (
             <OperatorField key={field.label} label={field.label} value={field.value} />
           ))}
-        </dl>
-      </div>
+        </OperatorFieldGrid>
+      </OperatorSectionStack>
     </OperatorPanel>
   );
 }

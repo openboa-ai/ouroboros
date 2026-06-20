@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader
 } from "@/design-system";
@@ -76,11 +76,11 @@ export function ArenaSelectedCandidateSection({
           </OperatorActionRow>
         )}
       />
-      <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+      <OperatorFieldGrid>
         {fields.map((field) => (
           <OperatorField key={field.label} label={field.label} value={field.value} />
         ))}
-      </dl>
+      </OperatorFieldGrid>
     </OperatorPanel>
   );
 }

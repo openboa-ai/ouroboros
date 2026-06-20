@@ -193,7 +193,7 @@ describe("operator paper trading board", () => {
     expect(operator.selected_paper_trading_evaluation.latest_failure).toBeUndefined();
   });
 
-  it("keeps embedded selected candidate runtime evidence in the operator inspect model", async () => {
+  it("keeps selected candidate runtime evidence bounded in the operator overview", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
     const candidate = await registerCandidate(store, {
@@ -218,20 +218,20 @@ describe("operator paper trading board", () => {
 
     expect(selected?.candidate_id).toBe(candidate.candidate_id);
     expect(selected?.runtime.transcript?.item_count).toBeGreaterThan(20);
-    expect(selected?.runtime.transcript?.items).toHaveLength(selected?.runtime.transcript?.item_count ?? 0);
-    expect(selected?.runtime.sandbox?.logs).toHaveLength(30);
-    expect(selected?.runtime.sandbox?.heartbeats).toHaveLength(30);
-    expect(selected?.runtime.sandbox?.command_evidence).toHaveLength(30);
+    expect(selected?.runtime.transcript?.items).toHaveLength(20);
+    expect(selected?.runtime.sandbox?.logs).toHaveLength(5);
+    expect(selected?.runtime.sandbox?.heartbeats).toHaveLength(5);
+    expect(selected?.runtime.sandbox?.command_evidence).toHaveLength(5);
     expect(selected?.runtime.sandbox?.log_refs).toHaveLength(30);
     expect(selected?.runtime.sandbox?.heartbeat_refs).toHaveLength(30);
     expect(selected?.runtime.sandbox?.command_evidence_refs).toHaveLength(30);
     expect(selected?.runtime.sandbox?.lifecycle_status).toBe("running");
     expect(selected?.runtime.sandbox?.last_heartbeat_at).toBe("2026-05-16T00:00:29.000Z");
-    expect(Math.max(...selected!.runtime.sandbox!.logs.map((log) => log.lines.length))).toBe(30);
+    expect(Math.max(...selected!.runtime.sandbox!.logs.map((log) => log.lines.length))).toBe(5);
     expect(Math.max(...selected!.runtime.sandbox!.logs.flatMap((log) => log.lines.map((line) => line.length))))
-      .toBeGreaterThan(2_000);
+      .toBeLessThanOrEqual(520);
     expect(Math.max(...selected!.runtime.sandbox!.command_evidence.map((evidence) => evidence.stdout.length)))
-      .toBeGreaterThan(2_000);
+      .toBeLessThanOrEqual(520);
   });
 
   it("exposes qualification state separately from paper net revenue rank", async () => {

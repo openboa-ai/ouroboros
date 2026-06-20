@@ -1,11 +1,11 @@
 import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader,
-  OperatorStat
+  OperatorStatGrid
 } from "@/design-system";
 
 export interface ResearchAgentCycleMetric {
@@ -42,31 +42,13 @@ export function ResearchAgentCycleSection({
         description={description}
         actions={<Badge variant={badgeVariant}>{badgeLabel}</Badge>}
       />
-      <section
-        data-operator-ui="research-agent-cycle-metrics"
-        className={OPERATOR_DESIGN_TOKENS.layout.statGrid}
-        aria-label="Agent generated Trading System metrics"
-      >
-        {metrics.map((metric) => (
-          <OperatorStat
-            key={metric.label}
-            label={metric.label}
-            value={metric.value}
-            detail={metric.detail}
-            className={metric.className}
-          />
-        ))}
-      </section>
+      <OperatorStatGrid stats={metrics} aria-label="Agent generated Trading System metrics" />
       {lineageFields && (
-        <dl
-          data-operator-ui="research-agent-cycle-lineage"
-          className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}
-          aria-label="Full-cycle lineage"
-        >
+        <OperatorFieldGrid density="dense" aria-label="Full-cycle lineage">
           {lineageFields.map((field) => (
             <OperatorField key={field.label} label={field.label} value={field.value} />
           ))}
-        </dl>
+        </OperatorFieldGrid>
       )}
     </OperatorPanel>
   );

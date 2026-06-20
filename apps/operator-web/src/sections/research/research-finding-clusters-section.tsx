@@ -1,8 +1,7 @@
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorEvidenceBlock,
+  OperatorEvidenceRow,
   OperatorEvidenceStack,
   OperatorEvidenceStatus,
   OperatorField,
@@ -54,10 +53,7 @@ export function ResearchFindingClustersSection({
               detail={entry.detail}
               tone="neutral"
             />
-            <div
-              data-operator-ui="evidence-row"
-              className={cn(OPERATOR_DESIGN_TOKENS.layout.evidenceStack, MOBILE_STACKED_FIELD_GRID)}
-            >
+            <OperatorEvidenceRow className={MOBILE_STACKED_FIELD_GRID}>
               {entry.fields.map((field) => (
                 <OperatorField
                   key={field.label}
@@ -66,11 +62,8 @@ export function ResearchFindingClustersSection({
                   className={MOBILE_FIELD_CLAMP}
                 />
               ))}
-            </div>
-            <div
-              data-operator-ui="evidence-row"
-              className={cn(OPERATOR_DESIGN_TOKENS.layout.evidenceStack, MOBILE_STACKED_FIELD_GRID)}
-            >
+            </OperatorEvidenceRow>
+            <OperatorEvidenceRow className={MOBILE_STACKED_FIELD_GRID}>
               {entry.boundaryFields.map((field) => (
                 <OperatorField
                   key={field.label}
@@ -79,7 +72,7 @@ export function ResearchFindingClustersSection({
                   className={MOBILE_FIELD_CLAMP}
                 />
               ))}
-            </div>
+            </OperatorEvidenceRow>
           </OperatorEvidenceBlock>
         ))}
       </OperatorEvidenceStack>

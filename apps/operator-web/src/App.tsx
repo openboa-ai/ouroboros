@@ -286,6 +286,244 @@ async function fetchTradingReviewCandidate(
   return fetchCandidate(activeCandidateId);
 }
 
+const OPERATOR_RUNTIME_TEXT_LIMIT = 500;
+const OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER = "runtime overview truncated";
+
+export function candidateNeedsDetailFetch(candidate: CandidateInspectReadModel | null | undefined): boolean {
+  if (!candidate) {
+    return false;
+  }
+  const transcript = candidate.runtime.transcript;
+  if (transcript && transcript.items.length < transcript.item_count) {
+    return true;
+  }
+  if (
+    transcript?.latest_item && transcriptItemHasTruncatedOverviewText(transcript.latest_item) ||
+    transcript?.items.some(transcriptItemHasTruncatedOverviewText)
+  ) {
+    return true;
+  }
+  const sandbox = candidate.runtime.sandbox;
+  if (!sandbox) {
+    return false;
+  }
+  if (
+    sandbox.logs.length < sandbox.log_refs.length ||
+    sandbox.heartbeats.length < sandbox.heartbeat_refs.length ||
+    sandbox.command_evidence.length < sandbox.command_evidence_refs.length
+  ) {
+    return true;
+  }
+  return sandbox.logs.some((log) => log.lines.some(isRuntimeOverviewTruncatedText)) ||
+    sandbox.command_evidence.some((evidence) =>
+      isRuntimeOverviewTruncatedText(evidence.stdout) ||
+      isRuntimeOverviewTruncatedText(evidence.stderr)
+    );
+}
+
+export function candidateDetailFetchKey(candidate: CandidateInspectReadModel | null | undefined): string {
+  return candidate ? `${candidate.candidate_id}:${candidateNeedsDetailFetch(candidate) ? "overview" : "detail"}` : "none";
+}
+
+function transcriptItemHasTruncatedOverviewText(
+  item: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+): boolean {
+  return isRuntimeOverviewTruncatedText(item.label) || isRuntimeOverviewTruncatedText(item.summary);
+}
+
+function isRuntimeOverviewTruncatedText(value: string): boolean {
+  return value.includes(OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER) ||
+    (value.length > OPERATOR_RUNTIME_TEXT_LIMIT && value.endsWith("..."));
+}
+
+function selectedCandidateForState(
+  current: AppState,
+  selected: CandidateInspectReadModel | null | undefined
+): CandidateInspectReadModel | undefined {
+  if (
+    selected &&
+    current.selected?.candidate_id === selected.candidate_id &&
+    candidateNeedsDetailFetch(selected) &&
+    !candidateNeedsDetailFetch(current.selected)
+  ) {
+    return mergeSelectedCandidateOverviewWithFullDetail(current.selected, selected);
+  }
+  return selected ?? undefined;
+}
+
+function mergeSelectedCandidateOverviewWithFullDetail(
+  fullCandidate: CandidateInspectReadModel,
+  overviewCandidate: CandidateInspectReadModel
+): CandidateInspectReadModel {
+  return {
+    ...fullCandidate,
+    ...overviewCandidate,
+    runtime: {
+      ...fullCandidate.runtime,
+      ...overviewCandidate.runtime,
+      sandbox: mergeSandboxOverviewWithFullDetail(
+        fullCandidate.runtime.sandbox,
+        overviewCandidate.runtime.sandbox
+      ),
+      transcript: mergeTranscriptOverviewWithFullDetail(
+        fullCandidate.runtime.transcript,
+        overviewCandidate.runtime.transcript
+      )
+    }
+  };
+}
+
+function mergeTranscriptOverviewWithFullDetail(
+  fullTranscript: CandidateInspectReadModel["runtime"]["transcript"],
+  overviewTranscript: CandidateInspectReadModel["runtime"]["transcript"]
+): CandidateInspectReadModel["runtime"]["transcript"] {
+  if (!overviewTranscript) {
+    return fullTranscript;
+  }
+  if (!fullTranscript) {
+    return overviewTranscript;
+  }
+  const items = mergeRecordsByKey(
+    fullTranscript.items,
+    overviewTranscript.items,
+    (item) => item.item_id,
+    mergeTranscriptItemOverviewWithFullDetail
+  );
+
+  return {
+    ...fullTranscript,
+    ...overviewTranscript,
+    latest_item: overviewTranscript.latest_item
+      ? mergeTranscriptLatestItemOverviewWithFullDetail(items, overviewTranscript.latest_item)
+      : overviewTranscript.latest_item,
+    items
+  };
+}
+
+function mergeTranscriptLatestItemOverviewWithFullDetail(
+  mergedItems: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"],
+  latestItem: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+) {
+  return mergedItems.find((item) => item.item_id === latestItem.item_id) ?? latestItem;
+}
+
+function mergeTranscriptItemOverviewWithFullDetail(
+  fullItem: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number],
+  overviewItem: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+) {
+  return {
+    ...fullItem,
+    ...overviewItem,
+    label: isRuntimeOverviewTruncatedText(overviewItem.label) ? fullItem.label : overviewItem.label,
+    summary: isRuntimeOverviewTruncatedText(overviewItem.summary) ? fullItem.summary : overviewItem.summary
+  };
+}
+
+function mergeSandboxOverviewWithFullDetail(
+  fullSandbox: CandidateInspectReadModel["runtime"]["sandbox"],
+  overviewSandbox: CandidateInspectReadModel["runtime"]["sandbox"]
+): CandidateInspectReadModel["runtime"]["sandbox"] {
+  if (!overviewSandbox) {
+    return fullSandbox;
+  }
+  if (!fullSandbox) {
+    return overviewSandbox;
+  }
+  return {
+    ...fullSandbox,
+    ...overviewSandbox,
+    logs: mergeRecordsByKey(
+      fullSandbox.logs,
+      overviewSandbox.logs,
+      (log) => refKey(log.log_ref),
+      mergeSandboxLogOverviewWithFullDetail
+    ),
+    heartbeats: mergeRecordsByKey(
+      fullSandbox.heartbeats,
+      overviewSandbox.heartbeats,
+      (heartbeat) => refKey(heartbeat.heartbeat_ref),
+      (_fullHeartbeat, overviewHeartbeat) => overviewHeartbeat
+    ),
+    command_evidence: mergeRecordsByKey(
+      fullSandbox.command_evidence,
+      overviewSandbox.command_evidence,
+      (evidence) => refKey(evidence.command_evidence_ref),
+      mergeSandboxCommandEvidenceOverviewWithFullDetail
+    )
+  };
+}
+
+function mergeSandboxLogOverviewWithFullDetail(
+  fullLog: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["logs"][number],
+  overviewLog: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["logs"][number]
+) {
+  return {
+    ...fullLog,
+    ...overviewLog,
+    lines: mergeRuntimeTextLines(fullLog.lines, overviewLog.lines)
+  };
+}
+
+function mergeSandboxCommandEvidenceOverviewWithFullDetail(
+  fullEvidence: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["command_evidence"][number],
+  overviewEvidence: NonNullable<CandidateInspectReadModel["runtime"]["sandbox"]>["command_evidence"][number]
+) {
+  return {
+    ...fullEvidence,
+    ...overviewEvidence,
+    stdout: mergeRuntimeText(fullEvidence.stdout, overviewEvidence.stdout),
+    stderr: mergeRuntimeText(fullEvidence.stderr, overviewEvidence.stderr)
+  };
+}
+
+function mergeRuntimeTextLines(fullLines: string[], overviewLines: string[]): string[] {
+  if (!overviewLines.some(isRuntimeOverviewTruncatedText)) {
+    return overviewLines;
+  }
+  const mergedLines = [...fullLines];
+  for (const line of overviewLines) {
+    if (isRuntimeOverviewTruncatedText(line) || mergedLines.includes(line)) {
+      continue;
+    }
+    mergedLines.push(line);
+  }
+  return mergedLines;
+}
+
+function mergeRuntimeText(fullText: string, overviewText: string): string {
+  return isRuntimeOverviewTruncatedText(overviewText) && !isRuntimeOverviewTruncatedText(fullText)
+    ? fullText
+    : overviewText;
+}
+
+function mergeRecordsByKey<T>(
+  fullRecords: T[],
+  overviewRecords: T[],
+  keyFor: (record: T) => string,
+  mergeRecord: (fullRecord: T, overviewRecord: T) => T
+): T[] {
+  const mergedRecords = [...fullRecords];
+  const indexByKey = new Map<string, number>();
+  fullRecords.forEach((record, index) => {
+    indexByKey.set(keyFor(record), index);
+  });
+  for (const overviewRecord of overviewRecords) {
+    const key = keyFor(overviewRecord);
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex === undefined) {
+      indexByKey.set(key, mergedRecords.length);
+      mergedRecords.push(overviewRecord);
+      continue;
+    }
+    mergedRecords[existingIndex] = mergeRecord(mergedRecords[existingIndex]!, overviewRecord);
+  }
+  return mergedRecords;
+}
+
+function refKey(ref: { record_kind: string; id: string }): string {
+  return `${ref.record_kind}:${ref.id}`;
+}
+
 export function applyOperatorRefreshState(
   current: AppState,
   operator: OperatorReadModel,
@@ -305,7 +543,7 @@ export function applyOperatorRefreshState(
     candidateArena: operator.candidate_arena,
     tradingResearchRuntime,
     selectedTradingResearchAgent,
-    selected: selected ?? undefined,
+    selected: selectedCandidateForState(current, selected),
     tradingReviewCandidate
   };
 }
@@ -340,6 +578,7 @@ export function App() {
     runningCandidateArenaAction: false
   });
   const selectedCandidateIdRef = useRef<string | undefined>(undefined);
+  const selectedCandidateDetailFetchKey = candidateDetailFetchKey(state.selected);
 
   useEffect(() => {
     selectedCandidateIdRef.current = state.selected?.candidate_id;
@@ -484,6 +723,42 @@ export function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const selectedCandidate = state.selected;
+    if (operatorView !== "details" || !selectedCandidate || !candidateNeedsDetailFetch(selectedCandidate)) {
+      return;
+    }
+    const selectedCandidateId = selectedCandidate.candidate_id;
+    let cancelled = false;
+
+    async function loadSelectedCandidateDetail() {
+      try {
+        const selected = await fetchCandidate(selectedCandidateId);
+        if (cancelled) {
+          return;
+        }
+        setState((current) => current.selected?.candidate_id === selected.candidate_id
+          ? {
+              ...current,
+              selected
+            }
+          : current);
+      } catch (error) {
+        if (!cancelled) {
+          setState((current) => ({
+            ...current,
+            error: error instanceof Error ? error.message : "Unknown candidate detail error"
+          }));
+        }
+      }
+    }
+
+    void loadSelectedCandidateDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [operatorView, selectedCandidateDetailFetchKey]);
 
   async function selectCandidate(candidateId: string) {
     setState((current) => ({

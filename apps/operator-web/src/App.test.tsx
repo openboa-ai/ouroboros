@@ -43,6 +43,8 @@ import {
   CandidateArenaPanel,
   CandidateDetail,
   CandidateSummaryRow,
+  candidateDetailFetchKey,
+  candidateNeedsDetailFetch,
   isPositiveRiskDecision,
   operatorViewFromSearch,
   PrivateReadinessReviewPacketSections,
@@ -79,13 +81,17 @@ import {
   OperatorActionRow,
   OperatorCallout,
   OperatorDataTable,
+  OperatorDetailText,
   OperatorField,
+  OperatorFieldGrid,
   OperatorMetricStrip,
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
   OperatorSectionHeader,
-  OperatorStat
+  OperatorSectionStack,
+  OperatorStat,
+  OperatorStatGrid
 } from "./design-system";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -129,11 +135,15 @@ describe("operator design system contract", () => {
       "evidence.tsx",
       "data-table.tsx",
       "field.tsx",
+      "field-grid.tsx",
       "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
       "section-header.tsx",
+      "section-stack.tsx",
       "stat.tsx",
+      "stat-grid.tsx",
+      "text.tsx",
       "tab-badge.tsx"
     ]));
 
@@ -159,9 +169,14 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "metric-strip.tsx"), "utf8")).toContain("./stat");
+    expect(readFileSync(join(componentDir, "stat-grid.tsx"), "utf8")).toContain("./stat");
     expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/table");
     expect(indexSource).toContain('export { OperatorDataTable } from "./components/data-table"');
+    expect(indexSource).toContain('export { OperatorFieldGrid } from "./components/field-grid"');
+    expect(indexSource).toContain('export { OperatorSectionStack } from "./components/section-stack"');
+    expect(indexSource).toContain('export { OperatorStatGrid } from "./components/stat-grid"');
+    expect(indexSource).toContain('export { OperatorDetailText } from "./components/text"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -188,6 +203,7 @@ describe("operator design system contract", () => {
       const source = readFileSync(join(tradingSectionDir, fileName), "utf8");
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).toMatch(/@\/design-system|@\/components\/ui\/badge|\.\/trading-metrics/);
     }
 
@@ -246,6 +262,7 @@ describe("operator design system contract", () => {
       const source = readFileSync(join(arenaSectionDir, fileName), "utf8");
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).toContain("@/design-system");
     }
 
@@ -288,6 +305,7 @@ describe("operator design system contract", () => {
       const source = readFileSync(join(researchSectionDir, fileName), "utf8");
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).toContain("@/design-system");
     }
 
@@ -331,6 +349,34 @@ describe("operator design system contract", () => {
     expect(html).toContain("min-w-0");
     expect(html).toContain("break-words");
     expect(html).not.toContain("truncate");
+  });
+
+  it("keeps section layout, field grids, stat grids, and detail text behind design-system primitives", () => {
+    const html = renderToStaticMarkup(
+      <OperatorSectionStack>
+        <OperatorDetailText>Evidence remains read-only and paper-only.</OperatorDetailText>
+        <OperatorFieldGrid density="dense" aria-label="Boundary fields">
+          <OperatorField label="Authority" value="not_live" />
+          <OperatorField label="Source" value="PaperTradingEvaluation" />
+        </OperatorFieldGrid>
+        <OperatorStatGrid
+          aria-label="Review stats"
+          stats={[
+            { label: "Paper net", value: "2.839997 USDT" },
+            { label: "Qualification", value: "collecting_evidence" }
+          ]}
+        />
+      </OperatorSectionStack>
+    );
+
+    expect(html).toContain('data-operator-ui="section-stack"');
+    expect(html).toContain('data-operator-ui="detail-text"');
+    expect(html).toContain('data-operator-ui="field-grid"');
+    expect(html).toContain('data-density="dense"');
+    expect(html).toContain('data-operator-ui="stat-grid"');
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain("grid");
+    expect(html).toContain("[overflow-wrap:anywhere]");
   });
 
   it("keeps high-level metric strips compact and mobile-first", () => {
@@ -580,6 +626,67 @@ describe("operator UI primitives", () => {
 });
 
 describe("operator app refresh", () => {
+  it("keeps full selected candidate details while merging fresh bounded overview fields", () => {
+    const fullCandidate = selectedCandidateWithTranscript(2);
+    fullCandidate.runtime.runtime_lifecycle_status = "running";
+    const boundedCandidate = {
+      ...fullCandidate,
+      runtime: {
+        ...fullCandidate.runtime,
+        runtime_lifecycle_status: "paused" as const,
+        transcript: fullCandidate.runtime.transcript
+          ? {
+              ...fullCandidate.runtime.transcript,
+              items: fullCandidate.runtime.transcript.items.slice(-1)
+            }
+          : undefined
+      }
+    };
+    const operator = operatorReadModelFixture({
+      selected_candidate_id: fullCandidate.candidate_id,
+      selected_candidate: boundedCandidate
+    });
+    const currentState = {
+      candidates: [],
+      executionModes: tradingExecutionModes(),
+      replayRuns: [],
+      selectedTradingResearchAgent: "codex" as const,
+      tradingResearchIterations: 1,
+      loading: false,
+      runningFullCycle: false,
+      runningTradingRun: false,
+      recordingImprovement: false,
+      recordingRunControl: false,
+      recordingPrivateReadinessPosture: false,
+      runningCandidateReplay: false,
+      runningTradingPromotion: false,
+      runningCandidateArenaAction: false,
+      operator,
+      candidateArena: operator.candidate_arena,
+      selected: fullCandidate,
+      tradingResearchRuntime: buildTradingResearchRuntimeFromOperator(operator)
+    };
+
+    expect(candidateNeedsDetailFetch(boundedCandidate)).toBe(true);
+    expect(candidateNeedsDetailFetch(fullCandidate)).toBe(false);
+    expect(candidateDetailFetchKey(boundedCandidate)).not.toBe(candidateDetailFetchKey(fullCandidate));
+
+    const refreshed = applyOperatorRefreshState(currentState, operator);
+
+    expect(refreshed.selected?.runtime.transcript?.items).toHaveLength(2);
+    expect(refreshed.selected?.runtime.runtime_lifecycle_status).toBe("paused");
+  });
+
+  it("treats truncated overview text as needing full candidate details", () => {
+    const boundedCandidate = selectedCandidateWithTranscript(1);
+    boundedCandidate.runtime.transcript!.items[0] = {
+      ...boundedCandidate.runtime.transcript!.items[0]!,
+      summary: `${"x".repeat(500)}...`
+    };
+
+    expect(candidateNeedsDetailFetch(boundedCandidate)).toBe(true);
+  });
+
   it("merges refreshed paper board state without resetting pending controls", () => {
     const staleOperator = operatorReadModelFixture({
       selected_paper_trading_evaluation: paperTradingEvaluationFixture({
@@ -6557,6 +6664,40 @@ function arenaSelectedCandidate(
         }
       : undefined,
     ...overrides
+  };
+}
+
+function selectedCandidateWithTranscript(itemCount: number): CandidateInspectReadModel {
+  const candidate = arenaSelectedCandidate();
+  const items = Array.from({ length: itemCount }, (_, index) => ({
+    item_id: `transcript-item-${index + 1}`,
+    item_kind: "sandbox_log" as const,
+    occurred_at: `2026-05-16T00:00:${String(index + 1).padStart(2, "0")}.000Z`,
+    label: `Sandbox log ${index + 1}`,
+    summary: `Sandbox log summary ${index + 1}`,
+    ref: { record_kind: "sandbox_log", id: `sandbox-log-${index + 1}` },
+    authority_status: "trace_only"
+  }));
+
+  return {
+    ...candidate,
+    runtime: {
+      ...candidate.runtime,
+      transcript: {
+        transcript_kind: "trading_run_transcript",
+        has_activity: true,
+        item_count: items.length,
+        latest_item: items.at(-1) ?? null,
+        items,
+        authority_status: "not_live",
+        no_authority: {
+          live_exchange_authority: false,
+          private_read_authority: false,
+          order_submission_authority: false,
+          credentials: false
+        }
+      }
+    }
   };
 }
 

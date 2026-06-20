@@ -2,8 +2,8 @@ import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorDataTable,
+  OperatorDetailText,
   OperatorEmptyState,
   OperatorField
 } from "@/design-system";
@@ -65,7 +65,7 @@ export function ArenaLeaderboardSection({
               <OperatorField label="Direction" value={entry.direction} />
               <OperatorField label="Parent" value={entry.parent} />
             </div>
-            <p className={OPERATOR_DESIGN_TOKENS.typography.detail}>{entry.latestFinding}</p>
+            <OperatorDetailText>{entry.latestFinding}</OperatorDetailText>
           </Button>
         ))}
       </div>
@@ -91,7 +91,7 @@ export function ArenaLeaderboardSection({
                     <Badge variant="outline">{entry.direction}</Badge>
                     <span className="min-w-0 break-words">{`parent ${entry.parent}`}</span>
                   </span>
-                  <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>{entry.latestFinding}</span>
+                  <OperatorDetailText as="span">{entry.latestFinding}</OperatorDetailText>
                 </span>
               ),
               score: (
