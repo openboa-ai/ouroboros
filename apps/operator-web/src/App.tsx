@@ -114,6 +114,14 @@ import {
   OperatorTabBadge
 } from "./design-system";
 import { OperatorDecisionPanel } from "@/sections/trading/operator-decision-panel";
+import {
+  ArenaLeaderboardSection,
+  type ArenaLeaderboardEntry
+} from "@/sections/arena/arena-leaderboard-section";
+import {
+  ArenaPaperBoardSection,
+  type ArenaPaperBoardEntry
+} from "@/sections/arena/arena-paper-board-section";
 import { PaperReviewSummarySection } from "@/sections/trading/paper-review-summary-section";
 import { TradingMarketSection } from "@/sections/trading/trading-market-section";
 import {
@@ -1283,6 +1291,37 @@ export function CandidateArenaPanel({
   const selectedPaperAccount = selectedPaperTradingEvaluation?.paper_account_snapshot;
   const selectedPaperFill = selectedPaperTradingEvaluation?.latest_fill;
   const paperBoardEntries = paperTradingBoard?.entries ?? [];
+  const paperBoardSectionEntries: ArenaPaperBoardEntry[] = paperBoardEntries.slice(0, 6).map((entry) => ({
+    evaluationId: entry.evaluation_id,
+    displayName: entry.display_name,
+    rankLabel: `#${entry.rank}`,
+    status: entry.status,
+    qualificationStatus: entry.qualification_status,
+    tone: entry.profit_loss.net_revenue_usdt >= 0 ? "counted" : "neutral",
+    paperNet: formatUsdt(entry.profit_loss.net_revenue_usdt),
+    paperReturn: formatPercent(entry.profit_loss.net_return_pct),
+    trend: formatPaperBoardTrend(entry),
+    blockerDensity: formatPaperBoardBlockerDensity(entry),
+    evidenceWindow: `${entry.evidence_window.observation_count} obs / ${entry.evidence_window.failed_observation_count} failed / ${entry.evidence_window.elapsed_ms}ms`,
+    qualificationReasons: entry.qualification_reasons.length ? entry.qualification_reasons.join(", ") : "qualified",
+    promotionGate: entry.promotion_gate_status,
+    runnerStatus: entry.runner_status,
+    observationCount: String(entry.observation_count),
+    marketProvenance: `${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`,
+    fillQuality: `${entry.latest_fill_status ?? "none"} / open ${entry.open_order_count}`
+  }));
+  const arenaLeaderboardEntries: ArenaLeaderboardEntry[] = arena.leaderboard.map((entry) => ({
+    candidateId: entry.candidate_id,
+    rankLabel: `#${entry.rank}`,
+    displayName: entry.display_name,
+    status: entry.status,
+    statusVariant: entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline",
+    direction: entry.direction_kind,
+    parent: entry.parent_candidate_id ?? "none",
+    researchPreflightNet: formatUsdt(entry.profit_loss.net_revenue_usdt),
+    researchPreflightReturn: formatPercent(entry.profit_loss.net_return_pct),
+    latestFinding: entry.latest_finding
+  }));
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
   const paperRunnerActive = selectedPaperTradingEvaluation?.runner_active === true;
@@ -1353,132 +1392,13 @@ export function CandidateArenaPanel({
             detail="secondary rank signal"
           />
         </div>
-        <OperatorPanel aria-label="Paper trading board">
-          <OperatorSectionHeader
-            title="Paper Board"
-            description="product authority: continuous paper trading"
-          />
-          {paperBoardEntries.length ? (
-            <OperatorEvidenceStack className={paperBoardEntries.length > 1 ? "md:grid-cols-2" : undefined}>
-              {paperBoardEntries.slice(0, 6).map((entry) => (
-                <OperatorEvidenceBlock title={entry.display_name} key={entry.evaluation_id}>
-                  <OperatorEvidenceStatus
-                    label={`#${entry.rank}`}
-                    value={entry.status}
-                    detail={entry.qualification_status}
-                    tone={entry.profit_loss.net_revenue_usdt >= 0 ? "counted" : "neutral"}
-                  />
-                  <OperatorEvidenceRow>
-                    <Field label="Paper net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
-                    <Field label="Paper return" value={formatPercent(entry.profit_loss.net_return_pct)} />
-                    <Field label="Trend" value={formatPaperBoardTrend(entry)} />
-                    <Field label="Blocker density" value={formatPaperBoardBlockerDensity(entry)} />
-                  </OperatorEvidenceRow>
-                  <OperatorEvidenceRow>
-                    <Field label="Qualification" value={entry.qualification_status} />
-                    <Field label="Evidence window" value={`${entry.evidence_window.observation_count} obs / ${entry.evidence_window.failed_observation_count} failed / ${entry.evidence_window.elapsed_ms}ms`} />
-                    <Field
-                      label="Qualification reasons"
-                      value={entry.qualification_reasons.length ? entry.qualification_reasons.join(", ") : "qualified"}
-                    />
-                    <Field label="Promotion gate" value={entry.promotion_gate_status} />
-                  </OperatorEvidenceRow>
-                  <OperatorEvidenceRow>
-                    <Field label="Paper runner" value={entry.runner_status} />
-                    <Field label="Paper observations" value={String(entry.observation_count)} />
-                    <Field label="Market provenance" value={`${entry.market_data_source}${entry.latest_public_execution_source ? ` / ${entry.latest_public_execution_source}` : ""}`} />
-                    <Field label="Fill quality" value={`${entry.latest_fill_status ?? "none"} / open ${entry.open_order_count}`} />
-                  </OperatorEvidenceRow>
-                </OperatorEvidenceBlock>
-              ))}
-            </OperatorEvidenceStack>
-          ) : (
-            <OperatorEmptyState
-              title="No paper evaluations yet"
-              description="Select a candidate and start paper trading to create product evidence."
-              detail="not_live"
-            />
-          )}
-        </OperatorPanel>
+        <ArenaPaperBoardSection entries={paperBoardSectionEntries} />
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
-        <section className="grid content-start gap-2" aria-label="Candidate Arena leaderboard">
-          <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
-            <h3 className="text-sm font-medium">ResearchPreflight leaderboard</h3>
-            <span className="text-xs text-muted-foreground">research rank: net_revenue_usdt</span>
-          </div>
-          <div className="grid gap-2 lg:hidden">
-            {arena.leaderboard.map((entry) => (
-              <Button
-                type="button"
-                key={entry.candidate_id}
-                onClick={() => onSelectCandidate?.(entry.candidate_id)}
-                aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
-                variant={selectedEntry?.candidate_id === entry.candidate_id ? "secondary" : "ghost"}
-                className="grid h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left"
-              >
-                <div className="grid gap-2 sm:flex sm:items-start sm:justify-between sm:gap-3">
-                  <div className="min-w-0">
-                    <span className="text-xs font-medium text-muted-foreground">#{entry.rank}</span>
-                    <strong className="block break-words leading-snug">{entry.display_name}</strong>
-                  </div>
-                  <Badge className="w-fit" variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
-                    {entry.status}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="ResearchPreflight net" value={formatUsdt(entry.profit_loss.net_revenue_usdt)} />
-                  <Field label="ResearchPreflight return" value={formatPercent(entry.profit_loss.net_return_pct)} />
-                  <Field label="Direction" value={entry.direction_kind} />
-                  <Field label="Parent" value={entry.parent_candidate_id ?? "none"} />
-                </div>
-                <p className="break-words text-xs text-muted-foreground">{entry.latest_finding}</p>
-              </Button>
-            ))}
-          </div>
-          <div className="hidden lg:grid lg:gap-2">
-            <div className="grid grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
-              <span>Rank</span>
-              <span>Candidate</span>
-              <span>Direction</span>
-              <span>ResearchPreflight net</span>
-            </div>
-            {arena.leaderboard.map((entry) => (
-              <Button
-                type="button"
-                key={entry.candidate_id}
-                onClick={() => onSelectCandidate?.(entry.candidate_id)}
-                aria-pressed={selectedEntry?.candidate_id === entry.candidate_id}
-                variant={selectedEntry?.candidate_id === entry.candidate_id ? "secondary" : "ghost"}
-                className="grid h-auto w-full grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] items-start justify-start gap-2 whitespace-normal p-2 text-left"
-              >
-                <span>#{entry.rank}</span>
-                <span className="grid gap-1">
-                  <strong className="break-words font-medium leading-snug">{entry.display_name}</strong>
-                  <span className="break-words text-xs text-muted-foreground">
-                    {`parent ${entry.parent_candidate_id ?? "none"}`}
-                  </span>
-                  <span className="break-words text-xs text-muted-foreground">{entry.latest_finding}</span>
-                </span>
-                <span className="break-words leading-snug">{entry.direction_kind}</span>
-                <span className="grid gap-1">
-                  <strong>{formatUsdt(entry.profit_loss.net_revenue_usdt)}</strong>
-                  <span className="text-xs text-muted-foreground">{formatPercent(entry.profit_loss.net_return_pct)}</span>
-                  <Badge variant={entry.profit_loss.net_revenue_usdt >= 0 ? "default" : "outline"}>
-                    {entry.status}
-                  </Badge>
-                </span>
-              </Button>
-            ))}
-          </div>
-          {!arena.leaderboard.length && (
-            <OperatorEmptyState
-              title="No candidates yet"
-              description="Run tick to generate the first TradingSystem candidates."
-              detail="research_only"
-              className="lg:min-w-[640px]"
-            />
-          )}
-        </section>
+        <ArenaLeaderboardSection
+          entries={arenaLeaderboardEntries}
+          selectedCandidateId={selectedEntry?.candidate_id}
+          onSelectCandidate={onSelectCandidate}
+        />
         <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
         {inspectorVisible && (
           <OperatorPanel aria-label="Selected Candidate Arena candidate">
