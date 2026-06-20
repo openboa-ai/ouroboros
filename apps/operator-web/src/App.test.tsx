@@ -181,6 +181,16 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
   });
 
+  it("keeps operator shell navigation as a reusable UI-only module", () => {
+    const shellDir = join(operatorWebSrcDir, "shell");
+    const operatorSidebarSource = readFileSync(join(shellDir, "operator-sidebar.tsx"), "utf8");
+
+    expect(operatorSidebarSource).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+    expect(operatorSidebarSource).toContain("@/components/ui/sidebar");
+    expect(operatorSidebarSource).toContain("SidebarMenuSkeleton");
+    expect(operatorSidebarSource).toContain("export interface OperatorSidebarCandidate");
+  });
+
   it("renders evidence fields and stats from shared primitives without clipping long values", () => {
     const longEvidenceValue = "binance_production_public_rest / public_execution_bookTicker / none_open_0";
     const html = renderToStaticMarkup(
@@ -330,11 +340,13 @@ describe("operator design system contract", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Loading fixture read model...");
-    expect(html).toContain("Loading trading systems");
+    expect(html).toContain('data-operator-ui="operator-sidebar"');
+    expect(html).toContain('data-slot="sidebar-menu-skeleton"');
     expect(html).toContain('aria-label="Loading read model"');
     expect(html).toContain('data-operator-ui="panel"');
     expect(html).toContain('data-operator-ui="section-header"');
     expect(extractOpeningTagForAriaLabel(html, "Loading read model")).not.toContain('data-slot="card"');
+    expect(html).not.toContain("Loading trading systems");
     expect(html).not.toContain("No Trading System selected");
   });
 });
