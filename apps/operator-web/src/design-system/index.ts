@@ -9,6 +9,8 @@ export {
   OperatorEvidenceStatus
 } from "./components/evidence";
 export { OperatorField } from "./components/field";
+export { OperatorMetricStrip } from "./components/metric-strip";
+export type { OperatorMetricStripItem } from "./components/metric-strip";
 export { OperatorPage, OperatorPageHeader } from "./components/page";
 export { OperatorPanel } from "./components/panel";
 export { OperatorSectionHeader } from "./components/section-header";
