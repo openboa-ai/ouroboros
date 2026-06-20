@@ -99,7 +99,6 @@ import type { PrivateReadinessReviewPacketProjection } from "./private-readiness
 import {
   OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
-  OperatorCallout,
   OperatorEmptyState,
   OperatorEvidenceBlock,
   OperatorEvidenceRow,
@@ -119,6 +118,7 @@ import {
   type ArenaAgentProviderOption,
   type ArenaAgentProviderProfile
 } from "@/sections/arena/arena-agent-provider-section";
+import { ArenaCommandBarSection } from "@/sections/arena/arena-command-bar-section";
 import {
   ArenaCommandLogSection,
   type ArenaCommandLogEntry
@@ -131,6 +131,10 @@ import {
   ArenaLatestTicksSection,
   type ArenaLatestTickSummary
 } from "@/sections/arena/arena-latest-ticks-section";
+import {
+  ArenaMetricStripSection,
+  type ArenaMetricStripItem
+} from "@/sections/arena/arena-metric-strip-section";
 import {
   ArenaPaperBoardSection,
   type ArenaPaperBoardEntry
@@ -1352,6 +1356,24 @@ export function CandidateArenaPanel({
     selected: provider === selectedProvider,
     disabled: actionPending
   }));
+  const arenaResearchProviderSummary = `Provider ${researcherProvider?.selected_provider ?? "unknown"} ${selectedAgentProfile?.status ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`;
+  const arenaMetricStripItems: ArenaMetricStripItem[] = [
+    {
+      label: "Arena runner",
+      value: arena.runner_status,
+      detail: `${arena.tick_count} ticks`
+    },
+    {
+      label: "ResearchPreflight net",
+      value: leader ? formatUsdt(leader.profit_loss.net_revenue_usdt) : "none",
+      detail: "revenue - cost"
+    },
+    {
+      label: "ResearchPreflight return",
+      value: leader ? formatPercent(leader.profit_loss.net_return_pct) : "none",
+      detail: "secondary rank signal"
+    }
+  ];
   const arenaCommandLogEntries: ArenaCommandLogEntry[] = latestCommands.slice(0, 5).map((command) => {
     const remediation = commandRemediation(command);
 
@@ -1481,46 +1503,16 @@ export function CandidateArenaPanel({
         )}
       />
       <div className="grid gap-4">
-        <OperatorPanel aria-label="Arena command bar" className="gap-2">
-          <OperatorSectionHeader
-            title="Arena command bar"
-            description="Researcher orchestration stays below live authority and only writes through shared commands."
-            actions={(
-              <>
-                <Button type="button" onClick={onStart} disabled={actionPending || !onStart}>
-                  Start arena
-                </Button>
-                <Button type="button" onClick={onStop} disabled={actionPending || !onStop} variant="secondary">
-                  Stop arena
-                </Button>
-                <Button type="button" onClick={onTick} disabled={actionPending || !onTick} variant="outline">
-                  Run tick
-                </Button>
-              </>
-            )}
-          />
-          <OperatorCallout
-            label="Research provider"
-            value={`Provider ${researcherProvider?.selected_provider ?? "unknown"} ${selectedAgentProfile?.status ?? "unknown"}; live authority disabled; ${arena.active_researchers.length} researchers available.`}
-          />
-        </OperatorPanel>
-        <div data-operator-ui="metric-strip" className={OPERATOR_DESIGN_TOKENS.layout.statGrid}>
-          <OperatorStat
-            label="Arena runner"
-            value={arena.runner_status}
-            detail={`${arena.tick_count} ticks`}
-          />
-          <OperatorStat
-            label="ResearchPreflight net"
-            value={leader ? formatUsdt(leader.profit_loss.net_revenue_usdt) : "none"}
-            detail="revenue - cost"
-          />
-          <OperatorStat
-            label="ResearchPreflight return"
-            value={leader ? formatPercent(leader.profit_loss.net_return_pct) : "none"}
-            detail="secondary rank signal"
-          />
-        </div>
+        <ArenaCommandBarSection
+          researchProviderSummary={arenaResearchProviderSummary}
+          startDisabled={actionPending}
+          stopDisabled={actionPending}
+          tickDisabled={actionPending}
+          onStart={onStart}
+          onStop={onStop}
+          onTick={onTick}
+        />
+        <ArenaMetricStripSection metrics={arenaMetricStripItems} />
         <ArenaPaperBoardSection entries={paperBoardSectionEntries} />
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
           <ArenaLeaderboardSection

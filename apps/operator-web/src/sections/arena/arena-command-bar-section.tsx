@@ -1,0 +1,47 @@
+import { Button } from "@/components/ui/button";
+import {
+  OperatorCallout,
+  OperatorPanel,
+  OperatorSectionHeader
+} from "@/design-system";
+
+export function ArenaCommandBarSection({
+  researchProviderSummary,
+  startDisabled,
+  stopDisabled,
+  tickDisabled,
+  onStart,
+  onStop,
+  onTick
+}: {
+  researchProviderSummary: string;
+  startDisabled: boolean;
+  stopDisabled: boolean;
+  tickDisabled: boolean;
+  onStart?: () => void;
+  onStop?: () => void;
+  onTick?: () => void;
+}) {
+  return (
+    <OperatorPanel aria-label="Arena command bar" className="gap-2">
+      <OperatorSectionHeader
+        title="Arena command bar"
+        description="Researcher orchestration stays below live authority and only writes through shared commands."
+        actions={(
+          <>
+            <Button type="button" onClick={onStart} disabled={startDisabled || !onStart}>
+              Start arena
+            </Button>
+            <Button type="button" onClick={onStop} disabled={stopDisabled || !onStop} variant="secondary">
+              Stop arena
+            </Button>
+            <Button type="button" onClick={onTick} disabled={tickDisabled || !onTick} variant="outline">
+              Run tick
+            </Button>
+          </>
+        )}
+      />
+      <OperatorCallout label="Research provider" value={researchProviderSummary} />
+    </OperatorPanel>
+  );
+}

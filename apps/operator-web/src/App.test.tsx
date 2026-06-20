@@ -190,8 +190,10 @@ describe("operator design system contract", () => {
     expect(sectionFiles).toEqual(expect.arrayContaining([
       "arena-agent-provider-section.tsx",
       "arena-command-log-section.tsx",
+      "arena-command-bar-section.tsx",
       "arena-leaderboard-section.tsx",
       "arena-latest-ticks-section.tsx",
+      "arena-metric-strip-section.tsx",
       "arena-paper-board-section.tsx",
       "arena-selected-candidate-section.tsx"
     ]));
@@ -203,8 +205,12 @@ describe("operator design system contract", () => {
       expect(source).toContain("@/design-system");
     }
 
+    expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorCallout");
+    expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
     expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).toContain("OperatorStat");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(arenaSectionDir, "arena-agent-provider-section.tsx"), "utf8")).toContain("@/components/ui/button");
