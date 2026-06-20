@@ -181,6 +181,30 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
   });
 
+  it("keeps Candidate Arena screen sections as reusable UI-only modules", () => {
+    const arenaSectionDir = join(operatorWebSrcDir, "sections", "arena");
+    const sectionFiles = readdirSync(arenaSectionDir)
+      .filter((fileName) => fileName.endsWith(".tsx"))
+      .sort();
+
+    expect(sectionFiles).toEqual(expect.arrayContaining([
+      "arena-leaderboard-section.tsx",
+      "arena-paper-board-section.tsx"
+    ]));
+
+    for (const fileName of sectionFiles) {
+      const source = readFileSync(join(arenaSectionDir, fileName), "utf8");
+
+      expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).toContain("@/design-system");
+    }
+
+    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
+    expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorField");
+  });
+
   it("keeps operator shell navigation as a reusable UI-only module", () => {
     const shellDir = join(operatorWebSrcDir, "shell");
     const operatorSidebarSource = readFileSync(join(shellDir, "operator-sidebar.tsx"), "utf8");
@@ -5541,8 +5565,8 @@ function extractCandidateArenaLatestTicksSection(html: string): string {
 }
 
 function extractArenaCommandBarSection(html: string): string {
-  const start = html.indexOf('aria-label="Arena command bar"');
-  const end = html.indexOf('aria-label="Paper trading board"', start);
+  const start = startOfOpeningTagForAriaLabel(html, "Arena command bar");
+  const end = startOfOpeningTagForAriaLabel(html, "Paper trading board");
   if (start < 0 || end < 0) {
     throw new Error("arena command bar section not found");
   }
@@ -5571,7 +5595,7 @@ function extractCandidateArenaMetricStripSection(html: string): string {
 }
 
 function extractCandidateArenaLeaderboardSection(html: string): string {
-  const start = html.indexOf('aria-label="Candidate Arena leaderboard"');
+  const start = startOfOpeningTagForAriaLabel(html, "Candidate Arena leaderboard");
   const end = html.indexOf('aria-label="Candidate Arena inspector"', start);
   if (start < 0 || end < 0) {
     throw new Error("candidate arena leaderboard section not found");
