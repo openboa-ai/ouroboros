@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader
 } from "@/design-system";
@@ -57,7 +57,7 @@ export function ArenaAgentProviderSection({
         title="Agent providers"
         description="Research provider status and local setup controls."
       />
-      <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+      <OperatorFieldGrid>
         <OperatorField label="Researcher" value={researcher} />
         <OperatorField label="Selected status" value={selectedStatus} />
         <OperatorField label="Available" value={available} />
@@ -65,7 +65,7 @@ export function ArenaAgentProviderSection({
         {profiles.map((profile) => (
           <OperatorField key={profile.id} label={profile.label} value={profile.value} />
         ))}
-      </dl>
+      </OperatorFieldGrid>
       <OperatorActionRow>
         {providerOptions.map((option) => (
           <Button

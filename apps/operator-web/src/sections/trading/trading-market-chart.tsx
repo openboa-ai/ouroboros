@@ -6,9 +6,10 @@ import {
   type ChartConfig
 } from "@/components/ui/chart";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorEvidenceRow,
-  OperatorField
+  OperatorField,
+  OperatorFieldGrid,
+  OperatorSectionStack
 } from "@/design-system";
 
 export interface TradingMarketChartField {
@@ -43,18 +44,18 @@ export function TradingMarketChart({
 }: TradingMarketChartProps) {
   if (points.length === 0) {
     return (
-      <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+      <OperatorFieldGrid>
         {fields.map((field) => (
           <OperatorField key={field.label} label={field.label} value={field.value} />
         ))}
-      </dl>
+      </OperatorFieldGrid>
     );
   }
 
   const yDomain = marketChartDomain(points);
 
   return (
-    <div className="grid gap-3">
+    <OperatorSectionStack>
       <OperatorEvidenceRow className="md:grid-cols-4" aria-label="Market data provenance">
         {fields.map((field) => (
           <OperatorField key={field.label} label={field.label} value={field.value} />
@@ -103,7 +104,7 @@ export function TradingMarketChart({
         </strong>
         <span className="min-w-0 break-words [overflow-wrap:anywhere]">{footerDetail}</span>
       </div>
-    </div>
+    </OperatorSectionStack>
   );
 }
 

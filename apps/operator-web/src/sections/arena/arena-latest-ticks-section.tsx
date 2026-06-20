@@ -1,7 +1,7 @@
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorEmptyState,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader
 } from "@/design-system";
@@ -26,13 +26,13 @@ export function ArenaLatestTicksSection({
         description="Recent CandidateArena generation evidence."
       />
       {tick ? (
-        <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+        <OperatorFieldGrid>
           <OperatorField label="Tick" value={tick.tickId} />
           <OperatorField label="Status" value={tick.status} />
           <OperatorField label="Generated" value={tick.generated} />
           <OperatorField label="Directions" value={tick.directions} />
           <OperatorField label="Efficiency" value={tick.efficiency} />
-        </dl>
+        </OperatorFieldGrid>
       ) : (
         <OperatorEmptyState
           title="No Candidate Arena ticks recorded."

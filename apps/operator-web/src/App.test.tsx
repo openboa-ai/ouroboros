@@ -79,13 +79,17 @@ import {
   OperatorActionRow,
   OperatorCallout,
   OperatorDataTable,
+  OperatorDetailText,
   OperatorField,
+  OperatorFieldGrid,
   OperatorMetricStrip,
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
   OperatorSectionHeader,
-  OperatorStat
+  OperatorSectionStack,
+  OperatorStat,
+  OperatorStatGrid
 } from "./design-system";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -129,11 +133,15 @@ describe("operator design system contract", () => {
       "evidence.tsx",
       "data-table.tsx",
       "field.tsx",
+      "field-grid.tsx",
       "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
       "section-header.tsx",
+      "section-stack.tsx",
       "stat.tsx",
+      "stat-grid.tsx",
+      "text.tsx",
       "tab-badge.tsx"
     ]));
 
@@ -159,9 +167,14 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "metric-strip.tsx"), "utf8")).toContain("./stat");
+    expect(readFileSync(join(componentDir, "stat-grid.tsx"), "utf8")).toContain("./stat");
     expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/table");
     expect(indexSource).toContain('export { OperatorDataTable } from "./components/data-table"');
+    expect(indexSource).toContain('export { OperatorFieldGrid } from "./components/field-grid"');
+    expect(indexSource).toContain('export { OperatorSectionStack } from "./components/section-stack"');
+    expect(indexSource).toContain('export { OperatorStatGrid } from "./components/stat-grid"');
+    expect(indexSource).toContain('export { OperatorDetailText } from "./components/text"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -188,6 +201,7 @@ describe("operator design system contract", () => {
       const source = readFileSync(join(tradingSectionDir, fileName), "utf8");
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).toMatch(/@\/design-system|@\/components\/ui\/badge|\.\/trading-metrics/);
     }
 
@@ -246,6 +260,7 @@ describe("operator design system contract", () => {
       const source = readFileSync(join(arenaSectionDir, fileName), "utf8");
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).toContain("@/design-system");
     }
 
@@ -288,6 +303,7 @@ describe("operator design system contract", () => {
       const source = readFileSync(join(researchSectionDir, fileName), "utf8");
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).toContain("@/design-system");
     }
 
@@ -331,6 +347,34 @@ describe("operator design system contract", () => {
     expect(html).toContain("min-w-0");
     expect(html).toContain("break-words");
     expect(html).not.toContain("truncate");
+  });
+
+  it("keeps section layout, field grids, stat grids, and detail text behind design-system primitives", () => {
+    const html = renderToStaticMarkup(
+      <OperatorSectionStack>
+        <OperatorDetailText>Evidence remains read-only and paper-only.</OperatorDetailText>
+        <OperatorFieldGrid density="dense" aria-label="Boundary fields">
+          <OperatorField label="Authority" value="not_live" />
+          <OperatorField label="Source" value="PaperTradingEvaluation" />
+        </OperatorFieldGrid>
+        <OperatorStatGrid
+          aria-label="Review stats"
+          stats={[
+            { label: "Paper net", value: "2.839997 USDT" },
+            { label: "Qualification", value: "collecting_evidence" }
+          ]}
+        />
+      </OperatorSectionStack>
+    );
+
+    expect(html).toContain('data-operator-ui="section-stack"');
+    expect(html).toContain('data-operator-ui="detail-text"');
+    expect(html).toContain('data-operator-ui="field-grid"');
+    expect(html).toContain('data-density="dense"');
+    expect(html).toContain('data-operator-ui="stat-grid"');
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain("grid");
+    expect(html).toContain("[overflow-wrap:anywhere]");
   });
 
   it("keeps high-level metric strips compact and mobile-first", () => {

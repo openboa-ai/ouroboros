@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
-  OPERATOR_DESIGN_TOKENS,
   OperatorField,
+  OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader
 } from "@/design-system";
@@ -29,11 +29,11 @@ export function TradingReviewPacketSection({
         description="Structured evidence for the active Trading review target. This packet is read-only and keeps live authority disabled."
         actions={<Badge variant={severityVariant}>{severity}</Badge>}
       />
-      <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
+      <OperatorFieldGrid density="dense">
         {fields.map((field) => (
           <OperatorField key={field.label} label={field.label} value={field.value} />
         ))}
-      </dl>
+      </OperatorFieldGrid>
     </OperatorPanel>
   );
 }
