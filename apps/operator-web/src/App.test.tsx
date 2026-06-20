@@ -3989,6 +3989,25 @@ describe("CandidateDetail", () => {
     });
   });
 
+  it("keeps pending Research next-cycle state neutral instead of failed", () => {
+    const html = renderToStaticMarkup(
+      <CandidateDetail
+        activeView="research"
+        candidate={fixtureCandidate}
+      />
+    );
+    const researchCycle = extractResearchCycleSection(html);
+
+    expect(researchCycle).toContain("Next cycle");
+    expect(researchCycle).toContain("not produced");
+    expect(researchCycle).toMatch(
+      /data-operator-ui="evidence-status" data-tone="neutral"(?:(?!data-operator-ui="evidence-status")[\s\S])*?>Next cycle</
+    );
+    expect(researchCycle).not.toMatch(
+      /data-operator-ui="evidence-status" data-tone="failed"(?:(?!data-operator-ui="evidence-status")[\s\S])*?>Next cycle</
+    );
+  });
+
   it("renders Improvement without promotion or trading authority", () => {
     const html = renderToStaticMarkup(
       <CandidateDetail
@@ -5759,11 +5778,20 @@ function extractFindingClustersSection(html: string): string {
 
 function extractResearchCycleSection(html: string): string {
   const start = startOfOpeningTagForAriaLabel(html, "Research cycle");
-  const end = html.indexOf('aria-label="Agent generated Trading System"', start);
-  if (start < 0 || end < 0) {
+  const end = firstPositiveIndex([
+    html.indexOf('aria-label="Agent generated Trading System"', start),
+    html.indexOf('aria-label="Fixture notice"', start),
+    html.indexOf('aria-label="Details boundary"', start)
+  ]);
+  if (start < 0) {
     throw new Error("research cycle section not found");
   }
-  return html.slice(start, end);
+  return html.slice(start, end < 0 ? undefined : end);
+}
+
+function firstPositiveIndex(indexes: number[]): number {
+  const positives = indexes.filter((index) => index >= 0);
+  return positives.length ? Math.min(...positives) : -1;
 }
 
 function extractFixtureNoticeSection(html: string): string {

@@ -2766,9 +2766,7 @@ export function CandidateDetail({
     {
       label: "Next cycle",
       status: nextCycleStatus,
-      tone: nextCycleStatus === "handoff ready" || nextCycleStatus === "agent handoff ready"
-        ? "counted"
-        : "failed"
+      tone: researchNextCycleTone(nextCycleStatus)
     }
   ];
   const researchCycleRows: ResearchCycleRow[] = tradingSystemRows.map((row) => ({
@@ -3968,6 +3966,10 @@ function researchCycleTone(tone: OperatorTone): ResearchCycleStage["tone"] {
     return "failed";
   }
   return "neutral";
+}
+
+function researchNextCycleTone(status: string): ResearchCycleStage["tone"] {
+  return status === "handoff ready" || status === "agent handoff ready" ? "counted" : "neutral";
 }
 
 function tradingReviewSeverityVariant(severity: string): "default" | "destructive" | "secondary" {

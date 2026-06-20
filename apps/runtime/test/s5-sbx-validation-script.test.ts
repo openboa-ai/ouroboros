@@ -10,6 +10,24 @@ const defaultS5ValidationCommandTimeoutMs = "10000";
 const s5LifecycleScriptTimeoutMs = 60_000;
 const s5LifecycleTestTimeoutMs = 75_000;
 const hostS5LifecycleIt = process.env.GITHUB_ACTIONS === "true" ? it.skip : it;
+const s5ScriptEnvironmentKeys = [
+  "OUROBOROS_ALLOW_ACTIVE_SBX_SESSION_INTERRUPTION",
+  "OUROBOROS_ALLOW_SBX_CREATE_PROBE",
+  "OUROBOROS_ALLOW_SBX_DAEMON_RESTART",
+  "OUROBOROS_PROBE_S5_SBX_CREATE_PATH",
+  "OUROBOROS_SBX_BIN",
+  "OUROBOROS_SBX_DAEMON_LOG_PATH",
+  "OUROBOROS_SBX_EVIDENCE_PATH",
+  "OUROBOROS_SBX_HOME",
+  "OUROBOROS_SBX_VALIDATE_NAME_SUFFIX",
+  "OUROBOROS_SBX_VALIDATE_PORT",
+  "OUROBOROS_SDX_BIN",
+  "OUROBOROS_VALIDATE_S5_SBX_AFTER_RECOVERY",
+  "SBX_CALL_LOG",
+  "SBX_EXPECT_HOME",
+  "SBX_FAKE_COMMAND_LOG",
+  "SBX_FAKE_INSTANCE_ID"
+] as const;
 
 beforeEach(() => {
   delete process.env.OUROBOROS_ALLOW_ACTIVE_SBX_SESSION_INTERRUPTION;
@@ -441,6 +459,57 @@ describe("S5 sbx validation harness", () => {
       expect(sbxCalls).toEqual(["version"]);
       await expect(readFile(npmCallLog, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not leak ambient S5 sbx aliases into isolated blocker report harness runs", async () => {
+    const tempDir = await makeTempDir();
+    const sbxCallLog = path.join(tempDir, "sbx-calls.log");
+    const npmCallLog = path.join(tempDir, "npm-calls.log");
+    const reportPath = path.join(tempDir, "blocker-report.md");
+    const evidencePath = path.join(tempDir, "validate-blocked.log");
+    const daemonLogPath = path.join(tempDir, "daemon.log");
+    const fakeSdx = path.join(tempDir, "sdx");
+    try {
+      await writeExecutable(path.join(tempDir, "sbx"), fakeReportSbxScript());
+      await writeExecutable(fakeSdx, fakeSdxScript());
+      await writeExecutable(path.join(tempDir, "npm"), fakeReportNpmScript());
+      await writeExecutable(path.join(tempDir, "brew"), fakeReportBrewScript());
+      await writeExecutable(path.join(tempDir, "sw_vers"), fakeSwVersScript());
+      await writeExecutable(path.join(tempDir, "uname"), fakeUnameScript());
+      await writeExecutable(path.join(tempDir, "sysctl"), fakeSysctlScript());
+      await writeFakeReportHostDiagnosticScripts(tempDir);
+      await writeFile(daemonLogPath, fakeReportDaemonLog(tempDir), "utf8");
+      process.env.OUROBOROS_SDX_BIN = fakeSdx;
+
+      const result = await runScript([
+        "scripts/report-s5-sbx-blocker.mjs",
+        "--evidence",
+        evidencePath,
+        "--report",
+        reportPath
+      ], {
+        PATH: `${tempDir}:${process.env.PATH ?? ""}`,
+        SBX_CALL_LOG: sbxCallLog,
+        NPM_CALL_LOG: npmCallLog,
+        OUROBOROS_SBX_DAEMON_LOG_PATH: daemonLogPath,
+        OUROBOROS_SBX_BLOCKER_REPORT_TIMEOUT_MS: "2000"
+      }, 10_000);
+      const sbxCalls = (await readFile(sbxCallLog, "utf8")).trim().split("\n");
+
+      expect(result.code, scriptOutput(result)).toBe(2);
+      expect(result.stdout).toContain("S5_SBX_BLOCKER_REPORT_RESULT blocked");
+      expect(result.stderr).not.toContain("not the system sdx/Starkit utility");
+      expect(sbxCalls).toEqual([
+        "version",
+        "diagnose --output github-issue",
+        "create --help",
+        "template ls",
+        "ls --json"
+      ]);
+    } finally {
+      delete process.env.OUROBOROS_SDX_BIN;
       await rm(tempDir, { recursive: true, force: true });
     }
   });
@@ -2365,10 +2434,7 @@ function runScript(args: string[], env: Record<string, string>, timeoutMs = 5_00
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       cwd: repoRoot,
-      env: {
-        ...process.env,
-        ...env
-      },
+      env: s5ScriptTestEnv(env),
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
@@ -2392,6 +2458,17 @@ function runScript(args: string[], env: Record<string, string>, timeoutMs = 5_00
       resolve({ code, stdout, stderr });
     });
   });
+}
+
+function s5ScriptTestEnv(env: Record<string, string>): NodeJS.ProcessEnv {
+  const base = { ...process.env };
+  for (const key of s5ScriptEnvironmentKeys) {
+    delete base[key];
+  }
+  return {
+    ...base,
+    ...env
+  };
 }
 
 async function writeExecutable(filePath: string, content: string): Promise<void> {
