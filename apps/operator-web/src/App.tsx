@@ -115,9 +115,22 @@ import {
 } from "./design-system";
 import { OperatorDecisionPanel } from "@/sections/trading/operator-decision-panel";
 import {
+  ArenaAgentProviderSection,
+  type ArenaAgentProviderOption,
+  type ArenaAgentProviderProfile
+} from "@/sections/arena/arena-agent-provider-section";
+import {
+  ArenaCommandLogSection,
+  type ArenaCommandLogEntry
+} from "@/sections/arena/arena-command-log-section";
+import {
   ArenaLeaderboardSection,
   type ArenaLeaderboardEntry
 } from "@/sections/arena/arena-leaderboard-section";
+import {
+  ArenaLatestTicksSection,
+  type ArenaLatestTickSummary
+} from "@/sections/arena/arena-latest-ticks-section";
 import {
   ArenaPaperBoardSection,
   type ArenaPaperBoardEntry
@@ -1324,6 +1337,39 @@ export function CandidateArenaPanel({
   }));
   const selectedProvider = researcherProvider?.selected_provider;
   const selectedAgentProfile = agentProfiles.find((profile) => profile.profile_id === selectedProvider);
+  const arenaAgentProviderProfiles: ArenaAgentProviderProfile[] = agentProfiles.slice(0, 3).map((profile) => ({
+    id: profile.profile_id,
+    label: profile.label,
+    value: `${profile.status} / ${profile.provider}`
+  }));
+  const arenaAgentProviderOptions: ArenaAgentProviderOption[] = (researcherProvider?.available_providers ?? []).map((provider) => ({
+    provider,
+    selectableProvider: isSelectableResearcherProvider(provider) ? provider : undefined,
+    selected: provider === selectedProvider,
+    disabled: actionPending
+  }));
+  const arenaCommandLogEntries: ArenaCommandLogEntry[] = latestCommands.slice(0, 5).map((command) => {
+    const remediation = commandRemediation(command);
+
+    return {
+      id: command.command_id,
+      title: command.command_kind,
+      status: command.error ? `${command.status} / ${command.error}` : command.status,
+      remediationGroup: remediation?.group,
+      visibleSurface: remediation?.surface,
+      nextStep: remediation?.remediation,
+      authority: remediation?.authority_status
+    };
+  });
+  const arenaLatestTickSummary: ArenaLatestTickSummary | undefined = latestTick
+    ? {
+        tickId: latestTick.tick_id,
+        status: latestTick.status,
+        generated: formatCandidateArenaTickGenerated(latestTick),
+        directions: formatCandidateArenaTickDirections(latestTick),
+        efficiency: formatCandidateArenaTickEfficiency(latestTick)
+      }
+    : undefined;
   const paperRunnerActive = selectedPaperTradingEvaluation?.runner_active === true;
   const paperRunnerStatus = selectedPaperTradingEvaluation
     ? paperTradingRunnerStatus(selectedPaperTradingEvaluation)
@@ -1394,274 +1440,164 @@ export function CandidateArenaPanel({
         </div>
         <ArenaPaperBoardSection entries={paperBoardSectionEntries} />
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
-        <ArenaLeaderboardSection
-          entries={arenaLeaderboardEntries}
-          selectedCandidateId={selectedEntry?.candidate_id}
-          onSelectCandidate={onSelectCandidate}
-        />
-        <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
-        {inspectorVisible && (
-          <OperatorPanel aria-label="Selected Candidate Arena candidate">
-            <OperatorSectionHeader
-              title="Selected candidate"
-              description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
-              actions={paperRunnerActive ? (
-                <>
-                  <Button
-                    type="button"
-                    onClick={onObservePaperTrading}
-                    disabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
-                    variant="secondary"
-                  >
-                    {runningPaperTrading ? "Updating paper trading" : "Observe now"}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={onStopPaperTrading}
-                    disabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
-                    variant="outline"
-                  >
-                    Stop paper trading
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  type="button"
-                  onClick={onStartPaperTrading}
-                  disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
-                  variant="secondary"
-                >
-                  {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
-                </Button>
-              )}
-            />
-            <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
-              <Field label="Direction" value={selectedDirection} />
-              <Field label="Parent" value={selectedParent ?? "none"} />
-              <Field label="System Code" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
-              <Field
-                label="ResearchPreflight"
-                value={selectedLineage?.evidence
-                  ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
-                  : selectedStatus}
-              />
-              <Field
-                label="Research leaderboard"
-                value={selectedProfitLoss
-                  ? `${formatUsdt(selectedProfitLoss.net_revenue_usdt)} / ${formatPercent(selectedProfitLoss.net_return_pct)}`
-                  : "not ranked"}
-              />
-              <Field label="Paper Trading Evaluation" value={selectedPaperEvaluationStatus} />
-              <Field
-                label="Paper runner"
-                value={selectedPaperTradingEvaluation
-                  ? formatPaperRunnerSummary(selectedPaperTradingEvaluation)
-                  : "not started"}
-              />
-              <Field
-                label="Paper score"
-                value={selectedPaperTradingEvaluation
-                  ? `${formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)} / ${selectedPaperTradingEvaluation.observation_count} observations`
-                  : "not started"}
-              />
-              <Field
-                label="Paper market snapshot"
-                value={formatPaperMarketSnapshotSummary(selectedPaperMarketSnapshot)}
-              />
-              <Field
-                label="Gateway market data"
-                value={formatGatewayMarketDataSummary(selectedPaperTradingEvaluation)}
-              />
-              <Field
-                label="Public execution evidence"
-                value={selectedPaperExecutionSnapshot
-                  ? formatPublicExecutionEvidenceSummary(selectedPaperExecutionSnapshot)
-                  : "not observed"}
-              />
-              <Field
-                label="Public order book evidence"
-                value={formatPublicOrderBookEvidenceSummary(selectedPaperExecutionSnapshot)}
-              />
-              <Field
-                label="Paper decision"
-                value={formatPaperDecisionSummary(selectedPaperDecision)}
-              />
-              <Field
-                label="Paper account"
-                value={selectedPaperAccount
-                  ? `equity ${formatUsdt(Number(selectedPaperAccount.equity_usdt))} / ${selectedPaperAccount.position.side} ${selectedPaperAccount.position.quantity} BTCUSDT / open ${selectedPaperAccount.open_order_count}`
-                  : "not observed"}
-              />
-              <Field
-                label="Paper fill"
-                value={selectedPaperFill
-                  ? formatPaperFillSummary(selectedPaperFill)
-                  : "none"}
-              />
-              {(selectedPaperTradingEvaluation?.latest_failure || selectedPaperTradingEvaluation?.latest_failure_reason) && (
-                <Field label="Paper failure" value={formatPaperFailure(selectedPaperTradingEvaluation)} />
-              )}
-              <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
-              <Field label="Trading Run" value={selectedTradingRunStatus} />
-              <Field label="Latest finding" value={selectedFinding} />
-              <Field
-                label="Candidate lineage"
-                value={selectedLineage?.source
-                  ? `${selectedLineage.source.trading_system_id} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`
-                  : `${selectedParent ?? "none"} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`}
-              />
-              <Field label="Selected candidate authority" value={selectedAuthority} />
-              {selectedLedgerSummary?.latest_order_request && (
-                <Field
-                  label="OrderRequest"
-                  value={formatLedgerOrderRequestSummary(selectedLedgerSummary)}
-                />
-              )}
-              {selectedLedgerSummary?.latest_gateway_result && (
-                <Field
-                  label="GatewayResult"
-                  value={selectedLedgerSummary.latest_gateway_result.decision_outcome}
-                />
-              )}
-              {selectedLedgerSummary?.latest_execution_result && (
-                <Field
-                  label="ExecutionResult"
-                  value={selectedLedgerSummary.latest_execution_result.status}
-                />
-              )}
-            </dl>
-          </OperatorPanel>
-        )}
-        <OperatorPanel aria-label="Agent provider status">
-          <OperatorSectionHeader
-            title="Agent providers"
-            description="Research provider status and local setup controls."
+          <ArenaLeaderboardSection
+            entries={arenaLeaderboardEntries}
+            selectedCandidateId={selectedEntry?.candidate_id}
+            onSelectCandidate={onSelectCandidate}
           />
-          <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
-            <Field label="Researcher" value={researcherProvider?.selected_provider ?? "not selected"} />
-            <Field label="Selected status" value={selectedAgentProfile?.status ?? "missing"} />
-            <Field label="Available" value={researcherProvider?.available_providers.join(", ") ?? "unknown"} />
-            {selectedAgentProfile?.failure_reason && (
-              <Field label="Failure" value={selectedAgentProfile.failure_reason} />
+          <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
+            {inspectorVisible && (
+              <OperatorPanel aria-label="Selected Candidate Arena candidate">
+                <OperatorSectionHeader
+                  title="Selected candidate"
+                  description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
+                  actions={paperRunnerActive ? (
+                    <>
+                      <Button
+                        type="button"
+                        onClick={onObservePaperTrading}
+                        disabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
+                        variant="secondary"
+                      >
+                        {runningPaperTrading ? "Updating paper trading" : "Observe now"}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={onStopPaperTrading}
+                        disabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
+                        variant="outline"
+                      >
+                        Stop paper trading
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={onStartPaperTrading}
+                      disabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
+                      variant="secondary"
+                    >
+                      {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
+                    </Button>
+                  )}
+                />
+                <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
+                  <Field label="Direction" value={selectedDirection} />
+                  <Field label="Parent" value={selectedParent ?? "none"} />
+                  <Field label="System Code" value={selectedSystemCode ? formatRef(selectedSystemCode) : "load candidate"} />
+                  <Field
+                    label="ResearchPreflight"
+                    value={selectedLineage?.evidence
+                      ? `${selectedLineage.evidence.evaluation_status} ${formatScore(selectedLineage.evidence.evaluation_score)}`
+                      : selectedStatus}
+                  />
+                  <Field
+                    label="Research leaderboard"
+                    value={selectedProfitLoss
+                      ? `${formatUsdt(selectedProfitLoss.net_revenue_usdt)} / ${formatPercent(selectedProfitLoss.net_return_pct)}`
+                      : "not ranked"}
+                  />
+                  <Field label="Paper Trading Evaluation" value={selectedPaperEvaluationStatus} />
+                  <Field
+                    label="Paper runner"
+                    value={selectedPaperTradingEvaluation
+                      ? formatPaperRunnerSummary(selectedPaperTradingEvaluation)
+                      : "not started"}
+                  />
+                  <Field
+                    label="Paper score"
+                    value={selectedPaperTradingEvaluation
+                      ? `${formatUsdt(selectedPaperTradingEvaluation.profit_loss.net_revenue_usdt)} / ${selectedPaperTradingEvaluation.observation_count} observations`
+                      : "not started"}
+                  />
+                  <Field
+                    label="Paper market snapshot"
+                    value={formatPaperMarketSnapshotSummary(selectedPaperMarketSnapshot)}
+                  />
+                  <Field
+                    label="Gateway market data"
+                    value={formatGatewayMarketDataSummary(selectedPaperTradingEvaluation)}
+                  />
+                  <Field
+                    label="Public execution evidence"
+                    value={selectedPaperExecutionSnapshot
+                      ? formatPublicExecutionEvidenceSummary(selectedPaperExecutionSnapshot)
+                      : "not observed"}
+                  />
+                  <Field
+                    label="Public order book evidence"
+                    value={formatPublicOrderBookEvidenceSummary(selectedPaperExecutionSnapshot)}
+                  />
+                  <Field
+                    label="Paper decision"
+                    value={formatPaperDecisionSummary(selectedPaperDecision)}
+                  />
+                  <Field
+                    label="Paper account"
+                    value={selectedPaperAccount
+                      ? `equity ${formatUsdt(Number(selectedPaperAccount.equity_usdt))} / ${selectedPaperAccount.position.side} ${selectedPaperAccount.position.quantity} BTCUSDT / open ${selectedPaperAccount.open_order_count}`
+                      : "not observed"}
+                  />
+                  <Field
+                    label="Paper fill"
+                    value={selectedPaperFill
+                      ? formatPaperFillSummary(selectedPaperFill)
+                      : "none"}
+                  />
+                  {(selectedPaperTradingEvaluation?.latest_failure || selectedPaperTradingEvaluation?.latest_failure_reason) && (
+                    <Field label="Paper failure" value={formatPaperFailure(selectedPaperTradingEvaluation)} />
+                  )}
+                  <Field label="Paper evidence" value={selectedPaperEvidenceStatus} />
+                  <Field label="Trading Run" value={selectedTradingRunStatus} />
+                  <Field label="Latest finding" value={selectedFinding} />
+                  <Field
+                    label="Candidate lineage"
+                    value={selectedLineage?.source
+                      ? `${selectedLineage.source.trading_system_id} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`
+                      : `${selectedParent ?? "none"} -> ${selectedCandidateId ?? selectedCandidate?.candidate_id ?? selectedEntry?.candidate_id ?? "unknown"}`}
+                  />
+                  <Field label="Selected candidate authority" value={selectedAuthority} />
+                  {selectedLedgerSummary?.latest_order_request && (
+                    <Field
+                      label="OrderRequest"
+                      value={formatLedgerOrderRequestSummary(selectedLedgerSummary)}
+                    />
+                  )}
+                  {selectedLedgerSummary?.latest_gateway_result && (
+                    <Field
+                      label="GatewayResult"
+                      value={selectedLedgerSummary.latest_gateway_result.decision_outcome}
+                    />
+                  )}
+                  {selectedLedgerSummary?.latest_execution_result && (
+                    <Field
+                      label="ExecutionResult"
+                      value={selectedLedgerSummary.latest_execution_result.status}
+                    />
+                  )}
+                </dl>
+              </OperatorPanel>
             )}
-            {agentProfiles.slice(0, 3).map((profile) => (
-              <Field
-                key={profile.profile_id}
-                label={profile.label}
-                value={`${profile.status} / ${profile.provider}`}
-              />
-            ))}
-          </dl>
-          <OperatorActionRow>
-            {researcherProvider?.available_providers.map((provider) => (
-              <Button
-                key={provider}
-                type="button"
-                variant={provider === selectedProvider ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => isSelectableResearcherProvider(provider)
-                  ? onSelectResearcherProvider?.(provider)
-                  : undefined}
-                disabled={actionPending || !onSelectResearcherProvider || !isSelectableResearcherProvider(provider)}
-              >
-                {provider}
-              </Button>
-            ))}
-          </OperatorActionRow>
-          <OperatorActionRow>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => selectedProvider ? onSetupAgentProvider?.(selectedProvider) : undefined}
-              disabled={actionPending || !selectedProvider || !onSetupAgentProvider}
-            >
-              Setup
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => selectedProvider ? onProbeAgentProvider?.(selectedProvider) : undefined}
-              disabled={actionPending || !selectedProvider || !onProbeAgentProvider}
-            >
-              Probe
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => selectedProvider ? onStartAgentProviderLogin?.(selectedProvider) : undefined}
-              disabled={actionPending || !selectedProvider || !onStartAgentProviderLogin}
-            >
-              Login
-            </Button>
-          </OperatorActionRow>
-        </OperatorPanel>
-        <OperatorPanel aria-label="Command log">
-          <OperatorSectionHeader
-            title="Command log"
-            description="Recent operator command outcomes and visible remediation surfaces."
-          />
-          {latestCommands.length
-            ? (
-              <OperatorEvidenceStack>
-                {latestCommands.slice(0, 5).map((command) => {
-                const remediation = commandRemediation(command);
-                return (
-                  <OperatorEvidenceBlock
-                    key={command.command_id}
-                    title={command.command_kind}
-                  >
-                    <OperatorEvidenceRow>
-                      <Field
-                        label="Status"
-                        value={command.error ? `${command.status} / ${command.error}` : command.status}
-                      />
-                      {remediation && (
-                        <>
-                          <Field label="Remediation group" value={remediation.group} />
-                          <Field label="Visible surface" value={remediation.surface} />
-                          <Field label="Remediation next step" value={remediation.remediation} />
-                          <Field label="Command authority" value={remediation.authority_status} />
-                        </>
-                      )}
-                    </OperatorEvidenceRow>
-                  </OperatorEvidenceBlock>
-                );
-              })}
-              </OperatorEvidenceStack>
-            )
-            : <p className="text-sm text-muted-foreground">No commands recorded.</p>}
-        </OperatorPanel>
-        <OperatorPanel aria-label="Candidate Arena latest ticks">
-          <OperatorSectionHeader
-            title="Latest ticks"
-            description="Recent CandidateArena generation evidence."
-          />
-          {latestTick ? (
-            <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
-              <Field label="Tick" value={latestTick.tick_id} />
-              <Field label="Status" value={latestTick.status} />
-              <Field label="Generated" value={formatCandidateArenaTickGenerated(latestTick)} />
-              <Field
-                label="Directions"
-                value={formatCandidateArenaTickDirections(latestTick)}
-              />
-              <Field
-                label="Efficiency"
-                value={formatCandidateArenaTickEfficiency(latestTick)}
-              />
-            </dl>
-          ) : (
-            <OperatorEmptyState
-              title="No Candidate Arena ticks recorded."
-              description="Run a CandidateArena tick to create generation evidence."
-              detail="research_only"
+            <ArenaAgentProviderSection
+              researcher={researcherProvider?.selected_provider ?? "not selected"}
+              selectedStatus={selectedAgentProfile?.status ?? "missing"}
+              available={researcherProvider?.available_providers.join(", ") ?? "unknown"}
+              failure={selectedAgentProfile?.failure_reason}
+              profiles={arenaAgentProviderProfiles}
+              providerOptions={arenaAgentProviderOptions}
+              setupDisabled={actionPending || !selectedProvider || !onSetupAgentProvider}
+              probeDisabled={actionPending || !selectedProvider || !onProbeAgentProvider}
+              loginDisabled={actionPending || !selectedProvider || !onStartAgentProviderLogin}
+              onSelectProvider={onSelectResearcherProvider}
+              onSetup={selectedProvider && onSetupAgentProvider ? () => onSetupAgentProvider(selectedProvider) : undefined}
+              onProbe={selectedProvider && onProbeAgentProvider ? () => onProbeAgentProvider(selectedProvider) : undefined}
+              onLogin={selectedProvider && onStartAgentProviderLogin
+                ? () => onStartAgentProviderLogin(selectedProvider)
+                : undefined}
             />
-          )}
-        </OperatorPanel>
-        </aside>
+            <ArenaCommandLogSection entries={arenaCommandLogEntries} />
+            <ArenaLatestTicksSection tick={arenaLatestTickSummary} />
+          </aside>
         </div>
         {message && <div className="inline-status">{message}</div>}
         {error && <div className="inline-status error">{error}</div>}
