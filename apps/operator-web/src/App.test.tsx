@@ -93,8 +93,14 @@ describe("operator design system contract", () => {
   it("keeps operator UI radius, surface, and typography tokens centralized", () => {
     expect(OPERATOR_DESIGN_TOKENS.radius.panel).toBe("var(--radius-lg)");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("rounded-lg");
+    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("bg-card");
     expect(OPERATOR_DESIGN_TOKENS.typography.label).toContain("text-[11px]");
+    expect(OPERATOR_DESIGN_TOKENS.typography.detail).toContain("max-w-full");
+    expect(OPERATOR_DESIGN_TOKENS.typography.calloutValue).toContain("[overflow-wrap:anywhere]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.layout.sectionHeader).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid).toContain("xl:grid-cols-4");
 
     const exportedClasses = JSON.stringify(OPERATOR_DESIGN_TOKENS);
@@ -146,6 +152,33 @@ describe("operator design system contract", () => {
       expect(readFileSync(join(componentDir, fileName), "utf8")).not.toContain("@/components/ui/card");
     }
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
+  });
+
+  it("keeps Trading screen sections as reusable UI-only modules", () => {
+    const tradingSectionDir = join(operatorWebSrcDir, "sections", "trading");
+    const sectionFiles = readdirSync(tradingSectionDir)
+      .filter((fileName) => fileName.endsWith(".tsx"))
+      .sort();
+
+    expect(sectionFiles).toEqual(expect.arrayContaining([
+      "operator-decision-panel.tsx",
+      "paper-review-summary-section.tsx",
+      "trading-market-section.tsx",
+      "trading-metrics.tsx",
+      "trading-paper-readback-section.tsx",
+      "trading-review-packet-section.tsx"
+    ]));
+
+    for (const fileName of sectionFiles) {
+      const source = readFileSync(join(tradingSectionDir, fileName), "utf8");
+
+      expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
+      expect(source).toMatch(/@\/design-system|@\/components\/ui\/badge|\.\/trading-metrics/);
+    }
+
+    expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
+    expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
+    expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
   });
 
   it("renders evidence fields and stats from shared primitives without clipping long values", () => {

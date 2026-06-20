@@ -134,6 +134,13 @@ import {
   OperatorTabBadge
 } from "./design-system";
 import { OperatorDecisionPanel } from "@/sections/trading/operator-decision-panel";
+import { PaperReviewSummarySection } from "@/sections/trading/paper-review-summary-section";
+import { TradingMarketSection } from "@/sections/trading/trading-market-section";
+import {
+  TradingPaperReadbackSection,
+  type TradingReadbackField
+} from "@/sections/trading/trading-paper-readback-section";
+import type { TradingSummaryMetric } from "@/sections/trading/trading-metrics";
 import {
   TradingReviewPacketSection,
   type TradingReviewPacketField
@@ -2814,6 +2821,94 @@ export function CandidateDetail({
         { label: "Risk", value: formatTradingReviewRiskSummary(tradingReviewPacket) }
       ]
     : [];
+  const tradingMarketStatus = tradingPublicMarketSurface?.symbol_status ?? "no market data";
+  const tradingMarketStatusVariant = tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary";
+  const tradingMarketMetrics: TradingSummaryMetric[] = [
+    { label: "Mark price", value: formatPrice(tradingPublicMarketSurface?.mark_price) },
+    { label: "Index price", value: formatPrice(tradingPublicMarketSurface?.index_price) },
+    { label: "Funding", value: tradingPublicMarketSurface?.funding_rate ?? "not connected" },
+    { label: "Next funding", value: formatCompactDateTime(tradingPublicMarketSurface?.next_funding_time) }
+  ];
+  const paperReviewSummaryMetrics: TradingSummaryMetric[] = [
+    {
+      label: "Paper risk equity",
+      value: accountAssetValue,
+      detail: accountAssetDetail,
+      className: toneCardClass(tradingPaperAccount ? "good" : "warning")
+    },
+    {
+      label: "Paper score",
+      value: todayPnlValue,
+      detail: todayPnlDetail,
+      className: toneCardClass(tradingPaperTradingEvaluationWithEvidence
+        ? tradingPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
+        : "warning")
+    },
+    {
+      label: "Paper risk position",
+      value: positionValue,
+      detail: positionDetail,
+      className: toneCardClass(tradingPaperPosition ? "good" : "neutral")
+    },
+    {
+      label: "Review readiness",
+      value: tradingReadinessStatus ?? "paper_required",
+      detail: readinessDetail,
+      className: toneCardClass(paperQualificationTone(tradingQualificationStatus))
+    }
+  ];
+  const tradingReadbackFields: TradingReadbackField[] = [
+    {
+      label: "Paper Trading Evaluation",
+      value: tradingPaperTradingEvaluationWithEvidence
+        ? `${tradingPaperTradingEvaluationWithEvidence.status} / ${tradingPaperTradingEvaluationWithEvidence.observation_count} observations`
+        : "not started"
+    },
+    {
+      label: "Paper runner",
+      value: tradingPaperTradingEvaluationWithEvidence
+        ? paperTradingRunnerStatus(tradingPaperTradingEvaluationWithEvidence)
+        : tradingPaperBoardEntry?.runner_status ?? "not started"
+    },
+    {
+      label: "Paper market snapshot",
+      value: formatPaperMarketSnapshotSummary(tradingPaperMarketSnapshot)
+    },
+    {
+      label: "Gateway market data",
+      value: formatGatewayMarketDataSummary(tradingPaperTradingEvaluationWithEvidence)
+    },
+    {
+      label: "Paper fill",
+      value: tradingPaperFill
+        ? formatPaperFillSummary(tradingPaperFill)
+        : tradingPaperBoardEntry?.latest_fill_status ?? "none"
+    },
+    {
+      label: "Public execution evidence",
+      value: tradingPaperExecutionSnapshot
+        ? formatPublicExecutionEvidenceSummary(tradingPaperExecutionSnapshot)
+        : tradingPaperBoardEntry?.latest_public_execution_source ?? "not connected"
+    },
+    {
+      label: "Public order book evidence",
+      value: formatPublicOrderBookEvidenceSummary(tradingPaperExecutionSnapshot)
+    },
+    ...(tradingPaperTradingEvaluationWithEvidence?.latest_failure ||
+      tradingPaperTradingEvaluationWithEvidence?.latest_failure_reason ||
+      tradingPaperBoardEntry?.latest_failure ||
+      tradingPaperBoardEntry?.latest_failure_reason
+      ? [{
+          label: "Paper failure",
+          value: formatPaperFailure({
+            latest_failure: tradingPaperTradingEvaluationWithEvidence?.latest_failure ??
+              tradingPaperBoardEntry?.latest_failure,
+            latest_failure_reason: tradingPaperTradingEvaluationWithEvidence?.latest_failure_reason ??
+              tradingPaperBoardEntry?.latest_failure_reason
+          })
+        }]
+      : [])
+  ];
   return (
     <OperatorPage>
       <Tabs
@@ -3020,125 +3115,30 @@ export function CandidateDetail({
             <h3 className="font-heading text-base font-medium leading-snug">Trading cockpit</h3>
             <p className="text-sm text-muted-foreground">{tradingCandidate.display_name}</p>
           </div>
-          <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
-            {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
+          <Badge variant={tradingMarketStatusVariant}>
+            {tradingMarketStatus}
           </Badge>
         </div>
         <div className="grid gap-4">
 
-        <OperatorPanel aria-label="BTCUSDT futures chart">
-          <OperatorSectionHeader
-            title="BTCUSDT futures chart"
-            description={tradingPublicMarketSurface
+        <TradingMarketSection
+          description={tradingPublicMarketSurface
               ? "Binance USD-M Futures snapshot"
               : "Market feed is not connected yet."}
-            actions={(
-              <Badge variant={tradingPublicMarketSurface?.symbol_status === "TRADING" ? "default" : "secondary"}>
-                {tradingPublicMarketSurface?.symbol_status ?? "no market data"}
-              </Badge>
-            )}
-          />
+          status={tradingMarketStatus}
+          statusVariant={tradingMarketStatusVariant}
+          metrics={tradingMarketMetrics}
+        >
           <BtcFuturesChart market={tradingPublicMarketSurface} />
-          <div className="grid gap-2 md:grid-cols-4">
-            <MiniStat label="Mark price" value={formatPrice(tradingPublicMarketSurface?.mark_price)} />
-            <MiniStat label="Index price" value={formatPrice(tradingPublicMarketSurface?.index_price)} />
-            <MiniStat label="Funding" value={tradingPublicMarketSurface?.funding_rate ?? "not connected"} />
-            <MiniStat label="Next funding" value={formatCompactDateTime(tradingPublicMarketSurface?.next_funding_time)} />
-          </div>
-        </OperatorPanel>
+        </TradingMarketSection>
 
-        <section className="grid gap-3 md:grid-cols-4" aria-label="Paper trading review summary">
-          <OperatorMetricCard
-            label="Paper risk equity"
-            value={accountAssetValue}
-            detail={accountAssetDetail}
-            tone={tradingPaperAccount ? "good" : "warning"}
-          />
-          <OperatorMetricCard
-            label="Paper score"
-            value={todayPnlValue}
-            detail={todayPnlDetail}
-            tone={tradingPaperTradingEvaluationWithEvidence
-              ? tradingPaperTradingEvaluationWithEvidence.profit_loss.net_revenue_usdt >= 0 ? "good" : "danger"
-              : "warning"}
-          />
-          <OperatorMetricCard
-            label="Paper risk position"
-            value={positionValue}
-            detail={positionDetail}
-            tone={tradingPaperPosition ? "good" : "neutral"}
-          />
-          <OperatorMetricCard
-            label="Review readiness"
-            value={tradingReadinessStatus ?? "paper_required"}
-            detail={readinessDetail}
-            tone={paperQualificationTone(tradingQualificationStatus)}
-          />
-        </section>
+        <PaperReviewSummarySection metrics={paperReviewSummaryMetrics} />
 
-        <OperatorPanel aria-label="Trading paper readback">
-          <OperatorSectionHeader
-            eyebrow="Paper readback"
-            title="Trading review evidence"
-            actions={(
-              <Badge variant={selectedIsTradingReviewCandidate ? "default" : "secondary"}>
-                {selectedIsTradingReviewCandidate ? "Trading review" : "Arena selection differs"}
-              </Badge>
-            )}
-          />
-            <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
-              <Field
-                label="Paper Trading Evaluation"
-                value={tradingPaperTradingEvaluationWithEvidence
-                  ? `${tradingPaperTradingEvaluationWithEvidence.status} / ${tradingPaperTradingEvaluationWithEvidence.observation_count} observations`
-                  : "not started"}
-              />
-              <Field
-                label="Paper runner"
-                value={tradingPaperTradingEvaluationWithEvidence
-                  ? paperTradingRunnerStatus(tradingPaperTradingEvaluationWithEvidence)
-                  : tradingPaperBoardEntry?.runner_status ?? "not started"}
-              />
-              <Field
-                label="Paper market snapshot"
-                value={formatPaperMarketSnapshotSummary(tradingPaperMarketSnapshot)}
-              />
-              <Field
-                label="Gateway market data"
-                value={formatGatewayMarketDataSummary(tradingPaperTradingEvaluationWithEvidence)}
-              />
-              <Field
-                label="Paper fill"
-                value={tradingPaperFill
-                  ? formatPaperFillSummary(tradingPaperFill)
-                  : tradingPaperBoardEntry?.latest_fill_status ?? "none"}
-              />
-              <Field
-                label="Public execution evidence"
-                value={tradingPaperExecutionSnapshot
-                  ? formatPublicExecutionEvidenceSummary(tradingPaperExecutionSnapshot)
-                  : tradingPaperBoardEntry?.latest_public_execution_source ?? "not connected"}
-              />
-              <Field
-                label="Public order book evidence"
-                value={formatPublicOrderBookEvidenceSummary(tradingPaperExecutionSnapshot)}
-              />
-              {(tradingPaperTradingEvaluationWithEvidence?.latest_failure ||
-                tradingPaperTradingEvaluationWithEvidence?.latest_failure_reason ||
-                tradingPaperBoardEntry?.latest_failure ||
-                tradingPaperBoardEntry?.latest_failure_reason) && (
-                <Field
-                  label="Paper failure"
-                  value={formatPaperFailure({
-                    latest_failure: tradingPaperTradingEvaluationWithEvidence?.latest_failure ??
-                      tradingPaperBoardEntry?.latest_failure,
-                    latest_failure_reason: tradingPaperTradingEvaluationWithEvidence?.latest_failure_reason ??
-                      tradingPaperBoardEntry?.latest_failure_reason
-                  })}
-                />
-              )}
-            </dl>
-        </OperatorPanel>
+        <TradingPaperReadbackSection
+          badgeLabel={selectedIsTradingReviewCandidate ? "Trading review" : "Arena selection differs"}
+          badgeVariant={selectedIsTradingReviewCandidate ? "default" : "secondary"}
+          fields={tradingReadbackFields}
+        />
 
         <TradeStatusPanel
           ledgerStatus={tradingLedgerStatus}
@@ -3816,17 +3816,6 @@ function selectableResearcherProvider(provider: AgentProfileProviderKind): "code
     return provider;
   }
   throw new Error(`Researcher provider ${provider} is not supported yet.`);
-}
-
-function OperatorMetricCard({
-  label,
-  value,
-  detail,
-  tone
-}: OperatorMetric) {
-  return (
-    <OperatorStat label={label} value={value} detail={detail} className={toneCardClass(tone)} />
-  );
 }
 
 function OperatorStatusCard({
