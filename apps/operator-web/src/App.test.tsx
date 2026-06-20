@@ -163,6 +163,7 @@ describe("operator design system contract", () => {
     expect(sectionFiles).toEqual(expect.arrayContaining([
       "operator-decision-panel.tsx",
       "paper-review-summary-section.tsx",
+      "trading-market-chart.tsx",
       "trading-order-status-section.tsx",
       "trading-market-section.tsx",
       "trading-metrics.tsx",
@@ -179,6 +180,9 @@ describe("operator design system contract", () => {
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("@/components/ui/chart");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceRow");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
@@ -189,6 +193,16 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStat");
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
+    expect(readFileSync(join(operatorWebSrcDir, "components", "ui", "chart.tsx"), "utf8")).toContain("recharts");
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain("function BtcFuturesChart");
+  });
+
+  it("keeps Trading market chart evidence limited to sourced market prices", () => {
+    const appSource = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+
+    expect(appSource).not.toContain("estimated_settle_price ?? market.index_price");
+    expect(appSource).not.toContain("* 1.00025");
+    expect(appSource).not.toContain("* 0.99985");
   });
 
   it("keeps Candidate Arena screen sections as reusable UI-only modules", () => {
@@ -3044,7 +3058,7 @@ describe("CandidateDetail", () => {
     expect(provenance).not.toContain("bg-muted/20");
     expect(provenance).not.toContain("bg-muted/20 p-3");
     expect(html.indexOf('aria-label="Market data provenance"')).toBeLessThan(
-      html.indexOf('aria-label="BTCUSDT mark price snapshot"')
+      html.indexOf('aria-label="BTCUSDT public market snapshot"')
     );
   });
 
@@ -5904,7 +5918,7 @@ function extractExecutionModesSection(html: string): string {
 
 function extractMarketDataProvenanceSection(html: string): string {
   const start = startOfOpeningTagForAriaLabel(html, "Market data provenance");
-  const end = html.indexOf('aria-label="BTCUSDT mark price snapshot"', start);
+  const end = html.indexOf('aria-label="BTCUSDT public market snapshot"', start);
   if (start < 0 || end < 0) {
     throw new Error("market data provenance section not found");
   }

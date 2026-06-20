@@ -150,6 +150,11 @@ import {
 } from "@/sections/trading/trading-order-status-section";
 import { TradingMarketSection } from "@/sections/trading/trading-market-section";
 import {
+  TradingMarketChart,
+  type TradingMarketChartField,
+  type TradingMarketChartPoint
+} from "@/sections/trading/trading-market-chart";
+import {
   TradingPaperReadbackSection,
   type TradingReadbackField
 } from "@/sections/trading/trading-paper-readback-section";
@@ -2519,6 +2524,29 @@ export function CandidateDetail({
     { label: "Funding", value: tradingPublicMarketSurface?.funding_rate ?? "not connected" },
     { label: "Next funding", value: formatCompactDateTime(tradingPublicMarketSurface?.next_funding_time) }
   ];
+  const tradingMarketChartFields: TradingMarketChartField[] = tradingPublicMarketSurface
+    ? [
+      { label: "Source mode", value: formatMarketSourceMode(tradingPublicMarketSurface) },
+      { label: "Freshness / liveness", value: formatMarketFreshness(tradingPublicMarketSurface) },
+      { label: "Observed", value: formatCompactDateTime(tradingPublicMarketSurface.observed_at) },
+      {
+        label: "Boundary",
+        value: `${formatAuthorityLabel(tradingPublicMarketSurface.authority_status)} / ${tradingPublicMarketSurface.no_authority_label}`
+      }
+    ]
+    : [
+      { label: "Market feed", value: "not connected" },
+      { label: "Required boundary", value: "Gateway-owned MarketDataPort" }
+    ];
+  const tradingMarketChartPoints = tradingPublicMarketSurface
+    ? marketChartPoints(tradingPublicMarketSurface)
+    : [];
+  const tradingMarketInstrumentLabel = tradingPublicMarketSurface
+    ? `${tradingPublicMarketSurface.instrument} ${tradingPublicMarketSurface.contract_type}`
+    : "Market feed";
+  const tradingMarketFooterDetail = tradingPublicMarketSurface
+    ? `snapshot only / ${formatFreshnessLabel(tradingPublicMarketSurface.freshness)} / ${formatAuthorityLabel(tradingPublicMarketSurface.authority_status)}`
+    : "Gateway-owned MarketDataPort";
   const paperReviewSummaryMetrics: TradingSummaryMetric[] = [
     {
       label: "Paper risk equity",
@@ -2819,7 +2847,12 @@ export function CandidateDetail({
           statusVariant={tradingMarketStatusVariant}
           metrics={tradingMarketMetrics}
         >
-          <BtcFuturesChart market={tradingPublicMarketSurface} />
+          <TradingMarketChart
+            fields={tradingMarketChartFields}
+            points={tradingMarketChartPoints}
+            instrumentLabel={tradingMarketInstrumentLabel}
+            footerDetail={tradingMarketFooterDetail}
+          />
         </TradingMarketSection>
 
         <PaperReviewSummarySection metrics={paperReviewSummaryMetrics} />
@@ -3596,52 +3629,6 @@ function ResearchStage({
   );
 }
 
-function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadModel | null }) {
-  if (!market) {
-    return (
-      <dl className={OPERATOR_DESIGN_TOKENS.layout.fieldGrid}>
-        <Field label="Market feed" value="not connected" />
-        <Field label="Required boundary" value="Gateway-owned MarketDataPort" />
-      </dl>
-    );
-  }
-
-  const points = marketChartPoints(market);
-  return (
-    <div className="grid gap-3">
-      <OperatorEvidenceRow className="md:grid-cols-4" aria-label="Market data provenance">
-        <Field label="Source mode" value={formatMarketSourceMode(market)} />
-        <Field label="Freshness / liveness" value={formatMarketFreshness(market)} />
-        <Field label="Observed" value={formatCompactDateTime(market.observed_at)} />
-        <Field label="Boundary" value={`${formatAuthorityLabel(market.authority_status)} / ${market.no_authority_label}`} />
-      </OperatorEvidenceRow>
-      <svg
-        className="aspect-[16/5] w-full rounded-lg bg-muted"
-        viewBox="0 0 520 180"
-        role="img"
-        aria-label="BTCUSDT mark price snapshot"
-      >
-        <defs>
-          <linearGradient id="marketLineFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <line x1="20" x2="500" y1="42" y2="42" stroke="var(--border)" strokeWidth="1" />
-        <line x1="20" x2="500" y1="80" y2="80" stroke="var(--border)" strokeWidth="1" />
-        <line x1="20" x2="500" y1="118" y2="118" stroke="var(--border)" strokeWidth="1" />
-        <path d={`${points} L 500 156 L 20 156 Z`} fill="url(#marketLineFill)" />
-        <path d={points} fill="none" stroke="var(--chart-1)" strokeLinecap="round" strokeWidth="3" />
-        <line x1="20" x2="500" y1="156" y2="156" stroke="var(--border)" strokeWidth="1" />
-      </svg>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <strong>{market.instrument} {market.contract_type}</strong>
-        <span>snapshot only / {formatFreshnessLabel(market.freshness)} / {formatAuthorityLabel(market.authority_status)}</span>
-      </div>
-    </div>
-  );
-}
-
 function formatMarketSourceMode(market: PublicMarketLivenessSurfaceReadModel): string {
   if (market.fixture_backed || market.simulated || market.source_kind === "fixture") {
     return `fixture / ${market.simulated ? "simulated" : "read-only"}`;
@@ -3846,28 +3833,17 @@ function formatCandidateArenaTickEfficiency(tick: CandidateArenaReadModel["lates
   return summaries.length ? summaries.join("; ") : "not recorded";
 }
 
-function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): string {
-  const values = [
-    parseNumber(market.index_price),
-    parseNumber(market.estimated_settle_price ?? market.index_price),
-    parseNumber(market.mark_price),
-    parseNumber(market.mark_price) * 1.00025,
-    parseNumber(market.index_price) * 0.99985,
-    parseNumber(market.mark_price)
-  ].filter((value) => Number.isFinite(value));
-  if (values.length === 0) {
-    return "M 20 90 L 500 90";
-  }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+function marketChartPoints(market: PublicMarketLivenessSurfaceReadModel): TradingMarketChartPoint[] {
+  const values: Array<[string, number]> = [
+    ["index", parseNumber(market.index_price)],
+    ...(market.estimated_settle_price
+      ? [["settle", parseNumber(market.estimated_settle_price)] as [string, number]]
+      : []),
+    ["mark", parseNumber(market.mark_price)]
+  ];
   return values
-    .map((value, index) => {
-      const x = 20 + (index * (480 / Math.max(values.length - 1, 1)));
-      const y = 28 + ((max - value) / range) * 116;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
+    .filter(([, value]) => Number.isFinite(value))
+    .map(([label, price]) => ({ label, price }));
 }
 
 function parseNumber(value: string): number {
