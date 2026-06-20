@@ -79,6 +79,7 @@ import {
   OperatorActionRow,
   OperatorCallout,
   OperatorField,
+  OperatorMetricStrip,
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
@@ -126,6 +127,7 @@ describe("operator design system contract", () => {
       "empty-state.tsx",
       "evidence.tsx",
       "field.tsx",
+      "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
       "section-header.tsx",
@@ -135,6 +137,7 @@ describe("operator design system contract", () => {
 
     const indexSource = readFileSync(join(designSystemDir, "index.ts"), "utf8");
     expect(indexSource).toContain('export { OPERATOR_DESIGN_TOKENS } from "./tokens"');
+    expect(indexSource).toContain('export { OperatorMetricStrip } from "./components/metric-strip"');
 
     for (const fileName of componentFiles) {
       const source = readFileSync(join(componentDir, fileName), "utf8");
@@ -153,6 +156,7 @@ describe("operator design system contract", () => {
     }
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(componentDir, "metric-strip.tsx"), "utf8")).toContain("./stat");
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -190,6 +194,8 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("@/components/ui/chart");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceRow");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorField");
+    expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).toContain("OperatorMetricStrip");
+    expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
@@ -243,7 +249,8 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
     expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/badge");
-    expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).toContain("OperatorStat");
+    expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).toContain("OperatorMetricStrip");
+    expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(arenaSectionDir, "arena-agent-provider-section.tsx"), "utf8")).toContain("@/components/ui/button");
@@ -320,11 +327,13 @@ describe("operator design system contract", () => {
 
   it("keeps high-level metric strips compact and mobile-first", () => {
     const html = renderToStaticMarkup(
-      <div data-operator-ui="metric-strip" className={OPERATOR_DESIGN_TOKENS.layout.statGrid}>
-        <OperatorStat label="Arena runner" value="running" detail="3 ticks" />
-        <OperatorStat label="ResearchPreflight net" value="9.83 USDT" detail="revenue - cost" />
-        <OperatorStat label="ResearchPreflight return" value="0.0983%" detail="secondary rank signal" />
-      </div>
+      <OperatorMetricStrip
+        metrics={[
+          { label: "Arena runner", value: "running", detail: "3 ticks" },
+          { label: "ResearchPreflight net", value: "9.83 USDT", detail: "revenue - cost" },
+          { label: "ResearchPreflight return", value: "0.0983%", detail: "secondary rank signal" }
+        ]}
+      />
     );
 
     expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("repeat(auto-fit");
