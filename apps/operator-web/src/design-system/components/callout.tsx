@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { OPERATOR_DESIGN_TOKENS } from "../tokens";
 
@@ -12,11 +12,11 @@ export function OperatorCallout({
   className?: string;
 }) {
   return (
-    <Card data-operator-ui="callout" size="sm" className={cn(OPERATOR_DESIGN_TOKENS.surface.callout, className)}>
-      <CardContent className={OPERATOR_DESIGN_TOKENS.layout.calloutContent}>
-        <span className={OPERATOR_DESIGN_TOKENS.typography.label}>{label}</span>
-        <strong className={OPERATOR_DESIGN_TOKENS.typography.calloutValue}>{value}</strong>
-      </CardContent>
-    </Card>
+    <Alert data-operator-ui="callout" className={cn(OPERATOR_DESIGN_TOKENS.surface.callout, className)}>
+      <AlertTitle className={OPERATOR_DESIGN_TOKENS.typography.label}>{label}</AlertTitle>
+      <AlertDescription className={OPERATOR_DESIGN_TOKENS.typography.calloutValue}>
+        {value}
+      </AlertDescription>
+    </Alert>
   );
 }

@@ -133,6 +133,11 @@ import {
   OperatorStat,
   OperatorTabBadge
 } from "./design-system";
+import { OperatorDecisionPanel } from "@/sections/trading/operator-decision-panel";
+import {
+  TradingReviewPacketSection,
+  type TradingReviewPacketField
+} from "@/sections/trading/trading-review-packet-section";
 import "./styles.css";
 
 export interface AppState {
@@ -2771,6 +2776,44 @@ export function CandidateDetail({
     const remediation = commandRemediation(command);
     return remediation ? [{ command, remediation }] : [];
   });
+  const tradingReviewPacketFields: TradingReviewPacketField[] = tradingReviewPacket
+    ? [
+        {
+          label: "Packet verdict",
+          value: `${tradingReviewPacket.verdict.severity} / ${tradingReviewPacket.verdict.top_blocker ?? "none"}`
+        },
+        {
+          label: "Subject",
+          value: formatTradingReviewSubjectSummary(tradingReviewPacket)
+        },
+        {
+          label: "Paper rank",
+          value: tradingReviewPacket.performance.rank
+            ? `#${tradingReviewPacket.performance.rank} / ${formatUsdt(tradingReviewPacket.performance.profit_loss?.net_revenue_usdt ?? 0)}`
+            : tradingReviewPacket.performance.profit_loss
+              ? formatUsdt(tradingReviewPacket.performance.profit_loss.net_revenue_usdt)
+              : "not ranked"
+        },
+        {
+          label: "Blocker groups",
+          value: tradingReviewPacket.evidence_quality.blocker_groups.length
+            ? tradingReviewPacket.evidence_quality.blocker_groups.map((group) => group.group_kind).join(", ")
+            : "none"
+        },
+        { label: "Blocker detail", value: formatTradingReviewBlockerSummary(tradingReviewPacket) },
+        { label: "Evidence window", value: formatTradingReviewEvidenceWindowSummary(tradingReviewPacket) },
+        { label: "Runner health", value: formatTradingReviewRunnerSummary(tradingReviewPacket) },
+        { label: "Ledger", value: formatTradingReviewLedgerSummary(tradingReviewPacket) },
+        { label: "Lineage", value: formatTradingReviewLineageSummary(tradingReviewPacket) },
+        ...(tradingReviewPacket.lineage.paper_board_learning
+          ? [{ label: "Lineage learning", value: formatTradingReviewLineageLearningSummary(tradingReviewPacket) }]
+          : []),
+        { label: "Packet next action", value: tradingReviewPacket.next_action },
+        { label: "Packet authority", value: formatTradingReviewAuthoritySummary(tradingReviewPacket) },
+        { label: "Provenance", value: formatTradingReviewProvenanceSummary(tradingReviewPacket) },
+        { label: "Risk", value: formatTradingReviewRiskSummary(tradingReviewPacket) }
+      ]
+    : [];
   return (
     <OperatorPage>
       <Tabs
@@ -2857,121 +2900,55 @@ export function CandidateDetail({
         </TabsContent>
 
         <TabsContent value="trading" className="flex flex-col gap-4">
-      <OperatorPanel variant="elevated" aria-label="Operator decision bar">
-        <OperatorSectionHeader
-          eyebrow={workspaceLabel}
-          title="Trading"
-          description={`Paper Trading review cockpit. Live exchange authority remains disabled in this MLP. ${operatorDecision.detail}`}
-          actions={(
-            <>
-              <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
-              <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
-              <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
-              <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
-                {formatFreshnessLabel(marketFreshness)}
-              </Badge>
-            </>
-          )}
-        />
-        <div className="grid min-w-0 gap-3 md:grid-cols-[1fr_auto] md:items-center">
-        <OperatorCallout
-          label="Recommended action"
-          value={operatorDecision.value}
-          className={toneCardClass(operatorDecision.tone)}
-        />
-        <OperatorActionRow>
-          {onObserveTradingRun && (
-            <Button
-              type="button"
-              onClick={onObserveTradingRun}
-              disabled={runningTradingRun || tradingReviewMismatch}
-              variant="secondary"
-            >
-              Observe paper
-            </Button>
-          )}
-          {onStopTradingRun && (
-            <Button
-              type="button"
-              onClick={onStopTradingRun}
-              disabled={runningTradingRun || tradingReviewMismatch || tradingCandidate.runtime.runtime_lifecycle_status === "stopped"}
-              variant="outline"
-            >
-              Stop paper
-            </Button>
-          )}
-        </OperatorActionRow>
-        </div>
-      </OperatorPanel>
+      <OperatorDecisionPanel
+        workspaceLabel={workspaceLabel}
+        detail={operatorDecision.detail}
+        badges={(
+          <>
+            <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
+            <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
+            <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
+            <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
+              {formatFreshnessLabel(marketFreshness)}
+            </Badge>
+          </>
+        )}
+        recommendedAction={{
+          value: operatorDecision.value,
+          className: toneCardClass(operatorDecision.tone)
+        }}
+        actions={(
+          <>
+            {onObserveTradingRun && (
+              <Button
+                type="button"
+                onClick={onObserveTradingRun}
+                disabled={runningTradingRun || tradingReviewMismatch}
+                variant="secondary"
+              >
+                Observe paper
+              </Button>
+            )}
+            {onStopTradingRun && (
+              <Button
+                type="button"
+                onClick={onStopTradingRun}
+                disabled={runningTradingRun || tradingReviewMismatch || tradingCandidate.runtime.runtime_lifecycle_status === "stopped"}
+                variant="outline"
+              >
+                Stop paper
+              </Button>
+            )}
+          </>
+        )}
+      />
 
       {tradingReviewPacket && (
-        <OperatorPanel aria-label="Trading review packet">
-          <OperatorSectionHeader
-            eyebrow="Review packet"
-            title="Trading review packet"
-            description="Structured evidence for the active Trading review target. This packet is read-only and keeps live authority disabled."
-            actions={(
-              <Badge variant={tradingReviewPacket.verdict.severity === "ready"
-                ? "default"
-                : tradingReviewPacket.verdict.severity === "blocked" ||
-                    tradingReviewPacket.verdict.severity === "failed" ||
-                    tradingReviewPacket.verdict.severity === "mismatch"
-                  ? "destructive"
-                  : "secondary"}
-              >
-                {tradingReviewPacket.verdict.severity}
-              </Badge>
-            )}
-          />
-            <dl className={OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid}>
-              <Field
-                label="Packet verdict"
-                value={`${tradingReviewPacket.verdict.severity} / ${tradingReviewPacket.verdict.top_blocker ?? "none"}`}
-              />
-              <Field
-                label="Subject"
-                value={formatTradingReviewSubjectSummary(tradingReviewPacket)}
-              />
-              <Field
-                label="Paper rank"
-                value={tradingReviewPacket.performance.rank
-                  ? `#${tradingReviewPacket.performance.rank} / ${formatUsdt(tradingReviewPacket.performance.profit_loss?.net_revenue_usdt ?? 0)}`
-                  : tradingReviewPacket.performance.profit_loss
-                    ? formatUsdt(tradingReviewPacket.performance.profit_loss.net_revenue_usdt)
-                    : "not ranked"}
-              />
-              <Field
-                label="Blocker groups"
-                value={tradingReviewPacket.evidence_quality.blocker_groups.length
-                  ? tradingReviewPacket.evidence_quality.blocker_groups.map((group) => group.group_kind).join(", ")
-                  : "none"}
-              />
-              <Field label="Blocker detail" value={formatTradingReviewBlockerSummary(tradingReviewPacket)} />
-              <Field
-                label="Evidence window"
-                value={formatTradingReviewEvidenceWindowSummary(tradingReviewPacket)}
-              />
-              <Field label="Runner health" value={formatTradingReviewRunnerSummary(tradingReviewPacket)} />
-              <Field label="Ledger" value={formatTradingReviewLedgerSummary(tradingReviewPacket)} />
-              <Field label="Lineage" value={formatTradingReviewLineageSummary(tradingReviewPacket)} />
-              {tradingReviewPacket.lineage.paper_board_learning && (
-                <Field label="Lineage learning" value={formatTradingReviewLineageLearningSummary(tradingReviewPacket)} />
-              )}
-              <Field label="Packet next action" value={tradingReviewPacket.next_action} />
-              <Field
-                label="Packet authority"
-                value={formatTradingReviewAuthoritySummary(tradingReviewPacket)}
-              />
-              <Field
-                label="Provenance"
-                value={formatTradingReviewProvenanceSummary(tradingReviewPacket)}
-              />
-              <Field
-                label="Risk"
-                value={formatTradingReviewRiskSummary(tradingReviewPacket)}
-              />
-            </dl>
-        </OperatorPanel>
+        <TradingReviewPacketSection
+          severity={tradingReviewPacket.verdict.severity}
+          severityVariant={tradingReviewSeverityVariant(tradingReviewPacket.verdict.severity)}
+          fields={tradingReviewPacketFields}
+        />
       )}
 
       <TradingPromotionBoundaryCard
@@ -3975,16 +3952,16 @@ function BtcFuturesChart({ market }: { market?: PublicMarketLivenessSurfaceReadM
       >
         <defs>
           <linearGradient id="marketLineFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#0ECB81" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="#0ECB81" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <line x1="20" x2="500" y1="42" y2="42" stroke="#2B3139" strokeWidth="1" />
-        <line x1="20" x2="500" y1="80" y2="80" stroke="#2B3139" strokeWidth="1" />
-        <line x1="20" x2="500" y1="118" y2="118" stroke="#2B3139" strokeWidth="1" />
+        <line x1="20" x2="500" y1="42" y2="42" stroke="var(--border)" strokeWidth="1" />
+        <line x1="20" x2="500" y1="80" y2="80" stroke="var(--border)" strokeWidth="1" />
+        <line x1="20" x2="500" y1="118" y2="118" stroke="var(--border)" strokeWidth="1" />
         <path d={`${points} L 500 156 L 20 156 Z`} fill="url(#marketLineFill)" />
-        <path d={points} fill="none" stroke="#0ECB81" strokeLinecap="round" strokeWidth="3" />
-        <line x1="20" x2="500" y1="156" y2="156" stroke="#2B3139" strokeWidth="1" />
+        <path d={points} fill="none" stroke="var(--chart-1)" strokeLinecap="round" strokeWidth="3" />
+        <line x1="20" x2="500" y1="156" y2="156" stroke="var(--border)" strokeWidth="1" />
       </svg>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <strong>{market.instrument} {market.contract_type}</strong>
@@ -4378,6 +4355,16 @@ function toneCardClass(tone: OperatorTone): string {
     return "border-primary/20 bg-card";
   }
   return "bg-card";
+}
+
+function tradingReviewSeverityVariant(severity: string): "default" | "destructive" | "secondary" {
+  if (severity === "ready") {
+    return "default";
+  }
+  if (severity === "blocked" || severity === "failed" || severity === "mismatch") {
+    return "destructive";
+  }
+  return "secondary";
 }
 
 const POSITIVE_RISK_DECISIONS = new Set([

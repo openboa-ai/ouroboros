@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { OPERATOR_DESIGN_TOKENS } from "../tokens";
 
@@ -39,8 +39,10 @@ export function OperatorEvidenceBlock({
       className={cn(OPERATOR_DESIGN_TOKENS.surface.evidenceBlock, className)}
       {...props}
     >
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
       <CardContent className={OPERATOR_DESIGN_TOKENS.layout.evidenceBlockContent}>
-        <h4 className="text-sm font-semibold leading-snug tracking-normal text-foreground">{title}</h4>
         {children}
       </CardContent>
     </Card>
@@ -85,13 +87,13 @@ export function OperatorEvidenceStatus({
 function evidenceStatusToneClass(tone: OperatorEvidenceTone): string {
   switch (tone) {
     case "counted":
-      return "border-l-2 border-emerald-400/70 bg-emerald-500/8";
+      return "border-l-2 border-chart-1 bg-chart-1/10";
     case "failed":
-      return "border-l-2 border-destructive/70 bg-destructive/8";
+      return "border-l-2 border-destructive bg-destructive/10";
     case "sealed":
-      return "border-l-2 border-primary/70 bg-primary/8";
+      return "border-l-2 border-primary bg-primary/10";
     case "neutral":
-      return "border-l-2 border-border/35 bg-muted/10";
+      return "border-l-2 border-border bg-muted/50";
   }
 }
 

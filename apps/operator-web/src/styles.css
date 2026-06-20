@@ -6,39 +6,39 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  color-scheme: dark;
-  --background: oklch(0.125 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.185 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.185 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.86 0.16 91);
-  --primary-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.255 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.235 0 0);
-  --muted-foreground: oklch(0.74 0 0);
-  --accent: oklch(0.255 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  color-scheme: light;
+  --background: oklch(0.977 0.004 286);
+  --foreground: oklch(0.184 0.013 286);
+  --card: oklch(0.998 0 0);
+  --card-foreground: oklch(0.184 0.013 286);
+  --popover: oklch(0.998 0 0);
+  --popover-foreground: oklch(0.184 0.013 286);
+  --primary: oklch(0.39 0.102 258);
+  --primary-foreground: oklch(0.985 0.006 286);
+  --secondary: oklch(0.935 0.008 286);
+  --secondary-foreground: oklch(0.235 0.014 286);
+  --muted: oklch(0.946 0.007 286);
+  --muted-foreground: oklch(0.505 0.018 286);
+  --accent: oklch(0.918 0.031 258);
+  --accent-foreground: oklch(0.235 0.014 286);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.76 0.12 91);
+  --border: oklch(0.845 0.012 286);
+  --input: oklch(0.88 0.012 286);
+  --ring: oklch(0.59 0.11 258);
   --chart-1: oklch(0.75 0.17 154);
   --chart-2: oklch(0.704 0.191 22.216);
-  --chart-3: oklch(0.86 0.16 91);
+  --chart-3: oklch(0.74 0.14 83);
   --chart-4: oklch(0.556 0 0);
   --chart-5: oklch(0.439 0 0);
   --radius: 0.5rem;
-  --sidebar: oklch(0.155 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.86 0.16 91);
-  --sidebar-primary-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.255 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.76 0.12 91);
+  --sidebar: oklch(0.952 0.006 286);
+  --sidebar-foreground: oklch(0.235 0.014 286);
+  --sidebar-primary: oklch(0.39 0.102 258);
+  --sidebar-primary-foreground: oklch(0.985 0.006 286);
+  --sidebar-accent: oklch(0.905 0.011 286);
+  --sidebar-accent-foreground: oklch(0.184 0.013 286);
+  --sidebar-border: oklch(0.85 0.012 286);
+  --sidebar-ring: oklch(0.59 0.11 258);
 }
 
 @theme inline {
@@ -96,6 +96,11 @@
   body {
     @apply bg-background text-foreground;
     margin: 0;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-width: 0;
   }
 
   button:not(:disabled),
