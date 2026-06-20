@@ -163,6 +163,7 @@ describe("operator design system contract", () => {
     expect(sectionFiles).toEqual(expect.arrayContaining([
       "operator-decision-panel.tsx",
       "paper-review-summary-section.tsx",
+      "trading-market-chart.tsx",
       "trading-order-status-section.tsx",
       "trading-market-section.tsx",
       "trading-metrics.tsx",
@@ -179,6 +180,9 @@ describe("operator design system contract", () => {
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("@/components/ui/chart");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceRow");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
@@ -189,6 +193,8 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStat");
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");
+    expect(readFileSync(join(operatorWebSrcDir, "components", "ui", "chart.tsx"), "utf8")).toContain("recharts");
+    expect(readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8")).not.toContain("function BtcFuturesChart");
   });
 
   it("keeps Candidate Arena screen sections as reusable UI-only modules", () => {
