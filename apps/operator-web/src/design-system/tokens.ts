@@ -23,18 +23,24 @@ export const OPERATOR_DESIGN_TOKENS = {
     tabBadge: "rounded-sm bg-muted/70 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
   },
   typography: {
+    appTitle: "min-w-0 max-w-full break-words text-sm font-medium leading-snug text-foreground [overflow-wrap:anywhere]",
+    appSubtitle: "min-w-0 max-w-full truncate text-xs leading-snug text-muted-foreground",
     label: "max-w-full break-words text-[11px] font-medium uppercase leading-none tracking-normal text-muted-foreground [overflow-wrap:anywhere]",
     value: "min-w-0 max-w-full break-words text-sm font-medium leading-snug [overflow-wrap:anywhere]",
     calloutValue: "min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere] sm:text-base",
     detail: "min-w-0 max-w-full break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]",
+    statusError: "min-w-0 max-w-full break-words text-sm leading-snug text-destructive [overflow-wrap:anywhere]",
+    statusInfo: "min-w-0 max-w-full break-words text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]",
     statValue: "min-w-0 max-w-full break-words text-lg font-semibold leading-tight tracking-normal [overflow-wrap:anywhere] sm:text-xl",
     tableCell: "min-w-0 max-w-full whitespace-normal break-words align-top text-sm leading-snug [overflow-wrap:anywhere]",
     tableHead: "min-w-0 max-w-full whitespace-normal break-words align-top text-[11px] font-medium uppercase tracking-normal text-muted-foreground [overflow-wrap:anywhere]"
   },
   layout: {
     actionRow: "flex min-w-0 max-w-full flex-wrap items-center gap-2",
+    appShell: "min-w-0",
     appHeader: "flex h-12 min-w-0 shrink-0 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur sm:gap-3 sm:px-4",
     appHeaderSeparator: "h-5 bg-border",
+    appHeaderCopy: "grid min-w-0 max-w-full gap-0.5",
     appMain: "min-h-[calc(100svh-3rem)] min-w-0 overflow-x-hidden bg-background p-3 sm:p-4 lg:p-5",
     page: "mx-auto flex w-full min-w-0 max-w-[1500px] flex-col gap-4",
     pageHeader: "flex min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
@@ -54,6 +60,9 @@ export const OPERATOR_DESIGN_TOKENS = {
     dataTable: "table-fixed",
     evidenceRow: "grid min-w-0 max-w-full grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2 [overflow-wrap:anywhere] [&>*]:min-w-0 [&>*]:max-w-full [&>*]:break-words",
     evidenceStack: "grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2",
-    statGrid: "grid min-w-0 max-w-full grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-2"
+    statGrid: "grid min-w-0 max-w-full grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-2",
+    statusStack: "grid min-w-0 max-w-full gap-1",
+    tabPanel: "flex flex-col gap-4",
+    viewTabsList: "max-w-full justify-start overflow-x-auto overscroll-x-contain"
   }
 } as const;
