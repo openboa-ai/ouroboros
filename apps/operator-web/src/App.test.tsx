@@ -43,6 +43,7 @@ import {
   CandidateArenaPanel,
   CandidateDetail,
   CandidateSummaryRow,
+  candidateDetailFetchKey,
   candidateNeedsDetailFetch,
   isPositiveRiskDecision,
   operatorViewFromSearch,
@@ -666,10 +667,21 @@ describe("operator app refresh", () => {
 
     expect(candidateNeedsDetailFetch(boundedCandidate)).toBe(true);
     expect(candidateNeedsDetailFetch(fullCandidate)).toBe(false);
+    expect(candidateDetailFetchKey(boundedCandidate)).not.toBe(candidateDetailFetchKey(fullCandidate));
 
     const refreshed = applyOperatorRefreshState(currentState, operator);
 
     expect(refreshed.selected?.runtime.transcript?.items).toHaveLength(2);
+  });
+
+  it("treats truncated overview text as needing full candidate details", () => {
+    const boundedCandidate = selectedCandidateWithTranscript(1);
+    boundedCandidate.runtime.transcript!.items[0] = {
+      ...boundedCandidate.runtime.transcript!.items[0]!,
+      summary: `${"x".repeat(500)}...`
+    };
+
+    expect(candidateNeedsDetailFetch(boundedCandidate)).toBe(true);
   });
 
   it("merges refreshed paper board state without resetting pending controls", () => {

@@ -286,6 +286,9 @@ async function fetchTradingReviewCandidate(
   return fetchCandidate(activeCandidateId);
 }
 
+const OPERATOR_RUNTIME_TEXT_LIMIT = 500;
+const OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER = "runtime overview truncated";
+
 export function candidateNeedsDetailFetch(candidate: CandidateInspectReadModel | null | undefined): boolean {
   if (!candidate) {
     return false;
@@ -294,14 +297,43 @@ export function candidateNeedsDetailFetch(candidate: CandidateInspectReadModel |
   if (transcript && transcript.items.length < transcript.item_count) {
     return true;
   }
+  if (
+    transcript?.latest_item && transcriptItemHasTruncatedOverviewText(transcript.latest_item) ||
+    transcript?.items.some(transcriptItemHasTruncatedOverviewText)
+  ) {
+    return true;
+  }
   const sandbox = candidate.runtime.sandbox;
-  return Boolean(
-    sandbox && (
-      sandbox.logs.length < sandbox.log_refs.length ||
-      sandbox.heartbeats.length < sandbox.heartbeat_refs.length ||
-      sandbox.command_evidence.length < sandbox.command_evidence_refs.length
-    )
-  );
+  if (!sandbox) {
+    return false;
+  }
+  if (
+    sandbox.logs.length < sandbox.log_refs.length ||
+    sandbox.heartbeats.length < sandbox.heartbeat_refs.length ||
+    sandbox.command_evidence.length < sandbox.command_evidence_refs.length
+  ) {
+    return true;
+  }
+  return sandbox.logs.some((log) => log.lines.some(isRuntimeOverviewTruncatedText)) ||
+    sandbox.command_evidence.some((evidence) =>
+      isRuntimeOverviewTruncatedText(evidence.stdout) ||
+      isRuntimeOverviewTruncatedText(evidence.stderr)
+    );
+}
+
+export function candidateDetailFetchKey(candidate: CandidateInspectReadModel | null | undefined): string {
+  return candidate ? `${candidate.candidate_id}:${candidateNeedsDetailFetch(candidate) ? "overview" : "detail"}` : "none";
+}
+
+function transcriptItemHasTruncatedOverviewText(
+  item: NonNullable<CandidateInspectReadModel["runtime"]["transcript"]>["items"][number]
+): boolean {
+  return isRuntimeOverviewTruncatedText(item.label) || isRuntimeOverviewTruncatedText(item.summary);
+}
+
+function isRuntimeOverviewTruncatedText(value: string): boolean {
+  return value.includes(OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER) ||
+    (value.length > OPERATOR_RUNTIME_TEXT_LIMIT && value.endsWith("..."));
 }
 
 function selectedCandidateForState(
@@ -373,6 +405,7 @@ export function App() {
     runningCandidateArenaAction: false
   });
   const selectedCandidateIdRef = useRef<string | undefined>(undefined);
+  const selectedCandidateDetailFetchKey = candidateDetailFetchKey(state.selected);
 
   useEffect(() => {
     selectedCandidateIdRef.current = state.selected?.candidate_id;
@@ -552,7 +585,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [operatorView, state.selected?.candidate_id]);
+  }, [operatorView, selectedCandidateDetailFetchKey]);
 
   async function selectCandidate(candidateId: string) {
     setState((current) => ({

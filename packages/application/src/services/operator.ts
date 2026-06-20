@@ -524,6 +524,7 @@ const OPERATOR_SANDBOX_ENTRY_LIMIT = 5;
 const OPERATOR_SANDBOX_LOG_LINE_LIMIT = 5;
 const OPERATOR_TRANSCRIPT_ITEM_LIMIT = 20;
 const OPERATOR_RUNTIME_TEXT_LIMIT = 500;
+const OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER = "[runtime overview truncated: full detail available from candidate inspect]";
 
 function toOperatorSelectedCandidateOverview(candidate: CandidateInspectReadModel): CandidateInspectReadModel {
   const sandbox = candidate.runtime.sandbox
@@ -531,7 +532,7 @@ function toOperatorSelectedCandidateOverview(candidate: CandidateInspectReadMode
         ...candidate.runtime.sandbox,
         logs: tail(candidate.runtime.sandbox.logs, OPERATOR_SANDBOX_ENTRY_LIMIT).map((log) => ({
           ...log,
-          lines: tail(log.lines, OPERATOR_SANDBOX_LOG_LINE_LIMIT).map(truncateRuntimeOverviewText)
+          lines: runtimeOverviewLogLines(log.lines)
         })),
         heartbeats: tail(candidate.runtime.sandbox.heartbeats, OPERATOR_SANDBOX_ENTRY_LIMIT),
         command_evidence: tail(candidate.runtime.sandbox.command_evidence, OPERATOR_SANDBOX_ENTRY_LIMIT)
@@ -575,6 +576,16 @@ function toOperatorTranscriptItemOverview(
 
 function tail<T>(items: T[], limit: number): T[] {
   return items.length <= limit ? items : items.slice(-limit);
+}
+
+function runtimeOverviewLogLines(lines: string[]): string[] {
+  if (lines.length <= OPERATOR_SANDBOX_LOG_LINE_LIMIT) {
+    return lines.map(truncateRuntimeOverviewText);
+  }
+  return [
+    OPERATOR_RUNTIME_OVERVIEW_TRUNCATED_MARKER,
+    ...tail(lines, OPERATOR_SANDBOX_LOG_LINE_LIMIT - 1).map(truncateRuntimeOverviewText)
+  ];
 }
 
 function truncateRuntimeOverviewText(value: string): string {
