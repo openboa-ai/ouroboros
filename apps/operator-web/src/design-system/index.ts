@@ -8,6 +8,8 @@ export {
   OperatorEvidenceStack,
   OperatorEvidenceStatus
 } from "./components/evidence";
+export { OperatorDataTable } from "./components/data-table";
+export type { OperatorDataTableColumn, OperatorDataTableRow } from "./components/data-table";
 export { OperatorField } from "./components/field";
 export { OperatorMetricStrip } from "./components/metric-strip";
 export type { OperatorMetricStripItem } from "./components/metric-strip";

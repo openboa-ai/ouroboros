@@ -8,6 +8,10 @@ export const OPERATOR_DESIGN_TOKENS = {
     panel: "min-w-0 max-w-full overflow-visible rounded-lg bg-card text-card-foreground ring-1 ring-border/80 shadow-sm",
     panelMuted: "min-w-0 max-w-full overflow-visible rounded-lg bg-card/80 text-card-foreground ring-1 ring-border/70",
     callout: "min-w-0 max-w-full overflow-visible rounded-lg border-border/70 bg-muted/55 py-2",
+    dataTable: "min-w-0 max-w-full overflow-hidden rounded-lg bg-card text-card-foreground ring-1 ring-border/70",
+    dataTableHeaderRow: "bg-muted/45 hover:bg-muted/45",
+    dataTableInteractiveRow: "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+    dataTableRow: "align-top data-[state=selected]:bg-muted/70",
     evidenceBlock: "min-w-0 max-w-full overflow-visible rounded-lg bg-card text-card-foreground ring-1 ring-border/70",
     evidenceStatus: "min-w-0 max-w-full overflow-visible rounded-md bg-muted/55 py-2 ring-1 ring-border/60",
     emptyState: "min-w-0 max-w-full overflow-visible rounded-lg border-border/70 bg-muted/40 px-0 py-2",
@@ -23,7 +27,9 @@ export const OPERATOR_DESIGN_TOKENS = {
     value: "min-w-0 max-w-full break-words text-sm font-medium leading-snug [overflow-wrap:anywhere]",
     calloutValue: "min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere] sm:text-base",
     detail: "min-w-0 max-w-full break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]",
-    statValue: "min-w-0 max-w-full break-words text-lg font-semibold leading-tight tracking-normal [overflow-wrap:anywhere] sm:text-xl"
+    statValue: "min-w-0 max-w-full break-words text-lg font-semibold leading-tight tracking-normal [overflow-wrap:anywhere] sm:text-xl",
+    tableCell: "min-w-0 max-w-full whitespace-normal break-words align-top text-sm leading-snug [overflow-wrap:anywhere]",
+    tableHead: "min-w-0 max-w-full whitespace-normal break-words align-top text-[11px] font-medium uppercase tracking-normal text-muted-foreground [overflow-wrap:anywhere]"
   },
   layout: {
     actionRow: "flex min-w-0 max-w-full flex-wrap items-center gap-2",
@@ -45,6 +51,7 @@ export const OPERATOR_DESIGN_TOKENS = {
     statContent: "grid min-w-0 max-w-full gap-1",
     fieldGrid: "grid min-w-0 max-w-full gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]",
     denseFieldGrid: "grid min-w-0 max-w-full gap-2 sm:grid-cols-2 xl:grid-cols-4",
+    dataTable: "table-fixed",
     evidenceRow: "grid min-w-0 max-w-full grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2 [overflow-wrap:anywhere] [&>*]:min-w-0 [&>*]:max-w-full [&>*]:break-words",
     evidenceStack: "grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2",
     statGrid: "grid min-w-0 max-w-full grid-cols-[repeat(auto-fit,minmax(min(100%,9rem),1fr))] gap-2"

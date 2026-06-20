@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   OPERATOR_DESIGN_TOKENS,
+  OperatorDataTable,
   OperatorEmptyState,
   OperatorField
 } from "@/design-system";
@@ -68,38 +69,41 @@ export function ArenaLeaderboardSection({
           </Button>
         ))}
       </div>
-      <div className="hidden lg:grid lg:gap-2">
-        <div className="grid grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] gap-2 border-b pb-2 text-xs font-medium text-muted-foreground">
-          <span>Rank</span>
-          <span>Candidate</span>
-          <span>Direction</span>
-          <span>ResearchPreflight net</span>
-        </div>
-        {entries.map((entry) => (
-          <Button
-            type="button"
-            key={entry.candidateId}
-            onClick={() => onSelectCandidate?.(entry.candidateId)}
-            aria-pressed={selectedCandidateId === entry.candidateId}
-            variant={selectedCandidateId === entry.candidateId ? "secondary" : "ghost"}
-            className="grid h-auto w-full grid-cols-[44px_minmax(180px,1fr)_minmax(118px,0.62fr)_minmax(130px,0.6fr)] items-start justify-start gap-2 whitespace-normal p-2 text-left"
-          >
-            <span>{entry.rankLabel}</span>
-            <span className="grid gap-1">
-              <strong className="break-words font-medium leading-snug">{entry.displayName}</strong>
-              <span className="break-words text-xs text-muted-foreground">
-                {`parent ${entry.parent}`}
-              </span>
-              <span className="break-words text-xs text-muted-foreground">{entry.latestFinding}</span>
-            </span>
-            <span className="break-words leading-snug">{entry.direction}</span>
-            <span className="grid gap-1">
-              <strong>{entry.researchPreflightNet}</strong>
-              <span className="text-xs text-muted-foreground">{entry.researchPreflightReturn}</span>
-              <Badge variant={entry.statusVariant}>{entry.status}</Badge>
-            </span>
-          </Button>
-        ))}
+      <div className="hidden lg:block">
+        <OperatorDataTable
+          aria-label="Candidate Arena research preflight leaderboard"
+          columns={[
+            { key: "rank", label: "Rank", className: "w-11" },
+            { key: "candidate", label: "Candidate" },
+            { key: "score", label: "ResearchPreflight net", className: "w-[11rem]" }
+          ]}
+          rows={entries.map((entry) => ({
+            id: entry.candidateId,
+            selected: selectedCandidateId === entry.candidateId,
+            label: `Select ${entry.displayName}`,
+            onSelect: () => onSelectCandidate?.(entry.candidateId),
+            cells: {
+              rank: entry.rankLabel,
+              candidate: (
+                <span className="grid gap-1">
+                  <strong className="break-words font-medium leading-snug">{entry.displayName}</strong>
+                  <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                    <Badge variant="outline">{entry.direction}</Badge>
+                    <span className="min-w-0 break-words">{`parent ${entry.parent}`}</span>
+                  </span>
+                  <span className={OPERATOR_DESIGN_TOKENS.typography.detail}>{entry.latestFinding}</span>
+                </span>
+              ),
+              score: (
+                <span className="grid gap-1">
+                  <strong>{entry.researchPreflightNet}</strong>
+                  <span className="text-xs text-muted-foreground">{entry.researchPreflightReturn}</span>
+                  <Badge variant={entry.statusVariant}>{entry.status}</Badge>
+                </span>
+              )
+            }
+          }))}
+        />
       </div>
       {!entries.length && (
         <OperatorEmptyState

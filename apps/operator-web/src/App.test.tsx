@@ -78,6 +78,7 @@ import {
   OPERATOR_DESIGN_TOKENS,
   OperatorActionRow,
   OperatorCallout,
+  OperatorDataTable,
   OperatorField,
   OperatorMetricStrip,
   OperatorPage,
@@ -126,6 +127,7 @@ describe("operator design system contract", () => {
       "callout.tsx",
       "empty-state.tsx",
       "evidence.tsx",
+      "data-table.tsx",
       "field.tsx",
       "metric-strip.tsx",
       "page.tsx",
@@ -157,6 +159,9 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "metric-strip.tsx"), "utf8")).toContain("./stat");
+    expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/table");
+    expect(indexSource).toContain('export { OperatorDataTable } from "./components/data-table"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -249,6 +254,9 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
     expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("OperatorDataTable");
+    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).not.toContain("grid-cols-[44px");
+    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).not.toContain("border-b pb-2");
     expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).toContain("OperatorMetricStrip");
     expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
@@ -347,6 +355,53 @@ describe("operator design system contract", () => {
     expect(html).toContain("repeat(auto-fit");
     expect(html).not.toContain("md:grid-cols-3");
     expect(html).not.toContain("text-[1.35rem]");
+  });
+
+  it("builds operator data tables from the shadcn Table primitive", () => {
+    const html = renderToStaticMarkup(
+      <OperatorDataTable
+        aria-label="ResearchPreflight leaderboard"
+        columns={[
+          { key: "rank", label: "Rank", className: "w-11" },
+          { key: "candidate", label: "Candidate" },
+          { key: "score", label: "ResearchPreflight net", className: "w-[11rem]" }
+        ]}
+        rows={[
+          {
+            id: "candidate-1",
+            selected: true,
+            label: "Select trend following candidate",
+            onSelect: () => undefined,
+            cells: {
+              rank: "#1",
+              candidate: <strong>Trend following BTCUSDT Trading System</strong>,
+              score: "2.839997 USDT"
+            }
+          }
+        ]}
+      />
+    );
+
+    expect(html).toContain('data-operator-ui="data-table"');
+    expect(html).toContain('data-slot="table-container"');
+    expect(html).toContain('data-slot="table"');
+    expect(html).toContain('data-slot="table-header"');
+    expect(html).toContain('data-slot="table-row"');
+    expect(html).toContain('data-slot="table-cell"');
+    expect(html).toContain('data-slot="button"');
+    expect(html).toContain('data-state="selected"');
+    expect(html).toContain('aria-current="true"');
+    expect(html).toContain("w-11");
+    expect(html).toContain("w-[11rem]");
+    expect(html).not.toContain('role="button"');
+    expect(html).not.toContain("aria-pressed");
+    expect(html).not.toContain("grid-cols-[44px");
+
+    const dataTableSource = readFileSync(join(operatorWebSrcDir, "design-system/components/data-table.tsx"), "utf8");
+    expect(dataTableSource).toContain("onClick={interactive ? () => row.onSelect?.() : undefined}");
+    expect(dataTableSource).toContain("tabIndex={interactive ? 0 : undefined}");
+    expect(dataTableSource).toContain("onKeyDown={interactive ? (event) => handleRowKeyDown(event, row.onSelect) : undefined}");
+    expect(dataTableSource).toContain("event.stopPropagation()");
   });
 
   it("builds operator panels from the shadcn Card primitive while keeping semantic sections", () => {
