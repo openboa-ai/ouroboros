@@ -104,6 +104,9 @@ import {
   OperatorStatusStack,
   OperatorTabPanel,
   OperatorViewTabs,
+  OperatorWorkspaceBody,
+  OperatorWorkspacePanel,
+  OperatorWorkspaceSplit,
   OperatorDetailText,
   type OperatorStatusStackMessage,
   type OperatorViewTabItem
@@ -1795,11 +1798,7 @@ export function CandidateArenaPanel({
       : [])
   ];
   return (
-    <OperatorPanel
-      variant="elevated"
-      aria-label="Candidate Arena cockpit"
-      className="candidate-arena-cockpit gap-3 p-3 sm:gap-4 sm:p-4"
-    >
+    <OperatorWorkspacePanel aria-label="Candidate Arena cockpit">
       <OperatorSectionHeader
         eyebrow="Operator cockpit"
         title="Candidate Arena"
@@ -1807,14 +1806,14 @@ export function CandidateArenaPanel({
           ? `${leader.display_name} leads by ${formatUsdt(leader.profit_loss.net_revenue_usdt)} net revenue.`
           : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
         actions={(
-          <div className="flex flex-wrap gap-2 lg:justify-end" aria-label="Candidate Arena authority summary">
+          <>
             <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
             <Badge variant="secondary">{researcherProvider?.selected_provider ?? "provider pending"}</Badge>
             <Badge variant="secondary">not_live</Badge>
-          </div>
+          </>
         )}
       />
-      <div className="grid gap-4">
+      <OperatorWorkspaceBody>
         <ArenaCommandBarSection
           researchProviderSummary={arenaResearchProviderSummary}
           startDisabled={actionPending}
@@ -1826,49 +1825,53 @@ export function CandidateArenaPanel({
         />
         <ArenaMetricStripSection metrics={arenaMetricStripItems} />
         <ArenaPaperBoardSection entries={paperBoardSectionEntries} />
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
+        <OperatorWorkspaceSplit
+          inspectorLabel="Candidate Arena inspector"
+          inspector={(
+            <>
+              {inspectorVisible && (
+                <ArenaSelectedCandidateSection
+                  description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
+                  fields={arenaSelectedCandidateFields}
+                  paperRunnerActive={paperRunnerActive}
+                  runningPaperTrading={runningPaperTrading}
+                  paperStartActionLabel={paperStartActionLabel}
+                  startPaperDisabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
+                  observePaperDisabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
+                  stopPaperDisabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
+                  onStartPaperTrading={onStartPaperTrading}
+                  onObservePaperTrading={onObservePaperTrading}
+                  onStopPaperTrading={onStopPaperTrading}
+                />
+              )}
+              <ArenaAgentProviderSection
+                researcher={researcherProvider?.selected_provider ?? "not selected"}
+                selectedStatus={selectedAgentProfile?.status ?? "missing"}
+                available={researcherProvider?.available_providers.join(", ") ?? "unknown"}
+                failure={selectedAgentProfile?.failure_reason}
+                profiles={arenaAgentProviderProfiles}
+                providerOptions={arenaAgentProviderOptions}
+                setupDisabled={actionPending || !selectedProvider || !onSetupAgentProvider}
+                probeDisabled={actionPending || !selectedProvider || !onProbeAgentProvider}
+                loginDisabled={actionPending || !selectedProvider || !onStartAgentProviderLogin}
+                onSelectProvider={onSelectResearcherProvider}
+                onSetup={selectedProvider && onSetupAgentProvider ? () => onSetupAgentProvider(selectedProvider) : undefined}
+                onProbe={selectedProvider && onProbeAgentProvider ? () => onProbeAgentProvider(selectedProvider) : undefined}
+                onLogin={selectedProvider && onStartAgentProviderLogin
+                  ? () => onStartAgentProviderLogin(selectedProvider)
+                  : undefined}
+              />
+              <ArenaCommandLogSection entries={arenaCommandLogEntries} />
+              <ArenaLatestTicksSection tick={arenaLatestTickSummary} />
+            </>
+          )}
+        >
           <ArenaLeaderboardSection
             entries={arenaLeaderboardEntries}
             selectedCandidateId={selectedEntry?.candidate_id}
             onSelectCandidate={onSelectCandidate}
           />
-          <aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">
-            {inspectorVisible && (
-              <ArenaSelectedCandidateSection
-                description={selectedCandidate?.display_name ?? selectedEntry?.display_name ?? "No Trading System selected"}
-                fields={arenaSelectedCandidateFields}
-                paperRunnerActive={paperRunnerActive}
-                runningPaperTrading={runningPaperTrading}
-                paperStartActionLabel={paperStartActionLabel}
-                startPaperDisabled={!onStartPaperTrading || runningPaperTrading || !selectedCandidate}
-                observePaperDisabled={!onObservePaperTrading || runningPaperTrading || !selectedCandidate}
-                stopPaperDisabled={!onStopPaperTrading || runningPaperTrading || !selectedCandidate}
-                onStartPaperTrading={onStartPaperTrading}
-                onObservePaperTrading={onObservePaperTrading}
-                onStopPaperTrading={onStopPaperTrading}
-              />
-            )}
-            <ArenaAgentProviderSection
-              researcher={researcherProvider?.selected_provider ?? "not selected"}
-              selectedStatus={selectedAgentProfile?.status ?? "missing"}
-              available={researcherProvider?.available_providers.join(", ") ?? "unknown"}
-              failure={selectedAgentProfile?.failure_reason}
-              profiles={arenaAgentProviderProfiles}
-              providerOptions={arenaAgentProviderOptions}
-              setupDisabled={actionPending || !selectedProvider || !onSetupAgentProvider}
-              probeDisabled={actionPending || !selectedProvider || !onProbeAgentProvider}
-              loginDisabled={actionPending || !selectedProvider || !onStartAgentProviderLogin}
-              onSelectProvider={onSelectResearcherProvider}
-              onSetup={selectedProvider && onSetupAgentProvider ? () => onSetupAgentProvider(selectedProvider) : undefined}
-              onProbe={selectedProvider && onProbeAgentProvider ? () => onProbeAgentProvider(selectedProvider) : undefined}
-              onLogin={selectedProvider && onStartAgentProviderLogin
-                ? () => onStartAgentProviderLogin(selectedProvider)
-                : undefined}
-            />
-            <ArenaCommandLogSection entries={arenaCommandLogEntries} />
-            <ArenaLatestTicksSection tick={arenaLatestTickSummary} />
-          </aside>
-        </div>
+        </OperatorWorkspaceSplit>
         <OperatorStatusStack
           messages={operatorStatusMessages(
             message
@@ -1879,8 +1882,8 @@ export function CandidateArenaPanel({
               : undefined
           )}
         />
-      </div>
-    </OperatorPanel>
+      </OperatorWorkspaceBody>
+    </OperatorWorkspacePanel>
   );
 }
 
