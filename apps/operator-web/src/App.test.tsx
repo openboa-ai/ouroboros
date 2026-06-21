@@ -141,6 +141,8 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain(OPERATOR_DESIGN_TOKENS.color.surface);
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain(OPERATOR_DESIGN_TOKENS.radius.panel);
+    expect(OPERATOR_DESIGN_TOKENS.surface.chartFrame).toContain("aspect-[16/5]");
+    expect(OPERATOR_DESIGN_TOKENS.surface.chartFrame).toContain(OPERATOR_DESIGN_TOKENS.radius.panel);
     expect(OPERATOR_DESIGN_TOKENS.surface.selectionItem).toContain("whitespace-normal");
     expect(OPERATOR_DESIGN_TOKENS.typography.meta).toContain("text-xs");
     expect(OPERATOR_DESIGN_TOKENS.typography.label).toContain("text-[11px]");
@@ -173,6 +175,9 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]");
     expect(OPERATOR_DESIGN_TOKENS.layout.evidenceRow).toContain("grid-cols-1");
     expect(OPERATOR_DESIGN_TOKENS.layout.evidenceRow).toContain("sm:grid-cols-[repeat(auto-fit,minmax(8rem,1fr))]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.evidenceFieldRowMobileContained).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.evidenceFieldMobileContained).toContain("max-w-full");
+    expect(OPERATOR_DESIGN_TOKENS.layout.chartCaption).toContain("justify-between");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-2xl");
 
@@ -199,6 +204,7 @@ describe("operator design system contract", () => {
       "action-row.tsx",
       "app-shell.tsx",
       "callout.tsx",
+      "chart.tsx",
       "content-section.tsx",
       "empty-state.tsx",
       "evidence.tsx",
@@ -266,6 +272,9 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorWorkspaceBody, OperatorWorkspacePanel, OperatorWorkspaceSplit } from "./components/workspace"');
     expect(indexSource).toContain('export { OperatorInfoSection } from "./components/info-section"');
     expect(indexSource).toContain('export { OperatorStatusBadge, operatorBadgeVariant } from "./components/status-badge"');
+    expect(indexSource).toContain('export { OperatorChartCaption, OperatorChartFrame } from "./components/chart"');
+    expect(indexSource).toContain("OperatorEvidenceFieldRow");
+    expect(readFileSync(join(componentDir, "chart.tsx"), "utf8")).toContain("@/components/ui/chart");
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -293,6 +302,8 @@ describe("operator design system contract", () => {
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
       expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
+      expect(source).not.toContain("@/components/ui/chart");
+      expect(source).not.toContain('className="aspect-[16/5] min-h-[180px] w-full rounded-lg bg-muted/60 p-3"');
       expect(source).toMatch(/@\/design-system|@\/components\/ui\/button|@\/components\/ui\/progress|\.\/trading-metrics/);
     }
 
@@ -308,8 +319,10 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
     expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
-    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("@/components/ui/chart");
-    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceRow");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorChartFrame");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorChartTooltip");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorChartCaption");
+    expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceFieldRow");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorField");
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).toContain("OperatorMetricStrip");
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
@@ -363,6 +376,7 @@ describe("operator design system contract", () => {
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
       expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
+      expect(source).not.toMatch(/const MOBILE_[A-Z_]+/);
       expect(source).toContain("@/design-system");
     }
 
@@ -436,8 +450,8 @@ describe("operator design system contract", () => {
 
     expect(readFileSync(join(researchSectionDir, "research-paper-learning-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
     expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("OperatorEvidenceBlock");
-    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("grid-cols-[minmax(0,1fr)]");
-    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("max-w-[calc(100vw-4.5rem)]");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("OperatorEvidenceFieldRow");
+    expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).not.toContain("max-w-[calc(100vw-4.5rem)]");
     expect(readFileSync(join(researchSectionDir, "research-signals-section.tsx"), "utf8")).toContain("OperatorStat");
     expect(readFileSync(join(researchSectionDir, "research-cycle-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
     expect(readFileSync(join(researchSectionDir, "research-agent-cycle-section.tsx"), "utf8")).toContain("OperatorField");

@@ -2,10 +2,17 @@ export { OPERATOR_DESIGN_TOKENS } from "./tokens";
 export { OperatorActionRow } from "./components/action-row";
 export { OperatorAppShell, OperatorAppHeader, OperatorAppMain } from "./components/app-shell";
 export { OperatorCallout } from "./components/callout";
+export { OperatorChartCaption, OperatorChartFrame } from "./components/chart";
+export {
+  OperatorChartTooltip,
+  OperatorChartTooltipContent
+} from "./components/chart";
+export type { OperatorChartConfig } from "./components/chart";
 export { OperatorContentSection } from "./components/content-section";
 export { OperatorEmptyState } from "./components/empty-state";
 export {
   OperatorEvidenceBlock,
+  OperatorEvidenceFieldRow,
   OperatorEvidencePanel,
   OperatorEvidenceRow,
   OperatorEvidenceStack,

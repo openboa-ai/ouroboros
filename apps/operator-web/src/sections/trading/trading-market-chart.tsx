@@ -1,12 +1,11 @@
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig
-} from "@/components/ui/chart";
-import {
-  OperatorEvidenceRow,
+  OperatorChartCaption,
+  type OperatorChartConfig,
+  OperatorChartFrame,
+  OperatorChartTooltip,
+  OperatorChartTooltipContent,
+  OperatorEvidenceFieldRow,
   OperatorField,
   OperatorFieldGrid,
   OperatorSectionStack
@@ -34,7 +33,7 @@ const chartConfig = {
     label: "Public market price",
     color: "var(--chart-1)"
   }
-} satisfies ChartConfig;
+} satisfies OperatorChartConfig;
 
 export function TradingMarketChart({
   fields,
@@ -56,14 +55,9 @@ export function TradingMarketChart({
 
   return (
     <OperatorSectionStack>
-      <OperatorEvidenceRow className="md:grid-cols-4" aria-label="Market data provenance">
-        {fields.map((field) => (
-          <OperatorField key={field.label} label={field.label} value={field.value} />
-        ))}
-      </OperatorEvidenceRow>
-      <ChartContainer
+      <OperatorEvidenceFieldRow fields={fields} aria-label="Market data provenance" />
+      <OperatorChartFrame
         config={chartConfig}
-        className="aspect-[16/5] min-h-[180px] w-full rounded-lg bg-muted/60 p-3"
         role="img"
         aria-label="BTCUSDT public market snapshot"
       >
@@ -82,9 +76,9 @@ export function TradingMarketChart({
             padding={{ left: 16, right: 16 }}
           />
           <YAxis hide domain={yDomain} />
-          <ChartTooltip
+          <OperatorChartTooltip
             cursor={false}
-            content={<ChartTooltipContent indicator="line" hideLabel />}
+            content={<OperatorChartTooltipContent indicator="line" hideLabel />}
           />
           <Area
             dataKey="price"
@@ -97,13 +91,8 @@ export function TradingMarketChart({
             isAnimationActive={false}
           />
         </AreaChart>
-      </ChartContainer>
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <strong className="min-w-0 break-words font-medium text-foreground [overflow-wrap:anywhere]">
-          {instrumentLabel}
-        </strong>
-        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{footerDetail}</span>
-      </div>
+      </OperatorChartFrame>
+      <OperatorChartCaption label={instrumentLabel} detail={footerDetail} />
     </OperatorSectionStack>
   );
 }

@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { OPERATOR_DESIGN_TOKENS } from "../tokens";
+import { OperatorField } from "./field";
 
 export function OperatorEvidenceStack({
   children,
@@ -112,6 +113,53 @@ export function OperatorEvidenceRow({
       {...props}
     >
       {children}
+    </div>
+  );
+}
+
+export interface OperatorEvidenceFieldRowItem {
+  label: string;
+  value: string;
+}
+
+type OperatorEvidenceFieldRowLayout = "default" | "mobileContained";
+
+export function OperatorEvidenceFieldRow({
+  fields,
+  layout = "default",
+  className,
+  ...props
+}: {
+  fields: OperatorEvidenceFieldRowItem[];
+  layout?: OperatorEvidenceFieldRowLayout;
+  className?: string;
+} & Omit<ComponentProps<"div">, "children" | "className">) {
+  const isMobileContained = layout === "mobileContained";
+
+  return (
+    <div
+      data-operator-ui="evidence-row"
+      data-layout={layout}
+      className={cn(
+        isMobileContained
+          ? OPERATOR_DESIGN_TOKENS.layout.evidenceFieldRowMobileContained
+          : OPERATOR_DESIGN_TOKENS.layout.evidenceRow,
+        className
+      )}
+      {...props}
+    >
+      {fields.map((field) => (
+        <OperatorField
+          key={field.label}
+          label={field.label}
+          value={field.value}
+          className={
+            isMobileContained
+              ? OPERATOR_DESIGN_TOKENS.layout.evidenceFieldMobileContained
+              : undefined
+          }
+        />
+      ))}
     </div>
   );
 }
