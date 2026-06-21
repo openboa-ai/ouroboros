@@ -115,3 +115,28 @@ export function OperatorEvidenceRow({
     </div>
   );
 }
+
+export function OperatorEvidencePanel({
+  children,
+  className,
+  label,
+  title = label,
+  ...props
+}: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+  title?: string;
+} & Omit<ComponentProps<"section">, "aria-label" | "className">) {
+  return (
+    <section
+      data-operator-ui="evidence-panel"
+      aria-label={label}
+      className={cn(OPERATOR_DESIGN_TOKENS.layout.evidencePanel, className)}
+      {...props}
+    >
+      <h4 className={OPERATOR_DESIGN_TOKENS.layout.evidencePanelTitle}>{title}</h4>
+      {children}
+    </section>
+  );
+}

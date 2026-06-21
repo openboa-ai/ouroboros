@@ -68,7 +68,7 @@ export const OPERATOR_DESIGN_TOKENS = {
     tableHead: "min-w-0 max-w-full whitespace-normal break-words align-top text-[11px] font-medium uppercase tracking-normal text-muted-foreground [overflow-wrap:anywhere]"
   },
   layout: {
-    actionRow: "flex min-w-0 max-w-full flex-wrap items-center gap-2",
+    actionRow: "flex min-w-0 max-w-full flex-wrap items-center gap-2 [&>[data-multiline=true]]:basis-full [&>[data-multiline=true]]:sm:basis-auto",
     appShell: "min-w-0",
     appHeader: `flex ${OPERATOR_SIZE_TOKENS.appHeaderHeight} min-w-0 shrink-0 items-center gap-2 border-b ${OPERATOR_COLOR_TOKENS.divider} bg-background/92 px-3 backdrop-blur sm:gap-3 sm:px-4`,
     appHeaderSeparator: "h-5 bg-border",
@@ -103,12 +103,15 @@ export const OPERATOR_DESIGN_TOKENS = {
     sectionHeader: "grid min-w-0 max-w-full gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start",
     sectionHeaderCopy: "grid min-w-0 max-w-full gap-1",
     sectionTitle: "max-w-full break-words text-base font-semibold leading-snug tracking-normal text-foreground [overflow-wrap:anywhere]",
-    sectionHeaderActions: "sm:justify-end",
+    sectionHeaderActions: "w-full sm:w-auto sm:justify-end",
     section: "grid min-w-0 max-w-full gap-3",
     calloutContent: "grid min-w-0 max-w-full gap-1.5 px-3",
     emptyStateContent: "grid min-w-0 max-w-full gap-1 px-0",
     evidenceBlockContent: "grid min-w-0 max-w-full gap-3",
+    evidencePanel: "grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2 [overflow-wrap:anywhere]",
+    evidencePanelTitle: "min-w-0 max-w-full break-words text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]",
     evidenceStatusContent: "grid min-w-0 max-w-full gap-1 px-3",
+    infoSectionContent: "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2",
     statContent: "grid min-w-0 max-w-full gap-1",
     selectionItemHeader: "grid min-w-0 max-w-full gap-2 sm:flex sm:items-start sm:justify-between sm:gap-3",
     selectionItemCopy: "grid min-w-0 max-w-full gap-1",
@@ -123,6 +126,7 @@ export const OPERATOR_DESIGN_TOKENS = {
     evidenceStack: "grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2",
     statGrid: "grid min-w-0 max-w-full grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]",
     statusStack: "grid min-w-0 max-w-full gap-1",
+    statusBadgeMultiline: "h-auto min-h-5 min-w-0 w-full basis-full max-w-full shrink justify-start overflow-visible whitespace-normal break-words text-left leading-snug [overflow-wrap:anywhere] [white-space:normal] sm:w-fit sm:basis-auto",
     tabPanel: "flex flex-col gap-4",
     viewTabsList: "max-w-full justify-start overflow-x-auto overscroll-x-contain"
   }

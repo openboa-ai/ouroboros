@@ -6,6 +6,7 @@ export { OperatorContentSection } from "./components/content-section";
 export { OperatorEmptyState } from "./components/empty-state";
 export {
   OperatorEvidenceBlock,
+  OperatorEvidencePanel,
   OperatorEvidenceRow,
   OperatorEvidenceStack,
   OperatorEvidenceStatus
@@ -14,6 +15,7 @@ export { OperatorDataTable } from "./components/data-table";
 export type { OperatorDataTableColumn, OperatorDataTableRow } from "./components/data-table";
 export { OperatorField } from "./components/field";
 export { OperatorFieldGrid } from "./components/field-grid";
+export { OperatorInfoSection } from "./components/info-section";
 export { OperatorMetricStrip } from "./components/metric-strip";
 export type { OperatorMetricStripItem } from "./components/metric-strip";
 export { OperatorPage, OperatorPageHeader } from "./components/page";
@@ -28,6 +30,7 @@ export { OperatorStatGrid } from "./components/stat-grid";
 export type { OperatorStatGridItem } from "./components/stat-grid";
 export { OperatorStatusStack } from "./components/status-stack";
 export type { OperatorStatusStackMessage } from "./components/status-stack";
+export { OperatorStatusBadge, operatorBadgeVariant } from "./components/status-badge";
 export { OperatorTabBadge } from "./components/tab-badge";
 export { OperatorDetailText, OperatorInlineMeta, OperatorTextStack, OperatorValueText } from "./components/text";
 export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs";

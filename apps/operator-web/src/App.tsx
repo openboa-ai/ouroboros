@@ -90,11 +90,13 @@ import {
   OperatorAppShell,
   OperatorEmptyState,
   OperatorEvidenceBlock,
+  OperatorEvidencePanel,
   OperatorEvidenceRow,
   OperatorEvidenceStack,
   OperatorEvidenceStatus,
   OperatorField,
   OperatorFieldGrid,
+  OperatorInfoSection,
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
@@ -102,12 +104,14 @@ import {
   OperatorSelectionItem,
   OperatorStat,
   OperatorStatusStack,
+  OperatorStatusBadge,
   OperatorTabPanel,
   OperatorViewTabs,
   OperatorWorkspaceBody,
   OperatorWorkspacePanel,
   OperatorWorkspaceSplit,
   OperatorDetailText,
+  operatorBadgeVariant,
   type OperatorStatusStackMessage,
   type OperatorViewTabItem
 } from "./design-system";
@@ -252,12 +256,6 @@ export interface AppState {
 }
 
 export const OPERATOR_REFRESH_INTERVAL_MS = 5_000;
-const RAW_EVIDENCE_STACK_CLASS = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2";
-const RAW_EVIDENCE_ROW_CLASS = [
-  "grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2",
-  "[overflow-wrap:anywhere]",
-  "[&>*]:min-w-0 [&>*]:max-w-full [&>*]:break-words"
-].join(" ");
 
 function operatorStatusMessages(
   ...messages: Array<OperatorStatusStackMessage | undefined>
@@ -2399,7 +2397,7 @@ function FullCycleDeveloperControls({
     return null;
   }
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Agent cycle controls"
       summary="Developer controls for a selected candidate paper run; Candidate Arena is the primary research workflow."
       badge="developer"
@@ -2457,7 +2455,7 @@ function FullCycleDeveloperControls({
         {fullCycleMessage && <p className="text-sm text-muted-foreground">{fullCycleMessage}</p>}
         {fullCycleError && <p className="text-sm text-destructive">{fullCycleError}</p>}
       </div>
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -3295,14 +3293,14 @@ export function CandidateDetail({
                     title={command.command_kind}
                   >
                     <OperatorEvidenceRow>
-                      <Field
+                      <OperatorField
                         label="Status"
                         value={command.error ? `${command.status} / ${command.error}` : command.status}
                       />
-                      <Field label="Remediation group" value={remediation.group} />
-                      <Field label="Visible surface" value={remediation.surface} />
-                      <Field label="Remediation next step" value={remediation.remediation} />
-                      <Field label="Command authority" value={remediation.authority_status} />
+                      <OperatorField label="Remediation group" value={remediation.group} />
+                      <OperatorField label="Visible surface" value={remediation.surface} />
+                      <OperatorField label="Remediation next step" value={remediation.remediation} />
+                      <OperatorField label="Command authority" value={remediation.authority_status} />
                     </OperatorEvidenceRow>
                   </OperatorEvidenceBlock>
                 ))}
@@ -3404,14 +3402,27 @@ export function CandidateDetail({
           description="Fixture dry-run only - why the first screen does not show real P&L yet"
           actions={(
             <>
-              <Badge variant="outline">{candidate.fixture_notice.label}</Badge>
-              <Badge variant="outline">fixture mode: {candidate.fixture_notice.mode}</Badge>
+              <OperatorStatusBadge
+                value={candidate.fixture_notice.label}
+                variant="outline"
+                multiline
+              />
+              <OperatorStatusBadge
+                value={`fixture mode: ${candidate.fixture_notice.mode}`}
+                variant="outline"
+                multiline
+              />
             </>
           )}
         />
         <OperatorActionRow className="justify-start">
           {candidate.fixture_notice.statements.map((statement) => (
-            <Badge key={statement} variant="outline">{statement}</Badge>
+            <OperatorStatusBadge
+              key={statement}
+              value={statement}
+              variant="outline"
+              multiline
+            />
           ))}
         </OperatorActionRow>
       </OperatorPanel>
@@ -3429,10 +3440,10 @@ export function CandidateDetail({
           )}
         />
           <OperatorFieldGrid density="dense">
-            <Field label="Owns" value="raw records, developer controls, compatibility evidence" />
-            <Field label="Reads" value="Candidate inspect model and low-level substrate records" />
-            <Field label="Never does" value="qualify, promote, or enable live/private exchange authority" />
-            <Field label="Use for" value="inspection after the product loop has named the decision path" />
+            <OperatorField label="Owns" value="raw records, developer controls, compatibility evidence" />
+            <OperatorField label="Reads" value="Candidate inspect model and low-level substrate records" />
+            <OperatorField label="Never does" value="qualify, promote, or enable live/private exchange authority" />
+            <OperatorField label="Use for" value="inspection after the product loop has named the decision path" />
           </OperatorFieldGrid>
       </OperatorPanel>
 
@@ -3470,13 +3481,13 @@ export function CandidateDetail({
             onRunFullCycle={onRunFullCycle}
           />
 
-          <InfoSection
+          <OperatorInfoSection
             title="ResearchPreflight Evidence"
             summary={evaluationStatusLabel(candidate.evaluation)}
             badge={candidate.evaluation.counted_evidence.evidence_disposition}
           >
             <EvaluationSection evaluation={candidate.evaluation} />
-          </InfoSection>
+          </OperatorInfoSection>
 
           <ImprovementSection
             improvement={candidate.improvement}
@@ -3486,7 +3497,7 @@ export function CandidateDetail({
             improvementMessage={improvementMessage}
           />
 
-          <InfoSection
+          <OperatorInfoSection
             title="Trading Run"
             summary={`${runStatus} / ${candidate.runtime.authority_status}`}
             badge={runStatus}
@@ -3499,17 +3510,17 @@ export function CandidateDetail({
                 tone={runStatus === "running" ? "counted" : "neutral"}
               />
               <OperatorEvidenceRow>
-                <Field label="Ref" value={formatRef(candidate.runtime.ref)} />
-                <Field label="Stage binding" value={candidate.runtime.stage_binding_profile} />
+                <OperatorField label="Ref" value={formatRef(candidate.runtime.ref)} />
+                <OperatorField label="Stage binding" value={candidate.runtime.stage_binding_profile} />
                 {candidate.runtime.runtime_lifecycle_status && (
-                  <Field label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
+                  <OperatorField label="Lifecycle" value={candidate.runtime.runtime_lifecycle_status} />
                 )}
-                <Field label="Trading run authority" value={candidate.runtime.authority_status} />
+                <OperatorField label="Trading run authority" value={candidate.runtime.authority_status} />
                 <Placeholder item={candidate.runtime.placement} />
                 <Placeholder item={candidate.runtime.hands_environment} />
-                <Field label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
-                <Field label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
-                <Field label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
+                <OperatorField label="Memory trust" value={candidate.runtime.memory_surface.trust_class} />
+                <OperatorField label="Memory access" value={candidate.runtime.memory_surface.access_mode} />
+                <OperatorField label="Memory authority" value={candidate.runtime.memory_surface.authority_status} />
               </OperatorEvidenceRow>
               {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
                 <OperatorActionRow>
@@ -3556,7 +3567,7 @@ export function CandidateDetail({
                 </OperatorActionRow>
               )}
             </OperatorEvidenceStack>
-          </InfoSection>
+          </OperatorInfoSection>
 
           <LedgerSection ledger={ledger} />
 
@@ -3570,59 +3581,59 @@ export function CandidateDetail({
 
           <TradingRunTranscriptSection transcript={candidate.runtime.transcript} />
 
-          <InfoSection
+          <OperatorInfoSection
             title="Trading System"
             summary={`${candidate.status} / ${latestValidationStateLabel(candidate.latest_validation_state)}`}
             badge={candidate.status}
           >
-            <Field label="Status" value={candidate.status} />
-            <Field label="Active version" value={candidate.active_version_id} />
-            <Field label="Latest validation state" value={latestValidationStateLabel(candidate.latest_validation_state)} />
-            <Field label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
+            <OperatorField label="Status" value={candidate.status} />
+            <OperatorField label="Active version" value={candidate.active_version_id} />
+            <OperatorField label="Latest validation state" value={latestValidationStateLabel(candidate.latest_validation_state)} />
+            <OperatorField label="Provenance refs" value={candidate.candidate_version.provenance_refs.map(formatRef).join(", ")} />
             {candidate.latest_validation_state && (
               <CandidateLatestValidationStateBlock validationState={candidate.latest_validation_state} />
             )}
-          </InfoSection>
+          </OperatorInfoSection>
 
-          <InfoSection
+          <OperatorInfoSection
             title="Spec"
             summary={`${candidate.spec.market} / ${candidate.spec.instrument}`}
             badge={candidate.spec.supported_stage_binding_profiles.join(", ")}
           >
-            <Field label="Ref" value={formatRef(candidate.spec.ref)} />
-            <Field label="Summary" value={candidate.spec.summary} />
-            <Field label="Market" value={`${candidate.spec.market} / ${candidate.spec.instrument}`} />
-            <Field label="Stage profiles" value={candidate.spec.supported_stage_binding_profiles.join(", ")} />
-          </InfoSection>
+            <OperatorField label="Ref" value={formatRef(candidate.spec.ref)} />
+            <OperatorField label="Summary" value={candidate.spec.summary} />
+            <OperatorField label="Market" value={`${candidate.spec.market} / ${candidate.spec.instrument}`} />
+            <OperatorField label="Stage profiles" value={candidate.spec.supported_stage_binding_profiles.join(", ")} />
+          </OperatorInfoSection>
 
-          <InfoSection
+          <OperatorInfoSection
             title="System Code"
             summary={candidate.program.summary}
             badge={candidate.program.manifest.declared_runtime}
           >
-            <Field label="Ref" value={formatRef(candidate.program.ref)} />
-            <Field label="Summary" value={candidate.program.summary} />
-            <Field label="Manifest" value={formatRef(candidate.program.manifest.ref)} />
-            <Field label="Runtime" value={candidate.program.manifest.declared_runtime} />
+            <OperatorField label="Ref" value={formatRef(candidate.program.ref)} />
+            <OperatorField label="Summary" value={candidate.program.summary} />
+            <OperatorField label="Manifest" value={formatRef(candidate.program.manifest.ref)} />
+            <OperatorField label="Runtime" value={candidate.program.manifest.declared_runtime} />
             <Placeholder item={candidate.program.validation} />
-          </InfoSection>
+          </OperatorInfoSection>
 
-          <InfoSection
+          <OperatorInfoSection
             title="Capability Package"
             summary={`allowed: ${candidate.capability_package.manifest.allowed_stages.join(", ")}`}
             badge="not_live"
           >
-            <Field label="Ref" value={formatRef(candidate.capability_package.ref)} />
-            <Field label="Summary" value={candidate.capability_package.summary} />
-            <Field label="Allowed stages" value={candidate.capability_package.manifest.allowed_stages.join(", ")} />
-            <Field label="Declared permissions" value={candidate.capability_package.manifest.declared_permissions.join(", ")} />
-            <Field label="Forbidden contents" value={candidate.capability_package.manifest.forbidden_contents.join(", ")} />
+            <OperatorField label="Ref" value={formatRef(candidate.capability_package.ref)} />
+            <OperatorField label="Summary" value={candidate.capability_package.summary} />
+            <OperatorField label="Allowed stages" value={candidate.capability_package.manifest.allowed_stages.join(", ")} />
+            <OperatorField label="Declared permissions" value={candidate.capability_package.manifest.declared_permissions.join(", ")} />
+            <OperatorField label="Forbidden contents" value={candidate.capability_package.manifest.forbidden_contents.join(", ")} />
             <Placeholder item={candidate.capability_package.admission} />
             <Placeholder item={candidate.capability_package.grant} />
             <Placeholder item={candidate.capability_package.mount} />
-          </InfoSection>
+          </OperatorInfoSection>
 
-          <InfoSection
+          <OperatorInfoSection
             title="Agent And Provider"
             summary={candidate.agent_provider.provider_readiness.authority_status}
             badge={candidate.agent_provider.provider_readiness.authority_status}
@@ -3633,7 +3644,7 @@ export function CandidateDetail({
             <Placeholder item={candidate.agent_provider.agent_event} />
             <Placeholder item={candidate.agent_provider.provider_readiness} />
             <Placeholder item={candidate.agent_provider.provider_probe_attempt} />
-          </InfoSection>
+          </OperatorInfoSection>
 
           <MaterializationAttemptSection attempt={candidate.materialization_attempt} />
 
@@ -4347,7 +4358,7 @@ function buildTradingSystemRows(
 function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
   if (!sandbox) {
     return (
-      <InfoSection title="Sandbox" summary="not linked / not_live" badge="not linked">
+      <OperatorInfoSection title="Sandbox" summary="not linked / not_live" badge="not linked">
         <OperatorEvidenceStack>
           <OperatorEvidenceStatus
             label="Lifecycle"
@@ -4356,14 +4367,14 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
             tone="neutral"
           />
         </OperatorEvidenceStack>
-      </InfoSection>
+      </OperatorInfoSection>
     );
   }
 
   const latestLog = sandbox.logs.at(-1);
   const latestHeartbeat = sandbox.heartbeats.at(-1);
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Sandbox"
       summary={`${sandbox.lifecycle_status} / ${sandbox.adapter_kind}`}
       badge={sandbox.lifecycle_status}
@@ -4376,20 +4387,20 @@ function SandboxSection({ sandbox }: { sandbox?: SandboxDetailReadModel }) {
           tone={sandbox.lifecycle_status === "running" ? "counted" : "neutral"}
         />
         <OperatorEvidenceRow>
-          <Field label="Ref" value={sandbox.sandbox_id} />
-          <Field label="Adapter" value={sandbox.adapter_kind} />
-          <Field label="Name" value={sandbox.sandbox_name} />
-          <Field label="Runtime" value={sandbox.runtime_ref ? formatRef(sandbox.runtime_ref) : "none"} />
-          <Field label="System Code" value={formatRef(sandbox.system_code_ref)} />
-          <Field label="Placement" value={formatRef(sandbox.sandbox_placement_ref)} />
-          <Field label="Last heartbeat" value={sandbox.last_heartbeat_at ?? "none"} />
-          <Field label="Logs" value={latestLog?.lines.join(" / ") ?? "none"} />
-          <Field label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
-          <Field label="Command evidence" value={String(sandbox.command_evidence.length)} />
-          <Field label="Sandbox authority" value={sandbox.authority_status} />
+          <OperatorField label="Ref" value={sandbox.sandbox_id} />
+          <OperatorField label="Adapter" value={sandbox.adapter_kind} />
+          <OperatorField label="Name" value={sandbox.sandbox_name} />
+          <OperatorField label="Runtime" value={sandbox.runtime_ref ? formatRef(sandbox.runtime_ref) : "none"} />
+          <OperatorField label="System Code" value={formatRef(sandbox.system_code_ref)} />
+          <OperatorField label="Placement" value={formatRef(sandbox.sandbox_placement_ref)} />
+          <OperatorField label="Last heartbeat" value={sandbox.last_heartbeat_at ?? "none"} />
+          <OperatorField label="Logs" value={latestLog?.lines.join(" / ") ?? "none"} />
+          <OperatorField label="Heartbeats" value={latestHeartbeat?.heartbeat_line ?? "none"} />
+          <OperatorField label="Command evidence" value={String(sandbox.command_evidence.length)} />
+          <OperatorField label="Sandbox authority" value={sandbox.authority_status} />
         </OperatorEvidenceRow>
       </OperatorEvidenceStack>
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -4403,7 +4414,7 @@ function TradingRunTranscriptSection({
     : "none";
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Trading Run Transcript"
       summary={`${statusLabel} / ${transcript?.authority_status ?? "not_live"}`}
       badge={transcript?.has_activity ? "activity" : "none"}
@@ -4416,21 +4427,21 @@ function TradingRunTranscriptSection({
           tone={transcript?.has_activity ? "counted" : "neutral"}
         />
         <OperatorEvidenceRow>
-          <Field label="Items" value={String(transcript?.item_count ?? 0)} />
-          <Field label="Latest" value={transcript?.latest_item?.label ?? "none"} />
-          <Field label="Transcript authority" value={transcript?.authority_status ?? "not_live"} />
+          <OperatorField label="Items" value={String(transcript?.item_count ?? 0)} />
+          <OperatorField label="Latest" value={transcript?.latest_item?.label ?? "none"} />
+          <OperatorField label="Transcript authority" value={transcript?.authority_status ?? "not_live"} />
         </OperatorEvidenceRow>
 
         {transcript?.items.length ? (
           transcript.items.map((item) => (
             <OperatorEvidenceBlock title={item.label} key={item.item_id}>
               <OperatorEvidenceRow>
-                <Field label="When" value={item.occurred_at} />
-                <Field label="Kind" value={item.item_kind} />
-                <Field label="Summary" value={item.summary} />
-                {item.ref && <Field label="Ref" value={formatRef(item.ref)} />}
-                {item.lifecycle_status && <Field label="Lifecycle" value={item.lifecycle_status} />}
-                <Field label="Transcript event authority" value={item.authority_status} />
+                <OperatorField label="When" value={item.occurred_at} />
+                <OperatorField label="Kind" value={item.item_kind} />
+                <OperatorField label="Summary" value={item.summary} />
+                {item.ref && <OperatorField label="Ref" value={formatRef(item.ref)} />}
+                {item.lifecycle_status && <OperatorField label="Lifecycle" value={item.lifecycle_status} />}
+                <OperatorField label="Transcript event authority" value={item.authority_status} />
               </OperatorEvidenceRow>
             </OperatorEvidenceBlock>
           ))
@@ -4442,7 +4453,7 @@ function TradingRunTranscriptSection({
           />
         )}
       </OperatorEvidenceStack>
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -4476,16 +4487,16 @@ export function TradingExecutionModesSection({
               tone={mode.support_status === "available" ? "counted" : "neutral"}
             />
             <OperatorEvidenceRow>
-              <Field label="Execution mode" value={mode.mode} />
-              <Field label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
-              <Field label="Market data" value={mode.provider_contract.market_data} />
-              <Field label="Account" value={mode.provider_contract.account} />
+              <OperatorField label="Execution mode" value={mode.mode} />
+              <OperatorField label="Provider boundary" value={mode.artifact_contract.api_provider_boundary} />
+              <OperatorField label="Market data" value={mode.provider_contract.market_data} />
+              <OperatorField label="Account" value={mode.provider_contract.account} />
             </OperatorEvidenceRow>
             <OperatorEvidenceRow>
-              <Field label="Order plane" value={mode.provider_contract.order_plane} />
-              <Field label="Execution mode authority" value={mode.authority.status} />
-              <Field label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
-              <Field label="Artifact order submission" value={mode.artifact_contract.order_submission} />
+              <OperatorField label="Order plane" value={mode.provider_contract.order_plane} />
+              <OperatorField label="Execution mode authority" value={mode.authority.status} />
+              <OperatorField label="Artifact credentials" value={mode.artifact_contract.credentials_access} />
+              <OperatorField label="Artifact order submission" value={mode.artifact_contract.order_submission} />
             </OperatorEvidenceRow>
           </OperatorEvidenceBlock>
         ))}
@@ -4522,7 +4533,7 @@ function ReplayRunsSection({
   const latestRun = runs[0];
   const activeRunId = selectedRunId ?? detail?.run_id ?? latestRun?.run_id;
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Candidate Runs"
       summary={latestRun ? `${latestRun.status} / ${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted` : "no replay runs"}
       badge={latestRun?.status ?? "none"}
@@ -4538,16 +4549,16 @@ function ReplayRunsSection({
         {latestRun ? (
           <OperatorEvidenceBlock title="Latest replay run" aria-label="Latest replay run">
             <OperatorEvidenceRow>
-              <Field label="Latest run" value={latestRun.run_id} />
-              <Field label="Selected run" value={activeRunId ?? "none"} />
-              <Field label="Replay runner" value={latestRun.runner_kind} />
-              <Field label="Run status" value={latestRun.run_status} />
-              <Field label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
-              <Field label="Provider requests" value={String(latestRun.provider_request_total)} />
-              <Field label="Replay runner commands" value={String(latestRun.runner_command_total)} />
-              <Field label="Artifact digest" value={latestRun.artifact_digest} />
-              <Field label="Completed" value={latestRun.completed_at} />
-              <Field label="Replay authority" value={latestRun.authority_status} />
+              <OperatorField label="Latest run" value={latestRun.run_id} />
+              <OperatorField label="Selected run" value={activeRunId ?? "none"} />
+              <OperatorField label="Replay runner" value={latestRun.runner_kind} />
+              <OperatorField label="Run status" value={latestRun.run_status} />
+              <OperatorField label="Scenarios" value={`${latestRun.scenario_accepted}/${latestRun.scenario_total} accepted`} />
+              <OperatorField label="Provider requests" value={String(latestRun.provider_request_total)} />
+              <OperatorField label="Replay runner commands" value={String(latestRun.runner_command_total)} />
+              <OperatorField label="Artifact digest" value={latestRun.artifact_digest} />
+              <OperatorField label="Completed" value={latestRun.completed_at} />
+              <OperatorField label="Replay authority" value={latestRun.authority_status} />
             </OperatorEvidenceRow>
           </OperatorEvidenceBlock>
         ) : (
@@ -4612,7 +4623,7 @@ function ReplayRunsSection({
           )}
         />
       </OperatorEvidenceStack>
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -4649,16 +4660,16 @@ function ReplayRunComparisonBlock({
         tone={comparison.verdict === "regressed" ? "failed" : "counted"}
       />
       <OperatorEvidenceRow>
-        <Field label="Selected run" value={comparison.selected.run_id} />
-        <Field label="Baseline run" value={comparison.baseline.run_id} />
-        <Field label="Score delta" value={formatSignedNumber(comparison.deltas.score)} />
-        <Field label="Accepted scenario delta" value={formatSignedNumber(comparison.deltas.scenario_accepted)} />
-        <Field label="Provider request delta" value={formatSignedNumber(comparison.deltas.provider_request_total)} />
-        <Field label="Runner command delta" value={formatSignedNumber(comparison.deltas.runner_command_total)} />
-        <Field label="Risk transition" value={comparison.risk_transition} />
-        <Field label="Reason" value={comparison.verdict_reason} />
-        <Field label="Replay comparison authority" value={comparison.authority_status} />
-        <Field label="Replay comparison no authority" value={formatNoAuthority(comparison.no_authority)} />
+        <OperatorField label="Selected run" value={comparison.selected.run_id} />
+        <OperatorField label="Baseline run" value={comparison.baseline.run_id} />
+        <OperatorField label="Score delta" value={formatSignedNumber(comparison.deltas.score)} />
+        <OperatorField label="Accepted scenario delta" value={formatSignedNumber(comparison.deltas.scenario_accepted)} />
+        <OperatorField label="Provider request delta" value={formatSignedNumber(comparison.deltas.provider_request_total)} />
+        <OperatorField label="Runner command delta" value={formatSignedNumber(comparison.deltas.runner_command_total)} />
+        <OperatorField label="Risk transition" value={comparison.risk_transition} />
+        <OperatorField label="Reason" value={comparison.verdict_reason} />
+        <OperatorField label="Replay comparison authority" value={comparison.authority_status} />
+        <OperatorField label="Replay comparison no authority" value={formatNoAuthority(comparison.no_authority)} />
       </OperatorEvidenceRow>
     </OperatorEvidenceBlock>
   );
@@ -4673,13 +4684,13 @@ function ReplayRunValidationStateBlock({
     <OperatorEvidenceBlock title="Validation state" aria-label="Validation state">
       <ValidationStateStatus validationState={validationState} />
       <OperatorEvidenceRow>
-        <Field label="Selected run" value={validationState.selected_run_id} />
-        <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
-        <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
-        <Field label="Reasons" value={validationState.reasons.join("; ")} />
-        <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
-        <Field label="Replay validation authority" value={validationState.authority_status} />
-        <Field label="Replay validation no authority" value={formatNoAuthority(validationState.no_authority)} />
+        <OperatorField label="Selected run" value={validationState.selected_run_id} />
+        <OperatorField label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
+        <OperatorField label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
+        <OperatorField label="Reasons" value={validationState.reasons.join("; ")} />
+        <OperatorField label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
+        <OperatorField label="Replay validation authority" value={validationState.authority_status} />
+        <OperatorField label="Replay validation no authority" value={formatNoAuthority(validationState.no_authority)} />
       </OperatorEvidenceRow>
     </OperatorEvidenceBlock>
   );
@@ -4694,13 +4705,13 @@ function CandidateLatestValidationStateBlock({
     <OperatorEvidenceBlock title="Candidate latest validation state" aria-label="Candidate latest validation state">
       <ValidationStateStatus validationState={validationState} />
       <OperatorEvidenceRow>
-        <Field label="Selected run" value={validationState.selected_run_id ?? "none"} />
-        <Field label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
-        <Field label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
-        <Field label="Reasons" value={validationState.reasons.join("; ")} />
-        <Field label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
-        <Field label="Candidate validation authority" value={validationState.authority_status} />
-        <Field label="Candidate validation no authority" value={formatNoAuthority(validationState.no_authority)} />
+        <OperatorField label="Selected run" value={validationState.selected_run_id ?? "none"} />
+        <OperatorField label="Baseline run" value={validationState.baseline_run_id ?? "none"} />
+        <OperatorField label="Comparison verdict" value={validationState.comparison_verdict ?? "none"} />
+        <OperatorField label="Reasons" value={validationState.reasons.join("; ")} />
+        <OperatorField label="Required next evidence" value={validationState.required_next_evidence.join("; ")} />
+        <OperatorField label="Candidate validation authority" value={validationState.authority_status} />
+        <OperatorField label="Candidate validation no authority" value={formatNoAuthority(validationState.no_authority)} />
       </OperatorEvidenceRow>
     </OperatorEvidenceBlock>
   );
@@ -4748,34 +4759,34 @@ function ReplayRunDetailBlock({ detail }: { detail: ReplayRunDetailReadModel }) 
     <>
       <OperatorEvidenceBlock title="Selected run detail" aria-label="Selected run detail">
         <OperatorEvidenceRow>
-          <Field label="Run" value={detail.run_id} />
-          <Field label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
-          <Field label="Scenario ids" value={detail.scenario_ids.join(", ")} />
-          <Field label="Replay detail no authority" value={formatNoAuthority(detail.no_authority)} />
-          <Field label="Promotion" value={detail.provenance.promotion_id ?? "none"} />
-          <Field label="Source session" value={detail.provenance.source_session_id ?? "none"} />
-          <Field label="Events" value={detail.events_path} />
+          <OperatorField label="Run" value={detail.run_id} />
+          <OperatorField label="Score / risk" value={`${detail.score} / ${detail.risk_decision}`} />
+          <OperatorField label="Scenario ids" value={detail.scenario_ids.join(", ")} />
+          <OperatorField label="Replay detail no authority" value={formatNoAuthority(detail.no_authority)} />
+          <OperatorField label="Promotion" value={detail.provenance.promotion_id ?? "none"} />
+          <OperatorField label="Source session" value={detail.provenance.source_session_id ?? "none"} />
+          <OperatorField label="Events" value={detail.events_path} />
         </OperatorEvidenceRow>
       </OperatorEvidenceBlock>
 
       {detail.scenarios.map((scenario) => (
         <OperatorEvidenceBlock title={scenario.scenario_id} key={scenario.scenario_id}>
           <OperatorEvidenceRow>
-            <Field label="Status" value={`${scenario.status} / ${scenario.run_status}`} />
-            <Field label="Replay scenario runner" value={scenario.runner_kind} />
-            <Field label="Score / risk" value={`${scenario.score} / ${scenario.risk_decision}`} />
-            <Field label="Summary" value={scenario.summary} />
-            <Field label="Provider requests" value={String(scenario.provider_request_count)} />
-            <Field label="Replay scenario runner commands" value={String(scenario.runner_command_count)} />
+            <OperatorField label="Status" value={`${scenario.status} / ${scenario.run_status}`} />
+            <OperatorField label="Replay scenario runner" value={scenario.runner_kind} />
+            <OperatorField label="Score / risk" value={`${scenario.score} / ${scenario.risk_decision}`} />
+            <OperatorField label="Summary" value={scenario.summary} />
+            <OperatorField label="Provider requests" value={String(scenario.provider_request_count)} />
+            <OperatorField label="Replay scenario runner commands" value={String(scenario.runner_command_count)} />
             {scenario.metrics.map((metric) => (
-              <Field
+              <OperatorField
                 key={metric.name}
                 label={`Metric ${metric.name}`}
                 value={`${metric.score}: ${metric.detail}`}
               />
             ))}
             {scenario.runner_command_evidence.map((evidence, index) => (
-              <Field
+              <OperatorField
                 key={`${scenario.scenario_id}-command-${index}`}
                 label={`Command ${index + 1}`}
                 value={`${evidence.command.join(" ")} -> ${evidence.exit_code ?? "signal"}`}
@@ -4841,36 +4852,36 @@ function TradingGatewayContractSection({
 }) {
   if (!contract) {
     return (
-      <InfoSection title="Trading gateway contract" summary="not projected / not_live" badge="none">
+      <OperatorInfoSection title="Trading gateway contract" summary="not projected / not_live" badge="none">
         <OperatorEmptyState
           title="No trading gateway contract"
           description="BTCUSDT gateway contract has not been projected"
           detail="not_live"
         />
-      </InfoSection>
+      </OperatorInfoSection>
     );
   }
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Trading gateway contract"
       summary={`${contract.gateway_name} / ${contract.authority_status}`}
       badge={contract.authority_status}
     >
-      <Field label="Gateway" value={contract.gateway_name} />
-      <Field
+      <OperatorField label="Gateway" value={contract.gateway_name} />
+      <OperatorField
         label="Sandbox exchange access"
         value={`sandbox_direct_exchange_access=${String(contract.sandbox_direct_exchange_access)}`}
       />
-      <Field
+      <OperatorField
         label="Gateway required"
         value={contract.gateway_required_for.join(", ")}
       />
-      <Field
+      <OperatorField
         label="Tracking chain"
         value={contract.tracking_chain.map(canonicalGatewayTrackingStep).join(" -> ")}
       />
-      <Field
+      <OperatorField
         label="Market data"
         value={[
           contract.market_data.security_type,
@@ -4878,7 +4889,7 @@ function TradingGatewayContractSection({
           contract.market_data.authority_status
         ].join(" / ")}
       />
-      <Field
+      <OperatorField
         label="Account read"
         value={[
           contract.account_read.security_type,
@@ -4887,7 +4898,7 @@ function TradingGatewayContractSection({
           `gateway_required=${String(contract.account_read.gateway_required)}, authority=${contract.account_read.authority_status}`
         ].join(" / ")}
       />
-      <Field
+      <OperatorField
         label="Order submission"
         value={[
           contract.order_submission.security_type,
@@ -4896,7 +4907,7 @@ function TradingGatewayContractSection({
           `gateway_required=${String(contract.order_submission.gateway_required)}, authority=${contract.order_submission.authority_status}`
         ].join(" / ")}
       />
-      <Field
+      <OperatorField
         label="No-authority proof"
         value={[
           `raw_secret_material_present=${String(contract.no_authority.raw_secret_material_present)}`,
@@ -4906,7 +4917,7 @@ function TradingGatewayContractSection({
           `authority_status=${contract.authority_status}`
         ].join(", ")}
       />
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -4920,25 +4931,25 @@ export function TradingGatewayEnvironmentSection({
   }
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Trading gateway environment"
       summary={`${environment.runtime_environment} / ${environment.configuration_status}`}
       badge={environment.configuration_status}
     >
-      <Field
+      <OperatorField
         label="Runtime binding"
         value={`${environment.runtime_environment} / ${environment.runtime_environment_source}`}
       />
-      <Field
+      <OperatorField
         label="Exchange binding"
         value={`${formatGatewayEnvironment(environment.exchange_environment)} / ${environment.exchange_environment_source}`}
       />
-      <Field
+      <OperatorField
         label="Configuration"
         value={`${environment.configuration_status} / ${environment.configuration_reason}`}
       />
-      <Field label="REST base URL" value={environment.rest_base_url ?? "not_configured"} />
-      <Field
+      <OperatorField label="REST base URL" value={environment.rest_base_url ?? "not_configured"} />
+      <OperatorField
         label="Paper binding"
         value={[
           environment.runtime_bindings.paper.market_data_source,
@@ -4949,12 +4960,12 @@ export function TradingGatewayEnvironmentSection({
           environment.runtime_bindings.paper.authority_status
         ].join(" / ")}
       />
-      <Field
+      <OperatorField
         label="Live binding"
         value={`${environment.runtime_bindings.live.status} / ${environment.runtime_bindings.live.disabled_reason}`}
       />
-      <Field label="Credential scope" value={environment.credential_scope} />
-      <Field
+      <OperatorField label="Credential scope" value={environment.credential_scope} />
+      <OperatorField
         label="Credentials configured"
         value={[
           `api_key=${String(environment.api_key_configured)}`,
@@ -4962,7 +4973,7 @@ export function TradingGatewayEnvironmentSection({
           environment.credential_source
         ].join(", ")}
       />
-      <Field
+      <OperatorField
         label="Gateway environment authority"
         value={[
           `live_exchange=${String(environment.live_exchange_authority)}`,
@@ -4970,14 +4981,14 @@ export function TradingGatewayEnvironmentSection({
           environment.authority_status
         ].join(", ")}
       />
-      <Field
+      <OperatorField
         label="Env vars"
         value={Object.values(environment.env_var_names).join(", ")}
       />
       {environment.warnings.length > 0 && (
-        <Field label="Warnings" value={environment.warnings.join(", ")} />
+        <OperatorField label="Warnings" value={environment.warnings.join(", ")} />
       )}
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -5049,7 +5060,7 @@ function TradingSubstrateSection({
   }
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Trading Substrate"
       summary={`${publicMarketSurface?.symbol_status ?? "public unknown"} / ${privateReadinessSurface?.credential_gate.status ?? "private not ready"}`}
       badge={privateReadinessPolicyDecision?.status ?? "not_ready"}
@@ -5063,49 +5074,49 @@ function TradingSubstrateSection({
             detail={publicMarketSurface.authority_status}
             tone={publicMarketStatusTone(publicMarketSurface)}
           />
-          <Field label="Public surface" value={publicMarketSurface.surface_label} />
-          <Field label="Venue" value={`${publicMarketSurface.venue} / ${publicMarketSurface.product_category}`} />
-          <Field label="Instrument" value={publicMarketSurface.instrument} />
-          <Field label="Contract" value={publicMarketSurface.contract_type} />
-          <Field label="Symbol status" value={publicMarketSurface.symbol_status} />
-          <Field label="Price tick" value={publicMarketSurface.price_tick_size} />
-          <Field label="Quantity step / min" value={[
+          <OperatorField label="Public surface" value={publicMarketSurface.surface_label} />
+          <OperatorField label="Venue" value={`${publicMarketSurface.venue} / ${publicMarketSurface.product_category}`} />
+          <OperatorField label="Instrument" value={publicMarketSurface.instrument} />
+          <OperatorField label="Contract" value={publicMarketSurface.contract_type} />
+          <OperatorField label="Symbol status" value={publicMarketSurface.symbol_status} />
+          <OperatorField label="Price tick" value={publicMarketSurface.price_tick_size} />
+          <OperatorField label="Quantity step / min" value={[
             publicMarketSurface.quantity_step_size,
             publicMarketSurface.min_quantity
           ].join(" / ")} />
-          <Field label="Min notional" value={publicMarketSurface.min_notional ?? "none"} />
-          <Field label="Mark / index" value={[
+          <OperatorField label="Min notional" value={publicMarketSurface.min_notional ?? "none"} />
+          <OperatorField label="Mark / index" value={[
             publicMarketSurface.mark_price,
             publicMarketSurface.index_price
           ].join(" / ")} />
-          <Field label="Estimated settle" value={publicMarketSurface.estimated_settle_price ?? "none"} />
-          <Field label="Funding / interest" value={[
+          <OperatorField label="Estimated settle" value={publicMarketSurface.estimated_settle_price ?? "none"} />
+          <OperatorField label="Funding / interest" value={[
             publicMarketSurface.funding_rate,
             publicMarketSurface.interest_rate ?? "none"
           ].join(" / ")} />
-          <Field label="Next funding" value={publicMarketSurface.next_funding_time} />
-          <Field label="Server time" value={publicMarketSurface.server_time} />
-          <Field label="Public freshness" value={`${publicMarketSurface.freshness} / ${publicMarketSurface.liveness}`} />
-          <Field label="Public source" value={formatSubstrateSource(publicMarketSurface)} />
-          <Field label="Public connector package" value={publicMarketSurface.transport.package_name} />
-          <Field label="Public connector repository" value={publicMarketSurface.transport.repository} />
-          <Field
+          <OperatorField label="Next funding" value={publicMarketSurface.next_funding_time} />
+          <OperatorField label="Server time" value={publicMarketSurface.server_time} />
+          <OperatorField label="Public freshness" value={`${publicMarketSurface.freshness} / ${publicMarketSurface.liveness}`} />
+          <OperatorField label="Public source" value={formatSubstrateSource(publicMarketSurface)} />
+          <OperatorField label="Public connector package" value={publicMarketSurface.transport.package_name} />
+          <OperatorField label="Public connector repository" value={publicMarketSurface.transport.repository} />
+          <OperatorField
             label="Public connector endpoints"
             value={publicMarketSurface.transport.supported_endpoints.join(", ")}
           />
-          <Field label="Public connector role" value={publicMarketSurface.transport.integration_role} />
-          <Field label="Public connector URLs" value={[
+          <OperatorField label="Public connector role" value={publicMarketSurface.transport.integration_role} />
+          <OperatorField label="Public connector URLs" value={[
             publicMarketSurface.transport.production_base_url,
             publicMarketSurface.transport.testnet_base_url
           ].join(" / ")} />
-          <Field label="Public source timestamp" value={publicMarketSurface.source_timestamp} />
-          <Field label="Public observed" value={publicMarketSurface.observed_at} />
-          <Field label="Public updated" value={publicMarketSurface.updated_at} />
+          <OperatorField label="Public source timestamp" value={publicMarketSurface.source_timestamp} />
+          <OperatorField label="Public observed" value={publicMarketSurface.observed_at} />
+          <OperatorField label="Public updated" value={publicMarketSurface.updated_at} />
           {publicMarketSurface.degraded_reason && (
-            <Field label="Public reason" value={publicMarketSurface.degraded_reason} />
+            <OperatorField label="Public reason" value={publicMarketSurface.degraded_reason} />
           )}
-          <Field label="Public no authority" value={publicMarketSurface.no_authority_label} />
-          <Field label="Public authority" value={publicMarketSurface.authority_status} />
+          <OperatorField label="Public no authority" value={publicMarketSurface.no_authority_label} />
+          <OperatorField label="Public authority" value={publicMarketSurface.authority_status} />
         </OperatorEvidenceBlock>
       ) : (
         <OperatorEmptyState
@@ -5122,43 +5133,43 @@ function TradingSubstrateSection({
             detail={privateReadinessSurface.authority_status}
             tone={privateReadinessStatusTone(privateReadinessSurface)}
           />
-          <Field label="Private surface" value={privateReadinessSurface.surface_label} />
-          <Field
+          <OperatorField label="Private surface" value={privateReadinessSurface.surface_label} />
+          <OperatorField
             label="Private venue"
             value={`${privateReadinessSurface.venue} / ${privateReadinessSurface.product_category}`}
           />
-          <Field label="Private instrument" value={privateReadinessSurface.instrument} />
-          <Field label="Credential gate" value={formatPrivateReadinessGate(privateReadinessSurface.credential_gate)} />
-          <Field
+          <OperatorField label="Private instrument" value={privateReadinessSurface.instrument} />
+          <OperatorField label="Credential gate" value={formatPrivateReadinessGate(privateReadinessSurface.credential_gate)} />
+          <OperatorField
             label="Jurisdiction gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.jurisdiction_gate)}
           />
-          <Field
+          <OperatorField
             label="Operator approval gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.operator_approval_gate)}
           />
-          <Field
+          <OperatorField
             label="Account read gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.private_account_read_gate)}
           />
-          <Field
+          <OperatorField
             label="Position read gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.private_position_read_gate)}
           />
-          <Field
+          <OperatorField
             label="User stream gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.user_data_stream_gate)}
           />
-          <Field label="Listen key gate" value={formatPrivateReadinessGate(privateReadinessSurface.listen_key_gate)} />
-          <Field
+          <OperatorField label="Listen key gate" value={formatPrivateReadinessGate(privateReadinessSurface.listen_key_gate)} />
+          <OperatorField
             label="Order submission gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.order_submission_gate)}
           />
-          <Field
+          <OperatorField
             label="Leverage / margin gate"
             value={formatPrivateReadinessGate(privateReadinessSurface.leverage_or_margin_mutation_gate)}
           />
-          <Field
+          <OperatorField
             label="Private endpoints"
             value={[
               privateReadinessSurface.account_information_endpoint,
@@ -5166,24 +5177,24 @@ function TradingSubstrateSection({
               privateReadinessSurface.order_endpoint
             ].join(" / ")}
           />
-          <Field label="Next blocked action" value={privateReadinessSurface.next_blocked_action} />
-          <Field label="Next blocked reason" value={privateReadinessSurface.next_blocked_reason} />
-          <Field
+          <OperatorField label="Next blocked action" value={privateReadinessSurface.next_blocked_action} />
+          <OperatorField label="Next blocked reason" value={privateReadinessSurface.next_blocked_reason} />
+          <OperatorField
             label="Private freshness"
             value={`${privateReadinessSurface.freshness} / ${privateReadinessSurface.liveness}`}
           />
-          <Field label="Private source" value={formatSubstrateSource(privateReadinessSurface)} />
-          <Field label="Private connector package" value={privateReadinessSurface.transport.package_name} />
-          <Field label="Private connector repository" value={privateReadinessSurface.transport.repository} />
-          <Field label="Private connector role" value={privateReadinessSurface.transport.integration_role} />
-          <Field label="Private source timestamp" value={privateReadinessSurface.source_timestamp} />
-          <Field label="Private observed" value={privateReadinessSurface.observed_at} />
-          <Field label="Private updated" value={privateReadinessSurface.updated_at} />
+          <OperatorField label="Private source" value={formatSubstrateSource(privateReadinessSurface)} />
+          <OperatorField label="Private connector package" value={privateReadinessSurface.transport.package_name} />
+          <OperatorField label="Private connector repository" value={privateReadinessSurface.transport.repository} />
+          <OperatorField label="Private connector role" value={privateReadinessSurface.transport.integration_role} />
+          <OperatorField label="Private source timestamp" value={privateReadinessSurface.source_timestamp} />
+          <OperatorField label="Private observed" value={privateReadinessSurface.observed_at} />
+          <OperatorField label="Private updated" value={privateReadinessSurface.updated_at} />
           {privateReadinessSurface.degraded_reason && (
-            <Field label="Private reason" value={privateReadinessSurface.degraded_reason} />
+            <OperatorField label="Private reason" value={privateReadinessSurface.degraded_reason} />
           )}
-          <Field label="Private no authority" value={privateReadinessSurface.no_authority_label} />
-          <Field label="Private authority" value={privateReadinessSurface.authority_status} />
+          <OperatorField label="Private no authority" value={privateReadinessSurface.no_authority_label} />
+          <OperatorField label="Private authority" value={privateReadinessSurface.authority_status} />
         </OperatorEvidenceBlock>
       ) : (
         <OperatorEmptyState
@@ -5200,55 +5211,55 @@ function TradingSubstrateSection({
             detail={privateReadinessPosture.authority_status}
             tone={privateReadinessPostureStatusTone(privateReadinessPosture)}
           />
-          <Field label="Local posture" value={privateReadinessPosture.posture_label} />
-          <Field
+          <OperatorField label="Local posture" value={privateReadinessPosture.posture_label} />
+          <OperatorField
             label="Posture venue"
             value={`${privateReadinessPosture.venue} / ${privateReadinessPosture.product_category}`}
           />
-          <Field label="Posture instrument" value={privateReadinessPosture.instrument} />
-          <Field
+          <OperatorField label="Posture instrument" value={privateReadinessPosture.instrument} />
+          <OperatorField
             label="Operator approval gate"
             value={formatPrivateReadinessPolicyGate(privateReadinessPosture.operator_approval_gate)}
           />
-          <Field
+          <OperatorField
             label="Jurisdiction / risk gate"
             value={formatPrivateReadinessPolicyGate(privateReadinessPosture.jurisdiction_risk_gate)}
           />
-          <Field
+          <OperatorField
             label="Live binding gate"
             value={formatPrivateReadinessPolicyGate(privateReadinessPosture.live_binding_gate)}
           />
-          <Field
+          <OperatorField
             label="Secret handling gate"
             value={formatPrivateReadinessPolicyGate(privateReadinessPosture.secret_handling_gate)}
           />
-          <Field
+          <OperatorField
             label="Stop behavior gate"
             value={formatPrivateReadinessPolicyGate(privateReadinessPosture.stop_behavior_gate)}
           />
-          <Field
+          <OperatorField
             label="Secret reference"
             value={privateReadinessPosture.secret_reference_configured ? "configured" : "not_configured"}
           />
-          <Field
+          <OperatorField
             label="Raw secret material"
             value={String(privateReadinessPosture.raw_secret_material_present)}
           />
-          <Field label="Posture source" value={formatSubstrateSource(privateReadinessPosture)} />
-          <Field label="Posture source timestamp" value={privateReadinessPosture.source_timestamp} />
-          <Field label="Posture observed" value={privateReadinessPosture.observed_at} />
-          <Field label="Posture updated" value={privateReadinessPosture.updated_at} />
-          <Field label="Posture no authority" value={privateReadinessPosture.no_authority_label} />
-          <Field label="Posture authority" value={privateReadinessPosture.authority_status} />
+          <OperatorField label="Posture source" value={formatSubstrateSource(privateReadinessPosture)} />
+          <OperatorField label="Posture source timestamp" value={privateReadinessPosture.source_timestamp} />
+          <OperatorField label="Posture observed" value={privateReadinessPosture.observed_at} />
+          <OperatorField label="Posture updated" value={privateReadinessPosture.updated_at} />
+          <OperatorField label="Posture no authority" value={privateReadinessPosture.no_authority_label} />
+          <OperatorField label="Posture authority" value={privateReadinessPosture.authority_status} />
           {privateReadinessPostureHistory && privateReadinessPostureHistory.length > 0 && (
             <OperatorEvidenceBlock title="Recent posture history" aria-label="Private-readiness posture history">
               <OperatorEvidenceStack>
               {privateReadinessPostureHistory.map((posture) => (
                 <OperatorEvidenceRow key={posture.posture_id}>
-                  <Field label="Posture" value={posture.posture_id} />
-                  <Field label="Source / updated" value={`${posture.source_kind} / ${posture.updated_at}`} />
-                  <Field label="Gate summary" value={formatPrivateReadinessPostureGateSummary(posture)} />
-                  <Field label="Authority" value={`${posture.no_authority_label} / ${posture.authority_status}`} />
+                  <OperatorField label="Posture" value={posture.posture_id} />
+                  <OperatorField label="Source / updated" value={`${posture.source_kind} / ${posture.updated_at}`} />
+                  <OperatorField label="Gate summary" value={formatPrivateReadinessPostureGateSummary(posture)} />
+                  <OperatorField label="Authority" value={`${posture.no_authority_label} / ${posture.authority_status}`} />
                 </OperatorEvidenceRow>
               ))}
               </OperatorEvidenceStack>
@@ -5257,19 +5268,19 @@ function TradingSubstrateSection({
           {previousPosture && (
             <div className="posture-delta" aria-label="Private-readiness posture delta summary">
               <h4>Posture delta summary</h4>
-              <Field label="Current posture" value={privateReadinessPosture.posture_id} />
-              <Field label="Previous posture" value={previousPosture.posture_id} />
-              <Field
+              <OperatorField label="Current posture" value={privateReadinessPosture.posture_id} />
+              <OperatorField label="Previous posture" value={previousPosture.posture_id} />
+              <OperatorField
                 label="Changed gates"
                 value={formatPrivateReadinessPostureGateChangeCount(postureGateChanges)}
               />
-              <Field
+              <OperatorField
                 label="Gate changes"
                 value={formatPrivateReadinessPostureGateChanges(postureGateChanges)}
               />
-              <Field label="Delta boundary" value="local_config_delta_inspection_only" />
-              <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-              <Field
+              <OperatorField label="Delta boundary" value="local_config_delta_inspection_only" />
+              <OperatorField label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+              <OperatorField
                 label="Authority boundary"
                 value="not_private_read_permission_or_execution_authority"
               />
@@ -5349,18 +5360,18 @@ function TradingSubstrateSection({
             detail={privateReadinessPolicyDecision.authority_status}
             tone={privateReadinessPolicyStatusTone(privateReadinessPolicyDecision)}
           />
-          <Field label="Policy decision" value={privateReadinessPolicyDecision.decision_kind} />
-          <Field label="Policy venue" value={[
+          <OperatorField label="Policy decision" value={privateReadinessPolicyDecision.decision_kind} />
+          <OperatorField label="Policy venue" value={[
             privateReadinessPolicyDecision.venue,
             privateReadinessPolicyDecision.instrument,
             privateReadinessPolicyDecision.product_category
           ].join(" / ")} />
-          <Field
+          <OperatorField
             label="Policy Binance security types"
             value={privateReadinessPolicyDecision.binance_security_types.join(", ")}
           />
-          <Field label="Policy reason codes" value={privateReadinessPolicyDecision.reason_codes.join(", ")} />
-          <Field
+          <OperatorField label="Policy reason codes" value={privateReadinessPolicyDecision.reason_codes.join(", ")} />
+          <OperatorField
             label="Policy blocking conditions"
             value={
               privateReadinessPolicyDecision.blocking_conditions.length > 0
@@ -5368,18 +5379,18 @@ function TradingSubstrateSection({
                 : "none"
             }
           />
-          <Field
+          <OperatorField
             label="Policy checked gates"
             value={privateReadinessPolicyDecision.checked_gates
               .map((gate) => `${gate.dimension}=${gate.status}`)
               .join(", ")}
           />
-          <Field
+          <OperatorField
             label="Policy source surfaces"
             value={privateReadinessPolicyDecision.source_surface_refs.map(formatRef).join(" / ")}
           />
-          <Field label="Policy evaluated" value={privateReadinessPolicyDecision.evaluated_at} />
-          <Field
+          <OperatorField label="Policy evaluated" value={privateReadinessPolicyDecision.evaluated_at} />
+          <OperatorField
             label="Policy no private read"
             value={[
               `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
@@ -5391,10 +5402,10 @@ function TradingSubstrateSection({
           {privateReadGateDecision && (
             <div className="authority-preview" aria-label="Private-read gate">
               <h4>Private-read gate</h4>
-              <Field label="Gate decision" value={privateReadGateDecision.decision_kind} />
-              <Field label="Gate status" value={privateReadGateDecision.status} />
-              <Field label="Policy status" value={privateReadGateDecision.policy_status} />
-              <Field
+              <OperatorField label="Gate decision" value={privateReadGateDecision.decision_kind} />
+              <OperatorField label="Gate status" value={privateReadGateDecision.status} />
+              <OperatorField label="Policy status" value={privateReadGateDecision.policy_status} />
+              <OperatorField
                 label="Gate scope"
                 value={[
                   privateReadGateDecision.venue,
@@ -5402,28 +5413,28 @@ function TradingSubstrateSection({
                   privateReadGateDecision.product_category
                 ].join(" / ")}
               />
-              <Field
+              <OperatorField
                 label="Credential reference"
                 value={privateReadGateDecision.credential_reference_status}
               />
-              <Field
+              <OperatorField
                 label="Credential reference source"
                 value={privateReadGateDecision.credential_reference_source}
               />
               {privateReadGateDecision.credential_reference_ref && (
-                <Field
+                <OperatorField
                   label="Credential reference ref"
                   value={formatRef(privateReadGateDecision.credential_reference_ref)}
                 />
               )}
-              <Field
+              <OperatorField
                 label="Signed-read preflight"
                 value={[
                   `USER_DATA=${privateReadGateDecision.signed_read_permission_preflight_status}`,
                   `source=${privateReadGateDecision.signed_read_permission_preflight_source}`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Signed request construction"
                 value={[
                   `USER_DATA=${privateReadGateDecision.signed_request_construction_boundary_status}`,
@@ -5435,48 +5446,48 @@ function TradingSubstrateSection({
                   }`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Signed-read grant boundary"
                 value={[
                   `USER_DATA=${privateReadGateDecision.signed_read_permission_grant_boundary_status}`,
                   `source=${privateReadGateDecision.signed_read_permission_grant_boundary_source}`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Signed request execution boundary"
                 value={[
                   `USER_DATA=${privateReadGateDecision.signed_request_execution_boundary_status}`,
                   `source=${privateReadGateDecision.signed_request_execution_boundary_source}`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Account / balance / position read boundary"
                 value={[
                   `USER_DATA=${privateReadGateDecision.account_balance_position_read_boundary_status}`,
                   `source=${privateReadGateDecision.account_balance_position_read_boundary_source}`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Signed read permission"
                 value={`USER_DATA=${privateReadGateDecision.signed_read_permission}`}
               />
-              <Field
+              <OperatorField
                 label="Account / balance / position"
                 value={privateReadGateDecision.account_balance_position_read_authority}
               />
-              <Field
+              <OperatorField
                 label="ListenKey / user data stream"
                 value={`USER_STREAM=${privateReadGateDecision.listen_key_user_data_stream_authority}`}
               />
-              <Field
+              <OperatorField
                 label="Leverage / margin mutation"
                 value={privateReadGateDecision.leverage_margin_mutation_authority}
               />
-              <Field
+              <OperatorField
                 label="Order submission"
                 value={`TRADE=${privateReadGateDecision.order_submission_authority}`}
               />
-              <Field
+              <OperatorField
                 label="Gateway / evidence / promotion"
                 value={[
                   `gateway=${privateReadGateDecision.gateway_result_authority}`,
@@ -5484,7 +5495,7 @@ function TradingSubstrateSection({
                   `promotion=${privateReadGateDecision.promotion_authority}`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Gate no-authority proof"
                 value={[
                   `raw_secret_material_present=${String(privateReadGateDecision.raw_secret_material_present)}`,
@@ -5494,7 +5505,7 @@ function TradingSubstrateSection({
                   `authority_status=${privateReadGateDecision.authority_status}`
                 ].join(", ")}
               />
-              <Field
+              <OperatorField
                 label="Gate boundary"
                 value="private_read_gate_no_secret_not_live"
               />
@@ -5506,14 +5517,13 @@ function TradingSubstrateSection({
               projection={reviewPacketProjection}
             />
           )}
-          <div
-            className={`checked-gate-matrix ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
-            aria-label="Private-readiness checked-gate matrix"
+          <OperatorEvidencePanel
+            className="checked-gate-matrix"
+            label="Private-readiness checked-gate matrix"
           >
-            <h4>Private-readiness checked-gate matrix</h4>
             {privateReadinessPolicyDecision.checked_gates.length > 0 ? (
               privateReadinessPolicyDecision.checked_gates.map((gate) => (
-                <OperatorEvidenceRow className={`checked-gate-row ${RAW_EVIDENCE_ROW_CLASS}`} key={gate.dimension}>
+                <OperatorEvidenceRow className="checked-gate-row" key={gate.dimension}>
                   <strong>{gate.dimension}</strong>
                   <span>{gate.status}</span>
                   <span>{gate.reason_code}</span>
@@ -5522,7 +5532,7 @@ function TradingSubstrateSection({
                 </OperatorEvidenceRow>
               ))
             ) : (
-              <OperatorEvidenceRow className={`checked-gate-row ${RAW_EVIDENCE_ROW_CLASS}`}>
+              <OperatorEvidenceRow className="checked-gate-row">
                 <strong>no_checked_gates</strong>
                 <span>none</span>
                 <span>none</span>
@@ -5530,21 +5540,20 @@ function TradingSubstrateSection({
                 <span>inspection_only</span>
               </OperatorEvidenceRow>
             )}
-            <Field label="Matrix boundary" value="checked_gate_matrix_inspection_only" />
-            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-            <Field
+            <OperatorField label="Matrix boundary" value="checked_gate_matrix_inspection_only" />
+            <OperatorField label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <OperatorField
               label="Authority boundary"
               value="not_private_read_permission_or_execution_authority"
             />
-          </div>
-          <div
-            className={`remediation-action-map ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
-            aria-label="Private-readiness remediation/action map"
+          </OperatorEvidencePanel>
+          <OperatorEvidencePanel
+            className="remediation-action-map"
+            label="Private-readiness remediation/action map"
           >
-            <h4>Private-readiness remediation/action map</h4>
             {remediationActionRows.length > 0 ? (
               remediationActionRows.map((row) => (
-                <OperatorEvidenceRow className={`remediation-action-row ${RAW_EVIDENCE_ROW_CLASS}`} key={row.action}>
+                <OperatorEvidenceRow className="remediation-action-row" key={row.action}>
                   <strong>{row.action}</strong>
                   <span>{row.target}</span>
                   <span>{row.posture}</span>
@@ -5553,7 +5562,7 @@ function TradingSubstrateSection({
                 </OperatorEvidenceRow>
               ))
             ) : (
-              <OperatorEvidenceRow className={`remediation-action-row ${RAW_EVIDENCE_ROW_CLASS}`}>
+              <OperatorEvidenceRow className="remediation-action-row">
                 <strong>no_required_next_actions</strong>
                 <span>none</span>
                 <span>none</span>
@@ -5561,68 +5570,66 @@ function TradingSubstrateSection({
                 <span>read_only_remediation_guidance</span>
               </OperatorEvidenceRow>
             )}
-            <Field label="Map boundary" value="remediation_action_map_guidance_only" />
-            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-            <Field
+            <OperatorField label="Map boundary" value="remediation_action_map_guidance_only" />
+            <OperatorField label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <OperatorField
               label="Authority boundary"
               value="not_private_read_permission_or_execution_authority"
             />
-          </div>
-          <div
-            className={`remediation-progress-summary ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
-            aria-label="Private-readiness remediation progress summary"
+          </OperatorEvidencePanel>
+          <OperatorEvidencePanel
+            className="remediation-progress-summary"
+            label="Private-readiness remediation progress summary"
           >
-            <h4>Private-readiness remediation progress summary</h4>
-            <Field label="Action coverage" value={remediationProgressSummary.coverage} />
-            <Field label="Blocking / review focus" value={remediationProgressSummary.blockingReviewFocus} />
-            <Field label="Next review focus" value={remediationProgressSummary.nextReviewFocus} />
-            <Field label="Progress state" value={remediationProgressSummary.progressState} />
-            <Field label="Summary boundary" value="remediation_progress_summary_guidance_only" />
-            <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-            <Field
+            <OperatorField label="Action coverage" value={remediationProgressSummary.coverage} />
+            <OperatorField label="Blocking / review focus" value={remediationProgressSummary.blockingReviewFocus} />
+            <OperatorField label="Next review focus" value={remediationProgressSummary.nextReviewFocus} />
+            <OperatorField label="Progress state" value={remediationProgressSummary.progressState} />
+            <OperatorField label="Summary boundary" value="remediation_progress_summary_guidance_only" />
+            <OperatorField label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+            <OperatorField
               label="Authority boundary"
               value="not_private_read_permission_or_execution_authority"
             />
-          </div>
+          </OperatorEvidencePanel>
           {privateReadinessPosture && (
             <>
-              <div
-                className={`policy-impact ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
-                aria-label="Private-readiness policy impact interpretation"
+              <OperatorEvidencePanel
+                className="policy-impact"
+                label="Private-readiness policy impact interpretation"
+                title="Policy impact interpretation"
               >
-                <h4>Policy impact interpretation</h4>
-                <Field label="Policy input posture" value={privateReadinessPosture.posture_id} />
-                <Field label="History role" value="inspection_context_only" />
-                <Field
+                <OperatorField label="Policy input posture" value={privateReadinessPosture.posture_id} />
+                <OperatorField label="History role" value="inspection_context_only" />
+                <OperatorField
                   label="Policy impact"
                   value={formatPrivateReadinessPolicyImpact(privateReadinessPolicyDecision)}
                 />
-                <Field
+                <OperatorField
                   label="Policy next actions"
                   value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
                 />
-                <Field
+                <OperatorField
                   label="Evidence boundary"
                   value="local_config_inspection_not_counted_evidence_or_promotion"
                 />
-                <Field
+                <OperatorField
                   label="No-authority proof"
                   value={[
                     `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
                     `authority_status=${privateReadinessPolicyDecision.authority_status}`
                   ].join(", ")}
                 />
-                <Field
+                <OperatorField
                   label="Authority boundary"
                   value="not_private_read_permission_or_execution_authority"
                 />
-              </div>
-              <div
-                className={`review-handoff ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`}
-                aria-label="Private-readiness review handoff"
+              </OperatorEvidencePanel>
+              <OperatorEvidencePanel
+                className="review-handoff"
+                label="Private-readiness review handoff"
               >
-                <h4>Private-readiness review handoff</h4>
-                <Field
+                <OperatorField
                   label="Review scope"
                   value={[
                     privateReadinessPolicyDecision.venue,
@@ -5630,42 +5637,44 @@ function TradingSubstrateSection({
                     privateReadinessPolicyDecision.product_category
                   ].join(" / ")}
                 />
-                <Field label="Latest posture" value={privateReadinessPosture.posture_id} />
-                <Field
+                <OperatorField label="Latest posture" value={privateReadinessPosture.posture_id} />
+                <OperatorField
                   label="Posture delta"
                   value={formatPrivateReadinessReviewHandoffDelta(previousPosture, postureGateChanges)}
                 />
-                <Field
+                <OperatorField
                   label="Policy summary"
                   value={formatPrivateReadinessPolicyImpact(privateReadinessPolicyDecision)}
                 />
-                <Field
+                <OperatorField
                   label="Required next actions"
                   value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
                 />
-                <Field
+                <OperatorField
                   label="Review checklist"
                   value={formatPrivateReadinessReviewChecklist(privateReadinessPolicyDecision, previousPosture)}
                 />
-                <Field
+                <OperatorField
                   label="Handoff boundary"
                   value="review_handoff_only_not_counted_evidence_or_promotion"
                 />
-                <Field
+                <OperatorField
                   label="No-authority proof"
                   value={[
                     `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
                     `authority_status=${privateReadinessPolicyDecision.authority_status}`
                   ].join(", ")}
                 />
-                <Field
+                <OperatorField
                   label="Authority boundary"
                   value="not_private_read_permission_or_execution_authority"
                 />
-              </div>
-              <div className="authority-preview" aria-label="Private-readiness authority gate preview">
-                <h4>Private-readiness authority gate preview</h4>
-                <Field
+              </OperatorEvidencePanel>
+              <OperatorEvidencePanel
+                className="authority-preview"
+                label="Private-readiness authority gate preview"
+              >
+                <OperatorField
                   label="Preview scope"
                   value={[
                     privateReadinessPolicyDecision.venue,
@@ -5673,15 +5682,15 @@ function TradingSubstrateSection({
                     privateReadinessPolicyDecision.product_category
                   ].join(" / ")}
                 />
-                <Field
+                <OperatorField
                   label="Private-read authority"
                   value={formatPrivateReadinessAuthorityGateState(privateReadinessPolicyDecision)}
                 />
-                <Field
+                <OperatorField
                   label="Gate readiness"
                   value={formatPrivateReadinessAuthorityGateReadiness(privateReadinessPolicyDecision)}
                 />
-                <Field
+                <OperatorField
                   label={
                     privateReadinessPolicyDecision.blocking_conditions.length > 0
                       ? "Blocking conditions"
@@ -5689,20 +5698,20 @@ function TradingSubstrateSection({
                   }
                   value={formatPolicyListSummary(privateReadinessPolicyDecision.blocking_conditions)}
                 />
-                <Field
+                <OperatorField
                   label="Required next actions"
                   value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
                 />
-                <Field
+                <OperatorField
                   label="Preview next step"
                   value={formatPrivateReadinessAuthorityGateNextStep(privateReadinessPolicyDecision)}
                 />
-                <Field
+                <OperatorField
                   label="Preview boundary"
                   value="authority_gate_preview_only_not_private_read_permission_or_execution_authority"
                 />
-                <Field label="Preview evidence boundary" value="not_counted_evidence_or_promotion" />
-                <Field
+                <OperatorField label="Preview evidence boundary" value="not_counted_evidence_or_promotion" />
+                <OperatorField
                   label="No-authority proof"
                   value={[
                     `no_private_read_performed=${String(privateReadinessPolicyDecision.no_private_read_performed)}`,
@@ -5711,7 +5720,7 @@ function TradingSubstrateSection({
                     `order_submission_authority=${String(privateReadinessPolicyDecision.order_submission_authority)}`
                   ].join(", ")}
                 />
-              </div>
+              </OperatorEvidencePanel>
             </>
           )}
         </OperatorEvidenceBlock>
@@ -5730,71 +5739,71 @@ function TradingSubstrateSection({
             detail={accountPositionRiskSurface.authority_status}
             tone={accountPositionRiskStatusTone(accountPositionRiskSurface)}
           />
-          <Field label="Account risk surface" value={accountPositionRiskSurface.surface_label} />
-          <Field
+          <OperatorField label="Account risk surface" value={accountPositionRiskSurface.surface_label} />
+          <OperatorField
             label="Account risk venue"
             value={`${accountPositionRiskSurface.venue} / ${accountPositionRiskSurface.product_category}`}
           />
-          <Field label="Account risk instrument" value={accountPositionRiskSurface.instrument} />
-          <Field label="Account scope" value={accountPositionRiskSurface.account_scope_ref} />
-          <Field label="Asset / mode" value={[
+          <OperatorField label="Account risk instrument" value={accountPositionRiskSurface.instrument} />
+          <OperatorField label="Account scope" value={accountPositionRiskSurface.account_scope_ref} />
+          <OperatorField label="Asset / mode" value={[
             accountPositionRiskSurface.asset,
             accountPositionRiskSurface.account_mode
           ].join(" / ")} />
-          <Field label="Wallet / margin balance" value={[
+          <OperatorField label="Wallet / margin balance" value={[
             accountPositionRiskSurface.total_wallet_balance,
             accountPositionRiskSurface.total_margin_balance
           ].join(" / ")} />
-          <Field label="Available / max withdraw" value={[
+          <OperatorField label="Available / max withdraw" value={[
             accountPositionRiskSurface.available_balance,
             accountPositionRiskSurface.max_withdraw_amount
           ].join(" / ")} />
-          <Field label="Initial / maintenance margin" value={[
+          <OperatorField label="Initial / maintenance margin" value={[
             accountPositionRiskSurface.total_initial_margin,
             accountPositionRiskSurface.total_maint_margin
           ].join(" / ")} />
-          <Field label="Position / open-order margin" value={[
+          <OperatorField label="Position / open-order margin" value={[
             accountPositionRiskSurface.total_position_initial_margin,
             accountPositionRiskSurface.total_open_order_initial_margin
           ].join(" / ")} />
-          <Field label="Cross wallet / PnL" value={[
+          <OperatorField label="Cross wallet / PnL" value={[
             accountPositionRiskSurface.total_cross_wallet_balance,
             accountPositionRiskSurface.total_cross_un_pnl
           ].join(" / ")} />
-          <Field label="Position side / amount" value={[
+          <OperatorField label="Position side / amount" value={[
             accountPositionRiskSurface.position_side,
             accountPositionRiskSurface.position_amount
           ].join(" / ")} />
-          <Field label="Entry / breakeven" value={[
+          <OperatorField label="Entry / breakeven" value={[
             accountPositionRiskSurface.entry_price,
             accountPositionRiskSurface.break_even_price
           ].join(" / ")} />
-          <Field label="Mark / liquidation" value={[
+          <OperatorField label="Mark / liquidation" value={[
             accountPositionRiskSurface.mark_price,
             accountPositionRiskSurface.liquidation_price
           ].join(" / ")} />
-          <Field label="Notional / unrealized PnL" value={[
+          <OperatorField label="Notional / unrealized PnL" value={[
             accountPositionRiskSurface.notional,
             accountPositionRiskSurface.unrealized_profit
           ].join(" / ")} />
-          <Field label="Margin asset / type" value={[
+          <OperatorField label="Margin asset / type" value={[
             accountPositionRiskSurface.margin_asset,
             accountPositionRiskSurface.margin_type
           ].join(" / ")} />
-          <Field label="Leverage / ADL" value={[
+          <OperatorField label="Leverage / ADL" value={[
             String(accountPositionRiskSurface.leverage),
             accountPositionRiskSurface.adl_quantile === undefined
               ? "none"
               : String(accountPositionRiskSurface.adl_quantile)
           ].join(" / ")} />
-          <Field label="Risk status" value={accountPositionRiskSurface.risk_status} />
-          <Field label="Risk profile" value={accountPositionRiskSurface.risk_limit_profile_ref} />
-          <Field label="Max notional" value={accountPositionRiskSurface.max_notional_value} />
-          <Field label="Kill switch / pause" value={[
+          <OperatorField label="Risk status" value={accountPositionRiskSurface.risk_status} />
+          <OperatorField label="Risk profile" value={accountPositionRiskSurface.risk_limit_profile_ref} />
+          <OperatorField label="Max notional" value={accountPositionRiskSurface.max_notional_value} />
+          <OperatorField label="Kill switch / pause" value={[
             accountPositionRiskSurface.kill_switch_status,
             accountPositionRiskSurface.runtime_pause_status
           ].join(" / ")} />
-          <Field
+          <OperatorField
             label="Account risk endpoints"
             value={[
               accountPositionRiskSurface.account_information_endpoint,
@@ -5803,24 +5812,24 @@ function TradingSubstrateSection({
               accountPositionRiskSurface.margin_type_endpoint
             ].join(" / ")}
           />
-          <Field label="Account risk next action" value={accountPositionRiskSurface.next_blocked_action} />
-          <Field label="Account risk blocked reason" value={accountPositionRiskSurface.next_blocked_reason} />
-          <Field
+          <OperatorField label="Account risk next action" value={accountPositionRiskSurface.next_blocked_action} />
+          <OperatorField label="Account risk blocked reason" value={accountPositionRiskSurface.next_blocked_reason} />
+          <OperatorField
             label="Account risk freshness"
             value={`${accountPositionRiskSurface.freshness} / ${accountPositionRiskSurface.liveness}`}
           />
-          <Field label="Account risk source" value={formatSubstrateSource(accountPositionRiskSurface)} />
-          <Field label="Account risk connector package" value={accountPositionRiskSurface.transport.package_name} />
-          <Field label="Account risk connector repository" value={accountPositionRiskSurface.transport.repository} />
-          <Field label="Account risk connector role" value={accountPositionRiskSurface.transport.integration_role} />
-          <Field label="Account risk source timestamp" value={accountPositionRiskSurface.source_timestamp} />
-          <Field label="Account risk observed" value={accountPositionRiskSurface.observed_at} />
-          <Field label="Account risk updated" value={accountPositionRiskSurface.updated_at} />
+          <OperatorField label="Account risk source" value={formatSubstrateSource(accountPositionRiskSurface)} />
+          <OperatorField label="Account risk connector package" value={accountPositionRiskSurface.transport.package_name} />
+          <OperatorField label="Account risk connector repository" value={accountPositionRiskSurface.transport.repository} />
+          <OperatorField label="Account risk connector role" value={accountPositionRiskSurface.transport.integration_role} />
+          <OperatorField label="Account risk source timestamp" value={accountPositionRiskSurface.source_timestamp} />
+          <OperatorField label="Account risk observed" value={accountPositionRiskSurface.observed_at} />
+          <OperatorField label="Account risk updated" value={accountPositionRiskSurface.updated_at} />
           {accountPositionRiskSurface.degraded_reason && (
-            <Field label="Account risk reason" value={accountPositionRiskSurface.degraded_reason} />
+            <OperatorField label="Account risk reason" value={accountPositionRiskSurface.degraded_reason} />
           )}
-          <Field label="Account risk no authority" value={accountPositionRiskSurface.no_authority_label} />
-          <Field label="Account risk authority" value={accountPositionRiskSurface.authority_status} />
+          <OperatorField label="Account risk no authority" value={accountPositionRiskSurface.no_authority_label} />
+          <OperatorField label="Account risk authority" value={accountPositionRiskSurface.authority_status} />
         </OperatorEvidenceBlock>
       ) : (
         <OperatorEmptyState
@@ -5837,46 +5846,46 @@ function TradingSubstrateSection({
             detail={orderFillSurface.authority_status}
             tone={orderFillStatusTone(orderFillSurface)}
           />
-          <Field label="Order-fill surface" value={orderFillSurface.surface_label} />
-          <Field label="Order venue" value={`${orderFillSurface.venue} / ${orderFillSurface.product_category}`} />
-          <Field label="Order instrument" value={orderFillSurface.instrument} />
-          <Field label="Raw upstream" value={[
+          <OperatorField label="Order-fill surface" value={orderFillSurface.surface_label} />
+          <OperatorField label="Order venue" value={`${orderFillSurface.venue} / ${orderFillSurface.product_category}`} />
+          <OperatorField label="Order instrument" value={orderFillSurface.instrument} />
+          <OperatorField label="Raw upstream" value={[
             orderFillSurface.raw_upstream_status,
             orderFillSurface.raw_upstream_execution_type ?? "none"
           ].join(" / ")} />
-          <Field label="Order scope" value={orderFillSurface.order_scope_ref} />
-          <Field label="Client order" value={orderFillSurface.local_client_order_id ?? "none"} />
-          <Field label="Upstream order" value={orderFillSurface.upstream_order_id ?? "none"} />
-          <Field label="Order side / type" value={[
+          <OperatorField label="Order scope" value={orderFillSurface.order_scope_ref} />
+          <OperatorField label="Client order" value={orderFillSurface.local_client_order_id ?? "none"} />
+          <OperatorField label="Upstream order" value={orderFillSurface.upstream_order_id ?? "none"} />
+          <OperatorField label="Order side / type" value={[
             orderFillSurface.side ?? "none",
             orderFillSurface.order_type ?? "none",
             orderFillSurface.time_in_force ?? "none"
           ].join(" / ")} />
-          <Field label="Requested" value={orderFillSurface.requested_quantity ?? "none"} />
-          <Field label="Filled / remaining" value={[
+          <OperatorField label="Requested" value={orderFillSurface.requested_quantity ?? "none"} />
+          <OperatorField label="Filled / remaining" value={[
             orderFillSurface.cumulative_filled_quantity,
             orderFillSurface.remaining_quantity
           ].join(" / ")} />
-          <Field label="Average / last price" value={[
+          <OperatorField label="Average / last price" value={[
             orderFillSurface.average_fill_price ?? "none",
             orderFillSurface.last_fill_price ?? "none"
           ].join(" / ")} />
-          <Field label="Order freshness" value={`${orderFillSurface.freshness} / ${orderFillSurface.liveness}`} />
-          <Field label="Order source" value={formatSubstrateSource(orderFillSurface)} />
-          <Field label="Order connector package" value={orderFillSurface.transport.package_name} />
-          <Field label="Order connector repository" value={orderFillSurface.transport.repository} />
-          <Field label="Order connector endpoints" value={orderFillSurface.transport.supported_endpoints.join(", ")} />
-          <Field label="Order connector role" value={orderFillSurface.transport.integration_role} />
-          <Field label="Connector URLs" value={[
+          <OperatorField label="Order freshness" value={`${orderFillSurface.freshness} / ${orderFillSurface.liveness}`} />
+          <OperatorField label="Order source" value={formatSubstrateSource(orderFillSurface)} />
+          <OperatorField label="Order connector package" value={orderFillSurface.transport.package_name} />
+          <OperatorField label="Order connector repository" value={orderFillSurface.transport.repository} />
+          <OperatorField label="Order connector endpoints" value={orderFillSurface.transport.supported_endpoints.join(", ")} />
+          <OperatorField label="Order connector role" value={orderFillSurface.transport.integration_role} />
+          <OperatorField label="Connector URLs" value={[
             orderFillSurface.transport.production_base_url,
             orderFillSurface.transport.testnet_base_url
           ].join(" / ")} />
-          <Field label="Order source timestamp" value={orderFillSurface.source_timestamp} />
-          <Field label="Order observed" value={orderFillSurface.observed_at} />
-          <Field label="Order updated" value={orderFillSurface.updated_at} />
-          {orderFillSurface.degraded_reason && <Field label="Order reason" value={orderFillSurface.degraded_reason} />}
-          <Field label="Order no authority" value={orderFillSurface.no_authority_label} />
-          <Field label="Order authority" value={orderFillSurface.authority_status} />
+          <OperatorField label="Order source timestamp" value={orderFillSurface.source_timestamp} />
+          <OperatorField label="Order observed" value={orderFillSurface.observed_at} />
+          <OperatorField label="Order updated" value={orderFillSurface.updated_at} />
+          {orderFillSurface.degraded_reason && <OperatorField label="Order reason" value={orderFillSurface.degraded_reason} />}
+          <OperatorField label="Order no authority" value={orderFillSurface.no_authority_label} />
+          <OperatorField label="Order authority" value={orderFillSurface.authority_status} />
         </OperatorEvidenceBlock>
       ) : (
         <OperatorEmptyState
@@ -5886,7 +5895,7 @@ function TradingSubstrateSection({
         />
       )}
       </OperatorEvidenceStack>
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -5899,27 +5908,27 @@ export function PrivateReadinessReviewPacketSections({
 }) {
   return (
     <>
-      <ReviewPacketPanel
+      <OperatorEvidencePanel
         className="review-packet-completion-readiness-summary"
         label="Private-readiness review packet completion/readiness summary"
       >
-        <Field
+        <OperatorField
           label="Completion/readiness summary"
           value={projection.completionReadinessSummary.countSummary}
         />
-        <Field
+        <OperatorField
           label="Next review focus"
           value={projection.completionReadinessSummary.nextReviewFocus}
         />
-        <Field
+        <OperatorField
           label="Next completion focus"
           value={projection.completionReadinessSummary.nextCompletionFocus}
         />
-        <Field
+        <OperatorField
           label="Readiness state"
           value={projection.completionReadinessSummary.readinessState}
         />
-        <Field
+        <OperatorField
           label="Completion/readiness context"
           value={projection.completionReadinessSummary.boundary}
         />
@@ -5927,21 +5936,21 @@ export function PrivateReadinessReviewPacketSections({
           label="Completion/readiness boundary"
           value="review_packet_completion_readiness_navigation_only"
         />
-      </ReviewPacketPanel>
+      </OperatorEvidencePanel>
 
-      <ReviewPacketPanel
+      <OperatorEvidencePanel
         className="review-packet-index"
         label="Private-readiness review packet index"
       >
         {projection.indexEntries.map((entry) => (
-          <div className={`review-packet-index-row ${RAW_EVIDENCE_ROW_CLASS}`} key={entry.step}>
+          <OperatorEvidenceRow className="review-packet-index-row" key={entry.step}>
             <strong>{entry.step}</strong>
             <span>{entry.surface}</span>
             <span>{entry.role}</span>
             <span>{entry.boundary}</span>
-          </div>
+          </OperatorEvidenceRow>
         ))}
-        <Field
+        <OperatorField
           label="Index state"
           value={
             postureContextAvailable
@@ -5953,21 +5962,21 @@ export function PrivateReadinessReviewPacketSections({
           label="Index boundary"
           value="review_packet_index_navigation_only"
         />
-      </ReviewPacketPanel>
+      </OperatorEvidencePanel>
 
-      <ReviewPacketPanel
+      <OperatorEvidencePanel
         className="review-packet-availability-summary"
         label="Private-readiness review packet availability summary"
       >
         {projection.availabilitySummary.rows.map((row) => (
-          <div className={`review-packet-availability-row ${RAW_EVIDENCE_ROW_CLASS}`} key={row.step}>
+          <OperatorEvidenceRow className="review-packet-availability-row" key={row.step}>
             <strong>{row.step}</strong>
             <span>{row.availability}</span>
             <span>{row.detail}</span>
             <span>{row.boundary}</span>
-          </div>
+          </OperatorEvidenceRow>
         ))}
-        <Field
+        <OperatorField
           label="Availability summary"
           value={projection.availabilitySummary.countSummary}
         />
@@ -5975,43 +5984,43 @@ export function PrivateReadinessReviewPacketSections({
           label="Availability boundary"
           value="review_packet_availability_summary_navigation_only"
         />
-      </ReviewPacketPanel>
+      </OperatorEvidencePanel>
 
-      <ReviewPacketPanel
+      <OperatorEvidencePanel
         className="review-packet-gap-summary"
         label="Private-readiness review packet gap summary"
       >
-        <Field label="Gap summary" value={projection.gapSummary.countSummary} />
-        <Field label="Next gap focus" value={projection.gapSummary.nextGapFocus} />
-        <Field label="Gap state" value={projection.gapSummary.gapState} />
+        <OperatorField label="Gap summary" value={projection.gapSummary.countSummary} />
+        <OperatorField label="Next gap focus" value={projection.gapSummary.nextGapFocus} />
+        <OperatorField label="Gap state" value={projection.gapSummary.gapState} />
         <ReviewPacketBoundaryFields
           label="Gap boundary"
           value="review_packet_gap_summary_navigation_only"
         />
-      </ReviewPacketPanel>
+      </OperatorEvidencePanel>
 
-      <ReviewPacketPanel
+      <OperatorEvidencePanel
         className="review-packet-resolution-checklist"
         label="Private-readiness review packet resolution checklist"
       >
         {projection.resolutionChecklist.items.map((item) => (
-          <div className={`review-packet-resolution-row ${RAW_EVIDENCE_ROW_CLASS}`} key={`${item.item}-${item.source}`}>
+          <OperatorEvidenceRow className="review-packet-resolution-row" key={`${item.item}-${item.source}`}>
             <strong>{item.item}</strong>
             <span>{item.source}</span>
             <span>{item.status}</span>
             <span>{item.detail}</span>
             <span>{item.boundary}</span>
-          </div>
+          </OperatorEvidenceRow>
         ))}
-        <Field
+        <OperatorField
           label="Resolution checklist"
           value={projection.resolutionChecklist.countSummary}
         />
-        <Field
+        <OperatorField
           label="Next resolution focus"
           value={projection.resolutionChecklist.nextResolutionFocus}
         />
-        <Field
+        <OperatorField
           label="Checklist state"
           value={projection.resolutionChecklist.checklistState}
         />
@@ -6019,30 +6028,30 @@ export function PrivateReadinessReviewPacketSections({
           label="Checklist boundary"
           value="review_packet_resolution_checklist_navigation_only"
         />
-      </ReviewPacketPanel>
+      </OperatorEvidencePanel>
 
-      <ReviewPacketPanel
+      <OperatorEvidencePanel
         className="review-packet-source-provenance-summary"
         label="Private-readiness review packet source/provenance summary"
       >
         {projection.sourceProvenanceSummary.rows.map((row) => (
-          <div className={`review-packet-source-provenance-row ${RAW_EVIDENCE_ROW_CLASS}`} key={`${row.item}-${row.source}`}>
+          <OperatorEvidenceRow className="review-packet-source-provenance-row" key={`${row.item}-${row.source}`}>
             <strong>{row.item}</strong>
             <span>{row.source}</span>
             <span>{row.provenance}</span>
             <span>{row.detail}</span>
             <span>{row.boundary}</span>
-          </div>
+          </OperatorEvidenceRow>
         ))}
-        <Field
+        <OperatorField
           label="Source/provenance summary"
           value={projection.sourceProvenanceSummary.countSummary}
         />
-        <Field
+        <OperatorField
           label="Next source focus"
           value={projection.sourceProvenanceSummary.nextSourceFocus}
         />
-        <Field
+        <OperatorField
           label="Source state"
           value={projection.sourceProvenanceSummary.sourceState}
         />
@@ -6050,34 +6059,17 @@ export function PrivateReadinessReviewPacketSections({
           label="Source/provenance boundary"
           value="review_packet_source_provenance_navigation_only"
         />
-      </ReviewPacketPanel>
+      </OperatorEvidencePanel>
     </>
-  );
-}
-
-function ReviewPacketPanel({
-  children,
-  className,
-  label
-}: {
-  children: React.ReactNode;
-  className: string;
-  label: string;
-}) {
-  return (
-    <div className={`${className} ${RAW_EVIDENCE_STACK_CLASS} [overflow-wrap:anywhere]`} aria-label={label}>
-      <h4>{label}</h4>
-      {children}
-    </div>
   );
 }
 
 function ReviewPacketBoundaryFields({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <Field label={label} value={value} />
-      <Field label="Evidence boundary" value="not_counted_evidence_or_promotion" />
-      <Field
+      <OperatorField label={label} value={value} />
+      <OperatorField label="Evidence boundary" value="not_counted_evidence_or_promotion" />
+      <OperatorField
         label="Authority boundary"
         value="not_private_read_permission_or_execution_authority"
       />
@@ -6395,7 +6387,7 @@ function RunControlSection({
       : "none";
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Run Control"
       summary={`${statusLabel} / ${control?.audit_event.authority_status ?? "not_live"}`}
       badge={control?.latest_command?.action ?? statusLabel}
@@ -6409,11 +6401,11 @@ function RunControlSection({
         />
 
         <OperatorEvidenceRow>
-          <Field label="Activity" value={control?.has_activity ? "recorded" : "none"} />
-          <Field label="Complete chain" value={control?.chain_complete ? "yes" : "no"} />
-          <Field label="Command" value={control?.command.status ?? "pending_decision"} />
-          <Field label="Decision" value={control?.decision.status ?? "not_evaluated"} />
-          <Field label="Audit event" value={control?.audit_event.status ?? "not_recorded"} />
+          <OperatorField label="Activity" value={control?.has_activity ? "recorded" : "none"} />
+          <OperatorField label="Complete chain" value={control?.chain_complete ? "yes" : "no"} />
+          <OperatorField label="Command" value={control?.command.status ?? "pending_decision"} />
+          <OperatorField label="Decision" value={control?.decision.status ?? "not_evaluated"} />
+          <OperatorField label="Audit event" value={control?.audit_event.status ?? "not_recorded"} />
         </OperatorEvidenceRow>
 
         {privateReadinessPolicyDecision && (
@@ -6422,22 +6414,22 @@ function RunControlSection({
             aria-label="Run-control private-readiness policy alignment"
           >
             <OperatorEvidenceRow>
-              <Field
+              <OperatorField
                 label="Policy alignment"
                 value={runtimeControlPolicyAlignment(privateReadinessPolicyDecision)}
               />
-              <Field label="Policy status" value={privateReadinessPolicyDecision.status} />
-              <Field
+              <OperatorField label="Policy status" value={privateReadinessPolicyDecision.status} />
+              <OperatorField
                 label="Policy reason codes"
                 value={formatPolicyListSummary(privateReadinessPolicyDecision.reason_codes)}
               />
-              <Field
+              <OperatorField
                 label="Required next actions"
                 value={formatPolicyListSummary(privateReadinessPolicyDecision.required_next_actions)}
               />
-              <Field label="Control boundary" value="control_only / audit_only / not_live" />
-              <Field label="Authority boundary" value="not_private_read_permission_or_execution_authority" />
-              <Field
+              <OperatorField label="Control boundary" value="control_only / audit_only / not_live" />
+              <OperatorField label="Authority boundary" value="not_private_read_permission_or_execution_authority" />
+              <OperatorField
                 label="Execution boundary"
                 value="not_order_request_gateway_result_evidence_or_promotion"
               />
@@ -6449,16 +6441,16 @@ function RunControlSection({
           <OperatorEvidenceRow>
             {control?.latest_command ? (
               <>
-                <Field label="Action" value={control.latest_command.action} />
-                <Field label="Status" value={control.latest_command.status} />
-                <Field label="Actor" value={control.latest_command.actor_kind} />
-                <Field label="Reason" value={control.latest_command.reason} />
-                <Field label="Command authority" value={control.latest_command.authority_status} />
+                <OperatorField label="Action" value={control.latest_command.action} />
+                <OperatorField label="Status" value={control.latest_command.status} />
+                <OperatorField label="Actor" value={control.latest_command.actor_kind} />
+                <OperatorField label="Reason" value={control.latest_command.reason} />
+                <OperatorField label="Command authority" value={control.latest_command.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Command authority" value="not_live" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Command authority" value="not_live" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6468,16 +6460,16 @@ function RunControlSection({
           <OperatorEvidenceRow>
             {control?.latest_decision ? (
               <>
-                <Field label="Outcome" value={control.latest_decision.decision_outcome} />
-                <Field label="Reason" value={control.latest_decision.decision_reason} />
-                <Field label="Command" value={formatRef(control.latest_decision.command_ref)} />
-                <Field label="Lifecycle" value={control.latest_decision.resulting_lifecycle_status ?? "unchanged"} />
-                <Field label="Decision authority" value={control.latest_decision.authority_status} />
+                <OperatorField label="Outcome" value={control.latest_decision.decision_outcome} />
+                <OperatorField label="Reason" value={control.latest_decision.decision_reason} />
+                <OperatorField label="Command" value={formatRef(control.latest_decision.command_ref)} />
+                <OperatorField label="Lifecycle" value={control.latest_decision.resulting_lifecycle_status ?? "unchanged"} />
+                <OperatorField label="Decision authority" value={control.latest_decision.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Outcome" value="not_evaluated" />
-                <Field label="Decision authority" value="not_live" />
+                <OperatorField label="Outcome" value="not_evaluated" />
+                <OperatorField label="Decision authority" value="not_live" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6487,16 +6479,16 @@ function RunControlSection({
           <OperatorEvidenceRow>
             {control?.latest_audit_event ? (
               <>
-                <Field label="Event" value={control.latest_audit_event.event_kind} />
-                <Field label="Command" value={control.latest_audit_event.command_ref ? formatRef(control.latest_audit_event.command_ref) : "none"} />
-                <Field label="Decision" value={control.latest_audit_event.decision_ref ? formatRef(control.latest_audit_event.decision_ref) : "none"} />
-                <Field label="Lifecycle" value={control.latest_audit_event.runtime_lifecycle_status ?? "unchanged"} />
-                <Field label="Audit authority" value={control.latest_audit_event.authority_status} />
+                <OperatorField label="Event" value={control.latest_audit_event.event_kind} />
+                <OperatorField label="Command" value={control.latest_audit_event.command_ref ? formatRef(control.latest_audit_event.command_ref) : "none"} />
+                <OperatorField label="Decision" value={control.latest_audit_event.decision_ref ? formatRef(control.latest_audit_event.decision_ref) : "none"} />
+                <OperatorField label="Lifecycle" value={control.latest_audit_event.runtime_lifecycle_status ?? "unchanged"} />
+                <OperatorField label="Audit authority" value={control.latest_audit_event.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Audit authority" value="not_live" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Audit authority" value="not_live" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6525,7 +6517,7 @@ function RunControlSection({
             : undefined
         )}
       />
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -6568,7 +6560,7 @@ function ImprovementSection({
       : "none";
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Improvement"
       summary={`proposal ${improvement?.proposal_chain_complete ? "complete" : "incomplete"} / evaluation ${improvement?.evaluation_chain_complete ? "complete" : "incomplete"}`}
       badge={statusLabel}
@@ -6582,25 +6574,25 @@ function ImprovementSection({
         />
 
         <OperatorEvidenceRow>
-          <Field label="Source model" value={improvement?.source_model ?? "automated_alignment_researcher"} />
-          <Field label="Proposal chain" value={improvement?.proposal_chain_complete ? "complete" : "incomplete"} />
-          <Field label="Evaluation chain" value={improvement?.evaluation_chain_complete ? "complete" : "incomplete"} />
-          <Field label="No-authority boundary" value={`live_exchange=${String(improvement?.no_authority.live_exchange ?? false)}, order_authority=${String(improvement?.no_authority.order_authority ?? false)}, credentials=${String(improvement?.no_authority.credentials ?? false)}`} />
+          <OperatorField label="Source model" value={improvement?.source_model ?? "automated_alignment_researcher"} />
+          <OperatorField label="Proposal chain" value={improvement?.proposal_chain_complete ? "complete" : "incomplete"} />
+          <OperatorField label="Evaluation chain" value={improvement?.evaluation_chain_complete ? "complete" : "incomplete"} />
+          <OperatorField label="No-authority boundary" value={`live_exchange=${String(improvement?.no_authority.live_exchange ?? false)}, order_authority=${String(improvement?.no_authority.order_authority ?? false)}, credentials=${String(improvement?.no_authority.credentials ?? false)}`} />
         </OperatorEvidenceRow>
 
         <OperatorEvidenceBlock title="Source finding">
           <OperatorEvidenceRow>
             {improvement?.latest_source_finding ? (
               <>
-                <Field label="Finding" value={improvement.latest_source_finding.finding_id} />
-                <Field label="Kind" value={improvement.latest_source_finding.finding_kind} />
-                <Field label="Summary" value={improvement.latest_source_finding.summary} />
-                <Field label="Source finding authority" value={improvement.latest_source_finding.authority_status} />
+                <OperatorField label="Finding" value={improvement.latest_source_finding.finding_id} />
+                <OperatorField label="Kind" value={improvement.latest_source_finding.finding_kind} />
+                <OperatorField label="Summary" value={improvement.latest_source_finding.summary} />
+                <OperatorField label="Source finding authority" value={improvement.latest_source_finding.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Source finding authority" value="research_trace_only" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Source finding authority" value="research_trace_only" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6610,17 +6602,17 @@ function ImprovementSection({
           <OperatorEvidenceRow>
             {improvement?.latest_change_proposal ? (
               <>
-                <Field label="Proposal" value={improvement.latest_change_proposal.proposal_id} />
-                <Field label="Status" value={improvement.latest_change_proposal.status} />
-                <Field label="System code" value={formatRef(improvement.latest_change_proposal.proposed_system_code_ref)} />
-                <Field label="Parent code" value={improvement.latest_change_proposal.parent_system_code_ref ? formatRef(improvement.latest_change_proposal.parent_system_code_ref) : "none"} />
-                <Field label="Summary" value={improvement.latest_change_proposal.proposal_summary} />
-                <Field label="Change proposal authority" value={improvement.latest_change_proposal.authority_status} />
+                <OperatorField label="Proposal" value={improvement.latest_change_proposal.proposal_id} />
+                <OperatorField label="Status" value={improvement.latest_change_proposal.status} />
+                <OperatorField label="System code" value={formatRef(improvement.latest_change_proposal.proposed_system_code_ref)} />
+                <OperatorField label="Parent code" value={improvement.latest_change_proposal.parent_system_code_ref ? formatRef(improvement.latest_change_proposal.parent_system_code_ref) : "none"} />
+                <OperatorField label="Summary" value={improvement.latest_change_proposal.proposal_summary} />
+                <OperatorField label="Change proposal authority" value={improvement.latest_change_proposal.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Change proposal authority" value="proposal_only" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Change proposal authority" value="proposal_only" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6629,10 +6621,10 @@ function ImprovementSection({
         {improvement?.latest_materialization && (
           <OperatorEvidenceBlock title="Materialization">
             <OperatorEvidenceRow>
-              <Field label="Attempt" value={improvement.latest_materialization.attempt_id} />
-              <Field label="Status" value={improvement.latest_materialization.status} />
-              <Field label="Validation" value={improvement.latest_materialization.validation_status} />
-              <Field label="Materialization authority" value={improvement.latest_materialization.authority_status} />
+              <OperatorField label="Attempt" value={improvement.latest_materialization.attempt_id} />
+              <OperatorField label="Status" value={improvement.latest_materialization.status} />
+              <OperatorField label="Validation" value={improvement.latest_materialization.validation_status} />
+              <OperatorField label="Materialization authority" value={improvement.latest_materialization.authority_status} />
             </OperatorEvidenceRow>
           </OperatorEvidenceBlock>
         )}
@@ -6641,15 +6633,15 @@ function ImprovementSection({
           <OperatorEvidenceRow>
             {improvement?.latest_experiment ? (
               <>
-                <Field label="Experiment" value={improvement.latest_experiment.experiment_id} />
-                <Field label="Status" value={improvement.latest_experiment.status} />
-                <Field label="System code" value={formatRef(improvement.latest_experiment.system_code_ref)} />
-                <Field label="Experiment authority" value={improvement.latest_experiment.authority_status} />
+                <OperatorField label="Experiment" value={improvement.latest_experiment.experiment_id} />
+                <OperatorField label="Status" value={improvement.latest_experiment.status} />
+                <OperatorField label="System code" value={formatRef(improvement.latest_experiment.system_code_ref)} />
+                <OperatorField label="Experiment authority" value={improvement.latest_experiment.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Experiment authority" value="not_live" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Experiment authority" value="not_live" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6659,16 +6651,16 @@ function ImprovementSection({
           <OperatorEvidenceRow>
             {improvement?.latest_evaluation_result ? (
               <>
-                <Field label="Result" value={improvement.latest_evaluation_result.result_id} />
-                <Field label="Status" value={improvement.latest_evaluation_result.result_status} />
-                <Field label="Disposition" value={improvement.latest_evaluation_result.evidence_disposition} />
-                <Field label="Score" value={String(improvement.latest_evaluation_result.total_score)} />
-                <Field label="Evaluation result authority" value={improvement.latest_evaluation_result.authority_status} />
+                <OperatorField label="Result" value={improvement.latest_evaluation_result.result_id} />
+                <OperatorField label="Status" value={improvement.latest_evaluation_result.result_status} />
+                <OperatorField label="Disposition" value={improvement.latest_evaluation_result.evidence_disposition} />
+                <OperatorField label="Score" value={String(improvement.latest_evaluation_result.total_score)} />
+                <OperatorField label="Evaluation result authority" value={improvement.latest_evaluation_result.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Evaluation result authority" value="not_counted" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Evaluation result authority" value="not_counted" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6676,17 +6668,17 @@ function ImprovementSection({
 
         <OperatorEvidenceBlock title="Evidence">
           <OperatorEvidenceRow>
-            <Field label="Status" value={improvement?.evidence.status ?? "missing"} />
-            <Field label="Reason" value={improvement?.evidence.reason ?? "evaluation_required"} />
-            <Field label="Improvement evidence authority" value={improvement?.evidence.authority_status ?? "not_counted"} />
+            <OperatorField label="Status" value={improvement?.evidence.status ?? "missing"} />
+            <OperatorField label="Reason" value={improvement?.evidence.reason ?? "evaluation_required"} />
+            <OperatorField label="Improvement evidence authority" value={improvement?.evidence.authority_status ?? "not_counted"} />
           </OperatorEvidenceRow>
         </OperatorEvidenceBlock>
 
         <OperatorEvidenceBlock title="Promotion">
           <OperatorEvidenceRow>
-            <Field label="Status" value={improvement?.promotion.status ?? "not_promoted"} />
-            <Field label="Reason" value={improvement?.promotion.reason ?? "promotion_requires_sealed_evidence"} />
-            <Field label="Improvement promotion authority" value={improvement?.promotion.authority_status ?? "not_live"} />
+            <OperatorField label="Status" value={improvement?.promotion.status ?? "not_promoted"} />
+            <OperatorField label="Reason" value={improvement?.promotion.reason ?? "promotion_requires_sealed_evidence"} />
+            <OperatorField label="Improvement promotion authority" value={improvement?.promotion.authority_status ?? "not_live"} />
           </OperatorEvidenceRow>
         </OperatorEvidenceBlock>
 
@@ -6713,7 +6705,7 @@ function ImprovementSection({
             : undefined
         )}
       />
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -6729,7 +6721,7 @@ function LedgerSection({
       : "none";
 
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Ledger"
       summary={`Order request -> Gateway result -> Execution result: ${statusLabel}`}
       badge={statusLabel}
@@ -6743,27 +6735,27 @@ function LedgerSection({
         />
 
         <OperatorEvidenceRow>
-          <Field label="Complete chain" value={ledger?.chain_complete ? "yes" : "no"} />
-          <Field label="Order request" value={ledger?.order_request.status ?? "not_submitted"} />
-          <Field label="Gateway result" value={ledger?.gateway_result.status ?? "not_evaluated"} />
-          <Field label="Execution result" value={ledger?.execution_result.status ?? "not_submitted"} />
+          <OperatorField label="Complete chain" value={ledger?.chain_complete ? "yes" : "no"} />
+          <OperatorField label="Order request" value={ledger?.order_request.status ?? "not_submitted"} />
+          <OperatorField label="Gateway result" value={ledger?.gateway_result.status ?? "not_evaluated"} />
+          <OperatorField label="Execution result" value={ledger?.execution_result.status ?? "not_submitted"} />
         </OperatorEvidenceRow>
 
         <OperatorEvidenceBlock title="Order request">
           <OperatorEvidenceRow>
             {ledger?.latest_order_request ? (
               <>
-                <Field label="Intent" value={ledger.latest_order_request.intent_kind} />
-                <Field label="Status" value={ledger.latest_order_request.status} />
-                <Field label="Order side / type" value={`${ledger.latest_order_request.side ?? "none"} / ${ledger.latest_order_request.order_type ?? "none"}`} />
-                <Field label="Quantity" value={ledger.latest_order_request.quantity ?? "none"} />
-                <Field label="Limit" value={ledger.latest_order_request.limit_price ?? "none"} />
-                <Field label="Order request authority" value={ledger.latest_order_request.authority_status} />
+                <OperatorField label="Intent" value={ledger.latest_order_request.intent_kind} />
+                <OperatorField label="Status" value={ledger.latest_order_request.status} />
+                <OperatorField label="Order side / type" value={`${ledger.latest_order_request.side ?? "none"} / ${ledger.latest_order_request.order_type ?? "none"}`} />
+                <OperatorField label="Quantity" value={ledger.latest_order_request.quantity ?? "none"} />
+                <OperatorField label="Limit" value={ledger.latest_order_request.limit_price ?? "none"} />
+                <OperatorField label="Order request authority" value={ledger.latest_order_request.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Order request authority" value="not_submitted" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Order request authority" value="not_submitted" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6773,15 +6765,15 @@ function LedgerSection({
           <OperatorEvidenceRow>
             {ledger?.latest_gateway_result ? (
               <>
-                <Field label="Outcome" value={ledger.latest_gateway_result.decision_outcome} />
-                <Field label="Reason" value={ledger.latest_gateway_result.decision_reason} />
-                <Field label="Order request" value={formatRef(ledger.latest_gateway_result.order_request_ref)} />
-                <Field label="Gateway result authority" value={ledger.latest_gateway_result.authority_status} />
+                <OperatorField label="Outcome" value={ledger.latest_gateway_result.decision_outcome} />
+                <OperatorField label="Reason" value={ledger.latest_gateway_result.decision_reason} />
+                <OperatorField label="Order request" value={formatRef(ledger.latest_gateway_result.order_request_ref)} />
+                <OperatorField label="Gateway result authority" value={ledger.latest_gateway_result.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Outcome" value="not_evaluated" />
-                <Field label="Gateway result authority" value="not_live" />
+                <OperatorField label="Outcome" value="not_evaluated" />
+                <OperatorField label="Gateway result authority" value="not_live" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6791,17 +6783,17 @@ function LedgerSection({
           <OperatorEvidenceRow>
             {ledger?.latest_execution_result ? (
               <>
-                <Field label="Stage" value={ledger.latest_execution_result.stage} />
-                <Field label="Execution result mode" value={ledger.latest_execution_result.execution_mode} />
-                <Field label="Status" value={ledger.latest_execution_result.status} />
-                <Field label="Reason" value={ledger.latest_execution_result.result_reason} />
-                <Field label="Gateway result" value={formatRef(ledger.latest_execution_result.gateway_result_ref)} />
-                <Field label="Execution result authority" value={ledger.latest_execution_result.authority_status} />
+                <OperatorField label="Stage" value={ledger.latest_execution_result.stage} />
+                <OperatorField label="Execution result mode" value={ledger.latest_execution_result.execution_mode} />
+                <OperatorField label="Status" value={ledger.latest_execution_result.status} />
+                <OperatorField label="Reason" value={ledger.latest_execution_result.result_reason} />
+                <OperatorField label="Gateway result" value={formatRef(ledger.latest_execution_result.gateway_result_ref)} />
+                <OperatorField label="Execution result authority" value={ledger.latest_execution_result.authority_status} />
               </>
             ) : (
               <>
-                <Field label="Status" value="none" />
-                <Field label="Execution result authority" value="not_submitted" />
+                <OperatorField label="Status" value="none" />
+                <OperatorField label="Execution result authority" value="not_submitted" />
               </>
             )}
           </OperatorEvidenceRow>
@@ -6809,38 +6801,38 @@ function LedgerSection({
 
         <OperatorEvidenceBlock title="Ledger history">
           <OperatorEvidenceRow>
-            <Field label="Chains" value={`${ledger?.chain_count ?? 0} chains`} />
-            <Field label="Latest first" value={ledger?.chains.length ? "yes" : "none"} />
+            <OperatorField label="Chains" value={`${ledger?.chain_count ?? 0} chains`} />
+            <OperatorField label="Latest first" value={ledger?.chains.length ? "yes" : "none"} />
           </OperatorEvidenceRow>
         </OperatorEvidenceBlock>
 
         {ledger?.chains.map((chain, index) => (
           <OperatorEvidenceBlock title={`Ledger chain ${index + 1}`} key={chain.chain_id}>
             <OperatorEvidenceRow>
-              <Field label="Complete" value={chain.chain_complete ? "yes" : "no"} />
-              <Field
+              <OperatorField label="Complete" value={chain.chain_complete ? "yes" : "no"} />
+              <OperatorField
                 label="Order request"
                 value={`${chain.order_request.side ?? "none"} / ${chain.order_request.order_type ?? "none"} / ${chain.order_request.quantity ?? "none"} @ ${chain.order_request.limit_price ?? "none"}`}
               />
-              <Field
+              <OperatorField
                 label="Gateway result"
                 value={chain.gateway_result
                   ? `${chain.gateway_result.decision_outcome} / ${chain.gateway_result.decision_reason}`
                   : "not_evaluated"}
               />
-              <Field
+              <OperatorField
                 label="Execution result"
                 value={chain.execution_result
                   ? `${chain.execution_result.status} / ${chain.execution_result.result_reason}`
                   : "not_submitted"}
               />
-              <Field label="Ledger chain authority" value={chain.authority_status} />
+              <OperatorField label="Ledger chain authority" value={chain.authority_status} />
             </OperatorEvidenceRow>
           </OperatorEvidenceBlock>
         ))}
       </OperatorEvidenceStack>
 
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
 
@@ -6860,63 +6852,63 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
 
       {latestRun ? (
         <OperatorEvidenceBlock title="Latest ResearchPreflight run">
-          <Field label="ResearchPreflight run" value={latestRun.run_id} />
-          <Field label="ResearchPreflight status" value={latestRun.status} />
-          <Field label="Stage binding" value={`${latestRun.stage ?? "missing"} / ${latestRun.profile ?? "missing"}`} />
-          <Field label="Execution mode context" value={latestRun.execution_mode ?? "missing"} />
-          <Field label="ResearchPreflight trace" value={formatRef(latestRun.trace_ref)} />
-          <Field label="ResearchPreflight run authority" value={latestRun.authority_status} />
-          {latestRun.error_state && <Field label="ResearchPreflight error" value={latestRun.error_state.message} />}
+          <OperatorField label="ResearchPreflight run" value={latestRun.run_id} />
+          <OperatorField label="ResearchPreflight status" value={latestRun.status} />
+          <OperatorField label="Stage binding" value={`${latestRun.stage ?? "missing"} / ${latestRun.profile ?? "missing"}`} />
+          <OperatorField label="Execution mode context" value={latestRun.execution_mode ?? "missing"} />
+          <OperatorField label="ResearchPreflight trace" value={formatRef(latestRun.trace_ref)} />
+          <OperatorField label="ResearchPreflight run authority" value={latestRun.authority_status} />
+          {latestRun.error_state && <OperatorField label="ResearchPreflight error" value={latestRun.error_state.message} />}
         </OperatorEvidenceBlock>
       ) : (
         <OperatorEvidenceBlock title="No ResearchPreflight runs">
-          <Field label="ResearchPreflight status" value={evaluation.run.status} />
-          <Field label="ResearchPreflight run authority" value={evaluation.run.authority_status} />
-          <Field label="Reason" value={evaluation.counted_evidence.disposition_reason} />
+          <OperatorField label="ResearchPreflight status" value={evaluation.run.status} />
+          <OperatorField label="ResearchPreflight run authority" value={evaluation.run.authority_status} />
+          <OperatorField label="Reason" value={evaluation.counted_evidence.disposition_reason} />
         </OperatorEvidenceBlock>
       )}
 
       <OperatorEvidenceBlock title="ResearchPreflight comparison set">
         {latestComparisonSet ? (
           <>
-            <Field label="Comparability" value={latestComparisonSet.comparability_status} />
-            <Field label="Reason" value={latestComparisonSet.comparability_reason} />
-            <Field label="Comparison set authority" value={latestComparisonSet.authority_status} />
+            <OperatorField label="Comparability" value={latestComparisonSet.comparability_status} />
+            <OperatorField label="Reason" value={latestComparisonSet.comparability_reason} />
+            <OperatorField label="Comparison set authority" value={latestComparisonSet.authority_status} />
           </>
         ) : (
           <>
-            <Field label="Comparison set status" value={evaluation.comparison_set.status} />
-            <Field label="Comparison set authority" value={evaluation.comparison_set.authority_status} />
+            <OperatorField label="Comparison set status" value={evaluation.comparison_set.status} />
+            <OperatorField label="Comparison set authority" value={evaluation.comparison_set.authority_status} />
           </>
         )}
       </OperatorEvidenceBlock>
 
       <OperatorEvidenceBlock title="Provider trace material">
-        <Field label="Trace state" value={evaluation.trace.state} />
-        <Field label="Provider trace" value={evaluation.trace.trace_ref ? formatRef(evaluation.trace.trace_ref) : "none"} />
-        <Field label="Trace material authority" value={evaluation.trace.authority_status} />
-        {evaluation.trace.authority_label && <Field label="Label" value={evaluation.trace.authority_label} />}
-        <Field label="Provider artifacts" value={formatRefs(evaluation.trace.provider_output_artifact_refs)} />
-        <Field label="Debug artifacts" value={formatRefs(evaluation.trace.debug_artifact_refs)} />
+        <OperatorField label="Trace state" value={evaluation.trace.state} />
+        <OperatorField label="Provider trace" value={evaluation.trace.trace_ref ? formatRef(evaluation.trace.trace_ref) : "none"} />
+        <OperatorField label="Trace material authority" value={evaluation.trace.authority_status} />
+        {evaluation.trace.authority_label && <OperatorField label="Label" value={evaluation.trace.authority_label} />}
+        <OperatorField label="Provider artifacts" value={formatRefs(evaluation.trace.provider_output_artifact_refs)} />
+        <OperatorField label="Debug artifacts" value={formatRefs(evaluation.trace.debug_artifact_refs)} />
       </OperatorEvidenceBlock>
 
       <OperatorEvidenceBlock title="Counted evidence state">
-        <Field label="Counted evidence" value={evaluation.counted_evidence.counted ? "yes" : "no"} />
-        <Field label="Evidence disposition" value={evaluation.counted_evidence.evidence_disposition} />
-        <Field label="Evidence reason" value={evaluation.counted_evidence.disposition_reason} />
-        <Field label="Counted evidence authority" value={evaluation.counted_evidence.authority_status} />
-        {evaluation.counted_evidence.sealed_at && <Field label="Sealed at" value={evaluation.counted_evidence.sealed_at} />}
+        <OperatorField label="Counted evidence" value={evaluation.counted_evidence.counted ? "yes" : "no"} />
+        <OperatorField label="Evidence disposition" value={evaluation.counted_evidence.evidence_disposition} />
+        <OperatorField label="Evidence reason" value={evaluation.counted_evidence.disposition_reason} />
+        <OperatorField label="Counted evidence authority" value={evaluation.counted_evidence.authority_status} />
+        {evaluation.counted_evidence.sealed_at && <OperatorField label="Sealed at" value={evaluation.counted_evidence.sealed_at} />}
         {latestSealingDecision ? (
           <>
-            <Field label="Sealing decision" value={latestSealingDecision.sealing_decision_id} />
-            <Field label="Decision disposition" value={latestSealingDecision.evidence_disposition} />
-            <Field label="Sealing decision authority" value={latestSealingDecision.authority_status} />
-            <Field label="Decision refs" value={formatRefs(latestSealingDecision.evaluation_run_refs)} />
+            <OperatorField label="Sealing decision" value={latestSealingDecision.sealing_decision_id} />
+            <OperatorField label="Decision disposition" value={latestSealingDecision.evidence_disposition} />
+            <OperatorField label="Sealing decision authority" value={latestSealingDecision.authority_status} />
+            <OperatorField label="Decision refs" value={formatRefs(latestSealingDecision.evaluation_run_refs)} />
           </>
         ) : (
           <>
-            <Field label="Sealing decision" value={evaluation.sealing_decision.status} />
-            <Field label="Sealing decision authority" value={evaluation.sealing_decision.authority_status} />
+            <OperatorField label="Sealing decision" value={evaluation.sealing_decision.status} />
+            <OperatorField label="Sealing decision authority" value={evaluation.sealing_decision.authority_status} />
           </>
         )}
       </OperatorEvidenceBlock>
@@ -6932,7 +6924,7 @@ function EvaluationSection({ evaluation }: { evaluation: CandidateEvaluationRead
             ))}
           </OperatorEvidenceStack>
         ) : (
-          <Field label="Classifications" value="none" />
+          <OperatorField label="Classifications" value="none" />
         )}
       </OperatorEvidenceBlock>
     </OperatorEvidenceStack>
@@ -6958,24 +6950,24 @@ function EvidenceClassificationItem({
 
 function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMaterializationAttemptReadModel }) {
   return (
-    <InfoSection
+    <OperatorInfoSection
       title="Materialization Attempt"
       summary={attempt ? `${attempt.status} / ${attempt.validation_status}` : "none"}
       badge={attempt?.status ?? "none"}
     >
       {attempt ? (
         <>
-          <Field label="Attempt" value={attempt.attempt_id} />
-          <Field label="Provider / model" value={`${attempt.provider_kind} / ${attempt.model}`} />
-          <Field label="Status" value={attempt.status} />
-          <Field label="Validation" value={attempt.validation_status} />
-          {attempt.failure_reason && <Field label="Failure reason" value={attempt.failure_reason} />}
+          <OperatorField label="Attempt" value={attempt.attempt_id} />
+          <OperatorField label="Provider / model" value={`${attempt.provider_kind} / ${attempt.model}`} />
+          <OperatorField label="Status" value={attempt.status} />
+          <OperatorField label="Validation" value={attempt.validation_status} />
+          {attempt.failure_reason && <OperatorField label="Failure reason" value={attempt.failure_reason} />}
           {attempt.resulting_candidate_ref && (
-            <Field label="Result candidate" value={formatRef(attempt.resulting_candidate_ref)} />
+            <OperatorField label="Result candidate" value={formatRef(attempt.resulting_candidate_ref)} />
           )}
-          <Field label="Agent run" value={formatRef(attempt.agent_run_ref)} />
-          <Field label="Provider trace" value={formatRef(attempt.trace_ref)} />
-          <Field label="Authority label" value={attempt.authority_label} />
+          <OperatorField label="Agent run" value={formatRef(attempt.agent_run_ref)} />
+          <OperatorField label="Provider trace" value={formatRef(attempt.trace_ref)} />
+          <OperatorField label="Authority label" value={attempt.authority_label} />
         </>
       ) : (
         <OperatorEmptyState
@@ -6984,76 +6976,12 @@ function MaterializationAttemptSection({ attempt }: { attempt?: CandidateMateria
           detail="provider_output_not_evidence"
         />
       )}
-    </InfoSection>
+    </OperatorInfoSection>
   );
 }
-
-function InfoSection({
-  title,
-  summary,
-  badge,
-  defaultOpen: _defaultOpen = false,
-  children
-}: {
-  title: string;
-  summary?: string;
-  badge?: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <OperatorPanel aria-label={title}>
-      <OperatorSectionHeader
-        title={title}
-        description={summary}
-        actions={badge && (
-            <Badge variant={badgeVariant(badge)}>{badge}</Badge>
-        )}
-      />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">{children}</div>
-    </OperatorPanel>
-  );
-}
-
-const DEFAULT_BADGE_VALUES = new Set([
-  "accepted",
-  "available",
-  "chain_complete",
-  "complete",
-  "ready",
-  "running",
-  "succeeded"
-]);
-
-const OUTLINE_BADGE_TOKENS = new Set([
-  "incomplete",
-  "pending",
-  "planned",
-  "required",
-  "review"
-]);
-
-const DESTRUCTIVE_BADGE_TOKENS = new Set([
-  "blocked",
-  "breach",
-  "failed",
-  "invalid",
-  "rejected"
-]);
 
 export function badgeVariant(badge: string): "default" | "secondary" | "outline" | "destructive" {
-  const normalized = normalizeStatusValue(badge);
-  const tokens = statusTokens(normalized);
-  if (tokens.some((token) => DESTRUCTIVE_BADGE_TOKENS.has(token))) {
-    return "destructive";
-  }
-  if (DEFAULT_BADGE_VALUES.has(normalized)) {
-    return "default";
-  }
-  if (tokens.some((token) => OUTLINE_BADGE_TOKENS.has(token))) {
-    return "outline";
-  }
-  return "secondary";
+  return operatorBadgeVariant(badge);
 }
 
 function normalizeStatusValue(value: string): string {
@@ -7062,10 +6990,6 @@ function normalizeStatusValue(value: string): string {
 
 function statusTokens(normalizedValue: string): string[] {
   return normalizedValue.split("_").filter(Boolean);
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return <OperatorField label={label} value={value} />;
 }
 
 function Placeholder({ item }: { item: PlaceholderSummary }) {

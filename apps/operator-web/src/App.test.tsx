@@ -86,8 +86,10 @@ import {
   OperatorContentSection,
   OperatorDataTable,
   OperatorDetailText,
+  OperatorEvidencePanel,
   OperatorField,
   OperatorFieldGrid,
+  OperatorInfoSection,
   OperatorMetricStrip,
   OperatorPage,
   OperatorPageHeader,
@@ -99,6 +101,7 @@ import {
   OperatorStat,
   OperatorStatGrid,
   OperatorStatusStack,
+  OperatorStatusBadge,
   OperatorTabPanel,
   OperatorViewTabs,
   OperatorWorkspaceBody,
@@ -145,6 +148,9 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.layout.workspaceBody).toContain("gap-4");
     expect(OPERATOR_DESIGN_TOKENS.layout.workspaceSplit).toContain("xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]");
     expect(OPERATOR_DESIGN_TOKENS.layout.workspaceInspector).toContain("content-start");
+    expect(OPERATOR_DESIGN_TOKENS.layout.infoSectionContent).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.evidencePanel).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.evidencePanelTitle).toContain("text-sm");
     expect(OPERATOR_DESIGN_TOKENS.layout.selectionItemHeader).toContain("sm:flex");
     expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).toContain("grid-cols-1");
     expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).not.toContain("grid-cols-2");
@@ -186,6 +192,7 @@ describe("operator design system contract", () => {
       "data-table.tsx",
       "field.tsx",
       "field-grid.tsx",
+      "info-section.tsx",
       "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
@@ -197,6 +204,7 @@ describe("operator design system contract", () => {
       "stat.tsx",
       "stat-grid.tsx",
       "status-stack.tsx",
+      "status-badge.tsx",
       "text.tsx",
       "tab-badge.tsx",
       "view-tabs.tsx",
@@ -222,7 +230,9 @@ describe("operator design system contract", () => {
     for (const fileName of ["field.tsx"]) {
       expect(readFileSync(join(componentDir, fileName), "utf8")).not.toContain("@/components/ui/card");
     }
+    expect(readFileSync(join(componentDir, "info-section.tsx"), "utf8")).toContain("./panel");
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
+    expect(readFileSync(join(componentDir, "status-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "metric-strip.tsx"), "utf8")).toContain("./stat");
     expect(readFileSync(join(componentDir, "stat-grid.tsx"), "utf8")).toContain("./stat");
@@ -241,6 +251,8 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorResponsiveSlot } from "./components/responsive-slot"');
     expect(indexSource).toContain('export { OperatorResponsiveSplit } from "./components/responsive-split"');
     expect(indexSource).toContain('export { OperatorWorkspaceBody, OperatorWorkspacePanel, OperatorWorkspaceSplit } from "./components/workspace"');
+    expect(indexSource).toContain('export { OperatorInfoSection } from "./components/info-section"');
+    expect(indexSource).toContain('export { OperatorStatusBadge, operatorBadgeVariant } from "./components/status-badge"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -505,6 +517,38 @@ describe("operator design system contract", () => {
     expect(html).toContain('data-operator-ui="field-grid"');
   });
 
+  it("builds detail info and evidence panels from design-system primitives", () => {
+    const html = renderToStaticMarkup(
+      <OperatorInfoSection title="Trading gateway contract" summary="fixture / not_live" badge="not_live">
+        <OperatorField label="Gateway" value="paper_gateway" />
+        <OperatorEvidencePanel
+          className="review-packet-index"
+          label="Private-readiness review packet index"
+        >
+          <OperatorField label="Index state" value="review_packet_index_ready_for_operator_scan" />
+        </OperatorEvidencePanel>
+        <OperatorStatusBadge value="blocked_by_quality" />
+        <OperatorStatusBadge
+          value="No promotion, live gate, marketplace, or runtime action authority exists."
+          variant="outline"
+          multiline
+        />
+      </OperatorInfoSection>
+    );
+
+    expect(html).toContain('data-operator-ui="info-section"');
+    expect(html).toContain('data-operator-ui="info-section-content"');
+    expect(html).toContain('data-operator-ui="evidence-panel"');
+    expect(html).toContain('data-operator-ui="status-badge"');
+    expect(html).toContain('data-multiline="true"');
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(html).toContain("basis-full");
+    expect(html).toContain("overflow-visible");
+    expect(html).toContain("[white-space:normal]");
+    expect(html).toContain("blocked_by_quality");
+  });
+
   it("builds workspace shells and inspector layouts from design-system primitives", () => {
     const html = renderToStaticMarkup(
       <OperatorWorkspacePanel aria-label="Candidate Arena cockpit">
@@ -528,6 +572,21 @@ describe("operator design system contract", () => {
     expect(html).toContain("xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]");
     expect(html).toContain('aria-label="Candidate Arena inspector"');
     expect(html).toContain("<aside");
+  });
+
+  it("keeps legacy App detail helpers behind design-system components", () => {
+    const appSource = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+
+    expect(appSource).toContain("OperatorInfoSection");
+    expect(appSource).toContain("OperatorEvidencePanel");
+    expect(appSource).toContain("OperatorField");
+    expect(appSource).not.toContain("function InfoSection(");
+    expect(appSource).not.toContain("function Field(");
+    expect(appSource).not.toContain("const RAW_EVIDENCE_STACK_CLASS");
+    expect(appSource).not.toContain("const RAW_EVIDENCE_ROW_CLASS");
+    expect(appSource).not.toContain("<InfoSection");
+    expect(appSource).not.toContain("<Field ");
+    expect(appSource).not.toContain("ReviewPacketPanel");
   });
 
   it("keeps high-level metric strips compact and mobile-first", () => {
@@ -2490,7 +2549,9 @@ describe("CandidateDetail", () => {
     expect(html).toContain("completion_readiness_remediation_actions_present");
     expect(html).toContain("review_packet_index_ready_for_operator_scan");
     expect(html).toContain("review_packet_source_provenance_navigation_only");
-    expect(html).toContain("review-packet-index-row grid min-w-0");
+    expect(html).toContain('data-operator-ui="evidence-row"');
+    expect(html).toContain("grid min-w-0");
+    expect(html).toContain("review-packet-index-row");
     expect(html).toContain("[&amp;&gt;*]:break-words");
     expect(html).toContain("not_counted_evidence_or_promotion");
     expect(html).toContain("not_private_read_permission_or_execution_authority");
