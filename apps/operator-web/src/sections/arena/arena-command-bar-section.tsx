@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
 import {
+  OperatorButton,
   OperatorCallout,
   OperatorPanel,
   OperatorSectionHeader
@@ -29,15 +29,15 @@ export function ArenaCommandBarSection({
         description="Researcher orchestration stays below live authority and only writes through shared commands."
         actions={(
           <>
-            <Button type="button" onClick={onStart} disabled={startDisabled || !onStart}>
+            <OperatorButton type="button" onClick={onStart} disabled={startDisabled || !onStart}>
               Start arena
-            </Button>
-            <Button type="button" onClick={onStop} disabled={stopDisabled || !onStop} variant="secondary">
+            </OperatorButton>
+            <OperatorButton type="button" onClick={onStop} disabled={stopDisabled || !onStop} variant="secondary">
               Stop arena
-            </Button>
-            <Button type="button" onClick={onTick} disabled={tickDisabled || !onTick} variant="outline">
+            </OperatorButton>
+            <OperatorButton type="button" onClick={onTick} disabled={tickDisabled || !onTick} variant="outline">
               Run tick
-            </Button>
+            </OperatorButton>
           </>
         )}
       />

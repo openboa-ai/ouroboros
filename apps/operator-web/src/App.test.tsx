@@ -136,6 +136,8 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.size.panelPadding).toContain("p-3");
     expect(OPERATOR_DESIGN_TOKENS.radius.panel).toBe("rounded-lg");
     expect(OPERATOR_DESIGN_TOKENS.radius.control).toBe("rounded-md");
+    expect(OPERATOR_DESIGN_TOKENS.surface.actionButton).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.surface.actionButton).toContain(OPERATOR_DESIGN_TOKENS.radius.control);
     expect(OPERATOR_DESIGN_TOKENS.surface.dataTableRowButton).toContain("min-h-7");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("min-w-0");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("max-w-full");
@@ -204,6 +206,7 @@ describe("operator design system contract", () => {
     expect(existsSync(join(designSystemDir, "index.ts"))).toBe(true);
     expect(existsSync(join(designSystemDir, "tokens.ts"))).toBe(true);
     expect(componentFiles).toEqual(expect.arrayContaining([
+      "action-button.tsx",
       "action-row.tsx",
       "app-shell.tsx",
       "callout.tsx",
@@ -236,6 +239,7 @@ describe("operator design system contract", () => {
 
     const indexSource = readFileSync(join(designSystemDir, "index.ts"), "utf8");
     expect(indexSource).toContain('export { OPERATOR_DESIGN_TOKENS } from "./tokens"');
+    expect(indexSource).toContain('export { OperatorButton } from "./components/action-button"');
     expect(indexSource).toContain('export { OperatorMetricStrip } from "./components/metric-strip"');
 
     for (const fileName of componentFiles) {
@@ -255,6 +259,7 @@ describe("operator design system contract", () => {
     }
     expect(readFileSync(join(componentDir, "info-section.tsx"), "utf8")).toContain("./panel");
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
+    expect(readFileSync(join(componentDir, "action-button.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(componentDir, "status-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "tab-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(componentDir, "metric-strip.tsx"), "utf8")).toContain("./stat");
@@ -310,9 +315,10 @@ describe("operator design system contract", () => {
       expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).not.toContain("@/components/ui/chart");
       expect(source).not.toContain("@/components/ui/progress");
+      expect(source).not.toContain("@/components/ui/button");
       expect(source).not.toContain('className="aspect-[16/5] min-h-[180px] w-full rounded-lg bg-muted/60 p-3"');
       expect(source).not.toContain('className="md:grid-cols-4"');
-      expect(source).toMatch(/@\/design-system|@\/components\/ui\/button|\.\/trading-metrics/);
+      expect(source).toMatch(/@\/design-system|\.\/trading-metrics/);
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
@@ -335,7 +341,7 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).toContain("OperatorMetricStrip");
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
-    expect(tradingPromotionSource).toContain("@/components/ui/button");
+    expect(tradingPromotionSource).toContain("OperatorButton");
     expect(tradingPromotionSource).toContain("OperatorStatusBadge");
     expect(tradingPromotionSource).toContain("OperatorField");
     expect(tradingPromotionSource).toContain("OperatorResponsiveSplit");
@@ -384,11 +390,12 @@ describe("operator design system contract", () => {
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
       expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
+      expect(source).not.toContain("@/components/ui/button");
       expect(source).not.toMatch(/const MOBILE_[A-Z_]+/);
       expect(source).toContain("@/design-system");
     }
 
-    expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorButton");
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorCallout");
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
     const leaderboardSource = readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8");
@@ -411,11 +418,11 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorField");
-    expect(readFileSync(join(arenaSectionDir, "arena-agent-provider-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(arenaSectionDir, "arena-agent-provider-section.tsx"), "utf8")).toContain("OperatorButton");
     expect(readFileSync(join(arenaSectionDir, "arena-agent-provider-section.tsx"), "utf8")).toContain("OperatorActionRow");
     expect(readFileSync(join(arenaSectionDir, "arena-command-log-section.tsx"), "utf8")).toContain("OperatorEvidenceBlock");
     expect(readFileSync(join(arenaSectionDir, "arena-latest-ticks-section.tsx"), "utf8")).toContain("OperatorEmptyState");
-    expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("@/components/ui/button");
+    expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorButton");
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorActionRow");
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorField");
 

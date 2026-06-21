@@ -34,6 +34,7 @@ export const OPERATOR_DESIGN_TOKENS = {
     ...OPERATOR_RADIUS_TOKENS
   },
   surface: {
+    actionButton: `min-w-0 max-w-full ${OPERATOR_RADIUS_TOKENS.control}`,
     panel: `min-w-0 max-w-full overflow-visible ${OPERATOR_RADIUS_TOKENS.panel} ${OPERATOR_COLOR_TOKENS.surface} ${OPERATOR_COLOR_TOKENS.borderSubtle} shadow-[0_1px_2px_rgba(15,23,42,0.04)]`,
     panelMuted: `min-w-0 max-w-full overflow-visible ${OPERATOR_RADIUS_TOKENS.panel} ${OPERATOR_COLOR_TOKENS.surfaceMuted} ${OPERATOR_COLOR_TOKENS.borderQuiet}`,
     callout: `min-w-0 max-w-full overflow-visible ${OPERATOR_RADIUS_TOKENS.panel} border ${OPERATOR_COLOR_TOKENS.divider} bg-muted/45 py-2`,
