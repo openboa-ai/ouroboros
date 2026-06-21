@@ -130,7 +130,7 @@ export const OPERATOR_DESIGN_TOKENS = {
     evidenceFieldMobileContained: "w-full max-w-full overflow-hidden",
     evidenceStack: "grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2",
     statGrid: "grid min-w-0 max-w-full grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]",
-    metricStripQuartet: "grid min-w-0 max-w-full grid-cols-1 gap-2 md:grid-cols-4",
+    metricStripQuartet: "grid min-w-0 max-w-full grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] md:grid-cols-4",
     progressTrack: "min-w-0 max-w-full",
     statusStack: "grid min-w-0 max-w-full gap-1",
     statusBadgeMultiline: "h-auto min-h-5 min-w-0 w-full basis-full max-w-full shrink justify-start overflow-visible whitespace-normal break-words text-left leading-snug [overflow-wrap:anywhere] [white-space:normal] sm:w-fit sm:basis-auto",

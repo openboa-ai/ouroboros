@@ -179,6 +179,7 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.layout.evidenceFieldMobileContained).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.layout.chartCaption).toContain("justify-between");
     expect(OPERATOR_DESIGN_TOKENS.layout.progressTrack).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.layout.metricStripQuartet).toContain("sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]");
     expect(OPERATOR_DESIGN_TOKENS.layout.metricStripQuartet).toContain("md:grid-cols-4");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-2xl");
