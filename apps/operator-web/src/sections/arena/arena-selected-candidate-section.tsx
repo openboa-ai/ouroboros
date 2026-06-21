@@ -1,6 +1,6 @@
-import { Button } from "@/components/ui/button";
 import {
   OperatorActionRow,
+  OperatorButton,
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
@@ -46,32 +46,32 @@ export function ArenaSelectedCandidateSection({
           <OperatorActionRow className="justify-start lg:justify-end">
             {paperRunnerActive ? (
               <>
-                <Button
+                <OperatorButton
                   type="button"
                   onClick={onObservePaperTrading}
                   disabled={observePaperDisabled || !onObservePaperTrading}
                   variant="secondary"
                 >
                   {runningPaperTrading ? "Updating paper trading" : "Observe now"}
-                </Button>
-                <Button
+                </OperatorButton>
+                <OperatorButton
                   type="button"
                   onClick={onStopPaperTrading}
                   disabled={stopPaperDisabled || !onStopPaperTrading}
                   variant="outline"
                 >
                   Stop paper trading
-                </Button>
+                </OperatorButton>
               </>
             ) : (
-              <Button
+              <OperatorButton
                 type="button"
                 onClick={onStartPaperTrading}
                 disabled={startPaperDisabled || !onStartPaperTrading}
                 variant="secondary"
               >
                 {runningPaperTrading ? "Starting paper trading" : paperStartActionLabel}
-              </Button>
+              </OperatorButton>
             )}
           </OperatorActionRow>
         )}

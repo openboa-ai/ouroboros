@@ -1,4 +1,5 @@
 export { OPERATOR_DESIGN_TOKENS } from "./tokens";
+export { OperatorButton } from "./components/action-button";
 export { OperatorActionRow } from "./components/action-row";
 export { OperatorAppShell, OperatorAppHeader, OperatorAppMain } from "./components/app-shell";
 export { OperatorCallout } from "./components/callout";

@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
-import { Button } from "@/components/ui/button";
 import {
+  OperatorButton,
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
@@ -58,23 +58,23 @@ export function TradingPromotionBoundarySection({
         actions={(
           <>
             {showOpenActiveTarget && (
-              <Button
+              <OperatorButton
                 type="button"
                 variant="outline"
                 onClick={onOpenActiveTarget}
                 disabled={openActiveTargetDisabled || !onOpenActiveTarget}
               >
                 Open Trading review candidate
-              </Button>
+              </OperatorButton>
             )}
-            <Button
+            <OperatorButton
               type="button"
               variant="secondary"
               onClick={onPromoteTradingCandidate}
               disabled={promoteDisabled || !onPromoteTradingCandidate}
             >
               {promoteLabel}
-            </Button>
+            </OperatorButton>
           </>
         )}
       >

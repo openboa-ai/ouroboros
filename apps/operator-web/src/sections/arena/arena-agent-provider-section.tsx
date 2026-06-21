@@ -1,6 +1,6 @@
-import { Button } from "@/components/ui/button";
 import {
   OperatorActionRow,
+  OperatorButton,
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
@@ -68,7 +68,7 @@ export function ArenaAgentProviderSection({
       </OperatorFieldGrid>
       <OperatorActionRow>
         {providerOptions.map((option) => (
-          <Button
+          <OperatorButton
             key={option.provider}
             type="button"
             variant={option.selected ? "secondary" : "outline"}
@@ -79,11 +79,11 @@ export function ArenaAgentProviderSection({
             disabled={option.disabled || !onSelectProvider || !option.selectableProvider}
           >
             {option.provider}
-          </Button>
+          </OperatorButton>
         ))}
       </OperatorActionRow>
       <OperatorActionRow>
-        <Button
+        <OperatorButton
           type="button"
           variant="outline"
           size="sm"
@@ -91,8 +91,8 @@ export function ArenaAgentProviderSection({
           disabled={setupDisabled || !onSetup}
         >
           Setup
-        </Button>
-        <Button
+        </OperatorButton>
+        <OperatorButton
           type="button"
           variant="outline"
           size="sm"
@@ -100,8 +100,8 @@ export function ArenaAgentProviderSection({
           disabled={probeDisabled || !onProbe}
         >
           Probe
-        </Button>
-        <Button
+        </OperatorButton>
+        <OperatorButton
           type="button"
           variant="outline"
           size="sm"
@@ -109,7 +109,7 @@ export function ArenaAgentProviderSection({
           disabled={loginDisabled || !onLogin}
         >
           Login
-        </Button>
+        </OperatorButton>
       </OperatorActionRow>
     </OperatorPanel>
   );
