@@ -24,6 +24,9 @@ export type { OperatorDataTableColumn, OperatorDataTableRow } from "./components
 export { OperatorField } from "./components/field";
 export { OperatorFieldGrid } from "./components/field-grid";
 export { OperatorInfoSection } from "./components/info-section";
+export { OperatorInput } from "./components/input";
+export { OperatorNativeSelect } from "./components/native-select";
+export { OperatorNativeSelectOption } from "./components/native-select";
 export { OperatorMetricStrip } from "./components/metric-strip";
 export type { OperatorMetricStripItem } from "./components/metric-strip";
 export { OperatorPage, OperatorPageHeader } from "./components/page";
@@ -42,6 +45,7 @@ export type { OperatorStatusStackMessage } from "./components/status-stack";
 export { OperatorStatusBadge, operatorBadgeVariant } from "./components/status-badge";
 export { OperatorTabBadge } from "./components/tab-badge";
 export { OperatorDetailText, OperatorInlineMeta, OperatorTextStack, OperatorValueText } from "./components/text";
+export { OperatorTabs } from "./components/view-tabs";
 export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs";
 export type { OperatorViewTabItem } from "./components/view-tabs";
 export { OperatorWorkspaceBody, OperatorWorkspacePanel, OperatorWorkspaceSplit } from "./components/workspace";
