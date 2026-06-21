@@ -74,9 +74,6 @@ import {
   type TradingResearchAgentSelection,
   type TradingResearchRuntimeReadModel
 } from "./api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs } from "@/components/ui/tabs";
 import {
   buildPrivateReadinessReviewPacketProjection,
   formatPrivateReadinessCheckedGatePosture
@@ -87,6 +84,7 @@ import {
   OperatorAppHeader,
   OperatorAppMain,
   OperatorAppShell,
+  OperatorButton,
   OperatorEmptyState,
   OperatorEvidenceBlock,
   OperatorEvidencePanel,
@@ -96,6 +94,9 @@ import {
   OperatorField,
   OperatorFieldGrid,
   OperatorInfoSection,
+  OperatorInput,
+  OperatorNativeSelect,
+  OperatorNativeSelectOption,
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
@@ -105,6 +106,7 @@ import {
   OperatorStatusStack,
   OperatorStatusBadge,
   OperatorTabPanel,
+  OperatorTabs,
   OperatorViewTabs,
   OperatorWorkspaceBody,
   OperatorWorkspacePanel,
@@ -1479,7 +1481,7 @@ export function CandidateSummaryRow({
   onSelectCandidate: (candidateId: string) => void | Promise<void>;
 }) {
   return (
-    <Button
+    <OperatorButton
       variant="ghost"
       className={`candidate-row ${active ? "active" : ""}`}
       type="button"
@@ -1489,7 +1491,7 @@ export function CandidateSummaryRow({
       <small>
         {candidate.status} · latest validation state: {latestValidationStateLabel(candidate.latest_validation_state)}
       </small>
-    </Button>
+    </OperatorButton>
   );
 }
 
@@ -2411,7 +2413,7 @@ function FullCycleDeveloperControls({
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-10 items-center gap-1 rounded-md border bg-background px-1" aria-label="Researcher">
             {tradingResearchRuntime.available_agents.map((agent) => (
-              <Button
+              <OperatorButton
                 key={agent}
                 type="button"
                 variant={selectedTradingResearchAgent === agent ? "default" : "ghost"}
@@ -2420,10 +2422,10 @@ function FullCycleDeveloperControls({
                 disabled={runningFullCycle}
               >
                 {formatResearchAgentLabel(agent)}
-              </Button>
+              </OperatorButton>
             ))}
           </div>
-          <Input
+          <OperatorInput
             aria-label="Research iterations"
             className="h-10 w-20"
             min={1}
@@ -2438,13 +2440,13 @@ function FullCycleDeveloperControls({
             }}
             disabled={runningFullCycle}
           />
-          <Button
+          <OperatorButton
             type="button"
             onClick={onRunFullCycle}
             disabled={runningFullCycle || selectedResearchAgentBlocked}
           >
             {runningFullCycle ? "Running full cycle" : "Run next cycle"}
-          </Button>
+          </OperatorButton>
         </div>
         {selectedResearchAgentBlocked && (
           <p className="text-sm text-destructive">
@@ -3149,7 +3151,7 @@ export function CandidateDetail({
   ];
   return (
     <OperatorPage>
-      <Tabs
+      <OperatorTabs
         value={activeView}
         onValueChange={(value) => onActiveViewChange?.(value as OperatorView)}
       >
@@ -3228,24 +3230,24 @@ export function CandidateDetail({
         actions={(
           <>
             {onObserveTradingRun && (
-              <Button
+              <OperatorButton
                 type="button"
                 onClick={onObserveTradingRun}
                 disabled={runningTradingRun || tradingReviewMismatch}
                 variant="secondary"
               >
                 Observe paper
-              </Button>
+              </OperatorButton>
             )}
             {onStopTradingRun && (
-              <Button
+              <OperatorButton
                 type="button"
                 onClick={onStopTradingRun}
                 disabled={runningTradingRun || tradingReviewMismatch || tradingCandidate.runtime.runtime_lifecycle_status === "stopped"}
                 variant="outline"
               >
                 Stop paper
-              </Button>
+              </OperatorButton>
             )}
           </>
         )}
@@ -3537,43 +3539,43 @@ export function CandidateDetail({
               {(onStartTradingRun || onStartRejectedPaperOrder || onObserveTradingRun || onStopTradingRun) && (
                 <OperatorActionRow>
                   {onStartTradingRun && (
-                    <Button
+                    <OperatorButton
                       type="button"
                       onClick={onStartTradingRun}
                       disabled={runningTradingRun}
                     >
                       {runningTradingRun ? "Working trading run" : "Start trading run"}
-                    </Button>
+                    </OperatorButton>
                   )}
                   {onStartRejectedPaperOrder && (
-                    <Button
+                    <OperatorButton
                       type="button"
                       onClick={onStartRejectedPaperOrder}
                       disabled={runningTradingRun}
                       variant="outline"
                     >
                       Run rejected paper order
-                    </Button>
+                    </OperatorButton>
                   )}
                   {onObserveTradingRun && (
-                    <Button
+                    <OperatorButton
                       type="button"
                       onClick={onObserveTradingRun}
                       disabled={runningTradingRun}
                       variant="secondary"
                     >
                       Observe
-                    </Button>
+                    </OperatorButton>
                   )}
                   {onStopTradingRun && (
-                    <Button
+                    <OperatorButton
                       type="button"
                       onClick={onStopTradingRun}
                       disabled={runningTradingRun || candidate.runtime.runtime_lifecycle_status === "stopped"}
                       variant="outline"
                     >
                       Stop
-                    </Button>
+                    </OperatorButton>
                   )}
                   <OperatorDetailText as="span">run_control / fixture_paper / not_live</OperatorDetailText>
                 </OperatorActionRow>
@@ -3691,7 +3693,7 @@ export function CandidateDetail({
         </div>
       </OperatorPanel>
         </OperatorTabPanel>
-      </Tabs>
+      </OperatorTabs>
     </OperatorPage>
   );
 }
@@ -4614,13 +4616,13 @@ function ReplayRunsSection({
 
         {onRunCandidateReplay && (
           <OperatorActionRow>
-            <Button
+            <OperatorButton
               type="button"
               onClick={onRunCandidateReplay}
               disabled={runningCandidateReplay}
             >
               {runningCandidateReplay ? "Running replay" : "Run replay"}
-            </Button>
+            </OperatorButton>
             <OperatorDetailText as="span">host_process / replay_only / not_live</OperatorDetailText>
           </OperatorActionRow>
         )}
@@ -5320,7 +5322,7 @@ function TradingSubstrateSection({
               {PRIVATE_READINESS_POSTURE_GATE_FIELDS.map((field) => (
                 <label className="posture-edit-row" key={field.key}>
                   <span>{field.label}</span>
-                  <select
+                  <OperatorNativeSelect
                     value={postureDraft[field.key].status}
                     onChange={(event) =>
                       updatePostureDraftGate(field.key, {
@@ -5328,10 +5330,10 @@ function TradingSubstrateSection({
                       })}
                   >
                     {PRIVATE_READINESS_GATE_STATUS_OPTIONS.map((status) => (
-                      <option key={status} value={status}>{status}</option>
+                      <OperatorNativeSelectOption key={status} value={status}>{status}</OperatorNativeSelectOption>
                     ))}
-                  </select>
-                  <input
+                  </OperatorNativeSelect>
+                  <OperatorInput
                     aria-label={`${field.label} reason`}
                     value={postureDraft[field.key].reason}
                     onChange={(event) =>
@@ -5343,12 +5345,12 @@ function TradingSubstrateSection({
               ))}
             </div>
             <OperatorActionRow>
-              <Button
+              <OperatorButton
                 type="submit"
                 disabled={recordingPrivateReadinessPosture}
               >
                 {recordingPrivateReadinessPosture ? "Saving posture" : "Save local posture"}
-              </Button>
+              </OperatorButton>
               <OperatorDetailText as="span">local_config / no_secret / not_live</OperatorDetailText>
             </OperatorActionRow>
           </form>
@@ -6508,13 +6510,13 @@ function RunControlSection({
 
         {onRecordRunControl && (
           <OperatorActionRow>
-            <Button
+            <OperatorButton
               type="button"
               onClick={onRecordRunControl}
               disabled={recordingRunControl}
             >
               {recordingRunControl ? "Recording pause" : "Record pause"}
-            </Button>
+            </OperatorButton>
             <OperatorDetailText as="span">control_only / audit_only / not_live</OperatorDetailText>
           </OperatorActionRow>
         )}
@@ -6696,13 +6698,13 @@ function ImprovementSection({
 
         {onRecordImprovement && (
           <OperatorActionRow>
-            <Button
+            <OperatorButton
               type="button"
               onClick={onRecordImprovement}
               disabled={recordingImprovement}
             >
               {recordingImprovement ? "Recording improvement" : "Record improvement"}
-            </Button>
+            </OperatorButton>
             <OperatorDetailText as="span">proposal_only / sandbox_evaluation / not_live</OperatorDetailText>
           </OperatorActionRow>
         )}

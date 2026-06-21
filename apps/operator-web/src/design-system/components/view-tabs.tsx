@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import {
+  Tabs,
   TabsContent,
   TabsList,
   TabsTrigger
@@ -7,6 +8,19 @@ import {
 import { cn } from "@/lib/utils";
 import { OPERATOR_DESIGN_TOKENS } from "../tokens";
 import { OperatorTabBadge } from "./tab-badge";
+
+export function OperatorTabs({
+  className,
+  ...props
+}: ComponentProps<typeof Tabs>) {
+  return (
+    <Tabs
+      data-operator-ui="tabs"
+      className={cn("min-w-0 max-w-full", className)}
+      {...props}
+    />
+  );
+}
 
 export interface OperatorViewTabItem<TValue extends string = string> {
   value: TValue;

@@ -90,6 +90,8 @@ import {
   OperatorField,
   OperatorFieldGrid,
   OperatorInfoSection,
+  OperatorNativeSelect,
+  OperatorNativeSelectOption,
   OperatorMetricStrip,
   OperatorPage,
   OperatorPageHeader,
@@ -218,6 +220,8 @@ describe("operator design system contract", () => {
       "field.tsx",
       "field-grid.tsx",
       "info-section.tsx",
+      "input.tsx",
+      "native-select.tsx",
       "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
@@ -240,6 +244,9 @@ describe("operator design system contract", () => {
     const indexSource = readFileSync(join(designSystemDir, "index.ts"), "utf8");
     expect(indexSource).toContain('export { OPERATOR_DESIGN_TOKENS } from "./tokens"');
     expect(indexSource).toContain('export { OperatorButton } from "./components/action-button"');
+    expect(indexSource).toContain('export { OperatorInput } from "./components/input"');
+    expect(indexSource).toContain('export { OperatorNativeSelect } from "./components/native-select"');
+    expect(indexSource).toContain('export { OperatorTabs } from "./components/view-tabs"');
     expect(indexSource).toContain('export { OperatorMetricStrip } from "./components/metric-strip"');
 
     for (const fileName of componentFiles) {
@@ -258,6 +265,8 @@ describe("operator design system contract", () => {
       expect(readFileSync(join(componentDir, fileName), "utf8")).not.toContain("@/components/ui/card");
     }
     expect(readFileSync(join(componentDir, "info-section.tsx"), "utf8")).toContain("./panel");
+    expect(readFileSync(join(componentDir, "input.tsx"), "utf8")).toContain("@/components/ui/input");
+    expect(readFileSync(join(componentDir, "native-select.tsx"), "utf8")).toContain("@/components/ui/native-select");
     expect(readFileSync(join(componentDir, "panel.tsx"), "utf8")).toContain("@/components/ui/card");
     expect(readFileSync(join(componentDir, "action-button.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(componentDir, "status-badge.tsx"), "utf8")).toContain("@/components/ui/badge");
@@ -286,6 +295,37 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain("OperatorEvidenceFieldRow");
     expect(readFileSync(join(componentDir, "chart.tsx"), "utf8")).toContain("@/components/ui/chart");
     expect(readFileSync(join(componentDir, "progress.tsx"), "utf8")).toContain("@/components/ui/progress");
+  });
+
+  it("keeps App-level controls behind operator design-system primitives", () => {
+    const appSource = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+
+    expect(OPERATOR_DESIGN_TOKENS.surface.input).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.surface.input).toContain(OPERATOR_DESIGN_TOKENS.radius.control);
+    expect(OPERATOR_DESIGN_TOKENS.surface.nativeSelect).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.surface.nativeSelect).toContain(OPERATOR_DESIGN_TOKENS.radius.control);
+    expect(appSource).not.toContain("@/components/ui/button");
+    expect(appSource).not.toContain("@/components/ui/input");
+    expect(appSource).not.toContain("@/components/ui/native-select");
+    expect(appSource).not.toContain("@/components/ui/tabs");
+    expect(appSource).not.toMatch(/<select[\s>]/);
+    expect(appSource).toContain("OperatorButton");
+    expect(appSource).toContain("OperatorInput");
+    expect(appSource).toContain("OperatorNativeSelect");
+    expect(appSource).toContain("OperatorTabs");
+  });
+
+  it("applies operator native select tokens to the visible select control", () => {
+    const html = renderToStaticMarkup(
+      <OperatorNativeSelect aria-label="Posture status" defaultValue="approved">
+        <OperatorNativeSelectOption value="approved">approved</OperatorNativeSelectOption>
+      </OperatorNativeSelect>
+    );
+    const selectTag = html.match(/<select[^>]*data-operator-ui="native-select"[^>]*>/)?.[0] ?? "";
+
+    expect(selectTag).toContain('data-slot="native-select"');
+    expect(selectTag).toContain(OPERATOR_DESIGN_TOKENS.radius.control);
+    expect(selectTag).not.toContain("rounded-lg");
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
