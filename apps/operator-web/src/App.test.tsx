@@ -83,6 +83,7 @@ import {
   OperatorAppMain,
   OperatorAppShell,
   OperatorCallout,
+  OperatorContentSection,
   OperatorDataTable,
   OperatorDetailText,
   OperatorField,
@@ -91,6 +92,7 @@ import {
   OperatorPage,
   OperatorPageHeader,
   OperatorPanel,
+  OperatorResponsiveSplit,
   OperatorSectionHeader,
   OperatorSelectionItem,
   OperatorSectionStack,
@@ -128,8 +130,14 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain("min-w-0");
     expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain(OPERATOR_DESIGN_TOKENS.size.pageMaxWidth);
     expect(OPERATOR_DESIGN_TOKENS.layout.contentSection).toContain("content-start");
+    expect(OPERATOR_DESIGN_TOKENS.layout.contentStack).toContain("gap-3");
+    expect(OPERATOR_DESIGN_TOKENS.layout.contentStackLoose).toContain("gap-4");
     expect(OPERATOR_DESIGN_TOKENS.layout.mobileOnly).toBe("grid min-w-0 max-w-full gap-2 lg:hidden");
     expect(OPERATOR_DESIGN_TOKENS.layout.desktopOnly).toBe("hidden min-w-0 max-w-full lg:block");
+    expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitMd).toContain("md:grid-cols-[minmax(0,1fr)_auto]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitLg).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitActionsMd).toContain("md:justify-end");
+    expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitActionsLg).toContain("lg:justify-end");
     expect(OPERATOR_DESIGN_TOKENS.layout.selectionItemHeader).toContain("sm:flex");
     expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).toContain("grid-cols-1");
     expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).not.toContain("grid-cols-2");
@@ -171,6 +179,7 @@ describe("operator design system contract", () => {
       "page.tsx",
       "panel.tsx",
       "responsive-slot.tsx",
+      "responsive-split.tsx",
       "section-header.tsx",
       "selection-item.tsx",
       "section-stack.tsx",
@@ -218,6 +227,7 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs"');
     expect(indexSource).toContain('export { OperatorContentSection } from "./components/content-section"');
     expect(indexSource).toContain('export { OperatorResponsiveSlot } from "./components/responsive-slot"');
+    expect(indexSource).toContain('export { OperatorResponsiveSplit } from "./components/responsive-split"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -249,7 +259,14 @@ describe("operator design system contract", () => {
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
-    expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
+    const tradingCockpitSource = readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8");
+    const tradingPromotionSource = readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8");
+    const operatorDecisionSource = readFileSync(join(tradingSectionDir, "operator-decision-panel.tsx"), "utf8");
+
+    expect(tradingCockpitSource).toContain("OperatorContentSection");
+    expect(tradingCockpitSource).toContain("OperatorSectionStack");
+    expect(tradingCockpitSource).toContain("OperatorSectionHeader");
+    expect(tradingCockpitSource).not.toContain('className="grid min-w-0 gap-4"');
     expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
@@ -259,10 +276,14 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).toContain("OperatorMetricStrip");
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
-    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/button");
-    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
-    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("OperatorField");
-    expect(readFileSync(join(tradingSectionDir, "trading-promotion-boundary-section.tsx"), "utf8")).toContain("OperatorActionRow");
+    expect(tradingPromotionSource).toContain("@/components/ui/button");
+    expect(tradingPromotionSource).toContain("@/components/ui/badge");
+    expect(tradingPromotionSource).toContain("OperatorField");
+    expect(tradingPromotionSource).toContain("OperatorResponsiveSplit");
+    expect(tradingPromotionSource).not.toContain("grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start");
+    expect(tradingPromotionSource).not.toContain('className="lg:justify-end"');
+    expect(operatorDecisionSource).toContain("OperatorResponsiveSplit");
+    expect(operatorDecisionSource).not.toContain("grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/badge");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/progress");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorPanel");
@@ -429,6 +450,32 @@ describe("operator design system contract", () => {
     expect(html).toContain('data-slot="card"');
     expect(html).toContain("grid");
     expect(html).toContain("[overflow-wrap:anywhere]");
+  });
+
+  it("builds responsive content and action layout from design-system primitives", () => {
+    const html = renderToStaticMarkup(
+      <OperatorContentSection aria-label="Trading cockpit">
+        <OperatorSectionHeader title="Trading cockpit" />
+        <OperatorResponsiveSplit
+          breakpoint="lg"
+          align="start"
+          actions={<button type="button">Promote</button>}
+        >
+          <OperatorFieldGrid density="dense" aria-label="Promotion fields">
+            <OperatorField label="Authority" value="not_live" />
+          </OperatorFieldGrid>
+        </OperatorResponsiveSplit>
+      </OperatorContentSection>
+    );
+
+    expect(html).toContain('data-operator-ui="content-section"');
+    expect(html).toContain('data-operator-ui="responsive-split"');
+    expect(html).toContain('data-breakpoint="lg"');
+    expect(html).toContain('data-align="start"');
+    expect(html).toContain('data-operator-ui="action-row"');
+    expect(html).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
+    expect(html).toContain("lg:justify-end");
+    expect(html).toContain('data-operator-ui="field-grid"');
   });
 
   it("keeps high-level metric strips compact and mobile-first", () => {
