@@ -7,20 +7,20 @@ import {
   ShieldCheckIcon
 } from "lucide-react";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
-  SidebarRail
-} from "@/components/ui/sidebar";
+  OperatorSidebarContent,
+  OperatorSidebarFooter,
+  OperatorSidebarFrame,
+  OperatorSidebarGroup,
+  OperatorSidebarGroupContent,
+  OperatorSidebarGroupLabel,
+  OperatorSidebarHeader,
+  OperatorSidebarMenu,
+  OperatorSidebarMenuBadge,
+  OperatorSidebarMenuButton,
+  OperatorSidebarMenuItem,
+  OperatorSidebarMenuSkeleton,
+  OperatorSidebarRail
+} from "@/design-system";
 
 export type OperatorView = "trading" | "arena" | "research" | "details";
 
@@ -65,59 +65,59 @@ export function OperatorSidebar({
   ];
 
   return (
-    <Sidebar data-operator-ui="operator-sidebar" collapsible="icon" variant="inset">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" isActive tooltip="Ouroboros">
+    <OperatorSidebarFrame data-operator-ui="operator-sidebar" collapsible="icon" variant="inset">
+      <OperatorSidebarHeader>
+        <OperatorSidebarMenu>
+          <OperatorSidebarMenuItem>
+            <OperatorSidebarMenuButton size="lg" isActive tooltip="Ouroboros">
               <ShieldCheckIcon />
               <span>Ouroboros</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Operator workspace</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+            </OperatorSidebarMenuButton>
+          </OperatorSidebarMenuItem>
+        </OperatorSidebarMenu>
+      </OperatorSidebarHeader>
+      <OperatorSidebarContent>
+        <OperatorSidebarGroup>
+          <OperatorSidebarGroupLabel>Operator workspace</OperatorSidebarGroupLabel>
+          <OperatorSidebarGroupContent>
+            <OperatorSidebarMenu>
               {navigationItems.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <SidebarMenuItem key={item.view}>
-                    <SidebarMenuButton
+                  <OperatorSidebarMenuItem key={item.view}>
+                    <OperatorSidebarMenuButton
                       isActive={activeView === item.view}
                       onClick={() => onSelectView(item.view)}
                       tooltip={item.label}
                     >
                       <Icon />
                       <span>{item.label}</span>
-                    </SidebarMenuButton>
-                    {item.count && <SidebarMenuBadge>{item.count}</SidebarMenuBadge>}
-                  </SidebarMenuItem>
+                    </OperatorSidebarMenuButton>
+                    {item.count && <OperatorSidebarMenuBadge>{item.count}</OperatorSidebarMenuBadge>}
+                  </OperatorSidebarMenuItem>
                 );
               })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            </OperatorSidebarMenu>
+          </OperatorSidebarGroupContent>
+        </OperatorSidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Trading Systems</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
+        <OperatorSidebarGroup>
+          <OperatorSidebarGroupLabel>Trading Systems</OperatorSidebarGroupLabel>
+          <OperatorSidebarGroupContent>
+            <OperatorSidebarMenu>
               {loading && (
                 <>
-                  <SidebarMenuItem>
-                    <SidebarMenuSkeleton showIcon />
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuSkeleton showIcon />
-                  </SidebarMenuItem>
+                  <OperatorSidebarMenuItem>
+                    <OperatorSidebarMenuSkeleton showIcon />
+                  </OperatorSidebarMenuItem>
+                  <OperatorSidebarMenuItem>
+                    <OperatorSidebarMenuSkeleton showIcon />
+                  </OperatorSidebarMenuItem>
                 </>
               )}
               {!loading && candidates.map((candidate) => (
-                <SidebarMenuItem key={candidate.candidateId}>
-                  <SidebarMenuButton
+                <OperatorSidebarMenuItem key={candidate.candidateId}>
+                  <OperatorSidebarMenuButton
                     isActive={selectedCandidateId === candidate.candidateId}
                     onClick={() => {
                       onSelectCandidate(candidate.candidateId);
@@ -127,24 +127,24 @@ export function OperatorSidebar({
                   >
                     <BarChart3Icon />
                     <span title={candidate.displayName}>{candidate.displayName}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                  </OperatorSidebarMenuButton>
+                </OperatorSidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip={selectedName}>
+            </OperatorSidebarMenu>
+          </OperatorSidebarGroupContent>
+        </OperatorSidebarGroup>
+      </OperatorSidebarContent>
+      <OperatorSidebarFooter>
+        <OperatorSidebarMenu>
+          <OperatorSidebarMenuItem>
+            <OperatorSidebarMenuButton tooltip={selectedName}>
               <PanelLeftIcon />
               <span>{selectedName}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+            </OperatorSidebarMenuButton>
+          </OperatorSidebarMenuItem>
+        </OperatorSidebarMenu>
+      </OperatorSidebarFooter>
+      <OperatorSidebarRail />
+    </OperatorSidebarFrame>
   );
 }
