@@ -32,3 +32,4 @@ export { OperatorTabBadge } from "./components/tab-badge";
 export { OperatorDetailText, OperatorInlineMeta, OperatorTextStack, OperatorValueText } from "./components/text";
 export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs";
 export type { OperatorViewTabItem } from "./components/view-tabs";
+export { OperatorWorkspaceBody, OperatorWorkspacePanel, OperatorWorkspaceSplit } from "./components/workspace";

@@ -100,7 +100,10 @@ import {
   OperatorStatGrid,
   OperatorStatusStack,
   OperatorTabPanel,
-  OperatorViewTabs
+  OperatorViewTabs,
+  OperatorWorkspaceBody,
+  OperatorWorkspacePanel,
+  OperatorWorkspaceSplit
 } from "./design-system";
 import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness-review-packet";
 
@@ -138,11 +141,19 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitLg).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
     expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitActionsMd).toContain("md:justify-end");
     expect(OPERATOR_DESIGN_TOKENS.layout.responsiveSplitActionsLg).toContain("lg:justify-end");
+    expect(OPERATOR_DESIGN_TOKENS.layout.workspacePanel).toContain("sm:p-4");
+    expect(OPERATOR_DESIGN_TOKENS.layout.workspaceBody).toContain("gap-4");
+    expect(OPERATOR_DESIGN_TOKENS.layout.workspaceSplit).toContain("xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.workspaceInspector).toContain("content-start");
     expect(OPERATOR_DESIGN_TOKENS.layout.selectionItemHeader).toContain("sm:flex");
     expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).toContain("grid-cols-1");
     expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).not.toContain("grid-cols-2");
     expect(OPERATOR_DESIGN_TOKENS.layout.sectionHeader).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid).toContain("xl:grid-cols-4");
+    expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("grid-cols-1");
+    expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]");
+    expect(OPERATOR_DESIGN_TOKENS.layout.evidenceRow).toContain("grid-cols-1");
+    expect(OPERATOR_DESIGN_TOKENS.layout.evidenceRow).toContain("sm:grid-cols-[repeat(auto-fit,minmax(8rem,1fr))]");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-2xl");
 
@@ -188,7 +199,8 @@ describe("operator design system contract", () => {
       "status-stack.tsx",
       "text.tsx",
       "tab-badge.tsx",
-      "view-tabs.tsx"
+      "view-tabs.tsx",
+      "workspace.tsx"
     ]));
 
     const indexSource = readFileSync(join(designSystemDir, "index.ts"), "utf8");
@@ -228,6 +240,7 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorContentSection } from "./components/content-section"');
     expect(indexSource).toContain('export { OperatorResponsiveSlot } from "./components/responsive-slot"');
     expect(indexSource).toContain('export { OperatorResponsiveSplit } from "./components/responsive-split"');
+    expect(indexSource).toContain('export { OperatorWorkspaceBody, OperatorWorkspacePanel, OperatorWorkspaceSplit } from "./components/workspace"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -358,6 +371,20 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorActionRow");
     expect(readFileSync(join(arenaSectionDir, "arena-selected-candidate-section.tsx"), "utf8")).toContain("OperatorField");
+
+    const appSource = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+    const candidateArenaPanelSource = appSource.slice(
+      appSource.indexOf("export function CandidateArenaPanel"),
+      appSource.indexOf("function TradingPromotionBoundaryCard")
+    );
+
+    expect(candidateArenaPanelSource).toContain("OperatorWorkspacePanel");
+    expect(candidateArenaPanelSource).toContain("OperatorWorkspaceBody");
+    expect(candidateArenaPanelSource).toContain("OperatorWorkspaceSplit");
+    expect(candidateArenaPanelSource).not.toContain('className="candidate-arena-cockpit gap-3 p-3 sm:gap-4 sm:p-4"');
+    expect(candidateArenaPanelSource).not.toContain('className="grid gap-4"');
+    expect(candidateArenaPanelSource).not.toContain("xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]");
+    expect(candidateArenaPanelSource).not.toContain('<aside className="grid content-start gap-3" aria-label="Candidate Arena inspector">');
   });
 
   it("keeps Research screen sections as reusable UI-only modules", () => {
@@ -478,6 +505,31 @@ describe("operator design system contract", () => {
     expect(html).toContain('data-operator-ui="field-grid"');
   });
 
+  it("builds workspace shells and inspector layouts from design-system primitives", () => {
+    const html = renderToStaticMarkup(
+      <OperatorWorkspacePanel aria-label="Candidate Arena cockpit">
+        <OperatorSectionHeader title="Candidate Arena" />
+        <OperatorWorkspaceBody>
+          <OperatorWorkspaceSplit
+            inspector={<span>Inspector</span>}
+            inspectorLabel="Candidate Arena inspector"
+          >
+            <span>Leaderboard</span>
+          </OperatorWorkspaceSplit>
+        </OperatorWorkspaceBody>
+      </OperatorWorkspacePanel>
+    );
+
+    expect(html).toContain('data-operator-ui="workspace-panel"');
+    expect(html).toContain('data-operator-ui="workspace-body"');
+    expect(html).toContain('data-operator-ui="workspace-split"');
+    expect(html).toContain('data-operator-ui="workspace-inspector"');
+    expect(html).toContain('data-slot="card"');
+    expect(html).toContain("xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]");
+    expect(html).toContain('aria-label="Candidate Arena inspector"');
+    expect(html).toContain("<aside");
+  });
+
   it("keeps high-level metric strips compact and mobile-first", () => {
     const html = renderToStaticMarkup(
       <OperatorMetricStrip
@@ -490,6 +542,8 @@ describe("operator design system contract", () => {
     );
 
     expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("repeat(auto-fit");
+    expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("grid-cols-1");
+    expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).toContain("sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]");
     expect(OPERATOR_DESIGN_TOKENS.layout.statGrid).not.toContain("md:grid-cols-3");
     expect(OPERATOR_DESIGN_TOKENS.surface.stat).not.toMatch(/bg-card\/|ring-border\/|rounded-md/);
     expect(OPERATOR_DESIGN_TOKENS.typography.statValue).toContain("text-lg");
@@ -498,6 +552,8 @@ describe("operator design system contract", () => {
     expect(html).toContain('data-operator-ui="stat"');
     expect(html).toContain('data-slot="card"');
     expect(html).toContain("repeat(auto-fit");
+    expect(html).toContain("grid-cols-1");
+    expect(html).toContain("sm:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]");
     expect(html).not.toContain("md:grid-cols-3");
     expect(html).not.toContain("text-[1.35rem]");
   });
