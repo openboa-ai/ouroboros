@@ -37,6 +37,21 @@ export { OperatorResponsiveSplit } from "./components/responsive-split";
 export { OperatorSectionHeader } from "./components/section-header";
 export { OperatorSelectionItem } from "./components/selection-item";
 export { OperatorSectionStack } from "./components/section-stack";
+export {
+  OperatorSidebarContent,
+  OperatorSidebarFooter,
+  OperatorSidebarFrame,
+  OperatorSidebarGroup,
+  OperatorSidebarGroupContent,
+  OperatorSidebarGroupLabel,
+  OperatorSidebarHeader,
+  OperatorSidebarMenu,
+  OperatorSidebarMenuBadge,
+  OperatorSidebarMenuButton,
+  OperatorSidebarMenuItem,
+  OperatorSidebarMenuSkeleton,
+  OperatorSidebarRail
+} from "./components/sidebar";
 export { OperatorStat } from "./components/stat";
 export { OperatorStatGrid } from "./components/stat-grid";
 export type { OperatorStatGridItem } from "./components/stat-grid";

@@ -231,6 +231,7 @@ describe("operator design system contract", () => {
       "section-header.tsx",
       "selection-item.tsx",
       "section-stack.tsx",
+      "sidebar.tsx",
       "stat.tsx",
       "stat-grid.tsx",
       "status-stack.tsx",
@@ -275,8 +276,10 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(componentDir, "stat-grid.tsx"), "utf8")).toContain("./stat");
     expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(componentDir, "data-table.tsx"), "utf8")).toContain("@/components/ui/table");
+    expect(readFileSync(join(componentDir, "sidebar.tsx"), "utf8")).toContain("@/components/ui/sidebar");
     expect(indexSource).toContain('export { OperatorDataTable } from "./components/data-table"');
     expect(indexSource).toContain('export { OperatorFieldGrid } from "./components/field-grid"');
+    expect(indexSource).toContain("OperatorSidebarFrame");
     expect(indexSource).toContain('export { OperatorSectionStack } from "./components/section-stack"');
     expect(indexSource).toContain('export { OperatorStatGrid } from "./components/stat-grid"');
     expect(indexSource).toContain('export { OperatorDetailText, OperatorInlineMeta, OperatorTextStack, OperatorValueText } from "./components/text"');
@@ -520,8 +523,9 @@ describe("operator design system contract", () => {
     const operatorSidebarSource = readFileSync(join(shellDir, "operator-sidebar.tsx"), "utf8");
 
     expect(operatorSidebarSource).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
-    expect(operatorSidebarSource).toContain("@/components/ui/sidebar");
-    expect(operatorSidebarSource).toContain("SidebarMenuSkeleton");
+    expect(operatorSidebarSource).not.toContain("@/components/ui/sidebar");
+    expect(operatorSidebarSource).toContain("@/design-system");
+    expect(operatorSidebarSource).toContain("OperatorSidebarMenuSkeleton");
     expect(operatorSidebarSource).toContain("export interface OperatorSidebarCandidate");
   });
 
