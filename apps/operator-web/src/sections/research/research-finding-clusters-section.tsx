@@ -1,21 +1,12 @@
 import {
   OperatorEvidenceBlock,
-  OperatorEvidenceRow,
+  OperatorEvidenceFieldRow,
   OperatorEvidenceStack,
   OperatorEvidenceStatus,
-  OperatorField,
   OperatorPanel,
   OperatorSectionHeader,
   OperatorStatusBadge
 } from "@/design-system";
-
-const MOBILE_STACKED_FIELD_GRID = [
-  "grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-2",
-  "[overflow-wrap:anywhere]",
-  "[&>*]:min-w-0 [&>*]:max-w-full [&>*]:break-words",
-  "sm:grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]"
-].join(" ");
-const MOBILE_FIELD_CLAMP = "w-full max-w-[calc(100vw-4.5rem)] sm:max-w-full";
 
 export interface ResearchFindingClusterField {
   label: string;
@@ -53,26 +44,8 @@ export function ResearchFindingClustersSection({
               detail={entry.detail}
               tone="neutral"
             />
-            <OperatorEvidenceRow className={MOBILE_STACKED_FIELD_GRID}>
-              {entry.fields.map((field) => (
-                <OperatorField
-                  key={field.label}
-                  label={field.label}
-                  value={field.value}
-                  className={MOBILE_FIELD_CLAMP}
-                />
-              ))}
-            </OperatorEvidenceRow>
-            <OperatorEvidenceRow className={MOBILE_STACKED_FIELD_GRID}>
-              {entry.boundaryFields.map((field) => (
-                <OperatorField
-                  key={field.label}
-                  label={field.label}
-                  value={field.value}
-                  className={MOBILE_FIELD_CLAMP}
-                />
-              ))}
-            </OperatorEvidenceRow>
+            <OperatorEvidenceFieldRow fields={entry.fields} layout="mobileContained" />
+            <OperatorEvidenceFieldRow fields={entry.boundaryFields} layout="mobileContained" />
           </OperatorEvidenceBlock>
         ))}
       </OperatorEvidenceStack>
