@@ -9,7 +9,7 @@ export function PaperReviewSummarySection({
     <TradingMetricGrid
       aria-label="Paper trading review summary"
       metrics={metrics}
-      className="md:grid-cols-4"
+      density="quartet"
     />
   );
 }

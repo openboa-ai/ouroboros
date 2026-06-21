@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
-import { Progress } from "@/components/ui/progress";
 import {
   OperatorActionRow,
   OperatorPanel,
+  OperatorProgress,
   OperatorSectionHeader,
   OperatorSectionStack,
   OperatorStatGrid,
@@ -40,7 +40,7 @@ export function TradingOrderStatusSection({
       <OperatorSectionStack>
         <OperatorStatGrid stats={stats} />
         {typeof progressValue === "number" && (
-          <Progress value={progressValue} aria-label="Fill progress" />
+          <OperatorProgress value={progressValue} aria-label="Fill progress" />
         )}
         <OperatorActionRow>
           {chainBadges.map((badge) => (

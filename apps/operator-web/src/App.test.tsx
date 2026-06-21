@@ -178,6 +178,8 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.layout.evidenceFieldRowMobileContained).toContain("grid-cols-[minmax(0,1fr)]");
     expect(OPERATOR_DESIGN_TOKENS.layout.evidenceFieldMobileContained).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.layout.chartCaption).toContain("justify-between");
+    expect(OPERATOR_DESIGN_TOKENS.layout.progressTrack).toContain("min-w-0");
+    expect(OPERATOR_DESIGN_TOKENS.layout.metricStripQuartet).toContain("md:grid-cols-4");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("sm:text-2xl");
 
@@ -215,6 +217,7 @@ describe("operator design system contract", () => {
       "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
+      "progress.tsx",
       "responsive-slot.tsx",
       "responsive-split.tsx",
       "section-header.tsx",
@@ -273,8 +276,10 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorInfoSection } from "./components/info-section"');
     expect(indexSource).toContain('export { OperatorStatusBadge, operatorBadgeVariant } from "./components/status-badge"');
     expect(indexSource).toContain('export { OperatorChartCaption, OperatorChartFrame } from "./components/chart"');
+    expect(indexSource).toContain('export { OperatorProgress } from "./components/progress"');
     expect(indexSource).toContain("OperatorEvidenceFieldRow");
     expect(readFileSync(join(componentDir, "chart.tsx"), "utf8")).toContain("@/components/ui/chart");
+    expect(readFileSync(join(componentDir, "progress.tsx"), "utf8")).toContain("@/components/ui/progress");
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -303,8 +308,10 @@ describe("operator design system contract", () => {
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
       expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
       expect(source).not.toContain("@/components/ui/chart");
+      expect(source).not.toContain("@/components/ui/progress");
       expect(source).not.toContain('className="aspect-[16/5] min-h-[180px] w-full rounded-lg bg-muted/60 p-3"');
-      expect(source).toMatch(/@\/design-system|@\/components\/ui\/button|@\/components\/ui\/progress|\.\/trading-metrics/);
+      expect(source).not.toContain('className="md:grid-cols-4"');
+      expect(source).toMatch(/@\/design-system|@\/components\/ui\/button|\.\/trading-metrics/);
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
@@ -336,7 +343,7 @@ describe("operator design system contract", () => {
     expect(operatorDecisionSource).toContain("OperatorResponsiveSplit");
     expect(operatorDecisionSource).not.toContain("grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
-    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/progress");
+    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorProgress");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStat");
     expect(readFileSync(join(tradingSectionDir, "paper-review-summary-section.tsx"), "utf8")).toContain("TradingMetricGrid");

@@ -10,14 +10,22 @@ export interface TradingSummaryMetric {
 
 export function TradingMetricGrid({
   metrics,
+  density,
   "aria-label": ariaLabel,
   className,
   ...props
 }: {
   metrics: TradingSummaryMetric[];
+  density?: "default" | "quartet";
   className?: string;
 } & Omit<ComponentProps<"section">, "className" | "children">) {
   return (
-    <OperatorMetricStrip metrics={metrics} aria-label={ariaLabel} className={className} {...props} />
+    <OperatorMetricStrip
+      metrics={metrics}
+      density={density}
+      aria-label={ariaLabel}
+      className={className}
+      {...props}
+    />
   );
 }
