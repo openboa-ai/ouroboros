@@ -19,6 +19,7 @@ export type { OperatorMetricStripItem } from "./components/metric-strip";
 export { OperatorPage, OperatorPageHeader } from "./components/page";
 export { OperatorPanel } from "./components/panel";
 export { OperatorResponsiveSlot } from "./components/responsive-slot";
+export { OperatorResponsiveSplit } from "./components/responsive-split";
 export { OperatorSectionHeader } from "./components/section-header";
 export { OperatorSelectionItem } from "./components/selection-item";
 export { OperatorSectionStack } from "./components/section-stack";

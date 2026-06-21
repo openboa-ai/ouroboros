@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import {
-  OperatorActionRow,
   OperatorCallout,
   OperatorPanel,
+  OperatorResponsiveSplit,
   OperatorSectionHeader
 } from "@/design-system";
 
@@ -30,14 +30,13 @@ export function OperatorDecisionPanel({
         description={`Paper Trading review cockpit. Live exchange authority remains disabled in this MLP. ${detail}`}
         actions={badges}
       />
-      <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <OperatorResponsiveSplit breakpoint="md" actions={actions}>
         <OperatorCallout
           label="Recommended action"
           value={recommendedAction.value}
           className={recommendedAction.className}
         />
-        {actions && <OperatorActionRow>{actions}</OperatorActionRow>}
-      </div>
+      </OperatorResponsiveSplit>
     </OperatorPanel>
   );
 }

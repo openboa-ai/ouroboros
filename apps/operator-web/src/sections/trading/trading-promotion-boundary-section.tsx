@@ -2,10 +2,10 @@ import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  OperatorActionRow,
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
+  OperatorResponsiveSplit,
   OperatorSectionHeader
 } from "@/design-system";
 
@@ -54,33 +54,38 @@ export function TradingPromotionBoundarySection({
           </>
         )}
       />
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+      <OperatorResponsiveSplit
+        breakpoint="lg"
+        align="start"
+        actions={(
+          <>
+            {showOpenActiveTarget && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onOpenActiveTarget}
+                disabled={openActiveTargetDisabled || !onOpenActiveTarget}
+              >
+                Open Trading review candidate
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onPromoteTradingCandidate}
+              disabled={promoteDisabled || !onPromoteTradingCandidate}
+            >
+              {promoteLabel}
+            </Button>
+          </>
+        )}
+      >
         <OperatorFieldGrid density="dense">
           {fields.map((field) => (
             <OperatorField key={field.label} label={field.label} value={field.value} />
           ))}
         </OperatorFieldGrid>
-        <OperatorActionRow className="lg:justify-end">
-          {showOpenActiveTarget && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onOpenActiveTarget}
-              disabled={openActiveTargetDisabled || !onOpenActiveTarget}
-            >
-              Open Trading review candidate
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onPromoteTradingCandidate}
-            disabled={promoteDisabled || !onPromoteTradingCandidate}
-          >
-            {promoteLabel}
-          </Button>
-        </OperatorActionRow>
-      </div>
+      </OperatorResponsiveSplit>
     </OperatorPanel>
   );
 }
