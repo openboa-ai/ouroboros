@@ -1,13 +1,13 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorActionRow,
-  OperatorPanel
+  OperatorPanel,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface TradingSafetyBoundaryBadge {
   label: string;
-  variant: ComponentProps<typeof Badge>["variant"];
+  variant: ComponentProps<typeof OperatorStatusBadge>["variant"];
 }
 
 export function TradingSafetyBoundarySection({
@@ -21,9 +21,7 @@ export function TradingSafetyBoundarySection({
     <OperatorPanel aria-label="Safety boundary">
       <OperatorActionRow>
         {badges.map((badge) => (
-          <Badge key={badge.label} variant={badge.variant}>
-            {badge.label}
-          </Badge>
+          <OperatorStatusBadge key={badge.label} value={badge.label} variant={badge.variant} />
         ))}
         <span className="text-sm text-muted-foreground">{detail}</span>
       </OperatorActionRow>

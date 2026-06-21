@@ -1,10 +1,10 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
-  OperatorSectionHeader
+  OperatorSectionHeader,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface TradingReadbackField {
@@ -18,7 +18,7 @@ export function TradingPaperReadbackSection({
   fields
 }: {
   badgeLabel: string;
-  badgeVariant: ComponentProps<typeof Badge>["variant"];
+  badgeVariant: ComponentProps<typeof OperatorStatusBadge>["variant"];
   fields: TradingReadbackField[];
 }) {
   return (
@@ -26,7 +26,7 @@ export function TradingPaperReadbackSection({
       <OperatorSectionHeader
         eyebrow="Paper readback"
         title="Trading review evidence"
-        actions={<Badge variant={badgeVariant}>{badgeLabel}</Badge>}
+        actions={<OperatorStatusBadge value={badgeLabel} variant={badgeVariant} />}
       />
       <OperatorFieldGrid density="dense">
         {fields.map((field) => (

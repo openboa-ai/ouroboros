@@ -1,11 +1,11 @@
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorDetailText,
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader,
-  OperatorSectionStack
+  OperatorSectionStack,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface ResearchPaperLearningField {
@@ -28,7 +28,7 @@ export function ResearchPaperLearningSection({
         eyebrow="Paper evidence learning"
         title="Next research focus"
         description="Paper-board evidence guides the next ResearchWorker without replacing qualification or promotion authority."
-        actions={<Badge variant="secondary">{authorityStatus}</Badge>}
+        actions={<OperatorStatusBadge value={authorityStatus} variant="secondary" />}
       />
       <OperatorSectionStack>
         <OperatorDetailText>{summary}</OperatorDetailText>

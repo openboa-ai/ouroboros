@@ -1,9 +1,9 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorContentSection,
   OperatorSectionHeader,
-  OperatorSectionStack
+  OperatorSectionStack,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export function TradingCockpitSection({
@@ -14,7 +14,7 @@ export function TradingCockpitSection({
 }: {
   candidateName: string;
   status: string;
-  statusVariant: ComponentProps<typeof Badge>["variant"];
+  statusVariant: ComponentProps<typeof OperatorStatusBadge>["variant"];
   children: ReactNode;
 }) {
   return (
@@ -22,7 +22,7 @@ export function TradingCockpitSection({
       <OperatorSectionHeader
         title="Trading cockpit"
         description={candidateName}
-        actions={<Badge variant={statusVariant}>{status}</Badge>}
+        actions={<OperatorStatusBadge value={status} variant={statusVariant} />}
       />
       <OperatorSectionStack density="loose">{children}</OperatorSectionStack>
     </OperatorContentSection>

@@ -74,7 +74,6 @@ import {
   type TradingResearchAgentSelection,
   type TradingResearchRuntimeReadModel
 } from "./api";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs } from "@/components/ui/tabs";
@@ -1805,9 +1804,15 @@ export function CandidateArenaPanel({
           : "Researchers add TradingSystem candidates and rank them by revenue minus costs."}
         actions={(
           <>
-            <Badge variant={arena.runner_status === "running" ? "default" : "secondary"}>{arena.runner_status}</Badge>
-            <Badge variant="secondary">{researcherProvider?.selected_provider ?? "provider pending"}</Badge>
-            <Badge variant="secondary">not_live</Badge>
+            <OperatorStatusBadge
+              value={arena.runner_status}
+              variant={arena.runner_status === "running" ? "default" : "secondary"}
+            />
+            <OperatorStatusBadge
+              value={researcherProvider?.selected_provider ?? "provider pending"}
+              variant="secondary"
+            />
+            <OperatorStatusBadge value="not_live" variant="secondary" />
           </>
         )}
       />
@@ -3201,12 +3206,19 @@ export function CandidateDetail({
         detail={operatorDecision.detail}
         badges={(
           <>
-            <Badge variant="secondary">{formatAuthorityLabel(tradingCandidate.runtime.authority_status)}</Badge>
-            <Badge variant={runStatus === "running" ? "default" : "secondary"}>{runStatus}</Badge>
-            <Badge variant="secondary">{formatRuntimeEnvironment(runtimeEnvironment)}</Badge>
-            <Badge variant={marketFreshness === "fresh" ? "default" : "secondary"}>
-              {formatFreshnessLabel(marketFreshness)}
-            </Badge>
+            <OperatorStatusBadge
+              value={formatAuthorityLabel(tradingCandidate.runtime.authority_status)}
+              variant="secondary"
+            />
+            <OperatorStatusBadge
+              value={runStatus}
+              variant={runStatus === "running" ? "default" : "secondary"}
+            />
+            <OperatorStatusBadge value={formatRuntimeEnvironment(runtimeEnvironment)} variant="secondary" />
+            <OperatorStatusBadge
+              value={formatFreshnessLabel(marketFreshness)}
+              variant={marketFreshness === "fresh" ? "default" : "secondary"}
+            />
           </>
         )}
         recommendedAction={{
@@ -3434,8 +3446,8 @@ export function CandidateDetail({
           description="Product decisions stay in Trading, Arena, and Research. Product blockers stay in Trading, Arena, and Research. Details keeps raw records, compatibility tools, and low-level evidence inspectable without creating promotion authority."
           actions={(
             <>
-            <Badge variant="secondary">read only by default</Badge>
-            <Badge variant="secondary">No promotion authority</Badge>
+            <OperatorStatusBadge value="read only by default" variant="secondary" />
+            <OperatorStatusBadge value="No promotion authority" variant="secondary" />
             </>
           )}
         />
@@ -4471,7 +4483,7 @@ export function TradingExecutionModesSection({
       <OperatorSectionHeader
         title="Backtest / paper / live contract"
         description={`Execution modes: ${modes.map((mode) => mode.mode).join(", ")}`}
-        actions={<Badge variant="secondary">{String(modes.length)}</Badge>}
+        actions={<OperatorStatusBadge value={String(modes.length)} variant="secondary" />}
       />
       <OperatorEvidenceStack className="execution-mode-grid">
         {modes.map((mode) => (

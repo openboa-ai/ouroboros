@@ -1,6 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
-import { OperatorPanel, OperatorSectionHeader } from "@/design-system";
+import { OperatorPanel, OperatorSectionHeader, OperatorStatusBadge } from "@/design-system";
 import { TradingMetricGrid, type TradingSummaryMetric } from "./trading-metrics";
 
 export function TradingMarketSection({
@@ -12,7 +11,7 @@ export function TradingMarketSection({
 }: {
   description: string;
   status: string;
-  statusVariant: ComponentProps<typeof Badge>["variant"];
+  statusVariant: ComponentProps<typeof OperatorStatusBadge>["variant"];
   children: ReactNode;
   metrics: TradingSummaryMetric[];
 }) {
@@ -21,7 +20,7 @@ export function TradingMarketSection({
       <OperatorSectionHeader
         title="BTCUSDT futures chart"
         description={description}
-        actions={<Badge variant={statusVariant}>{status}</Badge>}
+        actions={<OperatorStatusBadge value={status} variant={statusVariant} />}
       />
       {children}
       <TradingMetricGrid

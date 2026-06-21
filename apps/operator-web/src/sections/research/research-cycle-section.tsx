@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorEvidenceBlock,
   OperatorEvidenceRow,
@@ -6,7 +5,8 @@ import {
   OperatorEvidenceStatus,
   OperatorField,
   OperatorPanel,
-  OperatorSectionHeader
+  OperatorSectionHeader,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface ResearchCycleStage {
@@ -37,7 +37,7 @@ export function ResearchCycleSection({
       <OperatorSectionHeader
         title="Research"
         description="How CandidateArena evidence, ResearchPreflight, and lineage prepare the next TradingSystem candidate cycle."
-        actions={<Badge variant="secondary">{String(rowCount)}</Badge>}
+        actions={<OperatorStatusBadge value={String(rowCount)} variant="secondary" />}
       />
       <OperatorEvidenceRow aria-label="Research cycle stages">
         {stages.map((stage) => (
