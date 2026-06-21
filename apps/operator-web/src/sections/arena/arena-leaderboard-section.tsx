@@ -1,11 +1,18 @@
 import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
+  OperatorContentSection,
   OperatorDataTable,
   OperatorDetailText,
   OperatorEmptyState,
-  OperatorField
+  OperatorField,
+  OperatorFieldGrid,
+  OperatorInlineMeta,
+  OperatorResponsiveSlot,
+  OperatorSectionHeader,
+  OperatorSelectionItem,
+  OperatorTextStack,
+  OperatorValueText
 } from "@/design-system";
 
 export interface ArenaLeaderboardEntry {
@@ -31,45 +38,33 @@ export function ArenaLeaderboardSection({
   onSelectCandidate?: (candidateId: string) => void;
 }) {
   return (
-    <section
-      data-operator-ui="arena-leaderboard-section"
-      className="grid content-start gap-2"
-      aria-label="Candidate Arena leaderboard"
-    >
-      <div className="grid gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2">
-        <h3 className="text-sm font-medium">ResearchPreflight leaderboard</h3>
-        <span className="text-xs text-muted-foreground">research rank: net_revenue_usdt</span>
-      </div>
-      <div className="grid gap-2 lg:hidden">
+    <OperatorContentSection data-operator-ui="arena-leaderboard-section" aria-label="Candidate Arena leaderboard">
+      <OperatorSectionHeader
+        title="ResearchPreflight leaderboard"
+        description="research rank: net_revenue_usdt"
+      />
+      <OperatorResponsiveSlot visible="mobile">
         {entries.map((entry) => (
-          <Button
+          <OperatorSelectionItem
             type="button"
             key={entry.candidateId}
             onClick={() => onSelectCandidate?.(entry.candidateId)}
-            aria-pressed={selectedCandidateId === entry.candidateId}
-            variant={selectedCandidateId === entry.candidateId ? "secondary" : "ghost"}
-            className="grid h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left"
+            active={selectedCandidateId === entry.candidateId}
+            title={entry.displayName}
+            detail={entry.rankLabel}
+            badge={<Badge variant={entry.statusVariant}>{entry.status}</Badge>}
           >
-            <div className="grid gap-2 sm:flex sm:items-start sm:justify-between sm:gap-3">
-              <div className="min-w-0">
-                <span className="text-xs font-medium text-muted-foreground">{entry.rankLabel}</span>
-                <strong className="block break-words leading-snug">{entry.displayName}</strong>
-              </div>
-              <Badge className="w-fit" variant={entry.statusVariant}>
-                {entry.status}
-              </Badge>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
+            <OperatorFieldGrid density="compact" aria-label={`${entry.displayName} research preflight fields`}>
               <OperatorField label="ResearchPreflight net" value={entry.researchPreflightNet} />
               <OperatorField label="ResearchPreflight return" value={entry.researchPreflightReturn} />
               <OperatorField label="Direction" value={entry.direction} />
               <OperatorField label="Parent" value={entry.parent} />
-            </div>
+            </OperatorFieldGrid>
             <OperatorDetailText>{entry.latestFinding}</OperatorDetailText>
-          </Button>
+          </OperatorSelectionItem>
         ))}
-      </div>
-      <div className="hidden lg:block">
+      </OperatorResponsiveSlot>
+      <OperatorResponsiveSlot visible="desktop">
         <OperatorDataTable
           aria-label="Candidate Arena research preflight leaderboard"
           columns={[
@@ -85,34 +80,33 @@ export function ArenaLeaderboardSection({
             cells: {
               rank: entry.rankLabel,
               candidate: (
-                <span className="grid gap-1">
-                  <strong className="break-words font-medium leading-snug">{entry.displayName}</strong>
-                  <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                <OperatorTextStack>
+                  <OperatorValueText>{entry.displayName}</OperatorValueText>
+                  <OperatorInlineMeta>
                     <Badge variant="outline">{entry.direction}</Badge>
-                    <span className="min-w-0 break-words">{`parent ${entry.parent}`}</span>
-                  </span>
+                    <OperatorDetailText as="span">{`parent ${entry.parent}`}</OperatorDetailText>
+                  </OperatorInlineMeta>
                   <OperatorDetailText as="span">{entry.latestFinding}</OperatorDetailText>
-                </span>
+                </OperatorTextStack>
               ),
               score: (
-                <span className="grid gap-1">
-                  <strong>{entry.researchPreflightNet}</strong>
-                  <span className="text-xs text-muted-foreground">{entry.researchPreflightReturn}</span>
+                <OperatorTextStack>
+                  <OperatorValueText>{entry.researchPreflightNet}</OperatorValueText>
+                  <OperatorDetailText as="span">{entry.researchPreflightReturn}</OperatorDetailText>
                   <Badge variant={entry.statusVariant}>{entry.status}</Badge>
-                </span>
+                </OperatorTextStack>
               )
             }
           }))}
         />
-      </div>
+      </OperatorResponsiveSlot>
       {!entries.length && (
         <OperatorEmptyState
           title="No candidates yet"
           description="Run tick to generate the first TradingSystem candidates."
           detail="research_only"
-          className="lg:min-w-[640px]"
         />
       )}
-    </section>
+    </OperatorContentSection>
   );
 }

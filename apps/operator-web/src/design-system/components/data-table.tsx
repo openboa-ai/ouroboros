@@ -83,7 +83,7 @@ export function OperatorDataTable({
                           size="sm"
                           aria-label={row.label}
                           aria-current={row.selected ? "true" : undefined}
-                          className="h-auto min-h-7 w-full whitespace-normal px-1.5 py-1 text-left leading-snug"
+                          className={OPERATOR_DESIGN_TOKENS.surface.dataTableRowButton}
                           onClick={(event) => {
                             event.stopPropagation();
                             row.onSelect?.();

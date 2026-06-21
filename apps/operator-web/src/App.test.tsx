@@ -115,15 +115,24 @@ describe("operator design system contract", () => {
     expect(OPERATOR_DESIGN_TOKENS.size.panelPadding).toContain("p-3");
     expect(OPERATOR_DESIGN_TOKENS.radius.panel).toBe("rounded-lg");
     expect(OPERATOR_DESIGN_TOKENS.radius.control).toBe("rounded-md");
+    expect(OPERATOR_DESIGN_TOKENS.surface.dataTableRowButton).toContain("min-h-7");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("min-w-0");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain(OPERATOR_DESIGN_TOKENS.color.surface);
     expect(OPERATOR_DESIGN_TOKENS.surface.panel).toContain(OPERATOR_DESIGN_TOKENS.radius.panel);
+    expect(OPERATOR_DESIGN_TOKENS.surface.selectionItem).toContain("whitespace-normal");
+    expect(OPERATOR_DESIGN_TOKENS.typography.meta).toContain("text-xs");
     expect(OPERATOR_DESIGN_TOKENS.typography.label).toContain("text-[11px]");
     expect(OPERATOR_DESIGN_TOKENS.typography.detail).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.typography.calloutValue).toContain("[overflow-wrap:anywhere]");
     expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain("min-w-0");
     expect(OPERATOR_DESIGN_TOKENS.layout.page).toContain(OPERATOR_DESIGN_TOKENS.size.pageMaxWidth);
+    expect(OPERATOR_DESIGN_TOKENS.layout.contentSection).toContain("content-start");
+    expect(OPERATOR_DESIGN_TOKENS.layout.mobileOnly).toBe("grid min-w-0 max-w-full gap-2 lg:hidden");
+    expect(OPERATOR_DESIGN_TOKENS.layout.desktopOnly).toBe("hidden min-w-0 max-w-full lg:block");
+    expect(OPERATOR_DESIGN_TOKENS.layout.selectionItemHeader).toContain("sm:flex");
+    expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).toContain("grid-cols-1");
+    expect(OPERATOR_DESIGN_TOKENS.layout.compactFieldGrid).not.toContain("grid-cols-2");
     expect(OPERATOR_DESIGN_TOKENS.layout.sectionHeader).toContain("max-w-full");
     expect(OPERATOR_DESIGN_TOKENS.layout.denseFieldGrid).toContain("xl:grid-cols-4");
     expect(OPERATOR_DESIGN_TOKENS.layout.pageHeaderTitle).toContain("text-xl");
@@ -152,6 +161,7 @@ describe("operator design system contract", () => {
       "action-row.tsx",
       "app-shell.tsx",
       "callout.tsx",
+      "content-section.tsx",
       "empty-state.tsx",
       "evidence.tsx",
       "data-table.tsx",
@@ -160,6 +170,7 @@ describe("operator design system contract", () => {
       "metric-strip.tsx",
       "page.tsx",
       "panel.tsx",
+      "responsive-slot.tsx",
       "section-header.tsx",
       "selection-item.tsx",
       "section-stack.tsx",
@@ -200,11 +211,13 @@ describe("operator design system contract", () => {
     expect(indexSource).toContain('export { OperatorFieldGrid } from "./components/field-grid"');
     expect(indexSource).toContain('export { OperatorSectionStack } from "./components/section-stack"');
     expect(indexSource).toContain('export { OperatorStatGrid } from "./components/stat-grid"');
-    expect(indexSource).toContain('export { OperatorDetailText } from "./components/text"');
+    expect(indexSource).toContain('export { OperatorDetailText, OperatorInlineMeta, OperatorTextStack, OperatorValueText } from "./components/text"');
     expect(indexSource).toContain('export { OperatorAppShell, OperatorAppHeader, OperatorAppMain } from "./components/app-shell"');
     expect(indexSource).toContain('export { OperatorSelectionItem } from "./components/selection-item"');
     expect(indexSource).toContain('export { OperatorStatusStack } from "./components/status-stack"');
     expect(indexSource).toContain('export { OperatorViewTabs, OperatorTabPanel } from "./components/view-tabs"');
+    expect(indexSource).toContain('export { OperatorContentSection } from "./components/content-section"');
+    expect(indexSource).toContain('export { OperatorResponsiveSlot } from "./components/responsive-slot"');
   });
 
   it("keeps Trading screen sections as reusable UI-only modules", () => {
@@ -297,11 +310,22 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("@/components/ui/button");
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorCallout");
     expect(readFileSync(join(arenaSectionDir, "arena-command-bar-section.tsx"), "utf8")).toContain("OperatorSectionHeader");
-    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/button");
-    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("@/components/ui/badge");
-    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).toContain("OperatorDataTable");
-    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).not.toContain("grid-cols-[44px");
-    expect(readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8")).not.toContain("border-b pb-2");
+    const leaderboardSource = readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8");
+
+    expect(leaderboardSource).not.toContain("@/components/ui/button");
+    expect(leaderboardSource).toContain("@/components/ui/badge");
+    expect(leaderboardSource).toContain("OperatorContentSection");
+    expect(leaderboardSource).toContain("OperatorResponsiveSlot");
+    expect(leaderboardSource).toContain("OperatorSelectionItem");
+    expect(leaderboardSource).toContain("OperatorSectionHeader");
+    expect(leaderboardSource).toContain("OperatorFieldGrid");
+    expect(leaderboardSource).toContain("OperatorDataTable");
+    expect(leaderboardSource).not.toContain("grid-cols-[44px");
+    expect(leaderboardSource).not.toContain("border-b pb-2");
+    expect(leaderboardSource).not.toContain("grid content-start gap-2");
+    expect(leaderboardSource).not.toContain("grid h-auto w-full justify-start gap-3 whitespace-normal p-3 text-left");
+    expect(leaderboardSource).not.toContain("grid grid-cols-2 gap-2");
+    expect(leaderboardSource).not.toContain("hidden lg:block");
     expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).toContain("OperatorMetricStrip");
     expect(readFileSync(join(arenaSectionDir, "arena-metric-strip-section.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(arenaSectionDir, "arena-paper-board-section.tsx"), "utf8")).toContain("OperatorEvidenceStatus");

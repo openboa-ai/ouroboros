@@ -5,6 +5,7 @@ import { OPERATOR_DESIGN_TOKENS } from "../tokens";
 
 export function OperatorSelectionItem({
   active,
+  badge,
   title,
   detail,
   meta,
@@ -13,6 +14,7 @@ export function OperatorSelectionItem({
   ...props
 }: {
   active?: boolean;
+  badge?: ReactNode;
   title: ReactNode;
   detail?: ReactNode;
   meta?: ReactNode;
@@ -32,10 +34,15 @@ export function OperatorSelectionItem({
       )}
       variant="ghost"
     >
-      <span className={OPERATOR_DESIGN_TOKENS.typography.value}>{title}</span>
-      {detail && <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>{detail}</small>}
-      {meta && <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>{meta}</small>}
+      <span className={OPERATOR_DESIGN_TOKENS.layout.selectionItemHeader}>
+        <span className={OPERATOR_DESIGN_TOKENS.layout.selectionItemCopy}>
+          <span className={OPERATOR_DESIGN_TOKENS.typography.value}>{title}</span>
+          {detail && <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>{detail}</small>}
+        </span>
+        {badge && <span className={OPERATOR_DESIGN_TOKENS.layout.selectionItemBadge}>{badge}</span>}
+      </span>
       {children}
+      {meta && <small className={OPERATOR_DESIGN_TOKENS.typography.detail}>{meta}</small>}
     </Button>
   );
 }
