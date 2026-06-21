@@ -1,5 +1,4 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorContentSection,
   OperatorDataTable,
@@ -11,6 +10,7 @@ import {
   OperatorResponsiveSlot,
   OperatorSectionHeader,
   OperatorSelectionItem,
+  OperatorStatusBadge,
   OperatorTextStack,
   OperatorValueText
 } from "@/design-system";
@@ -20,7 +20,7 @@ export interface ArenaLeaderboardEntry {
   rankLabel: string;
   displayName: string;
   status: string;
-  statusVariant: ComponentProps<typeof Badge>["variant"];
+  statusVariant: ComponentProps<typeof OperatorStatusBadge>["variant"];
   direction: string;
   parent: string;
   researchPreflightNet: string;
@@ -52,7 +52,7 @@ export function ArenaLeaderboardSection({
             active={selectedCandidateId === entry.candidateId}
             title={entry.displayName}
             detail={entry.rankLabel}
-            badge={<Badge variant={entry.statusVariant}>{entry.status}</Badge>}
+            badge={<OperatorStatusBadge value={entry.status} variant={entry.statusVariant} />}
           >
             <OperatorFieldGrid density="compact" aria-label={`${entry.displayName} research preflight fields`}>
               <OperatorField label="ResearchPreflight net" value={entry.researchPreflightNet} />
@@ -83,7 +83,7 @@ export function ArenaLeaderboardSection({
                 <OperatorTextStack>
                   <OperatorValueText>{entry.displayName}</OperatorValueText>
                   <OperatorInlineMeta>
-                    <Badge variant="outline">{entry.direction}</Badge>
+                    <OperatorStatusBadge value={entry.direction} variant="outline" />
                     <OperatorDetailText as="span">{`parent ${entry.parent}`}</OperatorDetailText>
                   </OperatorInlineMeta>
                   <OperatorDetailText as="span">{entry.latestFinding}</OperatorDetailText>
@@ -93,7 +93,7 @@ export function ArenaLeaderboardSection({
                 <OperatorTextStack>
                   <OperatorValueText>{entry.researchPreflightNet}</OperatorValueText>
                   <OperatorDetailText as="span">{entry.researchPreflightReturn}</OperatorDetailText>
-                  <Badge variant={entry.statusVariant}>{entry.status}</Badge>
+                  <OperatorStatusBadge value={entry.status} variant={entry.statusVariant} />
                 </OperatorTextStack>
               )
             }

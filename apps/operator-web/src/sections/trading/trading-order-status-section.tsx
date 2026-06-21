@@ -1,17 +1,17 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   OperatorActionRow,
   OperatorPanel,
   OperatorSectionHeader,
   OperatorSectionStack,
-  OperatorStatGrid
+  OperatorStatGrid,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface TradingOrderStatusBadge {
   label: string;
-  variant: ComponentProps<typeof Badge>["variant"];
+  variant: ComponentProps<typeof OperatorStatusBadge>["variant"];
 }
 
 export interface TradingOrderStatusStat {
@@ -35,7 +35,7 @@ export function TradingOrderStatusSection({
       <OperatorSectionHeader
         title="Order / trade status"
         description="What the current system attempted and what happened."
-        actions={<Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>}
+        actions={<OperatorStatusBadge value={statusBadge.label} variant={statusBadge.variant} />}
       />
       <OperatorSectionStack>
         <OperatorStatGrid stats={stats} />
@@ -44,9 +44,7 @@ export function TradingOrderStatusSection({
         )}
         <OperatorActionRow>
           {chainBadges.map((badge) => (
-            <Badge key={badge.label} variant={badge.variant}>
-              {badge.label}
-            </Badge>
+            <OperatorStatusBadge key={badge.label} value={badge.label} variant={badge.variant} />
           ))}
         </OperatorActionRow>
       </OperatorSectionStack>

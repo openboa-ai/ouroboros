@@ -1,11 +1,11 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
   OperatorSectionHeader,
-  OperatorStatGrid
+  OperatorStatGrid,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface ResearchAgentCycleMetric {
@@ -31,7 +31,7 @@ export function ResearchAgentCycleSection({
   title: string;
   description: string;
   badgeLabel: string;
-  badgeVariant?: ComponentProps<typeof Badge>["variant"];
+  badgeVariant?: ComponentProps<typeof OperatorStatusBadge>["variant"];
   metrics: ResearchAgentCycleMetric[];
   lineageFields?: ResearchAgentCycleLineageField[];
 }) {
@@ -40,7 +40,7 @@ export function ResearchAgentCycleSection({
       <OperatorSectionHeader
         title={title}
         description={description}
-        actions={<Badge variant={badgeVariant}>{badgeLabel}</Badge>}
+        actions={<OperatorStatusBadge value={badgeLabel} variant={badgeVariant} />}
       />
       <OperatorStatGrid stats={metrics} aria-label="Agent generated Trading System metrics" />
       {lineageFields && (

@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorEvidenceBlock,
   OperatorEvidenceRow,
@@ -6,7 +5,8 @@ import {
   OperatorEvidenceStatus,
   OperatorField,
   OperatorPanel,
-  OperatorSectionHeader
+  OperatorSectionHeader,
+  OperatorStatusBadge
 } from "@/design-system";
 
 const MOBILE_STACKED_FIELD_GRID = [
@@ -42,7 +42,7 @@ export function ResearchFindingClustersSection({
         eyebrow="Finding clusters"
         title="Research learning clusters"
         description="CandidateArena findings grouped for next-generation research. These clusters are read-only and do not replace paper qualification or promotion authority."
-        actions={<Badge variant="secondary">not_promotion_authority</Badge>}
+        actions={<OperatorStatusBadge value="not_promotion_authority" variant="secondary" />}
       />
       <OperatorEvidenceStack>
         {entries.map((entry) => (

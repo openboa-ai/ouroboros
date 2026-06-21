@@ -1,17 +1,17 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
   OperatorResponsiveSplit,
-  OperatorSectionHeader
+  OperatorSectionHeader,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface TradingPromotionBoundaryBadge {
   label: string;
-  variant: ComponentProps<typeof Badge>["variant"];
+  variant: ComponentProps<typeof OperatorStatusBadge>["variant"];
 }
 
 export interface TradingPromotionBoundaryField {
@@ -47,9 +47,7 @@ export function TradingPromotionBoundarySection({
         actions={(
           <>
             {badges.map((badge) => (
-              <Badge key={badge.label} variant={badge.variant}>
-                {badge.label}
-              </Badge>
+              <OperatorStatusBadge key={badge.label} value={badge.label} variant={badge.variant} />
             ))}
           </>
         )}

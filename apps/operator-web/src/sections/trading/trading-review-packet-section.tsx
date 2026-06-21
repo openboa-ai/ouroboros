@@ -1,10 +1,10 @@
 import type { ComponentProps } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   OperatorField,
   OperatorFieldGrid,
   OperatorPanel,
-  OperatorSectionHeader
+  OperatorSectionHeader,
+  OperatorStatusBadge
 } from "@/design-system";
 
 export interface TradingReviewPacketField {
@@ -18,7 +18,7 @@ export function TradingReviewPacketSection({
   fields
 }: {
   severity: string;
-  severityVariant: ComponentProps<typeof Badge>["variant"];
+  severityVariant: ComponentProps<typeof OperatorStatusBadge>["variant"];
   fields: TradingReviewPacketField[];
 }) {
   return (
@@ -27,7 +27,7 @@ export function TradingReviewPacketSection({
         eyebrow="Review packet"
         title="Trading review packet"
         description="Structured evidence for the active Trading review target. This packet is read-only and keeps live authority disabled."
-        actions={<Badge variant={severityVariant}>{severity}</Badge>}
+        actions={<OperatorStatusBadge value={severity} variant={severityVariant} />}
       />
       <OperatorFieldGrid density="dense">
         {fields.map((field) => (

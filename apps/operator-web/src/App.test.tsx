@@ -112,6 +112,19 @@ import { buildPrivateReadinessReviewPacketProjection } from "./private-readiness
 
 const operatorWebSrcDir = dirname(fileURLToPath(import.meta.url));
 
+function readTsxSources(rootDir: string): Array<{ path: string; source: string }> {
+  return readdirSync(rootDir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      return readTsxSources(entryPath);
+    }
+    if (!entry.name.endsWith(".tsx")) {
+      return [];
+    }
+    return [{ path: entryPath, source: readFileSync(entryPath, "utf8") }];
+  });
+}
+
 describe("operator design system contract", () => {
   it("keeps operator UI color, size, radius, and typography tokens centralized", () => {
     expect(OPERATOR_DESIGN_TOKENS.color.canvas).toBe("bg-background text-foreground");
@@ -280,7 +293,7 @@ describe("operator design system contract", () => {
 
       expect(source).not.toMatch(/@ouroboros\/domain|\.\/api|\.\/App/);
       expect(source).not.toContain("OPERATOR_DESIGN_TOKENS");
-      expect(source).toMatch(/@\/design-system|@\/components\/ui\/badge|\.\/trading-metrics/);
+      expect(source).toMatch(/@\/design-system|@\/components\/ui\/button|@\/components\/ui\/progress|\.\/trading-metrics/);
     }
 
     expect(readFileSync(join(tradingSectionDir, "trading-market-section.tsx"), "utf8")).toContain("OperatorPanel");
@@ -292,9 +305,9 @@ describe("operator design system contract", () => {
     expect(tradingCockpitSource).toContain("OperatorSectionStack");
     expect(tradingCockpitSource).toContain("OperatorSectionHeader");
     expect(tradingCockpitSource).not.toContain('className="grid min-w-0 gap-4"');
-    expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(tradingSectionDir, "trading-cockpit-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
     expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("OperatorPanel");
-    expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(tradingSectionDir, "trading-safety-boundary-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("@/components/ui/chart");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorEvidenceRow");
     expect(readFileSync(join(tradingSectionDir, "trading-market-chart.tsx"), "utf8")).toContain("OperatorField");
@@ -302,14 +315,14 @@ describe("operator design system contract", () => {
     expect(readFileSync(join(tradingSectionDir, "trading-metrics.tsx"), "utf8")).not.toContain("OPERATOR_DESIGN_TOKENS.layout.statGrid");
     expect(readFileSync(join(tradingSectionDir, "trading-paper-readback-section.tsx"), "utf8")).toContain("OperatorField");
     expect(tradingPromotionSource).toContain("@/components/ui/button");
-    expect(tradingPromotionSource).toContain("@/components/ui/badge");
+    expect(tradingPromotionSource).toContain("OperatorStatusBadge");
     expect(tradingPromotionSource).toContain("OperatorField");
     expect(tradingPromotionSource).toContain("OperatorResponsiveSplit");
     expect(tradingPromotionSource).not.toContain("grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start");
     expect(tradingPromotionSource).not.toContain('className="lg:justify-end"');
     expect(operatorDecisionSource).toContain("OperatorResponsiveSplit");
     expect(operatorDecisionSource).not.toContain("grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center");
-    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("@/components/ui/progress");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorPanel");
     expect(readFileSync(join(tradingSectionDir, "trading-order-status-section.tsx"), "utf8")).toContain("OperatorStat");
@@ -359,7 +372,7 @@ describe("operator design system contract", () => {
     const leaderboardSource = readFileSync(join(arenaSectionDir, "arena-leaderboard-section.tsx"), "utf8");
 
     expect(leaderboardSource).not.toContain("@/components/ui/button");
-    expect(leaderboardSource).toContain("@/components/ui/badge");
+    expect(leaderboardSource).toContain("OperatorStatusBadge");
     expect(leaderboardSource).toContain("OperatorContentSection");
     expect(leaderboardSource).toContain("OperatorResponsiveSlot");
     expect(leaderboardSource).toContain("OperatorSelectionItem");
@@ -421,7 +434,7 @@ describe("operator design system contract", () => {
       expect(source).toContain("@/design-system");
     }
 
-    expect(readFileSync(join(researchSectionDir, "research-paper-learning-section.tsx"), "utf8")).toContain("@/components/ui/badge");
+    expect(readFileSync(join(researchSectionDir, "research-paper-learning-section.tsx"), "utf8")).toContain("OperatorStatusBadge");
     expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("OperatorEvidenceBlock");
     expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("grid-cols-[minmax(0,1fr)]");
     expect(readFileSync(join(researchSectionDir, "research-finding-clusters-section.tsx"), "utf8")).toContain("max-w-[calc(100vw-4.5rem)]");
@@ -515,6 +528,19 @@ describe("operator design system contract", () => {
     expect(html).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
     expect(html).toContain("lg:justify-end");
     expect(html).toContain('data-operator-ui="field-grid"');
+  });
+
+  it("keeps status badge rendering behind the operator design-system", () => {
+    const appAndSurfaceSources = [
+      { path: join(operatorWebSrcDir, "App.tsx"), source: readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8") },
+      ...readTsxSources(join(operatorWebSrcDir, "sections")),
+      ...readTsxSources(join(operatorWebSrcDir, "shell"))
+    ];
+
+    for (const { path, source } of appAndSurfaceSources) {
+      expect(source, path).not.toContain("@/components/ui/badge");
+      expect(source, path).not.toMatch(/<Badge[\s>]/);
+    }
   });
 
   it("builds detail info and evidence panels from design-system primitives", () => {
