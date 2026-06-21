@@ -26,7 +26,7 @@ export function TradingMarketSection({
       <TradingMetricGrid
         aria-label="BTCUSDT market metrics"
         metrics={metrics}
-        className="md:grid-cols-4"
+        density="quartet"
       />
     </OperatorPanel>
   );

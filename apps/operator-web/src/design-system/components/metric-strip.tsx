@@ -12,17 +12,24 @@ export interface OperatorMetricStripItem {
 
 export function OperatorMetricStrip({
   metrics,
+  density = "default",
   "aria-label": ariaLabel,
   className,
   ...props
 }: {
   metrics: OperatorMetricStripItem[];
+  density?: "default" | "quartet";
   className?: string;
 } & Omit<ComponentProps<"section">, "className" | "children">) {
+  const densityClass = density === "quartet"
+    ? OPERATOR_DESIGN_TOKENS.layout.metricStripQuartet
+    : OPERATOR_DESIGN_TOKENS.layout.statGrid;
+
   return (
     <section
       data-operator-ui="metric-strip"
-      className={cn(OPERATOR_DESIGN_TOKENS.layout.statGrid, className)}
+      data-density={density}
+      className={cn(densityClass, className)}
       aria-label={ariaLabel}
       {...props}
     >
