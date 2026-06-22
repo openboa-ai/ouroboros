@@ -91,6 +91,9 @@ describe("Operator TUI action console", () => {
     expect(output).not.toContain("Ledger chain: complete");
     expect(output).toContain("Latest Ticks");
     expect(output).toContain("tick-1 / completed / 1 created / 1 failed / not_live");
+    expect(output).toContain("evaluated_arena_leader -> candidate-parent");
+    expect(output).toContain("Parent Trading System");
+    expect(output).toContain("9.83 USDT");
     expect(output).toContain("trend_following:created -> candidate-profitable");
     expect(output).toContain("mean_reversion:failed ->");
     expect(output).toContain("fixture direction failed");
@@ -315,6 +318,13 @@ function fixtureOperator(): OperatorReadModel {
           started_at: "2026-05-24T00:00:00.000Z",
           completed_at: "2026-05-24T00:00:01.000Z",
           status: "completed",
+          source_candidate: {
+            source_kind: "evaluated_arena_leader",
+            candidate_id: "candidate-parent",
+            display_name: "Parent Trading System",
+            net_revenue_usdt: 9.83,
+            authority_status: "not_live"
+          },
           created_candidate_ids: ["candidate-profitable"],
           direction_results: [
             {

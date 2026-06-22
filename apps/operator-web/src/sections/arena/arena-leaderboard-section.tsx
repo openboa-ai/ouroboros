@@ -14,6 +14,7 @@ import {
   OperatorTextStack,
   OperatorValueText
 } from "@/design-system";
+import { boundedArenaLeaderboardEntries } from "@/operator-performance";
 
 export interface ArenaLeaderboardEntry {
   candidateId: string;
@@ -37,6 +38,8 @@ export function ArenaLeaderboardSection({
   selectedCandidateId?: string;
   onSelectCandidate?: (candidateId: string) => void;
 }) {
+  const visibleEntries = boundedArenaLeaderboardEntries(entries, selectedCandidateId);
+
   return (
     <OperatorContentSection data-operator-ui="arena-leaderboard-section" aria-label="Candidate Arena leaderboard">
       <OperatorSectionHeader
@@ -44,7 +47,7 @@ export function ArenaLeaderboardSection({
         description="research rank: net_revenue_usdt"
       />
       <OperatorResponsiveSlot visible="mobile">
-        {entries.map((entry) => (
+        {visibleEntries.map((entry) => (
           <OperatorSelectionItem
             type="button"
             key={entry.candidateId}
@@ -72,7 +75,7 @@ export function ArenaLeaderboardSection({
             { key: "candidate", label: "Candidate" },
             { key: "score", label: "ResearchPreflight net", className: "w-[11rem]" }
           ]}
-          rows={entries.map((entry) => ({
+          rows={visibleEntries.map((entry) => ({
             id: entry.candidateId,
             selected: selectedCandidateId === entry.candidateId,
             label: `Select ${entry.displayName}`,

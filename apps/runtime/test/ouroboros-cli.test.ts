@@ -97,6 +97,7 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Ouroboros status");
     expect(result.stdout).toContain("Arena: running (3 ticks, 1 candidates)");
     expect(result.stdout).toContain("Latest tick: tick-1 / completed / 1 created / 1 failed / not_live");
+    expect(result.stdout).toContain("Latest tick source: evaluated_arena_leader -> candidate-parent / Parent Trading System / 9.83 USDT / not_live");
     expect(result.stdout).toContain("Latest tick directions: trend_following:created -> candidate-profitable; mean_reversion:failed -> fixture direction failed");
     expect(result.stdout).toContain("Latest tick efficiency: trend_following: 6 provider / 0 runner / 2 scenarios / 1000ms / not_promotion_authority");
     expect(result.stdout).toContain("Leader: #1 candidate-profitable 9.83 USDT (0.0983%)");
@@ -517,6 +518,13 @@ function fixtureOperator(
           started_at: "2026-05-24T00:00:00.000Z",
           completed_at: "2026-05-24T00:00:01.000Z",
           status: "completed",
+          source_candidate: {
+            source_kind: "evaluated_arena_leader",
+            candidate_id: "candidate-parent",
+            display_name: "Parent Trading System",
+            net_revenue_usdt: 9.83,
+            authority_status: "not_live"
+          },
           created_candidate_ids: ["candidate-profitable"],
           direction_results: [
             {

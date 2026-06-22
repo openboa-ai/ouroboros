@@ -285,6 +285,7 @@ export function OperatorTuiScreen(props: {
           ? props.operator.candidate_arena.latest_ticks.slice(0, 3).map((tick) => (
               <Box key={tick.tick_id} flexDirection="column">
                 <Text>{formatCandidateArenaTickSummary(tick)}</Text>
+                <Text dimColor>{formatCandidateArenaTickSource(tick)}</Text>
                 <Text dimColor>{formatCandidateArenaTickDirections(tick)}</Text>
                 <Text dimColor>{formatCandidateArenaTickEfficiency(tick)}</Text>
               </Box>
@@ -352,6 +353,10 @@ function formatSignedFixed(value: number): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
 }
 
+function formatUsdt(value: number): string {
+  return `${value.toFixed(2)} USDT`;
+}
+
 function formatCandidateArenaTickSummary(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
   const failedCount = tick.direction_results.filter((result) => result.status === "failed").length;
   return [
@@ -361,6 +366,19 @@ function formatCandidateArenaTickSummary(tick: OperatorReadModel["candidate_aren
     `${failedCount} failed`,
     tick.authority_status
   ].join(" / ");
+}
+
+function formatCandidateArenaTickSource(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  const source = tick.source_candidate;
+  if (!source) {
+    return "not recorded";
+  }
+  return [
+    `${source.source_kind} -> ${source.candidate_id}`,
+    source.display_name,
+    source.net_revenue_usdt === undefined ? undefined : formatUsdt(source.net_revenue_usdt),
+    source.authority_status
+  ].filter(Boolean).join(" / ");
 }
 
 function formatCandidateArenaTickDirections(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {

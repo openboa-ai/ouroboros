@@ -32,8 +32,10 @@ iterative across ticks. The architecture should preserve candidate population me
 candidates, failed directions, findings, parent links, and lineage are inputs to the next
 generation.
 
-Operator control is product-facing through Ouroboros commands, not provider commands. The CLI,
-Operator UI, and Ink TUI share `POST /api/commands` for actions and `GET /api/operator` for state.
+Operator control is product-facing through Ouroboros commands, not provider commands. The Desktop
+app is the primary interactive operator surface, while the CLI remains the complete baseline for
+headless operation and automation. CLI, Desktop, Web, and Ink TUI share `POST /api/commands` for
+actions, `GET /api/operator` for state, and the same runtime/store-backed session data.
 `AgentProfile` records own managed provider runtime directories such as `codex`, and the researcher
 stores a provider selection from the available managed providers. Codex is the implemented provider
 adapter today, while future providers such as Claude Code must remain behind the same adapter
@@ -49,9 +51,13 @@ Runtime implementation follows a physical controller/service/adapter split:
   Sandboxes, subprocess execution, and other outer systems.
 - `apps/runtime`: Fastify composition root plus controller route modules. It wires concrete
   adapters into application controllers; product mutations enter through `POST /api/commands`.
-- `apps/cli`, `apps/operator-tui`, and `apps/operator-web`: operator interfaces over the same
-  command descriptors, `GET /api/operator`, and `POST /api/commands`. CLI-only local operations use
-  the local Ouroboros controller rather than importing provider implementations.
+- `apps/cli`, `apps/operator-tui`, `apps/operator-web`, and `apps/operator-desktop`: operator
+  interfaces over the same command descriptors, `GET /api/operator`, and `POST /api/commands`.
+  CLI-only local operations use the local Ouroboros controller rather than importing provider
+  implementations. The Desktop app is the primary Tauri operator app and may launch or reuse the
+  local runtime process through the packaged runtime sidecar contract. `apps/operator-web` remains
+  the shared Operator UI source and browser/development surface; it must not become a separate
+  product authority, command bus, or store.
 
 Directory shape should reveal ownership before a developer opens a file. Prefer nested directories
 when several names share a durable prefix: use `agent/profiles.ts`, `agent/trading-cycle.ts`,
@@ -115,7 +121,14 @@ This file is a compact development map. The canonical architecture contract live
 - `apps/runtime`: Fastify runtime server and HTTP composition root.
 - `apps/cli`: installable `ouroboros` command-line interface.
 - `apps/operator-tui`: Ink action console for the same Operator read model and commands.
-- `apps/operator-web`: operator UI for inspecting Candidate Arena state, selected-candidate `PaperTradingEvaluation`, and paper Ledger evidence through the shared command/read-model contract.
+- `apps/operator-web`: shared Operator UI source and browser/development surface for inspecting
+  Candidate Arena state, selected-candidate `PaperTradingEvaluation`, and paper Ledger evidence
+  through the shared command/read-model contract.
+- `apps/operator-desktop`: primary Tauri operator app that loads the shared Operator UI bundle
+  through the platform WebView, launches or reuses the local runtime through the packaged sidecar
+  hook, keeps the runtime visible from the macOS menu bar, and hides rather than quits on window
+  close as described in
+  [Operator Desktop Performance And Release](docs/operator-desktop-performance-release.md).
 - `packages/domain`: shared contracts and domain types.
 - `packages/application`: command/query controllers, services, use cases, ports, and read-model builders.
 - `packages/adapters`: concrete provider, exchange, sandbox, subprocess, and fixture adapters.

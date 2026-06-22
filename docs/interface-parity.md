@@ -1,18 +1,32 @@
 # Interface Parity
 
-Ouroboros exposes one product loop through three operator surfaces:
+Ouroboros exposes one product loop through four operator surfaces:
 
-- CLI: the baseline human and automation interface.
-- TUI: keyboard action console.
-- Web UI: operator cockpit with four primary tabs: `Trading`, `Arena`, `Research`, and `Details`.
+- Desktop app: the primary interactive operator surface. It is a Tauri app that owns local runtime
+  lifecycle visibility, menu bar status, background execution, and the richer daily operator
+  experience.
+- CLI: the complete baseline interface for every product-loop operation, automation, headless
+  operation, and terminal-only provider setup/login flows.
+- TUI: keyboard action console over the same loop.
+- Web UI: shared Operator UI source and browser/development surface with four primary tabs:
+  `Trading`, `Arena`, `Research`, and `Details`.
 
-All three surfaces read the same state from `GET /api/operator`. Product loop mutations go through
-`POST /api/commands` and use command names from `OUROBOROS_COMMAND_REGISTRY`.
+All four surfaces read the same state from `GET /api/operator`. Product loop mutations go through
+`POST /api/commands` and use command names from `OUROBOROS_COMMAND_REGISTRY`. They share the same
+runtime/store-backed session data. The Desktop app must not create a second command bus; it loads
+the shared Operator UI bundle inside the platform WebView with no Tauri frontend permissions
+exposed. `apps/operator-web` stays reusable UI source and a browser/dev surface, not a separate
+product authority.
 
 The Web tab shell may show compact state badges, but only when they are derived from
 `OperatorReadModel`. Badges are read-only navigation signals for active Trading review, collecting
 paper evidence, or blocked provider readiness; they must not invent state, trigger commands, or
 make Details look like a product-authority surface.
+
+Desktop performance policy lives in
+[Operator Desktop Performance And Release](operator-desktop-performance-release.md). Bounded
+rendering and hidden-document refresh behavior are UI performance constraints; they must not hide
+the selected TradingSystem or change command authority.
 
 ## Product Loop Commands
 
@@ -33,8 +47,8 @@ make Details look like a product-authority surface.
 - `agent_provider.probe`
 - `researcher.provider.select`
 
-These are the commands that must stay visible as a coherent product loop whenever the CLI, TUI, or
-Web UI changes:
+These are the commands that must stay visible as a coherent product loop whenever the Desktop app,
+CLI, TUI, or Web UI changes:
 
 ```text
 status
@@ -52,10 +66,10 @@ status
 ```
 
 Failed entries in `OperatorReadModel.latest_commands` are command evidence, not product state.
-CLI, TUI, and Web must render their shared remediation as a pointer back to the visible owning
-surface, such as Trading review packet blockers, Paper Board qualification, selected paper failure,
-Agent provider status, or Candidate Arena runner/tick evidence. A command log must never become the
-only place where the operator can understand a blocker.
+CLI, TUI, Web, and Desktop must render their shared remediation as a pointer back to the visible
+owning surface, such as Trading review packet blockers, Paper Board qualification, selected paper
+failure, Agent provider status, or Candidate Arena runner/tick evidence. A command log must never
+become the only place where the operator can understand a blocker.
 
 Developer/detail commands can remain in `OUROBOROS_COMMAND_REGISTRY` without becoming interface
 parity requirements. If a developer command becomes part of the operator product loop, first add it
@@ -135,8 +149,8 @@ fill status, and open order count in the paper board itself so a high `net_reven
 does not look ready when it is still collecting evidence or blocked by market/fill data quality. The
 CandidateArena leaderboard is research preflight; the paper board is the product evaluation
 authority and must remain visibly distinct in CLI, TUI, and Web UI.
-CandidateArena latest ticks must also show direction status, generated count, failure count, and
-`ResearchEfficiency` where available. These are autonomy trajectory signals with
+CandidateArena latest ticks must also show direction status, generated count, failure count,
+source candidate, and `ResearchEfficiency` where available. These are autonomy trajectory signals with
 `not_promotion_authority`; they must not become rank, qualification, or Trading review authority.
 If the active Trading review target differs from the Arena selected candidate, every surface must
 show that mismatch and prevent Trading controls from silently acting on the wrong candidate.

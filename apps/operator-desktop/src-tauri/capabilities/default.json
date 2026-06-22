@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the primary Ouroboros operator desktop app. No Tauri frontend permissions are exposed.",
+  "windows": ["main"],
+  "permissions": []
+}

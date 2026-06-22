@@ -65,7 +65,7 @@ This contract is grounded in the current repo surface, not a separate product id
 | --- | --- |
 | `AGENTS.md`, `README.md`, `ARCHITECTURE.md` | CandidateArena doctrine, source-of-truth order, authority boundary, and layer ownership. |
 | `docs/project-direction.md`, `docs/autonomy-model.md`, `docs/ouroboros-doctrine.md` | Product direction, autonomy layers, prototype/production boundary, and reference lineage. |
-| `docs/api-command-contract.md`, `docs/interface-parity.md` | Shared command/read contract and CLI/TUI/Web parity expectations. |
+| `docs/api-command-contract.md`, `docs/interface-parity.md` | Shared command/read contract and Desktop/CLI/TUI/Web parity expectations. |
 | `docs/product-loop-smoke.md` | Operable proof path for selected continuous paper evidence and board readback. |
 | `docs/trading-system-paper-event-protocol.md` | TradingSystem event contract and `TRADING_API_BASE_URL` authority boundary. |
 | `packages/domain/src/index.ts` | Existing `PaperTradingBoardReadModel`, `TradingPromotionReadModel`, `TradingReviewReadModel`, and `OperatorReadModel` attachment points. |
@@ -74,7 +74,7 @@ This contract is grounded in the current repo surface, not a separate product id
 | `packages/application/src/trading/paper/qualification-blockers.ts`, `failures.ts`, `learning.ts` | Shared blocker grouping, paper failure classification, and paper-board learning summaries used by review and next research context. |
 | `packages/application/src/candidate/arena.ts` | CandidateArena context, finding clusters, research-efficiency summaries, and paper evidence compaction. |
 | `packages/local-store/src/index.ts`, `packages/local-store/src/trading-substrate-surfaces.ts` | Persistence validation and low-level substrate read-model conversion for current evidence surfaces. |
-| `apps/cli/src/ouroboros-cli.ts`, `apps/operator-tui/src/operator-tui.tsx`, `apps/operator-web/src/App.tsx` | CLI, TUI, and Web rendering over the shared Operator read model. |
+| `apps/cli/src/ouroboros-cli.ts`, `apps/operator-tui/src/operator-tui.tsx`, `apps/operator-web/src/App.tsx`, `apps/operator-desktop` | CLI, TUI, shared UI, and Desktop app rendering over the shared Operator read model. |
 | `apps/runtime/test/*`, `apps/operator-web/src/App.test.tsx` | Existing coverage for paper board ranking, qualification blocking, promotion, mismatch, smoke, and interface parity. |
 
 ## Current Product Spine
@@ -643,7 +643,8 @@ element is probably decoration or misplaced behavior.
 | Command registry | Define every product-facing mutation name and authority. | `packages/domain` command descriptors. | UI, CLI, and TUI must not invent commands. | Add descriptors before adding new surfaces or aliases. |
 | CLI status | Provide automation-friendly loop state. | CLI over `GET /api/operator` and `POST /api/commands`. | CLI wording is part of product truth, not a debug dump. | Match packet section order where practical. |
 | TUI status | Provide keyboard-first operator console. | Ink UI over shared read/command contracts. | Compactness must not erase blocker, mismatch, or authority detail. | Preserve exact packet semantics with shorter labels. |
-| Web UI | Provide dense visual operator surface. | `apps/operator-web` over shared read/command contracts. | Visual hierarchy must follow product authority, not data volume. | Improve scan order before adding new cards. |
+| Desktop app | Provide the primary daily operator experience, background runtime visibility, and packaged local app surface. | `apps/operator-desktop` over shared read/command contracts and shared Operator UI source. | App chrome, runtime status, and session continuity must reflect shared runtime/store truth. | Improve app-owned lifecycle and status affordances before adding separate product surfaces. |
+| Shared Operator UI | Provide dense visual operator surface for Desktop and browser/development use. | `apps/operator-web` over shared read/command contracts. | Visual hierarchy must follow product authority, not data volume. | Improve scan order before adding new cards. |
 | Tests | Prove product states and failure cases. | Vitest suites and fixture tests. | Tests are the quality operating system for autonomy. | Add tests for every new authority boundary, state, or packet field. |
 | Docs | Preserve durable product truth and read order. | Root docs, `docs/`, `.agents`. | Docs should explain why a change belongs, not narrate implementation history. | Keep design truth in this page and command/architecture truth in their canonical docs. |
 | Checks | Enforce docs, architecture, naming, env, secrets, and diff hygiene. | Scripts and npm checks. | Green checks are necessary but not sufficient for product quality. | Add checks only when they enforce a durable rule, not a one-off preference. |

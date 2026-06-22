@@ -406,6 +406,9 @@ function formatOperatorSummary(operator: OperatorReadModel): string {
       ? `Latest tick: ${formatCandidateArenaTickSummary(latestTick)}`
       : undefined,
     latestTick
+      ? `Latest tick source: ${formatCandidateArenaTickSource(latestTick)}`
+      : undefined,
+    latestTick
       ? `Latest tick directions: ${formatCandidateArenaTickDirections(latestTick)}`
       : undefined,
     latestTick
@@ -807,6 +810,19 @@ function formatCandidateArenaTickSummary(tick: OperatorReadModel["candidate_aren
     `${failedCount} failed`,
     tick.authority_status
   ].join(" / ");
+}
+
+function formatCandidateArenaTickSource(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {
+  const source = tick.source_candidate;
+  if (!source) {
+    return "not recorded";
+  }
+  return [
+    `${source.source_kind} -> ${source.candidate_id}`,
+    source.display_name,
+    source.net_revenue_usdt === undefined ? undefined : formatUsdt(source.net_revenue_usdt),
+    source.authority_status
+  ].filter(Boolean).join(" / ");
 }
 
 function formatCandidateArenaTickDirections(tick: OperatorReadModel["candidate_arena"]["latest_ticks"][number]): string {

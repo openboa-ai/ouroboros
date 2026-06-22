@@ -100,12 +100,38 @@ ouroboros agent probe fixture
 ouroboros researcher provider set fixture
 ouroboros arena tick
 ouroboros status --json
+npm run dev:operator-web
+npm run dev:operator-desktop
+npm run package:operator-desktop
+npm run verify:operator-desktop-release
+npm run measure:operator-performance -- --check
 ouroboros candidate select <candidate-id>
 ouroboros candidate paper start <candidate-id>
 ouroboros trading-run observe <trading-run-id>
 ouroboros status
 ouroboros tui
 ```
+
+The primary interactive operator surface is the Tauri Desktop app in `apps/operator-desktop`.
+`apps/operator-web` remains the shared Operator UI source and browser/development surface. Open the
+Vite URL after `npm run dev:operator-web` when developing the shared UI, or run
+`npm run dev:operator-desktop` to open the primary Tauri app. `npm run package:operator-desktop`
+must build the shared Operator UI bundle and produce a local macOS app bundle at
+`apps/operator-desktop/src-tauri/target/release/bundle/macos/Ouroboros Operator.app`.
+`npm run verify:operator-desktop-release` validates the app bundle and packaged runtime contract.
+`npm run measure:operator-performance -- --check` records runtime, payload, asset, and render
+performance evidence.
+Check the Candidate Arena side rail:
+
+- `Arena runner` shows `running` or `stopped` with the tick count from `GET /api/operator`.
+- `Latest ticks` shows the last tick status, generated count, `Source`, directions, and research
+  efficiency.
+- `Source` must read `fixture_seed`, `evaluated_arena_leader`, or `explicit_candidate`; an
+  `evaluated_arena_leader` source proves the next CandidateArena generation used the current
+  leaderboard leader instead of restarting from the fixture seed.
+- The Desktop app, CLI, TUI, and Web surface expose the same evidence as `Latest tick source` from
+  the shared runtime/store-backed session data, so every operator surface can verify the same
+  running loop without importing runtime internals.
 
 For automated CI, prefer the in-process runtime smoke test over a port-bound runtime server. The
 smoke still exercises the replay TradingApiProvider boundary, so local sandboxed runs may need
