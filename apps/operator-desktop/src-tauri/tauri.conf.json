@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ouroboros Operator",
+  "version": "0.0.0",
+  "identifier": "ai.openboa.ouroboros.operator",
+  "build": {
+    "beforeDevCommand": "npm run dev -w @ouroboros/operator-web",
+    "beforeBuildCommand": "npm run build -w @ouroboros/operator-web",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../../operator-web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Ouroboros Operator",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 1180,
+        "minHeight": 760
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "resources": [
+      "resources/runtime/ouroboros-runtime",
+      "resources/runtime/ouroboros-runtime.manifest.json"
+    ],
+    "targets": ["app"]
+  }
+}

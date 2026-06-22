@@ -103,6 +103,7 @@ market data, scored by accumulated `revenue - cost`.
 | AlphaProof Nexus | unreliable generation made useful by verification and search |
 | Weak-to-strong | stronger capability elicited through scalable evaluation |
 | Agentic SDLC / factory model | tests, evals, context, harness, and human judgment as the production boundary around agent output |
+| The New SDLC With Vibe Coding | shift from ad-hoc prompting to agentic engineering through context, skills, harnesses, evals, and human judgment |
 | Codex, Claude Code, Gemini agents | external improving agent labor |
 | Ouroboros | apply the pattern to trading, where continuous paper `revenue - cost` is the score |
 
@@ -113,5 +114,6 @@ market data, scored by accumulated `revenue - cost`.
 - [AlphaEvolve paper](https://arxiv.org/abs/2506.13131)
 - [Advancing Mathematics Research with AI-Driven Formal Proof Search](https://arxiv.org/html/2605.22763v1)
 - [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)
+- [The New SDLC With Vibe Coding](https://drive.google.com/file/d/1IR7CddF_2FyQo_PdfBNTaEA50EGiVt2r/view)
 - [Weak-to-strong generalization](https://openai.com/index/weak-to-strong-generalization/)
 - [Introducing Codex](https://openai.com/index/introducing-codex/)

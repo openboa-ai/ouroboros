@@ -1726,6 +1726,11 @@ describe("CandidateDetail", () => {
     expect(html).toContain("completed");
     expect(html).toContain("Generated");
     expect(html).toContain("1 created / 1 failed");
+    expect(latestTicksSection).toContain("Source");
+    expect(latestTicksSection).toContain("evaluated_arena_leader");
+    expect(latestTicksSection).toContain("candidate-parent");
+    expect(latestTicksSection).toContain("Parent Trading System");
+    expect(latestTicksSection).toContain("9.83 USDT");
     expect(html).toContain("trend_following:created");
     expect(html).toContain("mean_reversion:failed");
     expect(html).toContain("Efficiency");
@@ -6153,6 +6158,13 @@ const fixtureCandidateArena: CandidateArenaReadModel = {
       started_at: "2026-05-24T00:00:00.000Z",
       completed_at: "2026-05-24T00:00:01.000Z",
       status: "completed",
+      source_candidate: {
+        source_kind: "evaluated_arena_leader",
+        candidate_id: "candidate-parent",
+        display_name: "Parent Trading System",
+        net_revenue_usdt: 9.83,
+        authority_status: "not_live"
+      },
       created_candidate_ids: ["candidate-profitable"],
       direction_results: [
         {

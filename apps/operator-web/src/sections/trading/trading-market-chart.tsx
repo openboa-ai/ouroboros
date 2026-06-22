@@ -10,6 +10,7 @@ import {
   OperatorFieldGrid,
   OperatorSectionStack
 } from "@/design-system";
+import { downsampleTradingMarketChartPoints } from "@/operator-performance";
 
 export interface TradingMarketChartField {
   label: string;
@@ -51,7 +52,8 @@ export function TradingMarketChart({
     );
   }
 
-  const yDomain = marketChartDomain(points);
+  const chartPoints = downsampleTradingMarketChartPoints(points);
+  const yDomain = marketChartDomain(chartPoints);
 
   return (
     <OperatorSectionStack>
@@ -63,7 +65,7 @@ export function TradingMarketChart({
       >
         <AreaChart
           accessibilityLayer
-          data={points}
+          data={chartPoints}
           margin={{ top: 12, right: 22, bottom: 8, left: 22 }}
         >
           <CartesianGrid vertical={false} />

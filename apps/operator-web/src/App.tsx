@@ -206,6 +206,7 @@ import {
   type OperatorSidebarCandidate,
   type OperatorView
 } from "@/shell/operator-sidebar";
+import { boundedOperatorSidebarCandidates, shouldRunOperatorRefresh } from "./operator-performance";
 import "./styles.css";
 
 export type { OperatorView } from "@/shell/operator-sidebar";
@@ -668,6 +669,9 @@ export function App() {
     const refreshIntervalId = typeof window === "undefined"
       ? undefined
       : window.setInterval(() => {
+          if (!shouldRunOperatorRefresh(document.visibilityState)) {
+            return;
+          }
           void refreshOperatorReadModel();
         }, OPERATOR_REFRESH_INTERVAL_MS);
 
@@ -1330,10 +1334,13 @@ export function App() {
     }
   }
 
-  const sidebarCandidates: OperatorSidebarCandidate[] = state.candidates.map((candidate) => ({
-    candidateId: candidate.candidate_id,
-    displayName: candidate.display_name
-  }));
+  const sidebarCandidates: OperatorSidebarCandidate[] = boundedOperatorSidebarCandidates(
+    state.candidates.map((candidate) => ({
+      candidateId: candidate.candidate_id,
+      displayName: candidate.display_name
+    })),
+    state.selected?.candidate_id
+  );
 
   return (
     <OperatorAppShell
@@ -1705,6 +1712,7 @@ export function CandidateArenaPanel({
     ? {
         tickId: latestTick.tick_id,
         status: latestTick.status,
+        source: formatCandidateArenaTickSource(latestTick),
         generated: formatCandidateArenaTickGenerated(latestTick),
         directions: formatCandidateArenaTickDirections(latestTick),
         efficiency: formatCandidateArenaTickEfficiency(latestTick)
@@ -4079,6 +4087,19 @@ function formatSignedPercent(value: number): string {
 function formatCandidateArenaTickGenerated(tick: CandidateArenaReadModel["latest_ticks"][number]): string {
   const failedCount = tick.direction_results.filter((result) => result.status === "failed").length;
   return `${tick.created_candidate_ids.length} created / ${failedCount} failed`;
+}
+
+function formatCandidateArenaTickSource(tick: CandidateArenaReadModel["latest_ticks"][number]): string {
+  const source = tick.source_candidate;
+  if (!source) {
+    return "not recorded";
+  }
+  return [
+    `${source.source_kind} -> ${source.candidate_id}`,
+    source.display_name,
+    source.net_revenue_usdt === undefined ? undefined : formatUsdt(source.net_revenue_usdt),
+    source.authority_status
+  ].filter(Boolean).join(" / ");
 }
 
 function formatCandidateArenaTickDirections(tick: CandidateArenaReadModel["latest_ticks"][number]): string {

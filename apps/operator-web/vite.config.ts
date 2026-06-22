@@ -29,6 +29,7 @@ function isChartingDependency(id: string): boolean {
 }
 
 export default defineConfig({
+  base: "./",
   plugins: [react(), tailwindcss()],
   build: {
     rollupOptions: {

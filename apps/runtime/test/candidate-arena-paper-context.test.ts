@@ -304,6 +304,56 @@ describe("CandidateArena paper evidence context", () => {
     ]));
   });
 
+  it("uses the latest evaluated arena leader as the next generation source by default", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "iterative-source-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const firstLeaderId = first.arena.leaderboard[0]?.candidate_id;
+    expect(firstLeaderId).toBe(first.created_candidate_ids[0]);
+
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "iterative-source-tick-2",
+      directions: ["mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const secondCandidate = await store.getCandidate(second.created_candidate_ids[0]!);
+    const firstTick = first.arena.latest_ticks.find((entry) => entry.tick_id === first.tick_id);
+    const secondTick = second.arena.latest_ticks.find((entry) => entry.tick_id === second.tick_id);
+
+    expect(firstTick).toMatchObject({
+      source_candidate: {
+        source_kind: "fixture_seed",
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        display_name: "Fixture generic trading-system candidate",
+        authority_status: "not_live"
+      }
+    });
+    expect(secondTick).toMatchObject({
+      source_candidate: {
+        source_kind: "evaluated_arena_leader",
+        candidate_id: firstLeaderId,
+        display_name: "Arena trend following BTCUSDT Trading System",
+        net_revenue_usdt: expect.any(Number),
+        authority_status: "not_live"
+      }
+    });
+    expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).toBe(firstLeaderId);
+    expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).not.toBe(FIXTURE_CANDIDATE_ID);
+  });
+
   it("clusters findings for the next ResearchWorker by direction, blocker, market regime, and protocol failure", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

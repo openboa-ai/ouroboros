@@ -15,9 +15,13 @@ selected `PaperTradingEvaluation`. Architecture patterns are subordinate to that
   and other outer-system implementations.
 - `apps/runtime`: Fastify HTTP composition root plus controller route modules. It wires concrete
   adapters into application controllers; product mutations enter through `POST /api/commands`.
-- `apps/cli`, `apps/operator-tui`, and `apps/operator-web`: user interfaces over the same command
-  and read-model contracts. They must not import concrete provider, exchange, sandbox, or store
-  implementations.
+- `apps/cli`, `apps/operator-tui`, `apps/operator-web`, and `apps/operator-desktop`: user
+  interfaces over the same command and read-model contracts. They must not import concrete
+  provider, exchange, sandbox, or store implementations. `apps/operator-desktop` is the primary
+  Tauri operator app; it may launch or reuse the runtime process through the packaged sidecar hook,
+  load the shared Operator UI bundle, and expose macOS menu bar runtime status. `apps/operator-web`
+  remains shared UI source plus browser/development surface. Neither surface may introduce a
+  separate product API, separate store, or renderer-side Node authority.
 
 ## Directory Cohesion
 
@@ -49,7 +53,7 @@ Use Hexagonal Architecture, Clean Architecture, Layered Architecture, Domain-Dri
 CQRS as the default frame:
 
 - Hexagonal Architecture: application services depend on ports; Codex, Binance, Sandbox,
-  filesystem, HTTP, CLI, TUI, and Web UI stay outside as adapters or interfaces.
+  filesystem, HTTP, CLI, TUI, Web UI, and Desktop app stay outside as adapters or interfaces.
 - Clean Architecture: dependencies point inward toward domain/application contracts.
 - Layered Architecture: interfaces call controllers; controllers validate and dispatch; services
   orchestrate use cases through ports; adapters implement ports; composition roots wire instances.

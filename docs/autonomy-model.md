@@ -6,9 +6,11 @@ paper trade selected candidates continuously, and let evidence decide what can b
 Read [Product Quality Design](product-quality-design.md) for the corresponding product-quality
 contract across review packets, UX, eval rubrics, and implementation frontiers.
 
-The reference pressure from *The New SDLC With Vibe Coding* is useful because it names the same
-operating shift Ouroboros is built around: move from ad-hoc generation to a production harness where
-specifications, context, tools, tests, evals, guardrails, and human judgment surround agent output.
+The reference pressure from
+[*The New SDLC With Vibe Coding*](https://drive.google.com/file/d/1IR7CddF_2FyQo_PdfBNTaEA50EGiVt2r/view)
+is useful because it names the same operating shift Ouroboros is built around: move from ad-hoc
+generation to a production harness where specifications, context, tools, tests, evals, guardrails,
+and human judgment surround agent output.
 Ouroboros applies that pattern to an outcome-gradable trading problem rather than to ordinary app
 development.
 

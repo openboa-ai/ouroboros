@@ -1,6 +1,6 @@
 # API And Command Contract
 
-The primary operator contract is shared by CLI, TUI, Web UI, and runtime HTTP:
+The primary operator contract is shared by Desktop, CLI, TUI, Web UI, and runtime HTTP:
 
 - `GET /api/operator`
 - `POST /api/commands`
@@ -11,12 +11,12 @@ Commands are operator controls over the doctrine, not provider commands.
 ## Command Authority
 
 `packages/domain` owns the canonical command catalog through `OuroborosCommand`,
-`OuroborosCommandKind`, and `OUROBOROS_COMMAND_REGISTRY`. UI, CLI, TUI, and route code must not
-invent mutation names outside that registry.
+`OuroborosCommandKind`, and `OUROBOROS_COMMAND_REGISTRY`. Desktop, shared UI, CLI, TUI, and route
+code must not invent mutation names outside that registry.
 
-`OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS` marks the subset that CLI, TUI, and Web UI must keep as one
-operator loop. See [Interface Parity](interface-parity.md) for the shared UX contract and the CLI
-local controller exception for managed agent setup/login/probe.
+`OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS` marks the subset that Desktop, CLI, TUI, and Web UI must keep
+as one operator loop. See [Interface Parity](interface-parity.md) for the shared UX contract and the
+CLI local controller exception for managed agent setup/login/probe.
 
 Current command groups:
 

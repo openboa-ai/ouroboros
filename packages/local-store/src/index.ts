@@ -5676,6 +5676,7 @@ function isCandidateArenaTickRecord(value: unknown): value is CandidateArenaTick
     nonEmpty(raw.started_at) &&
     nonEmpty(raw.completed_at) &&
     isCandidateArenaTickStatus(raw.status) &&
+    (raw.source_candidate === undefined || isCandidateArenaTickSource(raw.source_candidate)) &&
     Array.isArray(raw.created_candidate_refs) &&
     raw.created_candidate_refs.every((item) => isRef(item, "trading_system_candidate")) &&
     Array.isArray(raw.direction_results) &&
@@ -5861,6 +5862,26 @@ function isExperimentRunStatus(value: unknown): boolean {
 
 function isCandidateArenaTickStatus(value: unknown): boolean {
   return value === "completed" || value === "completed_with_errors" || value === "failed";
+}
+
+function isCandidateArenaTickSourceKind(value: unknown): boolean {
+  return value === "fixture_seed" || value === "evaluated_arena_leader" || value === "explicit_candidate";
+}
+
+function isCandidateArenaTickSource(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Record<string, unknown>;
+  const hasNetRevenue = raw.net_revenue_usdt === undefined ||
+    (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
+  return (
+    isCandidateArenaTickSourceKind(raw.source_kind) &&
+    nonEmpty(raw.candidate_id) &&
+    nonEmpty(raw.display_name) &&
+    hasNetRevenue &&
+    raw.authority_status === "not_live"
+  );
 }
 
 function isCandidateArenaDirectionResultStatus(value: unknown): boolean {

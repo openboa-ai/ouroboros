@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+find_repo_root() {
+  local dir="$1"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/package.json" && -f "$dir/apps/runtime/src/main.ts" ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+exec_runtime() {
+  local repo_root="$1"
+  local tsx_bin="$repo_root/node_modules/.bin/tsx"
+
+  if [[ ! -x "$tsx_bin" ]]; then
+    echo "operator_desktop_runtime_tsx_not_found:$tsx_bin" >&2
+    exit 127
+  fi
+
+  cd "$repo_root"
+  exec "$tsx_bin" apps/runtime/src/main.ts
+}
+
+if [[ -n "${OUROBOROS_RUNTIME_REPO_ROOT:-}" ]]; then
+  if [[ -f "$OUROBOROS_RUNTIME_REPO_ROOT/apps/runtime/src/main.ts" ]]; then
+    exec_runtime "$OUROBOROS_RUNTIME_REPO_ROOT"
+  fi
+  echo "operator_desktop_runtime_repo_root_invalid:$OUROBOROS_RUNTIME_REPO_ROOT" >&2
+  exit 127
+fi
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for candidate in "$PWD" "$script_dir"; do
+  if repo_root="$(find_repo_root "$candidate")"; then
+    exec_runtime "$repo_root"
+  fi
+done
+
+echo "operator_desktop_runtime_sidecar_repo_root_not_found" >&2
+exit 127

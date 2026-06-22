@@ -1,0 +1,20 @@
+{
+  "runtime_kind": "operator_runtime_sidecar",
+  "runtime_packaging": "source_backed_launcher",
+  "packaged_executable_name": "ouroboros-runtime",
+  "development_fallback": "source_checkout_tsx_runtime",
+  "host": "127.0.0.1",
+  "port": 4173,
+  "command_surface": ["GET /api/operator", "POST /api/commands"],
+  "authority_status": "not_live",
+  "notes": [
+    "The Desktop app is the primary interactive operator surface.",
+    "The CLI remains the complete baseline for headless operation and automation.",
+    "The shared Operator UI source is currently built from apps/operator-web.",
+    "The Desktop app launches a packaged runtime executable first when present.",
+    "The Desktop app monitors runtime reachability and restarts its owned runtime child when needed.",
+    "Source checkouts may fall back to the repo-local tsx runtime entrypoint for development.",
+    "Desktop, CLI, TUI, and Web share runtime/store-backed session data.",
+    "The Desktop frontend must not create a second product API."
+  ]
+}

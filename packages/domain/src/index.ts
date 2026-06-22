@@ -2485,6 +2485,19 @@ export interface CandidateArenaResearchEfficiencyReadModel {
   authority_status: "not_promotion_authority";
 }
 
+export type CandidateArenaTickSourceKind =
+  | "fixture_seed"
+  | "evaluated_arena_leader"
+  | "explicit_candidate";
+
+export interface CandidateArenaTickSourceReadModel {
+  source_kind: CandidateArenaTickSourceKind;
+  candidate_id: string;
+  display_name: string;
+  net_revenue_usdt?: number;
+  authority_status: "not_live";
+}
+
 export type CandidateArenaFindingClusterMarketRegime =
   | "long"
   | "short"
@@ -2529,6 +2542,7 @@ export interface CandidateArenaTickReadModel {
   started_at: string;
   completed_at: string;
   status: CandidateArenaTickStatus;
+  source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
   authority_status: "not_live";
@@ -2541,6 +2555,7 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   started_at: string;
   completed_at: string;
   status: CandidateArenaTickStatus;
+  source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_refs: Ref[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
   authority_status: "not_live";

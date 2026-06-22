@@ -1,0 +1,278 @@
+#!/usr/bin/env node
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
+import { spawn } from "node:child_process";
+
+const repoRoot = resolve(new URL("..", import.meta.url).pathname);
+const runtimeUrl = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+const outDir = process.env.OUROBOROS_PERF_OUT_DIR ?? "/tmp/ouroboros-performance";
+const browserEnabled = !process.argv.includes("--skip-browser");
+const checkMode = process.argv.includes("--check");
+
+const thresholds = {
+  runtimeReadyMs: Number(process.env.OUROBOROS_PERF_MAX_RUNTIME_READY_MS ?? 20_000),
+  operatorPayloadBytes: Number(process.env.OUROBOROS_PERF_MAX_OPERATOR_PAYLOAD_BYTES ?? 4_000_000),
+  operatorFetchMs: Number(process.env.OUROBOROS_PERF_MAX_OPERATOR_FETCH_MS ?? 2_500),
+  renderScreenshotMs: Number(process.env.OUROBOROS_PERF_MAX_RENDER_SCREENSHOT_MS ?? 15_000),
+  operatorWebAssetBytes: Number(process.env.OUROBOROS_PERF_MAX_WEB_ASSET_BYTES ?? 3_000_000)
+};
+
+mkdirSync(outDir, { recursive: true });
+
+const startedAt = performance.now();
+let runtimeChild;
+let webChild;
+
+try {
+  const runtimeProbe = await probeOperator();
+  const runtimeStart = runtimeProbe.ok
+    ? { mode: "reused", ready_ms: 0 }
+    : await startRuntime();
+  const operatorFetch = await measureOperatorFetch();
+  const webAssets = measureWebAssets();
+  const desktopBundle = measureDesktopBundle();
+  const browserRender = browserEnabled
+    ? await measureBrowserRender().catch((error) => ({
+        status: "skipped",
+        reason: error instanceof Error ? error.message : String(error)
+      }))
+    : { status: "skipped", reason: "disabled_by_flag" };
+
+  const result = {
+    measured_at: new Date().toISOString(),
+    runtime_url: runtimeUrl,
+    total_ms: roundMs(performance.now() - startedAt),
+    runtime_start: runtimeStart,
+    operator_fetch: operatorFetch,
+    web_assets: webAssets,
+    desktop_bundle: desktopBundle,
+    browser_render: browserRender,
+    thresholds,
+    status: performanceStatus({ runtimeStart, operatorFetch, webAssets, browserRender })
+  };
+
+  console.log(JSON.stringify(result, null, 2));
+  if (checkMode && result.status !== "pass") {
+    process.exitCode = 1;
+  }
+} finally {
+  if (webChild) {
+    webChild.kill();
+  }
+  if (runtimeChild) {
+    runtimeChild.kill();
+  }
+}
+
+async function startRuntime() {
+  const start = performance.now();
+  const tsx = runtimeTsxPath();
+  runtimeChild = spawn(tsx, ["apps/runtime/src/main.ts"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      HOST: "127.0.0.1",
+      PORT: "4173",
+      OUROBOROS_RUNTIME_URL: runtimeUrl
+    },
+    stdio: ["ignore", "ignore", "ignore"]
+  });
+
+  await waitFor(async () => (await probeOperator()).ok, thresholds.runtimeReadyMs);
+  return {
+    mode: "spawned",
+    pid: runtimeChild.pid,
+    ready_ms: roundMs(performance.now() - start),
+    rss_kb: await processRssKb(runtimeChild.pid)
+  };
+}
+
+function runtimeTsxPath() {
+  const executable = process.platform === "win32" ? "tsx.cmd" : "tsx";
+  const localTsx = join(repoRoot, "node_modules", ".bin", executable);
+  if (!existsSync(localTsx)) {
+    throw new Error(`runtime_tsx_not_found:${localTsx}`);
+  }
+  return localTsx;
+}
+
+async function measureOperatorFetch() {
+  const start = performance.now();
+  const response = await fetch(`${runtimeUrl}/api/operator`);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`operator_fetch_failed:${response.status}`);
+  }
+  const body = JSON.parse(text);
+  const arena = body.operator?.candidate_arena;
+  const latestTick = arena?.latest_ticks?.[0];
+  return {
+    status: response.status,
+    latency_ms: roundMs(performance.now() - start),
+    payload_bytes: Buffer.byteLength(text),
+    runner_status: arena?.runner_status,
+    tick_count: arena?.tick_count,
+    latest_tick: latestTick?.tick_id,
+    latest_source: latestTick?.source_candidate?.source_kind
+  };
+}
+
+function measureWebAssets() {
+  const dist = join(repoRoot, "apps", "operator-web", "dist", "assets");
+  if (!existsSync(dist)) {
+    return { status: "missing", asset_count: 0, total_bytes: 0 };
+  }
+  const assets = readdirSync(dist)
+    .map((name) => {
+      const path = join(dist, name);
+      return { name, bytes: statSync(path).size };
+    })
+    .sort((left, right) => right.bytes - left.bytes);
+  return {
+    status: "present",
+    asset_count: assets.length,
+    total_bytes: assets.reduce((total, asset) => total + asset.bytes, 0),
+    largest_assets: assets.slice(0, 5)
+  };
+}
+
+function measureDesktopBundle() {
+  const appPath = join(
+    repoRoot,
+    "apps",
+    "operator-desktop",
+    "src-tauri",
+    "target",
+    "release",
+    "bundle",
+    "macos",
+    "Ouroboros Operator.app"
+  );
+  const executable = join(appPath, "Contents", "MacOS", "ouroboros-operator-desktop");
+  return {
+    status: existsSync(executable) ? "present" : "missing",
+    app_path: appPath,
+    executable_bytes: existsSync(executable) ? statSync(executable).size : 0
+  };
+}
+
+async function measureBrowserRender() {
+  const chrome = chromePath();
+  if (!chrome) {
+    return { status: "skipped", reason: "chrome_not_found" };
+  }
+
+  webChild = spawn("npm", ["run", "dev", "-w", "@ouroboros/operator-web", "--", "--host", "127.0.0.1", "--port", "5173"], {
+    cwd: repoRoot,
+    stdio: ["ignore", "ignore", "ignore"]
+  });
+  await waitFor(async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:5173/");
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }, 10_000);
+
+  const screenshotPath = join(outDir, "operator-render.png");
+  const start = performance.now();
+  await runCommand(chrome, [
+    "--headless",
+    "--disable-gpu",
+    "--no-first-run",
+    "--disable-extensions",
+    "--window-size=1440,960",
+    `--screenshot=${screenshotPath}`,
+    "http://127.0.0.1:5173/"
+  ], { cwd: repoRoot });
+
+  return {
+    status: "captured",
+    screenshot_ms: roundMs(performance.now() - start),
+    screenshot_path: screenshotPath,
+    screenshot_bytes: statSync(screenshotPath).size
+  };
+}
+
+function performanceStatus({ runtimeStart, operatorFetch, webAssets, browserRender }) {
+  const browserOk = browserRender.status !== "captured"
+    || browserRender.screenshot_ms <= thresholds.renderScreenshotMs;
+  const runtimeOk = runtimeStart.ready_ms <= thresholds.runtimeReadyMs;
+  const fetchOk = operatorFetch.latency_ms <= thresholds.operatorFetchMs
+    && operatorFetch.payload_bytes <= thresholds.operatorPayloadBytes;
+  const webOk = webAssets.status !== "present"
+    || webAssets.total_bytes <= thresholds.operatorWebAssetBytes;
+  return runtimeOk && fetchOk && webOk && browserOk ? "pass" : "fail";
+}
+
+async function probeOperator() {
+  try {
+    const response = await fetch(`${runtimeUrl}/api/operator`);
+    return { ok: response.ok, status: response.status };
+  } catch {
+    return { ok: false };
+  }
+}
+
+async function waitFor(check, timeoutMs) {
+  const started = performance.now();
+  while (performance.now() - started < timeoutMs) {
+    if (await check()) {
+      return;
+    }
+    await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 250));
+  }
+  throw new Error(`timeout_after_${timeoutMs}ms`);
+}
+
+async function processRssKb(pid) {
+  if (!pid) {
+    return null;
+  }
+  try {
+    const { stdout } = await runCommand("ps", ["-o", "rss=", "-p", String(pid)], { cwd: repoRoot });
+    const rss = Number(stdout.trim());
+    return Number.isFinite(rss) ? rss : null;
+  } catch {
+    return null;
+  }
+}
+
+function runCommand(command, args, options) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = spawn(command, args, {
+      ...options,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", rejectCommand);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolveCommand({ stdout, stderr });
+        return;
+      }
+      rejectCommand(new Error(`${command} exited ${code}: ${stderr || stdout}`));
+    });
+  });
+}
+
+function chromePath() {
+  const candidates = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium"
+  ];
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+function roundMs(value) {
+  return Math.round(value * 10) / 10;
+}

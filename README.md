@@ -85,6 +85,7 @@ Canonical repo docs:
 - [API And Command Contract](docs/api-command-contract.md)
 - [Interface Parity](docs/interface-parity.md)
 - [Product Loop Smoke](docs/product-loop-smoke.md)
+- [Operator Desktop Performance And Release](docs/operator-desktop-performance-release.md)
 - [TradingSystem Paper Event Protocol](docs/trading-system-paper-event-protocol.md)
 - [Naming Taxonomy](docs/naming-taxonomy.md)
 
@@ -103,10 +104,16 @@ surfaces. They must not replace the primary Candidate Arena workflow.
 ## Repository Shape
 
 - `apps/runtime`: Fastify composition root and HTTP route/controller registration.
-- `apps/cli`: `ouroboros` command-line interface over the shared command/read contracts.
+- `apps/cli`: `ouroboros` command-line interface over the shared command/read contracts. It
+  remains complete enough for automation and headless operation.
 - `apps/operator-tui`: Ink action console over the shared Operator read model and command endpoint.
-- `apps/operator-web`: operator UI over the shared Operator read model and Ouroboros command endpoint.
-- `packages/domain`: shared domain contracts, including the Operator command descriptors used by CLI, TUI, and Web UI.
+- `apps/operator-web`: shared Operator UI source and browser/development surface over the same
+  Operator read model and Ouroboros command endpoint. It is not a separate product authority.
+- `apps/operator-desktop`: primary Tauri operator app. It launches or reuses the runtime, keeps
+  runtime status visible from the macOS menu bar, and loads the shared Operator UI bundle through
+  the platform WebView without granting frontend Tauri permissions.
+- `packages/domain`: shared domain contracts, including the Operator command descriptors used by
+  CLI, TUI, shared UI, and the Desktop app.
 - `packages/application`: command controllers, application services, Candidate Arena use cases, read-model builders, and ports, organized by product domain such as `agent/`, `candidate/`, `research/`, and `trading/`.
 - `packages/adapters`: concrete outside-system integrations grouped by boundary, such as `codex/`, `binance/`, `fixture/`, and `sandbox/`.
 - `packages/local-store`: filesystem-backed local store primitives.
@@ -126,6 +133,10 @@ Run local services:
 npm install
 ouroboros runtime serve
 npm run dev:operator-web
+npm run dev:operator-desktop
+npm run package:operator-desktop
+npm run verify:operator-desktop-release
+npm run measure:operator-performance -- --check
 ```
 
 Operate the product loop through the Ouroboros command surface:
@@ -147,10 +158,12 @@ ouroboros researcher provider set codex
 ouroboros tui
 ```
 
-The CLI, Operator UI, and Ink TUI all read `GET /api/operator` and mutate through
-`POST /api/commands`. Adapter names such as Codex are internal provider settings on managed
-`AgentProfile` records. The agent setup surface is provider-scoped, and the researcher selects one
-available provider from that managed set; product-facing commands stay under the `ouroboros` noun.
+The Desktop app is the primary interactive operator surface. The CLI remains the complete baseline
+for headless operation and automation. CLI, Desktop, Web, and TUI all read `GET /api/operator`,
+mutate through `POST /api/commands`, and share the same runtime/store-backed session data. Adapter
+names such as Codex are internal provider settings on managed `AgentProfile` records. The agent
+setup surface is provider-scoped, and the researcher selects one available provider from that
+managed set; product-facing commands stay under the `ouroboros` noun.
 
 Use Linear GraphQL when a task needs Linear workflow writeback:
 

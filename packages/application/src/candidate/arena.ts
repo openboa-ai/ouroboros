@@ -7,6 +7,8 @@ import type {
   CandidateArenaTickDirectionResultReadModel,
   CandidateArenaTickRecord,
   CandidateArenaTickReadModel,
+  CandidateArenaTickSourceKind,
+  CandidateArenaTickSourceReadModel,
   CandidateArenaTickStatus,
   CandidateArenaFindingClusterMarketRegime,
   CandidateArenaFindingClusterReadModel,
@@ -185,7 +187,7 @@ export async function runCandidateArenaTick(
   runnerStatus: "running" | "stopped" = "stopped",
   tickCount = 0
 ): Promise<CandidateArenaTickOutcome> {
-  const source = await sourceCandidate(input.store, input.sourceSystemId, input.sourceCandidateVersionId);
+  const sourceSelection = await sourceCandidate(input.store, input.sourceSystemId, input.sourceCandidateVersionId);
   const directions = input.directions ?? DEFAULT_ARENA_DIRECTIONS;
   const tickId = input.tickId ?? `tick-${Date.now()}`;
   const startedAt = new Date().toISOString();
@@ -197,7 +199,7 @@ export async function runCandidateArenaTick(
       direction,
       created: await runArenaDirection({
         ...input,
-        source,
+        source: sourceSelection.candidate,
         direction,
         tickId
       })
@@ -238,6 +240,7 @@ export async function runCandidateArenaTick(
     tickId,
     startedAt,
     completedAt: new Date().toISOString(),
+    sourceCandidate: sourceSelection.source_candidate,
     createdCandidateIds,
     directionResults,
     totalDirectionCount: directions.length
@@ -450,17 +453,69 @@ function editForDirection(source: string, direction: ResearchDirectionKind): str
 
 async function sourceCandidate(
   store: OuroborosStorePort,
-  sourceSystemId = FIXTURE_CANDIDATE_ID,
+  sourceSystemId?: string,
   sourceCandidateVersionId?: string
-): Promise<CandidateInspectReadModel> {
-  const source = await store.getCandidate(sourceSystemId);
+): Promise<{
+  candidate: CandidateInspectReadModel;
+  source_candidate: CandidateArenaTickSourceReadModel;
+}> {
+  if (!sourceSystemId && !sourceCandidateVersionId) {
+    const leader = await latestEvaluatedArenaLeader(store);
+    if (leader) {
+      return {
+        candidate: leader,
+        source_candidate: candidateArenaTickSource(leader, "evaluated_arena_leader")
+      };
+    }
+  }
+  const sourceCandidateId = sourceSystemId ?? FIXTURE_CANDIDATE_ID;
+  const source = await store.getCandidate(sourceCandidateId);
   if (!source) {
     throw new Error("candidate_arena_source_not_found");
   }
   if (sourceCandidateVersionId && source.candidate_version.candidate_version_id !== sourceCandidateVersionId) {
     throw new Error("candidate_arena_source_version_mismatch");
   }
-  return source;
+  return {
+    candidate: source,
+    source_candidate: candidateArenaTickSource(
+      source,
+      sourceSystemId || sourceCandidateVersionId ? "explicit_candidate" : "fixture_seed"
+    )
+  };
+}
+
+function candidateArenaTickSource(
+  candidate: CandidateInspectReadModel,
+  sourceKind: CandidateArenaTickSourceKind
+): CandidateArenaTickSourceReadModel {
+  const profitLoss = candidate.full_cycle_lineage?.evidence?.profit_loss;
+  return {
+    source_kind: sourceKind,
+    candidate_id: candidate.candidate_id,
+    display_name: candidate.display_name,
+    ...(profitLoss ? { net_revenue_usdt: profitLoss.net_revenue_usdt } : {}),
+    authority_status: "not_live"
+  };
+}
+
+async function latestEvaluatedArenaLeader(
+  store: OuroborosStorePort
+): Promise<CandidateInspectReadModel | undefined> {
+  const candidates = await Promise.all(
+    (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
+  );
+  return candidates
+    .filter((candidate): candidate is CandidateInspectReadModel =>
+      Boolean(candidate?.system_code?.ref && candidate.full_cycle_lineage?.evidence?.profit_loss)
+    )
+    .sort((left, right) => {
+      const leftProfitLoss = left.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
+      const rightProfitLoss = right.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
+      return rightProfitLoss.net_revenue_usdt - leftProfitLoss.net_revenue_usdt ||
+        rightProfitLoss.net_return_pct - leftProfitLoss.net_return_pct ||
+        left.candidate_id.localeCompare(right.candidate_id);
+    })[0];
 }
 
 async function sourceResearchArtifactDir(input: {
@@ -1210,6 +1265,7 @@ function candidateArenaTickRecord(input: {
   tickId: string;
   startedAt: string;
   completedAt: string;
+  sourceCandidate: CandidateArenaTickSourceReadModel;
   totalDirectionCount: number;
   createdCandidateIds: string[];
   directionResults: CandidateArenaTickDirectionResultReadModel[];
@@ -1222,6 +1278,7 @@ function candidateArenaTickRecord(input: {
     started_at: input.startedAt,
     completed_at: input.completedAt,
     status: candidateArenaTickStatus(input.createdCandidateIds.length, input.totalDirectionCount),
+    source_candidate: input.sourceCandidate,
     created_candidate_refs: input.createdCandidateIds.map((candidateId) =>
       ref("trading_system_candidate", candidateId)
     ),
@@ -1236,6 +1293,7 @@ function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): Candidat
     started_at: tick.started_at,
     completed_at: tick.completed_at,
     status: tick.status,
+    ...(tick.source_candidate ? { source_candidate: tick.source_candidate } : {}),
     created_candidate_ids: tick.created_candidate_refs.map((candidate) => candidate.id),
     direction_results: tick.direction_results,
     authority_status: tick.authority_status

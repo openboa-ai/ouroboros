@@ -51,6 +51,12 @@ coverage/
 dist/
 src-tauri/target/
 src-tauri/gen/
+**/src-tauri/target/
+**/src-tauri/gen/
+**/src-tauri/icons/android/
+**/src-tauri/icons/ios/
+**/src-tauri/icons/StoreLogo.png
+**/src-tauri/icons/Square*Logo.png
 vite.svg
 
 # Tooling
