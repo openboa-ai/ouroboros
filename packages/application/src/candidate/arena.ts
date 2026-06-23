@@ -461,7 +461,8 @@ async function sourceCandidate(
   source_candidate: CandidateArenaTickSourceReadModel;
 }> {
   if (!sourceSystemId && !sourceCandidateVersionId) {
-    const paperLeader = await latestPaperTradingEvaluationLeader(store);
+    const latestPaperEvaluations = await latestPaperTradingEvaluationsByCandidate(store);
+    const paperLeader = await latestPaperTradingEvaluationLeader(store, latestPaperEvaluations);
     if (paperLeader) {
       return {
         candidate: paperLeader.candidate,
@@ -472,7 +473,10 @@ async function sourceCandidate(
         )
       };
     }
-    const leader = await latestEvaluatedArenaLeader(store);
+    const leader = await latestEvaluatedArenaLeader(
+      store,
+      ineligibleLatestPaperEvaluationCandidateIds(latestPaperEvaluations)
+    );
     if (leader) {
       return {
         candidate: leader,
@@ -513,21 +517,13 @@ function candidateArenaTickSource(
 }
 
 async function latestPaperTradingEvaluationLeader(
-  store: OuroborosStorePort
+  store: OuroborosStorePort,
+  latestEvaluationByCandidate?: Map<string, PaperTradingEvaluationRecord>
 ): Promise<{ candidate: CandidateInspectReadModel; evaluation: PaperTradingEvaluationRecord } | undefined> {
-  const latestEvaluationByCandidate = new Map<string, PaperTradingEvaluationRecord>();
-  for (const evaluation of await store.listPaperTradingEvaluations()) {
-    const previous = latestEvaluationByCandidate.get(evaluation.candidate_ref.id);
-    if (!previous || comparePaperTradingEvaluationRecency(previous, evaluation) <= 0) {
-      latestEvaluationByCandidate.set(evaluation.candidate_ref.id, evaluation);
-    }
-  }
+  const latestEvaluations = latestEvaluationByCandidate ?? await latestPaperTradingEvaluationsByCandidate(store);
   const candidates = await Promise.all(
-    [...latestEvaluationByCandidate.values()]
-      .filter((evaluation) =>
-        (evaluation.status === "running" || evaluation.status === "stopped") &&
-        evaluation.observation_count > 0
-      )
+    [...latestEvaluations.values()]
+      .filter(isEligiblePaperTradingEvaluationSource)
       .map(async (evaluation) => ({
         evaluation,
         candidate: await store.getCandidate(evaluation.candidate_ref.id)
@@ -550,6 +546,34 @@ async function latestPaperTradingEvaluationLeader(
     )[0];
 }
 
+async function latestPaperTradingEvaluationsByCandidate(
+  store: OuroborosStorePort
+): Promise<Map<string, PaperTradingEvaluationRecord>> {
+  const latestEvaluationByCandidate = new Map<string, PaperTradingEvaluationRecord>();
+  for (const evaluation of await store.listPaperTradingEvaluations()) {
+    const previous = latestEvaluationByCandidate.get(evaluation.candidate_ref.id);
+    if (!previous || comparePaperTradingEvaluationRecency(previous, evaluation) <= 0) {
+      latestEvaluationByCandidate.set(evaluation.candidate_ref.id, evaluation);
+    }
+  }
+  return latestEvaluationByCandidate;
+}
+
+function isEligiblePaperTradingEvaluationSource(evaluation: PaperTradingEvaluationRecord): boolean {
+  return (evaluation.status === "running" || evaluation.status === "stopped") &&
+    evaluation.observation_count > 0;
+}
+
+function ineligibleLatestPaperEvaluationCandidateIds(
+  latestEvaluationByCandidate: Map<string, PaperTradingEvaluationRecord>
+): Set<string> {
+  return new Set(
+    [...latestEvaluationByCandidate.values()]
+      .filter((evaluation) => !isEligiblePaperTradingEvaluationSource(evaluation))
+      .map((evaluation) => evaluation.candidate_ref.id)
+  );
+}
+
 function comparePaperTradingEvaluationRecency(
   left: PaperTradingEvaluationRecord,
   right: PaperTradingEvaluationRecord
@@ -559,15 +583,20 @@ function comparePaperTradingEvaluationRecency(
 }
 
 async function latestEvaluatedArenaLeader(
-  store: OuroborosStorePort
+  store: OuroborosStorePort,
+  excludedCandidateIds: Set<string> = new Set()
 ): Promise<CandidateInspectReadModel | undefined> {
   const candidates = await Promise.all(
     (await store.listCandidates()).map((candidate) => store.getCandidate(candidate.candidate_id))
   );
   return candidates
-    .filter((candidate): candidate is CandidateInspectReadModel =>
-      Boolean(candidate?.system_code?.ref && candidate.full_cycle_lineage?.evidence?.profit_loss)
-    )
+    .filter((candidate): candidate is CandidateInspectReadModel => {
+      if (!candidate) {
+        return false;
+      }
+      return Boolean(candidate.system_code?.ref && candidate.full_cycle_lineage?.evidence?.profit_loss) &&
+        !excludedCandidateIds.has(candidate.candidate_id);
+    })
     .sort((left, right) => {
       const leftProfitLoss = left.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
       const rightProfitLoss = right.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
