@@ -2488,6 +2488,7 @@ export interface CandidateArenaResearchEfficiencyReadModel {
 export type CandidateArenaTickSourceKind =
   | "fixture_seed"
   | "evaluated_arena_leader"
+  | "paper_trading_evaluation_leader"
   | "explicit_candidate";
 
 export interface CandidateArenaTickSourceReadModel {
