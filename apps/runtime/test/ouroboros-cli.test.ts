@@ -52,6 +52,32 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Researcher provider: fixture");
   });
 
+  it("adds the operator API token header to runtime command calls when configured", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+
+    const result = await runOuroborosCli(["arena", "tick"], {
+      fetch: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({
+          command: {
+            command_id: "command-1",
+            command_kind: "arena.tick",
+            status: "succeeded"
+          },
+          operator: fixtureOperator()
+        });
+      },
+      runtimeBaseUrl: "http://runtime.test",
+      operatorApiToken: "cli-token"
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("http://runtime.test/api/commands");
+    expect(new Headers(calls[0]?.init?.headers).get("content-type")).toBe("application/json");
+    expect(new Headers(calls[0]?.init?.headers).get("x-ouroboros-operator-token")).toBe("cli-token");
+  });
+
   it("returns machine-readable command output with --json", async () => {
     const result = await runOuroborosCli(["arena", "tick", "--json"], {
       fetch: async () => jsonResponse({
@@ -137,6 +163,23 @@ describe("ouroboros CLI", () => {
     expect(result.stdout).toContain("Paper decision: order_request buy limit 0.001 @ 65000 (trading_system_order_request)");
     expect(result.stdout).toContain("Paper account: equity 10004.95 USDT / long 0.001 BTCUSDT @ 60000 / open orders 0");
     expect(result.stdout).toContain("Paper fill: filled 0.001 @ 60000 / trade agg-60000-001");
+  });
+
+  it("adds the operator API token header to runtime status calls when configured", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const result = await runOuroborosCli(["status"], {
+      fetch: async (url, init) => {
+        calls.push({ url: String(url), init });
+        return jsonResponse({ operator: fixtureOperator() });
+      },
+      runtimeBaseUrl: "http://runtime.test",
+      operatorApiToken: "cli-status-token"
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("http://runtime.test/api/operator");
+    expect(new Headers(calls[0]?.init?.headers).get("x-ouroboros-operator-token")).toBe("cli-status-token");
   });
 
   it("points failed promotion commands back to visible blocker surfaces", async () => {

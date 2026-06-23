@@ -20,11 +20,12 @@ Options:
   --query-file <path>         File containing one GraphQL query or mutation.
   --variables <json>          Inline JSON object variables. Default: {}.
   --variables-file <path>     File containing a JSON object.
-  --endpoint <url>            Override endpoint. Default: LINEAR_GRAPHQL_ENDPOINT or ${DEFAULT_LINEAR_GRAPHQL_ENDPOINT}
+  --endpoint <url>            Test-only loopback override. Default: LINEAR_GRAPHQL_ENDPOINT or ${DEFAULT_LINEAR_GRAPHQL_ENDPOINT}
 
 Auth:
   Reads LINEAR_API_KEY from the environment first, then local .env.
   LINEAR_ENV_FILE may point at an alternate env file for tests.
+  Non-Linear endpoints require LINEAR_ALLOW_TEST_GRAPHQL_ENDPOINT=1 and a test-* token.
 `);
   process.exit(0);
 }

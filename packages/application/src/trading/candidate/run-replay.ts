@@ -5,6 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
   DockerSandboxesSbxTradingArtifactRunner,
+  HostTradingArtifactRunnerDisabledError,
   HostTradingArtifactRunner,
   readTradingSystemManifest,
   type TradingArtifactRunner
@@ -179,7 +180,7 @@ export async function runPromotedCandidateReplay(
     candidateRoot: safeAbsoluteRoot(input.candidate_root ?? DEFAULT_CANDIDATE_ROOT),
     runRoot: safeAbsoluteRoot(input.run_root ?? DEFAULT_RUN_ROOT),
     runId: input.run_id,
-    runnerKind: input.runner_kind ?? "host_process",
+    runnerKind: input.runner_kind ?? "docker_sandboxes_sbx",
     scenarioIds: input.scenario_ids ?? [],
     timeoutMs: input.timeout_ms,
     sbxPath: input.sbx_path,
@@ -201,6 +202,11 @@ export async function runPromotedCandidateReplay(
     output_dir: outputDir,
     scenarios,
     artifact_runner: runner
+  }).catch((error) => {
+    if (error instanceof HostTradingArtifactRunnerDisabledError) {
+      throw new ReplayRunError("host_trading_artifact_runner_disabled", error.message, 1);
+    }
+    throw error;
   });
   const completedAt = new Date().toISOString();
   const scenarioAccepted = replay.scenario_results.filter((scenario) => scenario.status === "accepted").length;
@@ -272,7 +278,7 @@ Options:
   --candidate-root <path>  Default: ${DEFAULT_CANDIDATE_ROOT}
   --run-root <path>        Default: ${DEFAULT_RUN_ROOT}
   --run-id <id>            Optional stable run id override.
-  --runner <kind>          host_process or docker_sandboxes_sbx. Default: host_process.
+  --runner <kind>          docker_sandboxes_sbx or host_process. Default: docker_sandboxes_sbx.
   --scenario <id[,id]>     Optional scenario filter. Can be repeated.
   --timeout-ms <number>    Per sbx command timeout for docker_sandboxes_sbx.
   --sbx-path <path>        sbx/sdx command path for docker_sandboxes_sbx.
@@ -551,11 +557,11 @@ function sourceSessionId(promotion: Record<string, unknown> | undefined): string
 }
 
 function parseRunnerKind(value: string | undefined): TradingArtifactRunnerKind {
-  if (!value || value === "host" || value === "host_process") {
-    return "host_process";
-  }
-  if (value === "sbx" || value === "sdx" || value === "docker_sandboxes_sbx") {
+  if (!value || value === "sbx" || value === "sdx" || value === "docker_sandboxes_sbx") {
     return "docker_sandboxes_sbx";
+  }
+  if (value === "host" || value === "host_process") {
+    return "host_process";
   }
   failUsage("--runner must be host_process or docker_sandboxes_sbx");
 }

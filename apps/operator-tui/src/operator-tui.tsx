@@ -33,11 +33,13 @@ export type OperatorTuiAction =
 export async function runOperatorTui(input: {
   runtimeBaseUrl: string;
   fetch?: FetchLike;
+  operatorApiToken?: string | false;
 }): Promise<void> {
   const instance = render(
     <OperatorTui
       runtimeBaseUrl={input.runtimeBaseUrl}
       fetcher={input.fetch ?? fetch}
+      operatorApiToken={resolveOperatorApiToken(input.operatorApiToken)}
     />
   );
   await instance.waitUntilExit();
@@ -46,6 +48,7 @@ export async function runOperatorTui(input: {
 export function OperatorTui(props: {
   runtimeBaseUrl: string;
   fetcher: FetchLike;
+  operatorApiToken?: string;
 }) {
   const [operator, setOperator] = useState<OperatorReadModel | null>(null);
   const [cursor, setCursor] = useState(0);
@@ -55,7 +58,11 @@ export function OperatorTui(props: {
 
   const refresh = async () => {
     try {
-      const nextOperator = await fetchOperatorReadModel(props.runtimeBaseUrl, props.fetcher);
+      const nextOperator = await fetchOperatorReadModel(
+        props.runtimeBaseUrl,
+        props.fetcher,
+        props.operatorApiToken
+      );
       setOperator(nextOperator);
       setCursor((current) => clampCursor(current, nextOperator));
       setError(null);
@@ -68,7 +75,7 @@ export function OperatorTui(props: {
 
   useEffect(() => {
     let cancelled = false;
-    void fetchOperatorReadModel(props.runtimeBaseUrl, props.fetcher)
+    void fetchOperatorReadModel(props.runtimeBaseUrl, props.fetcher, props.operatorApiToken)
       .then((nextOperator) => {
         if (!cancelled) {
           setOperator(nextOperator);
@@ -83,7 +90,7 @@ export function OperatorTui(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.runtimeBaseUrl, props.fetcher]);
+  }, [props.runtimeBaseUrl, props.fetcher, props.operatorApiToken]);
 
   useInput((input, key) => {
     const action = operatorTuiActionForInput(input, key);
@@ -105,7 +112,7 @@ export function OperatorTui(props: {
       });
       return;
     }
-    void runTuiAction(action, operator, cursor, props.runtimeBaseUrl, props.fetcher)
+    void runTuiAction(action, operator, cursor, props.runtimeBaseUrl, props.fetcher, props.operatorApiToken)
       .then(async (outcome) => {
         if (outcome === "refreshed") {
           setMessage("Refreshed operator state.");
@@ -790,7 +797,8 @@ async function runTuiAction(
   operator: OperatorReadModel | null,
   cursor: number,
   runtimeBaseUrl: string,
-  fetcher: FetchLike
+  fetcher: FetchLike,
+  operatorApiToken?: string
 ): Promise<string | undefined> {
   if (action === "refresh") {
     return "refreshed";
@@ -799,11 +807,11 @@ async function runTuiAction(
   if (!command) {
     return "No candidate selected.";
   }
-  const response = await fetcher(`${runtimeBaseUrl}/api/commands`, {
+  const response = await runtimeFetch(fetcher, `${runtimeBaseUrl}/api/commands`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(command.payload ? command : { command_kind: command.command_kind })
-  });
+  }, operatorApiToken);
   const body = await response.json() as {
     command?: { command_kind: OuroborosCommandKind; status: string; summary?: string };
     error?: string;
@@ -819,14 +827,39 @@ async function runTuiAction(
 
 async function fetchOperatorReadModel(
   runtimeBaseUrl: string,
-  fetcher: FetchLike
+  fetcher: FetchLike,
+  operatorApiToken?: string
 ): Promise<OperatorReadModel> {
-  const response = await fetcher(`${runtimeBaseUrl}/api/operator`);
+  const response = await runtimeFetch(fetcher, `${runtimeBaseUrl}/api/operator`, undefined, operatorApiToken);
   if (!response.ok) {
     throw new Error(`operator read failed: ${response.status}`);
   }
   const body = await response.json() as { operator: OperatorReadModel };
   return body.operator;
+}
+
+function runtimeFetch(
+  fetcher: FetchLike,
+  input: string,
+  init: RequestInit | undefined,
+  operatorApiToken: string | undefined
+): Promise<Response> {
+  if (!operatorApiToken) {
+    return init ? fetcher(input, init) : fetcher(input);
+  }
+  const headers = new Headers(init?.headers);
+  headers.set("x-ouroboros-operator-token", operatorApiToken);
+  return fetcher(input, {
+    ...init,
+    headers
+  });
+}
+
+function resolveOperatorApiToken(configuredToken: string | false | undefined): string | undefined {
+  if (configuredToken === false) {
+    return undefined;
+  }
+  return configuredToken?.trim() || process.env.OUROBOROS_OPERATOR_API_TOKEN?.trim() || undefined;
 }
 
 function clampCursor(cursor: number, operator: OperatorReadModel): number {

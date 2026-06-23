@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { HostTradingArtifactRunner, type TradingArtifactRunner } from "./artifact-runner";
+import { DockerSandboxesSbxTradingArtifactRunner, type TradingArtifactRunner } from "./artifact-runner";
 import { evaluateTradingRun } from "./evaluator";
 import {
   defaultReplayTradingScenarioSet,
@@ -46,7 +46,7 @@ export async function runTradingReplaySet(
     throw new Error("Replay scenario set must include at least one scenario");
   }
 
-  const artifactRunner = input.artifact_runner ?? new HostTradingArtifactRunner();
+  const artifactRunner = input.artifact_runner ?? new DockerSandboxesSbxTradingArtifactRunner();
   const outputRoot = safeAbsoluteRoot(input.output_dir);
   await mkdir(outputRoot, { recursive: true });
   const scenarioResults: TradingScenarioEvaluationResult[] = [];

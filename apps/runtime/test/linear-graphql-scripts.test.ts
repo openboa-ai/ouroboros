@@ -63,6 +63,7 @@ describe("Linear GraphQL execution scripts", () => {
       ], {
         LINEAR_API_KEY: "test-linear-token",
         LINEAR_GRAPHQL_ENDPOINT: server.url,
+        LINEAR_ALLOW_TEST_GRAPHQL_ENDPOINT: "1",
         LINEAR_ENV_FILE: path.join(tempDir, "missing.env")
       });
       const parsed = JSON.parse(result.stdout);
@@ -115,6 +116,7 @@ describe("Linear GraphQL execution scripts", () => {
       const result = await runNode([".agents/skills/linear-graphql/scripts/linear-graphql.mjs", "--query-file", queryFile], {
         LINEAR_API_KEY: "test-linear-token",
         LINEAR_GRAPHQL_ENDPOINT: server.url,
+        LINEAR_ALLOW_TEST_GRAPHQL_ENDPOINT: "1",
         LINEAR_ENV_FILE: path.join(tempDir, "missing.env")
       });
       const parsed = JSON.parse(result.stdout);
@@ -197,6 +199,7 @@ describe("Linear GraphQL execution scripts", () => {
       ], {
         LINEAR_API_KEY: "test-linear-token",
         LINEAR_GRAPHQL_ENDPOINT: server.url,
+        LINEAR_ALLOW_TEST_GRAPHQL_ENDPOINT: "1",
         LINEAR_ENV_FILE: path.join(tempDir, "missing.env")
       });
 
@@ -264,6 +267,7 @@ describe("Linear GraphQL execution scripts", () => {
       ], {
         LINEAR_API_KEY: "test-linear-token",
         LINEAR_GRAPHQL_ENDPOINT: server.url,
+        LINEAR_ALLOW_TEST_GRAPHQL_ENDPOINT: "1",
         LINEAR_ENV_FILE: path.join(tempDir, "missing.env")
       });
 

@@ -27,8 +27,12 @@ describe("S18 Trading replay run scripts", () => {
         "--run-root",
         runRoot,
         "--run-id",
-        "run-ok"
-      ]);
+        "run-ok",
+        "--runner",
+        "host_process"
+      ], {
+        OUROBOROS_ALLOW_HOST_TRADING_ARTIFACT_RUNNER: "1"
+      });
 
       expect(result.code, scriptOutput(result)).toBe(0);
       expect(result.stdout).toContain("Trading replay run");
@@ -137,6 +141,39 @@ describe("S18 Trading replay run scripts", () => {
 
       expect(result.code, scriptOutput(result)).toBe(2);
       expect(result.stdout).toContain("MISSING candidate and system code authority_status == not_live");
+      expect(result.stdout).toContain("CANDIDATE_RUN_RESULT failed");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects host_process replay runs with an actionable typed error when host execution is disabled", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "ouroboros-s18-replay-run-"));
+    try {
+      const candidateRoot = path.join(tempDir, "candidates");
+      await writeCandidateBundle(candidateRoot, "candidate-host-disabled");
+
+      const result = await runNpm([
+        "run",
+        "trading:replay:run",
+        "--",
+        "--candidate-id",
+        "candidate-host-disabled",
+        "--candidate-root",
+        candidateRoot,
+        "--run-root",
+        path.join(tempDir, "runs"),
+        "--run-id",
+        "run-host-disabled",
+        "--runner",
+        "host_process"
+      ], {
+        OUROBOROS_ALLOW_HOST_TRADING_ARTIFACT_RUNNER: ""
+      });
+
+      expect(result.code, scriptOutput(result)).toBe(1);
+      expect(result.stdout).toContain("candidate_id=candidate-host-disabled");
+      expect(result.stdout).toContain("MISSING host_trading_artifact_runner_disabled");
       expect(result.stdout).toContain("CANDIDATE_RUN_RESULT failed");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -326,19 +363,22 @@ async function listFiles(root: string): Promise<string[]> {
   return files.sort();
 }
 
-function runNpm(args: string[]) {
-  return runCommand("npm", args);
+function runNpm(args: string[], env: Record<string, string> = {}) {
+  return runCommand("npm", args, env);
 }
 
-function runNode(args: string[]) {
-  return runCommand(process.execPath, args);
+function runNode(args: string[], env: Record<string, string> = {}) {
+  return runCommand(process.execPath, args, env);
 }
 
-function runCommand(command: string, args: string[]) {
+function runCommand(command: string, args: string[], env: Record<string, string>) {
   return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => {
     const child = spawn(command, args, {
       cwd: repoRoot,
-      env: process.env,
+      env: {
+        ...process.env,
+        ...env
+      },
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";

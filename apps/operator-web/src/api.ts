@@ -27,9 +27,22 @@ import type {
 } from "@ouroboros/domain";
 
 const runtimeBaseUrl = import.meta.env.VITE_OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+const operatorApiToken = import.meta.env.VITE_OUROBOROS_OPERATOR_API_TOKEN;
+
+function runtimeFetch(input: string, init?: RequestInit): Promise<Response> {
+  if (!operatorApiToken) {
+    return init ? fetch(input, init) : fetch(input);
+  }
+  const headers = new Headers(init?.headers);
+  headers.set("x-ouroboros-operator-token", operatorApiToken);
+  return fetch(input, {
+    ...init,
+    headers
+  });
+}
 
 export async function fetchCandidateSummaries(): Promise<CandidateSummaryReadModel[]> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/candidates`);
   if (!response.ok) {
     throw new Error(`Failed to load candidates: ${response.status}`);
   }
@@ -38,7 +51,7 @@ export async function fetchCandidateSummaries(): Promise<CandidateSummaryReadMod
 }
 
 export async function fetchCandidate(candidateId: string): Promise<CandidateInspectReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/candidates/${candidateId}`);
   if (!response.ok) {
     throw new Error(`Failed to load candidate ${candidateId}: ${response.status}`);
   }
@@ -50,7 +63,7 @@ export async function fetchCandidateMaterializationAttempts(): Promise<Candidate
 }
 
 export async function fetchTradingExecutionModeContracts(): Promise<TradingSystemExecutionModeContractReadModel[]> {
-  const response = await fetch(`${runtimeBaseUrl}/api/trading-system/execution-mode-contracts`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/trading-system/execution-mode-contracts`);
   if (!response.ok) {
     throw new Error(`Failed to load trading-system execution mode contracts: ${response.status}`);
   }
@@ -61,7 +74,7 @@ export async function fetchTradingExecutionModeContracts(): Promise<TradingSyste
 }
 
 export async function fetchTradingGatewayEnvironment(): Promise<TradingGatewayEnvironmentReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/gateway/environment`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/gateway/environment`);
   if (!response.ok) {
     throw new Error(`Failed to load trading gateway environment: ${response.status}`);
   }
@@ -125,7 +138,7 @@ export async function fetchCandidateArena(): Promise<CandidateArenaReadModel> {
 }
 
 export async function fetchOperatorReadModel(): Promise<OperatorReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/operator`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/operator`);
   if (!response.ok) {
     throw new Error(`Failed to load Ouroboros operator: ${response.status}`);
   }
@@ -217,7 +230,7 @@ export async function selectResearcherProvider(provider: "codex" | "fixture"): P
 export async function submitOuroborosCommand(
   request: OuroborosCommandRequest
 ): Promise<{ operator: OperatorReadModel; result?: unknown }> {
-  const response = await fetch(`${runtimeBaseUrl}/api/commands`, {
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/commands`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(request.payload ? request : { command_kind: request.command_kind })
@@ -256,7 +269,7 @@ function formatOuroborosCommandError(
 }
 
 export async function fetchReplayRunEvidence(candidateId: string): Promise<ReplayRunEvidenceReadModel[]> {
-  const response = await fetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs?limit=5`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/candidates/${candidateId}/replay-runs?limit=5`);
   if (!response.ok) {
     throw new Error(`Failed to load replay runs for ${candidateId}: ${response.status}`);
   }
@@ -268,7 +281,7 @@ export async function fetchReplayRunDetail(
   candidateId: string,
   runId: string
 ): Promise<ReplayRunDetailReadModel> {
-  const response = await fetch(`${runtimeBaseUrl}/api/replay-runs/${runId}?candidate_id=${encodeURIComponent(candidateId)}`);
+  const response = await runtimeFetch(`${runtimeBaseUrl}/api/replay-runs/${runId}?candidate_id=${encodeURIComponent(candidateId)}`);
   if (!response.ok) {
     throw new Error(`Failed to load replay run ${runId} for ${candidateId}: ${response.status}`);
   }
@@ -281,7 +294,7 @@ export async function fetchReplayRunComparison(
   runId: string,
   baselineRunId: string
 ): Promise<ReplayRunComparisonReadModel> {
-  const response = await fetch(
+  const response = await runtimeFetch(
     `${runtimeBaseUrl}/api/replay-runs/${runId}/comparison?candidate_id=${encodeURIComponent(candidateId)}&baseline_run_id=${encodeURIComponent(baselineRunId)}`
   );
   if (!response.ok) {
@@ -298,7 +311,7 @@ export async function fetchReplayRunValidationState(
 ): Promise<ReplayRunValidationStateReadModel> {
   const query = baselineRunId ? `?baseline_run_id=${encodeURIComponent(baselineRunId)}` : "";
   const separator = query ? "&" : "?";
-  const response = await fetch(
+  const response = await runtimeFetch(
     `${runtimeBaseUrl}/api/replay-runs/${runId}/validation-state${query}${separator}candidate_id=${encodeURIComponent(candidateId)}`
   );
   if (!response.ok) {
@@ -444,7 +457,7 @@ export interface PrivateReadinessPostureCommandOutcome {
 }
 
 export interface ReplayRunCommandPayload {
-  runner_kind: "host_process";
+  runner_kind?: "docker_sandboxes_sbx" | "host_process";
 }
 
 export interface ReplayRunOutcome {
@@ -704,7 +717,7 @@ export async function recordPrivateReadinessPosture(
 
 export function replayRunPayload(): ReplayRunCommandPayload {
   return {
-    runner_kind: "host_process"
+    runner_kind: "docker_sandboxes_sbx"
   };
 }
 

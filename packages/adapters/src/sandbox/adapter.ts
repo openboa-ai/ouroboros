@@ -355,7 +355,7 @@ export class DeterministicSandboxAdapter implements SandboxAdapter {
       cwd: REPO_ROOT,
       detached: true,
       stdio: "ignore",
-      env: input.env ? { ...process.env, ...input.env } : process.env
+      env: sandboxRuntimeProcessEnv(input.env)
     });
     let spawnError: Error | undefined;
     const spawnErrorSignal = new Promise<never[]>((resolve) => {
@@ -457,6 +457,7 @@ export class DockerSandboxesSbxSandboxAdapter implements SandboxAdapter {
   ) {}
 
   async startArtifactInstance(input: SandboxAdapterStartInput): Promise<SandboxAdapterStartResult> {
+    assertSafeSbxSandboxName(input.sandbox_name);
     const createdAt = input.created_at;
     const placement = sandboxPlacement(input.sandbox_placement_id);
     const artifactPath = artifactEntrypointPath(input.artifact);
@@ -1196,7 +1197,51 @@ function instanceIdFor(instance: SandboxRecord | SandboxDetailReadModel): string
 }
 
 function sandboxNameFor(instance: SandboxRecord | SandboxDetailReadModel): string {
+  assertSafeSbxSandboxName(instance.sandbox_name);
   return instance.sandbox_name;
+}
+
+function assertSafeSbxSandboxName(value: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(value)) {
+    throw new Error("invalid_sbx_sandbox_name");
+  }
+}
+
+function sandboxRuntimeProcessEnv(overrides: SandboxRuntimeEnv | undefined): NodeJS.ProcessEnv {
+  return stripUndefinedEnv({
+    ...baseProcessEnv(),
+    ...overrides
+  });
+}
+
+function sandboxToolProcessEnv(overrides: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+  const env = baseProcessEnv();
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && (key.startsWith("SBX_") || key.startsWith("OUROBOROS_SBX_") || key.startsWith("OUROBOROS_SDX_"))) {
+      env[key] = value;
+    }
+  }
+  return stripUndefinedEnv({
+    ...env,
+    ...overrides
+  });
+}
+
+function baseProcessEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "PATHEXT"]) {
+    const value = process.env[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function stripUndefinedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
 }
 
 function stdoutLines(stdout: string): string[] {
@@ -1231,7 +1276,7 @@ function runDeterministicFixtureCommand(input: {
         encoding: "utf8",
         timeout: input.timeoutMs,
         maxBuffer: 1024 * 1024,
-        env: input.env ? { ...process.env, ...input.env } : process.env
+        env: sandboxRuntimeProcessEnv(input.env)
       },
       (error, stdout, stderr) => {
         const completedAt = new Date().toISOString();
@@ -1477,7 +1522,7 @@ function runCommand(
           encoding: "utf8",
           timeout: timeoutMs,
           maxBuffer: 1024 * 1024,
-          env: envOverrides ? { ...process.env, ...envOverrides } : process.env
+          env: sandboxToolProcessEnv(envOverrides)
         },
         (error, stdout, stderr) => {
           const completedAt = new Date().toISOString();

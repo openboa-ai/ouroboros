@@ -9,6 +9,8 @@ import type {
   TradingProviderRequestLog
 } from "./types";
 
+const MAX_REPLAY_PROVIDER_BODY_BYTES = 64 * 1024;
+
 export const defaultReplayTradingScenario: ReplayTradingScenario = {
   id: "trend_long",
   description: "Trend-following replay regime where fast average is above slow average.",
@@ -76,9 +78,19 @@ export async function startReplayTradingApiProvider(
 ): Promise<ReplayTradingApiProviderSession> {
   const requestLog: TradingProviderRequestLog[] = [];
   const server = http.createServer(async (request, response) => {
-    const body = await readJsonBody(request);
     const path = request.url ?? "/";
     const method = request.method ?? "GET";
+    let body: unknown;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        sendJson(response, 413, { error: "request_body_too_large" });
+        requestLog.push(logRequest(method, path, undefined, 413));
+        return;
+      }
+      throw error;
+    }
 
     if (method === "GET" && path === "/market/snapshot") {
       sendJson(response, 200, scenario.market);
@@ -174,8 +186,14 @@ function isOrderRequest(value: unknown): value is OrderRequest {
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > MAX_REPLAY_PROVIDER_BODY_BYTES) {
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString("utf8").trim();
   if (!raw) {
@@ -185,6 +203,13 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
     return JSON.parse(raw);
   } catch {
     return { malformed_json: raw };
+  }
+}
+
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super("request_body_too_large");
+    this.name = "RequestBodyTooLargeError";
   }
 }
 

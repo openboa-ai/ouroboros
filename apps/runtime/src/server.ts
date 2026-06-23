@@ -1,8 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type {
   CandidateSummaryReadModel,
   ReplayRunEvidenceReadModel,
@@ -112,6 +112,8 @@ export interface BuildServerOptions {
   ) => Promise<ReplayTradingApiProviderSession>;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
+  operatorApiToken?: string | false;
+  operatorCorsOrigins?: readonly string[];
 }
 
 interface CreateEvaluationRunBody {
@@ -273,14 +275,30 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     await paperTradingCommandService.stopAllSessions();
   });
 
+  const operatorApiToken = resolveOperatorApiToken(options.operatorApiToken, process.env);
+  const operatorCorsOrigins = resolveOperatorCorsOrigins(options.operatorCorsOrigins, process.env);
   await server.register(cors, {
-    origin: true,
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      callback(null, isAllowedOperatorCorsOrigin(origin, operatorCorsOrigins));
+    },
+    methods: ["GET", "POST"],
+    allowedHeaders: ["authorization", "content-type", "x-ouroboros-operator-token"]
   });
   await server.register(rateLimit, {
     max: 600,
     timeWindow: "1 minute"
   });
+  const operatorApiAuthPreHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const authorization = authorizeOperatorApiRequest(request.headers, operatorApiToken);
+    if (authorization.authorized) {
+      return;
+    }
+    return reply.code(authorization.statusCode).send({
+      error: authorization.error,
+      message: authorization.message,
+      authority_status: "not_live"
+    });
+  };
   const filesystemReadRateLimit = {
     config: {
       rateLimit: {
@@ -411,17 +429,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         }
       };
     }
-    if (runnerKind === "docker_sandboxes_sbx" && !isSbxRuntimeEnabled()) {
-      return {
-        statusCode: 422,
-        body: {
-          error: "replay_run_rejected",
-          reason: "docker_sandboxes_sbx_runtime_disabled",
-          candidate_id: candidateId
-        }
-      };
-    }
-
     const scenarioIds = parseReplayRunScenarioIds(body.scenario_ids);
     if (!scenarioIds) {
       return {
@@ -638,6 +645,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         statusCode: 422,
         body: sandboxError({
           reason: "docker_sandboxes_sbx_runtime_disabled",
+          idempotencyKey: body.idempotency_key
+        })
+      };
+    }
+    if (body.sandbox_name !== undefined && !isSafeSandboxName(body.sandbox_name)) {
+      return {
+        statusCode: 422,
+        body: sandboxError({
+          reason: "invalid_sandbox_name",
           idempotencyKey: body.idempotency_key
         })
       };
@@ -1131,10 +1147,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       tradingGatewayEnvironment,
       storeRoot: store.root(),
       filesystemReadRateLimit,
-      commandMutationRateLimit
+      commandMutationRateLimit,
+      operatorApiAuthPreHandler
     }),
     registerResourceControllerRoutes({
       filesystemReadRateLimit,
+      operatorApiAuthPreHandler,
       readOrderFillLatest,
       readPublicMarketLatest,
       readPrivateReadinessLatest,
@@ -1156,6 +1174,116 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   ]);
 
   return server;
+}
+
+function resolveOperatorApiToken(
+  configuredToken: string | false | undefined,
+  env: NodeJS.ProcessEnv
+): string | false | undefined {
+  if (configuredToken === false) {
+    return false;
+  }
+  const token = stringValue(configuredToken) ?? stringValue(env.OUROBOROS_OPERATOR_API_TOKEN);
+  if (token) {
+    return token;
+  }
+  return false;
+}
+
+function resolveOperatorCorsOrigins(
+  configuredOrigins: readonly string[] | undefined,
+  env: NodeJS.ProcessEnv
+): Set<string> {
+  const origins = new Set<string>();
+  for (const origin of configuredOrigins ?? []) {
+    const value = stringValue(origin);
+    if (value) {
+      origins.add(value);
+    }
+  }
+  for (const origin of (env.OUROBOROS_OPERATOR_CORS_ORIGINS ?? "").split(",")) {
+    const value = stringValue(origin);
+    if (value) {
+      origins.add(value);
+    }
+  }
+  return origins;
+}
+
+function isAllowedOperatorCorsOrigin(origin: string | undefined, explicitOrigins: Set<string>): boolean {
+  if (!origin) {
+    return true;
+  }
+  if (explicitOrigins.has(origin)) {
+    return true;
+  }
+  try {
+    const parsed = new URL(origin);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      ["127.0.0.1", "::1", "[::1]", "localhost"].includes(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function authorizeOperatorApiRequest(
+  headers: Record<string, string | string[] | undefined>,
+  expectedToken: string | false | undefined
+): {
+  authorized: boolean;
+  statusCode: 200 | 401 | 503;
+  error?: string;
+  message?: string;
+} {
+  if (expectedToken === false) {
+    return { authorized: true, statusCode: 200 };
+  }
+  if (!expectedToken) {
+    return {
+      authorized: false,
+      statusCode: 503,
+      error: "operator_api_token_not_configured",
+      message: "Set OUROBOROS_OPERATOR_API_TOKEN before exposing the runtime operator API."
+    };
+  }
+  const suppliedToken = operatorApiTokenFromHeaders(headers);
+  if (suppliedToken && constantTimeStringEqual(suppliedToken, expectedToken)) {
+    return { authorized: true, statusCode: 200 };
+  }
+  return {
+    authorized: false,
+    statusCode: 401,
+    error: "operator_api_unauthorized",
+    message: "A valid operator API token is required."
+  };
+}
+
+function operatorApiTokenFromHeaders(headers: Record<string, string | string[] | undefined>): string | undefined {
+  const headerToken = stringHeader(headers["x-ouroboros-operator-token"]);
+  if (headerToken) {
+    return headerToken;
+  }
+  const authorization = stringHeader(headers.authorization);
+  const bearerPrefix = "Bearer ";
+  return authorization?.startsWith(bearerPrefix)
+    ? stringValue(authorization.slice(bearerPrefix.length))
+    : undefined;
+}
+
+function stringHeader(value: string | string[] | undefined): string | undefined {
+  return stringValue(Array.isArray(value) ? value[0] : value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function constantTimeStringEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function commandPayloadId(payload: Record<string, unknown> | undefined, key: string): string {
@@ -1304,6 +1432,10 @@ function isSbxRuntimeEnabled(): boolean {
     process.env.OUROBOROS_SANDBOX_ADAPTER === "docker_sandboxes_sbx";
 }
 
+function isSafeSandboxName(value: unknown): value is string {
+  return typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(value);
+}
+
 function isNonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) >= 0;
 }
@@ -1388,11 +1520,11 @@ function pathFromEvents(eventsPath: string): string {
 }
 
 function parseReplayRunRunnerKind(value: string | undefined): TradingArtifactRunnerKind | undefined {
-  if (!value || value === "host" || value === "host_process") {
-    return "host_process";
-  }
-  if (value === "sbx" || value === "sdx" || value === "docker_sandboxes_sbx") {
+  if (!value || value === "sbx" || value === "sdx" || value === "docker_sandboxes_sbx") {
     return "docker_sandboxes_sbx";
+  }
+  if (value === "host" || value === "host_process") {
+    return "host_process";
   }
   return undefined;
 }
