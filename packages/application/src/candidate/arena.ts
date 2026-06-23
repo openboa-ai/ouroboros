@@ -20,6 +20,7 @@ import type {
   ExperimentRunRecord,
   PaperTradingBoardBlockerDensityReadModel,
   PaperTradingBoardTrendReadModel,
+  PaperTradingEvaluationRecord,
   PaperTradingMarketSnapshotSummary,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
@@ -460,6 +461,17 @@ async function sourceCandidate(
   source_candidate: CandidateArenaTickSourceReadModel;
 }> {
   if (!sourceSystemId && !sourceCandidateVersionId) {
+    const paperLeader = await latestPaperTradingEvaluationLeader(store);
+    if (paperLeader) {
+      return {
+        candidate: paperLeader.candidate,
+        source_candidate: candidateArenaTickSource(
+          paperLeader.candidate,
+          "paper_trading_evaluation_leader",
+          paperLeader.evaluation.latest_score
+        )
+      };
+    }
     const leader = await latestEvaluatedArenaLeader(store);
     if (leader) {
       return {
@@ -487,9 +499,10 @@ async function sourceCandidate(
 
 function candidateArenaTickSource(
   candidate: CandidateInspectReadModel,
-  sourceKind: CandidateArenaTickSourceKind
+  sourceKind: CandidateArenaTickSourceKind,
+  sourceProfitLoss?: TradingProfitLossReadModel
 ): CandidateArenaTickSourceReadModel {
-  const profitLoss = candidate.full_cycle_lineage?.evidence?.profit_loss;
+  const profitLoss = sourceProfitLoss ?? candidate.full_cycle_lineage?.evidence?.profit_loss;
   return {
     source_kind: sourceKind,
     candidate_id: candidate.candidate_id,
@@ -497,6 +510,37 @@ function candidateArenaTickSource(
     ...(profitLoss ? { net_revenue_usdt: profitLoss.net_revenue_usdt } : {}),
     authority_status: "not_live"
   };
+}
+
+async function latestPaperTradingEvaluationLeader(
+  store: OuroborosStorePort
+): Promise<{ candidate: CandidateInspectReadModel; evaluation: PaperTradingEvaluationRecord } | undefined> {
+  const candidates = await Promise.all(
+    (await store.listPaperTradingEvaluations())
+      .filter((evaluation) =>
+        (evaluation.status === "running" || evaluation.status === "stopped") &&
+        evaluation.observation_count > 0
+      )
+      .map(async (evaluation) => ({
+        evaluation,
+        candidate: await store.getCandidate(evaluation.candidate_ref.id)
+      }))
+  );
+  return candidates
+    .filter((entry): entry is {
+      candidate: CandidateInspectReadModel;
+      evaluation: PaperTradingEvaluationRecord;
+    } =>
+      Boolean(entry.candidate?.system_code?.ref) &&
+      entry.candidate?.candidate_version.candidate_version_id === entry.evaluation.candidate_version_ref.id
+    )
+    .sort((left, right) =>
+      right.evaluation.latest_score.net_revenue_usdt - left.evaluation.latest_score.net_revenue_usdt ||
+      right.evaluation.latest_score.net_return_pct - left.evaluation.latest_score.net_return_pct ||
+      right.evaluation.observation_count - left.evaluation.observation_count ||
+      left.evaluation.candidate_ref.id.localeCompare(right.evaluation.candidate_ref.id) ||
+      left.evaluation.paper_trading_evaluation_id.localeCompare(right.evaluation.paper_trading_evaluation_id)
+    )[0];
 }
 
 async function latestEvaluatedArenaLeader(

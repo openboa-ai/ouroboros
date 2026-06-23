@@ -5865,7 +5865,12 @@ function isCandidateArenaTickStatus(value: unknown): boolean {
 }
 
 function isCandidateArenaTickSourceKind(value: unknown): boolean {
-  return value === "fixture_seed" || value === "evaluated_arena_leader" || value === "explicit_candidate";
+  return (
+    value === "fixture_seed" ||
+    value === "evaluated_arena_leader" ||
+    value === "paper_trading_evaluation_leader" ||
+    value === "explicit_candidate"
+  );
 }
 
 function isCandidateArenaTickSource(value: unknown): boolean {

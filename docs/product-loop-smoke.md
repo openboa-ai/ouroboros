@@ -126,9 +126,11 @@ Check the Candidate Arena side rail:
 - `Arena runner` shows `running` or `stopped` with the tick count from `GET /api/operator`.
 - `Latest ticks` shows the last tick status, generated count, `Source`, directions, and research
   efficiency.
-- `Source` must read `fixture_seed`, `evaluated_arena_leader`, or `explicit_candidate`; an
-  `evaluated_arena_leader` source proves the next CandidateArena generation used the current
-  leaderboard leader instead of restarting from the fixture seed.
+- `Source` must read `fixture_seed`, `evaluated_arena_leader`,
+  `paper_trading_evaluation_leader`, or `explicit_candidate`; a
+  `paper_trading_evaluation_leader` source proves the next CandidateArena generation used the
+  current paper TradingEvaluation leader instead of restarting from the fixture seed or only the
+  replay leaderboard.
 - The Desktop app, CLI, TUI, and Web surface expose the same evidence as `Latest tick source` from
   the shared runtime/store-backed session data, so every operator surface can verify the same
   running loop without importing runtime internals.
