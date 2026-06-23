@@ -517,12 +517,6 @@ async function latestPaperTradingEvaluationLeader(
 ): Promise<{ candidate: CandidateInspectReadModel; evaluation: PaperTradingEvaluationRecord } | undefined> {
   const latestEvaluationByCandidate = new Map<string, PaperTradingEvaluationRecord>();
   for (const evaluation of await store.listPaperTradingEvaluations()) {
-    if (
-      (evaluation.status !== "running" && evaluation.status !== "stopped") ||
-      evaluation.observation_count <= 0
-    ) {
-      continue;
-    }
     const previous = latestEvaluationByCandidate.get(evaluation.candidate_ref.id);
     if (!previous || comparePaperTradingEvaluationRecency(previous, evaluation) <= 0) {
       latestEvaluationByCandidate.set(evaluation.candidate_ref.id, evaluation);
@@ -530,6 +524,10 @@ async function latestPaperTradingEvaluationLeader(
   }
   const candidates = await Promise.all(
     [...latestEvaluationByCandidate.values()]
+      .filter((evaluation) =>
+        (evaluation.status === "running" || evaluation.status === "stopped") &&
+        evaluation.observation_count > 0
+      )
       .map(async (evaluation) => ({
         evaluation,
         candidate: await store.getCandidate(evaluation.candidate_ref.id)

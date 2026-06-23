@@ -470,6 +470,82 @@ describe("CandidateArena paper evidence context", () => {
     expect(secondTick?.source_candidate?.candidate_id).not.toBe(staleHighCandidate.candidate_id);
   });
 
+  it("does not revive a stale paper score when a candidate's latest evaluation is failed", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "paper-source-latest-failed-tick-1",
+      directions: ["trend_following", "mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const staleHighCandidate = await store.getCandidate(first.created_candidate_ids[0]!);
+    const currentLeader = await store.getCandidate(first.created_candidate_ids[1]!);
+    if (!staleHighCandidate || !currentLeader) {
+      throw new Error("paper source candidates missing");
+    }
+
+    await seedPaperTradingEvidence(store, staleHighCandidate, {
+      evaluationId: "paper-source-stale-before-failed",
+      startedAt: "2026-05-15T00:00:00.000Z",
+      status: "stopped",
+      latestScore: {
+        revenue_usdt: 50,
+        cost_usdt: 1,
+        net_revenue_usdt: 49,
+        net_return_pct: 0.49
+      }
+    });
+    await seedPaperTradingEvidence(store, staleHighCandidate, {
+      evaluationId: "paper-source-latest-failed",
+      startedAt: "2026-05-16T00:00:00.000Z",
+      status: "failed",
+      observationStatus: "failed",
+      failureReason: "candidate crashed during paper observation",
+      latestScore: {
+        revenue_usdt: 0,
+        cost_usdt: 0,
+        net_revenue_usdt: 0,
+        net_return_pct: 0
+      }
+    });
+    await seedPaperTradingEvidence(store, currentLeader, {
+      evaluationId: "paper-source-current-after-failed",
+      startedAt: "2026-05-16T00:01:00.000Z",
+      latestScore: {
+        revenue_usdt: 14,
+        cost_usdt: 1,
+        net_revenue_usdt: 13,
+        net_return_pct: 0.13
+      }
+    });
+
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "paper-source-latest-failed-tick-2",
+      directions: ["execution_cost_robustness"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const secondTick = second.arena.latest_ticks.find((entry) => entry.tick_id === second.tick_id);
+
+    expect(secondTick).toMatchObject({
+      source_candidate: {
+        source_kind: "paper_trading_evaluation_leader",
+        candidate_id: currentLeader.candidate_id,
+        net_revenue_usdt: 13,
+        authority_status: "not_live"
+      }
+    });
+    expect(secondTick?.source_candidate?.candidate_id).not.toBe(staleHighCandidate.candidate_id);
+  });
+
   it("clusters findings for the next ResearchWorker by direction, blocker, market regime, and protocol failure", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
