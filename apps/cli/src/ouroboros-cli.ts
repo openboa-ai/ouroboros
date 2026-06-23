@@ -82,6 +82,7 @@ export async function runOuroborosCli(
   deps: {
     fetch?: FetchLike;
     runtimeBaseUrl?: string;
+    operatorApiToken?: string | false;
     storeRoot?: string;
     profileExecFile?: AgentProfileExecFile;
     profileSpawnFile?: AgentProfileSpawnFile;
@@ -112,7 +113,8 @@ export async function runOuroborosCli(
     const tui = await import("@ouroboros/operator-tui");
     await tui.runOperatorTui({
       runtimeBaseUrl: deps.runtimeBaseUrl ?? DEFAULT_RUNTIME_BASE_URL,
-      fetch: deps.fetch ?? fetch
+      fetch: deps.fetch ?? fetch,
+      operatorApiToken: deps.operatorApiToken
     });
     return { exitCode: 0, stdout: "", stderr: "" };
   }
@@ -141,8 +143,10 @@ export async function runOuroborosCli(
   }
 
   const runtimeBaseUrl = deps.runtimeBaseUrl ?? DEFAULT_RUNTIME_BASE_URL;
+  const fetcher = deps.fetch ?? fetch;
+  const operatorApiToken = resolveOperatorApiToken(deps.operatorApiToken);
   if (parsed.mode === "status") {
-    const operator = await fetchOperatorStatus(runtimeBaseUrl, deps.fetch ?? fetch);
+    const operator = await fetchOperatorStatus(runtimeBaseUrl, fetcher, operatorApiToken);
     if (operator.exitCode !== 0) {
       return operator;
     }
@@ -162,11 +166,11 @@ export async function runOuroborosCli(
 
   let response: Response;
   try {
-    response = await (deps.fetch ?? fetch)(`${runtimeBaseUrl}/api/commands`, {
+    response = await runtimeFetch(fetcher, `${runtimeBaseUrl}/api/commands`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(commandRequestBody(parsed.request))
-    });
+    }, operatorApiToken);
   } catch (error) {
     return {
       exitCode: 1,
@@ -304,11 +308,12 @@ export function parseOuroborosCliArgs(args: string[]): OuroborosCliMode {
 
 async function fetchOperatorStatus(
   runtimeBaseUrl: string,
-  fetcher: FetchLike
+  fetcher: FetchLike,
+  operatorApiToken?: string
 ): Promise<OuroborosCliResult & { operator?: OperatorReadModel }> {
   let response: Response;
   try {
-    response = await fetcher(`${runtimeBaseUrl}/api/operator`);
+    response = await runtimeFetch(fetcher, `${runtimeBaseUrl}/api/operator`, undefined, operatorApiToken);
   } catch (error) {
     return {
       exitCode: 1,
@@ -763,6 +768,35 @@ function formatCommandHttpError(text: string): string {
   } catch {
     return text;
   }
+}
+
+function runtimeFetch(
+  fetcher: FetchLike,
+  input: string,
+  init: RequestInit | undefined,
+  operatorApiToken: string | undefined
+): Promise<Response> {
+  if (!operatorApiToken) {
+    return init ? fetcher(input, init) : fetcher(input);
+  }
+  const headers = new Headers(init?.headers);
+  headers.set("x-ouroboros-operator-token", operatorApiToken);
+  return fetcher(input, {
+    ...init,
+    headers
+  });
+}
+
+function resolveOperatorApiToken(configuredToken: string | false | undefined): string | undefined {
+  if (configuredToken === false) {
+    return undefined;
+  }
+  return trimmedString(configuredToken) ?? trimmedString(process.env.OUROBOROS_OPERATOR_API_TOKEN);
+}
+
+function trimmedString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 function formatUsdt(value: number): string {

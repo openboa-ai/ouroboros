@@ -291,10 +291,7 @@ async function ensureConfiguredProfile(
 const defaultExecFileRunner: AgentProfileExecFile = async (file, args, options) => {
   const result = await execFileAsync(file, args, {
     cwd: options?.cwd,
-    env: {
-      ...process.env,
-      ...options?.env
-    },
+    env: managedChildProcessEnv(options?.env),
     maxBuffer: options?.maxBuffer,
     timeout: options?.timeout
   });
@@ -308,10 +305,7 @@ const defaultSpawnFile: AgentProfileSpawnFile = async (file, args, options) => {
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: options?.cwd,
-      env: {
-        ...process.env,
-        ...options?.env
-      },
+      env: managedChildProcessEnv(options?.env),
       stdio: "inherit"
     });
     child.once("error", reject);
@@ -320,3 +314,19 @@ const defaultSpawnFile: AgentProfileSpawnFile = async (file, args, options) => {
     });
   });
 };
+
+function managedChildProcessEnv(overrides: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "PATHEXT"]) {
+    const value = process.env[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return Object.fromEntries(
+    Object.entries({
+      ...env,
+      ...overrides
+    }).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+}

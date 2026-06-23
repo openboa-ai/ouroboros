@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { CodexTradingResearchAgentAdapter } from "./agent-adapters";
 import {
   DockerSandboxesSbxTradingArtifactRunner,
+  HostTradingArtifactRunner,
   readTradingSystemManifest,
   type TradingArtifactRunner
 } from "./artifact-runner";
@@ -201,10 +202,13 @@ function timestampId(date: Date): string {
 }
 
 function artifactRunnerFor(kind: TradingArtifactRunnerKind | undefined): TradingArtifactRunner | undefined {
-  if (!kind || kind === "host_process") {
-    return undefined;
+  if (!kind || kind === "docker_sandboxes_sbx") {
+    return new DockerSandboxesSbxTradingArtifactRunner();
   }
-  return new DockerSandboxesSbxTradingArtifactRunner();
+  if (kind === "host_process") {
+    return new HostTradingArtifactRunner();
+  }
+  return undefined;
 }
 
 function parseCliArgs(args: string[]): RunTradingResearchLoopInput & {

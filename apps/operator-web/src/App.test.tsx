@@ -4833,7 +4833,7 @@ describe("CandidateDetail", () => {
     const payload = replayRunPayload();
 
     expect(payload).toEqual({
-      runner_kind: "host_process"
+      runner_kind: "docker_sandboxes_sbx"
     });
     expect(JSON.stringify(payload)).not.toMatch(/exchange_credentials|live_order|paper_order|broker|provider_api_key/i);
   });

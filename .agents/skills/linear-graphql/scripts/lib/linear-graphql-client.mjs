@@ -3,6 +3,7 @@ import path from "node:path";
 
 export const DEFAULT_LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql";
 const MAX_ERROR_BODY_LENGTH = 500;
+const TEST_ENDPOINT_ENV = "LINEAR_ALLOW_TEST_GRAPHQL_ENDPOINT";
 
 export async function resolveLinearApiKey(options = {}) {
   const env = options.env ?? process.env;
@@ -33,6 +34,10 @@ export async function executeLinearGraphql(input) {
   const validation = validateGraphqlInput(input.query, variables);
   if (!validation.success) {
     return validation;
+  }
+  const endpointValidation = validateLinearEndpoint(endpoint, apiKey, input.env ?? process.env);
+  if (!endpointValidation.success) {
+    return endpointValidation;
   }
 
   try {
@@ -77,6 +82,29 @@ export async function executeLinearGraphql(input) {
       reason: error instanceof Error ? error.message : String(error)
     });
   }
+}
+
+function validateLinearEndpoint(endpoint, apiKey, env) {
+  let parsed;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    return failure("invalid_linear_graphql_endpoint", "Linear GraphQL endpoint must be a valid URL.");
+  }
+  if (parsed.href === DEFAULT_LINEAR_GRAPHQL_ENDPOINT) {
+    return { success: true };
+  }
+  const allowTestEndpoint = env?.[TEST_ENDPOINT_ENV] === "1" &&
+    apiKey.startsWith("test-") &&
+    parsed.protocol === "http:" &&
+    ["127.0.0.1", "localhost", "::1", "[::1]"].includes(parsed.hostname);
+  if (allowTestEndpoint) {
+    return { success: true };
+  }
+  return failure(
+    "unsafe_linear_graphql_endpoint",
+    `Refusing to send LINEAR_API_KEY to a non-Linear endpoint. Use ${TEST_ENDPOINT_ENV}=1 only with test-* tokens and loopback test servers.`
+  );
 }
 
 export function parseJsonObject(raw, label) {

@@ -191,10 +191,7 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: options.cwd,
-      env: {
-        ...process.env,
-        ...options.env
-      },
+      env: managedResearchAgentEnv(options.env),
       stdio: ["pipe", "pipe", "pipe"]
     });
     const stdout: Buffer[] = [];
@@ -275,6 +272,22 @@ const defaultExecFileRunner: ExecFileRunner = async (file, args, options = {}) =
     child.stdin.end(options.stdin ?? "");
   });
 };
+
+function managedResearchAgentEnv(overrides: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "PATHEXT"]) {
+    const value = process.env[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return Object.fromEntries(
+    Object.entries({
+      ...env,
+      ...overrides
+    }).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+}
 
 class CodexCommandError extends Error {
   constructor(

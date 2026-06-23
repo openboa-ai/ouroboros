@@ -20,7 +20,7 @@ import {
   type GatewayRuntimeBinding
 } from "../trading/gateway/runtime-binding";
 import {
-  HostTradingArtifactRunner,
+  DockerSandboxesSbxTradingArtifactRunner,
   readTradingSystemManifest
 } from "../trading/research/artifact-runner";
 import {
@@ -343,12 +343,17 @@ async function runPaperArtifact(input: {
   manifestEntrypoint: string[];
   gatewayRuntimeBinding: GatewayRuntimeBinding;
 }): Promise<ArtifactRunResult> {
-  const provider = await startPaperTradingApiProvider(input.gatewayRuntimeBinding).catch((error) => {
+  const provider = await startPaperTradingApiProvider(
+    input.gatewayRuntimeBinding,
+    sandboxPaperProviderOptions()
+  ).catch((error) => {
     const reason = error instanceof Error ? error.message : "binance_public_market_unavailable";
     throw new Error(`binance_public_market_snapshot_unavailable:${reason}`);
   });
   try {
-    return await new HostTradingArtifactRunner().run({
+    return await new DockerSandboxesSbxTradingArtifactRunner({
+      replayProviderTransport: "host_url"
+    }).run({
       artifact_dir: input.artifactDir,
       manifest: {
         id: "agent-generated-paper-trading-system",
@@ -363,6 +368,16 @@ async function runPaperArtifact(input: {
   } finally {
     await provider.close();
   }
+}
+
+function sandboxPaperProviderOptions(): {
+  listen_host: string;
+  sandbox_host: string;
+} {
+  return {
+    listen_host: process.env.OUROBOROS_TRADING_API_PROVIDER_LISTEN_HOST?.trim() || "0.0.0.0",
+    sandbox_host: process.env.OUROBOROS_TRADING_API_SANDBOX_HOST?.trim() || "host.docker.internal"
+  };
 }
 
 async function sourceResearchArtifactDir(input: {

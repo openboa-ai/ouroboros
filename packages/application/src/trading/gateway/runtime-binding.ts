@@ -19,6 +19,7 @@ import {
 } from "./validation";
 
 export const LIVE_GATEWAY_DISABLED_REASON = "live_gateway_not_enabled_in_mlp";
+const MAX_PAPER_TRADING_API_BODY_BYTES = 64 * 1024;
 
 export const PAPER_RUNTIME_REQUIRED_PUBLIC_ENDPOINTS = [
   "/fapi/v1/time",
@@ -168,9 +169,19 @@ export async function startPaperTradingApiProvider(
   const initialMarket = await initialPaperProviderMarketSnapshot(binding);
   const initialAccount = await initialPaperProviderAccountState(binding.account.state, readAccountState);
   const server = http.createServer(async (request, response) => {
-    const body = await readJsonBody(request);
     const method = request.method ?? "GET";
     const path = requestPath(request.url);
+    let body: unknown;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        sendJson(response, 413, { error: "request_body_too_large", authority_status: "not_live" });
+        pushBoundedRequestLog(requestLog, logRequest(method, path, undefined, 413), requestLogLimit);
+        return;
+      }
+      throw error;
+    }
     try {
       if (method === "GET" && path === "/market/snapshot") {
         const market = await binding.marketData.readMarketSnapshot();
@@ -339,8 +350,14 @@ function defaultPaperAccount(): AccountState {
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > MAX_PAPER_TRADING_API_BODY_BYTES) {
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString("utf8").trim();
   if (!raw) {
@@ -350,6 +367,13 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
     return JSON.parse(raw);
   } catch {
     return { malformed_json: raw };
+  }
+}
+
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super("request_body_too_large");
+    this.name = "RequestBodyTooLargeError";
   }
 }
 

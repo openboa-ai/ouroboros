@@ -28,10 +28,26 @@ export interface TradingArtifactRunner {
   run(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult>;
 }
 
+export interface HostTradingArtifactRunnerOptions {
+  allowHostExecution?: boolean;
+}
+
+export class HostTradingArtifactRunnerDisabledError extends Error {
+  constructor() {
+    super(
+      "host_trading_artifact_runner_disabled: set OUROBOROS_ALLOW_HOST_TRADING_ARTIFACT_RUNNER=1 for explicit local fixture runs"
+    );
+    this.name = "HostTradingArtifactRunnerDisabledError";
+  }
+}
+
 export class HostTradingArtifactRunner implements TradingArtifactRunner {
   readonly kind = "host_process" as const;
 
+  constructor(private readonly options: HostTradingArtifactRunnerOptions = {}) {}
+
   async run(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult> {
+    assertHostTradingArtifactRunnerAllowed(this.options);
     const eventsPath = await prepareEventsPath(input.output_dir);
     const [command, ...args] = input.manifest.entrypoint;
     if (!command) {
@@ -43,10 +59,9 @@ export class HostTradingArtifactRunner implements TradingArtifactRunner {
         cwd: input.artifact_dir,
         timeout: input.timeout_ms ?? 30_000,
         maxBuffer: 5 * 1024 * 1024,
-        env: {
-          ...process.env,
+        env: minimalProcessEnv({
           TRADING_API_BASE_URL: input.provider.base_url
-        }
+        })
       });
       const events = await readEvents(eventsPath);
       return {
@@ -323,7 +338,7 @@ interface SandboxReplayProviderSidecar {
 }
 
 export async function runTradingArtifact(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult> {
-  return new HostTradingArtifactRunner().run(input);
+  return new DockerSandboxesSbxTradingArtifactRunner().run(input);
 }
 
 export async function readTradingSystemManifest(artifactDir: string): Promise<TradingSystemManifest> {
@@ -421,7 +436,7 @@ function runCommand(
         encoding: "utf8",
         timeout: timeoutMs,
         maxBuffer: 5 * 1024 * 1024,
-        env: envOverrides ? { ...process.env, ...envOverrides } : process.env
+        env: sandboxToolProcessEnv(envOverrides)
       },
       (error, stdout, stderr) => {
         const processError = error as (Error & { code?: unknown; signal?: unknown; killed?: unknown }) | null;
@@ -439,6 +454,46 @@ function runCommand(
       }
     );
   });
+}
+
+function assertHostTradingArtifactRunnerAllowed(options: HostTradingArtifactRunnerOptions): void {
+  if (options.allowHostExecution || process.env.OUROBOROS_ALLOW_HOST_TRADING_ARTIFACT_RUNNER === "1") {
+    return;
+  }
+  throw new HostTradingArtifactRunnerDisabledError();
+}
+
+function minimalProcessEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "PATHEXT"]) {
+    const value = process.env[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return stripUndefinedEnv({
+    ...env,
+    ...overrides
+  });
+}
+
+function sandboxToolProcessEnv(overrides: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+  const env = minimalProcessEnv();
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && (key.startsWith("SBX_") || key.startsWith("OUROBOROS_SBX_") || key.startsWith("OUROBOROS_SDX_"))) {
+      env[key] = value;
+    }
+  }
+  return stripUndefinedEnv({
+    ...env,
+    ...overrides
+  });
+}
+
+function stripUndefinedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
 }
 
 function exitCodeFor(error: Error & { code?: unknown }): number | null {
@@ -562,6 +617,12 @@ from socketserver import TCPServer
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+MAX_BODY_BYTES = 64 * 1024
+
+
+class RequestBodyTooLarge(Exception):
+    pass
+
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -607,9 +668,14 @@ def validate_order_request(body, market, account):
 
 
 def read_body(handler):
-    length = int(handler.headers.get("content-length", "0"))
+    try:
+        length = int(handler.headers.get("content-length", "0"))
+    except Exception:
+        length = 0
     if length <= 0:
         return None
+    if length > MAX_BODY_BYTES:
+        raise RequestBodyTooLarge()
     raw = handler.rfile.read(length).decode("utf-8").strip()
     if not raw:
         return None
@@ -643,7 +709,15 @@ def make_handler(scenario, requests_path):
             self.respond_and_log(404, {"error": "not_found"})
 
         def do_POST(self):
-            body = read_body(self)
+            try:
+                body = read_body(self)
+            except RequestBodyTooLarge:
+                self.close_connection = True
+                self.respond_and_log(413, {
+                    "error": "request_body_too_large",
+                    "authority_status": "not_live"
+                })
+                return
             if self.path == "/orders/validate":
                 validation = validate_order_request(body, scenario["market"], scenario["account"])
                 self.respond_and_log(200, validation, body)

@@ -25,6 +25,22 @@ afterEach(async () => {
 });
 
 describe("Docker Sandboxes sbx runtime adapter", () => {
+  it("rejects unsafe sbx sandbox names before invoking the sbx CLI", async () => {
+    const adapter = new DockerSandboxesSbxSandboxAdapter({
+      sbxPath: path.join(tmpDir, "missing-sbx"),
+      workspacePath: "."
+    });
+
+    await expect(adapter.startArtifactInstance({
+      artifact: clockArtifactFixture(),
+      instance_id: "sandbox-unsafe-name",
+      sandbox_name: "--help",
+      sandbox_placement_id: "sandbox-placement-unsafe-name",
+      created_at: "2026-05-10T00:00:00.000Z",
+      interval_ms: 1
+    })).rejects.toThrow("invalid_sbx_sandbox_name");
+  });
+
   it("uses documented sbx commands and captures command evidence without raw secret material", async () => {
     const commandLog = path.join(tmpDir, "commands.log");
     const fakeSbx = path.join(tmpDir, "sbx");

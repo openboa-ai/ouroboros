@@ -1,4 +1,4 @@
-import { chmod, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,8 +9,8 @@ import {
 } from "@ouroboros/application/trading/research/agent-adapters";
 import {
   DockerSandboxesSbxTradingArtifactRunner,
+  HostTradingArtifactRunner,
   readTradingSystemManifest,
-  runTradingArtifact
 } from "@ouroboros/application/trading/research/artifact-runner";
 import { evaluateTradingRun } from "@ouroboros/application/trading/research/evaluator";
 import type {
@@ -25,6 +25,11 @@ import {
   readNotebook,
   runTradingResearchLoop
 } from "@ouroboros/application/trading/research/run-trading-research";
+import {
+  createGatewayRuntimeBinding,
+  startPaperTradingApiProvider
+} from "@ouroboros/application/trading/gateway/runtime-binding";
+import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
 
@@ -47,7 +52,8 @@ describe("Trading research research loop MVP", () => {
       run_root: runRoot,
       session_id: "test-session",
       iterations: 2,
-      agent_adapter: new FixtureTradingResearchAgentAdapter()
+      agent_adapter: new FixtureTradingResearchAgentAdapter(),
+      artifact_runner: new HostTradingArtifactRunner({ allowHostExecution: true })
     });
 
     expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
@@ -108,7 +114,7 @@ describe("Trading research research loop MVP", () => {
     await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
     const manifest = await readTradingSystemManifest(artifactDir);
     const provider = await startReplayTradingApiProvider();
-    const run = await runTradingArtifact({
+    const run = await new HostTradingArtifactRunner({ allowHostExecution: true }).run({
       artifact_dir: artifactDir,
       manifest,
       provider,
@@ -143,7 +149,7 @@ describe("Trading research research loop MVP", () => {
     const flatScenario = defaultReplayTradingScenarioSet.find((scenario) => scenario.id === "range_flat");
     expect(flatScenario).toBeDefined();
     const provider = await startReplayTradingApiProvider(flatScenario);
-    const run = await runTradingArtifact({
+    const run = await new HostTradingArtifactRunner({ allowHostExecution: true }).run({
       artifact_dir: artifactDir,
       manifest,
       provider,
@@ -325,6 +331,89 @@ describe("Trading research research loop MVP", () => {
       });
     } finally {
       await provider.close();
+    }
+  });
+
+  it("rejects oversized TradingApiProvider request bodies before buffering them", async () => {
+    const replayProvider = await startReplayTradingApiProvider();
+    const paperProvider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort()
+    }));
+    const oversizedBody = JSON.stringify({ payload: "x".repeat(70 * 1024) });
+    try {
+      const replayResponse = await fetch(`${replayProvider.base_url}/orders/validate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: oversizedBody
+      });
+      const paperResponse = await fetch(`${paperProvider.base_url}/orders/validate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: oversizedBody
+      });
+
+      expect(replayResponse.status).toBe(413);
+      expect(await replayResponse.json()).toMatchObject({ error: "request_body_too_large" });
+      expect(paperResponse.status).toBe(413);
+      expect(await paperResponse.json()).toMatchObject({
+        error: "request_body_too_large",
+        authority_status: "not_live"
+      });
+    } finally {
+      await replayProvider.close();
+      await paperProvider.close();
+    }
+  });
+
+  it("rejects oversized request bodies in the sandbox-local replay sidecar", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-sidecar-body-limit");
+    const commandLog = path.join(tmpDir, "sbx-sidecar-body-limit.log");
+    const artifactDir = path.join(tmpDir, "oversized-artifact");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(path.join(artifactDir, "manifest.json"), `${JSON.stringify({
+      id: "oversized-sidecar-request",
+      name: "Oversized sidecar request",
+      entrypoint: [process.execPath, "run-artifact.mjs"],
+      editable_paths: ["run-artifact.mjs"],
+      api_contract: "trading_api_provider_v1"
+    }, null, 2)}\n`, "utf8");
+    await writeFile(path.join(artifactDir, "run-artifact.mjs"), oversizedBodyArtifactSource(), "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+
+    const provider = await startReplayTradingApiProvider();
+    try {
+      const run = await new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-sidecar-limit"
+      }).run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: path.join(tmpDir, "oversized-run")
+      });
+
+      expect(run.status).toBe("completed");
+      expect(run.events).toEqual([
+        expect.objectContaining({
+          event: "oversized_order_validation",
+          status: 413,
+          error: "request_body_too_large"
+        })
+      ]);
+      expect(run.provider_requests).toEqual([
+        expect.objectContaining({
+          method: "POST",
+          path: "/orders/validate",
+          body: null,
+          response_status: 413
+        })
+      ]);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
     }
   });
 
@@ -634,6 +723,37 @@ function replayRunForOrder(input: {
       { at: "2026-05-12T01:00:03.000Z", method: "POST", path: "/orders/validate", response_status: 200 }
     ]
   };
+}
+
+function oversizedBodyArtifactSource(): string {
+  return `import { appendFile } from "node:fs/promises";
+
+const outputIndex = process.argv.indexOf("--output-events");
+if (outputIndex === -1 || !process.argv[outputIndex + 1]) {
+  throw new Error("missing --output-events");
+}
+const outputEvents = process.argv[outputIndex + 1];
+const baseUrl = process.env.TRADING_API_BASE_URL;
+if (!baseUrl) {
+  throw new Error("missing TRADING_API_BASE_URL");
+}
+
+const response = await fetch(baseUrl + "/orders/validate", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ payload: "x".repeat(70 * 1024) })
+});
+const body = await response.json();
+await appendFile(
+  outputEvents,
+  JSON.stringify({
+    event: "oversized_order_validation",
+    status: response.status,
+    error: body.error
+  }) + "\\n",
+  "utf8"
+);
+`;
 }
 
 function fakeSbxTradingScript(): string {

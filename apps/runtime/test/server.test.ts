@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -160,6 +161,120 @@ describe("runtime canonical operator API", () => {
       }
     } finally {
       await server.close();
+    }
+  });
+
+  it("requires the operator API token for protected runtime API routes when configured", async () => {
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      operatorApiToken: "test-operator-token"
+    });
+
+    try {
+      const health = await server.inject({ method: "GET", url: "/health" });
+      expect(health.statusCode).toBe(200);
+
+      const missingToken = await server.inject({ method: "GET", url: "/api/operator" });
+      expect(missingToken.statusCode).toBe(401);
+      expect(missingToken.json()).toMatchObject({
+        error: "operator_api_unauthorized"
+      });
+
+      const validToken = await server.inject({
+        method: "GET",
+        url: "/api/operator",
+        headers: {
+          "x-ouroboros-operator-token": "test-operator-token"
+        }
+      });
+      expect(validToken.statusCode).toBe(200);
+      expect(validToken.json()).toMatchObject({
+        operator: {
+          authority_status: "not_live"
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("lets the default replay runner execute instead of rejecting sbx when the sandbox adapter gate is unset", async () => {
+    const previousEnable = process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
+    const previousAdapter = process.env.OUROBOROS_SANDBOX_ADAPTER;
+    const previousSbxBin = process.env.OUROBOROS_SBX_BIN;
+    delete process.env.OUROBOROS_ENABLE_SBX_SANDBOX;
+    delete process.env.OUROBOROS_SANDBOX_ADAPTER;
+    process.env.OUROBOROS_SBX_BIN = "/bin/false";
+
+    const promotedCandidateRoot = path.join(tmpDir, "promoted-candidates");
+    const replayRunRoot = path.join(tmpDir, "replay-runs");
+    await writePromotedCandidateBundle(promotedCandidateRoot, "candidate-default-replay");
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir),
+      promotedCandidateRoot,
+      replayRunRoot
+    });
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "candidate.replay.run",
+          payload: {
+            candidate_id: "candidate-default-replay"
+          }
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        result: {
+          run: {
+            candidate_id: "candidate-default-replay",
+            runner_kind: "docker_sandboxes_sbx",
+            run_status: "failed"
+          }
+        }
+      });
+    } finally {
+      await server.close();
+      restoreEnv("OUROBOROS_ENABLE_SBX_SANDBOX", previousEnable);
+      restoreEnv("OUROBOROS_SANDBOX_ADAPTER", previousAdapter);
+      restoreEnv("OUROBOROS_SBX_BIN", previousSbxBin);
+    }
+  });
+
+  it("keeps default local runtime API launches reachable when no operator API token is configured", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousToken = process.env.OUROBOROS_OPERATOR_API_TOKEN;
+    process.env.NODE_ENV = "production";
+    delete process.env.OUROBOROS_OPERATOR_API_TOKEN;
+
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir)
+    });
+
+    try {
+      const response = await server.inject({ method: "GET", url: "/api/operator" });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        operator: {
+          authority_status: "not_live"
+        }
+      });
+    } finally {
+      await server.close();
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+      if (previousToken === undefined) {
+        delete process.env.OUROBOROS_OPERATOR_API_TOKEN;
+      } else {
+        process.env.OUROBOROS_OPERATOR_API_TOKEN = previousToken;
+      }
     }
   });
 
@@ -1676,6 +1791,113 @@ function runningOrderThenCancelLogSandboxAdapter(orderLine: string, cancelLine: 
       };
     }
   };
+}
+
+async function writePromotedCandidateBundle(root: string, candidateId: string): Promise<void> {
+  const candidateDir = path.join(root, candidateId);
+  const artifactDir = path.join(candidateDir, "artifact");
+  await mkdir(artifactDir, { recursive: true });
+  await writeFile(path.join(artifactDir, "manifest.json"), `${JSON.stringify({
+    id: "default-replay-runner-test",
+    name: "Default replay runner test",
+    entrypoint: ["python3", "run.py"],
+    editable_paths: ["run.py"],
+    api_contract: "trading_api_provider_v1"
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(artifactDir, "run.py"), "print('not reached by /bin/false sbx')\n", "utf8");
+  const artifactDigest = await artifactDigestFor(artifactDir);
+
+  await writeFile(path.join(candidateDir, "candidate.json"), `${JSON.stringify({
+    record_kind: "trading_system_candidate",
+    version: 1,
+    candidate_id: candidateId,
+    display_name: "Default Replay Runner Candidate",
+    title: "Default replay runner candidate",
+    status: "materialized",
+    active_version_id: `${candidateId}-v1`,
+    authority_status: "not_live",
+    provenance_refs: []
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(candidateDir, "candidate-version.json"), `${JSON.stringify({
+    record_kind: "candidate_version",
+    version: 1,
+    candidate_id: candidateId,
+    candidate_version_id: `${candidateId}-v1`,
+    version_label: "v1",
+    spec_ref: { record_kind: "candidate_spec", id: `${candidateId}-spec` },
+    program_ref: { record_kind: "program", id: `${candidateId}-program` },
+    runtime_ref: { record_kind: "trading_run", id: `${candidateId}-runtime` },
+    trace_placeholder_ref: { record_kind: "trace_placeholder", id: `${candidateId}-trace` },
+    capability_package_refs: [{ record_kind: "capability_package", id: `${candidateId}-capabilities` }]
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(candidateDir, "system-code.json"), `${JSON.stringify({
+    record_kind: "system_code",
+    version: 1,
+    system_code_id: `system-code-${candidateId}`,
+    artifact_kind: "python_file",
+    artifact_path: path.join(artifactDir, "run.py"),
+    artifact_digest: artifactDigest,
+    runtime_kind: "python",
+    entrypoint: ["python3", "run.py"],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
+    },
+    authority_status: "not_live"
+  }, null, 2)}\n`, "utf8");
+  await writeFile(path.join(candidateDir, "promotion.json"), `${JSON.stringify({
+    record_kind: "trading_research_candidate_promotion",
+    version: 1,
+    promotion_id: `promotion-${candidateId}`,
+    artifact_digest: artifactDigest,
+    artifact_manifest: {
+      id: "default-replay-runner-test",
+      name: "Default replay runner test",
+      entrypoint: ["python3", "run.py"],
+      api_contract: "trading_api_provider_v1"
+    },
+    no_authority: {
+      live_exchange: false,
+      order_authority: false,
+      credentials: false,
+      paper_trading: false
+    },
+    authority_status: "not_live"
+  }, null, 2)}\n`, "utf8");
+}
+
+async function artifactDigestFor(artifactDir: string): Promise<string> {
+  const hash = createHash("sha256");
+  for (const file of await listFiles(artifactDir)) {
+    const relativePath = path.relative(artifactDir, file).split(path.sep).join("/");
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(await readFile(file));
+    hash.update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
+async function listFiles(root: string): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const pathname = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listFiles(pathname));
+    } else if (entry.isFile()) {
+      files.push(pathname);
+    }
+  }
+  return files.sort();
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }
 
 async function networklessPaperTradingApiProvider(
