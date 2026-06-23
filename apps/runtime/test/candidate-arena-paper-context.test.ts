@@ -398,6 +398,78 @@ describe("CandidateArena paper evidence context", () => {
     expect(secondCandidate?.full_cycle_lineage?.source.trading_system_id).not.toBe(FIXTURE_CANDIDATE_ID);
   });
 
+  it("ranks only each candidate's latest paper trading evaluation when choosing the next source", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "paper-source-latest-only-tick-1",
+      directions: ["trend_following", "mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const staleHighCandidate = await store.getCandidate(first.created_candidate_ids[0]!);
+    const currentLeader = await store.getCandidate(first.created_candidate_ids[1]!);
+    if (!staleHighCandidate || !currentLeader) {
+      throw new Error("paper source candidates missing");
+    }
+
+    await seedPaperTradingEvidence(store, staleHighCandidate, {
+      evaluationId: "paper-source-stale-high",
+      startedAt: "2026-05-15T00:00:00.000Z",
+      latestScore: {
+        revenue_usdt: 50,
+        cost_usdt: 1,
+        net_revenue_usdt: 49,
+        net_return_pct: 0.49
+      }
+    });
+    await seedPaperTradingEvidence(store, staleHighCandidate, {
+      evaluationId: "paper-source-current-low",
+      startedAt: "2026-05-16T00:00:00.000Z",
+      latestScore: {
+        revenue_usdt: 1,
+        cost_usdt: 2,
+        net_revenue_usdt: -1,
+        net_return_pct: -0.01
+      }
+    });
+    await seedPaperTradingEvidence(store, currentLeader, {
+      evaluationId: "paper-source-current-leader",
+      startedAt: "2026-05-16T00:01:00.000Z",
+      latestScore: {
+        revenue_usdt: 14,
+        cost_usdt: 1,
+        net_revenue_usdt: 13,
+        net_return_pct: 0.13
+      }
+    });
+
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "paper-source-latest-only-tick-2",
+      directions: ["volatility_regime"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const secondTick = second.arena.latest_ticks.find((entry) => entry.tick_id === second.tick_id);
+
+    expect(secondTick).toMatchObject({
+      source_candidate: {
+        source_kind: "paper_trading_evaluation_leader",
+        candidate_id: currentLeader.candidate_id,
+        net_revenue_usdt: 13,
+        authority_status: "not_live"
+      }
+    });
+    expect(secondTick?.source_candidate?.candidate_id).not.toBe(staleHighCandidate.candidate_id);
+  });
+
   it("clusters findings for the next ResearchWorker by direction, blocker, market regime, and protocol failure", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -580,13 +652,25 @@ async function seedPaperTradingEvidence(
   options: {
     status?: PaperTradingEvaluationRecord["status"];
     observationStatus?: PaperTradingObservationRecord["status"];
+    evaluationId?: string;
+    startedAt?: string;
+    lastObservedAt?: string;
+    latestScore?: PaperTradingEvaluationRecord["latest_score"];
     failureReason?: string;
     expectedDirection?: "long" | "short" | "flat";
     volatility?: number;
   } = {}
 ): Promise<void> {
-  const evaluationId = `paper-trading-evaluation-${candidate.candidate_id}-context`;
+  const evaluationId = options.evaluationId ?? `paper-trading-evaluation-${candidate.candidate_id}-context`;
   const tradingRunId = candidate.runtime.ref.id;
+  const startedAt = options.startedAt ?? "2026-05-16T00:00:00.000Z";
+  const lastObservedAt = options.lastObservedAt ?? "2026-05-16T00:07:00.000Z";
+  const latestScore = options.latestScore ?? {
+    revenue_usdt: 13,
+    cost_usdt: 0.66,
+    net_revenue_usdt: 12.34,
+    net_return_pct: 0.1234
+  };
   const evaluation: PaperTradingEvaluationRecord = {
     record_kind: "paper_trading_evaluation",
     version: 1,
@@ -600,15 +684,10 @@ async function seedPaperTradingEvidence(
     status: options.status ?? "running",
     interval_ms: 60_000,
     observation_count: 7,
-    started_at: "2026-05-16T00:00:00.000Z",
-    last_observed_at: "2026-05-16T00:07:00.000Z",
+    started_at: startedAt,
+    last_observed_at: lastObservedAt,
     next_observation_at: "2026-05-16T00:08:00.000Z",
-    latest_score: {
-      revenue_usdt: 13,
-      cost_usdt: 0.66,
-      net_revenue_usdt: 12.34,
-      net_return_pct: 0.1234
-    },
+    latest_score: latestScore,
     paper_account_snapshot: {
       wallet_balance_usdt: "10012.34",
       available_balance_usdt: "10012.34",
@@ -679,7 +758,7 @@ async function seedPaperTradingEvidence(
     trading_run_ref: { record_kind: "trading_run", id: tradingRunId },
     sequence: 7,
     status: options.observationStatus ?? "recorded",
-    observed_at: "2026-05-16T00:07:00.000Z",
+    observed_at: lastObservedAt,
     market_snapshot: {
       symbol: "BTCUSDT",
       price: 65_123,
@@ -716,7 +795,7 @@ async function seedPaperTradingEvidence(
       net_revenue_usdt: 0.96,
       net_return_pct: 0.0096
     },
-    cumulative_score: evaluation.latest_score,
+    cumulative_score: latestScore,
     failure_reason: options.failureReason,
     authority_status: "not_live"
   };

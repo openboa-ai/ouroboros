@@ -515,12 +515,21 @@ function candidateArenaTickSource(
 async function latestPaperTradingEvaluationLeader(
   store: OuroborosStorePort
 ): Promise<{ candidate: CandidateInspectReadModel; evaluation: PaperTradingEvaluationRecord } | undefined> {
+  const latestEvaluationByCandidate = new Map<string, PaperTradingEvaluationRecord>();
+  for (const evaluation of await store.listPaperTradingEvaluations()) {
+    if (
+      (evaluation.status !== "running" && evaluation.status !== "stopped") ||
+      evaluation.observation_count <= 0
+    ) {
+      continue;
+    }
+    const previous = latestEvaluationByCandidate.get(evaluation.candidate_ref.id);
+    if (!previous || comparePaperTradingEvaluationRecency(previous, evaluation) <= 0) {
+      latestEvaluationByCandidate.set(evaluation.candidate_ref.id, evaluation);
+    }
+  }
   const candidates = await Promise.all(
-    (await store.listPaperTradingEvaluations())
-      .filter((evaluation) =>
-        (evaluation.status === "running" || evaluation.status === "stopped") &&
-        evaluation.observation_count > 0
-      )
+    [...latestEvaluationByCandidate.values()]
       .map(async (evaluation) => ({
         evaluation,
         candidate: await store.getCandidate(evaluation.candidate_ref.id)
@@ -541,6 +550,14 @@ async function latestPaperTradingEvaluationLeader(
       left.evaluation.candidate_ref.id.localeCompare(right.evaluation.candidate_ref.id) ||
       left.evaluation.paper_trading_evaluation_id.localeCompare(right.evaluation.paper_trading_evaluation_id)
     )[0];
+}
+
+function comparePaperTradingEvaluationRecency(
+  left: PaperTradingEvaluationRecord,
+  right: PaperTradingEvaluationRecord
+): number {
+  return left.started_at.localeCompare(right.started_at) ||
+    left.paper_trading_evaluation_id.localeCompare(right.paper_trading_evaluation_id);
 }
 
 async function latestEvaluatedArenaLeader(
