@@ -64,11 +64,15 @@ describe("Operator desktop app", () => {
       };
       app?: {
         windows?: Array<{
+          label?: string;
+          create?: boolean;
           title?: string;
           width?: number;
           height?: number;
           minWidth?: number;
           minHeight?: number;
+          visible?: boolean;
+          visibleOnAllWorkspaces?: boolean;
         }>;
       };
     };
@@ -87,13 +91,19 @@ describe("Operator desktop app", () => {
       ],
       targets: ["app"]
     });
-    expect(config.app?.windows?.[0]).toMatchObject({
-      title: "Ouroboros Operator",
-      width: 1440,
-      height: 960,
-      minWidth: 1180,
-      minHeight: 760
-    });
+    expect(config.app?.windows).toEqual([
+      {
+        label: "main",
+        create: false,
+        title: "Ouroboros Operator",
+        width: 1440,
+        height: 960,
+        minWidth: 1180,
+        minHeight: 760,
+        visible: true,
+        visibleOnAllWorkspaces: true
+      }
+    ]);
   });
 
   it("documents Desktop-first operation with CLI parity and shared session data", () => {
@@ -135,6 +145,41 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain('join(".bin")');
     expect(mainRs).toContain("TcpStream::connect_timeout");
     expect(mainRs).toContain("OUROBOROS_RUNTIME_URL");
+  });
+
+  it("keeps the configured main operator window visible and foregrounded", () => {
+    const mainRs = readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "src", "main.rs"),
+      "utf8"
+    );
+    const config = JSON.parse(readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "tauri.conf.json"),
+      "utf8"
+    )) as {
+      app?: {
+        windows?: Array<{ label?: string; visible?: boolean; visibleOnAllWorkspaces?: boolean }>;
+      };
+    };
+
+    expect(mainRs).toContain("ensure_main_window(app)?");
+    expect(mainRs).toContain("ActivationPolicy::Regular");
+    expect(mainRs).toContain("#[cfg(target_os = \"macos\")]\nuse tauri::ActivationPolicy;");
+    expect(mainRs).toContain(
+      "#[cfg(target_os = \"macos\")]\n            let _ = app\n                .handle()\n                .set_activation_policy(ActivationPolicy::Regular);"
+    );
+    expect(mainRs).toContain("RunEvent::Ready");
+    expect(mainRs).toContain("MAIN_WINDOW_LABEL");
+    expect(mainRs).toContain("show_main_window(app.handle())");
+    expect(mainRs).toContain("tauri::Error::WindowNotFound");
+    expect(mainRs).toContain("WebviewWindowBuilder::from_config");
+    expect(mainRs).toContain("window.show()");
+    expect(mainRs).toContain("window.unminimize()");
+    expect(mainRs).toContain("window.set_focus()");
+    expect(config.app?.windows?.[0]).toMatchObject({
+      label: "main",
+      visible: true,
+      visibleOnAllWorkspaces: true
+    });
   });
 
   it("keeps the runtime visible from the macOS menu bar while the window is hidden", () => {
