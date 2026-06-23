@@ -858,8 +858,12 @@ function formatRuntimeFetchError(runtimeBaseUrl: string, error: unknown): string
   ].join("\n");
 }
 
-function isArenaAction(value: string | undefined): value is "status" | "start" | "stop" | "tick" {
-  return value === "status" || value === "start" || value === "stop" || value === "tick";
+function isArenaAction(value: string | undefined): value is "status" | "start" | "stop" | "tick" | "cycle" {
+  return value === "status"
+    || value === "start"
+    || value === "stop"
+    || value === "tick"
+    || value === "cycle";
 }
 
 function isAgentAction(value: string | undefined): value is "status" | "setup" | "login" | "probe" {
@@ -889,7 +893,7 @@ function usage(): string {
     "Commands:",
     "  ouroboros runtime serve",
     "  ouroboros status [--json]",
-    "  ouroboros arena status|start|stop|tick",
+    "  ouroboros arena status|start|stop|tick|cycle",
     "  ouroboros candidate select <candidate-id>",
     "  ouroboros candidate promote <candidate-id>",
     "  ouroboros candidate paper start <candidate-id>",

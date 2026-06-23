@@ -10,17 +10,21 @@ export function ArenaCommandBarSection({
   startDisabled,
   stopDisabled,
   tickDisabled,
+  cycleDisabled,
   onStart,
   onStop,
-  onTick
+  onTick,
+  onCycle
 }: {
   researchProviderSummary: string;
   startDisabled: boolean;
   stopDisabled: boolean;
   tickDisabled: boolean;
+  cycleDisabled: boolean;
   onStart?: () => void;
   onStop?: () => void;
   onTick?: () => void;
+  onCycle?: () => void;
 }) {
   return (
     <OperatorPanel aria-label="Arena command bar" className="gap-2">
@@ -37,6 +41,9 @@ export function ArenaCommandBarSection({
             </OperatorButton>
             <OperatorButton type="button" onClick={onTick} disabled={tickDisabled || !onTick} variant="outline">
               Run tick
+            </OperatorButton>
+            <OperatorButton type="button" onClick={onCycle} disabled={cycleDisabled || !onCycle} variant="outline">
+              Run cycle
             </OperatorButton>
           </>
         )}

@@ -179,6 +179,7 @@ describe("Operator TUI action console", () => {
   it("maps keyboard input to action console actions", () => {
     expect(operatorTuiActionForInput("r", {})).toBe("refresh");
     expect(operatorTuiActionForInput("t", {})).toBe("tick");
+    expect(operatorTuiActionForInput("c", {})).toBe("cycle");
     expect(operatorTuiActionForInput("s", {})).toBe("toggle_running");
     expect(operatorTuiActionForInput("m", {})).toBe("promote_trading_candidate");
     expect(operatorTuiActionForInput("e", {})).toBe("start_paper_trading");
@@ -217,6 +218,9 @@ describe("Operator TUI action console", () => {
   it("dispatches runtime commands for TUI actions", () => {
     expect(operatorTuiCommandForAction("tick", fixtureOperator(), 0)).toEqual({
       command_kind: "arena.tick"
+    });
+    expect(operatorTuiCommandForAction("cycle", fixtureOperator(), 0)).toEqual({
+      command_kind: "arena.cycle"
     });
     expect(operatorTuiCommandForAction("toggle_running", fixtureOperator(), 0)).toEqual({
       command_kind: "arena.stop"

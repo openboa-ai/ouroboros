@@ -36,6 +36,7 @@ the selected TradingSystem or change command authority.
 - `arena.start`
 - `arena.stop`
 - `arena.tick`
+- `arena.cycle`
 - `candidate.select`
 - `trading_candidate.promote`
 - `trading_run.start`
@@ -53,7 +54,7 @@ CLI, TUI, or Web UI changes:
 ```text
 status
 -> setup/provider
--> start/tick
+-> start/tick/cycle
 -> leaderboard
 -> select candidate
 -> start paper trading

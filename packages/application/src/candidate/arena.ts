@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type {
   ArtifactLineageRecord,
   CandidateArenaTickDirectionResultReadModel,
+  CandidateArenaTickPaperTradingContinuationReadModel,
   CandidateArenaTickRecord,
   CandidateArenaTickReadModel,
   CandidateArenaTickSourceKind,
@@ -97,11 +98,19 @@ export interface CandidateArenaTickOutcome {
   arena: CandidateArenaReadModel;
 }
 
+export type CandidateArenaTickContinuation = (
+  outcome: CandidateArenaTickOutcome
+) =>
+  | Promise<CandidateArenaTickPaperTradingContinuationReadModel | void>
+  | CandidateArenaTickPaperTradingContinuationReadModel
+  | void;
+
 export class CandidateArenaRunner {
   private running = false;
   private tickCount = 0;
   private loopActive = false;
   private activeTick?: Promise<CandidateArenaTickOutcome>;
+  private tickContinuation?: CandidateArenaTickContinuation;
 
   constructor(
     private input: Omit<RunCandidateArenaTickInput, "tickId">,
@@ -125,6 +134,10 @@ export class CandidateArenaRunner {
       ...this.input,
       researchAgent: agent
     };
+  }
+
+  setTickContinuation(continuation: CandidateArenaTickContinuation | undefined): void {
+    this.tickContinuation = continuation;
   }
 
   start(): "started" | "already_running" {
@@ -151,10 +164,49 @@ export class CandidateArenaRunner {
       ...this.input,
       tickId: `tick-${this.tickCount}`
     }, this.status(), this.tickCount)
+      .then((outcome) => this.applyTickContinuation(outcome))
       .finally(() => {
         this.activeTick = undefined;
       });
     return this.activeTick;
+  }
+
+  private async applyTickContinuation(outcome: CandidateArenaTickOutcome): Promise<CandidateArenaTickOutcome> {
+    const continuation = this.tickContinuation;
+    if (!continuation) {
+      return outcome;
+    }
+
+    let continuationEvidence: CandidateArenaTickPaperTradingContinuationReadModel | undefined;
+    try {
+      continuationEvidence = (await continuation(outcome)) ?? undefined;
+    } catch (error) {
+      continuationEvidence = {
+        status: "failed",
+        command_kind: "trading_run.start",
+        error: conciseError(error),
+        authority_status: "not_live"
+      };
+    }
+
+    if (!continuationEvidence) {
+      return outcome;
+    }
+
+    try {
+      await recordCandidateArenaTickPaperTradingContinuation(
+        this.input.store,
+        outcome.tick_id,
+        continuationEvidence
+      );
+    } catch {
+      return outcome;
+    }
+
+    return {
+      ...outcome,
+      arena: await buildCandidateArenaReadModel(this.input.store, this.status(), this.tickCount)
+    };
   }
 
   private loop(): void {
@@ -316,6 +368,22 @@ export async function buildCandidateArenaReadModel(
     ...arena,
     finding_clusters: arenaFindingClusters(paperEvidenceCandidates, paperTradingBoard)
   };
+}
+
+async function recordCandidateArenaTickPaperTradingContinuation(
+  store: OuroborosStorePort,
+  tickId: string,
+  continuation: CandidateArenaTickPaperTradingContinuationReadModel
+): Promise<void> {
+  const tick = (await store.listCandidateArenaTicks())
+    .find((entry) => entry.tick_id === tickId);
+  if (!tick) {
+    return;
+  }
+  await store.recordCandidateArenaTick({
+    ...tick,
+    paper_trading_continuation: continuation
+  });
 }
 
 async function runArenaDirection(input: RunCandidateArenaTickInput & {
@@ -1385,6 +1453,9 @@ function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): Candidat
     ...(tick.source_candidate ? { source_candidate: tick.source_candidate } : {}),
     created_candidate_ids: tick.created_candidate_refs.map((candidate) => candidate.id),
     direction_results: tick.direction_results,
+    ...(tick.paper_trading_continuation
+      ? { paper_trading_continuation: tick.paper_trading_continuation }
+      : {}),
     authority_status: tick.authority_status
   };
 }

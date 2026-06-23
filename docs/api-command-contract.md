@@ -20,9 +20,15 @@ CLI local controller exception for managed agent setup/login/probe.
 
 Current command groups:
 
-- `arena`: status, start, stop, tick. `arena.tick` is one research round: candidate generation,
-  research-time replay/backtest preflight, leaderboard update, findings, and lineage. It is not
-  continuous paper trading and must not be treated as final evaluation authority.
+- `arena`: status, start, stop, tick, cycle. `arena.start` starts the repeating below-authority
+  autonomous paper loop: each runner tick creates candidates, selects the highest-ranked candidate
+  created by that tick, and starts or resumes that candidate's selected continuous
+  `PaperTradingEvaluation`. `arena.tick` is one research round: candidate generation,
+  research-time replay/backtest preflight, leaderboard update, findings, and lineage. By itself it
+  is not continuous paper trading and must not be treated as final evaluation authority.
+  `arena.cycle` runs one below-authority autonomous paper cycle: execute a research tick, select
+  the highest-ranked candidate created by that tick, then start or resume its selected continuous
+  `PaperTradingEvaluation` through `trading_run.start`.
 - `candidate`: select, run candidate evaluation, run candidate replay, and compatibility paper
   evidence readback. `candidate.select` chooses one candidate for proof; primary paper evaluation
   starts through `trading_run.start`.

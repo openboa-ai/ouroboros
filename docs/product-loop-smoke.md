@@ -44,8 +44,14 @@ learn from top, negative, failed, and resume-needed paper evaluations.
 - `ouroboros status` shows the stopped arena, no selected candidate, `PaperTradingEvaluation`
   `not_started`, paper evidence `not_run`, and live authority disabled.
 - The fixture provider can be set up, probed, and selected as the researcher provider.
+- `ouroboros arena start` starts the repeating autonomous paper loop: generated candidates are
+  selected per tick and moved into selected continuous Paper Trading Evaluation through
+  `trading_run.start` until `ouroboros arena stop`.
 - `ouroboros arena tick` creates multiple candidates and the leaderboard is sorted by
   `net_revenue_usdt`.
+- `ouroboros arena cycle` runs one research tick, selects the highest-ranked candidate created by
+  that tick, and starts or resumes its selected continuous Paper Trading Evaluation through the
+  same `trading_run.start` command path.
 - `ouroboros candidate select <candidate-id>` makes the candidate explicit while paper trading is
   still `not_started`.
 - `ouroboros candidate paper start <candidate-id>` starts selected continuous paper trading.
@@ -99,6 +105,7 @@ ouroboros agent setup fixture
 ouroboros agent probe fixture
 ouroboros researcher provider set fixture
 ouroboros arena tick
+ouroboros arena cycle
 ouroboros status --json
 npm run dev:operator-web
 npm run dev:operator-desktop

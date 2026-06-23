@@ -39,6 +39,7 @@ describe("Ouroboros command registry", () => {
       "arena.start",
       "arena.stop",
       "arena.tick",
+      "arena.cycle",
       "candidate.select",
       "trading_candidate.promote",
       "trading_run.start",

@@ -16,6 +16,7 @@ describe("operator interface parity", () => {
       "arena.start",
       "arena.stop",
       "arena.tick",
+      "arena.cycle",
       "candidate.select",
       "trading_candidate.promote",
       "trading_run.start",
@@ -50,6 +51,7 @@ describe("operator interface parity", () => {
       { args: ["arena", "start"], request: { command_kind: "arena.start" } },
       { args: ["arena", "stop"], request: { command_kind: "arena.stop" } },
       { args: ["arena", "tick"], request: { command_kind: "arena.tick" } },
+      { args: ["arena", "cycle"], request: { command_kind: "arena.cycle" } },
       {
         args: ["candidate", "select", "candidate-profitable"],
         request: {
@@ -147,6 +149,9 @@ describe("operator interface parity", () => {
     expect(operatorTuiCommandForAction("refresh", runningOperator, 0)).toBeUndefined();
     expect(operatorTuiCommandForAction("tick", runningOperator, 0)).toEqual({
       command_kind: "arena.tick"
+    });
+    expect(operatorTuiCommandForAction("cycle", runningOperator, 0)).toEqual({
+      command_kind: "arena.cycle"
     });
     expect(operatorTuiCommandForAction("toggle_running", runningOperator, 0)).toEqual({
       command_kind: "arena.stop"

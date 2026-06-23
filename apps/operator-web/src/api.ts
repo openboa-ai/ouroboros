@@ -145,8 +145,12 @@ export async function tickCandidateArena(): Promise<CandidateArenaReadModel> {
   return runCandidateArenaCommand("tick");
 }
 
+export async function cycleCandidateArena(): Promise<CandidateArenaReadModel> {
+  return runCandidateArenaCommand("cycle");
+}
+
 export async function runCandidateArenaCommand(
-  command: "status" | "start" | "stop" | "tick"
+  command: "status" | "start" | "stop" | "tick" | "cycle"
 ): Promise<CandidateArenaReadModel> {
   const body = await submitOuroborosCommand({
     command_kind: `arena.${command}` as OuroborosCommandKind

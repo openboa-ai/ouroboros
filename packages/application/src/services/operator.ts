@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   OUROBOROS_COMMAND_DESCRIPTORS,
   type AgentProfileProviderKind,
+  type CandidateArenaTickPaperTradingContinuationReadModel,
   type CandidateInspectReadModel,
   type OperatorReadModel,
   type OuroborosCommandKind,
@@ -21,7 +22,11 @@ import {
   UnsupportedAgentProviderError,
   type AgentProfileExecFile
 } from "../agent/profiles";
-import { buildCandidateArenaReadModel, type CandidateArenaRunner } from "../candidate/arena";
+import {
+  buildCandidateArenaReadModel,
+  type CandidateArenaRunner,
+  type CandidateArenaTickOutcome
+} from "../candidate/arena";
 import type {
   OperatorCommandExecution,
   OperatorCommandHandlerRegistry,
@@ -194,6 +199,22 @@ export class OperatorService {
       }),
       "arena.start": async () => {
         await this.requireResearcherProviderReady();
+        this.options.candidateArenaRunner.setTickContinuation((outcome) =>
+          this.startPaperTradingForArenaCycle(outcome)
+            .then((paperCycle): CandidateArenaTickPaperTradingContinuationReadModel => ({
+              status: "started",
+              command_kind: "trading_run.start",
+              selected_candidate_id: paperCycle.selected_candidate_id,
+              authority_status: "not_live"
+            }))
+            .catch((error): CandidateArenaTickPaperTradingContinuationReadModel => ({
+              status: "failed",
+              command_kind: "trading_run.start",
+              selected_candidate_id: selectArenaCycleCandidateId(outcome),
+              error: commandErrorSummary(error),
+              authority_status: "not_live"
+            }))
+        );
         const status = this.options.candidateArenaRunner.start();
         return {
           result: {
@@ -208,6 +229,7 @@ export class OperatorService {
         };
       },
       "arena.stop": async () => {
+        this.options.candidateArenaRunner.setTickContinuation(undefined);
         const status = this.options.candidateArenaRunner.stop();
         return {
           result: {
@@ -227,6 +249,19 @@ export class OperatorService {
         return {
           result: outcome,
           summary: `Candidate Arena tick created ${outcome.created_candidate_count} candidates.`
+        };
+      },
+      "arena.cycle": async () => {
+        await this.requireResearcherProviderReady();
+        const outcome = await this.options.candidateArenaRunner.tick();
+        const paperCycle = await this.startPaperTradingForArenaCycle(outcome);
+        return {
+          result: {
+            arena_tick: outcome,
+            selected_candidate_id: paperCycle.selected_candidate_id,
+            paper_trading: paperCycle.paper_trading
+          },
+          summary: `Candidate Arena cycle created ${outcome.created_candidate_count} candidates and started Paper Trading Evaluation for ${paperCycle.selected_candidate_id}.`
         };
       },
       "candidate.select": async (payload) => {
@@ -456,6 +491,45 @@ export class OperatorService {
       summary: `${commandKind} completed.`
     };
   }
+
+  private async startPaperTradingForArenaCycle(
+    outcome: CandidateArenaTickOutcome
+  ): Promise<{ selected_candidate_id: string; paper_trading: unknown }> {
+    const candidateId = selectArenaCycleCandidateId(outcome);
+    if (!candidateId) {
+      throw new OperatorCommandError(409, "arena_cycle_candidate_required", {
+        tick_id: outcome.tick_id,
+        created_candidate_count: outcome.created_candidate_count,
+        next_action: "Fix Candidate Arena direction failures before starting Paper Trading Evaluation."
+      });
+    }
+    this.selectedCandidateId = candidateId;
+    const paperTrading = await this.executeMutationPort("trading_run.start", { candidate_id: candidateId });
+    return {
+      selected_candidate_id: candidateId,
+      paper_trading: paperTrading.result
+    };
+  }
+}
+
+function selectArenaCycleCandidateId(outcome: CandidateArenaTickOutcome): string | undefined {
+  const createdCandidateIds = new Set(outcome.created_candidate_ids);
+  return outcome.arena.leaderboard.find((entry) => createdCandidateIds.has(entry.candidate_id))?.candidate_id
+    ?? outcome.created_candidate_ids[0];
+}
+
+function commandErrorSummary(error: unknown): string {
+  if (error instanceof OperatorCommandError) {
+    const reason = error.details.reason;
+    if (typeof reason === "string" && reason.trim()) {
+      return reason;
+    }
+    return error.error;
+  }
+  if (error instanceof Error) {
+    return error.message.split("\n")[0] || error.name;
+  }
+  return String(error);
 }
 
 function parseCommandCandidateId(payload: Record<string, unknown> | undefined): string {

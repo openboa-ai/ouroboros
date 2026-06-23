@@ -151,6 +151,8 @@ export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "
 
 export type CandidateArenaDirectionResultStatus = "created" | "failed";
 
+export type CandidateArenaTickPaperTradingContinuationStatus = "started" | "failed";
+
 export type ExperimentRunStatus =
   | "submitted"
   | "evaluated"
@@ -2546,6 +2548,7 @@ export interface CandidateArenaTickReadModel {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
 }
 
@@ -2559,6 +2562,15 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_refs: Ref[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
+  authority_status: "not_live";
+}
+
+export interface CandidateArenaTickPaperTradingContinuationReadModel {
+  status: CandidateArenaTickPaperTradingContinuationStatus;
+  command_kind: "trading_run.start";
+  selected_candidate_id?: string;
+  error?: string;
   authority_status: "not_live";
 }
 
@@ -2629,6 +2641,7 @@ export type OuroborosCommandKind =
   | "arena.start"
   | "arena.stop"
   | "arena.tick"
+  | "arena.cycle"
   | "candidate.select"
   | "trading_candidate.promote"
   | "candidate.paper_evidence.run"
@@ -2676,6 +2689,7 @@ export const OUROBOROS_COMMAND_KINDS = [
   "arena.start",
   "arena.stop",
   "arena.tick",
+  "arena.cycle",
   "candidate.select",
   "trading_candidate.promote",
   "candidate.paper_evidence.run",
@@ -2700,6 +2714,7 @@ export const OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS = [
   "arena.start",
   "arena.stop",
   "arena.tick",
+  "arena.cycle",
   "candidate.select",
   "trading_candidate.promote",
   "trading_run.start",
@@ -2744,6 +2759,14 @@ export const OUROBOROS_COMMAND_DESCRIPTORS = [
     command_kind: "arena.tick",
     group: "arena",
     label: "Run one research tick",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "arena.cycle",
+    group: "arena",
+    label: "Run autonomous paper cycle",
     availability: "controller",
     requires_candidate_id: false,
     authority_status: "not_live"
@@ -2974,6 +2997,7 @@ export function commandRemediation(
     case "arena.start":
     case "arena.stop":
     case "arena.tick":
+    case "arena.cycle":
       return {
         group: "Candidate Arena",
         surface: "Candidate Arena cockpit, Latest ticks",

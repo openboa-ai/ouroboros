@@ -1382,6 +1382,7 @@ describe("operator command API", () => {
     await runCandidateArenaCommand("start");
     await runCandidateArenaCommand("stop");
     await runCandidateArenaCommand("tick");
+    await runCandidateArenaCommand("cycle");
     await selectCandidateForOperator("candidate-profitable");
     await promoteCandidateToTrading("candidate-profitable");
     await startTradingRun(arenaSelectedCandidate());
@@ -1398,6 +1399,7 @@ describe("operator command API", () => {
       "arena.start",
       "arena.stop",
       "arena.tick",
+      "arena.cycle",
       "candidate.select",
       "trading_candidate.promote",
       "trading_run.start",
@@ -1414,7 +1416,7 @@ describe("operator command API", () => {
       init: undefined
     });
     expect(calls.slice(1).map((call) => call.url)).toEqual(Array.from(
-      { length: 14 },
+      { length: 15 },
       () => "http://127.0.0.1:4173/api/commands"
     ));
     expect(calls.slice(1).map((call) => JSON.parse(String(call.init?.body)))).toEqual([
@@ -1422,6 +1424,7 @@ describe("operator command API", () => {
       { command_kind: "arena.start" },
       { command_kind: "arena.stop" },
       { command_kind: "arena.tick" },
+      { command_kind: "arena.cycle" },
       {
         command_kind: "candidate.select",
         payload: { candidate_id: "candidate-profitable" }

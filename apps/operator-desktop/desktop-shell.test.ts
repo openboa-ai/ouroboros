@@ -94,7 +94,7 @@ describe("Operator desktop app", () => {
     expect(config.app?.windows).toEqual([
       {
         label: "main",
-        create: false,
+        create: true,
         title: "Ouroboros Operator",
         width: 1440,
         height: 960,
@@ -170,8 +170,12 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("RunEvent::Ready");
     expect(mainRs).toContain("MAIN_WINDOW_LABEL");
     expect(mainRs).toContain("show_main_window(app.handle())");
-    expect(mainRs).toContain("tauri::Error::WindowNotFound");
-    expect(mainRs).toContain("WebviewWindowBuilder::from_config");
+    expect(mainRs).toContain("WebviewUrl::App(\"index.html\".into())");
+    expect(mainRs).toContain("WebviewWindowBuilder::new");
+    expect(mainRs).toContain(".inner_size(1440.0, 960.0)");
+    expect(mainRs).toContain(".min_inner_size(1180.0, 760.0)");
+    expect(mainRs).toContain(".visible(true)");
+    expect(mainRs).toContain(".visible_on_all_workspaces(true)");
     expect(mainRs).toContain("window.show()");
     expect(mainRs).toContain("window.unminimize()");
     expect(mainRs).toContain("window.set_focus()");

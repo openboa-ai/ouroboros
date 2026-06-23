@@ -144,6 +144,7 @@ Operate the product loop through the Ouroboros command surface:
 ```bash
 ouroboros arena status
 ouroboros arena tick
+ouroboros arena cycle
 ouroboros arena start
 ouroboros arena stop
 ouroboros candidate select <candidate-id>
