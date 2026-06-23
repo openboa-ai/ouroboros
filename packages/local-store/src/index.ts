@@ -5681,6 +5681,10 @@ function isCandidateArenaTickRecord(value: unknown): value is CandidateArenaTick
     raw.created_candidate_refs.every((item) => isRef(item, "trading_system_candidate")) &&
     Array.isArray(raw.direction_results) &&
     raw.direction_results.every(isCandidateArenaTickDirectionResult) &&
+    (
+      raw.paper_trading_continuation === undefined ||
+      isCandidateArenaTickPaperTradingContinuation(raw.paper_trading_continuation)
+    ) &&
     raw.authority_status === "not_live"
   );
 }
@@ -5891,6 +5895,28 @@ function isCandidateArenaTickSource(value: unknown): boolean {
 
 function isCandidateArenaDirectionResultStatus(value: unknown): boolean {
   return value === "created" || value === "failed";
+}
+
+function isCandidateArenaTickPaperTradingContinuation(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as {
+    status?: unknown;
+    command_kind?: unknown;
+    selected_candidate_id?: unknown;
+    error?: unknown;
+    authority_status?: unknown;
+  };
+  const hasSelectedCandidateId = raw.selected_candidate_id === undefined || nonEmpty(raw.selected_candidate_id);
+  const hasError = raw.error === undefined || nonEmpty(raw.error);
+  return (
+    (raw.status === "started" || raw.status === "failed") &&
+    raw.command_kind === "trading_run.start" &&
+    hasSelectedCandidateId &&
+    hasError &&
+    raw.authority_status === "not_live"
+  );
 }
 
 function isCandidateArenaResearchDirection(value: unknown): boolean {

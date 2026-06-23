@@ -151,6 +151,8 @@ export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "
 
 export type CandidateArenaDirectionResultStatus = "created" | "failed";
 
+export type CandidateArenaTickPaperTradingContinuationStatus = "started" | "failed";
+
 export type ExperimentRunStatus =
   | "submitted"
   | "evaluated"
@@ -2546,6 +2548,7 @@ export interface CandidateArenaTickReadModel {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_ids: string[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
   authority_status: "not_live";
 }
 
@@ -2559,6 +2562,15 @@ export interface CandidateArenaTickRecord extends BaseRecord {
   source_candidate?: CandidateArenaTickSourceReadModel;
   created_candidate_refs: Ref[];
   direction_results: CandidateArenaTickDirectionResultReadModel[];
+  paper_trading_continuation?: CandidateArenaTickPaperTradingContinuationReadModel;
+  authority_status: "not_live";
+}
+
+export interface CandidateArenaTickPaperTradingContinuationReadModel {
+  status: CandidateArenaTickPaperTradingContinuationStatus;
+  command_kind: "trading_run.start";
+  selected_candidate_id?: string;
+  error?: string;
   authority_status: "not_live";
 }
 

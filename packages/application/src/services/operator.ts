@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   OUROBOROS_COMMAND_DESCRIPTORS,
   type AgentProfileProviderKind,
+  type CandidateArenaTickPaperTradingContinuationReadModel,
   type CandidateInspectReadModel,
   type OperatorReadModel,
   type OuroborosCommandKind,
@@ -199,7 +200,20 @@ export class OperatorService {
       "arena.start": async () => {
         await this.requireResearcherProviderReady();
         this.options.candidateArenaRunner.setTickContinuation((outcome) =>
-          this.startPaperTradingForArenaCycle(outcome).then(() => undefined)
+          this.startPaperTradingForArenaCycle(outcome)
+            .then((paperCycle): CandidateArenaTickPaperTradingContinuationReadModel => ({
+              status: "started",
+              command_kind: "trading_run.start",
+              selected_candidate_id: paperCycle.selected_candidate_id,
+              authority_status: "not_live"
+            }))
+            .catch((error): CandidateArenaTickPaperTradingContinuationReadModel => ({
+              status: "failed",
+              command_kind: "trading_run.start",
+              selected_candidate_id: selectArenaCycleCandidateId(outcome),
+              error: commandErrorSummary(error),
+              authority_status: "not_live"
+            }))
         );
         const status = this.options.candidateArenaRunner.start();
         return {
@@ -502,6 +516,20 @@ function selectArenaCycleCandidateId(outcome: CandidateArenaTickOutcome): string
   const createdCandidateIds = new Set(outcome.created_candidate_ids);
   return outcome.arena.leaderboard.find((entry) => createdCandidateIds.has(entry.candidate_id))?.candidate_id
     ?? outcome.created_candidate_ids[0];
+}
+
+function commandErrorSummary(error: unknown): string {
+  if (error instanceof OperatorCommandError) {
+    const reason = error.details.reason;
+    if (typeof reason === "string" && reason.trim()) {
+      return reason;
+    }
+    return error.error;
+  }
+  if (error instanceof Error) {
+    return error.message.split("\n")[0] || error.name;
+  }
+  return String(error);
 }
 
 function parseCommandCandidateId(payload: Record<string, unknown> | undefined): string {

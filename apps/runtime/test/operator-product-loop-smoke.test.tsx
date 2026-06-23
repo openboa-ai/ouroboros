@@ -294,6 +294,74 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("records autonomous paper continuation failures without stopping the arena loop", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: async () => {
+        throw new Error("paper_provider_unavailable_for_test");
+      },
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ]
+      }),
+      candidateArenaTickIntervalMs: 500,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      const started = await postCommand(server, {
+        command_kind: "arena.start"
+      });
+      expect(started.operator.candidate_arena.runner_status).toBe("running");
+
+      const runningOperator = await waitForOperator(server, (operator) =>
+        operator.candidate_arena.runner_status === "running"
+        && operator.candidate_arena.latest_ticks.filter((tick) =>
+          tick.paper_trading_continuation?.status === "failed"
+        ).length >= 2
+      );
+      const failedContinuationTick = runningOperator.candidate_arena.latest_ticks.find((tick) =>
+        tick.paper_trading_continuation?.status === "failed"
+      );
+
+      expect(failedContinuationTick?.paper_trading_continuation).toMatchObject({
+        status: "failed",
+        command_kind: "trading_run.start",
+        selected_candidate_id: expect.any(String),
+        error: "paper_provider_unavailable_for_test",
+        authority_status: "not_live"
+      });
+      expect(runningOperator.candidate_arena.runner_status).toBe("running");
+
+      const stopped = await postCommand(server, {
+        command_kind: "arena.stop"
+      });
+      expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
