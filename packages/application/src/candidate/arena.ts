@@ -561,7 +561,8 @@ async function latestPaperTradingEvaluationsByCandidate(
 
 function isEligiblePaperTradingEvaluationSource(evaluation: PaperTradingEvaluationRecord): boolean {
   return (evaluation.status === "running" || evaluation.status === "stopped") &&
-    evaluation.observation_count > 0;
+    evaluation.observation_count > 0 &&
+    !evaluation.latest_failure_reason;
 }
 
 function ineligibleLatestPaperEvaluationCandidateIds(

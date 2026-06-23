@@ -610,6 +610,59 @@ describe("CandidateArena paper evidence context", () => {
     expect(secondTick?.source_candidate?.candidate_id).not.toBe(paperIneligibleLeader.candidate_id);
   });
 
+  it("does not source a stopped paper evaluation that still carries a failure", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "paper-source-stopped-failed-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const stoppedFailedLeader = await store.getCandidate(first.created_candidate_ids[0]!);
+    if (!stoppedFailedLeader) {
+      throw new Error("stopped failed paper source candidate missing");
+    }
+
+    await seedPaperTradingEvidence(store, stoppedFailedLeader, {
+      evaluationId: "paper-source-stopped-with-failure",
+      startedAt: "2026-05-16T00:00:00.000Z",
+      status: "stopped",
+      observationStatus: "failed",
+      failureReason: "candidate crashed before operator stop",
+      latestScore: {
+        revenue_usdt: 50,
+        cost_usdt: 1,
+        net_revenue_usdt: 49,
+        net_return_pct: 0.49
+      }
+    });
+
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "paper-source-stopped-failed-tick-2",
+      directions: ["execution_cost_robustness"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const secondTick = second.arena.latest_ticks.find((entry) => entry.tick_id === second.tick_id);
+
+    expect(secondTick).toMatchObject({
+      source_candidate: {
+        source_kind: "fixture_seed",
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        authority_status: "not_live"
+      }
+    });
+    expect(secondTick?.source_candidate?.candidate_id).not.toBe(stoppedFailedLeader.candidate_id);
+  });
+
   it("clusters findings for the next ResearchWorker by direction, blocker, market regime, and protocol failure", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
