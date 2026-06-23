@@ -55,6 +55,7 @@ import {
   startCandidateArena as submitStartCandidateArena,
   stopCandidateArena as submitStopCandidateArena,
   tickCandidateArena as submitTickCandidateArena,
+  cycleCandidateArena as submitCycleCandidateArena,
   recordPrivateReadinessPosture as submitPrivateReadinessPosture,
   recordRunControl as submitRunControl,
   recordImprovement as submitImprovement,
@@ -954,7 +955,7 @@ export function App() {
     }
   }
 
-  async function runCandidateArenaAction(action: "start" | "stop" | "tick") {
+  async function runCandidateArenaAction(action: "start" | "stop" | "tick" | "cycle") {
     if (state.runningCandidateArenaAction) {
       return;
     }
@@ -969,6 +970,8 @@ export function App() {
         await submitStartCandidateArena();
       } else if (action === "stop") {
         await submitStopCandidateArena();
+      } else if (action === "cycle") {
+        await submitCycleCandidateArena();
       } else {
         await submitTickCandidateArena();
       }
@@ -1408,6 +1411,7 @@ export function App() {
                 onStartCandidateArena={() => void runCandidateArenaAction("start")}
                 onStopCandidateArena={() => void runCandidateArenaAction("stop")}
                 onTickCandidateArena={() => void runCandidateArenaAction("tick")}
+                onCycleCandidateArena={() => void runCandidateArenaAction("cycle")}
                 onSetupAgentProvider={(provider) => void runAgentProviderAction("setup", provider)}
                 onProbeAgentProvider={(provider) => void runAgentProviderAction("probe", provider)}
                 onStartAgentProviderLogin={(provider) => void runAgentProviderAction("login", provider)}
@@ -1553,6 +1557,7 @@ export function CandidateArenaPanel({
   onStart,
   onStop,
   onTick,
+  onCycle,
   onSelectCandidate,
   onStartPaperTrading,
   onObservePaperTrading,
@@ -1578,6 +1583,7 @@ export function CandidateArenaPanel({
   onStart?: () => void;
   onStop?: () => void;
   onTick?: () => void;
+  onCycle?: () => void;
   onSelectCandidate?: (candidateId: string) => void;
   onStartPaperTrading?: () => void;
   onObservePaperTrading?: () => void;
@@ -1832,9 +1838,11 @@ export function CandidateArenaPanel({
           startDisabled={actionPending}
           stopDisabled={actionPending}
           tickDisabled={actionPending}
+          cycleDisabled={actionPending}
           onStart={onStart}
           onStop={onStop}
           onTick={onTick}
+          onCycle={onCycle}
         />
         <ArenaMetricStripSection metrics={arenaMetricStripItems} />
         <ArenaPaperBoardSection entries={paperBoardSectionEntries} />
@@ -2498,6 +2506,7 @@ export function CandidateDetail({
   onStartCandidateArena,
   onStopCandidateArena,
   onTickCandidateArena,
+  onCycleCandidateArena,
   onSetupAgentProvider,
   onProbeAgentProvider,
   onStartAgentProviderLogin,
@@ -2563,6 +2572,7 @@ export function CandidateDetail({
   onStartCandidateArena?: () => void;
   onStopCandidateArena?: () => void;
   onTickCandidateArena?: () => void;
+  onCycleCandidateArena?: () => void;
   onSetupAgentProvider?: (provider: AgentProfileProviderKind) => void;
   onProbeAgentProvider?: (provider: AgentProfileProviderKind) => void;
   onStartAgentProviderLogin?: (provider: AgentProfileProviderKind) => void;
@@ -3186,6 +3196,7 @@ export function CandidateDetail({
           onStart={onStartCandidateArena}
           onStop={onStopCandidateArena}
           onTick={onTickCandidateArena}
+          onCycle={onCycleCandidateArena}
           onSelectCandidate={(candidateId) => void onSelectCandidate?.(candidateId)}
           onStartPaperTrading={selectedArenaCandidate ? onStartTradingRun : undefined}
           onObservePaperTrading={selectedArenaCandidate ? onObserveTradingRun : undefined}

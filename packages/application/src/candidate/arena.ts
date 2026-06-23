@@ -97,11 +97,16 @@ export interface CandidateArenaTickOutcome {
   arena: CandidateArenaReadModel;
 }
 
+export type CandidateArenaTickContinuation = (
+  outcome: CandidateArenaTickOutcome
+) => Promise<void> | void;
+
 export class CandidateArenaRunner {
   private running = false;
   private tickCount = 0;
   private loopActive = false;
   private activeTick?: Promise<CandidateArenaTickOutcome>;
+  private tickContinuation?: CandidateArenaTickContinuation;
 
   constructor(
     private input: Omit<RunCandidateArenaTickInput, "tickId">,
@@ -125,6 +130,10 @@ export class CandidateArenaRunner {
       ...this.input,
       researchAgent: agent
     };
+  }
+
+  setTickContinuation(continuation: CandidateArenaTickContinuation | undefined): void {
+    this.tickContinuation = continuation;
   }
 
   start(): "started" | "already_running" {
@@ -151,6 +160,10 @@ export class CandidateArenaRunner {
       ...this.input,
       tickId: `tick-${this.tickCount}`
     }, this.status(), this.tickCount)
+      .then(async (outcome) => {
+        await this.tickContinuation?.(outcome);
+        return outcome;
+      })
       .finally(() => {
         this.activeTick = undefined;
       });

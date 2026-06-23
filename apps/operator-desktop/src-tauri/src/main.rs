@@ -15,7 +15,7 @@ use tauri::ActivationPolicy;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
-    Manager, WebviewWindowBuilder,
+    Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
 const DEFAULT_RUNTIME_HOST: &str = "127.0.0.1";
@@ -108,15 +108,17 @@ fn main() {
 
 fn ensure_main_window(app: &mut tauri::App) -> tauri::Result<()> {
     if app.get_webview_window(MAIN_WINDOW_LABEL).is_none() {
-        let config = app
-            .config()
-            .app
-            .windows
-            .iter()
-            .find(|window| window.label == MAIN_WINDOW_LABEL)
-            .cloned()
-            .ok_or(tauri::Error::WindowNotFound)?;
-        WebviewWindowBuilder::from_config(app, &config)?.build()?;
+        WebviewWindowBuilder::new(
+            app,
+            MAIN_WINDOW_LABEL,
+            WebviewUrl::App("index.html".into()),
+        )
+        .title("Ouroboros Operator")
+        .inner_size(1440.0, 960.0)
+        .min_inner_size(1180.0, 760.0)
+        .visible(true)
+        .visible_on_all_workspaces(true)
+        .build()?;
     }
 
     show_main_window(app.handle());

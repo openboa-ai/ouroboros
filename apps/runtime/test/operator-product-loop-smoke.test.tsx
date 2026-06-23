@@ -141,6 +141,159 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("runs one autonomous arena cycle into selected continuous paper trading", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+
+      const cycled = await postCommand(server, {
+        command_kind: "arena.cycle"
+      });
+      const selectedCandidateId = cycled.operator.selected_candidate_id;
+
+      expect(cycled.command).toMatchObject({
+        command_kind: "arena.cycle",
+        status: "succeeded"
+      });
+      expect(selectedCandidateId).toBeTruthy();
+      expect(cycled.operator.candidate_arena.latest_ticks[0]?.created_candidate_ids)
+        .toContain(selectedCandidateId);
+      expect(cycled.operator.selected_candidate?.runtime.sandbox?.lifecycle_status).toBe("running");
+      expect(cycled.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        observation_count: 1,
+        ledger_chain_complete: true,
+        latest_decision: {
+          decision_kind: "order_request",
+          source_kind: "trading_system_decision",
+          authority_status: "trace_only"
+        },
+        latest_fill: {
+          fill_status: "filled",
+          fill_price: "65001"
+        },
+        authority_status: "not_live"
+      });
+      expect(cycled.operator.paper_trading_board.entries[0]).toMatchObject({
+        candidate_id: selectedCandidateId,
+        latest_fill_status: "filled",
+        open_order_count: 0
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("starts the repeating arena loop with autonomous paper trading continuation", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      const started = await postCommand(server, {
+        command_kind: "arena.start"
+      });
+      expect(started.operator.candidate_arena.runner_status).toBe("running");
+
+      const runningOperator = await waitForOperator(server, (operator) =>
+        operator.selected_paper_trading_evaluation.status === "running"
+        && operator.selected_paper_trading_evaluation.runner_active
+        && operator.selected_paper_trading_evaluation.observation_count >= 1
+      );
+      const selectedCandidateId = runningOperator.selected_candidate_id;
+
+      expect(selectedCandidateId).toBeTruthy();
+      expect(runningOperator.candidate_arena.runner_status).toBe("running");
+      expect(runningOperator.candidate_arena.latest_ticks[0]?.created_candidate_ids)
+        .toContain(selectedCandidateId);
+      expect(runningOperator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        observation_count: 1,
+        authority_status: "not_live"
+      });
+
+      const stopped = await postCommand(server, {
+        command_kind: "arena.stop"
+      });
+      expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
@@ -571,6 +724,25 @@ function serverFetch(server: Awaited<ReturnType<typeof buildServer>>) {
       text: async () => response.body
     } as unknown as Response;
   };
+}
+
+async function waitForOperator(
+  server: Awaited<ReturnType<typeof buildServer>>,
+  predicate: (operator: OperatorReadModel) => boolean
+): Promise<OperatorReadModel> {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const response = await server.inject({
+      method: "GET",
+      url: "/api/operator"
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const operator = (response.json() as { operator: OperatorReadModel }).operator;
+    if (predicate(operator)) {
+      return operator;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("operator did not satisfy expected state before timeout");
 }
 
 function paperOrderRequestLine(input: { at: string; quantity: string }): string {

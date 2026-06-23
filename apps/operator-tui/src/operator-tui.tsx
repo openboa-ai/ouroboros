@@ -15,6 +15,7 @@ type FetchLike = (
 export type OperatorTuiAction =
   | "refresh"
   | "tick"
+  | "cycle"
   | "toggle_running"
   | "select_previous"
   | "select_next"
@@ -167,7 +168,7 @@ export function OperatorTuiScreen(props: {
           {`Agent profile: ${selectedProfile?.label ?? "unknown"} / ${selectedProfile?.status ?? "missing"}`}
         </Text>
         <Text>{`Operator authority: ${props.operator.authority_status} / live ${props.operator.live_disabled ? "disabled" : "enabled"}`}</Text>
-        <Text dimColor>Keys: r refresh, t tick, s arena, up/down move, enter select, m promote, e paper start, o observe, x stop, p provider, a setup, l login, v probe, q quit</Text>
+        <Text dimColor>Keys: r refresh, t tick, c cycle, s arena, up/down move, enter select, m promote, e paper start, o observe, x stop, p provider, a setup, l login, v probe, q quit</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>Leaderboard</Text>
@@ -660,6 +661,9 @@ export function operatorTuiActionForInput(
   if (input === "t") {
     return "tick";
   }
+  if (input === "c") {
+    return "cycle";
+  }
   if (input === "s") {
     return "toggle_running";
   }
@@ -706,6 +710,9 @@ export function operatorTuiCommandForAction(
 ): OuroborosCommandRequest | undefined {
   if (action === "tick") {
     return { command_kind: "arena.tick" };
+  }
+  if (action === "cycle") {
+    return { command_kind: "arena.cycle" };
   }
   if (action === "toggle_running") {
     return {

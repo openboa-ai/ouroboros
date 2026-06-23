@@ -2629,6 +2629,7 @@ export type OuroborosCommandKind =
   | "arena.start"
   | "arena.stop"
   | "arena.tick"
+  | "arena.cycle"
   | "candidate.select"
   | "trading_candidate.promote"
   | "candidate.paper_evidence.run"
@@ -2676,6 +2677,7 @@ export const OUROBOROS_COMMAND_KINDS = [
   "arena.start",
   "arena.stop",
   "arena.tick",
+  "arena.cycle",
   "candidate.select",
   "trading_candidate.promote",
   "candidate.paper_evidence.run",
@@ -2700,6 +2702,7 @@ export const OUROBOROS_PRODUCT_LOOP_COMMAND_KINDS = [
   "arena.start",
   "arena.stop",
   "arena.tick",
+  "arena.cycle",
   "candidate.select",
   "trading_candidate.promote",
   "trading_run.start",
@@ -2744,6 +2747,14 @@ export const OUROBOROS_COMMAND_DESCRIPTORS = [
     command_kind: "arena.tick",
     group: "arena",
     label: "Run one research tick",
+    availability: "controller",
+    requires_candidate_id: false,
+    authority_status: "not_live"
+  },
+  {
+    command_kind: "arena.cycle",
+    group: "arena",
+    label: "Run autonomous paper cycle",
     availability: "controller",
     requires_candidate_id: false,
     authority_status: "not_live"
@@ -2974,6 +2985,7 @@ export function commandRemediation(
     case "arena.start":
     case "arena.stop":
     case "arena.tick":
+    case "arena.cycle":
       return {
         group: "Candidate Arena",
         surface: "Candidate Arena cockpit, Latest ticks",
