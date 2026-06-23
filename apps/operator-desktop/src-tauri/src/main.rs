@@ -10,10 +10,12 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(target_os = "macos")]
+use tauri::ActivationPolicy;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
-    Manager,
+    Manager, WebviewWindowBuilder,
 };
 
 const DEFAULT_RUNTIME_HOST: &str = "127.0.0.1";
@@ -44,6 +46,11 @@ fn main() {
         .manage(runtime_process)
         .setup(move |app| {
             let resource_dir = app.path().resource_dir().ok();
+            #[cfg(target_os = "macos")]
+            let _ = app
+                .handle()
+                .set_activation_policy(ActivationPolicy::Regular);
+            ensure_main_window(app)?;
             install_runtime_status_tray(
                 app,
                 tray_process.clone(),
@@ -54,6 +61,7 @@ fn main() {
                 eprintln!("{message}");
             }
             update_runtime_status_tray(app.handle());
+            show_main_window(app.handle());
             start_runtime_status_monitor(
                 app.handle().clone(),
                 monitor_process.clone(),
@@ -66,6 +74,9 @@ fn main() {
         .expect("failed to build Ouroboros operator desktop app");
 
     app.run(move |app_handle, event| match event {
+        tauri::RunEvent::Ready => {
+            update_runtime_status_tray(app_handle);
+        }
         tauri::RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::CloseRequested { api, .. },
@@ -93,6 +104,23 @@ fn main() {
         }
         _ => {}
     });
+}
+
+fn ensure_main_window(app: &mut tauri::App) -> tauri::Result<()> {
+    if app.get_webview_window(MAIN_WINDOW_LABEL).is_none() {
+        let config = app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == MAIN_WINDOW_LABEL)
+            .cloned()
+            .ok_or(tauri::Error::WindowNotFound)?;
+        WebviewWindowBuilder::from_config(app, &config)?.build()?;
+    }
+
+    show_main_window(app.handle());
+    Ok(())
 }
 
 fn install_runtime_status_tray(
@@ -204,6 +232,9 @@ fn update_runtime_status_tray(app_handle: &tauri::AppHandle) {
 }
 
 fn show_main_window(app_handle: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = app_handle.set_activation_policy(ActivationPolicy::Regular);
+
     if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = window.show();
         let _ = window.unminimize();

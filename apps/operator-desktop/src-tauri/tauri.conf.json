@@ -13,11 +13,14 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Ouroboros Operator",
         "width": 1440,
         "height": 960,
         "minWidth": 1180,
-        "minHeight": 760
+        "minHeight": 760,
+        "visible": true,
+        "visibleOnAllWorkspaces": true
       }
     ]
   },
