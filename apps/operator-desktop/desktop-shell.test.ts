@@ -290,6 +290,15 @@ describe("Operator desktop app", () => {
 
     expect(opener).toContain('"Ouroboros Operator.app"');
     expect(opener).toContain('"open"');
+    expect(opener).toContain('"-a"');
+    expect(opener).toContain('"ai.openboa.ouroboros.operator"');
+    expect(opener).toContain('"-b"');
+    expect(opener).toContain("lsregister");
+    expect(opener).toContain("operator_desktop_open_retry");
+    expect(opener).toContain("operator_desktop_register_succeeded");
+    expect(opener).toContain("operator_desktop_register_failed");
+    expect(opener).toContain("operator_desktop_app_opened");
+    expect(opener).toContain("operator_desktop_bundle_open_failed");
     expect(opener).toContain("operator_desktop_open_fallback");
     expect(opener).toContain('"ouroboros-operator-desktop"');
     expect(opener).toContain("operator_desktop_app_bundle_missing");
