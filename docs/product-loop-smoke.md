@@ -91,6 +91,9 @@ TradingSystem lineage to that paper-backed source.
 - CandidateArena latest ticks and next researcher context must include `ResearchEfficiency`
   summaries: provider requests, runner commands, scenario count, elapsed milliseconds, and
   `not_promotion_authority`.
+- When no explicit directions are supplied, CandidateArena may use recent `ResearchEfficiency`
+  cost/latency pressure to favor lower-cost ResearchDirection lanes and cool down expensive lanes,
+  still under `not_promotion_authority`.
 - CLI, TUI, and Web UI must render latest CandidateArena tick direction status, generated count,
   failed count, and any `ResearchEfficiency` summary without treating it as promotion authority.
 - `GET /api/operator` must include `paper_trading_board`, ranked by selected-candidate continuous

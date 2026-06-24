@@ -113,8 +113,9 @@ paper-backed lineage evidence without treating lineage as promotion authority.
 `finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
 protocol failure. These clusters are `not_promotion_authority`: they guide next candidate
 generation only. When no explicit `directions` list is supplied, CandidateArena may use those
-clusters to prioritize the next default ResearchDirection order and include an
-`adaptive_direction_focus` summary in researcher context. That direction focus is still
+clusters and recent `ResearchEfficiency` cost/latency pressure to prioritize the next default
+ResearchDirection order and include an `adaptive_direction_focus` summary in researcher context.
+That direction focus is still
 `not_promotion_authority`: it must not change paper ranking, qualification, Trading review
 readiness, or promotion decisions. Operator surfaces may render it in Research as read-only
 next-generation context, but they must not treat it as a blocker, rank, or action.

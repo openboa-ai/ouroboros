@@ -16,6 +16,7 @@ import type {
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
 import type {
+  CandidateArenaTickRecord,
   CandidateInspectReadModel,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord
@@ -923,6 +924,53 @@ describe("CandidateArena paper evidence context", () => {
       })
     ]);
   });
+
+  it("prioritizes default research directions from research efficiency budget pressure", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await seedResearchEfficiencyTick(store);
+
+    const capturedContexts: string[] = [];
+    const outcome = await runCandidateArenaTick({
+      store,
+      tickId: "budget-aware-direction-tick-2",
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const tick = outcome.arena.latest_ticks.find((entry) => entry.tick_id === outcome.tick_id);
+
+    expect(tick?.direction_results.map((entry) => entry.direction_kind)).toEqual([
+      "mean_reversion",
+      "volatility_regime",
+      "funding_aware_risk",
+      "execution_cost_robustness",
+      "trend_following"
+    ]);
+
+    const budgetContexts = capturedContexts.map((rawContext) => JSON.parse(rawContext) as {
+      requested_direction: string;
+      adaptive_direction_focus: Array<{
+        direction_kind: string;
+        focus_score: number;
+        focus_reason: string;
+        next_research_focus: string;
+        authority_status: string;
+      }>;
+    });
+    const meanReversionContext = budgetContexts.find((entry) => entry.requested_direction === "mean_reversion");
+    if (!meanReversionContext) {
+      throw new Error("mean reversion budget-aware context missing");
+    }
+    expect(meanReversionContext.adaptive_direction_focus[0]).toEqual({
+      direction_kind: "mean_reversion",
+      focus_score: 21,
+      focus_reason: "research_efficiency_budget:low_cost_latency",
+      next_research_focus: "Favor lower-cost ResearchDirection lanes while expensive lanes cool down.",
+      authority_status: "not_promotion_authority"
+    });
+  });
 });
 
 class CapturingResearchAgent implements TradingResearchAgentAdapter {
@@ -1123,6 +1171,57 @@ async function seedPaperTradingEvidence(
     authority_status: "not_live"
   };
   await store.recordPaperTradingObservation(observation, evaluation);
+}
+
+async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
+  const tick: CandidateArenaTickRecord = {
+    record_kind: "candidate_arena_tick",
+    version: 1,
+    candidate_arena_tick_id: "candidate-arena-tick-budget-aware-direction-1",
+    tick_id: "budget-aware-direction-tick-1",
+    started_at: "2026-05-16T00:00:00.000Z",
+    completed_at: "2026-05-16T00:02:00.000Z",
+    status: "completed",
+    source_candidate: {
+      source_kind: "fixture_seed",
+      candidate_id: FIXTURE_CANDIDATE_ID,
+      display_name: "Fixture generic trading-system candidate",
+      authority_status: "not_live"
+    },
+    created_candidate_refs: [{ record_kind: "trading_system_candidate", id: FIXTURE_CANDIDATE_ID }],
+    direction_results: [
+      {
+        direction_kind: "trend_following",
+        status: "created",
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        finding: "Trend following was executable but expensive for the last tick.",
+        net_revenue_usdt: 1,
+        research_efficiency: {
+          provider_request_total: 48,
+          runner_command_total: 12,
+          scenario_count: 4,
+          elapsed_ms: 120_000,
+          authority_status: "not_promotion_authority"
+        }
+      },
+      {
+        direction_kind: "mean_reversion",
+        status: "created",
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        finding: "Mean reversion was executable with lower research cost.",
+        net_revenue_usdt: 0.8,
+        research_efficiency: {
+          provider_request_total: 2,
+          runner_command_total: 0,
+          scenario_count: 2,
+          elapsed_ms: 1_000,
+          authority_status: "not_promotion_authority"
+        }
+      }
+    ],
+    authority_status: "not_live"
+  };
+  await store.recordCandidateArenaTick(tick);
 }
 
 function networklessReplayArtifactRunner(): TradingArtifactRunner {
