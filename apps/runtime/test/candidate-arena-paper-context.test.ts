@@ -782,6 +782,74 @@ describe("CandidateArena paper evidence context", () => {
     }).finding_clusters).toEqual(context.finding_clusters);
   });
 
+  it("prioritizes default research directions from paper failure pressure without promotion authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const capturedContexts: string[] = [];
+    const first = await runCandidateArenaTick({
+      store,
+      tickId: "adaptive-direction-tick-1",
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const createdCandidate = await store.getCandidate(first.created_candidate_ids[0]!);
+    if (!createdCandidate) {
+      throw new Error("adaptive direction candidate missing");
+    }
+    await seedPaperTradingEvidence(store, createdCandidate, {
+      status: "failed",
+      observationStatus: "failed",
+      failureReason: "public execution evidence stream unavailable for fill-bearing paper observation"
+    });
+
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "adaptive-direction-tick-2",
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const secondTick = second.arena.latest_ticks.find((entry) => entry.tick_id === second.tick_id);
+
+    expect(secondTick?.direction_results.map((entry) => entry.direction_kind)).toEqual([
+      "execution_cost_robustness",
+      "trend_following",
+      "mean_reversion",
+      "volatility_regime",
+      "funding_aware_risk"
+    ]);
+
+    const secondTickContexts = capturedContexts.slice(-5).map((rawContext) => JSON.parse(rawContext) as {
+      requested_direction: string;
+      adaptive_direction_focus: Array<{
+        direction_kind: string;
+        source_direction_kind?: string;
+        focus_score: number;
+        focus_reason: string;
+        next_research_focus: string;
+        authority_status: string;
+      }>;
+    });
+    const context = secondTickContexts.find((entry) => entry.requested_direction === "execution_cost_robustness");
+    if (!context) {
+      throw new Error("execution cost robustness context missing");
+    }
+    expect(context.requested_direction).toBe("execution_cost_robustness");
+    expect(context.adaptive_direction_focus[0]).toEqual({
+      direction_kind: "execution_cost_robustness",
+      source_direction_kind: "trend_following",
+      focus_score: 37,
+      focus_reason: "public_execution_evidence_gap:observation_quality:paper_evaluation_failed",
+      next_research_focus: "Restore public execution evidence before trusting fills or paper score.",
+      authority_status: "not_promotion_authority"
+    });
+  });
+
   it("feeds previous tick research efficiency into the next researcher context without promotion authority", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

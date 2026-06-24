@@ -112,9 +112,12 @@ paper-backed lineage evidence without treating lineage as promotion authority.
 `CandidateArenaReadModel` and CandidateArena researcher context should also carry
 `finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
 protocol failure. These clusters are `not_promotion_authority`: they guide next candidate
-generation only and must not change paper ranking, qualification, Trading review readiness,
-direction scheduling, or promotion decisions. Operator surfaces may render them in Research as
-read-only next-generation context, but they must not treat them as a blocker, rank, or action.
+generation only. When no explicit `directions` list is supplied, CandidateArena may use those
+clusters to prioritize the next default ResearchDirection order and include an
+`adaptive_direction_focus` summary in researcher context. That direction focus is still
+`not_promotion_authority`: it must not change paper ranking, qualification, Trading review
+readiness, or promotion decisions. Operator surfaces may render it in Research as read-only
+next-generation context, but they must not treat it as a blocker, rank, or action.
 
 Read models are projections. They must not trigger candidate generation, paper evidence, provider
 login, or exchange behavior.
