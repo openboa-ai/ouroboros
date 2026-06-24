@@ -20,6 +20,9 @@ describe("Operator desktop app", () => {
 
     expect(rootPackageJson.scripts?.["dev:operator-desktop"]).toBe("npm run dev -w @ouroboros/operator-desktop");
     expect(rootPackageJson.scripts?.["package:operator-desktop"]).toBe("npm run package -w @ouroboros/operator-desktop");
+    expect(rootPackageJson.scripts?.["open:operator-desktop"]).toBe(
+      "node scripts/open-operator-desktop-app.mjs"
+    );
     expect(rootPackageJson.scripts?.["measure:operator-performance"]).toBe(
       "node scripts/measure-operator-performance.mjs"
     );
@@ -31,7 +34,7 @@ describe("Operator desktop app", () => {
     expect(packageJson.scripts?.build).toBe("node scripts/check-build.mjs");
     expect(packageJson.scripts?.["build:frontend"]).toBe("node scripts/build-frontend.mjs");
     expect(packageJson.scripts?.dev).toBe("tauri dev");
-    expect(packageJson.scripts?.package).toBe("tauri build");
+    expect(packageJson.scripts?.package).toBe("node scripts/package-app.mjs");
     expect(packageJson.scripts?.typecheck).toBe("npm run build");
   });
 
@@ -143,6 +146,7 @@ describe("Operator desktop app", () => {
     expect(desktopDoc).toContain("Ouroboros Desktop is the primary Tauri operator app");
     expect(desktopDoc).toContain("shared Operator UI source");
     expect(desktopDoc).toContain("currently built from `apps/operator-web`");
+    expect(desktopDoc).toContain("Use `npm run open:operator-desktop` to launch the packaged app without opening a browser");
     expect(desktopDoc).not.toContain("Tauri native wrapper around Operator Web");
   });
 
@@ -272,6 +276,53 @@ describe("Operator desktop app", () => {
     expect(verifier).toContain("bundled_runtime_manifest_present");
     expect(verifier).toContain("bundled_runtime_sidecar_present");
     expect(verifier).toContain("bundled_runtime_sidecar_executable");
+  });
+
+  it("opens and measures the native Desktop app instead of a browser render by default", () => {
+    const opener = readFileSync(
+      path.join(process.cwd(), "scripts", "open-operator-desktop-app.mjs"),
+      "utf8"
+    );
+    const measurement = readFileSync(
+      path.join(process.cwd(), "scripts", "measure-operator-performance.mjs"),
+      "utf8"
+    );
+
+    expect(opener).toContain('"Ouroboros Operator.app"');
+    expect(opener).toContain('"open"');
+    expect(opener).toContain("operator_desktop_open_fallback");
+    expect(opener).toContain('"ouroboros-operator-desktop"');
+    expect(opener).toContain("operator_desktop_app_bundle_missing");
+    expect(measurement).toContain("desktop_app_render");
+    expect(measurement).toContain("measureDesktopAppRender");
+    expect(measurement).toContain("screencapture");
+    expect(measurement).toContain("DesktopAppRenderFailure");
+    expect(measurement).toContain("desktop_app_bundle_missing");
+    expect(measurement).toContain("desktop_app_exited_before_capture");
+    expect(measurement).toContain("assertDesktopAppStillRunning");
+    expect(measurement).toContain('status: "failed"');
+    expect(measurement).toContain("OUROBOROS_PERF_MAX_DESKTOP_APP_SCREENSHOT_MS");
+    expect(measurement).toContain("desktopRuntimeEnv");
+    expect(measurement).toContain("process.env.OUROBOROS_DESKTOP_RUNTIME_HOST ?? runtimeEndpoint.host");
+    expect(measurement).toContain("process.env.OUROBOROS_DESKTOP_RUNTIME_PORT ?? runtimeEndpoint.port");
+    expect(measurement).not.toContain('reason: "desktop_app_bundle_missing"');
+    expect(measurement).not.toContain('OUROBOROS_DESKTOP_RUNTIME_PORT: "4173"');
+    expect(measurement).not.toContain("measureBrowserRender");
+    expect(measurement).not.toContain("Google Chrome");
+  });
+
+  it("ad-hoc signs the macOS app bundle after Tauri packaging for local app launch", () => {
+    const packager = readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "scripts", "package-app.mjs"),
+      "utf8"
+    );
+
+    expect(packager).toContain('"tauri"');
+    expect(packager).toContain('"build"');
+    expect(packager).toContain('"codesign"');
+    expect(packager).toContain('"--deep"');
+    expect(packager).toContain('"--sign"');
+    expect(packager).toContain('"Ouroboros Operator.app"');
   });
 
   it("ships a source-backed runtime sidecar launcher for packaged local app runs", () => {

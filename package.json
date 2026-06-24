@@ -32,6 +32,7 @@
     "dev:operator-web": "npm run dev -w @ouroboros/operator-web",
     "dev:operator-desktop": "npm run dev -w @ouroboros/operator-desktop",
     "package:operator-desktop": "npm run package -w @ouroboros/operator-desktop",
+    "open:operator-desktop": "node scripts/open-operator-desktop-app.mjs",
     "measure:operator-performance": "node scripts/measure-operator-performance.mjs",
     "verify:operator-desktop-release": "node scripts/verify-operator-desktop-release.mjs",
     "linear:graphql": "node .agents/skills/linear-graphql/scripts/linear-graphql.mjs",

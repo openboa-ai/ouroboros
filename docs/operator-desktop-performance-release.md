@@ -8,6 +8,8 @@ contract and store-backed session data; Desktop must not create a second product
 On macOS it runs as a regular native app window with a menu bar runtime-status item, so the
 operator window is visible when opened and can still be restored from the tray without turning
 background operation into a separate web session.
+Use `npm run open:operator-desktop` to launch the packaged app without opening a browser after the
+bundle has been produced.
 
 ## Runtime Packaging
 
@@ -63,15 +65,15 @@ Use:
 npm run measure:operator-performance -- --check
 ```
 
-The measurement covers runtime readiness, `/api/operator` latency and payload size, built web asset
-weight, desktop bundle size, and browser screenshot render time when local Chrome is available.
+The measurement covers runtime readiness, `/api/operator` latency and payload size, built shared UI
+asset weight, desktop bundle size, and native Desktop app screenshot capture time on macOS.
 The JSON output is the evidence packet. Thresholds can be tightened with:
 
 - `OUROBOROS_PERF_MAX_RUNTIME_READY_MS`
 - `OUROBOROS_PERF_MAX_OPERATOR_PAYLOAD_BYTES`
 - `OUROBOROS_PERF_MAX_OPERATOR_FETCH_MS`
 - `OUROBOROS_PERF_MAX_WEB_ASSET_BYTES`
-- `OUROBOROS_PERF_MAX_RENDER_SCREENSHOT_MS`
+- `OUROBOROS_PERF_MAX_DESKTOP_APP_SCREENSHOT_MS`
 
 ## UI Performance Policy
 
@@ -90,6 +92,7 @@ Use:
 
 ```bash
 npm run package:operator-desktop
+npm run open:operator-desktop
 npm run verify:operator-desktop-release
 ```
 

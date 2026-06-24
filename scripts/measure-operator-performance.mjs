@@ -1,20 +1,21 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { spawn } from "node:child_process";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 const runtimeUrl = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+const runtimeEndpoint = parseRuntimeEndpoint(runtimeUrl);
 const outDir = process.env.OUROBOROS_PERF_OUT_DIR ?? "/tmp/ouroboros-performance";
-const browserEnabled = !process.argv.includes("--skip-browser");
+const desktopAppEnabled = !process.argv.includes("--skip-app");
 const checkMode = process.argv.includes("--check");
 
 const thresholds = {
   runtimeReadyMs: Number(process.env.OUROBOROS_PERF_MAX_RUNTIME_READY_MS ?? 20_000),
   operatorPayloadBytes: Number(process.env.OUROBOROS_PERF_MAX_OPERATOR_PAYLOAD_BYTES ?? 4_000_000),
   operatorFetchMs: Number(process.env.OUROBOROS_PERF_MAX_OPERATOR_FETCH_MS ?? 2_500),
-  renderScreenshotMs: Number(process.env.OUROBOROS_PERF_MAX_RENDER_SCREENSHOT_MS ?? 15_000),
+  desktopAppScreenshotMs: Number(process.env.OUROBOROS_PERF_MAX_DESKTOP_APP_SCREENSHOT_MS ?? 15_000),
   operatorWebAssetBytes: Number(process.env.OUROBOROS_PERF_MAX_WEB_ASSET_BYTES ?? 3_000_000)
 };
 
@@ -22,7 +23,14 @@ mkdirSync(outDir, { recursive: true });
 
 const startedAt = performance.now();
 let runtimeChild;
-let webChild;
+let desktopAppChild;
+
+class DesktopAppRenderFailure extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DesktopAppRenderFailure";
+  }
+}
 
 try {
   const runtimeProbe = await probeOperator();
@@ -32,9 +40,9 @@ try {
   const operatorFetch = await measureOperatorFetch();
   const webAssets = measureWebAssets();
   const desktopBundle = measureDesktopBundle();
-  const browserRender = browserEnabled
-    ? await measureBrowserRender().catch((error) => ({
-        status: "skipped",
+  const desktopAppRender = desktopAppEnabled
+    ? await measureDesktopAppRender(desktopBundle).catch((error) => ({
+        status: "failed",
         reason: error instanceof Error ? error.message : String(error)
       }))
     : { status: "skipped", reason: "disabled_by_flag" };
@@ -47,9 +55,9 @@ try {
     operator_fetch: operatorFetch,
     web_assets: webAssets,
     desktop_bundle: desktopBundle,
-    browser_render: browserRender,
+    desktop_app_render: desktopAppRender,
     thresholds,
-    status: performanceStatus({ runtimeStart, operatorFetch, webAssets, browserRender })
+    status: performanceStatus({ runtimeStart, operatorFetch, webAssets, desktopAppRender })
   };
 
   console.log(JSON.stringify(result, null, 2));
@@ -57,8 +65,8 @@ try {
     process.exitCode = 1;
   }
 } finally {
-  if (webChild) {
-    webChild.kill();
+  if (desktopAppChild) {
+    desktopAppChild.kill();
   }
   if (runtimeChild) {
     runtimeChild.kill();
@@ -72,8 +80,8 @@ async function startRuntime() {
     cwd: repoRoot,
     env: {
       ...process.env,
-      HOST: "127.0.0.1",
-      PORT: "4173",
+      HOST: process.env.HOST ?? runtimeEndpoint.host,
+      PORT: process.env.PORT ?? runtimeEndpoint.port,
       OUROBOROS_RUNTIME_URL: runtimeUrl
     },
     stdio: ["ignore", "ignore", "ignore"]
@@ -153,58 +161,111 @@ function measureDesktopBundle() {
   return {
     status: existsSync(executable) ? "present" : "missing",
     app_path: appPath,
+    executable_path: executable,
     executable_bytes: existsSync(executable) ? statSync(executable).size : 0
   };
 }
 
-async function measureBrowserRender() {
-  const chrome = chromePath();
-  if (!chrome) {
-    return { status: "skipped", reason: "chrome_not_found" };
+async function measureDesktopAppRender(desktopBundle) {
+  if (process.platform !== "darwin") {
+    return { status: "skipped", reason: "desktop_app_capture_requires_macos" };
+  }
+  if (desktopBundle.status !== "present") {
+    throw new DesktopAppRenderFailure(`desktop_app_bundle_missing:${desktopBundle.executable_path}`);
   }
 
-  webChild = spawn("npm", ["run", "dev", "-w", "@ouroboros/operator-web", "--", "--host", "127.0.0.1", "--port", "5173"], {
+  const start = performance.now();
+  desktopAppChild = spawn(desktopBundle.executable_path, [], {
     cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...desktopRuntimeEnv()
+    },
     stdio: ["ignore", "ignore", "ignore"]
   });
-  await waitFor(async () => {
-    try {
-      const response = await fetch("http://127.0.0.1:5173/");
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }, 10_000);
+  await waitFor(async () => (await probeOperator()).ok, thresholds.runtimeReadyMs);
+  const earlyExit = await waitForChildExit(desktopAppChild, 1500);
+  if (earlyExit.exited) {
+    throw new DesktopAppRenderFailure(
+      `desktop_app_exited_before_capture:${formatChildExit(earlyExit)}`
+    );
+  }
 
-  const screenshotPath = join(outDir, "operator-render.png");
-  const start = performance.now();
-  await runCommand(chrome, [
-    "--headless",
-    "--disable-gpu",
-    "--no-first-run",
-    "--disable-extensions",
-    "--window-size=1440,960",
-    `--screenshot=${screenshotPath}`,
-    "http://127.0.0.1:5173/"
-  ], { cwd: repoRoot });
+  const screenshotPath = join(outDir, "operator-desktop-app.png");
+  await runCommand("screencapture", ["-x", screenshotPath], { cwd: repoRoot });
+  assertDesktopAppStillRunning(desktopAppChild, "after_capture");
 
   return {
     status: "captured",
     screenshot_ms: roundMs(performance.now() - start),
+    launch_pid: desktopAppChild.pid,
     screenshot_path: screenshotPath,
     screenshot_bytes: statSync(screenshotPath).size
   };
 }
 
-function performanceStatus({ runtimeStart, operatorFetch, webAssets, browserRender }) {
-  const browserOk = browserRender.status !== "captured"
-    || browserRender.screenshot_ms <= thresholds.renderScreenshotMs;
+function performanceStatus({ runtimeStart, operatorFetch, webAssets, desktopAppRender }) {
+  const desktopAppOk = desktopAppRender.status !== "failed"
+    && (desktopAppRender.status !== "captured"
+      || desktopAppRender.screenshot_ms <= thresholds.desktopAppScreenshotMs);
   const runtimeOk = runtimeStart.ready_ms <= thresholds.runtimeReadyMs;
   const fetchOk = operatorFetch.latency_ms <= thresholds.operatorFetchMs
     && operatorFetch.payload_bytes <= thresholds.operatorPayloadBytes;
   const webOk = webAssets.status !== "present"
     || webAssets.total_bytes <= thresholds.operatorWebAssetBytes;
-  return runtimeOk && fetchOk && webOk && browserOk ? "pass" : "fail";
+  return runtimeOk && fetchOk && webOk && desktopAppOk ? "pass" : "fail";
+}
+
+function desktopRuntimeEnv() {
+  return {
+    OUROBOROS_DESKTOP_RUNTIME_HOST: process.env.OUROBOROS_DESKTOP_RUNTIME_HOST ?? runtimeEndpoint.host,
+    OUROBOROS_DESKTOP_RUNTIME_PORT: process.env.OUROBOROS_DESKTOP_RUNTIME_PORT ?? runtimeEndpoint.port
+  };
+}
+
+function parseRuntimeEndpoint(url) {
+  const parsed = new URL(url);
+  return {
+    host: parsed.hostname || "127.0.0.1",
+    port: parsed.port || (parsed.protocol === "https:" ? "443" : "80")
+  };
+}
+
+function assertDesktopAppStillRunning(child, stage) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new DesktopAppRenderFailure(
+      `desktop_app_exited_${stage}:code=${child.exitCode ?? "null"}:signal=${child.signalCode ?? "null"}`
+    );
+  }
+}
+
+function waitForChildExit(child, timeoutMs) {
+  return new Promise((resolveExit) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolveExit({
+        exited: true,
+        code: child.exitCode,
+        signal: child.signalCode
+      });
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      child.off("exit", onExit);
+      resolveExit({ exited: false });
+    }, timeoutMs);
+
+    function onExit(code, signal) {
+      clearTimeout(timeout);
+      resolveExit({ exited: true, code, signal });
+    }
+
+    child.once("exit", onExit);
+  });
+}
+
+function formatChildExit(exit) {
+  return `code=${exit.code ?? "null"}:signal=${exit.signal ?? "null"}`;
 }
 
 async function probeOperator() {
@@ -263,14 +324,6 @@ function runCommand(command, args, options) {
       rejectCommand(new Error(`${command} exited ${code}: ${stderr || stdout}`));
     });
   });
-}
-
-function chromePath() {
-  const candidates = [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium"
-  ];
-  return candidates.find((candidate) => existsSync(candidate));
 }
 
 function roundMs(value) {

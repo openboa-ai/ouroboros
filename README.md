@@ -133,11 +133,12 @@ Run local services:
 ```bash
 npm install
 ouroboros runtime serve
-npm run dev:operator-web
-npm run dev:operator-desktop
 npm run package:operator-desktop
+npm run open:operator-desktop
 npm run verify:operator-desktop-release
 npm run measure:operator-performance -- --check
+npm run dev:operator-desktop
+npm run dev:operator-web
 ```
 
 Operate the product loop through the Ouroboros command surface:
@@ -160,7 +161,8 @@ ouroboros researcher provider set codex
 ouroboros tui
 ```
 
-The Desktop app is the primary interactive operator surface. The CLI remains the complete baseline
+The Desktop app is the primary interactive operator surface; use the packaged app path for operator
+checks instead of opening the browser development surface. The CLI remains the complete baseline
 for headless operation and automation. CLI, Desktop, Web, and TUI all read `GET /api/operator`,
 mutate through `POST /api/commands`, and share the same runtime/store-backed session data. Adapter
 names such as Codex are internal provider settings on managed `AgentProfile` records. The agent
