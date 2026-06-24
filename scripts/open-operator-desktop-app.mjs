@@ -53,7 +53,7 @@ const child = spawn(appExecutable, [], {
 });
 child.unref();
 
-await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 500));
+await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 1500));
 
 if (child.exitCode !== null) {
   console.error(`operator_desktop_direct_launch_exited:${child.exitCode}`);

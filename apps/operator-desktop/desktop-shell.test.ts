@@ -296,6 +296,9 @@ describe("Operator desktop app", () => {
     expect(measurement).toContain("desktop_app_render");
     expect(measurement).toContain("measureDesktopAppRender");
     expect(measurement).toContain("screencapture");
+    expect(measurement).toContain("DesktopAppRenderFailure");
+    expect(measurement).toContain("desktop_app_exited_before_capture");
+    expect(measurement).toContain("assertDesktopAppStillRunning");
     expect(measurement).toContain("OUROBOROS_PERF_MAX_DESKTOP_APP_SCREENSHOT_MS");
     expect(measurement).not.toContain("measureBrowserRender");
     expect(measurement).not.toContain("Google Chrome");

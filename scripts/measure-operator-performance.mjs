@@ -24,6 +24,13 @@ const startedAt = performance.now();
 let runtimeChild;
 let desktopAppChild;
 
+class DesktopAppRenderFailure extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DesktopAppRenderFailure";
+  }
+}
+
 try {
   const runtimeProbe = await probeOperator();
   const runtimeStart = runtimeProbe.ok
@@ -34,7 +41,7 @@ try {
   const desktopBundle = measureDesktopBundle();
   const desktopAppRender = desktopAppEnabled
     ? await measureDesktopAppRender(desktopBundle).catch((error) => ({
-        status: "skipped",
+        status: error instanceof DesktopAppRenderFailure ? "failed" : "skipped",
         reason: error instanceof Error ? error.message : String(error)
       }))
     : { status: "skipped", reason: "disabled_by_flag" };
@@ -177,10 +184,16 @@ async function measureDesktopAppRender(desktopBundle) {
     stdio: ["ignore", "ignore", "ignore"]
   });
   await waitFor(async () => (await probeOperator()).ok, thresholds.runtimeReadyMs);
-  await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 1500));
+  const earlyExit = await waitForChildExit(desktopAppChild, 1500);
+  if (earlyExit.exited) {
+    throw new DesktopAppRenderFailure(
+      `desktop_app_exited_before_capture:${formatChildExit(earlyExit)}`
+    );
+  }
 
   const screenshotPath = join(outDir, "operator-desktop-app.png");
   await runCommand("screencapture", ["-x", screenshotPath], { cwd: repoRoot });
+  assertDesktopAppStillRunning(desktopAppChild, "after_capture");
 
   return {
     status: "captured",
@@ -192,14 +205,52 @@ async function measureDesktopAppRender(desktopBundle) {
 }
 
 function performanceStatus({ runtimeStart, operatorFetch, webAssets, desktopAppRender }) {
-  const desktopAppOk = desktopAppRender.status !== "captured"
-    || desktopAppRender.screenshot_ms <= thresholds.desktopAppScreenshotMs;
+  const desktopAppOk = desktopAppRender.status !== "failed"
+    && (desktopAppRender.status !== "captured"
+      || desktopAppRender.screenshot_ms <= thresholds.desktopAppScreenshotMs);
   const runtimeOk = runtimeStart.ready_ms <= thresholds.runtimeReadyMs;
   const fetchOk = operatorFetch.latency_ms <= thresholds.operatorFetchMs
     && operatorFetch.payload_bytes <= thresholds.operatorPayloadBytes;
   const webOk = webAssets.status !== "present"
     || webAssets.total_bytes <= thresholds.operatorWebAssetBytes;
   return runtimeOk && fetchOk && webOk && desktopAppOk ? "pass" : "fail";
+}
+
+function assertDesktopAppStillRunning(child, stage) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new DesktopAppRenderFailure(
+      `desktop_app_exited_${stage}:code=${child.exitCode ?? "null"}:signal=${child.signalCode ?? "null"}`
+    );
+  }
+}
+
+function waitForChildExit(child, timeoutMs) {
+  return new Promise((resolveExit) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolveExit({
+        exited: true,
+        code: child.exitCode,
+        signal: child.signalCode
+      });
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      child.off("exit", onExit);
+      resolveExit({ exited: false });
+    }, timeoutMs);
+
+    function onExit(code, signal) {
+      clearTimeout(timeout);
+      resolveExit({ exited: true, code, signal });
+    }
+
+    child.once("exit", onExit);
+  });
+}
+
+function formatChildExit(exit) {
+  return `code=${exit.code ?? "null"}:signal=${exit.signal ?? "null"}`;
 }
 
 async function probeOperator() {
