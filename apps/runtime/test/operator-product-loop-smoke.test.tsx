@@ -379,6 +379,15 @@ describe("operator product loop smoke", () => {
       expect(observations[0]?.ledger_ref).toBeDefined();
       expect(observations.at(-1)?.ledger_ref).toBeUndefined();
 
+      const stoppedPaper = await postCommand(server, {
+        command_kind: "trading_run.stop",
+        payload: { trading_run_id: evaluation.trading_run_id }
+      });
+      expect(stoppedPaper.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "stopped",
+        runner_active: false,
+        authority_status: "not_live"
+      });
       const stopped = await postCommand(server, {
         command_kind: "arena.stop"
       });
