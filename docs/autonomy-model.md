@@ -118,7 +118,8 @@ The next level of detail should improve the autonomous loop without widening aut
   runner-health, Ledger, authority-boundary, and unknown groups while retaining raw reason.
 - Cost and latency observability for provider research runs and paper observations. CandidateArena
   now records provider-request, runner-command, scenario-count, and elapsed-time research
-  efficiency proxies; provider-dollar cost and paper-loop latency summaries remain future detail.
+  efficiency proxies and derives compact paper-loop latency summaries from selected paper
+  observations; provider-dollar cost remains future detail until adapters expose reliable usage.
 - Policy hooks for future promotion review, still separate from live authority.
 
 These are detail improvements inside the same direction. They should strengthen CandidateArena

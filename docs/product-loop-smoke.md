@@ -81,6 +81,9 @@ TradingSystem lineage to that paper-backed source.
   observation count, market snapshot, public execution evidence, fake account/fill state, failures,
   and Ledger summary. This keeps the next candidate generation grounded in paper results instead of
   replay-only leaderboard data.
+- CandidateArena researcher context must include compact selected paper-loop latency: expected
+  interval, latest observed interval, latest and max interval lag, observed interval count, cadence
+  status, and `not_promotion_authority`, derived from persisted paper observations.
 - Failed paper evidence in CandidateArena researcher context must include both raw failure reason
   and classified `PaperTradingFailure` kind, summary, and next action so the next `ResearchWorker`
   can repair protocol, market, runner, Ledger, or authority-boundary failures without treating the
@@ -128,7 +131,6 @@ npm run open:operator-desktop
 npm run verify:operator-desktop-release
 npm run measure:operator-performance -- --check
 npm run dev:operator-desktop
-npm run dev:operator-web
 ouroboros candidate select <candidate-id>
 ouroboros candidate paper start <candidate-id>
 ouroboros trading-run observe <trading-run-id>

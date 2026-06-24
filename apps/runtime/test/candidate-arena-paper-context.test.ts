@@ -242,6 +242,56 @@ describe("CandidateArena paper evidence context", () => {
     expect(context.paper_trading_board[0]).not.toHaveProperty("promotion_gate_status");
   });
 
+  it("feeds paper observation cadence into the next researcher context without promotion authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const source = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!source) {
+      throw new Error("fixture candidate missing");
+    }
+    await seedPaperTradingCadenceEvidence(store, source);
+
+    const capturedContexts: string[] = [];
+    await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(capturedContexts).toHaveLength(1);
+    const context = JSON.parse(capturedContexts[0]!) as {
+      selected_paper_evidence: Array<{
+        candidate_id: string;
+        paper_loop_latency?: {
+          expected_interval_ms: number;
+          latest_observation_interval_ms?: number;
+          latest_interval_lag_ms?: number;
+          max_interval_lag_ms?: number;
+          observed_interval_count: number;
+          cadence_status: string;
+          authority_status: string;
+        };
+      }>;
+    };
+    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        candidate_id: FIXTURE_CANDIDATE_ID,
+        paper_loop_latency: {
+          expected_interval_ms: 60_000,
+          latest_observation_interval_ms: 100_000,
+          latest_interval_lag_ms: 40_000,
+          max_interval_lag_ms: 40_000,
+          observed_interval_count: 2,
+          cadence_status: "lagging",
+          authority_status: "not_promotion_authority"
+        }
+      })
+    ]));
+  });
+
   it("feeds paper candidate lineage and findings into the next researcher context", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -1031,7 +1081,10 @@ async function seedPaperTradingEvidence(
     expectedDirection?: "long" | "short" | "flat";
     volatility?: number;
   } = {}
-): Promise<void> {
+): Promise<{
+  evaluation: PaperTradingEvaluationRecord;
+  observation: PaperTradingObservationRecord;
+}> {
   const evaluationId = options.evaluationId ?? `paper-trading-evaluation-${candidate.candidate_id}-context`;
   const tradingRunId = candidate.runtime.ref.id;
   const startedAt = options.startedAt ?? "2026-05-16T00:00:00.000Z";
@@ -1171,6 +1224,68 @@ async function seedPaperTradingEvidence(
     authority_status: "not_live"
   };
   await store.recordPaperTradingObservation(observation, evaluation);
+  return { evaluation, observation };
+}
+
+async function seedPaperTradingCadenceEvidence(
+  store: LocalStore,
+  candidate: CandidateInspectReadModel
+): Promise<void> {
+  const { evaluation, observation } = await seedPaperTradingEvidence(store, candidate, {
+    evaluationId: `paper-trading-evaluation-${candidate.candidate_id}-cadence`,
+    startedAt: "2026-05-16T00:00:00.000Z",
+    lastObservedAt: "2026-05-16T00:03:00.000Z"
+  });
+  const observations: PaperTradingObservationRecord[] = [
+    paperTradingObservationAt(observation, 5, "2026-05-16T00:00:00.000Z", {
+      revenue_usdt: 11,
+      cost_usdt: 0.5,
+      net_revenue_usdt: 10.5,
+      net_return_pct: 0.105
+    }),
+    paperTradingObservationAt(observation, 6, "2026-05-16T00:01:20.000Z", {
+      revenue_usdt: 12,
+      cost_usdt: 0.6,
+      net_revenue_usdt: 11.4,
+      net_return_pct: 0.114
+    })
+  ];
+  for (const earlierObservation of observations) {
+    await store.recordPaperTradingObservation(earlierObservation, evaluation);
+  }
+}
+
+function paperTradingObservationAt(
+  observation: PaperTradingObservationRecord,
+  sequence: number,
+  observedAt: string,
+  cumulativeScore: PaperTradingObservationRecord["cumulative_score"]
+): PaperTradingObservationRecord {
+  return {
+    ...observation,
+    paper_trading_observation_id: `${observation.paper_trading_evaluation_ref.id}-observation-${String(sequence).padStart(4, "0")}`,
+    sequence,
+    observed_at: observedAt,
+    market_snapshot: observation.market_snapshot
+      ? {
+          ...observation.market_snapshot,
+          observed_at: observedAt
+        }
+      : undefined,
+    public_execution_snapshot: observation.public_execution_snapshot
+      ? {
+          ...observation.public_execution_snapshot,
+          observed_at: observedAt
+        }
+      : undefined,
+    decision: observation.decision
+      ? {
+          ...observation.decision,
+          observed_at: observedAt
+        }
+      : undefined,
+    cumulative_score: cumulativeScore
+  };
 }
 
 async function seedResearchEfficiencyTick(store: LocalStore): Promise<void> {
