@@ -29,6 +29,7 @@ describe("Operator desktop app", () => {
     expect(packageJson.devDependencies).toHaveProperty("@tauri-apps/cli");
     expect(packageJson.devDependencies).not.toHaveProperty("electron");
     expect(packageJson.scripts?.build).toBe("node scripts/check-build.mjs");
+    expect(packageJson.scripts?.["build:frontend"]).toBe("node scripts/build-frontend.mjs");
     expect(packageJson.scripts?.dev).toBe("tauri dev");
     expect(packageJson.scripts?.package).toBe("tauri build");
     expect(packageJson.scripts?.typecheck).toBe("npm run build");
@@ -66,6 +67,7 @@ describe("Operator desktop app", () => {
         windows?: Array<{
           label?: string;
           create?: boolean;
+          url?: string;
           title?: string;
           width?: number;
           height?: number;
@@ -85,9 +87,9 @@ describe("Operator desktop app", () => {
 
     expect(config.build).toMatchObject({
       beforeDevCommand: "npm run dev -w @ouroboros/operator-web",
-      beforeBuildCommand: "npm run build -w @ouroboros/operator-web",
+      beforeBuildCommand: "npm run build:frontend -w @ouroboros/operator-desktop",
       devUrl: "http://127.0.0.1:5173",
-      frontendDist: "../../operator-web/dist"
+      frontendDist: "dist"
     });
     expect(config.bundle).toMatchObject({
       active: true,
@@ -100,7 +102,8 @@ describe("Operator desktop app", () => {
     expect(config.app?.windows).toEqual([
       {
         label: "main",
-        create: true,
+        create: false,
+        url: "/index.html",
         title: "Ouroboros Operator",
         width: 1440,
         height: 960,
@@ -169,24 +172,27 @@ describe("Operator desktop app", () => {
       "utf8"
     )) as {
       app?: {
-        windows?: Array<{ label?: string; create?: boolean; visible?: boolean }>;
+        windows?: Array<{ label?: string; create?: boolean; url?: string; visible?: boolean }>;
       };
     };
 
-    expect(mainRs).not.toContain("ActivationPolicy");
+    expect(mainRs).toContain("ActivationPolicy::Regular");
     expect(mainRs).toContain("RunEvent::Ready");
     expect(mainRs).toContain("MAIN_WINDOW_LABEL");
+    expect(mainRs).toContain("ensure_main_window(app)?");
+    expect(mainRs).toContain("WebviewWindowBuilder::new");
+    expect(mainRs).toContain('WebviewUrl::App("index.html".into())');
     expect(mainRs).toContain("show_main_window(app.handle())");
+    expect(mainRs).toContain("app_handle.show()");
     expect(mainRs).toContain("if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL)");
-    expect(mainRs).not.toContain("ensure_main_window(app)?");
     expect(mainRs).not.toContain("WebviewWindowBuilder::from_config");
-    expect(mainRs).not.toContain("WebviewWindowBuilder::new");
     expect(mainRs).toContain("window.show()");
     expect(mainRs).toContain("window.unminimize()");
     expect(mainRs).toContain("window.set_focus()");
     expect(config.app?.windows?.[0]).toMatchObject({
       label: "main",
-      create: true,
+      create: false,
+      url: "/index.html",
       visible: true
     });
   });
@@ -290,8 +296,15 @@ describe("Operator desktop app", () => {
 
   it("keeps the shared operator-web UI source loadable from the Tauri frontendDist target", () => {
     const viteConfig = readFileSync(path.join(process.cwd(), "apps", "operator-web", "vite.config.ts"), "utf8");
+    const frontendBuilder = readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "scripts", "build-frontend.mjs"),
+      "utf8"
+    );
 
     expect(viteConfig).toContain('base: "./"');
+    expect(frontendBuilder).toContain('"@ouroboros/operator-web"');
+    expect(frontendBuilder).toContain('"operator-web", "dist"');
+    expect(frontendBuilder).toContain('"src-tauri", "dist"');
   });
 
   it("ships real Tauri icon assets instead of a placeholder pixel", () => {

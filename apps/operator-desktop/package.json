@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/check-build.mjs",
+    "build:frontend": "node scripts/build-frontend.mjs",
     "dev": "tauri dev",
     "package": "tauri build",
     "tauri": "tauri",

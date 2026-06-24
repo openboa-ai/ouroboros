@@ -38,6 +38,9 @@ evidence, account/fill state, failures, and Ledger summary are compacted into th
 CandidateArena researcher context, even before that candidate appears in the replay leaderboard.
 It also proves the compact paper board enters the next researcher context so future candidates can
 learn from top, negative, failed, and resume-needed paper evaluations.
+The runtime product-loop smoke also proves the repeating autonomous runner uses a started
+`PaperTradingEvaluation` leader as the next tick's source candidate and records the next generated
+TradingSystem lineage to that paper-backed source.
 
 ## Acceptance
 
