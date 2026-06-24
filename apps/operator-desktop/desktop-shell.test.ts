@@ -105,7 +105,7 @@ describe("Operator desktop app", () => {
     expect(config.app?.windows).toEqual([
       {
         label: "main",
-        create: false,
+        create: true,
         url: "index.html",
         title: "Ouroboros Operator",
         width: 1440,
@@ -177,7 +177,7 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("OUROBOROS_RUNTIME_URL");
   });
 
-  it("creates the main operator window as a native macOS app and foregrounds it", () => {
+  it("creates the main operator window from the Tauri app config and foregrounds it", () => {
     const mainRs = readFileSync(
       path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "src", "main.rs"),
       "utf8"
@@ -207,7 +207,7 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("window.set_focus()");
     expect(config.app?.windows?.[0]).toMatchObject({
       label: "main",
-      create: false,
+      create: true,
       url: "index.html",
       visible: true
     });

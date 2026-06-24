@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "create": false,
+        "create": true,
         "url": "index.html",
         "title": "Ouroboros Operator",
         "width": 1440,
