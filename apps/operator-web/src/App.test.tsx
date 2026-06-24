@@ -969,6 +969,16 @@ describe("operator refresh contract", () => {
     expect(source).toContain("fetchReplayRunEvidence(selected.candidate_id)");
     expect(source).toContain("fetchReplayRunSelection(selected.candidate_id, replayRuns)");
   });
+
+  it("retries the initial app load when the Desktop runtime is still starting", () => {
+    const source = readFileSync(join(operatorWebSrcDir, "App.tsx"), "utf8");
+
+    expect(source).toContain("OPERATOR_INITIAL_LOAD_RETRY_MS");
+    expect(source).toContain("let initialLoadRetryId: number | undefined");
+    expect(source).toContain("scheduleInitialLoadRetry()");
+    expect(source).toContain("void load();");
+    expect(source).toContain("window.clearTimeout(initialLoadRetryId)");
+  });
 });
 
 describe("operator UI primitives", () => {

@@ -259,6 +259,7 @@ export interface AppState {
 }
 
 export const OPERATOR_REFRESH_INTERVAL_MS = 5_000;
+export const OPERATOR_INITIAL_LOAD_RETRY_MS = 1_000;
 
 function operatorStatusMessages(
   ...messages: Array<OperatorStatusStackMessage | undefined>
@@ -593,6 +594,7 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let initialLoadRetryId: number | undefined;
     async function load() {
       try {
         const [
@@ -663,8 +665,18 @@ export function App() {
             runningCandidateArenaAction: false,
             error: error instanceof Error ? error.message : "Unknown runtime error"
           });
+          scheduleInitialLoadRetry();
         }
       }
+    }
+    function scheduleInitialLoadRetry() {
+      if (cancelled || typeof window === "undefined" || initialLoadRetryId !== undefined) {
+        return;
+      }
+      initialLoadRetryId = window.setTimeout(() => {
+        initialLoadRetryId = undefined;
+        void load();
+      }, OPERATOR_INITIAL_LOAD_RETRY_MS);
     }
     void load();
     const refreshIntervalId = typeof window === "undefined"
@@ -728,6 +740,9 @@ export function App() {
 
     return () => {
       cancelled = true;
+      if (initialLoadRetryId !== undefined) {
+        window.clearTimeout(initialLoadRetryId);
+      }
       if (refreshIntervalId !== undefined) {
         window.clearInterval(refreshIntervalId);
       }
