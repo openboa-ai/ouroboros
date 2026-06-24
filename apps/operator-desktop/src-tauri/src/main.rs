@@ -13,7 +13,7 @@ use std::{
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
-    Manager,
+    ActivationPolicy, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
 const DEFAULT_RUNTIME_HOST: &str = "127.0.0.1";
@@ -43,6 +43,7 @@ fn main() {
     let app = tauri::Builder::default()
         .manage(runtime_process)
         .setup(move |app| {
+            app.set_activation_policy(ActivationPolicy::Regular);
             let resource_dir = app.path().resource_dir().ok();
             install_runtime_status_tray(
                 app,
@@ -53,6 +54,7 @@ fn main() {
             if let Err(message) = start_runtime_if_needed(setup_process.clone(), resource_dir) {
                 eprintln!("{message}");
             }
+            ensure_main_window(app)?;
             update_runtime_status_tray(app.handle());
             show_main_window(app.handle());
             start_runtime_status_monitor(
@@ -98,6 +100,27 @@ fn main() {
         }
         _ => {}
     });
+}
+
+fn ensure_main_window(app: &mut tauri::App) -> tauri::Result<()> {
+    if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        app,
+        MAIN_WINDOW_LABEL,
+        WebviewUrl::App("index.html".into()),
+    )
+    .title("Ouroboros Operator")
+    .inner_size(1440.0, 960.0)
+    .min_inner_size(1180.0, 760.0)
+    .resizable(true)
+    .focused(true)
+    .visible(true)
+    .build()?;
+
+    Ok(())
 }
 
 fn install_runtime_status_tray(
@@ -209,6 +232,11 @@ fn update_runtime_status_tray(app_handle: &tauri::AppHandle) {
 }
 
 fn show_main_window(app_handle: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app_handle.show();
+    }
+
     if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = window.show();
         let _ = window.unminimize();

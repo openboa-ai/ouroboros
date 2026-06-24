@@ -5,15 +5,16 @@
   "identifier": "ai.openboa.ouroboros.operator",
   "build": {
     "beforeDevCommand": "npm run dev -w @ouroboros/operator-web",
-    "beforeBuildCommand": "npm run build -w @ouroboros/operator-web",
+    "beforeBuildCommand": "npm run build:frontend -w @ouroboros/operator-desktop",
     "devUrl": "http://127.0.0.1:5173",
-    "frontendDist": "../../operator-web/dist"
+    "frontendDist": "dist"
   },
   "app": {
     "windows": [
       {
         "label": "main",
-        "create": true,
+        "create": false,
+        "url": "/index.html",
         "title": "Ouroboros Operator",
         "width": 1440,
         "height": 960,
