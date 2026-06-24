@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 const maybeRootElement = document.getElementById("root");
@@ -29,6 +29,37 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+class OperatorRenderBoundary extends Component<
+  { children: ReactNode },
+  { error?: unknown }
+> {
+  state: { error?: unknown } = {};
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error("Ouroboros Operator render failed", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      const message = this.state.error instanceof Error
+        ? this.state.error.message
+        : String(this.state.error);
+      return (
+        <main style={{ fontFamily: "system-ui, sans-serif", padding: 24, color: "#111827" }}>
+          <h1 style={{ fontSize: 20, margin: "0 0 12px" }}>Ouroboros Operator failed to render</h1>
+          <pre style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</pre>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 window.addEventListener("error", (event) => {
   renderFatalError(event.error ?? event.message);
 });
@@ -41,7 +72,9 @@ async function boot() {
   const { App } = await import("./App");
   createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <OperatorRenderBoundary>
+        <App />
+      </OperatorRenderBoundary>
     </StrictMode>
   );
 }

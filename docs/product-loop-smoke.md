@@ -47,6 +47,9 @@ learn from top, negative, failed, and resume-needed paper evaluations.
 - `ouroboros arena start` starts the repeating autonomous paper loop: generated candidates are
   selected per tick and moved into selected continuous Paper Trading Evaluation through
   `trading_run.start` until `ouroboros arena stop`.
+- Runtime restart preserves the last successful `arena.start` intent: when no later successful
+  `arena.stop` exists, startup resumes the autonomous arena loop from the persisted command ledger
+  without recording a synthetic operator command.
 - `ouroboros arena tick` creates multiple candidates and the leaderboard is sorted by
   `net_revenue_usdt`.
 - `ouroboros arena cycle` runs one research tick, selects the highest-ranked candidate created by

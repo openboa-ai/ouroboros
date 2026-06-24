@@ -125,6 +125,10 @@ export class CandidateArenaRunner {
     return this.tickCount;
   }
 
+  restoreTickCount(tickCount: number): void {
+    this.tickCount = Math.max(this.tickCount, Math.max(0, Math.floor(tickCount)));
+  }
+
   researchAgent(): TradingResearchRuntimeAgent {
     return this.input.researchAgent;
   }
@@ -152,7 +156,14 @@ export class CandidateArenaRunner {
 
   stop(): "stopped" {
     this.running = false;
+    this.tickContinuation = undefined;
     return "stopped";
+  }
+
+  async stopAndDrain(): Promise<"stopped"> {
+    const status = this.stop();
+    await this.activeTick?.catch(() => undefined);
+    return status;
   }
 
   async tick(): Promise<CandidateArenaTickOutcome> {
@@ -173,7 +184,7 @@ export class CandidateArenaRunner {
 
   private async applyTickContinuation(outcome: CandidateArenaTickOutcome): Promise<CandidateArenaTickOutcome> {
     const continuation = this.tickContinuation;
-    if (!continuation) {
+    if (!continuation || !this.running) {
       return outcome;
     }
 
@@ -233,6 +244,19 @@ export class CandidateArenaRunner {
     };
     schedule();
   }
+}
+
+export function candidateArenaRunnerTickCountFromTicks(
+  ticks: Pick<CandidateArenaTickRecord, "tick_id">[]
+): number {
+  const highestNumericTickId = ticks.reduce((highest, tick) => {
+    const match = /^tick-(\d+)$/.exec(tick.tick_id);
+    if (!match) {
+      return highest;
+    }
+    return Math.max(highest, Number(match[1] ?? 0));
+  }, 0);
+  return Math.max(ticks.length, highestNumericTickId);
 }
 
 export async function runCandidateArenaTick(

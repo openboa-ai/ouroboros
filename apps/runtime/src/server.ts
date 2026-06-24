@@ -272,6 +272,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     logger: false
   });
   server.addHook("onClose", async () => {
+    await candidateArenaRunner.stopAndDrain();
     await paperTradingCommandService.stopAllSessions();
   });
 
@@ -1139,6 +1140,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
     }
   });
+  await operatorService.resumeAutonomousArenaLoop();
   const operatorController = createOperatorController(operatorService);
 
   await registerRuntimeRouteModules(server, [
