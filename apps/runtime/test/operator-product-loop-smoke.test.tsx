@@ -294,6 +294,100 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("keeps observing the selected Paper Trading Evaluation on the autonomous runner schedule", async () => {
+    const store = new LocalStore(tmpDir);
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          },
+          {
+            price: 65_025,
+            expected_direction: "long"
+          },
+          {
+            price: 65_050,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 50,
+      paperTradingSandboxIntervalMs: 10
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "arena.start"
+      });
+
+      const runningOperator = await waitForOperator(server, (operator) =>
+        operator.candidate_arena.runner_status === "running"
+        && operator.candidate_arena.tick_count === 1
+        && operator.selected_paper_trading_evaluation.status === "running"
+        && operator.selected_paper_trading_evaluation.runner_active
+        && operator.selected_paper_trading_evaluation.observation_count >= 2
+      );
+      const evaluation = runningOperator.selected_paper_trading_evaluation;
+      const observations = await store.listPaperTradingObservations(evaluation.evaluation_id!);
+
+      expect(runningOperator.candidate_arena.latest_ticks).toHaveLength(1);
+      expect(runningOperator.candidate_arena.latest_ticks[0]).toMatchObject({
+        tick_id: "tick-1",
+        paper_trading_continuation: {
+          status: "started",
+          command_kind: "trading_run.start",
+          selected_candidate_id: runningOperator.selected_candidate_id,
+          authority_status: "not_live"
+        }
+      });
+      expect(evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        interval_ms: 50,
+        observation_count: expect.any(Number),
+        authority_status: "not_live"
+      });
+      expect(evaluation.observation_count).toBeGreaterThanOrEqual(2);
+      expect(observations.length).toBeGreaterThanOrEqual(2);
+      expect(observations[0]?.ledger_ref).toBeDefined();
+      expect(observations.at(-1)?.ledger_ref).toBeUndefined();
+
+      const stopped = await postCommand(server, {
+        command_kind: "arena.stop"
+      });
+      expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("uses autonomous paper trading results as the next repeating arena generation source", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
