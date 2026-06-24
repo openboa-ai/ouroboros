@@ -110,8 +110,9 @@ surfaces. They must not replace the primary Candidate Arena workflow.
 - `apps/operator-web`: shared Operator UI source and browser/development surface over the same
   Operator read model and Ouroboros command endpoint. It is not a separate product authority.
 - `apps/operator-desktop`: primary Tauri operator app. It launches or reuses the runtime, keeps
-  runtime status visible from the macOS menu bar, and loads the shared Operator UI bundle through
-  the platform WebView without granting frontend Tauri permissions.
+  runtime status visible from the macOS menu bar, restores the operator window from the tray, and
+  loads the shared Operator UI bundle through the platform WebView without granting frontend Tauri
+  permissions.
 - `packages/domain`: shared domain contracts, including the Operator command descriptors used by
   CLI, TUI, shared UI, and the Desktop app.
 - `packages/application`: command controllers, application services, Candidate Arena use cases, read-model builders, and ports, organized by product domain such as `agent/`, `candidate/`, `research/`, and `trading/`.

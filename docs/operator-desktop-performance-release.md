@@ -5,6 +5,9 @@ macOS menu bar status, background execution, and packaged app release path while
 Operator UI source currently built from `apps/operator-web`. CLI remains the complete baseline for
 headless operation and automation. Desktop, CLI, TUI, and Web share the same runtime command/read
 contract and store-backed session data; Desktop must not create a second product API.
+On macOS it runs as a regular native app window with a menu bar runtime-status item, so the
+operator window is visible when opened and can still be restored from the tray without turning
+background operation into a separate web session.
 
 ## Runtime Packaging
 
@@ -46,6 +49,11 @@ background process alive, `Restart Runtime` explicitly restarts the Desktop-owne
 when needed, and `Quit Ouroboros` is the explicit shutdown path. Quitting only stops the child
 runtime process that the Desktop app spawned; it does not kill an external runtime that was already
 running before the app opened.
+
+Runtime startup resumes the autonomous arena loop when the persisted command ledger says the last
+successful arena control command was `arena.start`. A later successful `arena.stop` leaves the
+runner stopped. Desktop owns runtime reachability and visibility; the runtime owns the
+store-backed loop resume decision.
 
 ## Performance Measurement
 

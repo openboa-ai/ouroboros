@@ -24,6 +24,7 @@ import {
 } from "../agent/profiles";
 import {
   buildCandidateArenaReadModel,
+  candidateArenaRunnerTickCountFromTicks,
   type CandidateArenaRunner,
   type CandidateArenaTickOutcome
 } from "../candidate/arena";
@@ -185,6 +186,29 @@ export class OperatorService {
     return this.commandHandlers()[commandKind](payload);
   }
 
+  async resumeAutonomousArenaLoop(): Promise<"resumed" | "not_requested" | "blocked"> {
+    const desiredStatus = autonomousArenaLoopDesiredStatus(
+      await this.options.store.listOuroborosCommands()
+    );
+    if (desiredStatus !== "running") {
+      return "not_requested";
+    }
+
+    try {
+      await this.requireResearcherProviderReady();
+    } catch {
+      return "blocked";
+    }
+
+    this.installAutonomousArenaTickContinuation();
+    const persistedTicks = await this.options.store.listCandidateArenaTicks();
+    this.options.candidateArenaRunner.restoreTickCount(
+      candidateArenaRunnerTickCountFromTicks(persistedTicks)
+    );
+    this.options.candidateArenaRunner.start();
+    return "resumed";
+  }
+
   private commandHandlers(): OperatorCommandHandlerRegistry {
     return {
       "arena.status": async () => ({
@@ -199,22 +223,7 @@ export class OperatorService {
       }),
       "arena.start": async () => {
         await this.requireResearcherProviderReady();
-        this.options.candidateArenaRunner.setTickContinuation((outcome) =>
-          this.startPaperTradingForArenaCycle(outcome)
-            .then((paperCycle): CandidateArenaTickPaperTradingContinuationReadModel => ({
-              status: "started",
-              command_kind: "trading_run.start",
-              selected_candidate_id: paperCycle.selected_candidate_id,
-              authority_status: "not_live"
-            }))
-            .catch((error): CandidateArenaTickPaperTradingContinuationReadModel => ({
-              status: "failed",
-              command_kind: "trading_run.start",
-              selected_candidate_id: selectArenaCycleCandidateId(outcome),
-              error: commandErrorSummary(error),
-              authority_status: "not_live"
-            }))
-        );
+        this.installAutonomousArenaTickContinuation();
         const status = this.options.candidateArenaRunner.start();
         return {
           result: {
@@ -452,6 +461,25 @@ export class OperatorService {
     };
   }
 
+  private installAutonomousArenaTickContinuation(): void {
+    this.options.candidateArenaRunner.setTickContinuation((outcome) =>
+      this.startPaperTradingForArenaCycle(outcome)
+        .then((paperCycle): CandidateArenaTickPaperTradingContinuationReadModel => ({
+          status: "started",
+          command_kind: "trading_run.start",
+          selected_candidate_id: paperCycle.selected_candidate_id,
+          authority_status: "not_live"
+        }))
+        .catch((error): CandidateArenaTickPaperTradingContinuationReadModel => ({
+          status: "failed",
+          command_kind: "trading_run.start",
+          selected_candidate_id: selectArenaCycleCandidateId(outcome),
+          error: commandErrorSummary(error),
+          authority_status: "not_live"
+        }))
+    );
+  }
+
   private async requireResearcherProviderReady(): Promise<void> {
     const provider = (await this.readResearcherProvider()).selected_provider;
     if (provider === "fixture") {
@@ -510,6 +538,23 @@ export class OperatorService {
       paper_trading: paperTrading.result
     };
   }
+}
+
+export function autonomousArenaLoopDesiredStatus(
+  commands: OuroborosCommandRecord[]
+): "running" | "stopped" {
+  const latestControlCommand = commands
+    .filter((command) =>
+      command.status === "succeeded" &&
+      (command.command_kind === "arena.start" || command.command_kind === "arena.stop")
+    )
+    .sort((left, right) =>
+      right.completed_at.localeCompare(left.completed_at) ||
+      right.requested_at.localeCompare(left.requested_at) ||
+      right.ouroboros_command_id.localeCompare(left.ouroboros_command_id)
+    )
+    .at(0);
+  return latestControlCommand?.command_kind === "arena.start" ? "running" : "stopped";
 }
 
 function selectArenaCycleCandidateId(outcome: CandidateArenaTickOutcome): string | undefined {

@@ -19,10 +19,16 @@
         "height": 960,
         "minWidth": 1180,
         "minHeight": 760,
-        "visible": true,
-        "visibleOnAllWorkspaces": true
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundColor": [248, 250, 252, 255],
+        "focus": true,
+        "visible": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,

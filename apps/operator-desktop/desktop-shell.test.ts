@@ -71,9 +71,15 @@ describe("Operator desktop app", () => {
           height?: number;
           minWidth?: number;
           minHeight?: number;
+          resizable?: boolean;
+          fullscreen?: boolean;
+          backgroundColor?: number[];
+          focus?: boolean;
           visible?: boolean;
-          visibleOnAllWorkspaces?: boolean;
         }>;
+        security?: {
+          csp?: unknown;
+        };
       };
     };
 
@@ -100,10 +106,16 @@ describe("Operator desktop app", () => {
         height: 960,
         minWidth: 1180,
         minHeight: 760,
-        visible: true,
-        visibleOnAllWorkspaces: true
+        resizable: true,
+        fullscreen: false,
+        backgroundColor: [248, 250, 252, 255],
+        focus: true,
+        visible: true
       }
     ]);
+    expect(config.app?.security).toMatchObject({
+      csp: null
+    });
   });
 
   it("documents Desktop-first operation with CLI parity and shared session data", () => {
@@ -147,7 +159,7 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("OUROBOROS_RUNTIME_URL");
   });
 
-  it("keeps the configured main operator window visible and foregrounded", () => {
+  it("creates the main operator window as a native macOS app and foregrounds it", () => {
     const mainRs = readFileSync(
       path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "src", "main.rs"),
       "utf8"
@@ -157,32 +169,25 @@ describe("Operator desktop app", () => {
       "utf8"
     )) as {
       app?: {
-        windows?: Array<{ label?: string; visible?: boolean; visibleOnAllWorkspaces?: boolean }>;
+        windows?: Array<{ label?: string; create?: boolean; visible?: boolean }>;
       };
     };
 
-    expect(mainRs).toContain("ensure_main_window(app)?");
-    expect(mainRs).toContain("ActivationPolicy::Regular");
-    expect(mainRs).toContain("#[cfg(target_os = \"macos\")]\nuse tauri::ActivationPolicy;");
-    expect(mainRs).toContain(
-      "#[cfg(target_os = \"macos\")]\n            let _ = app\n                .handle()\n                .set_activation_policy(ActivationPolicy::Regular);"
-    );
+    expect(mainRs).not.toContain("ActivationPolicy");
     expect(mainRs).toContain("RunEvent::Ready");
     expect(mainRs).toContain("MAIN_WINDOW_LABEL");
     expect(mainRs).toContain("show_main_window(app.handle())");
-    expect(mainRs).toContain("WebviewUrl::App(\"index.html\".into())");
-    expect(mainRs).toContain("WebviewWindowBuilder::new");
-    expect(mainRs).toContain(".inner_size(1440.0, 960.0)");
-    expect(mainRs).toContain(".min_inner_size(1180.0, 760.0)");
-    expect(mainRs).toContain(".visible(true)");
-    expect(mainRs).toContain(".visible_on_all_workspaces(true)");
+    expect(mainRs).toContain("if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL)");
+    expect(mainRs).not.toContain("ensure_main_window(app)?");
+    expect(mainRs).not.toContain("WebviewWindowBuilder::from_config");
+    expect(mainRs).not.toContain("WebviewWindowBuilder::new");
     expect(mainRs).toContain("window.show()");
     expect(mainRs).toContain("window.unminimize()");
     expect(mainRs).toContain("window.set_focus()");
     expect(config.app?.windows?.[0]).toMatchObject({
       label: "main",
-      visible: true,
-      visibleOnAllWorkspaces: true
+      create: true,
+      visible: true
     });
   });
 

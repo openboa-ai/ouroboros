@@ -126,8 +126,8 @@ This file is a compact development map. The canonical architecture contract live
   through the shared command/read-model contract.
 - `apps/operator-desktop`: primary Tauri operator app that loads the shared Operator UI bundle
   through the platform WebView, launches or reuses the local runtime through the packaged sidecar
-  hook, keeps the runtime visible from the macOS menu bar, and hides rather than quits on window
-  close as described in
+  hook, keeps the runtime visible from the macOS menu bar, restores the operator window from the
+  tray, and hides rather than quits on window close as described in
   [Operator Desktop Performance And Release](docs/operator-desktop-performance-release.md).
 - `packages/domain`: shared contracts and domain types.
 - `packages/application`: command/query controllers, services, use cases, ports, and read-model builders.

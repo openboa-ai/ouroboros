@@ -294,6 +294,179 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("resumes the persisted autonomous arena loop after runtime restart", async () => {
+    const store = new LocalStore(tmpDir);
+    const firstServer = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(firstServer, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(firstServer, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(firstServer, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(firstServer, {
+        command_kind: "arena.start"
+      });
+
+      const runningOperator = await waitForOperator(firstServer, (operator) =>
+        operator.candidate_arena.runner_status === "running"
+        && operator.selected_paper_trading_evaluation.status === "running"
+        && operator.selected_paper_trading_evaluation.runner_active
+      );
+      expect(runningOperator.latest_commands[0]?.command_kind).toBe("arena.start");
+      expect(runningOperator.candidate_arena.latest_ticks.map((tick) => tick.tick_id)).toContain("tick-1");
+    } finally {
+      await firstServer.close();
+    }
+
+    const restartedServer = await buildServer({
+      store: new LocalStore(tmpDir),
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      const resumedOperator = await waitForOperator(restartedServer, (operator) =>
+        operator.candidate_arena.runner_status === "running"
+        && operator.selected_paper_trading_evaluation.status === "running"
+        && operator.selected_paper_trading_evaluation.runner_active
+        && operator.candidate_arena.latest_ticks.some((tick) =>
+          tick.paper_trading_continuation?.status === "started"
+        )
+      );
+
+      expect(resumedOperator.latest_commands[0]?.command_kind).toBe("arena.start");
+      expect(resumedOperator.candidate_arena.runner_status).toBe("running");
+      expect(resumedOperator.candidate_arena.latest_ticks.map((tick) => tick.tick_id)).toEqual(
+        expect.arrayContaining(["tick-1", "tick-2"])
+      );
+      expect(resumedOperator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        authority_status: "not_live"
+      });
+
+      const stopped = await postCommand(restartedServer, {
+        command_kind: "arena.stop"
+      });
+      expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await restartedServer.close();
+    }
+  });
+
+  it("drains active arena ticks on runtime close before stopping paper sessions", async () => {
+    const store = new LocalStore(tmpDir);
+    const artifactRunner = delayedPaperDirectArenaArtifactRunner();
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: artifactRunner,
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [{
+          price: 65_000,
+          expected_direction: "long"
+        }],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    await postCommand(server, {
+      command_kind: "agent_provider.setup",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "agent_provider.probe",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "researcher.provider.select",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "arena.start"
+    });
+    await artifactRunner.started;
+
+    const closing = server.close();
+    await expect(Promise.race([
+      closing.then(() => "closed" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 25))
+    ])).resolves.toBe("pending");
+
+    artifactRunner.release();
+    await closing;
+
+    expect(await store.listPaperTradingEvaluations()).toEqual([]);
+    expect(
+      (await store.listCandidateArenaTicks())
+        .find((tick) => tick.tick_id === "tick-1")
+        ?.paper_trading_continuation
+    ).toBeUndefined();
+  });
+
   it("records autonomous paper continuation failures without stopping the arena loop", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
@@ -968,6 +1141,36 @@ function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
     async run(input) {
+      await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
+      return replayRunner.run(input);
+    }
+  };
+}
+
+function delayedPaperDirectArenaArtifactRunner(): TradingArtifactRunner & {
+  started: Promise<void>;
+  release: () => void;
+} {
+  const replayRunner = networklessReplayArtifactRunner();
+  let markStarted = () => {};
+  let release = () => {};
+  let blocked = false;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    kind: "host_process",
+    started,
+    release,
+    async run(input) {
+      markStarted();
+      if (!blocked) {
+        blocked = true;
+        await released;
+      }
       await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
       return replayRunner.run(input);
     }
