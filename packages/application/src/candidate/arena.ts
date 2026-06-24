@@ -1052,9 +1052,12 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
             ?? "recorded",
           authority_status: "not_live"
         };
-      }),
+    }),
     paper_trading_board: paperTradingBoard,
-    adaptive_direction_focus: arenaAdaptiveDirectionFocus(findingClusters),
+    adaptive_direction_focus: [
+      ...arenaAdaptiveDirectionFocus(findingClusters),
+      ...arenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
+    ],
     finding_clusters: findingClusters,
     latest_tick_failures: arena.latest_ticks
       .flatMap((tick) => tick.direction_results
@@ -1156,9 +1159,21 @@ async function adaptiveDefaultArenaDirections(store: OuroborosStorePort): Promis
   const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
   const prioritizedDirections = arenaAdaptiveDirectionFocus(arena.finding_clusters)
     .map((entry) => entry.direction_kind);
-  return [
+  const budgetFocusDirections = arenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
+    .map((entry) => entry.direction_kind);
+  const expensiveDirections = arenaResearchEfficiencyExpensiveDirections(arena.latest_ticks);
+  const prioritized = uniqueDirections([
     ...prioritizedDirections,
-    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) => !prioritizedDirections.includes(direction))
+    ...budgetFocusDirections
+  ]);
+  return [
+    ...prioritized,
+    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) =>
+      !prioritized.includes(direction) && !expensiveDirections.includes(direction)
+    ),
+    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) =>
+      !prioritized.includes(direction) && expensiveDirections.includes(direction)
+    )
   ];
 }
 
@@ -1191,6 +1206,74 @@ function arenaAdaptiveDirectionFocus(
       DEFAULT_ARENA_DIRECTIONS.indexOf(a.direction_kind) - DEFAULT_ARENA_DIRECTIONS.indexOf(b.direction_kind)
     )
     .slice(0, DEFAULT_ARENA_DIRECTIONS.length);
+}
+
+function arenaResearchEfficiencyBudgetFocus(
+  latestTicks: CandidateArenaTickReadModel[]
+): ArenaAdaptiveDirectionFocus[] {
+  return [...latestResearchEfficiencyByDirection(latestTicks).entries()]
+    .map(([direction, efficiency]) => ({
+      direction,
+      efficiency,
+      focusScore: researchEfficiencyBudgetFocusScore(efficiency)
+    }))
+    .filter((entry) => entry.focusScore > 0)
+    .sort((a, b) =>
+      b.focusScore - a.focusScore ||
+      DEFAULT_ARENA_DIRECTIONS.indexOf(a.direction) - DEFAULT_ARENA_DIRECTIONS.indexOf(b.direction)
+    )
+    .map((entry) => ({
+      direction_kind: entry.direction,
+      focus_score: entry.focusScore,
+      focus_reason: "research_efficiency_budget:low_cost_latency",
+      next_research_focus: "Favor lower-cost ResearchDirection lanes while expensive lanes cool down.",
+      authority_status: "not_promotion_authority"
+    }));
+}
+
+function arenaResearchEfficiencyExpensiveDirections(
+  latestTicks: CandidateArenaTickReadModel[]
+): ResearchDirectionKind[] {
+  return [...latestResearchEfficiencyByDirection(latestTicks).entries()]
+    .filter(([, efficiency]) => researchEfficiencyBudgetFocusScore(efficiency) <= 0)
+    .map(([direction]) => direction);
+}
+
+function latestResearchEfficiencyByDirection(
+  latestTicks: CandidateArenaTickReadModel[]
+): Map<ResearchDirectionKind, CandidateArenaResearchEfficiencyReadModel> {
+  const latestByDirection = new Map<ResearchDirectionKind, CandidateArenaResearchEfficiencyReadModel>();
+  for (const tick of latestTicks) {
+    for (const result of tick.direction_results) {
+      if (
+        !result.research_efficiency ||
+        !isDefaultArenaDirection(result.direction_kind) ||
+        latestByDirection.has(result.direction_kind)
+      ) {
+        continue;
+      }
+      latestByDirection.set(result.direction_kind, result.research_efficiency);
+    }
+  }
+  return latestByDirection;
+}
+
+function researchEfficiencyBudgetFocusScore(
+  efficiency: CandidateArenaResearchEfficiencyReadModel
+): number {
+  const effortUnits = efficiency.provider_request_total +
+    (efficiency.runner_command_total * 2) +
+    efficiency.scenario_count +
+    Math.ceil(efficiency.elapsed_ms / 1000);
+  return 26 - effortUnits;
+}
+
+function uniqueDirections(directions: ResearchDirectionKind[]): ResearchDirectionKind[] {
+  return directions.filter((direction, index) => directions.indexOf(direction) === index);
+}
+
+function isDefaultArenaDirection(direction: ResearchDirectionKind): boolean {
+  return DEFAULT_ARENA_DIRECTIONS.includes(direction);
 }
 
 function adaptiveDirectionFocusFromCluster(
