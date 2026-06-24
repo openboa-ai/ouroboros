@@ -54,7 +54,7 @@ fn main() {
             if let Err(message) = start_runtime_if_needed(setup_process.clone(), resource_dir) {
                 eprintln!("{message}");
             }
-            ensure_main_window(app)?;
+            ensure_main_window(app.handle())?;
             update_runtime_status_tray(app.handle());
             show_main_window(app.handle());
             start_runtime_status_monitor(
@@ -102,13 +102,13 @@ fn main() {
     });
 }
 
-fn ensure_main_window(app: &mut tauri::App) -> tauri::Result<()> {
-    if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+fn ensure_main_window(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
+    if app_handle.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
         return Ok(());
     }
 
     WebviewWindowBuilder::new(
-        app,
+        app_handle,
         MAIN_WINDOW_LABEL,
         WebviewUrl::App("index.html".into()),
     )
@@ -232,8 +232,11 @@ fn update_runtime_status_tray(app_handle: &tauri::AppHandle) {
 }
 
 fn show_main_window(app_handle: &tauri::AppHandle) {
+    let _ = ensure_main_window(app_handle);
+
     #[cfg(target_os = "macos")]
     {
+        let _ = app_handle.set_activation_policy(ActivationPolicy::Regular);
         let _ = app_handle.show();
     }
 

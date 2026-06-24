@@ -106,7 +106,7 @@ describe("Operator desktop app", () => {
       {
         label: "main",
         create: false,
-        url: "/index.html",
+        url: "index.html",
         title: "Ouroboros Operator",
         width: 1440,
         height: 960,
@@ -122,6 +122,17 @@ describe("Operator desktop app", () => {
     expect(config.app?.security).toMatchObject({
       csp: null
     });
+  });
+
+  it("reruns Tauri codegen when the copied frontend dist changes", () => {
+    const buildRs = readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "build.rs"),
+      "utf8"
+    );
+
+    expect(buildRs).toContain('watch_frontend_dist("dist")');
+    expect(buildRs).toContain("cargo:rerun-if-changed={path}");
+    expect(buildRs).toContain("std::fs::read_dir(path)");
   });
 
   it("documents Desktop-first operation with CLI parity and shared session data", () => {
@@ -183,20 +194,21 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("ActivationPolicy::Regular");
     expect(mainRs).toContain("RunEvent::Ready");
     expect(mainRs).toContain("MAIN_WINDOW_LABEL");
-    expect(mainRs).toContain("ensure_main_window(app)?");
+    expect(mainRs).toContain("ensure_main_window(app.handle())");
     expect(mainRs).toContain("WebviewWindowBuilder::new");
     expect(mainRs).toContain('WebviewUrl::App("index.html".into())');
+    expect(mainRs).not.toContain("WebviewWindowBuilder::from_config");
     expect(mainRs).toContain("show_main_window(app.handle())");
+    expect(mainRs).toContain("let _ = ensure_main_window(app_handle)");
     expect(mainRs).toContain("app_handle.show()");
     expect(mainRs).toContain("if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL)");
-    expect(mainRs).not.toContain("WebviewWindowBuilder::from_config");
     expect(mainRs).toContain("window.show()");
     expect(mainRs).toContain("window.unminimize()");
     expect(mainRs).toContain("window.set_focus()");
     expect(config.app?.windows?.[0]).toMatchObject({
       label: "main",
       create: false,
-      url: "/index.html",
+      url: "index.html",
       visible: true
     });
   });
