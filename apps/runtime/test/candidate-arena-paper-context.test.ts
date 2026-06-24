@@ -129,6 +129,13 @@ describe("CandidateArena paper evidence context", () => {
         paper_observation_count: number;
         paper_score?: { net_revenue_usdt: number };
         latest_market_snapshot?: { price: number; source_kind: string };
+        latest_paper_decision?: {
+          decision_kind: string;
+          source_kind: string;
+          reason: string;
+          observed_at: string;
+          authority_status: string;
+        };
         latest_fill?: { source_trade_id?: string };
         ledger_chain_complete: boolean;
         authority_status: string;
@@ -177,6 +184,13 @@ describe("CandidateArena paper evidence context", () => {
           price: 65_123,
           source_kind: "binance_production_public_hybrid"
         }),
+        latest_paper_decision: {
+          decision_kind: "hold",
+          source_kind: "trading_system_decision",
+          reason: "paper context seed preserved selected candidate evidence",
+          observed_at: "2026-05-16T00:07:00.000Z",
+          authority_status: "trace_only"
+        },
         latest_fill: expect.objectContaining({
           source_trade_id: "paper-context-trade-0007"
         }),

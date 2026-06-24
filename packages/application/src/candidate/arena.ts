@@ -1022,6 +1022,7 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
           latest_market_snapshot: paperObservations.at(-1)?.market_snapshot,
           latest_public_execution_snapshot: paperObservations.at(-1)?.public_execution_snapshot ??
             paperEvaluation?.latest_public_execution_snapshot,
+          latest_paper_decision: paperObservations.at(-1)?.decision,
           latest_paper_account: paperObservations.at(-1)?.paper_account_snapshot ??
             paperEvaluation?.paper_account_snapshot,
           latest_open_orders: paperObservations.at(-1)?.open_orders ??
