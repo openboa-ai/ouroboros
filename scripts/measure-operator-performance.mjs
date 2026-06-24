@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 const runtimeUrl = process.env.OUROBOROS_RUNTIME_URL ?? "http://127.0.0.1:4173";
+const runtimeEndpoint = parseRuntimeEndpoint(runtimeUrl);
 const outDir = process.env.OUROBOROS_PERF_OUT_DIR ?? "/tmp/ouroboros-performance";
 const desktopAppEnabled = !process.argv.includes("--skip-app");
 const checkMode = process.argv.includes("--check");
@@ -79,8 +80,8 @@ async function startRuntime() {
     cwd: repoRoot,
     env: {
       ...process.env,
-      HOST: "127.0.0.1",
-      PORT: "4173",
+      HOST: process.env.HOST ?? runtimeEndpoint.host,
+      PORT: process.env.PORT ?? runtimeEndpoint.port,
       OUROBOROS_RUNTIME_URL: runtimeUrl
     },
     stdio: ["ignore", "ignore", "ignore"]
@@ -170,7 +171,7 @@ async function measureDesktopAppRender(desktopBundle) {
     return { status: "skipped", reason: "desktop_app_capture_requires_macos" };
   }
   if (desktopBundle.status !== "present") {
-    return { status: "skipped", reason: "desktop_app_bundle_missing" };
+    throw new DesktopAppRenderFailure(`desktop_app_bundle_missing:${desktopBundle.executable_path}`);
   }
 
   const start = performance.now();
@@ -178,8 +179,7 @@ async function measureDesktopAppRender(desktopBundle) {
     cwd: repoRoot,
     env: {
       ...process.env,
-      OUROBOROS_DESKTOP_RUNTIME_HOST: "127.0.0.1",
-      OUROBOROS_DESKTOP_RUNTIME_PORT: "4173"
+      ...desktopRuntimeEnv()
     },
     stdio: ["ignore", "ignore", "ignore"]
   });
@@ -214,6 +214,21 @@ function performanceStatus({ runtimeStart, operatorFetch, webAssets, desktopAppR
   const webOk = webAssets.status !== "present"
     || webAssets.total_bytes <= thresholds.operatorWebAssetBytes;
   return runtimeOk && fetchOk && webOk && desktopAppOk ? "pass" : "fail";
+}
+
+function desktopRuntimeEnv() {
+  return {
+    OUROBOROS_DESKTOP_RUNTIME_HOST: process.env.OUROBOROS_DESKTOP_RUNTIME_HOST ?? runtimeEndpoint.host,
+    OUROBOROS_DESKTOP_RUNTIME_PORT: process.env.OUROBOROS_DESKTOP_RUNTIME_PORT ?? runtimeEndpoint.port
+  };
+}
+
+function parseRuntimeEndpoint(url) {
+  const parsed = new URL(url);
+  return {
+    host: parsed.hostname || "127.0.0.1",
+    port: parsed.port || (parsed.protocol === "https:" ? "443" : "80")
+  };
 }
 
 function assertDesktopAppStillRunning(child, stage) {

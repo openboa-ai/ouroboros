@@ -297,10 +297,16 @@ describe("Operator desktop app", () => {
     expect(measurement).toContain("measureDesktopAppRender");
     expect(measurement).toContain("screencapture");
     expect(measurement).toContain("DesktopAppRenderFailure");
+    expect(measurement).toContain("desktop_app_bundle_missing");
     expect(measurement).toContain("desktop_app_exited_before_capture");
     expect(measurement).toContain("assertDesktopAppStillRunning");
     expect(measurement).toContain('status: "failed"');
     expect(measurement).toContain("OUROBOROS_PERF_MAX_DESKTOP_APP_SCREENSHOT_MS");
+    expect(measurement).toContain("desktopRuntimeEnv");
+    expect(measurement).toContain("process.env.OUROBOROS_DESKTOP_RUNTIME_HOST ?? runtimeEndpoint.host");
+    expect(measurement).toContain("process.env.OUROBOROS_DESKTOP_RUNTIME_PORT ?? runtimeEndpoint.port");
+    expect(measurement).not.toContain('reason: "desktop_app_bundle_missing"');
+    expect(measurement).not.toContain('OUROBOROS_DESKTOP_RUNTIME_PORT: "4173"');
     expect(measurement).not.toContain("measureBrowserRender");
     expect(measurement).not.toContain("Google Chrome");
   });
