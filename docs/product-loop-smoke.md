@@ -50,6 +50,9 @@ TradingSystem lineage to that paper-backed source.
 - `ouroboros arena start` starts the repeating autonomous paper loop: generated candidates are
   selected per tick and moved into selected continuous Paper Trading Evaluation through
   `trading_run.start` until `ouroboros arena stop`.
+- After `arena.start` starts a selected `PaperTradingEvaluation`, the paper runner continues
+  scheduled observations without a manual `trading_run.observe`, recording no-order continuity when
+  the running `TradingSystem` has emitted no new decision.
 - Runtime restart preserves the last successful `arena.start` intent: when no later successful
   `arena.stop` exists, startup resumes the autonomous arena loop from the persisted command ledger
   without recording a synthetic operator command.
@@ -78,6 +81,10 @@ TradingSystem lineage to that paper-backed source.
   observation count, market snapshot, public execution evidence, fake account/fill state, failures,
   and Ledger summary. This keeps the next candidate generation grounded in paper results instead of
   replay-only leaderboard data.
+- Failed paper evidence in CandidateArena researcher context must include both raw failure reason
+  and classified `PaperTradingFailure` kind, summary, and next action so the next `ResearchWorker`
+  can repair protocol, market, runner, Ledger, or authority-boundary failures without treating the
+  classification as promotion authority.
 - CandidateArena researcher context must include the compact paper board with qualification
   reasons, grouped blocker severity, trend, blocker density, and next action, so paper evidence
   changes the next candidate generation instead of staying only in the operator surface.

@@ -701,6 +701,28 @@ describe("CandidateArena paper evidence context", () => {
 
     expect(capturedContexts).toHaveLength(2);
     const context = JSON.parse(capturedContexts[1]!) as {
+      selected_paper_evidence: Array<{
+        candidate_id: string;
+        latest_paper_failure?: string;
+        latest_paper_failure_classification?: {
+          failure_kind: string;
+          reason: string;
+          summary: string;
+          next_action: string;
+          authority_status: string;
+        };
+        failed_observations: Array<{
+          sequence: number;
+          failure_reason?: string;
+          failure?: {
+            failure_kind: string;
+            reason: string;
+            summary: string;
+            next_action: string;
+            authority_status: string;
+          };
+        }>;
+      }>;
       finding_clusters: Array<{
         direction_kind: string;
         top_blocker?: string;
@@ -729,6 +751,32 @@ describe("CandidateArena paper evidence context", () => {
         authority_status: "not_promotion_authority"
       }
     ]);
+    expect(context.selected_paper_evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        candidate_id: createdCandidate.candidate_id,
+        latest_paper_failure: "malformed TradingSystem paper event protocol: invalid order_request",
+        latest_paper_failure_classification: {
+          failure_kind: "trading_system_protocol_error",
+          reason: "malformed TradingSystem paper event protocol: invalid order_request",
+          summary: "TradingSystem emitted an invalid paper event or protocol shape.",
+          next_action: "Fix the TradingSystem paper event protocol before retrying observation.",
+          authority_status: "not_live"
+        },
+        failed_observations: [
+          expect.objectContaining({
+            sequence: 7,
+            failure_reason: "malformed TradingSystem paper event protocol: invalid order_request",
+            failure: {
+              failure_kind: "trading_system_protocol_error",
+              reason: "malformed TradingSystem paper event protocol: invalid order_request",
+              summary: "TradingSystem emitted an invalid paper event or protocol shape.",
+              next_action: "Fix the TradingSystem paper event protocol before retrying observation.",
+              authority_status: "not_live"
+            }
+          })
+        ]
+      })
+    ]));
     expect((second.arena as {
       finding_clusters?: typeof context.finding_clusters;
     }).finding_clusters).toEqual(context.finding_clusters);

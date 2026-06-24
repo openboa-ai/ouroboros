@@ -983,6 +983,8 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
       .map(({ entry, candidate, paperEvaluation, paperObservations }) => {
         const candidateId = candidate?.candidate_id ?? entry?.candidate_id;
         const paperBoardEntry = paperTradingBoard.find((boardEntry) => boardEntry.candidate_id === candidateId);
+        const latestPaperFailureReason = paperObservations.at(-1)?.failure_reason ??
+          paperEvaluation?.latest_failure_reason;
         return {
           candidate_id: candidateId,
           direction_kind: entry?.direction_kind ??
@@ -1016,14 +1018,16 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
             paperEvaluation?.open_orders,
           latest_fill: paperObservations.at(-1)?.latest_fill ??
             paperEvaluation?.latest_fill,
-          latest_paper_failure: paperEvaluation?.latest_failure_reason,
+          latest_paper_failure: latestPaperFailureReason,
+          latest_paper_failure_classification: classifyPaperTradingFailure(latestPaperFailureReason),
           failed_observations: paperObservations
             .filter((observation) => observation.status === "failed")
             .slice(-3)
             .map((observation) => ({
               sequence: observation.sequence,
               observed_at: observation.observed_at,
-              failure_reason: observation.failure_reason
+              failure_reason: observation.failure_reason,
+              failure: classifyPaperTradingFailure(observation.failure_reason)
             })),
           ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
           ledger_chain_count: candidate?.ledger?.chain_count ?? 0,

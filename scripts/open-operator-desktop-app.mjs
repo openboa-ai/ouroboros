@@ -16,6 +16,8 @@ const appPath = join(
   "Ouroboros Operator.app"
 );
 const appExecutable = join(appPath, "Contents", "MacOS", "ouroboros-operator-desktop");
+const bundleIdentifier = "ai.openboa.ouroboros.operator";
+const launchServicesRegister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 if (process.platform !== "darwin") {
   console.error("open_operator_desktop_app_requires_macos");
@@ -33,17 +35,50 @@ if (!existsSync(appExecutable)) {
   process.exit(1);
 }
 
-const result = spawnSync("open", ["-n", appPath], {
+const result = spawnSync("open", ["-n", "-a", appPath], {
   cwd: repoRoot,
   encoding: "utf8"
 });
 
 if (!result.error && result.status === 0) {
+  console.log(`operator_desktop_app_opened:${appPath}`);
   process.exit(0);
 }
 
 const openError = result.error?.message ?? result.stderr?.trim() ?? result.stdout?.trim() ?? "unknown";
 console.error(`operator_desktop_open_failed:${openError}`);
+console.error("operator_desktop_open_retry:register_bundle");
+
+const registerResult = spawnSync(launchServicesRegister, ["-f", appPath], {
+  cwd: repoRoot,
+  encoding: "utf8"
+});
+
+if (registerResult.error || registerResult.status !== 0) {
+  const registerError = registerResult.error?.message
+    ?? registerResult.stderr?.trim()
+    ?? registerResult.stdout?.trim()
+    ?? "unknown";
+  console.error(`operator_desktop_register_failed:${registerError}`);
+} else {
+  console.error("operator_desktop_register_succeeded");
+}
+
+const bundleResult = spawnSync("open", ["-n", "-b", bundleIdentifier], {
+  cwd: repoRoot,
+  encoding: "utf8"
+});
+
+if (!bundleResult.error && bundleResult.status === 0) {
+  console.log(`operator_desktop_app_opened:${bundleIdentifier}`);
+  process.exit(0);
+}
+
+const bundleError = bundleResult.error?.message
+  ?? bundleResult.stderr?.trim()
+  ?? bundleResult.stdout?.trim()
+  ?? "unknown";
+console.error(`operator_desktop_bundle_open_failed:${bundleError}`);
 console.error("operator_desktop_open_fallback:direct_executable");
 
 const child = spawn(appExecutable, [], {
