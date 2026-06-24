@@ -113,11 +113,12 @@ ouroboros researcher provider set fixture
 ouroboros arena tick
 ouroboros arena cycle
 ouroboros status --json
-npm run dev:operator-web
-npm run dev:operator-desktop
 npm run package:operator-desktop
+npm run open:operator-desktop
 npm run verify:operator-desktop-release
 npm run measure:operator-performance -- --check
+npm run dev:operator-desktop
+npm run dev:operator-web
 ouroboros candidate select <candidate-id>
 ouroboros candidate paper start <candidate-id>
 ouroboros trading-run observe <trading-run-id>
@@ -126,14 +127,15 @@ ouroboros tui
 ```
 
 The primary interactive operator surface is the Tauri Desktop app in `apps/operator-desktop`.
-`apps/operator-web` remains the shared Operator UI source and browser/development surface. Open the
-Vite URL after `npm run dev:operator-web` when developing the shared UI, or run
-`npm run dev:operator-desktop` to open the primary Tauri app. `npm run package:operator-desktop`
-must build the shared Operator UI bundle and produce a local macOS app bundle at
+`apps/operator-web` remains the shared Operator UI source and browser/development surface, not the
+default operator verification target. `npm run package:operator-desktop` must build the shared
+Operator UI bundle and produce a local macOS app bundle at
 `apps/operator-desktop/src-tauri/target/release/bundle/macos/Ouroboros Operator.app`.
+`npm run open:operator-desktop` opens that packaged app without opening a browser; use
+`npm run dev:operator-web` only when developing the shared UI surface directly.
 `npm run verify:operator-desktop-release` validates the app bundle and packaged runtime contract.
-`npm run measure:operator-performance -- --check` records runtime, payload, asset, and render
-performance evidence.
+`npm run measure:operator-performance -- --check` records runtime, payload, asset, Desktop bundle,
+and native app screenshot performance evidence.
 Check the Candidate Arena side rail:
 
 - `Arena runner` shows `running` or `stopped` with the tick count from `GET /api/operator`.
