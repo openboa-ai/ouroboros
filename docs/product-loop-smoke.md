@@ -139,7 +139,8 @@ default operator verification target. `npm run package:operator-desktop` must bu
 Operator UI bundle and produce a local macOS app bundle at
 `apps/operator-desktop/src-tauri/target/release/bundle/macos/Ouroboros Operator.app`.
 `npm run open:operator-desktop` opens that packaged app without opening a browser; use
-`npm run dev:operator-web` only when developing the shared UI surface directly.
+`npm run dev:operator-desktop` for the native app development loop without starting the Web dev
+server, and use `npm run dev:operator-web` only when developing the shared UI surface directly.
 `npm run verify:operator-desktop-release` validates the app bundle and packaged runtime contract.
 `npm run measure:operator-performance -- --check` records runtime, payload, asset, Desktop bundle,
 and native app screenshot performance evidence.

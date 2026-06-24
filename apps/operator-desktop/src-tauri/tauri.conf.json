@@ -4,9 +4,8 @@
   "version": "0.0.0",
   "identifier": "ai.openboa.ouroboros.operator",
   "build": {
-    "beforeDevCommand": "npm run dev -w @ouroboros/operator-web",
+    "beforeDevCommand": "npm run build:frontend -w @ouroboros/operator-desktop",
     "beforeBuildCommand": "npm run build:frontend -w @ouroboros/operator-desktop",
-    "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "dist"
   },
   "app": {

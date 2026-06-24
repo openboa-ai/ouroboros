@@ -10,6 +10,10 @@ operator window is visible when opened and can still be restored from the tray w
 background operation into a separate web session.
 Use `npm run open:operator-desktop` to launch the packaged app without opening a browser after the
 bundle has been produced.
+`npm run dev:operator-desktop` follows the same app-first rule for local development: it builds the
+shared Operator UI into the Tauri `frontendDist` target and opens the native app without starting
+the `apps/operator-web` dev server. Use `npm run dev:operator-web` only when directly developing the
+shared browser/development surface.
 
 ## Runtime Packaging
 

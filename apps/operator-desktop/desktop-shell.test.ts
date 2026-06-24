@@ -58,6 +58,8 @@ describe("Operator desktop app", () => {
       "utf8"
     )) as {
       build?: {
+        beforeBuildCommand?: string;
+        beforeDevCommand?: string;
         devUrl?: string;
         frontendDist?: string;
       };
@@ -89,11 +91,11 @@ describe("Operator desktop app", () => {
     };
 
     expect(config.build).toMatchObject({
-      beforeDevCommand: "npm run dev -w @ouroboros/operator-web",
+      beforeDevCommand: "npm run build:frontend -w @ouroboros/operator-desktop",
       beforeBuildCommand: "npm run build:frontend -w @ouroboros/operator-desktop",
-      devUrl: "http://127.0.0.1:5173",
       frontendDist: "dist"
     });
+    expect(config.build).not.toHaveProperty("devUrl");
     expect(config.bundle).toMatchObject({
       active: true,
       resources: [
