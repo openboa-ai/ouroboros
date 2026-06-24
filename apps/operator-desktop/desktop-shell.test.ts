@@ -105,7 +105,7 @@ describe("Operator desktop app", () => {
     expect(config.app?.windows).toEqual([
       {
         label: "main",
-        create: true,
+        create: false,
         url: "/index.html",
         title: "Ouroboros Operator",
         width: 1440,
@@ -195,7 +195,7 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("window.set_focus()");
     expect(config.app?.windows?.[0]).toMatchObject({
       label: "main",
-      create: true,
+      create: false,
       url: "/index.html",
       visible: true
     });
@@ -299,6 +299,7 @@ describe("Operator desktop app", () => {
     expect(measurement).toContain("DesktopAppRenderFailure");
     expect(measurement).toContain("desktop_app_exited_before_capture");
     expect(measurement).toContain("assertDesktopAppStillRunning");
+    expect(measurement).toContain('status: "failed"');
     expect(measurement).toContain("OUROBOROS_PERF_MAX_DESKTOP_APP_SCREENSHOT_MS");
     expect(measurement).not.toContain("measureBrowserRender");
     expect(measurement).not.toContain("Google Chrome");

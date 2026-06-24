@@ -41,7 +41,7 @@ try {
   const desktopBundle = measureDesktopBundle();
   const desktopAppRender = desktopAppEnabled
     ? await measureDesktopAppRender(desktopBundle).catch((error) => ({
-        status: error instanceof DesktopAppRenderFailure ? "failed" : "skipped",
+        status: "failed",
         reason: error instanceof Error ? error.message : String(error)
       }))
     : { status: "skipped", reason: "disabled_by_flag" };
