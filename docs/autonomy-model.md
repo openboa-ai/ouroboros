@@ -105,8 +105,10 @@ blaming the model.
 
 The next level of detail should improve the autonomous loop without widening authority:
 
-- Adaptive research direction selection from paper-board results, failed directions, and finding
-  clusters.
+- Adaptive research direction selection now prioritizes default CandidateArena directions from
+  paper-backed finding clusters and classified paper failures while preserving
+  `not_promotion_authority`; remaining detail is budget-aware direction selection from
+  cost/latency signals.
 - A compact Trading review packet that explains why a qualified candidate should or should not be
   promoted; see [Product Quality Design](product-quality-design.md).
 - Clear eval rubrics for trajectory quality, tool-use quality, hallucinated dependencies, protocol

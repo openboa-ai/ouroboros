@@ -23,6 +23,7 @@ import type {
   PaperTradingBoardTrendReadModel,
   PaperTradingEvaluationRecord,
   PaperTradingMarketSnapshotSummary,
+  PaperTradingFailureKind,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
   Ref,
@@ -76,6 +77,15 @@ const ZERO_PROFIT_LOSS: TradingProfitLossReadModel = {
   net_return_pct: 0
 };
 const arenaStoreMutationQueues = new WeakMap<OuroborosStorePort, Promise<unknown>>();
+
+type ArenaAdaptiveDirectionFocus = {
+  direction_kind: ResearchDirectionKind;
+  source_direction_kind?: ResearchDirectionKind;
+  focus_score: number;
+  focus_reason: string;
+  next_research_focus: string;
+  authority_status: "not_promotion_authority";
+};
 
 export interface RunCandidateArenaTickInput {
   store: OuroborosStorePort;
@@ -265,7 +275,7 @@ export async function runCandidateArenaTick(
   tickCount = 0
 ): Promise<CandidateArenaTickOutcome> {
   const sourceSelection = await sourceCandidate(input.store, input.sourceSystemId, input.sourceCandidateVersionId);
-  const directions = input.directions ?? DEFAULT_ARENA_DIRECTIONS;
+  const directions = input.directions ?? await adaptiveDefaultArenaDirections(input.store);
   const tickId = input.tickId ?? `tick-${Date.now()}`;
   const startedAt = new Date().toISOString();
   const createdCandidateIds: string[] = [];
@@ -1043,6 +1053,7 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         };
       }),
     paper_trading_board: paperTradingBoard,
+    adaptive_direction_focus: arenaAdaptiveDirectionFocus(findingClusters),
     finding_clusters: findingClusters,
     latest_tick_failures: arena.latest_ticks
       .flatMap((tick) => tick.direction_results
@@ -1138,6 +1149,132 @@ function arenaFindingClusters(
       (a.protocol_failure_kind ?? "none").localeCompare(b.protocol_failure_kind ?? "none")
     )
     .slice(0, 8);
+}
+
+async function adaptiveDefaultArenaDirections(store: OuroborosStorePort): Promise<ResearchDirectionKind[]> {
+  const arena = await buildCandidateArenaReadModel(store, "stopped", 0);
+  const prioritizedDirections = arenaAdaptiveDirectionFocus(arena.finding_clusters)
+    .map((entry) => entry.direction_kind);
+  return [
+    ...prioritizedDirections,
+    ...DEFAULT_ARENA_DIRECTIONS.filter((direction) => !prioritizedDirections.includes(direction))
+  ];
+}
+
+function arenaAdaptiveDirectionFocus(
+  findingClusters: CandidateArenaFindingClusterReadModel[]
+): ArenaAdaptiveDirectionFocus[] {
+  const focusByDirection = new Map<ResearchDirectionKind, ArenaAdaptiveDirectionFocus>();
+
+  for (const cluster of findingClusters) {
+    const direction = adaptiveDirectionForCluster(cluster);
+    const focus = adaptiveDirectionFocusFromCluster(direction, cluster);
+    const existing = focusByDirection.get(direction);
+    if (!existing) {
+      focusByDirection.set(direction, focus);
+      continue;
+    }
+    focusByDirection.set(direction, {
+      ...existing,
+      focus_score: existing.focus_score + focus.focus_score,
+      focus_reason: [existing.focus_reason, focus.focus_reason].join(";"),
+      next_research_focus: existing.focus_score >= focus.focus_score
+        ? existing.next_research_focus
+        : focus.next_research_focus
+    });
+  }
+
+  return [...focusByDirection.values()]
+    .sort((a, b) =>
+      b.focus_score - a.focus_score ||
+      DEFAULT_ARENA_DIRECTIONS.indexOf(a.direction_kind) - DEFAULT_ARENA_DIRECTIONS.indexOf(b.direction_kind)
+    )
+    .slice(0, DEFAULT_ARENA_DIRECTIONS.length);
+}
+
+function adaptiveDirectionFocusFromCluster(
+  direction: ResearchDirectionKind,
+  cluster: CandidateArenaFindingClusterReadModel
+): ArenaAdaptiveDirectionFocus {
+  return {
+    direction_kind: direction,
+    source_direction_kind: cluster.direction_kind === direction ? undefined : cluster.direction_kind,
+    focus_score: adaptiveDirectionFocusScore(cluster),
+    focus_reason: [
+      cluster.protocol_failure_kind,
+      cluster.blocker_group_kind,
+      cluster.top_blocker
+    ].filter(Boolean).join(":") || "paper_finding_cluster",
+    next_research_focus: adaptiveDirectionNextResearchFocus(cluster),
+    authority_status: "not_promotion_authority"
+  };
+}
+
+function adaptiveDirectionForCluster(
+  cluster: CandidateArenaFindingClusterReadModel
+): ResearchDirectionKind {
+  if (
+    cluster.protocol_failure_kind === "public_execution_evidence_gap" ||
+    cluster.blocker_group_kind === "fill_provenance" ||
+    cluster.protocol_failure_kind === "trading_system_protocol_error" ||
+    cluster.protocol_failure_kind === "ledger_gap" ||
+    cluster.protocol_failure_kind === "sandbox_or_runner_failure" ||
+    cluster.protocol_failure_kind === "runner_health_loss"
+  ) {
+    return "execution_cost_robustness";
+  }
+  if (cluster.protocol_failure_kind === "risk_rejection") {
+    return "funding_aware_risk";
+  }
+  if (
+    cluster.protocol_failure_kind === "market_data_gap" ||
+    cluster.blocker_group_kind === "market_provenance" ||
+    cluster.market_regime === "volatile"
+  ) {
+    return "volatility_regime";
+  }
+  if (cluster.market_regime === "flat") {
+    return "mean_reversion";
+  }
+  return cluster.direction_kind;
+}
+
+function adaptiveDirectionFocusScore(cluster: CandidateArenaFindingClusterReadModel): number {
+  return (cluster.candidate_count * 10) +
+    (cluster.protocol_failure_kind ? 20 : 0) +
+    (cluster.blocker_group_kind ? 5 : 0) +
+    (cluster.top_blocker ? 2 : 0) +
+    (cluster.market_regime === "volatile" ? 3 : 0);
+}
+
+function adaptiveDirectionNextResearchFocus(cluster: CandidateArenaFindingClusterReadModel): string {
+  if (cluster.protocol_failure_kind) {
+    return nextResearchFocusForFailureKind(cluster.protocol_failure_kind);
+  }
+  return cluster.next_research_focus;
+}
+
+function nextResearchFocusForFailureKind(kind: PaperTradingFailureKind): string {
+  switch (kind) {
+    case "market_data_gap":
+      return "Restore Gateway market data before continuing paper evidence.";
+    case "public_execution_evidence_gap":
+      return "Restore public execution evidence before trusting fills or paper score.";
+    case "trading_system_protocol_error":
+      return "Fix the TradingSystem paper event protocol before retrying observation.";
+    case "risk_rejection":
+      return "Review order sizing, side, and risk limits before continuing paper evidence.";
+    case "sandbox_or_runner_failure":
+      return "Repair or resume the runner before treating paper evidence as current.";
+    case "runner_health_loss":
+      return "Resume paper trading before review.";
+    case "ledger_gap":
+      return "Inspect order, Gateway, and execution records before trusting the observation.";
+    case "authority_boundary_violation":
+      return "Reject or repair the candidate before any further review.";
+    case "unknown_failure":
+      return "Inspect the raw failure reason and add a classifier if this recurs.";
+  }
 }
 
 function arenaMarketRegime(
