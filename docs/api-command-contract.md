@@ -109,6 +109,11 @@ those groups a second promotion gate. Selected paper evidence should also carry 
 `lineage` summary: lineage status, research direction, parent candidate, latest finding,
 evaluation status, and `lineage_only` authority. That lets the next ResearchWorker react to
 paper-backed lineage evidence without treating lineage as promotion authority.
+Selected paper evidence should also carry compact `paper_loop_latency`: expected observation
+interval, latest observed interval, latest and max lag, observed interval count, cadence status,
+and `not_promotion_authority`. It is derived from persisted `PaperTradingObservation` timestamps
+and exists only so the next ResearchWorker can notice lagging or thin paper cadence; it must not
+change paper rank, qualification, Trading review readiness, or promotion decisions.
 `CandidateArenaReadModel` and CandidateArena researcher context should also carry
 `finding_clusters` grouped by research direction, top paper blocker, market regime, and classified
 protocol failure. These clusters are `not_promotion_authority`: they guide next candidate

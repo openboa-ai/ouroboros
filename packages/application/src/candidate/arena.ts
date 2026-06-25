@@ -23,6 +23,7 @@ import type {
   PaperTradingBoardTrendReadModel,
   PaperTradingEvaluationRecord,
   PaperTradingMarketSnapshotSummary,
+  PaperTradingObservationRecord,
   PaperTradingFailureKind,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus,
@@ -84,6 +85,16 @@ type ArenaAdaptiveDirectionFocus = {
   focus_score: number;
   focus_reason: string;
   next_research_focus: string;
+  authority_status: "not_promotion_authority";
+};
+
+type PaperLoopLatencySummary = {
+  expected_interval_ms: number;
+  latest_observation_interval_ms?: number;
+  latest_interval_lag_ms?: number;
+  max_interval_lag_ms?: number;
+  observed_interval_count: number;
+  cadence_status: "on_cadence" | "lagging" | "insufficient_history";
   authority_status: "not_promotion_authority";
 };
 
@@ -1005,6 +1016,7 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
             0,
           paper_trading_status: paperEvaluation?.status,
           paper_observation_count: paperEvaluation?.observation_count ?? 0,
+          paper_loop_latency: paperLoopLatencySummary(paperEvaluation, paperObservations),
           paper_score: paperEvaluation?.latest_score,
           lineage: arenaPaperEvidenceLineage(candidate, entry),
           paper_board_learning: paperBoardEntry && paperEvaluation
@@ -1563,6 +1575,64 @@ function arenaPaperTrendDirection(netRevenueDelta: number): PaperTradingBoardTre
 
 function roundPaperBoardContextSignal(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function paperLoopLatencySummary(
+  paperEvaluation: PaperTradingEvaluationRecord | undefined,
+  paperObservations: Pick<
+    PaperTradingObservationRecord,
+    "paper_trading_observation_id" | "sequence" | "observed_at"
+  >[]
+): PaperLoopLatencySummary | undefined {
+  const expectedIntervalMs = paperEvaluation?.interval_ms;
+  if (
+    !paperEvaluation ||
+    typeof expectedIntervalMs !== "number" ||
+    !Number.isFinite(expectedIntervalMs) ||
+    expectedIntervalMs <= 0
+  ) {
+    return undefined;
+  }
+
+  const orderedObservations = [...paperObservations]
+    .sort((left, right) =>
+      left.sequence - right.sequence ||
+      left.observed_at.localeCompare(right.observed_at) ||
+      left.paper_trading_observation_id.localeCompare(right.paper_trading_observation_id)
+    );
+  const intervals: number[] = [];
+  for (let index = 1; index < orderedObservations.length; index += 1) {
+    const previous = orderedObservations[index - 1]!;
+    const current = orderedObservations[index]!;
+    const intervalMs = elapsedMs(previous.observed_at, current.observed_at);
+    if (intervalMs > 0) {
+      intervals.push(intervalMs);
+    }
+  }
+
+  const expected = Math.max(0, Math.round(expectedIntervalMs));
+  if (intervals.length === 0) {
+    return {
+      expected_interval_ms: expected,
+      observed_interval_count: 0,
+      cadence_status: "insufficient_history",
+      authority_status: "not_promotion_authority"
+    };
+  }
+
+  const intervalLags = intervals.map((interval) => Math.max(0, interval - expected));
+  const latestObservationInterval = intervals.at(-1)!;
+  const latestIntervalLag = intervalLags.at(-1)!;
+  const maxIntervalLag = Math.max(...intervalLags);
+  return {
+    expected_interval_ms: expected,
+    latest_observation_interval_ms: latestObservationInterval,
+    latest_interval_lag_ms: latestIntervalLag,
+    max_interval_lag_ms: maxIntervalLag,
+    observed_interval_count: intervals.length,
+    cadence_status: maxIntervalLag > 0 ? "lagging" : "on_cadence",
+    authority_status: "not_promotion_authority"
+  };
 }
 
 function arenaPaperPromotionGateStatus(
