@@ -1163,6 +1163,80 @@ describe("operator product loop smoke", () => {
     });
   });
 
+  it("stops pending autonomous paper starts when the arena loop stops", async () => {
+    const store = new LocalStore(tmpDir);
+    const paperProvider = delayedPaperTradingApiProviderFactory();
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: paperProvider.factory,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "arena.start"
+      });
+      await paperProvider.started;
+
+      const stopped = await postCommand(server, {
+        command_kind: "arena.stop"
+      });
+      expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+
+      paperProvider.release();
+      let evaluations = await store.listPaperTradingEvaluations();
+      for (let attempt = 0; attempt < 120 && !evaluations.some((evaluation) =>
+        evaluation.status === "stopped"
+      ); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        evaluations = await store.listPaperTradingEvaluations();
+      }
+      expect(evaluations).toHaveLength(1);
+      expect(evaluations[0]).toMatchObject({
+        status: "stopped",
+        stopped_at: expect.any(String)
+      });
+
+      const ticks = await store.listCandidateArenaTicks();
+      expect(ticks.find((tick) => tick.tick_id === "tick-1")?.paper_trading_continuation)
+        .toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({

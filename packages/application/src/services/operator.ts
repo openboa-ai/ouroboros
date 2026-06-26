@@ -71,7 +71,7 @@ export interface OperatorServiceOptions {
 export class OperatorService {
   private selectedCandidateId: string | undefined;
   private readonly pendingAutonomousPaperStarts = new Set<Promise<unknown>>();
-  private autonomousPaperStartShutdown = false;
+  private autonomousPaperStartFence = 0;
 
   constructor(private readonly options: OperatorServiceOptions) {}
 
@@ -215,7 +215,7 @@ export class OperatorService {
   }
 
   async drainAutonomousPaperStarts(): Promise<void> {
-    this.autonomousPaperStartShutdown = true;
+    this.autonomousPaperStartFence += 1;
     const deadline = Date.now() + AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS;
     while (this.pendingAutonomousPaperStarts.size > 0) {
       const remainingMs = deadline - Date.now();
@@ -261,6 +261,7 @@ export class OperatorService {
       "arena.stop": async () => {
         this.options.candidateArenaRunner.setTickContinuation(undefined);
         const status = this.options.candidateArenaRunner.stop();
+        await this.drainAutonomousPaperStarts();
         return {
           result: {
             status,
@@ -566,6 +567,7 @@ export class OperatorService {
       });
     }
     this.selectedCandidateId = candidateId;
+    const paperStartFence = this.autonomousPaperStartFence;
     const paperStart = this.executeMutationPort("trading_run.start", { candidate_id: candidateId });
     const paperStartContinuation = paperStart
       .then((): CandidateArenaTickPaperTradingContinuationReadModel => ({
@@ -577,7 +579,7 @@ export class OperatorService {
     const trackedPaperStart = paperStart
       .then(
         async (execution) => {
-          if (this.autonomousPaperStartShutdown) {
+          if (paperStartFence !== this.autonomousPaperStartFence) {
             await this.stopLateAutonomousPaperStartAfterShutdown(execution);
             return;
           }
@@ -589,7 +591,7 @@ export class OperatorService {
           });
         },
         async (error) => {
-          if (this.autonomousPaperStartShutdown) {
+          if (paperStartFence !== this.autonomousPaperStartFence) {
             return;
           }
           await this.recordAutonomousPaperContinuationFailure(outcome, candidateId, error);

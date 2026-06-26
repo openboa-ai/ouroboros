@@ -67,14 +67,17 @@ export class PaperTradingEvaluationRunner {
   private schedule(input: PaperTradingEvaluationRunnerStartInput): void {
     const timer = setTimeout(async () => {
       this.timers.delete(input.tradingRunId);
-      const observation = input.observe();
-      this.activeObservations.add(observation);
+      let observation: Promise<void> | undefined;
       try {
+        observation = Promise.resolve().then(input.observe);
+        this.activeObservations.add(observation);
         await observation;
       } catch (error) {
         input.onError?.(error);
       } finally {
-        this.activeObservations.delete(observation);
+        if (observation) {
+          this.activeObservations.delete(observation);
+        }
       }
       if (this.running.has(input.tradingRunId)) {
         this.schedule(input);

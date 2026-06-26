@@ -57,4 +57,23 @@ describe("PaperTradingEvaluationRunner", () => {
     await drain;
     expect(drained).toBe(true);
   });
+
+  it("reports synchronous observe failures and keeps active runs scheduled", async () => {
+    const runner = new PaperTradingEvaluationRunner();
+    const error = new Error("sync_observe_failed");
+    const observe = vi.fn((): Promise<void> => {
+      throw error;
+    });
+    const onError = vi.fn();
+
+    expect(runner.start({ tradingRunId: "run-4", intervalMs: 1000, observe, onError })).toBe("started");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(error);
+    expect(runner.active("run-4")).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
 });
