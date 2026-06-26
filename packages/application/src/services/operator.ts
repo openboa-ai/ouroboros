@@ -44,6 +44,7 @@ import { paperTradingQualificationBlockerGroups } from "../trading/paper/qualifi
 import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
 
 const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
+const AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS = 1_000;
 
 export class OperatorCommandError extends Error {
   constructor(
@@ -213,8 +214,16 @@ export class OperatorService {
   }
 
   async drainAutonomousPaperStarts(): Promise<void> {
+    const deadline = Date.now() + AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS;
     while (this.pendingAutonomousPaperStarts.size > 0) {
-      await Promise.allSettled([...this.pendingAutonomousPaperStarts]);
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        return;
+      }
+      await Promise.race([
+        Promise.allSettled([...this.pendingAutonomousPaperStarts]),
+        new Promise((resolve) => setTimeout(resolve, remainingMs))
+      ]);
     }
   }
 

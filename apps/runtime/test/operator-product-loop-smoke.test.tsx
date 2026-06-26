@@ -1043,6 +1043,58 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("bounds runtime close while autonomous paper start remains pending", async () => {
+    const store = new LocalStore(tmpDir);
+    let markPaperStartAttempted = () => {};
+    const paperStartAttempted = new Promise<void>((resolve) => {
+      markPaperStartAttempted = resolve;
+    });
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: () =>
+        new Promise<never>(() => {
+          markPaperStartAttempted();
+        }),
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    await postCommand(server, {
+      command_kind: "agent_provider.setup",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "agent_provider.probe",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "researcher.provider.select",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "arena.start"
+    });
+    await paperStartAttempted;
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+
+    const closing = server.close();
+    await expect(Promise.race([
+      closing.then(() => "closed" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 2_500))
+    ])).resolves.toBe("closed");
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
