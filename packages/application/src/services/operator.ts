@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   OUROBOROS_COMMAND_DESCRIPTORS,
   type AgentProfileProviderKind,
+  type CandidateArenaReadModel,
   type CandidateArenaTickPaperTradingContinuationReadModel,
   type CandidateInspectReadModel,
   type OperatorReadModel,
@@ -42,6 +43,8 @@ import { paperTradingLearningSummary } from "../trading/paper/learning";
 import { paperTradingQualificationBlockerGroups } from "../trading/paper/qualification-blockers";
 import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
 
+const AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS = 1_000;
+
 export class OperatorCommandError extends Error {
   constructor(
     readonly statusCode: number,
@@ -66,6 +69,7 @@ export interface OperatorServiceOptions {
 
 export class OperatorService {
   private selectedCandidateId: string | undefined;
+  private readonly pendingAutonomousPaperStarts = new Set<Promise<unknown>>();
 
   constructor(private readonly options: OperatorServiceOptions) {}
 
@@ -75,7 +79,9 @@ export class OperatorService {
       this.options.candidateArenaRunner.status(),
       this.options.candidateArenaRunner.ticks()
     );
-    const candidateId = this.selectedCandidateId ?? arena.leaderboard[0]?.candidate_id;
+    const candidateId = this.selectedCandidateId
+      ?? selectedPaperContinuationCandidateId(arena)
+      ?? arena.leaderboard[0]?.candidate_id;
     const selectedCandidate = candidateId
       ? await this.options.store.getCandidate(candidateId)
       : undefined;
@@ -201,12 +207,15 @@ export class OperatorService {
     }
 
     this.installAutonomousArenaTickContinuation();
-    const persistedTicks = await this.options.store.listCandidateArenaTicks();
-    this.options.candidateArenaRunner.restoreTickCount(
-      candidateArenaRunnerTickCountFromTicks(persistedTicks)
-    );
+    await this.restoreCandidateArenaTickCount();
     this.options.candidateArenaRunner.start();
     return "resumed";
+  }
+
+  async drainAutonomousPaperStarts(): Promise<void> {
+    while (this.pendingAutonomousPaperStarts.size > 0) {
+      await Promise.allSettled([...this.pendingAutonomousPaperStarts]);
+    }
   }
 
   private commandHandlers(): OperatorCommandHandlerRegistry {
@@ -223,6 +232,7 @@ export class OperatorService {
       }),
       "arena.start": async () => {
         await this.requireResearcherProviderReady();
+        await this.restoreCandidateArenaTickCount();
         this.installAutonomousArenaTickContinuation();
         const status = this.options.candidateArenaRunner.start();
         return {
@@ -463,7 +473,7 @@ export class OperatorService {
 
   private installAutonomousArenaTickContinuation(): void {
     this.options.candidateArenaRunner.setTickContinuation((outcome) =>
-      this.startPaperTradingForArenaCycle(outcome)
+      this.startPaperTradingForArenaCycleAck(outcome)
         .then((paperCycle): CandidateArenaTickPaperTradingContinuationReadModel => ({
           status: "started",
           command_kind: "trading_run.start",
@@ -538,6 +548,44 @@ export class OperatorService {
       paper_trading: paperTrading.result
     };
   }
+
+  private async startPaperTradingForArenaCycleAck(
+    outcome: CandidateArenaTickOutcome
+  ): Promise<{ selected_candidate_id: string; paper_trading?: unknown }> {
+    const candidateId = selectArenaCycleCandidateId(outcome);
+    if (!candidateId) {
+      throw new OperatorCommandError(409, "arena_cycle_candidate_required", {
+        tick_id: outcome.tick_id,
+        created_candidate_count: outcome.created_candidate_count,
+        next_action: "Fix Candidate Arena direction failures before starting Paper Trading Evaluation."
+      });
+    }
+    this.selectedCandidateId = candidateId;
+    const paperStart = this.executeMutationPort("trading_run.start", { candidate_id: candidateId })
+      .then((paperTrading) => ({
+        selected_candidate_id: candidateId,
+        paper_trading: paperTrading.result
+      }));
+    this.pendingAutonomousPaperStarts.add(paperStart);
+    paperStart.finally(() => {
+      this.pendingAutonomousPaperStarts.delete(paperStart);
+    }).catch(() => undefined);
+    const acknowledged = new Promise<{ selected_candidate_id: string }>((resolve) => {
+      const timer = setTimeout(
+        () => resolve({ selected_candidate_id: candidateId }),
+        AUTONOMOUS_PAPER_CONTINUATION_ACK_TIMEOUT_MS
+      );
+      timer.unref?.();
+    });
+    return Promise.race([paperStart, acknowledged]);
+  }
+
+  private async restoreCandidateArenaTickCount(): Promise<void> {
+    const persistedTicks = await this.options.store.listCandidateArenaTicks();
+    this.options.candidateArenaRunner.restoreTickCount(
+      candidateArenaRunnerTickCountFromTicks(persistedTicks)
+    );
+  }
 }
 
 export function autonomousArenaLoopDesiredStatus(
@@ -555,6 +603,13 @@ export function autonomousArenaLoopDesiredStatus(
     )
     .at(0);
   return latestControlCommand?.command_kind === "arena.start" ? "running" : "stopped";
+}
+
+function selectedPaperContinuationCandidateId(arena: CandidateArenaReadModel): string | undefined {
+  return arena.latest_ticks.find((tick) =>
+    tick.paper_trading_continuation?.status === "started"
+    && tick.paper_trading_continuation.selected_candidate_id
+  )?.paper_trading_continuation?.selected_candidate_id;
 }
 
 function selectArenaCycleCandidateId(outcome: CandidateArenaTickOutcome): string | undefined {

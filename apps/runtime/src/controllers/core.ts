@@ -6,6 +6,8 @@ import type {
 import type { OperatorController } from "@ouroboros/application/controllers/operator";
 import { listTradingSystemExecutionModeContracts } from "@ouroboros/application/trading/execution-mode-contracts";
 
+export const OPERATOR_LOOP_CONTRACT_VERSION = "paper-loop-continuation-v2";
+
 export interface CoreControllerRoutesContext {
   operatorController: OperatorController;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
@@ -21,6 +23,7 @@ export function registerCoreControllerRoutes(context: CoreControllerRoutesContex
       status: "ok",
       service: "ouroboros-runtime",
       mode: "fixture_convenience_mode",
+      operator_loop_contract_version: OPERATOR_LOOP_CONTRACT_VERSION,
       store_root: context.storeRoot,
       trading_gateway_environment: context.tradingGatewayEnvironment,
       projections: "rebuilt_from_authoritative_item_files"

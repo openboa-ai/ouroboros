@@ -29,6 +29,15 @@ const START_LOOP_MENU_ID: &str = "ouroboros-start-paper-research-loop";
 const STOP_LOOP_MENU_ID: &str = "ouroboros-stop-paper-research-loop";
 const RESTART_RUNTIME_MENU_ID: &str = "ouroboros-restart-runtime";
 const QUIT_MENU_ID: &str = "ouroboros-quit-operator";
+const REQUIRED_RUNTIME_CONTRACT_VERSION: &str = "paper-loop-continuation-v2";
+const REQUIRED_LOOP_COMMAND_KINDS: &[&str] = &[
+    "arena.start",
+    "arena.stop",
+    "arena.tick",
+    "arena.cycle",
+    "trading_run.start",
+    "trading_run.observe",
+];
 
 #[derive(Clone)]
 struct RuntimeProcess(Arc<Mutex<Option<Child>>>);
@@ -221,7 +230,7 @@ fn start_runtime_status_monitor(
 fn ensure_runtime_running(runtime_process: RuntimeProcess, resource_dir: Option<PathBuf>) {
     let host = runtime_host();
     let port = runtime_port();
-    if runtime_reachable(&host, port) {
+    if runtime_compatible(&host, port) {
         reap_finished_runtime_child(&runtime_process);
         return;
     }
@@ -280,6 +289,7 @@ fn hide_window(app_handle: &tauri::AppHandle, label: &str) {
 enum RuntimeStatus {
     LoopRunning(OperatorLoopStatus),
     RuntimeReady(Option<OperatorLoopStatus>),
+    Incompatible(Vec<String>),
     Off,
 }
 
@@ -288,6 +298,7 @@ impl RuntimeStatus {
         match self {
             Self::LoopRunning(_) => "Ouroboros LOOP",
             Self::RuntimeReady(_) => "Ouroboros RUN",
+            Self::Incompatible(_) => "Ouroboros OLD",
             Self::Off => "Ouroboros OFF",
         }
     }
@@ -313,6 +324,12 @@ impl RuntimeStatus {
             Self::RuntimeReady(None) => {
                 format!("Ouroboros runtime running; Operator read model unavailable at http://{host}:{port}")
             }
+            Self::Incompatible(missing_commands) => {
+                format!(
+                    "Ouroboros runtime at http://{host}:{port} is older than this app; contract gaps: {}; restart the stale runtime before running the paper/research loop",
+                    missing_commands.join(", ")
+                )
+            }
             Self::Off => format!("Ouroboros runtime status: off at http://{host}:{port}"),
         }
     }
@@ -325,6 +342,7 @@ struct OperatorLoopStatus {
     paper_runner_active: bool,
     observation_count: u64,
     next_observation_at: Option<String>,
+    missing_required_commands: Vec<String>,
 }
 
 impl OperatorLoopStatus {
@@ -349,9 +367,22 @@ struct OperatorApiResponse {
 }
 
 #[derive(Deserialize)]
+struct RuntimeHealthApiResponse {
+    service: Option<String>,
+    operator_loop_contract_version: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct OperatorApiReadModel {
+    #[serde(default)]
+    command_descriptors: Vec<OperatorCommandDescriptorApiReadModel>,
     candidate_arena: CandidateArenaApiReadModel,
     selected_paper_trading_evaluation: PaperTradingEvaluationApiReadModel,
+}
+
+#[derive(Deserialize)]
+struct OperatorCommandDescriptorApiReadModel {
+    command_kind: String,
 }
 
 #[derive(Deserialize)]
@@ -372,7 +403,17 @@ fn current_runtime_status(host: &str, port: u16) -> RuntimeStatus {
         return RuntimeStatus::Off;
     }
 
+    match runtime_incompatibility_reasons(host, port) {
+        Ok(reasons) if !reasons.is_empty() => {
+            return RuntimeStatus::Incompatible(reasons);
+        }
+        _ => {}
+    }
+
     match fetch_operator_loop_status(host, port) {
+        Ok(loop_status) if !loop_status.missing_required_commands.is_empty() => {
+            RuntimeStatus::Incompatible(loop_status.missing_required_commands)
+        }
         Ok(loop_status) if loop_status.arena_runner_status == "running" => {
             RuntimeStatus::LoopRunning(loop_status)
         }
@@ -396,6 +437,8 @@ fn fetch_operator_loop_status(host: &str, port: u16) -> Result<OperatorLoopStatu
     let body = http_response_body(&response)?;
     let parsed: OperatorApiResponse = serde_json::from_str(body)
         .map_err(|error| format!("operator_desktop_operator_read_parse_failed:{error}"))?;
+    let missing_required_commands =
+        missing_required_loop_commands(&parsed.operator.command_descriptors);
     Ok(OperatorLoopStatus {
         arena_runner_status: parsed.operator.candidate_arena.runner_status,
         paper_status: parsed.operator.selected_paper_trading_evaluation.status,
@@ -411,7 +454,56 @@ fn fetch_operator_loop_status(host: &str, port: u16) -> Result<OperatorLoopStatu
             .operator
             .selected_paper_trading_evaluation
             .next_observation_at,
+        missing_required_commands,
     })
+}
+
+fn runtime_compatible(host: &str, port: u16) -> bool {
+    runtime_incompatibility_reasons(host, port)
+        .map(|reasons| reasons.is_empty())
+        .unwrap_or(false)
+}
+
+fn runtime_incompatibility_reasons(host: &str, port: u16) -> Result<Vec<String>, String> {
+    let mut reasons = Vec::new();
+    let health = fetch_runtime_health(host, port)?;
+    if health.service.as_deref() != Some("ouroboros-runtime") {
+        reasons.push("service".to_string());
+    }
+    if health.operator_loop_contract_version.as_deref() != Some(REQUIRED_RUNTIME_CONTRACT_VERSION) {
+        reasons.push("operator_loop_contract_version".to_string());
+    }
+    match fetch_operator_loop_status(host, port) {
+        Ok(loop_status) => reasons.extend(loop_status.missing_required_commands),
+        Err(error) if reasons.is_empty() => return Err(error),
+        Err(_) => {}
+    }
+    Ok(reasons)
+}
+
+fn fetch_runtime_health(host: &str, port: u16) -> Result<RuntimeHealthApiResponse, String> {
+    let response = request_runtime_http(
+        host,
+        port,
+        &format!("GET /health HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n"),
+    )?;
+    let body = http_response_body(&response)?;
+    serde_json::from_str(body)
+        .map_err(|error| format!("operator_desktop_runtime_health_parse_failed:{error}"))
+}
+
+fn missing_required_loop_commands(
+    command_descriptors: &[OperatorCommandDescriptorApiReadModel],
+) -> Vec<String> {
+    REQUIRED_LOOP_COMMAND_KINDS
+        .iter()
+        .filter(|required| {
+            !command_descriptors
+                .iter()
+                .any(|descriptor| descriptor.command_kind == **required)
+        })
+        .map(|value| (*value).to_string())
+        .collect()
 }
 
 fn request_operator_command(host: &str, port: u16, command_kind: &str) -> Result<(), String> {
@@ -485,8 +577,17 @@ fn start_runtime_if_needed(
 ) -> Result<(), String> {
     let host = runtime_host();
     let port = runtime_port();
-    if runtime_reachable(&host, port) {
+    if runtime_compatible(&host, port) {
         return Ok(());
+    }
+
+    if runtime_reachable(&host, port) {
+        stop_runtime(runtime_process.clone());
+        if runtime_reachable(&host, port) {
+            return Err(format!(
+                "operator_desktop_runtime_incompatible_port_occupied:http://{host}:{port}"
+            ));
+        }
     }
 
     let runtime_url = format!("http://{host}:{port}");
@@ -497,6 +598,7 @@ fn start_runtime_if_needed(
         .env("HOST", &host)
         .env("PORT", port.to_string())
         .env("OUROBOROS_RUNTIME_URL", &runtime_url)
+        .env("OUROBOROS_RUNTIME_REPO_ROOT", repo_root())
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -510,11 +612,11 @@ fn start_runtime_if_needed(
         )
     })?;
 
-    if !wait_for_runtime(&host, port, Duration::from_secs(15)) {
+    if !wait_for_compatible_runtime(&host, port, Duration::from_secs(15)) {
         let _ = child.kill();
         let _ = child.wait();
         return Err(format!(
-            "operator_desktop_runtime_unreachable:{runtime_url}"
+            "operator_desktop_runtime_unreachable_or_incompatible:{runtime_url}"
         ));
     }
 
@@ -627,10 +729,10 @@ fn runtime_reachable(host: &str, port: u16) -> bool {
     TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
 }
 
-fn wait_for_runtime(host: &str, port: u16, timeout: Duration) -> bool {
+fn wait_for_compatible_runtime(host: &str, port: u16, timeout: Duration) -> bool {
     let started_at = Instant::now();
     while started_at.elapsed() <= timeout {
-        if runtime_reachable(host, port) {
+        if runtime_compatible(host, port) {
             return true;
         }
         thread::sleep(Duration::from_millis(250));

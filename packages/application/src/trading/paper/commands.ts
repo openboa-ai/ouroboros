@@ -390,6 +390,7 @@ export class PaperTradingCommandService {
       await this.stopLinkedSandbox(tradingRunId).catch(() => undefined);
       await this.stopApiProviderSession(tradingRunId);
     }
+    await this.runner.drain();
   }
 
   private async startTradingRun(input: {
