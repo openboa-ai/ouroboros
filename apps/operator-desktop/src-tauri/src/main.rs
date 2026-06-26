@@ -1,5 +1,7 @@
+use serde::Deserialize;
 use std::{
     env,
+    io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -23,6 +25,8 @@ const STATUS_TRAY_ID: &str = "ouroboros-runtime-status";
 const STATUS_MENU_ID: &str = "ouroboros-runtime-status-label";
 const OPEN_MENU_ID: &str = "ouroboros-open-operator";
 const HIDE_MENU_ID: &str = "ouroboros-hide-operator";
+const START_LOOP_MENU_ID: &str = "ouroboros-start-paper-research-loop";
+const STOP_LOOP_MENU_ID: &str = "ouroboros-stop-paper-research-loop";
 const RESTART_RUNTIME_MENU_ID: &str = "ouroboros-restart-runtime";
 const QUIT_MENU_ID: &str = "ouroboros-quit-operator";
 
@@ -134,6 +138,10 @@ fn install_runtime_status_tray(
         .build(app)?;
     let open = MenuItemBuilder::with_id(OPEN_MENU_ID, "Open Operator").build(app)?;
     let hide = MenuItemBuilder::with_id(HIDE_MENU_ID, "Hide Window").build(app)?;
+    let start_loop =
+        MenuItemBuilder::with_id(START_LOOP_MENU_ID, "Start Paper/Research Loop").build(app)?;
+    let stop_loop =
+        MenuItemBuilder::with_id(STOP_LOOP_MENU_ID, "Stop Paper/Research Loop").build(app)?;
     let restart =
         MenuItemBuilder::with_id(RESTART_RUNTIME_MENU_ID, "Restart Runtime").build(app)?;
     let quit = MenuItemBuilder::with_id(QUIT_MENU_ID, "Quit Ouroboros").build(app)?;
@@ -142,6 +150,9 @@ fn install_runtime_status_tray(
         .separator()
         .item(&open)
         .item(&hide)
+        .separator()
+        .item(&start_loop)
+        .item(&stop_loop)
         .item(&restart)
         .separator()
         .item(&quit)
@@ -155,6 +166,23 @@ fn install_runtime_status_tray(
         .on_menu_event(move |app_handle, event| match event.id().as_ref() {
             OPEN_MENU_ID => show_main_window(app_handle),
             HIDE_MENU_ID => hide_window(app_handle, MAIN_WINDOW_LABEL),
+            START_LOOP_MENU_ID => {
+                ensure_runtime_running(runtime_process.clone(), resource_dir.clone());
+                let host = runtime_host();
+                let port = runtime_port();
+                if let Err(message) = request_operator_command(&host, port, "arena.start") {
+                    eprintln!("{message}");
+                }
+                update_runtime_status_tray(app_handle);
+            }
+            STOP_LOOP_MENU_ID => {
+                let host = runtime_host();
+                let port = runtime_port();
+                if let Err(message) = request_operator_command(&host, port, "arena.stop") {
+                    eprintln!("{message}");
+                }
+                update_runtime_status_tray(app_handle);
+            }
             RESTART_RUNTIME_MENU_ID => {
                 restart_runtime(app_handle, runtime_process.clone(), resource_dir.clone())
             }
@@ -219,11 +247,7 @@ fn restart_runtime(
 fn update_runtime_status_tray(app_handle: &tauri::AppHandle) {
     let host = runtime_host();
     let port = runtime_port();
-    let runtime_status = if runtime_reachable(&host, port) {
-        RuntimeStatus::Running
-    } else {
-        RuntimeStatus::Off
-    };
+    let runtime_status = current_runtime_status(&host, port);
 
     if let Some(tray) = app_handle.tray_by_id(STATUS_TRAY_ID) {
         let _ = tray.set_title(Some(runtime_status.menu_bar_title()));
@@ -254,26 +278,205 @@ fn hide_window(app_handle: &tauri::AppHandle, label: &str) {
 }
 
 enum RuntimeStatus {
-    Running,
+    LoopRunning(OperatorLoopStatus),
+    RuntimeReady(Option<OperatorLoopStatus>),
     Off,
 }
 
 impl RuntimeStatus {
     fn menu_bar_title(&self) -> &'static str {
         match self {
-            Self::Running => "Ouroboros RUN",
+            Self::LoopRunning(_) => "Ouroboros LOOP",
+            Self::RuntimeReady(_) => "Ouroboros RUN",
             Self::Off => "Ouroboros OFF",
         }
     }
 
     fn tooltip(&self, host: &str, port: u16) -> String {
         match self {
-            Self::Running => {
-                format!("Ouroboros runtime status: running at http://{host}:{port}")
+            Self::LoopRunning(loop_status) => {
+                format!(
+                    "Paper/research loop: running; paper runner {}; observations {}; next {}; runtime http://{host}:{port}",
+                    loop_status.paper_runner_label(),
+                    loop_status.observation_count,
+                    loop_status.next_observation_label()
+                )
+            }
+            Self::RuntimeReady(Some(loop_status)) => {
+                format!(
+                    "Ouroboros runtime running; paper/research loop {}; paper runner {}; observations {}; runtime http://{host}:{port}",
+                    loop_status.arena_runner_status,
+                    loop_status.paper_runner_label(),
+                    loop_status.observation_count
+                )
+            }
+            Self::RuntimeReady(None) => {
+                format!("Ouroboros runtime running; Operator read model unavailable at http://{host}:{port}")
             }
             Self::Off => format!("Ouroboros runtime status: off at http://{host}:{port}"),
         }
     }
+}
+
+#[derive(Debug)]
+struct OperatorLoopStatus {
+    arena_runner_status: String,
+    paper_status: String,
+    paper_runner_active: bool,
+    observation_count: u64,
+    next_observation_at: Option<String>,
+}
+
+impl OperatorLoopStatus {
+    fn paper_runner_label(&self) -> &'static str {
+        if self.paper_runner_active {
+            "active"
+        } else if self.paper_status == "running" {
+            "needs resume"
+        } else {
+            "inactive"
+        }
+    }
+
+    fn next_observation_label(&self) -> &str {
+        self.next_observation_at.as_deref().unwrap_or("unknown")
+    }
+}
+
+#[derive(Deserialize)]
+struct OperatorApiResponse {
+    operator: OperatorApiReadModel,
+}
+
+#[derive(Deserialize)]
+struct OperatorApiReadModel {
+    candidate_arena: CandidateArenaApiReadModel,
+    selected_paper_trading_evaluation: PaperTradingEvaluationApiReadModel,
+}
+
+#[derive(Deserialize)]
+struct CandidateArenaApiReadModel {
+    runner_status: String,
+}
+
+#[derive(Deserialize)]
+struct PaperTradingEvaluationApiReadModel {
+    status: String,
+    runner_active: bool,
+    observation_count: u64,
+    next_observation_at: Option<String>,
+}
+
+fn current_runtime_status(host: &str, port: u16) -> RuntimeStatus {
+    if !runtime_reachable(host, port) {
+        return RuntimeStatus::Off;
+    }
+
+    match fetch_operator_loop_status(host, port) {
+        Ok(loop_status) if loop_status.arena_runner_status == "running" => {
+            RuntimeStatus::LoopRunning(loop_status)
+        }
+        Ok(loop_status) => RuntimeStatus::RuntimeReady(Some(loop_status)),
+        Err(message) => {
+            eprintln!("{message}");
+            RuntimeStatus::RuntimeReady(None)
+        }
+    }
+}
+
+fn fetch_operator_loop_status(host: &str, port: u16) -> Result<OperatorLoopStatus, String> {
+    let operator_token_header = operator_api_token_header();
+    let response = request_runtime_http(
+        host,
+        port,
+        &format!(
+            "GET /api/operator HTTP/1.1\r\nHost: {host}:{port}\r\n{operator_token_header}Connection: close\r\n\r\n"
+        ),
+    )?;
+    let body = http_response_body(&response)?;
+    let parsed: OperatorApiResponse = serde_json::from_str(body)
+        .map_err(|error| format!("operator_desktop_operator_read_parse_failed:{error}"))?;
+    Ok(OperatorLoopStatus {
+        arena_runner_status: parsed.operator.candidate_arena.runner_status,
+        paper_status: parsed.operator.selected_paper_trading_evaluation.status,
+        paper_runner_active: parsed
+            .operator
+            .selected_paper_trading_evaluation
+            .runner_active,
+        observation_count: parsed
+            .operator
+            .selected_paper_trading_evaluation
+            .observation_count,
+        next_observation_at: parsed
+            .operator
+            .selected_paper_trading_evaluation
+            .next_observation_at,
+    })
+}
+
+fn request_operator_command(host: &str, port: u16, command_kind: &str) -> Result<(), String> {
+    let body = format!(r#"{{"command_kind":"{command_kind}"}}"#);
+    let operator_token_header = operator_api_token_header();
+    let response = request_runtime_http(
+        host,
+        port,
+        &format!(
+            "POST /api/commands HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{operator_token_header}Connection: close\r\n\r\n{body}",
+            body.len()
+        ),
+    )?;
+    let _ = http_response_body(&response)?;
+    Ok(())
+}
+
+fn operator_api_token_header() -> String {
+    let Some(token) = env::var("OUROBOROS_OPERATOR_API_TOKEN")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return String::new();
+    };
+
+    if token.contains('\r') || token.contains('\n') {
+        return String::new();
+    }
+
+    format!("x-ouroboros-operator-token: {token}\r\n")
+}
+
+fn request_runtime_http(host: &str, port: u16, request: &str) -> Result<String, String> {
+    let address = format!("{host}:{port}")
+        .parse::<SocketAddr>()
+        .map_err(|error| format!("operator_desktop_runtime_address_invalid:{error}"))?;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_millis(500))
+        .map_err(|error| format!("operator_desktop_runtime_http_connect_failed:{error}"))?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("operator_desktop_runtime_http_write_failed:{error}"))?;
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .map_err(|error| format!("operator_desktop_runtime_http_read_failed:{error}"))?;
+    Ok(response)
+}
+
+fn http_response_body(response: &str) -> Result<&str, String> {
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "operator_desktop_runtime_http_response_invalid".to_string())?;
+    let status = headers
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or_else(|| "operator_desktop_runtime_http_status_missing".to_string())?;
+    if !(200..300).contains(&status) {
+        return Err(format!("operator_desktop_runtime_http_status:{status}"));
+    }
+    Ok(body)
 }
 
 fn start_runtime_if_needed(

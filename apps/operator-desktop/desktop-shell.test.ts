@@ -241,6 +241,36 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("app_handle.exit(0)");
   });
 
+  it("shows paper and research loop status from the shared Operator read model in the menu bar", () => {
+    const mainRs = readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "src", "main.rs"),
+      "utf8"
+    );
+    const desktopDoc = readFileSync(
+      path.join(process.cwd(), "docs", "operator-desktop-performance-release.md"),
+      "utf8"
+    );
+
+    expect(mainRs).toContain("serde::Deserialize");
+    expect(mainRs).toContain("fetch_operator_loop_status");
+    expect(mainRs).toContain('request_operator_command(&host, port, "arena.start")');
+    expect(mainRs).toContain('request_operator_command(&host, port, "arena.stop")');
+    expect(mainRs).toContain("OUROBOROS_OPERATOR_API_TOKEN");
+    expect(mainRs).toContain("operator_api_token_header");
+    expect(mainRs).toContain("x-ouroboros-operator-token");
+    expect(mainRs).toContain('"GET /api/operator HTTP/1.1');
+    expect(mainRs).toContain('"POST /api/commands HTTP/1.1');
+    expect(mainRs).toContain('"Ouroboros LOOP"');
+    expect(mainRs).toContain("Paper/research loop: running");
+    expect(mainRs).toContain("START_LOOP_MENU_ID");
+    expect(mainRs).toContain("STOP_LOOP_MENU_ID");
+    expect(mainRs).toContain('"Start Paper/Research Loop"');
+    expect(mainRs).toContain('"Stop Paper/Research Loop"');
+    expect(desktopDoc).toContain("Ouroboros LOOP");
+    expect(desktopDoc).toContain("Start Paper/Research Loop");
+    expect(desktopDoc).toContain("Stop Paper/Research Loop");
+  });
+
   it("enables the Tauri tray feature without adding Electron", () => {
     const cargoToml = readFileSync(
       path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "Cargo.toml"),
