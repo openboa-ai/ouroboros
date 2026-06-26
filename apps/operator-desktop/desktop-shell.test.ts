@@ -289,10 +289,12 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain('"arena.cycle"');
     expect(mainRs).toContain('"trading_run.start"');
     expect(mainRs).toContain("runtime_compatible");
+    expect(mainRs).toContain("RuntimeCompatibility::Unknown");
+    expect(mainRs).toContain("operator_desktop_runtime_compatibility_unknown");
     expect(mainRs).toContain("RuntimeStatus::Incompatible");
     expect(mainRs).toContain('"Ouroboros OLD"');
     expect(mainRs).toContain("operator_desktop_runtime_incompatible_port_occupied");
-    expect(mainRs).toContain("if runtime_compatible(&host, port)");
+    expect(mainRs).toContain("runtime_compatibility(&host, port)");
     expect(mainRs).toContain("wait_for_compatible_runtime");
     expect(opener).toContain("stopIncompatibleSourceRuntime");
     expect(opener).toContain("requiredRuntimeContractVersion");

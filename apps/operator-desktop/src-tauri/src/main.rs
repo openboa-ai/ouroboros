@@ -230,9 +230,17 @@ fn start_runtime_status_monitor(
 fn ensure_runtime_running(runtime_process: RuntimeProcess, resource_dir: Option<PathBuf>) {
     let host = runtime_host();
     let port = runtime_port();
-    if runtime_compatible(&host, port) {
-        reap_finished_runtime_child(&runtime_process);
-        return;
+    match runtime_compatibility(&host, port) {
+        RuntimeCompatibility::Compatible => {
+            reap_finished_runtime_child(&runtime_process);
+            return;
+        }
+        RuntimeCompatibility::Unknown(message) => {
+            eprintln!("operator_desktop_runtime_compatibility_unknown:{message}");
+            reap_finished_runtime_child(&runtime_process);
+            return;
+        }
+        RuntimeCompatibility::Incompatible => {}
     }
 
     stop_runtime(runtime_process.clone());
@@ -291,6 +299,12 @@ enum RuntimeStatus {
     RuntimeReady(Option<OperatorLoopStatus>),
     Incompatible(Vec<String>),
     Off,
+}
+
+enum RuntimeCompatibility {
+    Compatible,
+    Incompatible,
+    Unknown(String),
 }
 
 impl RuntimeStatus {
@@ -459,9 +473,18 @@ fn fetch_operator_loop_status(host: &str, port: u16) -> Result<OperatorLoopStatu
 }
 
 fn runtime_compatible(host: &str, port: u16) -> bool {
-    runtime_incompatibility_reasons(host, port)
-        .map(|reasons| reasons.is_empty())
-        .unwrap_or(false)
+    matches!(
+        runtime_compatibility(host, port),
+        RuntimeCompatibility::Compatible
+    )
+}
+
+fn runtime_compatibility(host: &str, port: u16) -> RuntimeCompatibility {
+    match runtime_incompatibility_reasons(host, port) {
+        Ok(reasons) if reasons.is_empty() => RuntimeCompatibility::Compatible,
+        Ok(_) => RuntimeCompatibility::Incompatible,
+        Err(message) => RuntimeCompatibility::Unknown(message),
+    }
 }
 
 fn runtime_incompatibility_reasons(host: &str, port: u16) -> Result<Vec<String>, String> {
@@ -577,8 +600,12 @@ fn start_runtime_if_needed(
 ) -> Result<(), String> {
     let host = runtime_host();
     let port = runtime_port();
-    if runtime_compatible(&host, port) {
-        return Ok(());
+    match runtime_compatibility(&host, port) {
+        RuntimeCompatibility::Compatible => return Ok(()),
+        RuntimeCompatibility::Unknown(message) if runtime_reachable(&host, port) => {
+            return Err(format!("operator_desktop_runtime_compatibility_unknown:{message}"));
+        }
+        RuntimeCompatibility::Unknown(_) | RuntimeCompatibility::Incompatible => {}
     }
 
     if runtime_reachable(&host, port) {

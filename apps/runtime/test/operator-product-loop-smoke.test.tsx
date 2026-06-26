@@ -340,12 +340,23 @@ describe("operator product loop smoke", () => {
         command_kind: "arena.start"
       });
       await paperProvider.started;
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      const ackedResponse = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(ackedResponse.statusCode, ackedResponse.body).toBe(200);
+      const ackedOperator = (ackedResponse.json() as { operator: OperatorReadModel }).operator;
+      expect(
+        ackedOperator.candidate_arena.latest_ticks[0]?.paper_trading_continuation
+      ).toBeUndefined();
+
+      paperProvider.release();
 
       const runningOperator = await waitForOperator(server, (operator) =>
         operator.candidate_arena.runner_status === "running"
         && operator.candidate_arena.tick_count === 1
-        && operator.candidate_arena.latest_ticks[0]?.paper_trading_continuation?.status === "started",
-      30);
+        && operator.candidate_arena.latest_ticks[0]?.paper_trading_continuation?.status === "started");
 
       expect(runningOperator.candidate_arena.latest_ticks[0]?.paper_trading_continuation)
         .toMatchObject({
@@ -937,7 +948,7 @@ describe("operator product loop smoke", () => {
     }
   });
 
-  it("replaces autonomous paper continuation ack with failure when paper start rejects late", async () => {
+  it("does not persist autonomous paper continuation ack before late paper start settles", async () => {
     const store = new LocalStore(tmpDir);
     let rejectLatePaperStart: ((error: Error) => void) | undefined;
     const server = await buildServer({
@@ -956,7 +967,7 @@ describe("operator product loop smoke", () => {
           }
         ]
       }),
-      candidateArenaTickIntervalMs: 500,
+      candidateArenaTickIntervalMs: 60_000,
       paperTradingEvaluationIntervalMs: 60_000,
       paperTradingSandboxIntervalMs: 1_000
     });
@@ -978,39 +989,46 @@ describe("operator product loop smoke", () => {
         command_kind: "arena.start"
       });
 
-      const ackedOperator = await waitForOperator(server, (operator) =>
-        operator.candidate_arena.latest_ticks.some((tick) =>
-          tick.paper_trading_continuation?.status === "started"
-        )
+      const tickedOperator = await waitForOperator(server, (operator) =>
+        operator.candidate_arena.latest_ticks.some((tick) => tick.tick_id === "tick-1")
       );
-      const ackedTick = ackedOperator.candidate_arena.latest_ticks.find((tick) =>
-        tick.paper_trading_continuation?.status === "started"
-      );
-      expect(ackedTick?.paper_trading_continuation).toMatchObject({
-        status: "started",
-        command_kind: "trading_run.start",
-        selected_candidate_id: expect.any(String),
-        authority_status: "not_live"
-      });
+      expect(tickedOperator.candidate_arena.latest_ticks
+        .find((tick) => tick.tick_id === "tick-1")
+        ?.created_candidate_ids.length).toBeGreaterThan(0);
+      for (let attempt = 0; attempt < 120 && !rejectLatePaperStart; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
       if (!rejectLatePaperStart) {
         throw new Error("paper start was not attempted before ack");
       }
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      const ackedResponse = await server.inject({
+        method: "GET",
+        url: "/api/operator"
+      });
+      expect(ackedResponse.statusCode, ackedResponse.body).toBe(200);
+      const ackedOperator = (ackedResponse.json() as { operator: OperatorReadModel }).operator;
+      expect(
+        ackedOperator.candidate_arena.latest_ticks.find((tick) => tick.tick_id === "tick-1")
+          ?.paper_trading_continuation
+      ).toBeUndefined();
+
       rejectLatePaperStart(new Error("late_paper_provider_unavailable_for_test"));
 
       const failedOperator = await waitForOperator(server, (operator) =>
         operator.candidate_arena.latest_ticks.some((tick) =>
-          tick.tick_id === ackedTick?.tick_id
+          tick.tick_id === "tick-1"
           && tick.paper_trading_continuation?.status === "failed"
           && tick.paper_trading_continuation.error === "late_paper_provider_unavailable_for_test"
         )
       );
       const failedTick = failedOperator.candidate_arena.latest_ticks.find((tick) =>
-        tick.tick_id === ackedTick?.tick_id
+        tick.tick_id === "tick-1"
       );
       expect(failedTick?.paper_trading_continuation).toMatchObject({
         status: "failed",
         command_kind: "trading_run.start",
-        selected_candidate_id: ackedTick?.paper_trading_continuation?.selected_candidate_id,
+        selected_candidate_id: expect.any(String),
         error: "late_paper_provider_unavailable_for_test",
         authority_status: "not_live"
       });
