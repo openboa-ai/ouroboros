@@ -255,6 +255,10 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("fetch_operator_loop_status");
     expect(mainRs).toContain('request_operator_command(&host, port, "arena.start")');
     expect(mainRs).toContain('request_operator_command(&host, port, "arena.stop")');
+    expect(mainRs).toContain("operator_desktop_start_loop_blocked");
+    expect(mainRs).toMatch(
+      /if let Err\(message\)\s*=\s*ensure_runtime_running\(runtime_process\.clone\(\), resource_dir\.clone\(\)\)/
+    );
     expect(mainRs).toContain("OUROBOROS_OPERATOR_API_TOKEN");
     expect(mainRs).toContain("operator_api_token_header");
     expect(mainRs).toContain("x-ouroboros-operator-token");

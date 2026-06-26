@@ -176,7 +176,13 @@ fn install_runtime_status_tray(
             OPEN_MENU_ID => show_main_window(app_handle),
             HIDE_MENU_ID => hide_window(app_handle, MAIN_WINDOW_LABEL),
             START_LOOP_MENU_ID => {
-                ensure_runtime_running(runtime_process.clone(), resource_dir.clone());
+                if let Err(message) =
+                    ensure_runtime_running(runtime_process.clone(), resource_dir.clone())
+                {
+                    eprintln!("operator_desktop_start_loop_blocked:{message}");
+                    update_runtime_status_tray(app_handle);
+                    return;
+                }
                 let host = runtime_host();
                 let port = runtime_port();
                 if let Err(message) = request_operator_command(&host, port, "arena.start") {
@@ -222,31 +228,35 @@ fn start_runtime_status_monitor(
         if shutdown_requested.load(Ordering::SeqCst) {
             break;
         }
-        ensure_runtime_running(runtime_process.clone(), resource_dir.clone());
+        if let Err(message) = ensure_runtime_running(runtime_process.clone(), resource_dir.clone())
+        {
+            eprintln!("{message}");
+        }
         update_runtime_status_tray(&app_handle);
     });
 }
 
-fn ensure_runtime_running(runtime_process: RuntimeProcess, resource_dir: Option<PathBuf>) {
+fn ensure_runtime_running(
+    runtime_process: RuntimeProcess,
+    resource_dir: Option<PathBuf>,
+) -> Result<(), String> {
     let host = runtime_host();
     let port = runtime_port();
     match runtime_compatibility(&host, port) {
         RuntimeCompatibility::Compatible => {
             reap_finished_runtime_child(&runtime_process);
-            return;
+            return Ok(());
         }
         RuntimeCompatibility::Unknown(message) if runtime_reachable(&host, port) => {
             eprintln!("operator_desktop_runtime_compatibility_unknown:{message}");
             reap_finished_runtime_child(&runtime_process);
-            return;
+            return Ok(());
         }
         RuntimeCompatibility::Unknown(_) | RuntimeCompatibility::Incompatible => {}
     }
 
     stop_runtime(runtime_process.clone());
-    if let Err(message) = start_runtime_if_needed(runtime_process, resource_dir) {
-        eprintln!("{message}");
-    }
+    start_runtime_if_needed(runtime_process, resource_dir)
 }
 
 fn restart_runtime(
@@ -603,7 +613,9 @@ fn start_runtime_if_needed(
     match runtime_compatibility(&host, port) {
         RuntimeCompatibility::Compatible => return Ok(()),
         RuntimeCompatibility::Unknown(message) if runtime_reachable(&host, port) => {
-            return Err(format!("operator_desktop_runtime_compatibility_unknown:{message}"));
+            return Err(format!(
+                "operator_desktop_runtime_compatibility_unknown:{message}"
+            ));
         }
         RuntimeCompatibility::Unknown(_) | RuntimeCompatibility::Incompatible => {}
     }
