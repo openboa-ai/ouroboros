@@ -71,6 +71,7 @@ export interface OperatorServiceOptions {
 export class OperatorService {
   private selectedCandidateId: string | undefined;
   private readonly pendingAutonomousPaperStarts = new Set<Promise<unknown>>();
+  private autonomousPaperStartShutdown = false;
 
   constructor(private readonly options: OperatorServiceOptions) {}
 
@@ -214,6 +215,7 @@ export class OperatorService {
   }
 
   async drainAutonomousPaperStarts(): Promise<void> {
+    this.autonomousPaperStartShutdown = true;
     const deadline = Date.now() + AUTONOMOUS_PAPER_CONTINUATION_DRAIN_TIMEOUT_MS;
     while (this.pendingAutonomousPaperStarts.size > 0) {
       const remainingMs = deadline - Date.now();
@@ -564,7 +566,8 @@ export class OperatorService {
       });
     }
     this.selectedCandidateId = candidateId;
-    const paperStart = this.executeMutationPort("trading_run.start", { candidate_id: candidateId })
+    const paperStart = this.executeMutationPort("trading_run.start", { candidate_id: candidateId });
+    const paperStartContinuation = paperStart
       .then((): CandidateArenaTickPaperTradingContinuationReadModel => ({
         status: "started",
         command_kind: "trading_run.start",
@@ -573,8 +576,24 @@ export class OperatorService {
       }));
     const trackedPaperStart = paperStart
       .then(
-        (continuation) => this.recordAutonomousPaperContinuation(outcome, continuation),
-        (error) => this.recordAutonomousPaperContinuationFailure(outcome, candidateId, error)
+        async (execution) => {
+          if (this.autonomousPaperStartShutdown) {
+            await this.stopLateAutonomousPaperStartAfterShutdown(execution);
+            return;
+          }
+          await this.recordAutonomousPaperContinuation(outcome, {
+            status: "started",
+            command_kind: "trading_run.start",
+            selected_candidate_id: candidateId,
+            authority_status: "not_live"
+          });
+        },
+        async (error) => {
+          if (this.autonomousPaperStartShutdown) {
+            return;
+          }
+          await this.recordAutonomousPaperContinuationFailure(outcome, candidateId, error);
+        }
       )
       .catch(() => undefined);
     this.pendingAutonomousPaperStarts.add(trackedPaperStart);
@@ -588,7 +607,18 @@ export class OperatorService {
       );
       timer.unref?.();
     });
-    return Promise.race([paperStart, acknowledged]);
+    return Promise.race([paperStartContinuation, acknowledged]);
+  }
+
+  private async stopLateAutonomousPaperStartAfterShutdown(
+    execution: OperatorCommandExecution
+  ): Promise<void> {
+    const tradingRunId = tradingRunIdFromCommandResult(execution.result);
+    if (!tradingRunId) {
+      return;
+    }
+    await this.executeMutationPort("trading_run.stop", { trading_run_id: tradingRunId })
+      .catch(() => undefined);
   }
 
   private async recordAutonomousPaperContinuation(
@@ -673,6 +703,26 @@ function commandErrorSummary(error: unknown): string {
     return error.message.split("\n")[0] || error.name;
   }
   return String(error);
+}
+
+function tradingRunIdFromCommandResult(result: unknown): string | undefined {
+  if (!isRecord(result)) {
+    return undefined;
+  }
+  if (typeof result.trading_run_id === "string" && result.trading_run_id.trim()) {
+    return result.trading_run_id;
+  }
+  if (!isRecord(result.trading_run)) {
+    return undefined;
+  }
+  const ref = result.trading_run.ref;
+  return isRecord(ref) && typeof ref.id === "string" && ref.id.trim()
+    ? ref.id
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseCommandCandidateId(payload: Record<string, unknown> | undefined): string {

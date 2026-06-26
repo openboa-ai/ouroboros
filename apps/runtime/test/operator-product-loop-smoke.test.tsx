@@ -1095,6 +1095,74 @@ describe("operator product loop smoke", () => {
     ])).resolves.toBe("closed");
   });
 
+  it("stops autonomous paper starts that complete after runtime close", async () => {
+    const store = new LocalStore(tmpDir);
+    const paperProvider = delayedPaperTradingApiProviderFactory();
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: paperProvider.factory,
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ],
+        executionSnapshots: [{
+          book_ticker: {
+            bid_price: "64999",
+            bid_quantity: "1.000",
+            ask_price: "65001",
+            ask_quantity: "1.000"
+          }
+        }]
+      }),
+      candidateArenaTickIntervalMs: 60_000,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    await postCommand(server, {
+      command_kind: "agent_provider.setup",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "agent_provider.probe",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "researcher.provider.select",
+      payload: { provider: "fixture" }
+    });
+    await postCommand(server, {
+      command_kind: "arena.start"
+    });
+    await paperProvider.started;
+
+    const closing = server.close();
+    await expect(Promise.race([
+      closing.then(() => "closed" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 25))
+    ])).resolves.toBe("pending");
+    await closing;
+
+    paperProvider.release();
+    let evaluations = await store.listPaperTradingEvaluations();
+    for (let attempt = 0; attempt < 120 && !evaluations.some((evaluation) =>
+      evaluation.status === "stopped"
+    ); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      evaluations = await store.listPaperTradingEvaluations();
+    }
+    expect(evaluations).toHaveLength(1);
+    expect(evaluations[0]).toMatchObject({
+      status: "stopped",
+      stopped_at: expect.any(String)
+    });
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({
