@@ -41,9 +41,13 @@ local runtime reachable in the background. Closing the window with the macOS win
 does not quit Ouroboros; it hides the window and leaves the app process, menu bar item, and any
 Desktop-spawned runtime process running.
 
-The macOS menu bar item shows runtime reachability directly:
+The macOS menu bar item shows whether the product loop is actually operating, not only whether the
+native window is open:
 
-- `Ouroboros RUN` means the configured runtime host and port are reachable
+- `Ouroboros LOOP` means the configured runtime is reachable and `GET /api/operator` reports the
+  Candidate Arena paper/research loop as running
+- `Ouroboros RUN` means the configured runtime host and port are reachable, but the Candidate Arena
+  loop is stopped or the Operator read model could not be read
 - `Ouroboros OFF` means the configured runtime host and port are not reachable
 
 The menu bar item refreshes from the same `runtime_reachable(host, port)` check used during startup,
@@ -51,7 +55,9 @@ so it reports both Desktop-spawned and already-running runtimes. The background 
 that check as a keepalive loop: when the configured runtime is no longer reachable, the Desktop app
 reaps any finished child process and attempts to start the runtime again from the same packaged
 sidecar/source-checkout order used at launch. `Open Operator` restores the window, `Hide Window` keeps the
-background process alive, `Restart Runtime` explicitly restarts the Desktop-owned runtime child
+background process alive, `Start Paper/Research Loop` and `Stop Paper/Research Loop` call the
+shared `POST /api/commands` contract with `arena.start` and `arena.stop`, `Restart Runtime`
+explicitly restarts the Desktop-owned runtime child
 when needed, and `Quit Ouroboros` is the explicit shutdown path. Quitting only stops the child
 runtime process that the Desktop app spawned; it does not kill an external runtime that was already
 running before the app opened.
