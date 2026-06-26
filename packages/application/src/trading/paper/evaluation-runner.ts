@@ -7,9 +7,21 @@ export interface PaperTradingEvaluationRunnerStartInput {
   onError?: (error: unknown) => void;
 }
 
+export interface PaperTradingEvaluationRunnerOptions {
+  drainTimeoutMs?: number;
+}
+
+const DEFAULT_DRAIN_TIMEOUT_MS = 1_000;
+
 export class PaperTradingEvaluationRunner {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly running = new Set<string>();
+  private readonly activeObservations = new Set<Promise<void>>();
+  private readonly drainTimeoutMs: number;
+
+  constructor(options: PaperTradingEvaluationRunnerOptions = {}) {
+    this.drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS;
+  }
 
   active(tradingRunId: string): boolean {
     return this.running.has(tradingRunId);
@@ -34,13 +46,38 @@ export class PaperTradingEvaluationRunner {
     return "stopped";
   }
 
+  async drain(): Promise<void> {
+    const deadline = Date.now() + this.drainTimeoutMs;
+    while (this.activeObservations.size > 0) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        return;
+      }
+      const timeout = new Promise((resolve) => {
+        const timer = setTimeout(resolve, remainingMs);
+        timer.unref?.();
+      });
+      await Promise.race([
+        Promise.allSettled([...this.activeObservations]),
+        timeout
+      ]);
+    }
+  }
+
   private schedule(input: PaperTradingEvaluationRunnerStartInput): void {
     const timer = setTimeout(async () => {
       this.timers.delete(input.tradingRunId);
+      let observation: Promise<void> | undefined;
       try {
-        await input.observe();
+        observation = Promise.resolve().then(input.observe);
+        this.activeObservations.add(observation);
+        await observation;
       } catch (error) {
         input.onError?.(error);
+      } finally {
+        if (observation) {
+          this.activeObservations.delete(observation);
+        }
       }
       if (this.running.has(input.tradingRunId)) {
         this.schedule(input);

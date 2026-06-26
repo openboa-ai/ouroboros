@@ -255,6 +255,10 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain("fetch_operator_loop_status");
     expect(mainRs).toContain('request_operator_command(&host, port, "arena.start")');
     expect(mainRs).toContain('request_operator_command(&host, port, "arena.stop")');
+    expect(mainRs).toContain("operator_desktop_start_loop_blocked");
+    expect(mainRs).toMatch(
+      /if let Err\(message\)\s*=\s*ensure_runtime_running\(runtime_process\.clone\(\), resource_dir\.clone\(\)\)/
+    );
     expect(mainRs).toContain("OUROBOROS_OPERATOR_API_TOKEN");
     expect(mainRs).toContain("operator_api_token_header");
     expect(mainRs).toContain("x-ouroboros-operator-token");
@@ -269,6 +273,42 @@ describe("Operator desktop app", () => {
     expect(desktopDoc).toContain("Ouroboros LOOP");
     expect(desktopDoc).toContain("Start Paper/Research Loop");
     expect(desktopDoc).toContain("Stop Paper/Research Loop");
+  });
+
+  it("does not treat a stale runtime process as reusable when it lacks the current paper loop command contract", () => {
+    const mainRs = readFileSync(
+      path.join(process.cwd(), "apps", "operator-desktop", "src-tauri", "src", "main.rs"),
+      "utf8"
+    );
+    const opener = readFileSync(
+      path.join(process.cwd(), "scripts", "open-operator-desktop-app.mjs"),
+      "utf8"
+    );
+
+    expect(mainRs).toContain("REQUIRED_RUNTIME_CONTRACT_VERSION");
+    expect(mainRs).toContain("paper-loop-continuation-v2");
+    expect(mainRs).toContain("operator_loop_contract_version");
+    expect(mainRs).toContain("fetch_runtime_health");
+    expect(mainRs).toContain("REQUIRED_LOOP_COMMAND_KINDS");
+    expect(mainRs).toContain('"arena.cycle"');
+    expect(mainRs).toContain('"trading_run.start"');
+    expect(mainRs).toContain("runtime_compatible");
+    expect(mainRs).toContain("RuntimeCompatibility::Unknown");
+    expect(mainRs).toContain("RuntimeCompatibility::Unknown(message) if runtime_reachable(&host, port)");
+    expect(mainRs).toContain("operator_desktop_runtime_compatibility_unknown");
+    expect(mainRs).toContain("RuntimeStatus::Incompatible");
+    expect(mainRs).toContain('"Ouroboros OLD"');
+    expect(mainRs).toContain("operator_desktop_runtime_incompatible_port_occupied");
+    expect(mainRs).toContain("runtime_compatibility(&host, port)");
+    expect(mainRs).toContain("wait_for_compatible_runtime");
+    expect(opener).toContain("stopIncompatibleSourceRuntime");
+    expect(opener).toContain("requiredRuntimeContractVersion");
+    expect(opener).toContain("operator_loop_contract_version");
+    expect(opener).toContain("requiredLoopCommands");
+    expect(opener).toContain("operator_desktop_stale_runtime_detected");
+    expect(opener).toContain("reasons=");
+    expect(opener).toContain("operator_desktop_stale_runtime_stopped");
+    expect(opener).toContain("apps/runtime/src/main.ts");
   });
 
   it("enables the Tauri tray feature without adding Electron", () => {
@@ -343,7 +383,15 @@ describe("Operator desktop app", () => {
     expect(opener).toContain("operator_desktop_register_failed");
     expect(opener).toContain("operator_desktop_app_opened");
     expect(opener).toContain("operator_desktop_bundle_open_failed");
-    expect(opener).toContain("operator_desktop_open_fallback");
+    expect(opener).toContain("operator_desktop_open_fallback:sanitized_app_copy");
+    expect(opener).toContain("prepareLaunchableAppCopy");
+    expect(opener).toContain("/tmp");
+    expect(opener).toContain("LSRequiresCarbon");
+    expect(opener).toContain("PlistBuddy");
+    expect(opener).toContain('"xattr"');
+    expect(opener).toContain("com.apple.provenance");
+    expect(opener).toContain('"codesign"');
+    expect(opener).toContain("operator_desktop_open_fallback:direct_executable");
     expect(opener).toContain('"ouroboros-operator-desktop"');
     expect(opener).toContain("operator_desktop_app_bundle_missing");
     expect(measurement).toContain("desktop_app_render");

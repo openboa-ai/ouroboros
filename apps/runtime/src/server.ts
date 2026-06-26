@@ -271,10 +271,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const server = Fastify({
     logger: false
   });
-  server.addHook("onClose", async () => {
-    await candidateArenaRunner.stopAndDrain();
-    await paperTradingCommandService.stopAllSessions();
-  });
 
   const operatorApiToken = resolveOperatorApiToken(options.operatorApiToken, process.env);
   const operatorCorsOrigins = resolveOperatorCorsOrigins(options.operatorCorsOrigins, process.env);
@@ -1140,6 +1136,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
     }
   });
+  server.addHook("onClose", async () => {
+    await candidateArenaRunner.stopAndDrain();
+    await operatorService.drainAutonomousPaperStarts();
+    await paperTradingCommandService.stopAllSessions();
+  });
   await operatorService.resumeAutonomousArenaLoop();
   const operatorController = createOperatorController(operatorService);
 
@@ -1221,9 +1222,15 @@ function isAllowedOperatorCorsOrigin(origin: string | undefined, explicitOrigins
   }
   try {
     const parsed = new URL(origin);
+    if (
+      parsed.protocol === "tauri:" &&
+      ["localhost", "tauri.localhost"].includes(parsed.hostname)
+    ) {
+      return true;
+    }
     return (
       (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-      ["127.0.0.1", "::1", "[::1]", "localhost"].includes(parsed.hostname)
+      ["127.0.0.1", "::1", "[::1]", "localhost", "tauri.localhost"].includes(parsed.hostname)
     );
   } catch {
     return false;

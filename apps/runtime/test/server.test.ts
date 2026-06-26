@@ -58,6 +58,7 @@ describe("runtime canonical operator API", () => {
       expect(health.json()).toMatchObject({
         status: "ok",
         service: "ouroboros-runtime",
+        operator_loop_contract_version: "paper-loop-continuation-v2",
         trading_gateway_environment: {
           authority_status: "not_live"
         }
@@ -193,6 +194,26 @@ describe("runtime canonical operator API", () => {
           authority_status: "not_live"
         }
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("allows the packaged Tauri operator app origin to read the operator API", async () => {
+    const server = await buildRuntimeTestServer({
+      store: new LocalStore(tmpDir)
+    });
+
+    try {
+      for (const origin of ["http://tauri.localhost", "tauri://localhost"]) {
+        const response = await server.inject({
+          method: "GET",
+          url: "/api/operator",
+          headers: { origin }
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["access-control-allow-origin"]).toBe(origin);
+      }
     } finally {
       await server.close();
     }

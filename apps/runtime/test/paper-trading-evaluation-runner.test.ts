@@ -35,4 +35,45 @@ describe("PaperTradingEvaluationRunner", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(observe).not.toHaveBeenCalled();
   });
+
+  it("bounds drain when an active observation never settles", async () => {
+    const runner = new PaperTradingEvaluationRunner({ drainTimeoutMs: 50 });
+    const observe = vi.fn(() => new Promise<void>(() => undefined));
+
+    expect(runner.start({ tradingRunId: "run-3", intervalMs: 1000, observe })).toBe("started");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(observe).toHaveBeenCalledTimes(1);
+
+    let drained = false;
+    const drain = runner.drain().then(() => {
+      drained = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(49);
+    await Promise.resolve();
+    expect(drained).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await drain;
+    expect(drained).toBe(true);
+  });
+
+  it("reports synchronous observe failures and keeps active runs scheduled", async () => {
+    const runner = new PaperTradingEvaluationRunner();
+    const error = new Error("sync_observe_failed");
+    const observe = vi.fn((): Promise<void> => {
+      throw error;
+    });
+    const onError = vi.fn();
+
+    expect(runner.start({ tradingRunId: "run-4", intervalMs: 1000, observe, onError })).toBe("started");
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(error);
+    expect(runner.active("run-4")).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
 });
