@@ -937,6 +937,94 @@ describe("operator product loop smoke", () => {
     }
   });
 
+  it("replaces autonomous paper continuation ack with failure when paper start rejects late", async () => {
+    const store = new LocalStore(tmpDir);
+    let rejectLatePaperStart: ((error: Error) => void) | undefined;
+    const server = await buildServer({
+      store,
+      candidateArenaArtifactRunner: paperDirectArenaArtifactRunner(),
+      candidateArenaReplayProviderFactory: networklessReplayTradingApiProvider,
+      paperTradingApiProviderFactory: () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectLatePaperStart = reject;
+        }),
+      marketDataPort: fakeGatewayMarketDataPort({
+        snapshots: [
+          {
+            price: 65_000,
+            expected_direction: "long"
+          }
+        ]
+      }),
+      candidateArenaTickIntervalMs: 500,
+      paperTradingEvaluationIntervalMs: 60_000,
+      paperTradingSandboxIntervalMs: 1_000
+    });
+
+    try {
+      await postCommand(server, {
+        command_kind: "agent_provider.setup",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "agent_provider.probe",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "researcher.provider.select",
+        payload: { provider: "fixture" }
+      });
+      await postCommand(server, {
+        command_kind: "arena.start"
+      });
+
+      const ackedOperator = await waitForOperator(server, (operator) =>
+        operator.candidate_arena.latest_ticks.some((tick) =>
+          tick.paper_trading_continuation?.status === "started"
+        )
+      );
+      const ackedTick = ackedOperator.candidate_arena.latest_ticks.find((tick) =>
+        tick.paper_trading_continuation?.status === "started"
+      );
+      expect(ackedTick?.paper_trading_continuation).toMatchObject({
+        status: "started",
+        command_kind: "trading_run.start",
+        selected_candidate_id: expect.any(String),
+        authority_status: "not_live"
+      });
+      if (!rejectLatePaperStart) {
+        throw new Error("paper start was not attempted before ack");
+      }
+      rejectLatePaperStart(new Error("late_paper_provider_unavailable_for_test"));
+
+      const failedOperator = await waitForOperator(server, (operator) =>
+        operator.candidate_arena.latest_ticks.some((tick) =>
+          tick.tick_id === ackedTick?.tick_id
+          && tick.paper_trading_continuation?.status === "failed"
+          && tick.paper_trading_continuation.error === "late_paper_provider_unavailable_for_test"
+        )
+      );
+      const failedTick = failedOperator.candidate_arena.latest_ticks.find((tick) =>
+        tick.tick_id === ackedTick?.tick_id
+      );
+      expect(failedTick?.paper_trading_continuation).toMatchObject({
+        status: "failed",
+        command_kind: "trading_run.start",
+        selected_candidate_id: ackedTick?.paper_trading_continuation?.selected_candidate_id,
+        error: "late_paper_provider_unavailable_for_test",
+        authority_status: "not_live"
+      });
+      expect(failedOperator.candidate_arena.runner_status).toBe("running");
+
+      const stopped = await postCommand(server, {
+        command_kind: "arena.stop"
+      });
+      expect(stopped.operator.candidate_arena.runner_status).toBe("stopped");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("runs status, provider setup, arena tick, selection, paper evidence, and readback through shared surfaces", async () => {
     const store = new LocalStore(tmpDir);
     const server = await buildServer({

@@ -566,10 +566,13 @@ export class OperatorService {
         selected_candidate_id: candidateId,
         paper_trading: paperTrading.result
       }));
-    this.pendingAutonomousPaperStarts.add(paperStart);
-    paperStart.finally(() => {
-      this.pendingAutonomousPaperStarts.delete(paperStart);
-    }).catch(() => undefined);
+    const trackedPaperStart = paperStart
+      .catch((error) => this.recordAutonomousPaperContinuationFailure(outcome, candidateId, error))
+      .catch(() => undefined);
+    this.pendingAutonomousPaperStarts.add(trackedPaperStart);
+    void trackedPaperStart.finally(() => {
+      this.pendingAutonomousPaperStarts.delete(trackedPaperStart);
+    });
     const acknowledged = new Promise<{ selected_candidate_id: string }>((resolve) => {
       const timer = setTimeout(
         () => resolve({ selected_candidate_id: candidateId }),
@@ -578,6 +581,28 @@ export class OperatorService {
       timer.unref?.();
     });
     return Promise.race([paperStart, acknowledged]);
+  }
+
+  private async recordAutonomousPaperContinuationFailure(
+    outcome: CandidateArenaTickOutcome,
+    candidateId: string,
+    error: unknown
+  ): Promise<void> {
+    const tick = (await this.options.store.listCandidateArenaTicks())
+      .find((entry) => entry.tick_id === outcome.tick_id);
+    if (!tick) {
+      return;
+    }
+    await this.options.store.recordCandidateArenaTick({
+      ...tick,
+      paper_trading_continuation: {
+        status: "failed",
+        command_kind: "trading_run.start",
+        selected_candidate_id: candidateId,
+        error: commandErrorSummary(error),
+        authority_status: "not_live"
+      }
+    });
   }
 
   private async restoreCandidateArenaTickCount(): Promise<void> {
