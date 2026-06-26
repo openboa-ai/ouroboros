@@ -235,12 +235,12 @@ fn ensure_runtime_running(runtime_process: RuntimeProcess, resource_dir: Option<
             reap_finished_runtime_child(&runtime_process);
             return;
         }
-        RuntimeCompatibility::Unknown(message) => {
+        RuntimeCompatibility::Unknown(message) if runtime_reachable(&host, port) => {
             eprintln!("operator_desktop_runtime_compatibility_unknown:{message}");
             reap_finished_runtime_child(&runtime_process);
             return;
         }
-        RuntimeCompatibility::Incompatible => {}
+        RuntimeCompatibility::Unknown(_) | RuntimeCompatibility::Incompatible => {}
     }
 
     stop_runtime(runtime_process.clone());

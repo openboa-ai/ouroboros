@@ -290,6 +290,7 @@ describe("Operator desktop app", () => {
     expect(mainRs).toContain('"trading_run.start"');
     expect(mainRs).toContain("runtime_compatible");
     expect(mainRs).toContain("RuntimeCompatibility::Unknown");
+    expect(mainRs).toContain("RuntimeCompatibility::Unknown(message) if runtime_reachable(&host, port)");
     expect(mainRs).toContain("operator_desktop_runtime_compatibility_unknown");
     expect(mainRs).toContain("RuntimeStatus::Incompatible");
     expect(mainRs).toContain('"Ouroboros OLD"');
