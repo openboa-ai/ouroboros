@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   CandidateInspectReadModel,
+  PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   SandboxAdapterKind,
   SandboxDetailReadModel,
@@ -8,6 +9,7 @@ import type {
   TradingRuntimeEnvironment
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, isStoreErrorLike, type OuroborosStorePort } from "../../ports/store";
+import type { SystemCodeArtifactResolverPort } from "../../ports/system-code-artifact";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import type {
   PaperOrderRequestFixture,
@@ -24,7 +26,15 @@ import {
 } from "../gateway/runtime-binding";
 import type { AccountState, ReplayTradingApiProviderSession } from "../research/types";
 import { PaperTradingEvaluationRunner } from "./evaluation-runner";
+import { initialPaperTradingEngineState } from "./engine";
+import { zeroPaperTradingProfitLoss } from "./evaluation";
 import { classifyPaperTradingFailure } from "./failures";
+import {
+  createPaperTradingEvaluationCommitment,
+  invalidatePaperTradingEvaluation,
+  verifyPaperTradingEvaluationCommitment,
+  type PaperTradingEvaluationCommitmentVerification
+} from "./commitment";
 import {
   canRestartFailedPaperTradingEvaluation,
   recordPaperTradingEvaluationObservation,
@@ -55,6 +65,7 @@ export interface PaperTradingCommandServiceOptions {
     options: PaperTradingApiProviderOptions
   ) => Promise<ReplayTradingApiProviderSession>;
   apiProviderOptions?: Pick<PaperTradingApiProviderOptions, "listen_host" | "sandbox_host">;
+  artifactResolver: SystemCodeArtifactResolverPort;
   logger?: Pick<Console, "error">;
 }
 
@@ -67,6 +78,12 @@ export class PaperTradingCommandError extends Error {
     super(message);
     this.name = "PaperTradingCommandError";
   }
+}
+
+interface PreparedPaperTradingEvaluation {
+  evaluation: PaperTradingEvaluationRecord;
+  commitment?: PaperTradingEvaluationCommitmentRecord;
+  verification: PaperTradingEvaluationCommitmentVerification;
 }
 
 export class PaperTradingCommandService {
@@ -140,6 +157,17 @@ export class PaperTradingCommandService {
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
     const tradingRunId = candidate.runtime.ref.id;
     const existingEvaluation = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    if (existingEvaluation?.status === "invalidated") {
+      return {
+        statusCode: 409,
+        body: {
+          error: "paper_trading_evaluation_invalidated_requires_new_candidate_version",
+          reason: existingEvaluation.invalidation_reason,
+          paper_trading_evaluation: existingEvaluation,
+          candidate_version_id: candidateVersionId
+        }
+      };
+    }
     const failedSessionEventIds = restartFailedPaperTradingEvaluationProcessedEventIds({
       candidate,
       evaluation: existingEvaluation
@@ -160,57 +188,80 @@ export class PaperTradingCommandService {
         }
       };
     }
-    if (existingEvaluation?.status === "running") {
-      if (!this.runner.active(tradingRunId)) {
-        const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-        await this.restartTradingRunSandboxWithProvider({
+
+    try {
+      const prepared = await this.preparePaperTradingEvaluation({
+        candidate,
+        existingEvaluation,
+        gatewayRuntimeBinding
+      });
+      if (prepared.verification.status === "invalidated") {
+        const invalidatedEvaluation = await this.persistCommitmentInvalidation({
           candidate,
-          tradingRunId,
-          candidateVersionId,
-          paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-          tradingApiBaseUrl
+          evaluation: prepared.evaluation,
+          verification: prepared.verification
         });
-        const resumedEvaluation = await recordPaperTradingEvaluationObservation({
-          store: this.options.store,
-          tradingRunId,
-          gatewayRuntimeBinding,
-          appendLedger: true,
-          intervalMs: this.intervalMs,
-          refreshCandidate: (candidate) => this.refreshPaperTradingSandbox(candidate)
-        });
-        if (resumedEvaluation.evaluation.status === "running") {
-          this.schedule(tradingRunId);
-        } else {
-          await this.stopFailedSession(tradingRunId);
+        return {
+          statusCode: 409,
+          body: {
+            error: "paper_trading_evaluation_invalidated",
+            reason: prepared.verification.reason,
+            paper_trading_evaluation: invalidatedEvaluation,
+            candidate_version_id: candidateVersionId,
+            runner_status: "stopped"
+          }
+        };
+      }
+
+      if (prepared.evaluation.status === "running") {
+        if (!this.runner.active(tradingRunId)) {
+          const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(
+            tradingRunId,
+            gatewayRuntimeBinding
+          );
+          await this.restartTradingRunSandboxWithProvider({
+            candidate,
+            tradingRunId,
+            candidateVersionId,
+            paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
+            tradingApiBaseUrl
+          });
+          const resumedEvaluation = await this.recordObservation({
+            tradingRunId,
+            gatewayRuntimeBinding
+          });
+          if (resumedEvaluation.evaluation.status === "running") {
+            this.schedule(tradingRunId);
+          } else {
+            await this.stopTerminalSession(tradingRunId);
+          }
+          const response = await tradingRunResponse(this.options.store, tradingRunId);
+          return {
+            statusCode: resumedEvaluation.evaluation.status === "invalidated" ? 409 : 200,
+            body: {
+              status: resumedEvaluation.evaluation.status === "invalidated" ? "invalidated" : "resumed",
+              ...response,
+              paper_trading_evaluation: resumedEvaluation.evaluation,
+              paper_trading_observation: resumedEvaluation.observation,
+              runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
+            }
+          };
         }
+
+        await this.ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
+        this.schedule(tradingRunId);
         const response = await tradingRunResponse(this.options.store, tradingRunId);
         return {
           statusCode: 200,
           body: {
-            status: "resumed",
+            status: "already_running",
             ...response,
-            paper_trading_evaluation: resumedEvaluation.evaluation,
-            paper_trading_observation: resumedEvaluation.observation,
+            paper_trading_evaluation: prepared.evaluation,
             runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
           }
         };
       }
 
-      await this.ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-      this.schedule(tradingRunId);
-      const response = await tradingRunResponse(this.options.store, tradingRunId);
-      return {
-        statusCode: 200,
-        body: {
-          status: "already_running",
-          ...response,
-          paper_trading_evaluation: existingEvaluation,
-          runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
-        }
-      };
-    }
-
-    try {
       const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(
         tradingRunId,
         gatewayRuntimeBinding
@@ -223,25 +274,23 @@ export class PaperTradingCommandService {
         paperOrderRequest,
         tradingApiBaseUrl
       });
-      const paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
-        store: this.options.store,
+      await this.markPaperTradingEvaluationRunning({
+        evaluation: prepared.evaluation,
+        failedSessionEventIds
+      });
+      const paperTradingEvaluation = await this.recordObservation({
         tradingRunId,
-        gatewayRuntimeBinding,
-        appendLedger: true,
-        intervalMs: this.intervalMs,
-        restartFailedEvaluation: true,
-        restartFailedEvaluationProcessedEventIds: failedSessionEventIds,
-        refreshCandidate: (candidate) => this.refreshPaperTradingSandbox(candidate)
+        gatewayRuntimeBinding
       });
       if (paperTradingEvaluation.evaluation.status === "running") {
         this.schedule(tradingRunId);
       } else {
-        await this.stopFailedSession(tradingRunId);
+        await this.stopTerminalSession(tradingRunId);
       }
       const response = await tradingRunResponse(this.options.store, tradingRunId);
 
       return {
-        statusCode: 201,
+        statusCode: paperTradingEvaluation.evaluation.status === "invalidated" ? 409 : 201,
         body: {
           ...outcome,
           ...response,
@@ -289,27 +338,45 @@ export class PaperTradingCommandService {
         environment: "paper",
         marketData: this.options.marketData
       });
-      const providerWasActive = this.apiProviderSessions.has(tradingRunId);
-      const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, gatewayRuntimeBinding);
-      if (!providerWasActive) {
-        await this.restartTradingRunSandboxWithProvider({
+      const existingEvaluation = await this.options.store
+        .getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+      if (existingEvaluation && existingEvaluation.status !== "invalidated") {
+        const prepared = await this.preparePaperTradingEvaluation({
           candidate,
-          tradingRunId,
-          candidateVersionId: candidate.candidate_version.candidate_version_id,
-          paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
-          tradingApiBaseUrl
+          existingEvaluation,
+          gatewayRuntimeBinding
         });
-      }
-      paperTradingEvaluation = await recordPaperTradingEvaluationObservation({
-        store: this.options.store,
-        tradingRunId,
-        gatewayRuntimeBinding,
-        appendLedger: true,
-        intervalMs: this.intervalMs,
-        refreshCandidate: (candidate) => this.refreshPaperTradingSandbox(candidate)
-      });
-      if (paperTradingEvaluation.evaluation.status === "failed") {
-        await this.stopFailedSession(tradingRunId);
+        if (prepared.verification.status === "invalidated") {
+          paperTradingEvaluation = {
+            evaluation: await this.persistCommitmentInvalidation({
+              candidate,
+              evaluation: prepared.evaluation,
+              verification: prepared.verification
+            })
+          };
+        } else {
+          const providerWasActive = this.apiProviderSessions.has(tradingRunId);
+          const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(
+            tradingRunId,
+            gatewayRuntimeBinding
+          );
+          if (!providerWasActive) {
+            await this.restartTradingRunSandboxWithProvider({
+              candidate,
+              tradingRunId,
+              candidateVersionId: candidate.candidate_version.candidate_version_id,
+              paperOrderRequest: paperOrderRequestFromCandidateRuntime(candidate),
+              tradingApiBaseUrl
+            });
+          }
+          paperTradingEvaluation = await this.recordObservation({
+            tradingRunId,
+            gatewayRuntimeBinding
+          });
+        }
+        if (paperTradingEvaluation.evaluation.status !== "running") {
+          await this.stopTerminalSession(tradingRunId);
+        }
       }
     }
 
@@ -364,12 +431,14 @@ export class PaperTradingCommandService {
     const existingEvaluation = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
     const stoppedAt = new Date().toISOString();
     const stoppedEvaluation = existingEvaluation
-      ? await this.options.store.recordPaperTradingEvaluation({
-          ...existingEvaluation,
-          status: "stopped",
-          next_observation_at: undefined,
-          stopped_at: stoppedAt
-        })
+      ? existingEvaluation.status === "invalidated"
+        ? existingEvaluation
+        : await this.options.store.recordPaperTradingEvaluation({
+            ...existingEvaluation,
+            status: "stopped",
+            next_observation_at: undefined,
+            stopped_at: stoppedAt
+          })
       : undefined;
 
     const response = await tradingRunResponse(this.options.store, tradingRunId);
@@ -391,6 +460,239 @@ export class PaperTradingCommandService {
       await this.stopApiProviderSession(tradingRunId);
     }
     await this.runner.drain();
+  }
+
+  private async preparePaperTradingEvaluation(input: {
+    candidate: CandidateInspectReadModel;
+    existingEvaluation?: PaperTradingEvaluationRecord;
+    gatewayRuntimeBinding: GatewayRuntimeBinding;
+  }): Promise<PreparedPaperTradingEvaluation> {
+    if (input.existingEvaluation) {
+      const commitmentRef = input.existingEvaluation.paper_trading_evaluation_commitment_ref;
+      if (!commitmentRef) {
+        return {
+          evaluation: input.existingEvaluation,
+          verification: {
+            status: "invalidated",
+            reason: "commitment_missing",
+            diagnostic: "PaperTradingEvaluation has no persisted commitment reference."
+          }
+        };
+      }
+      const commitment = await this.options.store.getPaperTradingEvaluationCommitment(
+        commitmentRef.id
+      );
+      if (!commitment) {
+        return {
+          evaluation: input.existingEvaluation,
+          verification: {
+            status: "invalidated",
+            reason: "commitment_missing",
+            diagnostic: "Referenced PaperTradingEvaluationCommitment was not found."
+          }
+        };
+      }
+      const systemCode = await this.options.store.getSystemCode(commitment.system_code_ref.id);
+      if (!systemCode) {
+        return {
+          evaluation: input.existingEvaluation,
+          commitment,
+          verification: {
+            status: "invalidated",
+            reason: "system_code_identity_mismatch",
+            diagnostic: "Committed SystemCode was not found."
+          }
+        };
+      }
+      let resolvedArtifactDigest: string;
+      try {
+        resolvedArtifactDigest = await this.options.artifactResolver.resolveArtifactDigest(systemCode);
+      } catch (error) {
+        return {
+          evaluation: input.existingEvaluation,
+          commitment,
+          verification: {
+            status: "invalidated",
+            reason: "resolved_artifact_digest_mismatch",
+            diagnostic: error instanceof Error
+              ? `Unable to resolve committed SystemCode artifact: ${error.message}`
+              : "Unable to resolve committed SystemCode artifact."
+          }
+        };
+      }
+      return {
+        evaluation: input.existingEvaluation,
+        commitment,
+        verification: verifyPaperTradingEvaluationCommitment({
+          commitment,
+          evaluation: input.existingEvaluation,
+          candidate: input.candidate,
+          systemCode,
+          resolvedArtifactDigest,
+          marketData: input.gatewayRuntimeBinding.marketData,
+          intervalMs: this.intervalMs
+        })
+      };
+    }
+
+    const systemCodeId = input.candidate.system_code?.ref?.id ?? FIXTURE_SYSTEM_CODE_ID;
+    const systemCode = await this.options.store.getSystemCode(systemCodeId);
+    if (!systemCode) {
+      throw new PaperTradingCommandError(
+        "system_code_not_found",
+        `system code ${systemCodeId} not found`,
+        { system_code_id: systemCodeId }
+      );
+    }
+    let resolvedArtifactDigest: string;
+    try {
+      resolvedArtifactDigest = await this.options.artifactResolver.resolveArtifactDigest(systemCode);
+    } catch (error) {
+      throw new PaperTradingCommandError(
+        "system_code_artifact_unreadable",
+        error instanceof Error ? error.message : "SystemCode artifact could not be resolved.",
+        { system_code_id: systemCodeId }
+      );
+    }
+    const committedAt = new Date().toISOString();
+    const initialEngineState = initialPaperTradingEngineState();
+    const commitment = createPaperTradingEvaluationCommitment({
+      commitmentId: `paper-trading-evaluation-commitment-${safeRouteId([
+        input.candidate.runtime.ref.id,
+        input.candidate.candidate_version.candidate_version_id
+      ].join(":"))}`,
+      evidencePurpose: "research_feedback",
+      candidate: input.candidate,
+      systemCode,
+      resolvedArtifactDigest,
+      marketData: input.gatewayRuntimeBinding.marketData,
+      intervalMs: this.intervalMs,
+      initialAccountSnapshot: initialEngineState.account,
+      committedAt
+    });
+    await this.options.store.recordPaperTradingEvaluationCommitment(commitment);
+    const evaluation: PaperTradingEvaluationRecord = {
+      record_kind: "paper_trading_evaluation",
+      version: 1,
+      paper_trading_evaluation_id: `paper-trading-evaluation-${safeRouteId(
+        input.candidate.runtime.ref.id
+      )}`,
+      candidate_ref: { ...commitment.candidate_ref },
+      candidate_version_ref: { ...commitment.candidate_version_ref },
+      trading_run_ref: { ...commitment.trading_run_ref },
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment",
+        id: commitment.paper_trading_evaluation_commitment_id
+      },
+      status: "not_started",
+      interval_ms: this.intervalMs,
+      observation_count: 0,
+      started_at: committedAt,
+      latest_score: zeroPaperTradingProfitLoss(),
+      paper_account_snapshot: commitment.initial_account_snapshot,
+      open_orders: initialEngineState.openOrders,
+      processed_trading_system_event_ids: initialEngineState.processedTradingSystemEventIds,
+      processed_public_trade_ids: initialEngineState.processedPublicTradeIds,
+      authority_status: "not_live"
+    };
+    await this.options.store.recordPaperTradingEvaluation(evaluation);
+    return {
+      evaluation,
+      commitment,
+      verification: verifyPaperTradingEvaluationCommitment({
+        commitment,
+        evaluation,
+        candidate: input.candidate,
+        systemCode,
+        resolvedArtifactDigest,
+        marketData: input.gatewayRuntimeBinding.marketData,
+        intervalMs: this.intervalMs
+      })
+    };
+  }
+
+  private async markPaperTradingEvaluationRunning(input: {
+    evaluation: PaperTradingEvaluationRecord;
+    failedSessionEventIds: string[];
+  }): Promise<PaperTradingEvaluationRecord> {
+    const startedAt = new Date().toISOString();
+    return this.options.store.recordPaperTradingEvaluation({
+      ...input.evaluation,
+      status: "running",
+      stopped_at: undefined,
+      next_observation_at: new Date(Date.parse(startedAt) + this.intervalMs).toISOString(),
+      latest_failure_reason: undefined,
+      processed_trading_system_event_ids: [...new Set([
+        ...(input.evaluation.processed_trading_system_event_ids ?? []),
+        ...input.failedSessionEventIds
+      ])]
+    });
+  }
+
+  private async recordObservation(input: {
+    tradingRunId: string;
+    gatewayRuntimeBinding: GatewayRuntimeBinding;
+  }): Promise<Awaited<ReturnType<typeof recordPaperTradingEvaluationObservation>>> {
+    const result = await recordPaperTradingEvaluationObservation({
+      store: this.options.store,
+      tradingRunId: input.tradingRunId,
+      gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+      appendLedger: true,
+      intervalMs: this.intervalMs,
+      refreshCandidate: (candidate) => this.refreshPaperTradingSandbox(candidate),
+      verifyCommitment: async (evaluation, candidate) => (
+        await this.preparePaperTradingEvaluation({
+          candidate,
+          existingEvaluation: evaluation,
+          gatewayRuntimeBinding: input.gatewayRuntimeBinding
+        })
+      ).verification
+    });
+    if (result.evaluation.status === "invalidated") {
+      const candidate = await this.options.store.getCandidateForTradingRun(input.tradingRunId);
+      if (candidate) {
+        await this.recordCommitmentInvalidationAudit(candidate, result.evaluation);
+      }
+    }
+    return result;
+  }
+
+  private async persistCommitmentInvalidation(input: {
+    candidate: CandidateInspectReadModel;
+    evaluation: PaperTradingEvaluationRecord;
+    verification: Extract<PaperTradingEvaluationCommitmentVerification, { status: "invalidated" }>;
+  }): Promise<PaperTradingEvaluationRecord> {
+    const invalidatedEvaluation = await this.options.store.recordPaperTradingEvaluation(
+      invalidatePaperTradingEvaluation({
+        evaluation: input.evaluation,
+        verification: input.verification,
+        invalidatedAt: new Date().toISOString()
+      })
+    );
+    await this.recordCommitmentInvalidationAudit(input.candidate, invalidatedEvaluation);
+    await this.stopTerminalSession(input.evaluation.trading_run_ref.id);
+    return invalidatedEvaluation;
+  }
+
+  private async recordCommitmentInvalidationAudit(
+    candidate: CandidateInspectReadModel,
+    evaluation: PaperTradingEvaluationRecord
+  ): Promise<void> {
+    await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
+      idempotencyKey: [
+        "paper-commitment-invalidated",
+        evaluation.paper_trading_evaluation_id,
+        evaluation.invalidation_reason ?? "unknown"
+      ].join(":"),
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: evaluation.trading_run_ref.id,
+      action: "inspect",
+      lifecycleStatus: "stopped",
+      actorId: "runtime-api",
+      reasonSummary: `Paper commitment invalidated: ${evaluation.invalidation_reason ?? "unknown"}.`,
+      message: "Paper TradingEvaluation stopped before additional evidence was recorded."
+    }));
   }
 
   private async startTradingRun(input: {
@@ -440,26 +742,22 @@ export class PaperTradingCommandService {
           await this.stopApiProviderSession(tradingRunId);
           return;
         }
-        const result = await recordPaperTradingEvaluationObservation({
-          store: this.options.store,
+        const result = await this.recordObservation({
           tradingRunId,
           gatewayRuntimeBinding: createGatewayRuntimeBinding({
             environment: "paper",
             marketData: this.options.marketData
-          }),
-          appendLedger: true,
-          intervalMs: this.intervalMs,
-          refreshCandidate: (candidate) => this.refreshPaperTradingSandbox(candidate)
+          })
         });
-        if (result.evaluation.status === "failed") {
-          await this.stopFailedSession(tradingRunId);
+        if (result.evaluation.status !== "running") {
+          await this.stopTerminalSession(tradingRunId);
         }
       },
       onError: (error) => this.options.logger?.error(error)
     });
   }
 
-  private async stopFailedSession(tradingRunId: string): Promise<void> {
+  private async stopTerminalSession(tradingRunId: string): Promise<void> {
     this.runner.stop(tradingRunId);
     await this.stopApiProviderSession(tradingRunId);
     await this.stopLinkedSandbox(tradingRunId);

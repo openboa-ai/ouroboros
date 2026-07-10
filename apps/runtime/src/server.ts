@@ -15,6 +15,7 @@ import type {
   TradingGatewayEnvironmentReadModel
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "@ouroboros/application/ports/market-data";
+import type { SystemCodeArtifactResolverPort } from "@ouroboros/application/ports/system-code-artifact";
 import { FIXTURE_SYSTEM_CODE_ID, LocalStore, LocalStoreError } from "@ouroboros/local-store";
 import { runCandidateEvaluation } from "@ouroboros/application/candidate/evaluation";
 import { FixtureEvaluationProviderAdapter } from "@ouroboros/adapters/fixture/evaluation-provider";
@@ -24,6 +25,7 @@ import {
   DockerSandboxesSbxSandboxAdapter,
   type SandboxAdapter
 } from "@ouroboros/adapters/sandbox/adapter";
+import { FileSystemCodeArtifactResolver } from "@ouroboros/adapters/artifact/system-code-artifact-resolver";
 import {
   DEFAULT_REPLAY_RUN_ROOT,
   getCandidateLatestValidationState,
@@ -110,6 +112,7 @@ export interface BuildServerOptions {
     binding: GatewayRuntimeBinding,
     options: PaperTradingApiProviderOptions
   ) => Promise<ReplayTradingApiProviderSession>;
+  paperTradingArtifactResolver?: SystemCodeArtifactResolverPort;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
   operatorApiToken?: string | false;
@@ -256,6 +259,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     intervalMs: paperTradingEvaluationIntervalMs,
     sandboxIntervalMs: options.paperTradingSandboxIntervalMs,
     apiProviderFactory: options.paperTradingApiProviderFactory,
+    artifactResolver: options.paperTradingArtifactResolver ??
+      new FileSystemCodeArtifactResolver({ repoRoot: process.cwd() }),
     apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
     logger: console
   });

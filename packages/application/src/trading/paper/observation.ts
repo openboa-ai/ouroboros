@@ -20,7 +20,6 @@ import { executeGatewayOrderRequest, type GatewayRuntimeBinding } from "../gatew
 import type { MarketSnapshot } from "../research/types";
 import {
   applyPaperTradingCheckpoint,
-  initialPaperTradingEngineState,
   restorePaperTradingEngineState,
   type PaperTradingEngineCheckpointResult,
   type PaperTradingEngineState
@@ -32,6 +31,10 @@ import {
   type ParsedTradingSystemPaperEvent
 } from "./events";
 import { classifyPaperTradingFailure } from "./failures";
+import {
+  invalidatePaperTradingEvaluation,
+  type PaperTradingEvaluationCommitmentVerification
+} from "./commitment";
 
 export class PaperTradingObservationError extends Error {
   constructor(
@@ -53,11 +56,15 @@ export interface RecordPaperTradingEvaluationObservationInput {
   refreshCandidate?: (candidate: CandidateInspectReadModel) => Promise<CandidateInspectReadModel>;
   restartFailedEvaluation?: boolean;
   restartFailedEvaluationProcessedEventIds?: string[];
+  verifyCommitment: (
+    evaluation: PaperTradingEvaluationRecord,
+    candidate: CandidateInspectReadModel
+  ) => Promise<PaperTradingEvaluationCommitmentVerification>;
 }
 
 export interface RecordPaperTradingEvaluationObservationResult {
   evaluation: PaperTradingEvaluationRecord;
-  observation: PaperTradingObservationRecord;
+  observation?: PaperTradingObservationRecord;
 }
 
 export async function recordPaperTradingEvaluationObservation(
@@ -73,6 +80,13 @@ export async function recordPaperTradingEvaluationObservation(
   }
   const now = new Date().toISOString();
   const existingEvaluation = await input.store.getLatestPaperTradingEvaluationForTradingRun(input.tradingRunId);
+  if (!existingEvaluation) {
+    throw new PaperTradingObservationError(
+      "paper_trading_evaluation_not_started",
+      `paper TradingEvaluation for runtime ${input.tradingRunId} was not prepared`,
+      { runtime_id: input.tradingRunId }
+    );
+  }
   const failedSessionEventIds = existingEvaluation?.status === "failed" && input.restartFailedEvaluation
     ? input.restartFailedEvaluationProcessedEventIds ?? []
     : [];
@@ -80,12 +94,18 @@ export async function recordPaperTradingEvaluationObservation(
     input.restartFailedEvaluation &&
     canRestartFailedPaperTradingEvaluation(existingEvaluation)
     ? restartFailedPaperTradingEvaluation(existingEvaluation, now, input.intervalMs, failedSessionEventIds)
-    : existingEvaluation ?? paperTradingEvaluationRecord({
-      candidate: candidateBefore,
-      tradingRunId: input.tradingRunId,
-      intervalMs: input.intervalMs,
-      startedAt: now
-    });
+    : existingEvaluation;
+  const commitmentVerification = await input.verifyCommitment(baseEvaluation, candidateBefore);
+  if (commitmentVerification.status === "invalidated") {
+    const invalidatedEvaluation = await input.store.recordPaperTradingEvaluation(
+      invalidatePaperTradingEvaluation({
+        evaluation: baseEvaluation,
+        verification: commitmentVerification,
+        invalidatedAt: now
+      })
+    );
+    return { evaluation: invalidatedEvaluation };
+  }
   if (baseEvaluation.status === "failed") {
     return recordTerminalFailedObservation({
       store: input.store,
@@ -565,37 +585,6 @@ async function recordPaperTradingObservationAudit(input: {
   }));
 }
 
-function paperTradingEvaluationRecord(input: {
-  candidate: CandidateInspectReadModel;
-  tradingRunId: string;
-  intervalMs: number;
-  startedAt: string;
-}): PaperTradingEvaluationRecord {
-  const initialEngineState = initialPaperTradingEngineState();
-  return {
-    record_kind: "paper_trading_evaluation",
-    version: 1,
-    paper_trading_evaluation_id: `paper-trading-evaluation-${safeRouteId(input.tradingRunId)}`,
-    candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
-    candidate_version_ref: {
-      record_kind: "candidate_version",
-      id: input.candidate.candidate_version.candidate_version_id
-    },
-    trading_run_ref: { record_kind: "trading_run", id: input.tradingRunId },
-    status: "running",
-    interval_ms: input.intervalMs,
-    observation_count: 0,
-    started_at: input.startedAt,
-    next_observation_at: new Date(Date.parse(input.startedAt) + input.intervalMs).toISOString(),
-    latest_score: zeroPaperTradingProfitLoss(),
-    paper_account_snapshot: initialEngineState.account,
-    open_orders: initialEngineState.openOrders,
-    processed_trading_system_event_ids: initialEngineState.processedTradingSystemEventIds,
-    processed_public_trade_ids: initialEngineState.processedPublicTradeIds,
-    authority_status: "not_live"
-  };
-}
-
 function restartFailedPaperTradingEvaluation(
   evaluation: PaperTradingEvaluationRecord,
   restartedAt: string,
@@ -697,6 +686,8 @@ function paperTradingObservationRecord(input: {
       record_kind: "paper_trading_evaluation",
       id: input.evaluation.paper_trading_evaluation_id
     },
+    paper_trading_evaluation_commitment_ref:
+      input.evaluation.paper_trading_evaluation_commitment_ref,
     candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
     candidate_version_ref: {
       record_kind: "candidate_version",
