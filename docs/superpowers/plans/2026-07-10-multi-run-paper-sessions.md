@@ -457,7 +457,7 @@ git commit -m "refactor: route paper commands through session service"
 - Verifies: independent lifecycle, account, event cursor, sandbox, provider, Ledger, and restart
   state.
 
-- [ ] **Step 1: Write the two-run isolation scenario**
+- [x] **Step 1: Write the two-run isolation scenario**
 
 Start the default research session and one additional externally clocked research-feedback session
 for the same candidate version. Separately prepare a qualification session and prove it remains
@@ -479,21 +479,21 @@ qualification evaluation, then assert the default runner, provider, sandbox, eva
 next observation, account, and Ledger count are unchanged. The qualification session has no
 runtime effects to stop; invalidating it must also leave both research sessions unchanged.
 
-- [ ] **Step 2: Write restart reconstruction tests**
+- [x] **Step 2: Write restart reconstruction tests**
 
 Create a new service over the same LocalStore, recover the active additional research run by its
 TradingRun record, reload the inert qualification commitment without activating it, and assert no
 replacement commitment or default-run mutation occurs. A changed SystemCode digest invalidates
 only the affected additional evaluation; it never unlocks or reconstructs qualification authority.
 
-- [ ] **Step 3: Implement recovery by explicit TradingRun identity**
+- [x] **Step 3: Implement recovery by explicit TradingRun identity**
 
 Recovery scans persisted running evaluations, resolves each through
 `getCandidateForTradingRun(evaluation.trading_run_ref.id)`, verifies its original commitment, and
 recreates only that run's provider and sandbox. It never recovers an additional run by selecting the
 candidate's default runtime.
 
-- [ ] **Step 4: Run focused and regression tests**
+- [x] **Step 4: Run focused and regression tests**
 
 Run: `npx vitest run apps/runtime/test/paper-trading-multi-run-session.test.ts apps/runtime/test/paper-trading-evaluation-commitment.test.ts apps/runtime/test/long-running-paper-session.test.ts apps/runtime/test/operator-paper-trading-board.test.ts`
 
@@ -501,7 +501,7 @@ Run: `npm run typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit isolation evidence**
+- [x] **Step 5: Commit isolation evidence**
 
 ```bash
 git add apps/runtime/test/paper-trading-multi-run-session.test.ts packages/application/src/trading/paper/session-service.ts packages/local-store/src/index.ts
@@ -517,12 +517,13 @@ git commit -m "test: prove isolated multi-run paper sessions"
 - Modify: `docs/api-command-contract.md`
 - Modify: `docs/candidate-arena-evaluation-protocol.md`
 - Modify: `docs/superpowers/specs/2026-07-10-prospective-paper-comparison-design.md`
+- Modify: `docs/superpowers/plans/2026-07-10-multi-run-paper-sessions.md`
 
 **Interfaces:**
 - Produces: repo truth that multi-run sessions are implemented while paired comparison remains
   pending.
 
-- [ ] **Step 1: Update canonical docs**
+- [x] **Step 1: Update canonical docs**
 
 Document that `CandidateVersion.runtime_ref` is the default continuous session pointer, not a
 one-run cardinality constraint. State that additional runs are internal, isolated, paper-only, and
@@ -530,13 +531,13 @@ not user-selectable through commands. State that standalone qualification sessio
 until the prospective comparison coordinator verifies a complete pair commitment. Mark the first
 comparison-design prerequisite implemented without claiming shared-tick comparison or a verdict.
 
-- [ ] **Step 2: Run focused tests**
+- [x] **Step 2: Run focused tests**
 
 Run: `npx vitest run packages/local-store/test/local-store.test.ts packages/application/src/trading/paper/session-service.test.ts apps/runtime/test/paper-trading-multi-run-session.test.ts apps/runtime/test/paper-trading-evaluation-commitment.test.ts apps/runtime/test/long-running-paper-session.test.ts apps/runtime/test/operator-paper-trading-board.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Run repository verification**
+- [x] **Step 3: Run repository verification**
 
 ```bash
 npm run typecheck
@@ -552,14 +553,14 @@ git diff --check
 Expected: all checks pass; listener and process tests run outside the restricted sandbox when
 needed.
 
-- [ ] **Step 4: Commit durable truth**
+- [x] **Step 4: Commit durable truth**
 
 ```bash
-git add AGENTS.md docs/api-command-contract.md docs/candidate-arena-evaluation-protocol.md docs/superpowers/specs/2026-07-10-prospective-paper-comparison-design.md
+git add AGENTS.md docs/api-command-contract.md docs/candidate-arena-evaluation-protocol.md docs/superpowers/specs/2026-07-10-prospective-paper-comparison-design.md docs/superpowers/plans/2026-07-10-multi-run-paper-sessions.md
 git commit -m "docs: record multi-run paper session boundary"
 ```
 
-- [ ] **Step 5: Hand off the next frontier**
+- [x] **Step 5: Hand off the next frontier**
 
 The next plan begins only after this branch is green. It implements
 `PaperTradingComparisonCommitment`, `PaperTradingComparisonTick`, the shared market view,

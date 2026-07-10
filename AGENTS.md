@@ -203,6 +203,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed findings by direction, blocker, market regime, and protocol failure for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |
 | `SystemCode` | Executable code produced for a TradingSystem. |
+| `CandidateVersion` | Frozen candidate identity and default runtime projection. Its `runtime_ref` is the compatibility/default continuous paper TradingRun pointer, not a one-run cardinality constraint. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
 | `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes a paper evaluation's evidence purpose and executable, runtime, policy, data, account, and authority identities before evidence exists. |

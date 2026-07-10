@@ -1,7 +1,7 @@
 # Prospective Paper Comparison Design
 
 **Date:** 2026-07-10
-**Status:** Approved by the standing Goal authorization; implementation pending
+**Status:** Multi-run session prerequisite implemented; prospective comparison implementation pending
 **Scope:** CandidateArena P0 prospective champion/challenger comparison
 **Depends on:** PaperTradingEvaluation commitments, candidate admission, and sealed ResearchPreflight
 
@@ -50,14 +50,13 @@ it is not prospective paper evidence from a future market interval.
 `EvaluationComparisonSet` and replay comparison read models remain research/backtest scaffolds and
 must not be reused as paper qualification authority.
 
-## Required Prerequisite: Multiple TradingRuns Per CandidateVersion
+## Implemented Prerequisite: Multiple TradingRuns Per CandidateVersion
 
-The current persistence path requires `CandidateVersion.runtime_ref` to equal every paper
-evaluation's `trading_run_ref`. That makes the default selected paper session the only runnable
-session for a candidate version. A fair comparison requires a separate champion qualification run
-while its default continuous paper run keeps operating.
+The multi-run persistence and lifecycle boundary is implemented. A frozen CandidateVersion can own
+its default selected continuous paper session and additional isolated internal paper TradingRuns,
+including a future champion qualification run, without mutating the default session.
 
-The prerequisite changes the ownership rule:
+The implemented ownership rule is:
 
 - `CandidateVersion.runtime_ref` remains the compatibility/default continuous paper run;
 - any additional `TradingRunRecord` may reference the same candidate and candidate version when its
@@ -72,6 +71,12 @@ The prerequisite changes the ownership rule:
 Each qualification TradingRun owns a distinct sandbox, provider session, fake account, event cursor,
 run-control chain, and lifecycle. It reuses the frozen CandidateVersion and SystemCode bytes, not
 runtime state from another session.
+
+Standalone qualification preparation is persistence-only and inert. It cannot resolve artifacts or
+start provider, sandbox, market, Gateway, Ledger, or observation effects until the future
+`PaperTradingComparisonCoordinator` verifies a complete pair commitment. This prerequisite does
+not implement `PaperTradingComparisonCommitment`, shared comparison ticks, adjudication,
+non-overlapping confirmation, a verdict, or promotion integration.
 
 ## Domain Records
 

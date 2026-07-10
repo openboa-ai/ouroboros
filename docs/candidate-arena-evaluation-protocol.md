@@ -91,6 +91,22 @@ If concurrent comparison is unavailable, a sealed identical event stream may sup
 on unrelated calendar windows cannot support a direct superiority claim without an explicit
 uncertainty model and a precommitted comparison policy.
 
+## Implemented Session Boundary
+
+One frozen `CandidateVersion` may own its default continuous paper TradingRun plus additional
+internal paper-only TradingRuns. `CandidateVersion.runtime_ref` remains the compatibility/default
+continuous-session pointer; ownership, placement, sandbox, provider, account, evaluation and
+observation cursors, Ledger, lifecycle, and cleanup for each additional run are run-specific.
+Public commands stay on the default `research_feedback` session and cannot select an additional
+run, evidence purpose, or comparison ID.
+
+An internal qualification-purpose run may be prepared as persistence-only state, but it is inert:
+it must not resolve artifacts, start a provider or sandbox, read market data, create Gateway or
+Ledger evidence, or consume an observation without future comparison authority. The implemented
+multi-run boundary is a prerequisite for the prospective paired-comparison design; it does not
+provide shared ticks, a pair commitment, adjudication, confirmation, a verdict, or promotion
+authority.
+
 ## Evaluator Information Barrier
 
 The evaluator and its durable logs live outside ResearchWorker and candidate sandboxes.

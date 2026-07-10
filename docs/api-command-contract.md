@@ -45,7 +45,10 @@ Current command groups:
   `revenue - cost` over time before their performance counts as product evidence.
   `trading_run.start` starts or resumes the selected `TradingSystem` as a managed paper session.
   Every currently reachable start creates `evidence_purpose: "research_feedback"`; command payloads
-  cannot select or override purpose. Before provider, sandbox, market, Gateway, Ledger, or score
+  cannot select an additional TradingRun, evidence purpose, or comparison ID. A
+  `CandidateVersion.runtime_ref` identifies that default compatibility session; it does not limit
+  the version to one internally owned paper run. Before provider, sandbox, market, Gateway, Ledger,
+  or score
   effects, the application resolves executable bytes, persists an append-only
   `PaperTradingEvaluationCommitment`, creates the linked evaluation, and verifies the frozen chain.
   Resume, recovery, scheduled observation, and manual observation reverify the original commitment
@@ -67,6 +70,11 @@ Current command groups:
   book recovery. The readback must show source priority, freshness, WebSocket connection state, REST
   fallback, gap detection, latest update id, and order book sync state when present.
   It must not force a trade decision just because a snapshot was read.
+  Internal lifecycle services may prepare an isolated additional paper TradingRun with its own
+  placement, sandbox, provider, account, cursors, Ledger, and lifecycle. A standalone
+  qualification-purpose preparation is persistence-only and inert: no effectful lifecycle path may
+  activate it until the future prospective comparison coordinator verifies a complete pair
+  commitment.
   Sandbox JSONL output must follow the
   [TradingSystem Paper Event Protocol](trading-system-paper-event-protocol.md): stable `event_id`,
   `trace_only` authority, bounded `order_request`, `cancel_order`, and explicit `hold`/`no_action`
