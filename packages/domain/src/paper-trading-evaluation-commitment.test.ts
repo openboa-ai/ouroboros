@@ -70,6 +70,10 @@ function commitment(
       record_kind: "candidate_version",
       id: "candidate-version-001"
     },
+    trading_run_ref: {
+      record_kind: "trading_run",
+      id: "trading-run-001"
+    },
     system_code_ref: {
       record_kind: "system_code",
       id: "system-code-001"

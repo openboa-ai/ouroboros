@@ -3797,6 +3797,10 @@ function validPaperTradingCommitment(): PaperTradingEvaluationCommitmentRecord {
       record_kind: "candidate_version",
       id: "fixture-candidate-version-001"
     },
+    trading_run_ref: {
+      record_kind: "trading_run",
+      id: "fixture-trading-run-001"
+    },
     system_code_ref: {
       record_kind: "system_code",
       id: FIXTURE_SYSTEM_CODE_ID

@@ -6712,6 +6712,7 @@ function isPaperTradingEvaluationCommitmentRecord(
     purposeMatchesRelease &&
     isRef(record.candidate_ref, "trading_system_candidate") &&
     isRef(record.candidate_version_ref, "candidate_version") &&
+    isRef(record.trading_run_ref, "trading_run") &&
     isRef(record.system_code_ref, "system_code") &&
     nonEmpty(record.system_code_artifact_digest) &&
     nonEmpty(record.resolved_artifact_digest) &&
@@ -6755,6 +6756,7 @@ function paperTradingCommitmentReferencesMatch(input: {
     candidate.active_version_id === commitment.candidate_version_ref.id &&
     candidateVersion.candidate_version_id === commitment.candidate_version_ref.id &&
     candidateVersion.candidate_id === commitment.candidate_ref.id &&
+    candidateVersion.runtime_ref.id === commitment.trading_run_ref.id &&
     candidateVersion.system_code_ref?.id === commitment.system_code_ref.id &&
     candidate.active_system_code_ref?.id === commitment.system_code_ref.id &&
     systemCode.system_code_id === commitment.system_code_ref.id &&
@@ -6783,6 +6785,7 @@ function paperTradingEvaluationReferencesMatch(
       commitment.paper_trading_evaluation_commitment_id &&
     sameRef(evaluation.candidate_ref, commitment.candidate_ref) &&
     sameRef(evaluation.candidate_version_ref, commitment.candidate_version_ref) &&
+    sameRef(evaluation.trading_run_ref, commitment.trading_run_ref) &&
     evaluation.interval_ms === commitment.window_policy.interval_ms &&
     evaluation.authority_status === "not_live"
   );
@@ -6796,7 +6799,8 @@ function paperTradingObservationReferencesMatch(
   return (
     sameRef(observation.candidate_ref, commitment.candidate_ref) &&
     sameRef(observation.candidate_version_ref, commitment.candidate_version_ref) &&
-    sameRef(observation.trading_run_ref, evaluation.trading_run_ref) &&
+    sameRef(observation.trading_run_ref, commitment.trading_run_ref) &&
+    sameRef(evaluation.trading_run_ref, commitment.trading_run_ref) &&
     observation.paper_trading_evaluation_ref.record_kind === "paper_trading_evaluation" &&
     observation.paper_trading_evaluation_ref.id === evaluation.paper_trading_evaluation_id &&
     observation.authority_status === "not_live"

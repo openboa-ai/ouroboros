@@ -1749,6 +1749,7 @@ export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
   evidence_purpose: PaperTradingEvidencePurpose;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
+  trading_run_ref: Ref;
   system_code_ref: Ref;
   system_code_artifact_digest: string;
   resolved_artifact_digest: string;
