@@ -236,6 +236,50 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
       await restartedServer.close();
     }
   });
+
+  it("returns invalidated without scheduling when the first observation invalidates commitment evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    const sandbox = inspectableSandbox([]);
+    let artifactResolutions = 0;
+    const server = await buildServer({
+      store,
+      sandboxAdapters: { deterministic_test: sandbox },
+      marketDataPort: orderedMarketData([]),
+      paperTradingArtifactResolver: {
+        async resolveArtifactDigest() {
+          artifactResolutions += 1;
+          return artifactResolutions === 1
+            ? "sha256:resolved-fixture-v1"
+            : "sha256:resolved-fixture-v2";
+        }
+      },
+      paperTradingApiProviderFactory: staticPaperTradingApiProvider
+    });
+
+    try {
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+        }
+      });
+
+      expect(started.statusCode, started.body).toBe(409);
+      expect(started.json()).toMatchObject({
+        error: "paper_trading_evaluation_invalidated",
+        status: "invalidated",
+        paper_trading_evaluation: {
+          status: "invalidated",
+          invalidation_reason: "resolved_artifact_digest_mismatch"
+        },
+        runner_status: "stopped"
+      });
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 interface InspectableSandboxAdapter extends SandboxAdapter {

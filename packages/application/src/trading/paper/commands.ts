@@ -153,27 +153,40 @@ export class PaperTradingCommandService {
         evidencePurpose: "research_feedback",
         clock: "scheduled"
       });
-      const activated = await this.sessions.activate(prepared, {
-        paperOrderRequest: body?.paper_order_request,
-        restartFailedEventIds: restartFailedPaperTradingEvaluationProcessedEventIds({
-          candidate,
-          evaluation: existingEvaluation
-        })
-      });
       if (wasActive) {
         return {
           statusCode: 200,
           body: {
             status: "already_running",
             ...await tradingRunResponse(this.options.store, tradingRunId),
-            paper_trading_evaluation: activated,
+            paper_trading_evaluation: prepared.evaluation,
             runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
           }
         };
       }
+      await this.sessions.activate(prepared, {
+        paperOrderRequest: body?.paper_order_request,
+        restartFailedEventIds: restartFailedPaperTradingEvaluationProcessedEventIds({
+          candidate,
+          evaluation: existingEvaluation
+        })
+      });
       const observed = await this.sessions.observe(tradingRunId);
+      if (observed.evaluation.status === "invalidated") {
+        return {
+          statusCode: 409,
+          body: {
+            error: "paper_trading_evaluation_invalidated",
+            status: "invalidated",
+            reason: observed.evaluation.invalidation_reason,
+            paper_trading_evaluation: observed.evaluation,
+            candidate_version_id: candidateVersionId,
+            runner_status: "stopped"
+          }
+        };
+      }
       if (observed.evaluation.status === "running") {
-        this.sessions.schedule(tradingRunId);
+        await this.sessions.schedule(tradingRunId);
       }
       const response = await tradingRunResponse(this.options.store, tradingRunId);
       return {

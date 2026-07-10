@@ -207,4 +207,123 @@ describe("PaperTradingSessionService", () => {
     expect((await store.getTradingRun(candidate.runtime.ref.id))?.runtime_lifecycle_status)
       .toBe(defaultDuringResearch?.runtime_lifecycle_status);
   });
+
+  it("rejects observation of a prepared qualification run before runtime effects", async () => {
+    const fixture = await prepareGuardedSession("qualification");
+
+    await expect(fixture.service.observe(fixture.tradingRunId)).rejects.toMatchObject({
+      code: "paper_trading_comparison_authority_required"
+    });
+
+    expect(fixture.effectCounts()).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+    expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
+    expect(await fixture.store.listPaperTradingObservations(
+      fixture.prepared.evaluation.paper_trading_evaluation_id
+    )).toEqual([]);
+  });
+
+  it("rejects scheduling a prepared qualification run before active state or timer effects", async () => {
+    const fixture = await prepareGuardedSession("qualification");
+
+    await expect(Promise.resolve(fixture.service.schedule(fixture.tradingRunId))).rejects.toMatchObject({
+      code: "paper_trading_comparison_authority_required"
+    });
+
+    expect(fixture.effectCounts()).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+    expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
+  });
+
+  it("rejects observation of an unactivated research-feedback run before runtime effects", async () => {
+    const fixture = await prepareGuardedSession("research_feedback");
+
+    await expect(fixture.service.observe(fixture.tradingRunId)).rejects.toMatchObject({
+      code: "paper_trading_session_not_active"
+    });
+
+    expect(fixture.effectCounts()).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+    expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
+    expect(await fixture.store.listPaperTradingObservations(
+      fixture.prepared.evaluation.paper_trading_evaluation_id
+    )).toEqual([]);
+  });
+
+  it("rejects scheduling an unactivated research-feedback run before active state or timer effects", async () => {
+    const fixture = await prepareGuardedSession("research_feedback");
+
+    await expect(fixture.service.schedule(fixture.tradingRunId)).rejects.toMatchObject({
+      code: "paper_trading_session_not_active"
+    });
+
+    expect(fixture.effectCounts()).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+    expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
+  });
 });
+
+async function prepareGuardedSession(evidencePurpose: "qualification" | "research_feedback") {
+  const store = new LocalStore(tmpDir);
+  await store.initialize();
+  const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+  if (!candidate) {
+    throw new Error("fixture candidate was not materialized");
+  }
+  const run = await store.createPaperTradingRun({
+    idempotency_key: `session-service-guard-${evidencePurpose}`,
+    candidate_id: candidate.candidate_id,
+    candidate_version_id: candidate.candidate_version.candidate_version_id,
+    evidence_purpose: evidencePurpose
+  });
+  let providerStarts = 0;
+  let sandboxStarts = 0;
+  let marketReads = 0;
+  const service = new PaperTradingSessionService({
+    store,
+    artifactResolver: {
+      async resolveArtifactDigest() {
+        return "sha256:session-service-guard";
+      }
+    },
+    sandboxAdapters: {
+      deterministic_test: {
+        async startArtifactInstance() {
+          sandboxStarts += 1;
+          throw new Error("unactivated sessions must not start a sandbox");
+        }
+      }
+    } as never,
+    marketData: {
+      provider_kind: "binance_production_public_market_data",
+      source_kind: "binance_production_public_hybrid",
+      rest_base_url: "https://example.invalid",
+      required_endpoints: [],
+      authority_status: "read_only",
+      async readMarketSnapshot() {
+        marketReads += 1;
+        throw new Error("unactivated sessions must not read market data");
+      },
+      async readPublicMarketLivenessSurface() {
+        throw new Error("unactivated sessions must not read market data");
+      },
+      async readPublicExecutionSnapshot() {
+        throw new Error("unactivated sessions must not read market data");
+      }
+    },
+    async apiProviderFactory() {
+      providerStarts += 1;
+      throw new Error("unactivated sessions must not start a provider");
+    }
+  });
+  const prepared = await service.prepare({
+    candidateId: candidate.candidate_id,
+    candidateVersionId: candidate.candidate_version.candidate_version_id,
+    tradingRunId: run.trading_run_id,
+    evidencePurpose,
+    clock: "external"
+  });
+  return {
+    store,
+    service,
+    prepared,
+    tradingRunId: run.trading_run_id,
+    effectCounts: () => ({ providerStarts, sandboxStarts, marketReads })
+  };
+}

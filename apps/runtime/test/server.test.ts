@@ -1580,6 +1580,51 @@ describe("runtime canonical operator API", () => {
       await server.close();
     }
   });
+
+  it("does not mutate an already active paper session when a repeated start changes the fixture", async () => {
+    const store = new LocalStore(tmpDir);
+    const sandbox = recordingDuplicateLogSandboxAdapter(paperOrderRequestLine({
+      at: "2026-05-16T00:00:03.000Z",
+      quantity: "0.001"
+    }));
+    const server = await buildRuntimeTestServer({
+      store,
+      sandboxAdapters: { deterministic_test: sandbox.adapter },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: 60_000
+    });
+
+    try {
+      const started = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID, paper_order_request: "valid" }
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      expect(sandbox.starts).toHaveLength(1);
+      const originalSandboxId = sandbox.starts[0]?.instance_id;
+
+      const repeated = await server.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.start",
+          payload: { candidate_id: FIXTURE_CANDIDATE_ID, paper_order_request: "rejected" }
+        }
+      });
+
+      expect(repeated.statusCode, repeated.body).toBe(200);
+      expect(repeated.json()).toMatchObject({ result: { status: "already_running" } });
+      expect(sandbox.starts).toHaveLength(1);
+      expect(sandbox.starts[0]?.instance_id).toBe(originalSandboxId);
+      expect(sandbox.starts[0]?.paper_order_request).toBe("valid");
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 function paperOrderRequestLine(input: {

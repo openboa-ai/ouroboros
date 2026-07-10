@@ -282,14 +282,7 @@ export class PaperTradingSessionService {
   }
 
   async observe(tradingRunId: string): Promise<RecordPaperTradingEvaluationObservationResult> {
-    const candidate = await this.requireCandidateForRun(tradingRunId);
-    const evaluation = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
-    if (!evaluation) {
-      throw new PaperTradingSessionError(
-        "paper_trading_evaluation_not_started",
-        `paper TradingEvaluation for runtime ${tradingRunId} was not prepared`
-      );
-    }
+    const { candidate } = await this.requireEffectfulSession(tradingRunId);
     const binding = this.gatewayBinding();
     if (!this.apiProviderSessions.has(tradingRunId)) {
       const tradingApiBaseUrl = await this.ensurePaperTradingApiProviderSession(tradingRunId, binding);
@@ -319,8 +312,8 @@ export class PaperTradingSessionService {
     return result;
   }
 
-  schedule(tradingRunId: string): void {
-    this.activeSessions.add(tradingRunId);
+  async schedule(tradingRunId: string): Promise<void> {
+    await this.requireEffectfulSession(tradingRunId, { requireActiveSession: true });
     this.runner.start({
       tradingRunId,
       intervalMs: this.intervalMs,
@@ -620,6 +613,57 @@ export class PaperTradingSessionService {
       return this.requireCandidateForRun(tradingRunId);
     }
     return candidate;
+  }
+
+  private async requireEffectfulSession(
+    tradingRunId: string,
+    options: { requireActiveSession?: boolean } = {}
+  ): Promise<{
+    candidate: CandidateInspectReadModel;
+    evaluation: PaperTradingEvaluationRecord;
+    commitment: PaperTradingEvaluationCommitmentRecord;
+  }> {
+    const candidate = await this.requireCandidateForRun(tradingRunId);
+    const evaluation = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    if (!evaluation) {
+      throw new PaperTradingSessionError(
+        "paper_trading_evaluation_not_started",
+        `paper TradingEvaluation for runtime ${tradingRunId} was not prepared`
+      );
+    }
+    const commitmentRef = evaluation.paper_trading_evaluation_commitment_ref;
+    const commitment = commitmentRef
+      ? await this.options.store.getPaperTradingEvaluationCommitment(commitmentRef.id)
+      : undefined;
+    if (!commitment) {
+      throw new PaperTradingSessionError(
+        "paper_trading_evaluation_commitment_missing",
+        `paper TradingEvaluation for runtime ${tradingRunId} has no persisted commitment`
+      );
+    }
+    if (commitment.evidence_purpose === "qualification") {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_authority_required",
+        "Qualification PaperTradingSession activation requires verified comparison authority."
+      );
+    }
+    if (
+      evaluation.status !== "running" ||
+      candidate.runtime.runtime_lifecycle_status !== "running" ||
+      (options.requireActiveSession && !this.activeSessions.has(tradingRunId))
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_session_not_active",
+        `paper TradingEvaluation for runtime ${tradingRunId} must be activated before observation or scheduling`,
+        {
+          trading_run_id: tradingRunId,
+          evaluation_status: evaluation.status,
+          runtime_lifecycle_status: candidate.runtime.runtime_lifecycle_status,
+          active_session: this.activeSessions.has(tradingRunId)
+        }
+      );
+    }
+    return { candidate, evaluation, commitment };
   }
 
   private async stopTerminalSession(tradingRunId: string): Promise<void> {
