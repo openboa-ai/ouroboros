@@ -9,12 +9,14 @@ Start every non-trivial task from:
 
 1. this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and `.agents/skills/AGENTS.md`
 2. [Project Direction](docs/project-direction.md)
-3. [Autonomy Model](docs/autonomy-model.md)
-4. [Product Quality Design](docs/product-quality-design.md)
-5. [Architecture Governance](docs/architecture-governance.md)
-6. [API And Command Contract](docs/api-command-contract.md)
-7. [Naming Taxonomy](docs/naming-taxonomy.md)
-8. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
+3. [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
+4. [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
+5. [Autonomy Model](docs/autonomy-model.md)
+6. [Product Quality Design](docs/product-quality-design.md)
+7. [Architecture Governance](docs/architecture-governance.md)
+8. [API And Command Contract](docs/api-command-contract.md)
+9. [Naming Taxonomy](docs/naming-taxonomy.md)
+10. [LINEAR.md](LINEAR.md), only when the task needs issue workflow or Linear writeback
 
 Linear is a workflow scratchpad and issue tracker. It can coordinate work and record progress, but
 it must point back to repo truth instead of replacing it.

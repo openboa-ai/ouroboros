@@ -5,14 +5,21 @@ same: generate many `TradingSystem` candidates, evaluate them externally, keep f
 paper trade selected candidates continuously, and let evidence decide what can be promoted.
 Read [Product Quality Design](product-quality-design.md) for the corresponding product-quality
 contract across review packets, UX, eval rubrics, and implementation frontiers.
+Read [CandidateArena And Research Goal](candidate-arena-research-goal.md) and
+[CandidateArena Evaluation Protocol](candidate-arena-evaluation-protocol.md) for the target
+long-running research completion contract and the P0 evidence boundary. Those pages define target
+evidence that current main must still implement; they do not silently redefine current records as
+already conformant.
 
 The reference pressure from
 [*The New SDLC With Vibe Coding*](https://drive.google.com/file/d/1IR7CddF_2FyQo_PdfBNTaEA50EGiVt2r/view)
 is useful because it names the same operating shift Ouroboros is built around: move from ad-hoc
 generation to a production harness where specifications, context, tools, tests, evals, guardrails,
 and human judgment surround agent output.
-Ouroboros applies that pattern to an outcome-gradable trading problem rather than to ordinary app
-development.
+Ouroboros applies that pattern to a trading problem with observable economic outcomes rather than
+to ordinary app development. Because those outcomes are noisy and non-stationary, prospective and
+comparable evaluation is part of the target contract rather than an assumption that raw PnL is a
+stable answer.
 
 ## Autonomy Layers
 

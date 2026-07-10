@@ -1,13 +1,15 @@
 # Ouroboros
 
 Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
-continuously improving AI agents to a hard, dynamic, outcome-gradable trading problem, then turns
-that external agent progress into parallel `TradingSystem` candidate search.
+continuously improving AI agents to a hard, dynamic trading problem with externally recorded
+economic outcomes, then turns that external agent progress into parallel `TradingSystem` candidate
+search.
 
-AI agents improve over time. Trading is hard, dynamic, adversarial, and objectively scoreable by
-`revenue - cost`, return, costs, risk, and paper evidence. Ouroboros exists to make that combination
-compound: generate many candidates, evaluate externally, keep findings and lineage, and prove only
-the selected candidate.
+AI agents improve over time. Trading is hard, dynamic, and adversarial. `revenue - cost`, return,
+costs, risk, and paper evidence provide objective accounting, but strategy quality remains noisy,
+path-dependent, and non-stationary. Ouroboros exists to make that combination compound: generate
+many candidates, evaluate externally, keep findings and lineage, and prove only the selected
+candidate under a precommitted evidence policy.
 
 ## Core Doctrine
 
@@ -78,6 +80,8 @@ progress notes. See [LINEAR.md](LINEAR.md) for how Linear work should reference 
 Canonical repo docs:
 
 - [Project Direction](docs/project-direction.md)
+- [CandidateArena And Research Goal](docs/candidate-arena-research-goal.md)
+- [CandidateArena Evaluation Protocol](docs/candidate-arena-evaluation-protocol.md)
 - [Ouroboros Doctrine](docs/ouroboros-doctrine.md)
 - [Autonomy Model](docs/autonomy-model.md)
 - [Product Quality Design](docs/product-quality-design.md)

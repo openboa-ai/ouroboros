@@ -1,9 +1,12 @@
 # Ouroboros Doctrine
 
 Ouroboros is not a trading dashboard and not a one-shot AI trading bot generator. It connects
-continuously improving external AI agents to an outcome-gradable trading problem, then forces their
-ideas through `CandidateArena` search, research-time preflight, and selected continuous paper
-trading evaluation.
+continuously improving external AI agents to a trading problem with externally recorded economic
+outcomes, then forces their ideas through `CandidateArena` search, research-time preflight, and
+selected continuous paper trading evaluation.
+
+Trading must be made outcome-gradable under a precommitted evaluation protocol. Raw PnL remains
+economic accounting, not self-sufficient proof of strategy quality.
 
 ```text
 parallel TradingSystem candidates
@@ -27,10 +30,12 @@ market data, scored by accumulated `revenue - cost`.
    - Ouroboros should get better as those agents get better without changing the core loop.
 
 2. Problem Lens
-   - Choose problems that are hard, dynamic, adversarial, and objectively gradable.
+   - Choose problems that are hard, dynamic, adversarial, and externally evaluable.
    - Trading fits because market behavior changes, but candidate output can still be scored by
      `revenue - cost`, `net_revenue_usdt`, return, costs, risk, and continuous paper evidence.
-   - A hard problem with a clear score is where agent hill-climbing can compound.
+   - Trading outcomes are noisy, path-dependent, and non-stationary. A clear economic score only
+     supports agent hill-climbing when the evidence purpose, candidate identity, comparison policy,
+     and prospective window are committed before results are known.
 
 3. Method
    - Generate many candidates, not one best bot.
@@ -98,7 +103,7 @@ market data, scored by accumulated `revenue - cost`.
 
 | Reference | Doctrine contribution |
 | --- | --- |
-| Anthropic AAR | parallel researchers plus sealed, outcome-gradable evaluation |
+| Anthropic AAR | long-running parallel researchers, broad directions, external evaluation, shared findings and code lineage, plus explicit reward-hacking and holdout pressure |
 | AlphaEvolve | code candidates plus evaluator plus evolutionary improvement |
 | AlphaProof Nexus | unreliable generation made useful by verification and search |
 | Weak-to-strong | stronger capability elicited through scalable evaluation |

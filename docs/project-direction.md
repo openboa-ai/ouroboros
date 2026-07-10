@@ -1,13 +1,21 @@
 # Project Direction
 
 Ouroboros is an automated weak-to-strong trading-system laboratory. It connects improving AI agents
-to a hard, dynamic, outcome-gradable trading problem where `revenue - cost` is a clear score. The
-product center is the `CandidateArena`: researchers generate parallel TradingSystem candidates,
-research-time replay/backtest helps create and preflight them, findings and lineage feed the next
-generation, and only selected candidates can move into continuous paper trading `Gateway` and
-`Ledger` evidence.
+to a hard, dynamic trading problem where `revenue - cost` is observable but noisy, path-dependent,
+and non-stationary. The product center is the `CandidateArena`: researchers generate parallel
+TradingSystem candidates, research-time replay/backtest helps create and preflight them, findings
+and lineage feed the next generation, and only selected candidates can move into continuous paper
+trading `Gateway` and `Ledger` evidence.
+
+Trading must be made outcome-gradable under a precommitted evaluation protocol. Raw PnL alone is
+not a stable answer because candidate identity, market opportunity, costs, risk, evidence purpose,
+and the prospective window determine what the result can prove.
 
 Read [Ouroboros Doctrine](ouroboros-doctrine.md) for the full product thesis.
+Read [CandidateArena And Research Goal](candidate-arena-research-goal.md) for the long-running North
+Star, completion rubric, veto gates, and implementation priorities. Read
+[CandidateArena Evaluation Protocol](candidate-arena-evaluation-protocol.md) for the P0 target
+contract that separates adaptive research feedback from prospective qualification evidence.
 Read [Autonomy Model](autonomy-model.md) for the detailed boundary between autonomous research,
 selected paper evaluation, paper qualification, Trading review promotion, and future live authority.
 Read [Product Quality Design](product-quality-design.md) for the product-quality contract that

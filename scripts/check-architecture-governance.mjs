@@ -66,7 +66,7 @@ requireText("ARCHITECTURE.md", [
 
 requireText("docs/project-direction.md", [
   "GitHub repository on `main` is the source of truth",
-  "outcome-gradable",
+  "outcome-gradable under a precommitted evaluation protocol",
   "CandidateArena",
   "parallel TradingSystem candidates",
   "selected candidate continuous paper trading evaluation",
@@ -76,7 +76,7 @@ requireText("docs/project-direction.md", [
 
 requireText("docs/ouroboros-doctrine.md", [
   "AI agents improve over time",
-  "outcome-gradable",
+  "outcome-gradable under a precommitted evaluation protocol",
   "parallel TradingSystem candidates",
   "continuous paper trading evaluation",
   "revenue - cost",
