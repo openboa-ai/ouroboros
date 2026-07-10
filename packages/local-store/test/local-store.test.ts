@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -34,6 +35,9 @@ import type {
   GatewayResultRecord,
   OrderFillSurfaceRecord,
   OrderRequestRecord,
+  PaperTradingEvaluationCommitmentRecord,
+  PaperTradingEvaluationRecord,
+  PaperTradingObservationRecord,
   PrivateReadinessPostureRecord,
   PrivateReadinessPreflightSurfaceRecord,
   PublicMarketLivenessSurfaceRecord,
@@ -51,6 +55,7 @@ import type {
   TradingEvaluationResultRecord,
   TradingRunRecord
 } from "@ouroboros/domain";
+import { paperTradingEvaluationCommitmentDigestInput } from "@ouroboros/domain";
 
 type LocalStoreProjectionInternals = {
   rebuildProjectionsUnlocked(): Promise<void>;
@@ -82,6 +87,95 @@ describe("LocalStore", () => {
     );
 
     expect(second).toEqual(first);
+  });
+
+  it("records and reloads an idempotent paper trading commitment", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+
+    const recorded = await store.recordPaperTradingEvaluationCommitment(commitment);
+    const repeated = await store.recordPaperTradingEvaluationCommitment(commitment);
+
+    expect(repeated).toEqual(recorded);
+    await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual([commitment]);
+
+    const reloaded = new LocalStore(tmpDir);
+    await expect(reloaded.getPaperTradingEvaluationCommitment(
+      commitment.paper_trading_evaluation_commitment_id
+    )).resolves.toEqual(commitment);
+  });
+
+  it("rejects relabeling an existing paper trading commitment", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+
+    const relabeled = withPaperTradingCommitmentDigest({
+      ...commitment,
+      evidence_purpose: "qualification",
+      window_policy: {
+        ...commitment.window_policy,
+        release_policy: "sealed_until_adjudication"
+      }
+    });
+
+    await expectStoreError(
+      store.recordPaperTradingEvaluationCommitment(relabeled),
+      "paper_trading_evaluation_commitment_conflict"
+    );
+    await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual([commitment]);
+  });
+
+  it("enforces paper trading commitment references and terminal invalidation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const commitment = validPaperTradingCommitment();
+    const evaluation = validPaperTradingEvaluation(commitment);
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+
+    await expectStoreError(
+      store.recordPaperTradingEvaluation({
+        ...evaluation,
+        paper_trading_evaluation_commitment_ref: undefined
+      }),
+      "paper_trading_evaluation_commitment_required"
+    );
+
+    await store.recordPaperTradingEvaluation(evaluation);
+    await expectStoreError(
+      store.recordPaperTradingObservation(
+        {
+          ...validPaperTradingObservation(commitment, evaluation),
+          paper_trading_evaluation_commitment_ref: {
+            record_kind: "paper_trading_evaluation_commitment",
+            id: "different-paper-commitment"
+          }
+        },
+        {
+          ...evaluation,
+          observation_count: 1
+        }
+      ),
+      "paper_trading_observation_commitment_mismatch"
+    );
+
+    const invalidated = await store.recordPaperTradingEvaluation({
+      ...evaluation,
+      status: "invalidated",
+      invalidation_reason: "resolved_artifact_digest_mismatch",
+      stopped_at: "2026-07-10T09:01:00.000Z"
+    });
+    await expectStoreError(
+      store.recordPaperTradingEvaluation({
+        ...invalidated,
+        status: "running",
+        invalidation_reason: undefined,
+        stopped_at: undefined
+      }),
+      "paper_trading_evaluation_invalidation_terminal"
+    );
   });
 
   it("rebuilds projections from authoritative item files", async () => {
@@ -3686,6 +3780,184 @@ function validTradingEvaluationResultRecord(
     evaluator_trace_ref: { record_kind: "trace_placeholder", id: "trace-evaluator-market-breakout-v2" },
     completed_at: "2026-05-11T00:08:00.000Z",
     authority_status: "not_counted"
+  };
+}
+
+function validPaperTradingCommitment(): PaperTradingEvaluationCommitmentRecord {
+  return withPaperTradingCommitmentDigest({
+    record_kind: "paper_trading_evaluation_commitment",
+    version: 1,
+    paper_trading_evaluation_commitment_id: "paper-commitment-fixture-001",
+    evidence_purpose: "research_feedback",
+    candidate_ref: {
+      record_kind: "trading_system_candidate",
+      id: FIXTURE_CANDIDATE_ID
+    },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: "fixture-candidate-version-001"
+    },
+    system_code_ref: {
+      record_kind: "system_code",
+      id: FIXTURE_SYSTEM_CODE_ID
+    },
+    system_code_artifact_digest: "sha256:fixture-clock-python-artifact-v1",
+    resolved_artifact_digest: "sha256:resolved-fixture-clock-python-artifact-v1",
+    runtime_identity: {
+      artifact_kind: "python_file",
+      runtime_kind: "python",
+      entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
+      artifact_runtime_contract_ref: {
+        record_kind: "artifact_runtime_contract",
+        id: "fixture-artifact-runtime-contract-clock-python-001"
+      }
+    },
+    provider_identity: {
+      runtime_provider_kind: "none",
+      qualification_eligible: true
+    },
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "capability-policy-clock-fixture-v1"
+    },
+    secret_policy_ref: {
+      record_kind: "secret_policy",
+      id: "secret-policy-no-raw-values-v1"
+    },
+    policy_identity: {
+      market_data_policy_version: "binance-public-market-v1",
+      gateway_policy_version: "paper-gateway-dry-run-v1",
+      cost_policy_version: "paper-cost-8bps-v1",
+      funding_policy_version: "paper-funding-engine-v1",
+      slippage_policy_version: "paper-public-fill-slippage-v1",
+      fill_policy_version: "paper-public-execution-fill-v1",
+      risk_policy_version: "paper-risk-validation-v1",
+      paper_account_policy_version: "fake-paper-account-10000usdt-v1",
+      decision_event_protocol_version: "trading-system-paper-events-v1",
+      persistent_state_boundary_version: "paper-engine-checkpoint-v1"
+    },
+    data_identity: {
+      symbol: "BTCUSDT",
+      market_data_port: "gateway_owned",
+      allowed_market_data_source: "binance_production_public_hybrid",
+      market_data_configuration_digest: "sha256:fixture-market-data-configuration-v1",
+      private_exchange_access: "forbidden",
+      live_order_access: "forbidden"
+    },
+    window_policy: {
+      interval_ms: 60_000,
+      release_policy: "closed_observation",
+      eligibility_policy_version: "paper-evidence-eligibility-v1"
+    },
+    initial_account_snapshot: initialPaperTradingAccountSnapshot(),
+    committed_at: "2026-07-10T09:00:00.000Z",
+    commitment_digest: "",
+    authority_status: "not_live"
+  });
+}
+
+function withPaperTradingCommitmentDigest(
+  commitment: PaperTradingEvaluationCommitmentRecord
+): PaperTradingEvaluationCommitmentRecord {
+  return {
+    ...commitment,
+    commitment_digest: `sha256:${createHash("sha256")
+      .update(paperTradingEvaluationCommitmentDigestInput(commitment))
+      .digest("hex")}`
+  };
+}
+
+function validPaperTradingEvaluation(
+  commitment: PaperTradingEvaluationCommitmentRecord
+): PaperTradingEvaluationRecord {
+  return {
+    record_kind: "paper_trading_evaluation",
+    version: 1,
+    paper_trading_evaluation_id: "paper-evaluation-fixture-001",
+    candidate_ref: commitment.candidate_ref,
+    candidate_version_ref: commitment.candidate_version_ref,
+    trading_run_ref: {
+      record_kind: "trading_run",
+      id: "fixture-trading-run-001"
+    },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    interval_ms: commitment.window_policy.interval_ms,
+    observation_count: 0,
+    started_at: commitment.committed_at,
+    latest_score: zeroPaperTradingProfitLoss(),
+    paper_account_snapshot: commitment.initial_account_snapshot,
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: [],
+    authority_status: "not_live"
+  };
+}
+
+function validPaperTradingObservation(
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  evaluation: PaperTradingEvaluationRecord
+): PaperTradingObservationRecord {
+  return {
+    record_kind: "paper_trading_observation",
+    version: 1,
+    paper_trading_observation_id: "paper-observation-fixture-0001",
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: evaluation.paper_trading_evaluation_id
+    },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    candidate_ref: commitment.candidate_ref,
+    candidate_version_ref: commitment.candidate_version_ref,
+    trading_run_ref: evaluation.trading_run_ref,
+    sequence: 1,
+    status: "no_order",
+    observed_at: "2026-07-10T09:01:00.000Z",
+    paper_account_snapshot: commitment.initial_account_snapshot,
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: [],
+    score_delta: zeroPaperTradingProfitLoss(),
+    cumulative_score: zeroPaperTradingProfitLoss(),
+    authority_status: "not_live"
+  };
+}
+
+function initialPaperTradingAccountSnapshot(): PaperTradingEvaluationCommitmentRecord["initial_account_snapshot"] {
+  return {
+    wallet_balance_usdt: "10000",
+    available_balance_usdt: "10000",
+    equity_usdt: "10000",
+    realized_pnl_usdt: "0",
+    unrealized_pnl_usdt: "0",
+    fee_paid_usdt: "0",
+    slippage_paid_usdt: "0",
+    funding_paid_usdt: "0",
+    margin_reserved_usdt: "0",
+    position: {
+      symbol: "BTCUSDT",
+      quantity: "0",
+      side: "flat",
+      mark_price: "0",
+      notional_usdt: "0"
+    },
+    open_order_count: 0,
+    authority_status: "not_live"
+  };
+}
+
+function zeroPaperTradingProfitLoss() {
+  return {
+    revenue_usdt: 0,
+    cost_usdt: 0,
+    net_revenue_usdt: 0,
+    net_return_pct: 0
   };
 }
 

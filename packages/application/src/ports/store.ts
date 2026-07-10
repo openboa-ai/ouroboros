@@ -21,6 +21,7 @@ import type {
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingPromotionRecord,
+  PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
   LedgerInput,
@@ -137,6 +138,13 @@ export interface OuroborosStorePort {
     input: StopSandboxInput,
     observations?: SandboxAdapterObservationResult
   ): Promise<StartSandboxOutcome>;
+  recordPaperTradingEvaluationCommitment(
+    commitment: PaperTradingEvaluationCommitmentRecord
+  ): Promise<PaperTradingEvaluationCommitmentRecord>;
+  getPaperTradingEvaluationCommitment(
+    commitmentId: string
+  ): Promise<PaperTradingEvaluationCommitmentRecord | undefined>;
+  listPaperTradingEvaluationCommitments(): Promise<PaperTradingEvaluationCommitmentRecord[]>;
   recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
   listPaperTradingEvaluations(): Promise<PaperTradingEvaluationRecord[]>;
   getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
