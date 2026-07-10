@@ -84,7 +84,10 @@ import {
 } from "@ouroboros/application/trading/paper/commands";
 import { safeId } from "@ouroboros/application/safe-id";
 import { PaperTradingEvaluationRunner } from "@ouroboros/application/trading/paper/evaluation-runner";
-import { PaperTradingSessionService } from "@ouroboros/application/trading/paper/session-service";
+import {
+  PaperTradingSessionService,
+  type PaperTradingRecoveryOutcome
+} from "@ouroboros/application/trading/paper/session-service";
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
@@ -114,7 +117,11 @@ export interface BuildServerOptions {
     options: PaperTradingApiProviderOptions
   ) => Promise<ReplayTradingApiProviderSession>;
   paperTradingArtifactResolver?: SystemCodeArtifactResolverPort;
+  recoverPaperTradingSessionsOnStart?: boolean;
   onPaperTradingSessionServiceCreated?: (service: PaperTradingSessionService) => void;
+  onPaperTradingRecovery?: (
+    outcomes: readonly PaperTradingRecoveryOutcome[]
+  ) => void | Promise<void>;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
   operatorApiToken?: string | false;
@@ -274,6 +281,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     sessions: paperTradingSessionService
   });
   await store.initialize();
+  const paperTradingRecoveryOutcomes = options.recoverPaperTradingSessionsOnStart === false
+    ? []
+    : await paperTradingSessionService.recoverRunningEvaluations();
   const persistedResearcherProvider = await store.getResearcherProviderSelection();
   if (
     persistedResearcherProvider
@@ -1190,7 +1200,27 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     })
   ]);
 
+  notifyPaperTradingRecovery(
+    options.onPaperTradingRecovery,
+    paperTradingRecoveryOutcomes
+  );
   return server;
+}
+
+function notifyPaperTradingRecovery(
+  observer: BuildServerOptions["onPaperTradingRecovery"],
+  outcomes: readonly PaperTradingRecoveryOutcome[]
+): void {
+  if (!observer) {
+    return;
+  }
+  try {
+    void Promise.resolve(observer(outcomes)).catch((error) => {
+      console.error("PaperTrading recovery observer failed.", error);
+    });
+  } catch (error) {
+    console.error("PaperTrading recovery observer failed.", error);
+  }
 }
 
 function resolveOperatorApiToken(

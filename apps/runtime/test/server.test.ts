@@ -537,6 +537,7 @@ describe("runtime canonical operator API", () => {
     const observedSandbox = recordingDuplicateLogSandboxAdapter(orderLine);
     const observedServer = await buildRuntimeTestServer({
       store,
+      recoverPaperTradingSessionsOnStart: false,
       sandboxAdapters: {
         deterministic_test: observedSandbox.adapter
       },
@@ -628,6 +629,26 @@ describe("runtime canonical operator API", () => {
       expect(resumedSandbox.starts).toHaveLength(1);
       expect(resumedSandbox.starts[0]?.instance_id).toBe(firstSandbox.starts[0]?.instance_id);
       expect(resumed.json()).toMatchObject({
+        result: { status: "already_running" },
+        operator: {
+          selected_paper_trading_evaluation: {
+            observation_count: 1
+          }
+        }
+      });
+
+      const observed = await resumedServer.inject({
+        method: "POST",
+        url: "/api/commands",
+        payload: {
+          command_kind: "trading_run.observe",
+          payload: {
+            trading_run_id: resumed.json().operator.selected_paper_trading_evaluation.trading_run_id
+          }
+        }
+      });
+      expect(observed.statusCode, observed.body).toBe(200);
+      expect(observed.json()).toMatchObject({
         operator: {
           selected_paper_trading_evaluation: {
             observation_count: 2,
@@ -645,7 +666,7 @@ describe("runtime canonical operator API", () => {
         }
       });
 
-      const evaluationId = resumed.json().operator.selected_paper_trading_evaluation.evaluation_id;
+      const evaluationId = observed.json().operator.selected_paper_trading_evaluation.evaluation_id;
       const observations = await store.listPaperTradingObservations(evaluationId) as Array<{
         status: string;
         processed_trading_system_event_ids?: string[];

@@ -428,9 +428,27 @@ export class PaperTradingSessionService {
               evaluation.paper_trading_evaluation_commitment_ref.id
             )
           : undefined;
-        const evidencePurpose = run?.paper_evidence_purpose ??
-          commitment?.evidence_purpose ??
+        const runEvidencePurpose = run?.paper_evidence_purpose;
+        const commitmentEvidencePurpose = commitment?.evidence_purpose;
+        if (
+          runEvidencePurpose &&
+          commitmentEvidencePurpose &&
+          runEvidencePurpose !== commitmentEvidencePurpose
+        ) {
+          outcomes.push({
+            tradingRunId,
+            status: "failed",
+            error: "PaperTradingSession recovery purpose does not match the persisted commitment."
+          });
+          continue;
+        }
+        const evidencePurpose = runEvidencePurpose ??
+          commitmentEvidencePurpose ??
           "research_feedback";
+        if (evidencePurpose === "qualification") {
+          outcomes.push({ tradingRunId, status: "skipped", reason: "qualification" });
+          continue;
+        }
         const prepared = await this.prepare({
           candidateId: evaluation.candidate_ref.id,
           candidateVersionId: evaluation.candidate_version_ref.id,
@@ -438,10 +456,6 @@ export class PaperTradingSessionService {
           evidencePurpose,
           clock: "external"
         });
-        if (prepared.commitment.evidence_purpose === "qualification") {
-          outcomes.push({ tradingRunId, status: "skipped", reason: "qualification" });
-          continue;
-        }
 
         const defaultCandidate = await this.options.store.getCandidate(evaluation.candidate_ref.id);
         const clock: PaperTradingSessionClock =

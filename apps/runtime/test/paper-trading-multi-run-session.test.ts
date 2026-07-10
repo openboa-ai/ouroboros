@@ -1,14 +1,18 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   GatewayRuntimeBinding,
   PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
+import type { OuroborosStorePort } from "@ouroboros/application/ports/store";
 import { invalidatePaperTradingEvaluation } from "@ouroboros/application/trading/paper/commitment";
 import { PaperTradingEvaluationRunner } from "@ouroboros/application/trading/paper/evaluation-runner";
-import { PaperTradingSessionService } from "@ouroboros/application/trading/paper/session-service";
+import {
+  PaperTradingSessionService,
+  type PaperTradingRecoveryOutcome
+} from "@ouroboros/application/trading/paper/session-service";
 import type { AccountState, ReplayTradingApiProviderSession } from "@ouroboros/application/trading/research/types";
 import type {
   CandidateInspectReadModel,
@@ -24,6 +28,7 @@ import type {
   SandboxAdapterStartInput,
   SandboxAdapterStartResult
 } from "@ouroboros/adapters/sandbox/adapter";
+import { buildServer } from "../src/server";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 const INTERVAL_MS = 3_600_000;
@@ -424,6 +429,296 @@ describe("multi-run paper TradingSystem sessions", () => {
     expect(await requireEvaluation(store, defaultRunId)).toEqual(defaultEvaluationBeforeCleanup);
   });
 
+  it("skips a persisted running qualification before resolving artifacts or mutating session state", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await requireFixtureCandidate(store);
+    const qualificationRun = await store.createPaperTradingRun({
+      idempotency_key: "multi-run-running-qualification-inertness",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification"
+    });
+    const initialService = paperSessionService({
+      store,
+      sandbox: runKeyedSandboxHarness(),
+      providers: runKeyedProviderHarness(),
+      runner: new PaperTradingEvaluationRunner(),
+      digest: () => ARTIFACT_DIGEST
+    });
+    const prepared = await initialService.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: qualificationRun.trading_run_id,
+      evidencePurpose: "qualification",
+      clock: "external"
+    });
+    await store.recordPaperTradingEvaluation({
+      ...prepared.evaluation,
+      status: "running",
+      next_observation_at: "2026-07-10T02:30:03.000Z"
+    });
+    const stateBeforeRecovery = await persistedRunState(store, qualificationRun.trading_run_id);
+    const sandbox = runKeyedSandboxHarness();
+    const providers = runKeyedProviderHarness();
+    const runner = new PaperTradingEvaluationRunner();
+    let artifactResolutions = 0;
+    const recoveryService = paperSessionService({
+      store,
+      sandbox,
+      providers,
+      runner,
+      digest: () => {
+        artifactResolutions += 1;
+        return "sha256:mismatched-running-qualification";
+      }
+    });
+
+    const outcomes = await recoveryService.recoverRunningEvaluations();
+
+    expect(outcomes).toEqual(expect.arrayContaining([{
+      tradingRunId: qualificationRun.trading_run_id,
+      status: "skipped",
+      reason: "qualification"
+    }]));
+    expect(await persistedRunState(store, qualificationRun.trading_run_id))
+      .toEqual(stateBeforeRecovery);
+    expect(artifactResolutions).toBe(0);
+    expect(providers.starts()).toBe(0);
+    expect(sandbox.totalStarts()).toBe(0);
+    expect(sandbox.totalStops()).toBe(0);
+    expect(recoveryService.active(qualificationRun.trading_run_id)).toBe(false);
+    expect(runner.active(qualificationRun.trading_run_id)).toBe(false);
+  });
+
+  it("fails closed before effects when TradingRun and commitment purposes disagree", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await requireFixtureCandidate(store);
+    const researchRun = await store.createPaperTradingRun({
+      idempotency_key: "multi-run-recovery-purpose-mismatch",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback"
+    });
+    const initialService = paperSessionService({
+      store,
+      sandbox: runKeyedSandboxHarness(),
+      providers: runKeyedProviderHarness(),
+      runner: new PaperTradingEvaluationRunner(),
+      digest: () => ARTIFACT_DIGEST
+    });
+    const prepared = await initialService.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: researchRun.trading_run_id,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    });
+    await store.recordPaperTradingEvaluation({
+      ...prepared.evaluation,
+      status: "running",
+      next_observation_at: "2026-07-10T02:40:03.000Z"
+    });
+    const stateBeforeRecovery = await persistedRunState(store, researchRun.trading_run_id);
+    const sandbox = runKeyedSandboxHarness();
+    const providers = runKeyedProviderHarness();
+    const runner = new PaperTradingEvaluationRunner();
+    let artifactResolutions = 0;
+    const recoveryService = paperSessionService({
+      store: storeWithTradingRunPurpose(
+        store,
+        researchRun.trading_run_id,
+        "qualification"
+      ),
+      sandbox,
+      providers,
+      runner,
+      digest: () => {
+        artifactResolutions += 1;
+        return ARTIFACT_DIGEST;
+      }
+    });
+
+    const outcomes = await recoveryService.recoverRunningEvaluations();
+
+    expect(outcomes).toEqual(expect.arrayContaining([{
+      tradingRunId: researchRun.trading_run_id,
+      status: "failed",
+      error: "PaperTradingSession recovery purpose does not match the persisted commitment."
+    }]));
+    expect(await persistedRunState(store, researchRun.trading_run_id))
+      .toEqual(stateBeforeRecovery);
+    expect(artifactResolutions).toBe(0);
+    expect(providers.starts()).toBe(0);
+    expect(sandbox.totalStarts()).toBe(0);
+    expect(sandbox.totalStops()).toBe(0);
+    expect(recoveryService.active(researchRun.trading_run_id)).toBe(false);
+    expect(runner.active(researchRun.trading_run_id)).toBe(false);
+  });
+
+  it("automatically restores default scheduled and additional external sessions during runtime bootstrap", async () => {
+    const store = new LocalStore(tmpDir);
+    const firstSandbox = runKeyedSandboxHarness();
+    const firstProviders = runKeyedProviderHarness();
+    const firstCapture: { service?: PaperTradingSessionService } = {};
+    const firstServer = await buildServer({
+      store,
+      sandboxAdapters: { deterministic_test: firstSandbox },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: INTERVAL_MS,
+      paperTradingApiProviderFactory: firstProviders.factory,
+      paperTradingArtifactResolver: {
+        async resolveArtifactDigest() {
+          return ARTIFACT_DIGEST;
+        }
+      },
+      onPaperTradingSessionServiceCreated(service) {
+        firstCapture.service = service;
+      }
+    });
+    const firstService = requireCapturedService(firstCapture.service);
+    const candidate = await requireFixtureCandidate(store);
+    const defaultRunId = candidate.runtime.ref.id;
+    const additionalRun = await store.createPaperTradingRun({
+      idempotency_key: "multi-run-runtime-bootstrap-additional",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback"
+    });
+    const additionalRunId = additionalRun.trading_run_id;
+    const preparedDefault = await firstService.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: defaultRunId,
+      evidencePurpose: "research_feedback",
+      clock: "scheduled"
+    });
+    await firstService.activate(preparedDefault);
+    await firstService.schedule(defaultRunId);
+    const preparedAdditional = await firstService.prepare({
+      candidateId: candidate.candidate_id,
+      candidateVersionId: candidate.candidate_version.candidate_version_id,
+      tradingRunId: additionalRunId,
+      evidencePurpose: "research_feedback",
+      clock: "external"
+    });
+    await firstService.activate(preparedAdditional);
+    expect(firstService.active(defaultRunId)).toBe(true);
+    expect(firstService.active(additionalRunId)).toBe(true);
+    expect(firstSandbox.starts(defaultRunId)).toBe(1);
+    expect(firstSandbox.starts(additionalRunId)).toBe(1);
+    expect(firstProviders.starts()).toBe(2);
+
+    const commitmentsBeforeRestart = structuredClone(
+      await store.listPaperTradingEvaluationCommitments()
+    );
+    const defaultEvidenceBeforeRestart = await evidenceSnapshot(store, defaultRunId);
+    const additionalEvidenceBeforeRestart = await evidenceSnapshot(store, additionalRunId);
+    await firstServer.close();
+    expect(await requireEvaluation(store, defaultRunId))
+      .toEqual(defaultEvidenceBeforeRestart.evaluation);
+    expect(await requireEvaluation(store, additionalRunId))
+      .toEqual(additionalEvidenceBeforeRestart.evaluation);
+    expect((await store.getTradingRun(defaultRunId))?.runtime_lifecycle_status).toBe("stopped");
+    expect((await store.getTradingRun(additionalRunId))?.runtime_lifecycle_status).toBe("stopped");
+
+    const recoverySandbox = runKeyedSandboxHarness();
+    recoverySandbox.enqueue(defaultRunId, [paperOrderLine({
+      eventId: "unconsumed-bootstrap-default-event",
+      runId: defaultRunId,
+      at: "2026-07-10T02:50:03.000Z",
+      side: "buy",
+      limitPrice: "60000"
+    })]);
+    recoverySandbox.enqueue(additionalRunId, [paperOrderLine({
+      eventId: "unconsumed-bootstrap-additional-event",
+      runId: additionalRunId,
+      at: "2026-07-10T02:51:03.000Z",
+      side: "sell",
+      limitPrice: "70000"
+    })]);
+    const recoveryProviders = runKeyedProviderHarness();
+    const recoveryServiceCapture: { service?: PaperTradingSessionService } = {};
+    const recoveryOutcomeCapture = paperTradingRecoveryCapture();
+    const restartedServer = await buildServer({
+      store,
+      sandboxAdapters: { deterministic_test: recoverySandbox },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: INTERVAL_MS,
+      paperTradingApiProviderFactory: recoveryProviders.factory,
+      paperTradingArtifactResolver: {
+        async resolveArtifactDigest() {
+          return ARTIFACT_DIGEST;
+        }
+      },
+      onPaperTradingSessionServiceCreated(service) {
+        recoveryServiceCapture.service = service;
+      },
+      onPaperTradingRecovery(outcomes) {
+        recoveryOutcomeCapture.observe(outcomes);
+      }
+    });
+
+    try {
+      const recoveryService = requireCapturedService(recoveryServiceCapture.service);
+      const recoveryOutcomes = await recoveryOutcomeCapture.outcomes;
+      expect(recoveryOutcomes).toEqual(expect.arrayContaining([
+        { tradingRunId: defaultRunId, status: "recovered", clock: "scheduled" },
+        { tradingRunId: additionalRunId, status: "recovered", clock: "external" }
+      ]));
+      expect(recoveryService.active(defaultRunId)).toBe(true);
+      expect(recoveryService.active(additionalRunId)).toBe(true);
+      expect(recoverySandbox.starts(defaultRunId)).toBe(1);
+      expect(recoverySandbox.starts(additionalRunId)).toBe(1);
+      expect(recoveryProviders.starts()).toBe(2);
+      expect((await store.getTradingRun(defaultRunId))?.runtime_lifecycle_status).toBe("running");
+      expect((await store.getTradingRun(additionalRunId))?.runtime_lifecycle_status).toBe("running");
+      expect(await store.listPaperTradingEvaluationCommitments()).toEqual(commitmentsBeforeRestart);
+      expect(await evidenceSnapshot(store, defaultRunId)).toEqual(defaultEvidenceBeforeRestart);
+      expect(await evidenceSnapshot(store, additionalRunId)).toEqual(additionalEvidenceBeforeRestart);
+      expect((await requireEvaluation(store, defaultRunId)).processed_trading_system_event_ids)
+        .not.toContain("unconsumed-bootstrap-default-event");
+      expect((await requireEvaluation(store, additionalRunId)).processed_trading_system_event_ids)
+        .not.toContain("unconsumed-bootstrap-additional-event");
+    } finally {
+      await restartedServer.close();
+    }
+  });
+
+  it("keeps runtime bootstrap ready when the recovery outcome observer rejects", async () => {
+    const observerError = new Error("recovery observer failed");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let server: Awaited<ReturnType<typeof buildServer>> | undefined;
+    try {
+      server = await buildServer({
+        store: new LocalStore(tmpDir),
+        sandboxAdapters: { deterministic_test: runKeyedSandboxHarness() },
+        marketDataPort: fakeGatewayMarketDataPort(),
+        paperTradingApiProviderFactory: runKeyedProviderHarness().factory,
+        paperTradingArtifactResolver: {
+          async resolveArtifactDigest() {
+            return ARTIFACT_DIGEST;
+          }
+        },
+        async onPaperTradingRecovery() {
+          throw observerError;
+        }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const health = await server.inject({ method: "GET", url: "/health" });
+      expect(health.statusCode).toBe(200);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "PaperTrading recovery observer failed.",
+        observerError
+      );
+    } finally {
+      await server?.close();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("continues after one recovery failure and invalidates only a still-running mismatched run", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -484,38 +779,55 @@ describe("multi-run paper TradingSystem sessions", () => {
     const recoverySandbox = runKeyedSandboxHarness();
     recoverySandbox.failStart(failingRun.trading_run_id);
     const recoveryProviders = runKeyedProviderHarness();
-    const recoveryService = paperSessionService({
+    const recoveryServiceCapture: { service?: PaperTradingSessionService } = {};
+    const recoveryOutcomeCapture = paperTradingRecoveryCapture();
+    const recoveryServer = await buildServer({
       store,
-      sandbox: recoverySandbox,
-      providers: recoveryProviders,
-      runner: new PaperTradingEvaluationRunner(),
-      digest: () => ARTIFACT_DIGEST
-    });
-    const recoveryOutcomes = await recoveryService.recoverRunningEvaluations();
-
-    expect(recoveryOutcomes).toEqual(expect.arrayContaining([
-      { tradingRunId: defaultRunId, status: "skipped", reason: "evaluation_not_running" },
-      {
-        tradingRunId: failingRun.trading_run_id,
-        status: "failed",
-        error: `sandbox start failed for ${failingRun.trading_run_id}`
+      sandboxAdapters: { deterministic_test: recoverySandbox },
+      marketDataPort: fakeGatewayMarketDataPort(),
+      paperTradingEvaluationIntervalMs: INTERVAL_MS,
+      paperTradingApiProviderFactory: recoveryProviders.factory,
+      paperTradingArtifactResolver: {
+        async resolveArtifactDigest() {
+          return ARTIFACT_DIGEST;
+        }
       },
-      { tradingRunId: healthyRun.trading_run_id, status: "recovered", clock: "external" },
-      {
-        tradingRunId: qualificationRun.trading_run_id,
-        status: "skipped",
-        reason: "evaluation_not_running"
+      onPaperTradingSessionServiceCreated(service) {
+        recoveryServiceCapture.service = service;
+      },
+      onPaperTradingRecovery(outcomes) {
+        recoveryOutcomeCapture.observe(outcomes);
       }
-    ]));
-    expect(recoveryService.active(failingRun.trading_run_id)).toBe(false);
-    expect(recoveryService.active(healthyRun.trading_run_id)).toBe(true);
-    expect((await store.getTradingRun(failingRun.trading_run_id))?.runtime_lifecycle_status).toBe("stopped");
-    expect((await store.getTradingRun(healthyRun.trading_run_id))?.runtime_lifecycle_status).toBe("running");
-    expect(recoveryProviders.require(recoverySandbox.providerUrl(failingRun.trading_run_id)!).closed).toBe(true);
-    expect(recoveryProviders.require(recoverySandbox.providerUrl(healthyRun.trading_run_id)!).closed).toBe(false);
-    expect(await requireEvaluation(store, defaultRunId)).toEqual(stoppedDefaultBeforeRecovery);
+    });
+    const recoveryService = requireCapturedService(recoveryServiceCapture.service);
+    try {
+      const recoveryOutcomes = await recoveryOutcomeCapture.outcomes;
+      expect(recoveryOutcomes).toEqual(expect.arrayContaining([
+        { tradingRunId: defaultRunId, status: "skipped", reason: "evaluation_not_running" },
+        {
+          tradingRunId: failingRun.trading_run_id,
+          status: "failed",
+          error: `sandbox start failed for ${failingRun.trading_run_id}`
+        },
+        { tradingRunId: healthyRun.trading_run_id, status: "recovered", clock: "external" },
+        {
+          tradingRunId: qualificationRun.trading_run_id,
+          status: "skipped",
+          reason: "evaluation_not_running"
+        }
+      ]));
+      expect(recoveryService.active(failingRun.trading_run_id)).toBe(false);
+      expect(recoveryService.active(healthyRun.trading_run_id)).toBe(true);
+      expect((await store.getTradingRun(failingRun.trading_run_id))?.runtime_lifecycle_status).toBe("stopped");
+      expect((await store.getTradingRun(healthyRun.trading_run_id))?.runtime_lifecycle_status).toBe("running");
+      expect(recoveryProviders.require(recoverySandbox.providerUrl(failingRun.trading_run_id)!).closed).toBe(true);
+      expect(recoveryProviders.require(recoverySandbox.providerUrl(healthyRun.trading_run_id)!).closed).toBe(false);
+      expect(await requireEvaluation(store, defaultRunId)).toEqual(stoppedDefaultBeforeRecovery);
 
-    await recoveryService.stop(healthyRun.trading_run_id);
+      await recoveryService.stop(healthyRun.trading_run_id);
+    } finally {
+      await recoveryServer.close();
+    }
     const stoppedHealthyBeforeMismatch = structuredClone(
       await requireEvaluation(store, healthyRun.trading_run_id)
     );
@@ -567,7 +879,7 @@ describe("multi-run paper TradingSystem sessions", () => {
 });
 
 function paperSessionService(input: {
-  store: LocalStore;
+  store: OuroborosStorePort;
   sandbox: RunKeyedSandboxHarness;
   providers: RunKeyedProviderHarness;
   runner: PaperTradingEvaluationRunner;
@@ -876,4 +1188,62 @@ async function evidenceSnapshot(store: LocalStore, tradingRunId: string) {
     observations: await store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id),
     ledger: candidate.ledger
   });
+}
+
+async function persistedRunState(store: LocalStore, tradingRunId: string) {
+  const evaluation = await requireEvaluation(store, tradingRunId);
+  const candidate = await requireRunCandidate(store, tradingRunId);
+  return structuredClone({
+    tradingRun: await store.getTradingRun(tradingRunId),
+    evaluation,
+    commitments: await store.listPaperTradingEvaluationCommitments(),
+    runControl: candidate.runtime.run_control,
+    sandbox: candidate.runtime.sandbox,
+    observations: await store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id),
+    ledger: candidate.ledger
+  });
+}
+
+function storeWithTradingRunPurpose(
+  store: LocalStore,
+  tradingRunId: string,
+  purpose: "research_feedback" | "qualification"
+): OuroborosStorePort {
+  return new Proxy(store as OuroborosStorePort, {
+    get(target, property, receiver) {
+      if (property === "getTradingRun") {
+        return async (requestedTradingRunId: string) => {
+          const run = await store.getTradingRun(requestedTradingRunId);
+          return run && requestedTradingRunId === tradingRunId
+            ? { ...run, paper_evidence_purpose: purpose }
+            : run;
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+
+function requireCapturedService(
+  service: PaperTradingSessionService | undefined
+): PaperTradingSessionService {
+  if (!service) {
+    throw new Error("paper session service was not captured from runtime bootstrap");
+  }
+  return service;
+}
+
+function paperTradingRecoveryCapture(): {
+  outcomes: Promise<readonly PaperTradingRecoveryOutcome[]>;
+  observe: (outcomes: readonly PaperTradingRecoveryOutcome[]) => void;
+} {
+  let resolveOutcomes: (outcomes: readonly PaperTradingRecoveryOutcome[]) => void = () => undefined;
+  const outcomes = new Promise<readonly PaperTradingRecoveryOutcome[]>((resolve) => {
+    resolveOutcomes = resolve;
+  });
+  return {
+    outcomes,
+    observe: (observedOutcomes) => resolveOutcomes(observedOutcomes)
+  };
 }

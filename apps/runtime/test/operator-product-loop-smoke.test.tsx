@@ -675,6 +675,7 @@ describe("operator product loop smoke", () => {
         operator.candidate_arena.runner_status === "running"
         && operator.selected_paper_trading_evaluation.status === "running"
         && operator.selected_paper_trading_evaluation.runner_active
+        && operator.candidate_arena.latest_ticks.some((tick) => tick.tick_id === "tick-2")
         && operator.candidate_arena.latest_ticks.some((tick) =>
           tick.paper_trading_continuation?.status === "started"
         )
@@ -1527,7 +1528,7 @@ describe("operator product loop smoke", () => {
           },
           selected_paper_trading_evaluation: {
             status: "running",
-            runner_active: false,
+            runner_active: true,
             observation_count: 2,
             ledger_chain_complete: true,
             latest_decision: {
@@ -1542,16 +1543,14 @@ describe("operator product loop smoke", () => {
           fetch: serverFetch(restartedServer)
         });
         expect(restartedHumanStatus.exitCode, restartedHumanStatus.stderr).toBe(0);
-        expect(restartedHumanStatus.stdout).toContain(
-          "Paper runner: needs resume / persisted running, timer inactive"
-        );
+        expect(restartedHumanStatus.stdout).toContain("Paper runner: active");
         const restartedTui = renderToString(
           <OperatorTuiScreen
             operator={restartedOperatorBody.operator}
             cursor={0}
           />
         );
-        expect(restartedTui).toContain("Paper runner: needs resume / persisted running, timer inactive");
+        expect(restartedTui).toContain("Paper runner: active");
         expect(restartedTui).not.toContain("Runner: needs resume / persisted running, timer inactive");
         const resumed = await restartedServer.inject({
           method: "POST",
@@ -1564,14 +1563,14 @@ describe("operator product loop smoke", () => {
         expect(resumed.statusCode, resumed.body).toBe(200);
         expect(resumed.json()).toMatchObject({
           result: {
-            status: "resumed",
+            status: "already_running",
             runner_status: "running"
           },
           operator: {
             selected_paper_trading_evaluation: {
               status: "running",
               runner_active: true,
-              observation_count: 3,
+              observation_count: 2,
               authority_status: "not_live"
             }
           }

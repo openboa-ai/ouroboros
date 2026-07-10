@@ -280,7 +280,7 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
     }
   });
 
-  it("reloads and verifies the original commitment before resuming", async () => {
+  it("reloads and verifies the original commitment during automatic startup recovery", async () => {
     const store = new LocalStore(tmpDir);
     const firstServer = await buildServer({
       store,
@@ -292,18 +292,24 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
 
     let evaluationId: string;
     let commitmentDigest: string;
+    let tradingRunId: string;
     try {
       const started = await postCommand(firstServer, {
         command_kind: "trading_run.start",
         payload: { candidate_id: FIXTURE_CANDIDATE_ID }
       });
       evaluationId = started.operator.selected_paper_trading_evaluation.evaluation_id!;
+      tradingRunId = started.operator.selected_paper_trading_evaluation.trading_run_id!;
       commitmentDigest = (await store.listPaperTradingEvaluationCommitments())[0]!.commitment_digest;
     } finally {
       await firstServer.close();
     }
 
     const restartOrder: string[] = [];
+    let recordRecoveryOutcomes: (outcomes: unknown) => void = () => undefined;
+    const recoveryOutcomeNotification = new Promise<unknown>((resolve) => {
+      recordRecoveryOutcomes = resolve;
+    });
     const restartedServer = await buildServer({
       store,
       sandboxAdapters: { deterministic_test: inspectableSandbox(restartOrder) },
@@ -312,10 +318,29 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
       paperTradingApiProviderFactory: async (binding, options) => {
         restartOrder.push("start_provider");
         return staticPaperTradingApiProvider(binding, options);
+      },
+      onPaperTradingRecovery(outcomes) {
+        recordRecoveryOutcomes(outcomes);
       }
     });
 
     try {
+      const recoveryOutcomes = await recoveryOutcomeNotification;
+      expect(recoveryOutcomes).toEqual(expect.arrayContaining([{
+        tradingRunId: tradingRunId!,
+        status: "recovered",
+        clock: "scheduled"
+      }]));
+      expect(await store.getPaperTradingEvaluation(evaluationId!)).toMatchObject({
+        status: "running",
+        observation_count: 1
+      });
+      expect(restartOrder).toEqual([
+        "resolve_artifact",
+        "start_provider",
+        "start_sandbox"
+      ]);
+
       const resumed = await postCommand(restartedServer, {
         command_kind: "trading_run.start",
         payload: { candidate_id: FIXTURE_CANDIDATE_ID }
@@ -325,7 +350,7 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
       expect(resumed.operator.selected_paper_trading_evaluation).toMatchObject({
         evaluation_id: evaluationId!,
         status: "running",
-        observation_count: 2
+        observation_count: 1
       });
       expect(await store.listPaperTradingEvaluationCommitments()).toEqual([
         expect.objectContaining({ commitment_digest: commitmentDigest! })
@@ -334,8 +359,7 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
         "resolve_artifact",
         "start_provider",
         "start_sandbox",
-        "resolve_artifact",
-        "read_market"
+        "resolve_artifact"
       ]);
     } finally {
       await restartedServer.close();
