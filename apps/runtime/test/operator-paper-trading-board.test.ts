@@ -28,9 +28,11 @@ import { LocalStore } from "@ouroboros/local-store";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
 let tmpDir: string;
+let activePaperTradingRunIds: Set<string>;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(path.join(os.tmpdir(), "ouroboros-paper-board-"));
+  activePaperTradingRunIds = new Set();
 });
 
 afterEach(async () => {
@@ -87,7 +89,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === winning.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -309,8 +311,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === mature.runtime.ref.id ||
-          tradingRunId === collecting.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -474,7 +475,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -555,7 +556,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -748,6 +749,12 @@ describe("operator paper trading board", () => {
       sourcePriority: "websocket_primary",
       observedAt: "2026-05-16T00:31:00.000Z"
     });
+    const promotedEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(
+      promoted.candidate_id
+    );
+    if (!promotedEvaluation) {
+      throw new Error("promoted target paper evaluation missing");
+    }
 
     const service = new OperatorService({
       store,
@@ -756,7 +763,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === promoted.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -809,7 +816,7 @@ describe("operator paper trading board", () => {
       },
       paper_trading_evaluation: {
         candidate_id: promoted.candidate_id,
-        trading_run_id: promoted.runtime.ref.id
+        trading_run_id: promotedEvaluation.trading_run_ref.id
       }
     });
   });
@@ -854,8 +861,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) =>
-          tradingRunId === activeTarget.runtime.ref.id || tradingRunId === replacement.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -933,7 +939,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) => tradingRunId === candidate.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -995,9 +1001,7 @@ describe("operator paper trading board", () => {
         run: async () => ({ statusCode: 500, body: { error: "unused" } })
       },
       paperTradingEvaluationRunner: {
-        active: (tradingRunId) =>
-          tradingRunId === activeTarget.runtime.ref.id ||
-          tradingRunId === collectingReplacement.runtime.ref.id
+        active: (tradingRunId) => activePaperTradingRunIds.has(tradingRunId)
       }
     });
 
@@ -1343,6 +1347,22 @@ async function seedPaperEvaluation(
 ): Promise<void> {
   const evaluationId = `paper-evaluation-${input.candidate.candidate_id}`;
   const finalObservedAt = input.observedAt ?? "2026-05-16T00:08:00.000Z";
+  const evidencePurpose = input.evidencePurpose ?? "qualification";
+  let paperCandidate = input.candidate;
+  if (evidencePurpose === "qualification") {
+    const paperRun = await store.createPaperTradingRun({
+      idempotency_key: `operator-paper-board:${input.candidate.candidate_id}:qualification`,
+      candidate_id: input.candidate.candidate_id,
+      candidate_version_id: input.candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification",
+      created_at: "2026-05-16T00:00:00.000Z"
+    });
+    const projected = await store.getCandidateForTradingRun(paperRun.trading_run_id);
+    if (!projected) {
+      throw new Error(`missing qualification TradingRun projection for ${input.candidate.candidate_id}`);
+    }
+    paperCandidate = projected;
+  }
   const systemCodeId = input.candidate.system_code?.ref?.id;
   const systemCode = systemCodeId ? await store.getSystemCode(systemCodeId) : undefined;
   if (!systemCode) {
@@ -1351,8 +1371,8 @@ async function seedPaperEvaluation(
   const initialState = initialPaperTradingEngineState();
   const commitment = createPaperTradingEvaluationCommitment({
     commitmentId: `paper-commitment-${input.candidate.candidate_id}`,
-    evidencePurpose: input.evidencePurpose ?? "qualification",
-    candidate: input.candidate,
+    evidencePurpose,
+    candidate: paperCandidate,
     systemCode,
     resolvedArtifactDigest: systemCode.artifact_digest,
     marketData: fakeGatewayMarketDataPort(),
@@ -1361,6 +1381,9 @@ async function seedPaperEvaluation(
     committedAt: "2026-05-16T00:00:00.000Z"
   });
   await store.recordPaperTradingEvaluationCommitment(commitment);
+  if (input.runnerActive) {
+    activePaperTradingRunIds.add(commitment.trading_run_ref.id);
+  }
 
   let evaluation: PaperTradingEvaluationRecord = {
     record_kind: "paper_trading_evaluation",

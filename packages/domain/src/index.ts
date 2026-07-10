@@ -2142,6 +2142,7 @@ export interface TradingRunRecord extends BaseRecord {
   trading_run_id: string;
   stage_binding_profile: "paper";
   runtime_lifecycle_status?: TradingRunLifecycleStatus;
+  paper_evidence_purpose?: PaperTradingEvidencePurpose;
   candidate_ref?: Ref;
   candidate_version_ref?: Ref;
   stage_binding_ref?: Ref;

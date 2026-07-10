@@ -1218,6 +1218,195 @@ describe("LocalStore", () => {
     expect(stageBinding.execution_mode).toBe("host_local");
   });
 
+  it("creates isolated paper TradingRuns without changing the default candidate runtime", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const outcome = await store.materializeCandidate({
+      ...validMaterializationInput(),
+      idempotency_key: "multi-run-paper-candidate",
+      system_code_ref: { record_kind: "system_code", id: FIXTURE_SYSTEM_CODE_ID }
+    });
+    if (outcome.status !== "materialized") {
+      throw new Error("expected materialized candidate");
+    }
+    const candidate = outcome.candidate;
+    const defaultRunId = candidate.runtime.ref.id;
+    const firstInput = {
+      idempotency_key: "comparison-a:champion",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification" as const,
+      created_at: "2026-07-10T00:00:00.000Z"
+    };
+    const first = await store.createPaperTradingRun(firstInput);
+    const repeated = await store.createPaperTradingRun(firstInput);
+    const second = await store.createPaperTradingRun({
+      ...firstInput,
+      idempotency_key: "comparison-b:champion",
+      created_at: "2026-07-10T01:00:00.000Z"
+    });
+
+    expect(repeated).toEqual(first);
+    expect(first.trading_run_id).not.toBe(defaultRunId);
+    expect(second.trading_run_id).not.toBe(first.trading_run_id);
+    expect(first.paper_evidence_purpose).toBe("qualification");
+    expect(first.placement_ref.id).not.toBe(candidate.runtime.placement.ref.id);
+    expect(first.hands_environment_ref.id).not.toBe(candidate.runtime.hands_environment.ref.id);
+    expect(first.memory_surface_ref.id).not.toBe(candidate.runtime.memory_surface.ref.id);
+    expect((await store.listTradingRunsForCandidateVersion(
+      candidate.candidate_version.candidate_version_id
+    )).map((run) => run.trading_run_id).sort()).toEqual([
+      defaultRunId,
+      first.trading_run_id,
+      second.trading_run_id
+    ].sort());
+
+    const projected = await store.getCandidateForTradingRun(first.trading_run_id);
+    expect(projected).toMatchObject({
+      candidate_id: candidate.candidate_id,
+      candidate_version: {
+        candidate_version_id: candidate.candidate_version.candidate_version_id
+      },
+      runtime: {
+        ref: { record_kind: "trading_run", id: first.trading_run_id },
+        placement: { ref: first.placement_ref },
+        hands_environment: { ref: first.hands_environment_ref },
+        memory_surface: { ref: first.memory_surface_ref }
+      },
+      trading_run: {
+        ref: { record_kind: "trading_run", id: first.trading_run_id }
+      }
+    });
+    expect((await store.getCandidate(candidate.candidate_id))?.runtime.ref.id).toBe(defaultRunId);
+
+    const qualificationCommitment = withPaperTradingCommitmentDigest({
+      ...validPaperTradingCommitment(),
+      paper_trading_evaluation_commitment_id: "paper-commitment-multi-run-qualification",
+      evidence_purpose: "qualification",
+      candidate_ref: first.candidate_ref!,
+      candidate_version_ref: first.candidate_version_ref!,
+      trading_run_ref: { record_kind: "trading_run", id: first.trading_run_id },
+      window_policy: {
+        ...validPaperTradingCommitment().window_policy,
+        release_policy: "sealed_until_adjudication"
+      },
+      committed_at: "2026-07-10T00:00:00.000Z",
+      commitment_digest: ""
+    });
+    const qualificationEvaluation = {
+      ...validPaperTradingEvaluation(qualificationCommitment),
+      paper_trading_evaluation_id: "paper-evaluation-multi-run-qualification",
+      trading_run_ref: { record_kind: "trading_run", id: first.trading_run_id }
+    };
+    await expect(store.recordPaperTradingEvaluationCommitment(qualificationCommitment))
+      .resolves.toEqual(qualificationCommitment);
+    await expect(store.recordPaperTradingEvaluation(qualificationEvaluation))
+      .resolves.toEqual(qualificationEvaluation);
+
+    const defaultRunBeforeControl = await store.getTradingRun(defaultRunId);
+    await store.recordRunControlAudit({
+      ...validRunControlAuditInput(candidate.candidate_version.candidate_version_id),
+      idempotency_key: "multi-run-qualification-pause",
+      candidate_id: candidate.candidate_id,
+      runtime_id: first.trading_run_id
+    });
+    expect((await store.getTradingRun(first.trading_run_id))?.runtime_lifecycle_status).toBe("paused");
+    expect(await store.getTradingRun(defaultRunId)).toEqual(defaultRunBeforeControl);
+
+    await store.recordLedger({
+      ...validLedgerInput(candidate.candidate_version.candidate_version_id),
+      idempotency_key: "multi-run-qualification-ledger",
+      candidate_id: candidate.candidate_id,
+      runtime_id: first.trading_run_id
+    });
+    expect((await store.getCandidateForTradingRun(first.trading_run_id))?.ledger?.has_activity)
+      .toBe(true);
+    expect((await store.getCandidate(candidate.candidate_id))?.ledger?.has_activity).toBe(false);
+
+    const reloaded = new LocalStore(tmpDir);
+    expect((await reloaded.getCandidateForTradingRun(first.trading_run_id))?.runtime).toMatchObject({
+      ref: { record_kind: "trading_run", id: first.trading_run_id },
+      runtime_lifecycle_status: "paused",
+      placement: { ref: first.placement_ref },
+      hands_environment: { ref: first.hands_environment_ref },
+      memory_surface: { ref: first.memory_surface_ref }
+    });
+    expect((await reloaded.getCandidateForTradingRun(first.trading_run_id))?.ledger?.has_activity)
+      .toBe(true);
+    expect(await reloaded.getTradingRun(defaultRunId)).toEqual(defaultRunBeforeControl);
+  });
+
+  it("rejects invalid or conflicting paper TradingRun creation", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const firstOutcome = await store.materializeCandidate({
+      ...validMaterializationInput(),
+      idempotency_key: "paper-run-validation-first",
+      system_code_ref: { record_kind: "system_code", id: FIXTURE_SYSTEM_CODE_ID }
+    });
+    const secondOutcome = await store.materializeCandidate({
+      ...validMaterializationInput(),
+      idempotency_key: "paper-run-validation-second",
+      provider: {
+        ...validMaterializationInput().provider,
+        agent_run_id: "paper-run-validation-second-agent-run",
+        agent_event_id: "paper-run-validation-second-agent-event",
+        trace_id: "paper-run-validation-second-trace"
+      },
+      system_code_ref: { record_kind: "system_code", id: FIXTURE_SYSTEM_CODE_ID }
+    });
+    if (firstOutcome.status !== "materialized" || secondOutcome.status !== "materialized") {
+      throw new Error("expected paper run validation candidates");
+    }
+    const validInput = {
+      idempotency_key: "paper-run-validation",
+      candidate_id: firstOutcome.candidate.candidate_id,
+      candidate_version_id: firstOutcome.candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification" as const,
+      created_at: "2026-07-10T00:00:00.000Z"
+    };
+
+    await expectStoreError(
+      store.createPaperTradingRun({ ...validInput, idempotency_key: "" }),
+      "invalid_paper_trading_run_input"
+    );
+    await expectStoreError(
+      store.createPaperTradingRun({
+        ...validInput,
+        evidence_purpose: "promotion" as "qualification"
+      }),
+      "invalid_paper_trading_run_input"
+    );
+    await expectStoreError(
+      store.createPaperTradingRun({ ...validInput, candidate_id: "missing-candidate" }),
+      "candidate_not_found"
+    );
+    await expectStoreError(
+      store.createPaperTradingRun({ ...validInput, candidate_version_id: "missing-version" }),
+      "candidate_version_not_found"
+    );
+    await expectStoreError(
+      store.createPaperTradingRun({
+        ...validInput,
+        candidate_version_id: secondOutcome.candidate.candidate_version.candidate_version_id
+      }),
+      "candidate_version_mismatch"
+    );
+
+    const created = await store.createPaperTradingRun(validInput);
+    await writeStoreJson(
+      { ...created, system_code_ref: undefined },
+      "trading-runs",
+      "items",
+      `${created.trading_run_id}.json`
+    );
+    expect(await store.getCandidateForTradingRun(created.trading_run_id)).toBeUndefined();
+    await expectStoreError(
+      store.createPaperTradingRun(validInput),
+      "paper_trading_run_conflict"
+    );
+  });
+
   it("creates and reloads evaluation run records for an existing active candidate version", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();

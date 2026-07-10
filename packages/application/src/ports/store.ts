@@ -23,6 +23,7 @@ import type {
   TradingPromotionRecord,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
+  PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
   LedgerInput,
   LedgerWriteOutcome,
@@ -71,6 +72,14 @@ export interface OuroborosStorePort {
   getCandidate(candidateId: string): Promise<CandidateInspectReadModel | undefined>;
   getCandidateForTradingRun(tradingRunId: string): Promise<CandidateInspectReadModel | undefined>;
   getTradingRun(tradingRunId: string): Promise<TradingRunRecord | undefined>;
+  createPaperTradingRun(input: {
+    idempotency_key: string;
+    candidate_id: string;
+    candidate_version_id: string;
+    evidence_purpose: PaperTradingEvidencePurpose;
+    created_at?: string;
+  }): Promise<TradingRunRecord>;
+  listTradingRunsForCandidateVersion(candidateVersionId: string): Promise<TradingRunRecord[]>;
   listCandidates(): Promise<CandidateSummaryReadModel[]>;
   materializeCandidate(input: CandidateMaterializationInput): Promise<CandidateMaterializationOutcome>;
   recordCandidateMaterializationFailure(input: CandidateMaterializationFailureInput): Promise<CandidateMaterializationOutcome>;

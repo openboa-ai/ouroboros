@@ -39,7 +39,7 @@
 - Produces: `OuroborosStorePort.createPaperTradingRun(input): Promise<TradingRunRecord>`.
 - Produces: `OuroborosStorePort.listTradingRunsForCandidateVersion(candidateVersionId)`.
 
-- [ ] **Step 1: Write failing port and record-shape tests**
+- [x] **Step 1: Write failing port and record-shape tests**
 
 Add a LocalStore test that materializes one candidate, captures its default run ID, and requests two
 additional qualification runs with different idempotency keys:
@@ -75,13 +75,13 @@ expect((await store.listTradingRunsForCandidateVersion(
 ].sort());
 ```
 
-- [ ] **Step 2: Run the narrow test and confirm RED**
+- [x] **Step 2: Run the narrow test and confirm RED**
 
 Run: `npx vitest run packages/local-store/test/local-store.test.ts -t "creates isolated paper TradingRuns"`
 
 Expected: FAIL because the port methods and purpose field do not exist.
 
-- [ ] **Step 3: Add the domain field and exact store signatures**
+- [x] **Step 3: Add the domain field and exact store signatures**
 
 Add to `TradingRunRecord`:
 
@@ -105,14 +105,14 @@ listTradingRunsForCandidateVersion(candidateVersionId: string): Promise<TradingR
 Keep the field optional only for existing/default records. Every record returned by
 `createPaperTradingRun` sets it explicitly.
 
-- [ ] **Step 4: Run the domain typecheck and retain the LocalStore RED evidence**
+- [x] **Step 4: Run the domain typecheck and retain the LocalStore RED evidence**
 
 Run: `npm run typecheck -w @ouroboros/domain`
 
 Expected: domain types compile; the behavior test and LocalStore interface implementation remain
 RED until Task 2 implements the new methods. Do not commit this intentionally incomplete boundary.
 
-- [ ] **Step 5: Continue directly into Task 2**
+- [x] **Step 5: Continue directly into Task 2**
 
 Keep the contract and its failing behavior test in the working tree. The first commit is made only
 after Task 2 provides a passing LocalStore implementation and application/store typechecks.
@@ -130,7 +130,7 @@ after Task 2 provides a passing LocalStore implementation and application/store 
 - Produces: deterministic additional TradingRun/supporting-record bundles.
 - Produces: run-specific `getCandidateForTradingRun` projection without default projection mutation.
 
-- [ ] **Step 1: Extend the failing test with idempotency and support-boundary assertions**
+- [x] **Step 1: Extend the failing test with idempotency and support-boundary assertions**
 
 ```ts
 const repeated = await store.createPaperTradingRun({
@@ -155,7 +155,7 @@ expect((await store.getCandidate(candidate.candidate_id))?.runtime.ref.id).toBe(
 Also assert unknown candidate, cross-candidate version, empty idempotency key, and any non-paper
 authority fail with stable LocalStore error codes.
 
-- [ ] **Step 2: Implement deterministic bundle creation**
+- [x] **Step 2: Implement deterministic bundle creation**
 
 Use one digest suffix over
 `candidate_id:candidate_version_id:evidence_purpose:idempotency_key`. Persist:
@@ -183,7 +183,7 @@ Persist a `fixture_local_placeholder` SandboxPlacement, `fixture_no_tools` Hands
 read-only RuntimeMemorySurface under those exact refs. Exact replay is idempotent; conflicting
 content for deterministic IDs fails `paper_trading_run_conflict`.
 
-- [ ] **Step 3: Resolve candidates through TradingRun refs**
+- [x] **Step 3: Resolve candidates through TradingRun refs**
 
 Replace reverse matching on `CandidateVersion.runtime_ref` with:
 
@@ -202,7 +202,7 @@ return this.projectCandidateForTradingRun(candidate, version, run);
 `projectCandidateForTradingRun` overlays only `runtime` and `trading_run` with the requested run,
 placement, sandbox, and lifecycle. It does not write the candidate read model.
 
-- [ ] **Step 4: Replace default-run equality with explicit run ownership**
+- [x] **Step 4: Replace default-run equality with explicit run ownership**
 
 Commitment, evaluation, observation, and run-control validation load the referenced TradingRun and
 require:
@@ -218,7 +218,7 @@ run.authority_status === "not_live"
 Keep `CandidateVersion.runtime_ref` equality only for default-run compatibility paths. Do not use it
 to reject an explicitly owned additional run.
 
-- [ ] **Step 5: Run store tests and typechecks**
+- [x] **Step 5: Run store tests and typechecks**
 
 Run: `npx vitest run packages/local-store/test/local-store.test.ts`
 
@@ -226,7 +226,7 @@ Run: `npm run typecheck -w @ouroboros/local-store -w @ouroboros/application`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the green contract, persistence, and resolution boundary**
+- [x] **Step 6: Commit the green contract, persistence, and resolution boundary**
 
 ```bash
 git add packages/domain/src/index.ts packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts

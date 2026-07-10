@@ -129,6 +129,7 @@ import type {
   PrivateReadinessPreflightSurfaceRecord,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
+  PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
@@ -206,6 +207,8 @@ export type LocalStoreErrorCode =
   | "invalid_system_code_input"
   | "runtime_not_found"
   | "runtime_mismatch"
+  | "invalid_paper_trading_run_input"
+  | "paper_trading_run_conflict"
   | "system_code_not_found"
   | "sandbox_not_found"
   | "ledger_reload_failed"
@@ -948,7 +951,186 @@ export class LocalStore {
     return this.readOptionalRecord<TradingRunRecord>("trading-runs", tradingRunId);
   }
 
+  async createPaperTradingRun(input: {
+    idempotency_key: string;
+    candidate_id: string;
+    candidate_version_id: string;
+    evidence_purpose: PaperTradingEvidencePurpose;
+    created_at?: string;
+  }): Promise<TradingRunRecord> {
+    if (
+      !nonEmpty(input.idempotency_key) ||
+      !nonEmpty(input.candidate_id) ||
+      !nonEmpty(input.candidate_version_id) ||
+      (input.evidence_purpose !== "research_feedback" && input.evidence_purpose !== "qualification")
+    ) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_run_input",
+        "paper TradingRun input is invalid"
+      );
+    }
+    const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
+      "candidates",
+      input.candidate_id
+    );
+    if (!candidate) {
+      throw new LocalStoreError("candidate_not_found", "paper TradingRun candidate was not found", {
+        candidate_id: input.candidate_id
+      });
+    }
+    const version = await this.readOptionalRecord<CandidateVersionRecord>(
+      "candidate-versions",
+      input.candidate_version_id
+    );
+    if (!version) {
+      throw new LocalStoreError(
+        "candidate_version_not_found",
+        "paper TradingRun candidate version was not found",
+        { candidate_version_id: input.candidate_version_id }
+      );
+    }
+    if (version.candidate_id !== candidate.candidate_id) {
+      throw new LocalStoreError(
+        "candidate_version_mismatch",
+        "paper TradingRun candidate version belongs to another candidate",
+        {
+          candidate_id: candidate.candidate_id,
+          candidate_version_id: version.candidate_version_id
+        }
+      );
+    }
+    const systemCodeRef = version.system_code_ref ?? candidate.active_system_code_ref;
+    const systemCode = systemCodeRef
+      ? await this.getSystemCode(systemCodeRef.id)
+      : undefined;
+    if (!systemCodeRef || !systemCode) {
+      throw new LocalStoreError("system_code_not_found", "paper TradingRun SystemCode was not found", {
+        candidate_version_id: version.candidate_version_id
+      });
+    }
+
+    const suffix = stableSuffix([
+      candidate.candidate_id,
+      version.candidate_version_id,
+      input.evidence_purpose,
+      input.idempotency_key
+    ].join(":"));
+    const runId = `trading-run-paper-session-${suffix}`;
+    const placementId = `sandbox-placement-paper-session-${suffix}`;
+    const handsEnvironmentId = `hands-environment-paper-session-${suffix}`;
+    const memorySurfaceId = `runtime-memory-surface-paper-session-${suffix}`;
+    const existingRun = await this.getTradingRun(runId);
+    const createdAt = existingRun?.created_at ?? input.created_at ?? new Date().toISOString();
+    const run: TradingRunRecord = {
+      record_kind: "trading_run",
+      version: 1,
+      trading_run_id: runId,
+      stage_binding_profile: "paper",
+      runtime_lifecycle_status: "registered",
+      paper_evidence_purpose: input.evidence_purpose,
+      candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
+      candidate_version_ref: ref("candidate_version", version.candidate_version_id),
+      placement_ref: ref("sandbox_placement", placementId),
+      hands_environment_ref: ref("hands_environment", handsEnvironmentId),
+      memory_surface_ref: ref("runtime_memory_surface", memorySurfaceId),
+      system_code_ref: { ...systemCodeRef },
+      created_at: createdAt,
+      authority_status: "not_live"
+    };
+    const placement: SandboxPlacementRecord = {
+      record_kind: "sandbox_placement",
+      version: 1,
+      sandbox_placement_id: placementId,
+      placement_kind: "fixture_local_placeholder",
+      tooling_kind: "fixture_only",
+      authority_status: "not_launched"
+    };
+    const handsEnvironment: HandsEnvironmentRecord = {
+      record_kind: "hands_environment",
+      version: 1,
+      hands_environment_id: handsEnvironmentId,
+      environment_kind: "fixture_no_tools",
+      authority_status: "not_mounted"
+    };
+    const memorySurface: RuntimeMemorySurfaceRecord = {
+      record_kind: "runtime_memory_surface",
+      version: 1,
+      runtime_memory_surface_id: memorySurfaceId,
+      trust_class: "fixture_context",
+      access_mode: "read_only",
+      surface_version: "paper-session-v1",
+      visibility: "operator_visible",
+      quarantine_status: "not_quarantined",
+      authority_status: "not_evidence"
+    };
+    const records = [
+      { collection: "sandbox-placements", id: placementId, record: placement },
+      { collection: "hands-environments", id: handsEnvironmentId, record: handsEnvironment },
+      { collection: "runtime-memory-surfaces", id: memorySurfaceId, record: memorySurface },
+      { collection: "trading-runs", id: runId, record: run }
+    ] as const;
+    for (const item of records) {
+      const existing = await this.readOptionalRecord(item.collection, item.id);
+      if (existing && !sameJson(existing, item.record)) {
+        throw new LocalStoreError(
+          "paper_trading_run_conflict",
+          "paper TradingRun deterministic record conflicts with persisted content",
+          { record_id: item.id }
+        );
+      }
+      if (!existing) {
+        await this.writeJson(this.itemPath(item.collection, item.id), item.record);
+      }
+    }
+    return run;
+  }
+
+  async listTradingRunsForCandidateVersion(
+    candidateVersionId: string
+  ): Promise<TradingRunRecord[]> {
+    const version = await this.readOptionalRecord<CandidateVersionRecord>(
+      "candidate-versions",
+      candidateVersionId
+    );
+    if (!version) {
+      return [];
+    }
+    return (await this.readCollection<TradingRunRecord>("trading-runs"))
+      .filter((run) =>
+        run.candidate_version_ref?.id === candidateVersionId ||
+        run.trading_run_id === version.runtime_ref.id
+      )
+      .sort((left, right) =>
+        (left.created_at ?? "").localeCompare(right.created_at ?? "") ||
+        left.trading_run_id.localeCompare(right.trading_run_id)
+      );
+  }
+
   async getCandidateForTradingRun(tradingRunId: string): Promise<CandidateInspectReadModel | undefined> {
+    const run = await this.getTradingRun(tradingRunId);
+    if (run?.candidate_ref && run.candidate_version_ref) {
+      const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
+        "candidates",
+        run.candidate_ref.id
+      );
+      const version = await this.readOptionalRecord<CandidateVersionRecord>(
+        "candidate-versions",
+        run.candidate_version_ref.id
+      );
+      if (
+        !candidate ||
+        !version ||
+        version.candidate_id !== candidate.candidate_id ||
+        !tradingRunOwnsCandidateVersion(run, candidate, version)
+      ) {
+        return undefined;
+      }
+      return this.buildCandidateInspectReadModel(
+        candidate.candidate_id,
+        version.candidate_version_id,
+        run.trading_run_id
+      );
+    }
     const versions = await this.readCollection<CandidateVersionRecord>("candidate-versions");
     const version = versions.find((candidateVersion) => candidateVersion.runtime_ref.id === tradingRunId);
     return version ? this.getCandidate(version.candidate_id) : undefined;
@@ -2323,14 +2505,7 @@ export class LocalStore {
         { runtime_id: runtimeId }
       );
     }
-    if (
-      runtime.trading_run_id !== candidateVersion.runtime_ref.id ||
-      (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
-      (
-        runtime.candidate_version_ref !== undefined &&
-        runtime.candidate_version_ref.id !== candidateVersion.candidate_version_id
-      )
-    ) {
+    if (!tradingRunOwnsCandidateVersion(runtime, candidate, candidateVersion)) {
       throw new LocalStoreError(
         "runtime_mismatch",
         `runtime ${runtime.trading_run_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
@@ -2541,8 +2716,9 @@ export class LocalStore {
       "candidate-versions",
       commitment.candidate_version_ref.id
     );
+    const tradingRun = await this.getTradingRun(commitment.trading_run_ref.id);
     const systemCode = await this.getSystemCode(commitment.system_code_ref.id);
-    if (!candidate || !candidateVersion || !systemCode) {
+    if (!candidate || !candidateVersion || !tradingRun || !systemCode) {
       throw new LocalStoreError(
         "paper_trading_evaluation_commitment_reference_not_found",
         "paper trading evaluation commitment references a missing record",
@@ -2557,6 +2733,7 @@ export class LocalStore {
       commitment,
       candidate,
       candidateVersion,
+      tradingRun,
       systemCode
     })) {
       throw new LocalStoreError(
@@ -2786,7 +2963,18 @@ export class LocalStore {
       "candidate-versions",
       commitment.candidate_version_ref.id
     );
-    if (!candidateVersion || candidateVersion.runtime_ref.id !== evaluation.trading_run_ref.id) {
+    const candidate = await this.readOptionalRecord<TradingSystemCandidateRecord>(
+      "candidates",
+      commitment.candidate_ref.id
+    );
+    const tradingRun = await this.getTradingRun(evaluation.trading_run_ref.id);
+    if (
+      !candidateVersion ||
+      !candidate ||
+      !tradingRun ||
+      !tradingRunOwnsCandidateVersion(tradingRun, candidate, candidateVersion) ||
+      !paperTradingRunPurposeMatches(tradingRun, candidateVersion, commitment.evidence_purpose)
+    ) {
       throw new LocalStoreError(
         "paper_trading_evaluation_identity_mismatch",
         "paper trading evaluation TradingRun does not match its candidate version",
@@ -2951,14 +3139,7 @@ export class LocalStore {
         { runtime_id: runtimeId }
       );
     }
-    if (
-      runtime.trading_run_id !== candidateVersion.runtime_ref.id ||
-      (runtime.candidate_ref !== undefined && runtime.candidate_ref.id !== candidate.candidate_id) ||
-      (
-        runtime.candidate_version_ref !== undefined &&
-        runtime.candidate_version_ref.id !== candidateVersion.candidate_version_id
-      )
-    ) {
+    if (!tradingRunOwnsCandidateVersion(runtime, candidate, candidateVersion)) {
       throw new LocalStoreError(
         "runtime_mismatch",
         `runtime ${runtime.trading_run_id} is not bound to candidate version ${candidateVersion.candidate_version_id}`,
@@ -3814,11 +3995,15 @@ export class LocalStore {
     }
   }
 
-  private async buildCandidateInspectReadModel(candidateId: string): Promise<CandidateInspectReadModel> {
+  private async buildCandidateInspectReadModel(
+    candidateId: string,
+    candidateVersionId?: string,
+    tradingRunId?: string
+  ): Promise<CandidateInspectReadModel> {
     const candidate = await this.readRecord<TradingSystemCandidateRecord>("candidates", candidateId);
     const version = await this.readRecord<CandidateVersionRecord>(
       "candidate-versions",
-      candidate.active_version_id
+      candidateVersionId ?? candidate.active_version_id
     );
     const spec = await this.readRecord<TradingSystemSpecRecord>("trading-system-specs", version.spec_ref.id);
     const program = await this.readRecord<TradingSystemProgramRecord>(
@@ -3875,7 +4060,7 @@ export class LocalStore {
     );
     const runtime = await this.readRecord<TradingRunRecord>(
       "trading-runs",
-      version.runtime_ref.id
+      tradingRunId ?? version.runtime_ref.id
     );
     const placement = await this.readRecord<SandboxPlacementRecord>(
       "sandbox-placements",
@@ -3938,7 +4123,7 @@ export class LocalStore {
         declared_outputs: programManifest.declared_outputs
       },
       trading_run: {
-        ref: version.runtime_ref,
+        ref: ref("trading_run", runtime.trading_run_id),
         stage: runtime.stage_binding_profile,
         lifecycle_status: runtime.runtime_lifecycle_status,
         authority_status: runtime.authority_status
@@ -3990,7 +4175,7 @@ export class LocalStore {
         provider_probe_attempt: placeholder(ref(providerProbe.record_kind, providerProbe.provider_probe_attempt_id), "Provider probe", providerProbe)
       },
       runtime: {
-        ref: version.runtime_ref,
+        ref: ref("trading_run", runtime.trading_run_id),
         stage_binding_profile: runtime.stage_binding_profile,
         runtime_lifecycle_status: runtime.runtime_lifecycle_status,
         authority_status: runtime.authority_status,
@@ -6748,15 +6933,18 @@ function paperTradingCommitmentReferencesMatch(input: {
   commitment: PaperTradingEvaluationCommitmentRecord;
   candidate: TradingSystemCandidateRecord;
   candidateVersion: CandidateVersionRecord;
+  tradingRun: TradingRunRecord;
   systemCode: SystemCodeRecord;
 }): boolean {
-  const { commitment, candidate, candidateVersion, systemCode } = input;
+  const { commitment, candidate, candidateVersion, tradingRun, systemCode } = input;
   return (
     candidate.candidate_id === commitment.candidate_ref.id &&
     candidate.active_version_id === commitment.candidate_version_ref.id &&
     candidateVersion.candidate_version_id === commitment.candidate_version_ref.id &&
     candidateVersion.candidate_id === commitment.candidate_ref.id &&
-    candidateVersion.runtime_ref.id === commitment.trading_run_ref.id &&
+    tradingRun.trading_run_id === commitment.trading_run_ref.id &&
+    tradingRunOwnsCandidateVersion(tradingRun, candidate, candidateVersion) &&
+    paperTradingRunPurposeMatches(tradingRun, candidateVersion, commitment.evidence_purpose) &&
     candidateVersion.system_code_ref?.id === commitment.system_code_ref.id &&
     candidate.active_system_code_ref?.id === commitment.system_code_ref.id &&
     systemCode.system_code_id === commitment.system_code_ref.id &&
@@ -6772,6 +6960,45 @@ function paperTradingCommitmentReferencesMatch(input: {
     sameRef(systemCode.secret_policy_ref, commitment.secret_policy_ref) &&
     systemCode.authority_status === "not_live"
   );
+}
+
+function tradingRunOwnsCandidateVersion(
+  tradingRun: TradingRunRecord,
+  candidate: TradingSystemCandidateRecord,
+  candidateVersion: CandidateVersionRecord
+): boolean {
+  const explicitOwnership = tradingRun.candidate_ref !== undefined ||
+    tradingRun.candidate_version_ref !== undefined;
+  if (!explicitOwnership) {
+    return tradingRun.trading_run_id === candidateVersion.runtime_ref.id;
+  }
+  const systemCodeRef = candidateVersion.system_code_ref ?? candidate.active_system_code_ref;
+  const systemCodeMatches = tradingRun.trading_run_id === candidateVersion.runtime_ref.id
+    ? tradingRun.system_code_ref === undefined || sameRef(tradingRun.system_code_ref, systemCodeRef)
+    : sameRef(tradingRun.system_code_ref, systemCodeRef);
+  return sameRef(
+    tradingRun.candidate_ref,
+    ref("trading_system_candidate", candidate.candidate_id)
+  ) &&
+    sameRef(
+      tradingRun.candidate_version_ref,
+      ref("candidate_version", candidateVersion.candidate_version_id)
+    ) &&
+    systemCodeMatches &&
+    tradingRun.stage_binding_profile === "paper" &&
+    tradingRun.authority_status === "not_live";
+}
+
+function paperTradingRunPurposeMatches(
+  tradingRun: TradingRunRecord,
+  candidateVersion: CandidateVersionRecord,
+  evidencePurpose: PaperTradingEvidencePurpose
+): boolean {
+  if (tradingRun.paper_evidence_purpose) {
+    return tradingRun.paper_evidence_purpose === evidencePurpose;
+  }
+  return tradingRun.trading_run_id === candidateVersion.runtime_ref.id &&
+    evidencePurpose === "research_feedback";
 }
 
 function paperTradingEvaluationReferencesMatch(

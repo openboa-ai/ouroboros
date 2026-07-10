@@ -1850,6 +1850,22 @@ async function seedPaperTradingEvidence(
     net_return_pct: 0.1234
   };
   const observationCount = options.observationCount ?? 7;
+  const evidencePurpose = options.evidencePurpose ?? "research_feedback";
+  let paperCandidate = candidate;
+  if (evidencePurpose === "qualification") {
+    const paperRun = await store.createPaperTradingRun({
+      idempotency_key: `arena-paper-context:${evaluationId}:qualification`,
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification",
+      created_at: startedAt
+    });
+    const projected = await store.getCandidateForTradingRun(paperRun.trading_run_id);
+    if (!projected) {
+      throw new Error(`missing qualification TradingRun projection for ${evaluationId}`);
+    }
+    paperCandidate = projected;
+  }
   const systemCodeId = candidate.system_code?.ref?.id;
   const systemCode = systemCodeId ? await store.getSystemCode(systemCodeId) : undefined;
   if (!systemCode) {
@@ -1858,8 +1874,8 @@ async function seedPaperTradingEvidence(
   const initialState = initialPaperTradingEngineState();
   const commitment = createPaperTradingEvaluationCommitment({
     commitmentId: `paper-context-commitment-${evaluationId}`,
-    evidencePurpose: options.evidencePurpose ?? "research_feedback",
-    candidate,
+    evidencePurpose,
+    candidate: paperCandidate,
     systemCode,
     resolvedArtifactDigest: systemCode.artifact_digest,
     marketData: fakeGatewayMarketDataPort(),
