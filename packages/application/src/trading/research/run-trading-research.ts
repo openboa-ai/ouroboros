@@ -8,7 +8,10 @@ import {
   readTradingSystemManifest,
   type TradingArtifactRunner
 } from "./artifact-runner";
-import { runTradingReplaySet } from "./replay-set-runner";
+import {
+  runTradingReplaySet,
+  toResearchPreflightFeedback
+} from "./replay-set-runner";
 import type { ReplayTradingApiProviderFactory } from "./replay-set-runner";
 import {
   createTradingResearchAgentAdapter,
@@ -149,7 +152,7 @@ export async function runTradingResearchLoop(
     const crashed = replaySet.scenario_results.some((result) => result.run_status === "crashed");
     const decision = crashed
       ? "crash"
-      : evaluation.score > bestScore
+      : evaluation.status === "accepted" && evaluation.score > bestScore
         ? "keep"
         : "discard";
     if (decision === "keep") {
@@ -194,7 +197,15 @@ export async function runTradingResearchLoop(
 
 async function writeNotebook(pathname: string, notebook: TradingResearchNotebook): Promise<void> {
   await mkdir(path.dirname(pathname), { recursive: true });
-  await writeFile(pathname, `${JSON.stringify(notebook, null, 2)}\n`, "utf8");
+  const researchWorkerNotebook: TradingResearchNotebook = {
+    ...notebook,
+    agent: { ...notebook.agent },
+    entries: notebook.entries.map((entry) => ({
+      ...entry,
+      evaluation: toResearchPreflightFeedback(entry.evaluation)
+    }))
+  };
+  await writeFile(pathname, `${JSON.stringify(researchWorkerNotebook, null, 2)}\n`, "utf8");
 }
 
 function timestampId(date: Date): string {

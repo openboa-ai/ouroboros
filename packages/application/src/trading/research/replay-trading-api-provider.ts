@@ -1,11 +1,13 @@
 import http from "node:http";
 import type {
-  AccountState,
   MarketSnapshot,
   OrderRequest,
   OrderValidationResult,
   ReplayTradingApiProviderSession,
+  ReplayTradingCandidateInput,
   ReplayTradingScenario,
+  TradingApiAccountState,
+  TradingApiMarketSnapshot,
   TradingProviderRequestLog
 } from "./types";
 
@@ -73,9 +75,10 @@ export interface ReplayTradingApiProviderOptions {
 }
 
 export async function startReplayTradingApiProvider(
-  scenario: ReplayTradingScenario = defaultReplayTradingScenario,
+  input: ReplayTradingCandidateInput = toReplayTradingCandidateInput(defaultReplayTradingScenario),
   options: ReplayTradingApiProviderOptions = {}
 ): Promise<ReplayTradingApiProviderSession> {
+  const candidateInput = toReplayTradingCandidateInput(input);
   const requestLog: TradingProviderRequestLog[] = [];
   const server = http.createServer(async (request, response) => {
     const path = request.url ?? "/";
@@ -93,19 +96,19 @@ export async function startReplayTradingApiProvider(
     }
 
     if (method === "GET" && path === "/market/snapshot") {
-      sendJson(response, 200, scenario.market);
+      sendJson(response, 200, candidateInput.market);
       requestLog.push(logRequest(method, path, body, 200));
       return;
     }
 
     if (method === "GET" && path === "/account/state") {
-      sendJson(response, 200, scenario.account);
+      sendJson(response, 200, candidateInput.account);
       requestLog.push(logRequest(method, path, body, 200));
       return;
     }
 
     if (method === "POST" && path === "/orders/validate") {
-      const validation = validateOrderRequest(body, scenario.market, scenario.account);
+      const validation = validateOrderRequest(body, candidateInput.market, candidateInput.account);
       sendJson(response, 200, validation);
       requestLog.push(logRequest(method, path, body, 200));
       return;
@@ -129,17 +132,53 @@ export async function startReplayTradingApiProvider(
       : undefined,
     close: () => close(server),
     requests: () => [...requestLog],
-    scenario
+    candidate_input: candidateInput
+  };
+}
+
+export function toReplayTradingCandidateInput(
+  input: Pick<ReplayTradingScenario, "market" | "account"> | ReplayTradingCandidateInput
+): ReplayTradingCandidateInput {
+  return {
+    market: toTradingApiMarketSnapshot(input.market),
+    account: toTradingApiAccountState(input.account)
+  };
+}
+
+export function toTradingApiAccountState(account: TradingApiAccountState): TradingApiAccountState {
+  return {
+    equity: account.equity,
+    max_position_notional: account.max_position_notional,
+    max_risk_fraction: account.max_risk_fraction
+  };
+}
+
+export function toTradingApiMarketSnapshot(market: TradingApiMarketSnapshot): TradingApiMarketSnapshot {
+  return {
+    symbol: market.symbol,
+    price: market.price,
+    moving_average_fast: market.moving_average_fast,
+    moving_average_slow: market.moving_average_slow,
+    volatility: market.volatility,
+    observed_at: market.observed_at,
+    ...(market.source_kind === undefined ? {} : { source_kind: market.source_kind }),
+    ...(market.source_priority === undefined ? {} : { source_priority: market.source_priority }),
+    ...(market.freshness === undefined ? {} : { freshness: market.freshness }),
+    ...(market.ws_connected === undefined ? {} : { ws_connected: market.ws_connected }),
+    ...(market.rest_fallback_used === undefined ? {} : { rest_fallback_used: market.rest_fallback_used }),
+    ...(market.gap_detected === undefined ? {} : { gap_detected: market.gap_detected }),
+    ...(market.last_update_id === undefined ? {} : { last_update_id: market.last_update_id }),
+    ...(market.stream_marker === undefined ? {} : { stream_marker: market.stream_marker })
   };
 }
 
 export function validateOrderRequest(
   body: unknown,
-  market: MarketSnapshot,
-  account: AccountState
+  market: TradingApiMarketSnapshot,
+  account: TradingApiAccountState
 ): OrderValidationResult {
   const intent = isOrderRequest(body) ? body : undefined;
-  if (!intent) {
+  if (!intent || intent.symbol !== market.symbol) {
     return {
       accepted: false,
       reason: "malformed_order_request",
@@ -147,7 +186,22 @@ export function validateOrderRequest(
       risk_fraction: 0
     };
   }
-  if (intent.side === "hold" || intent.order_type === "none") {
+  const isHoldIntent = intent.side === "hold" &&
+    intent.order_type === "none" &&
+    Object.is(intent.quantity, 0);
+  const isDirectionalIntent = (intent.side === "buy" || intent.side === "sell") &&
+    (intent.order_type === "market" || intent.order_type === "limit") &&
+    Number.isFinite(intent.quantity) &&
+    intent.quantity > 0;
+  if (!isHoldIntent && !isDirectionalIntent) {
+    return {
+      accepted: false,
+      reason: "malformed_order_request",
+      notional: 0,
+      risk_fraction: 0
+    };
+  }
+  if (isHoldIntent) {
     return {
       accepted: true,
       reason: "hold_intent",
@@ -173,6 +227,10 @@ export function validateOrderRequest(
 
 function isOrderRequest(value: unknown): value is OrderRequest {
   if (!value || typeof value !== "object") {
+    return false;
+  }
+  const allowedFields = new Set(["symbol", "side", "quantity", "order_type", "reason"]);
+  if (Object.keys(value).some((key) => !allowedFields.has(key))) {
     return false;
   }
   const candidate = value as Partial<OrderRequest>;

@@ -5,10 +5,13 @@ import path from "node:path";
 import { renderToString } from "ink";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TradingArtifactRunner } from "@ouroboros/application/trading/research/artifact-runner";
-import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import {
+  toReplayTradingCandidateInput,
+  validateOrderRequest
+} from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
   ReplayTradingApiProviderSession,
-  ReplayTradingScenario,
+  ReplayTradingCandidateInput,
   TradingProviderRequestLog,
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
@@ -1794,9 +1797,9 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
     async run(input) {
       await mkdir(input.output_dir, { recursive: true });
       const eventsPath = path.join(input.output_dir, "events.jsonl");
-      const market = input.provider.scenario.market;
-      const account = input.provider.scenario.account;
-      const orderRequest = market.expected_direction === "flat"
+      const market = input.provider.candidate_input.market;
+      const account = input.provider.candidate_input.account;
+      const orderRequest = market.moving_average_fast === market.moving_average_slow
         ? {
             symbol: market.symbol,
             side: "hold" as const,
@@ -1806,8 +1809,8 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
           }
         : {
             symbol: market.symbol,
-            side: market.expected_direction === "short" ? "sell" as const : "buy" as const,
-            quantity: Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+            side: market.moving_average_fast < market.moving_average_slow ? "sell" as const : "buy" as const,
+            quantity: Number((account.equity * Math.min(0.02, account.max_risk_fraction) / market.price).toFixed(8)),
             order_type: "market" as const,
             reason: "networkless smoke runner preserves TradingApiProvider boundary events"
           };
@@ -1833,7 +1836,7 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         stdout: events.map((event) => JSON.stringify(event)).join("\n"),
         stderr: "",
         events,
-        provider_requests: providerBoundaryRequests()
+        provider_requests: providerBoundaryRequests(orderRequest)
       };
     }
   };
@@ -1962,14 +1965,13 @@ append_line(json.dumps({
 }
 
 async function networklessReplayTradingApiProvider(
-  scenario: ReplayTradingScenario
+  candidateInput: ReplayTradingCandidateInput
 ): Promise<ReplayTradingApiProviderSession> {
-  const requests: TradingProviderRequestLog[] = [];
   return {
-    base_url: `http://replay-provider.test/${scenario.id}`,
+    base_url: "http://replay-provider.test",
     close: async () => undefined,
-    requests: () => [...requests],
-    scenario
+    requests: () => [],
+    candidate_input: candidateInput
   };
 }
 
@@ -1993,18 +1995,10 @@ async function networklessPaperTradingApiProvider(
     sandbox_base_url: "http://paper-runtime.test",
     close: async () => undefined,
     requests: () => [],
-    scenario: {
-      id: "networkless-paper-runtime",
-      description: "Networkless paper runtime provider used by operator product-loop smoke.",
+    candidate_input: toReplayTradingCandidateInput({
       market,
-      account,
-      outcome: {
-        exit_price: market.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
+      account
+    })
   };
 }
 
@@ -2032,19 +2026,20 @@ function delayedPaperTradingApiProviderFactory(): {
   };
 }
 
-function providerBoundaryRequests(): TradingProviderRequestLog[] {
+function providerBoundaryRequests(orderRequest?: unknown): TradingProviderRequestLog[] {
   return [
     providerRequest("GET", "/market/snapshot"),
     providerRequest("GET", "/account/state"),
-    providerRequest("POST", "/orders/validate")
+    providerRequest("POST", "/orders/validate", orderRequest)
   ];
 }
 
-function providerRequest(method: string, requestPath: string): TradingProviderRequestLog {
+function providerRequest(method: string, requestPath: string, body?: unknown): TradingProviderRequestLog {
   return {
     at: "2026-05-16T00:00:00.000Z",
     method,
     path: requestPath,
+    ...(body === undefined ? {} : { body }),
     response_status: 200
   };
 }

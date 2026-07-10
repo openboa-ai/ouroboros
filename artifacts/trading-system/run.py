@@ -46,16 +46,7 @@ def append_event(events_path, event):
 
 
 def build_order_request(market, account):
-    expected_direction = market.get("expected_direction")
-    if expected_direction == "flat":
-        return {
-            "symbol": market["symbol"],
-            "side": "hold",
-            "quantity": 0,
-            "order_type": "none",
-            "reason": "fast average is not above slow average",
-        }
-    if expected_direction == "short":
+    if market["moving_average_fast"] < market["moving_average_slow"]:
         notional = account["equity"] * RISK_FRACTION
         quantity = round(notional / market["price"], 8)
         return {
@@ -63,7 +54,7 @@ def build_order_request(market, account):
             "side": "sell",
             "quantity": quantity,
             "order_type": "market",
-            "reason": "public market context indicates a short regime with bounded account risk",
+            "reason": "fast average is below slow average with bounded account risk",
         }
     if market["moving_average_fast"] <= market["moving_average_slow"]:
         return {

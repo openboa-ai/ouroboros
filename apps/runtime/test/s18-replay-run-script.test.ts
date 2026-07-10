@@ -294,7 +294,9 @@ const market = await getJson("/market/snapshot");
 await event({ event: "market_snapshot", ...market });
 const account = await getJson("/account/state");
 await event({ event: "account_state", ...account });
-const intent = market.expected_direction === "flat"
+const flatSignal = market.moving_average_fast === market.moving_average_slow;
+const shortSignal = market.moving_average_fast < market.moving_average_slow;
+const intent = flatSignal
   ? {
       symbol: market.symbol,
       side: "hold",
@@ -304,8 +306,8 @@ const intent = market.expected_direction === "flat"
     }
   : {
       symbol: market.symbol,
-      side: "buy",
-      quantity: Number(((account.equity * account.target_risk_fraction) / market.price).toFixed(8)),
+      side: shortSignal ? "sell" : "buy",
+      quantity: Number(((account.equity * Math.min(0.02, account.max_risk_fraction)) / market.price).toFixed(8)),
       order_type: "market",
       reason: "long replay regime with bounded account risk"
     };

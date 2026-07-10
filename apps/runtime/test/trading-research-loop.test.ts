@@ -1,4 +1,4 @@
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import {
   DockerSandboxesSbxTradingArtifactRunner,
   HostTradingArtifactRunner,
   readTradingSystemManifest,
+  type TradingArtifactRunner
 } from "@ouroboros/application/trading/research/artifact-runner";
 import { evaluateTradingRun } from "@ouroboros/application/trading/research/evaluator";
 import type {
@@ -19,8 +20,12 @@ import type {
 } from "@ouroboros/application/trading/research/types";
 import {
   defaultReplayTradingScenarioSet,
-  startReplayTradingApiProvider
+  startReplayTradingApiProvider,
+  toReplayTradingCandidateInput
 } from "@ouroboros/application/trading/research/replay-trading-api-provider";
+import {
+  runTradingReplaySet,
+} from "@ouroboros/application/trading/research/replay-set-runner";
 import {
   readNotebook,
   runTradingResearchLoop
@@ -59,6 +64,10 @@ describe("Trading research research loop MVP", () => {
     expect(result.entries.map((entry) => entry.decision)).toEqual(["keep", "discard"]);
     expect(result.best_score).toBe(1);
     expect(result.best_artifact_dir).toContain("kept-artifact");
+    expect(result.entries[0].evaluation.scenario_results?.map((scenario) => scenario.scenario_id)).toEqual([
+      "trend_long",
+      "range_flat"
+    ]);
 
     const notebook = await readNotebook(result.notebook_path);
     expect(notebook.entries).toHaveLength(2);
@@ -74,14 +83,7 @@ describe("Trading research research loop MVP", () => {
       }
     });
     expect(notebook.entries[0].events_path).toContain("replay-set.json");
-    expect(notebook.entries[0].evaluation.scenario_results?.map((result) => result.scenario_id)).toEqual([
-      "trend_long",
-      "range_flat"
-    ]);
-    expect(notebook.entries[0].evaluation.scenario_results?.map((result) => result.runner_kind)).toEqual([
-      "host_process",
-      "host_process"
-    ]);
+    expect(notebook.entries[0].evaluation.scenario_results).toBeUndefined();
     expect(notebook.entries[1]).toMatchObject({
       iteration: 2,
       decision: "discard",
@@ -91,22 +93,20 @@ describe("Trading research research loop MVP", () => {
         risk_decision: "invalid_order_request"
       }
     });
-    expect(notebook.entries[1].evaluation.scenario_results).toEqual([
-      expect.objectContaining({
-        scenario_id: "trend_long",
-        status: "disqualified"
-      }),
-      expect.objectContaining({
-        scenario_id: "range_flat",
-        status: "accepted"
-      })
-    ]);
+    expect(notebook.entries[1].evaluation.scenario_results).toBeUndefined();
     const notebookSurface = JSON.stringify(notebook);
     expect(notebookSurface).toContain("provider_boundary");
     expect(notebookSurface).toContain("replay_set_average");
+    expect(notebookSurface).not.toMatch(/scenario_results|scenario_id|trend_long|range_flat|runner_command_evidence/i);
     expect(notebookSurface).not.toMatch(
       /proposal|materialization_attempt|lineage|orchestration_run|provider_result|trace_refs|sealed-replay|\bvenue\b/i
     );
+    const replayFeedback = await readFile(notebook.entries[0].events_path, "utf8");
+    expect(replayFeedback).toContain("replay_set_average");
+    expect(replayFeedback).not.toMatch(
+      /scenario_results|scenario_id|trend_long|range_flat|expected_direction|exit_price|runner_command_evidence/i
+    );
+    await expect(readdir(path.dirname(notebook.entries[0].events_path))).resolves.toEqual(["replay-set.json"]);
   });
 
   it("proves the artifact uses the external TradingApiProvider boundary", async () => {
@@ -135,7 +135,7 @@ describe("Trading research research loop MVP", () => {
       "order_validation",
       "run_complete"
     ]);
-    expect(evaluateTradingRun(run)).toMatchObject({
+    expect(evaluateTradingRun(run, defaultReplayTradingScenarioSet[0])).toMatchObject({
       status: "accepted",
       score: 1,
       risk_decision: "valid_order_request"
@@ -167,7 +167,7 @@ describe("Trading research research loop MVP", () => {
         })
       ])
     );
-    expect(evaluateTradingRun(run)).toMatchObject({
+    expect(evaluateTradingRun(run, flatScenario)).toMatchObject({
       status: "accepted",
       score: 1,
       profit_loss: {
@@ -216,7 +216,7 @@ describe("Trading research research loop MVP", () => {
       stderr: "",
       exit_code: 0,
       events: [
-        { event: "market_snapshot", ...scenario.market },
+        { event: "market_snapshot", ...toReplayTradingCandidateInput(scenario).market },
         { event: "account_state", ...scenario.account },
         {
           event: "order_request",
@@ -237,12 +237,25 @@ describe("Trading research research loop MVP", () => {
       provider_requests: [
         { at: "2026-05-12T01:00:01.000Z", method: "GET", path: "/market/snapshot", response_status: 200 },
         { at: "2026-05-12T01:00:02.000Z", method: "GET", path: "/account/state", response_status: 200 },
-        { at: "2026-05-12T01:00:03.000Z", method: "POST", path: "/orders/validate", response_status: 200 }
+        {
+          at: "2026-05-12T01:00:03.000Z",
+          method: "POST",
+          path: "/orders/validate",
+          body: {
+            symbol: "BTCUSDT",
+            side: "buy",
+            quantity: 1,
+            order_type: "market",
+            reason: "costed long setup"
+          },
+          response_status: 200
+        }
       ]
     };
 
     expect(evaluateTradingRun(run, scenario)).toMatchObject({
       status: "accepted",
+      score: 1,
       risk_decision: "valid_order_request",
       profit_loss: {
         revenue_usdt: 10,
@@ -289,7 +302,8 @@ describe("Trading research research loop MVP", () => {
       scenario,
       side: "sell",
       accepted: false,
-      validationReason: "malformed_order_request"
+      validationReason: "malformed_order_request",
+      providerBody: { malformed: true }
     });
 
     expect(evaluateTradingRun(acceptedShort, scenario)).toMatchObject({
@@ -314,23 +328,297 @@ describe("Trading research research loop MVP", () => {
     });
   });
 
-  it("exposes a sandbox provider URL without changing the host provider URL", async () => {
-    const provider = await startReplayTradingApiProvider(defaultReplayTradingScenarioSet[0], {
+  it("uses external request evidence instead of candidate-authored validation", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const forgedValidation = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "candidate_claimed_risk_limits_passed",
+      quantity: 100
+    });
+
+    expect(evaluateTradingRun(forgedValidation, scenario)).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      risk_decision: "invalid_order_request",
+      disqualification_reason: "risk_validation_failed",
+      profit_loss: {
+        net_revenue_usdt: 0
+      }
+    });
+  });
+
+  it("rejects semantically incoherent hold and directional order combinations", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const malformedRuns = [
+      replayRunForOrder({
+        scenario,
+        side: "buy",
+        quantity: -0.001,
+        accepted: true,
+        validationReason: "candidate_claimed_negative_quantity_valid"
+      }),
+      replayRunForOrder({
+        scenario,
+        side: "buy",
+        quantity: 0,
+        orderType: "none",
+        accepted: true,
+        validationReason: "candidate_claimed_directional_none_valid"
+      }),
+      replayRunForOrder({
+        scenario,
+        side: "hold",
+        quantity: 0,
+        orderType: "market",
+        accepted: true,
+        validationReason: "candidate_claimed_hold_market_valid"
+      })
+    ];
+
+    for (const run of malformedRuns) {
+      expect(evaluateTradingRun(run, scenario)).toMatchObject({
+        status: "disqualified",
+        score: 0,
+        disqualification_reason: "risk_validation_failed"
+      });
+    }
+  });
+
+  it("rejects a candidate order event that differs from the provider submission", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const mismatchedOrder = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed",
+      providerBody: {
+        symbol: "BTCUSDT",
+        side: "buy",
+        quantity: 0.01,
+        order_type: "market",
+        reason: "different submitted order"
+      }
+    });
+
+    expect(evaluateTradingRun(mismatchedOrder, scenario)).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      risk_decision: "invalid_order_request",
+      disqualification_reason: "runtime_self_report_only"
+    });
+  });
+
+  it("allows trace-only order event metadata while keeping the provider body exact", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const run = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed",
+      quantity: 0.001
+    });
+    const orderEvent = run.events.find((event) => event.event === "order_request");
+    if (!orderEvent) {
+      throw new Error("order_request test event missing");
+    }
+    orderEvent.event_id = "trace-order-001";
+    orderEvent.authority_status = "trace_only";
+
+    expect(evaluateTradingRun(run, scenario)).toMatchObject({
+      status: "accepted",
+      risk_decision: "valid_order_request"
+    });
+  });
+
+  it("disqualifies evaluator probing and hidden-field emission", () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const probingRun = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed"
+    });
+    probingRun.provider_requests.push({
+      at: "2026-05-12T01:00:04.000Z",
+      method: "GET",
+      path: "/evaluation/outcome",
+      response_status: 404
+    });
+    const lookaheadRun = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed"
+    });
+    lookaheadRun.events.push({
+      event: "candidate_diagnostic",
+      expected_direction: "long"
+    });
+    const hiddenProviderBodyRun = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed",
+      providerBody: {
+        symbol: "BTCUSDT",
+        side: "buy",
+        quantity: 1,
+        order_type: "market",
+        reason: "costed replay setup",
+        expected_direction: "long"
+      }
+    });
+    const undeclaredProviderFieldRun = replayRunForOrder({
+      scenario,
+      side: "buy",
+      accepted: true,
+      validationReason: "risk_limits_passed",
+      providerBody: {
+        symbol: "BTCUSDT",
+        side: "buy",
+        quantity: 1,
+        order_type: "market",
+        reason: "costed replay setup",
+        evaluator_probe: true
+      }
+    });
+
+    expect(evaluateTradingRun(probingRun, scenario)).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "data_leakage"
+    });
+    expect(evaluateTradingRun(lookaheadRun, scenario)).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "lookahead_leakage"
+    });
+    expect(evaluateTradingRun(hiddenProviderBodyRun, scenario)).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "lookahead_leakage"
+    });
+    expect(evaluateTradingRun(undeclaredProviderFieldRun, scenario)).toMatchObject({
+      status: "disqualified",
+      score: 0,
+      disqualification_reason: "runtime_self_report_only"
+    });
+  });
+
+  it("preserves a leakage reason when an earlier scenario has an ordinary risk rejection", async () => {
+    const replay = await runTradingReplaySet({
+      artifact_dir: path.join(tmpDir, "mixed-disqualification-artifact"),
+      manifest: {
+        id: "mixed-disqualification-artifact",
+        name: "Mixed disqualification artifact",
+        entrypoint: ["python3", "run.py"],
+        editable_paths: ["run.py"],
+        api_contract: "trading_api_provider_v1"
+      },
+      output_dir: path.join(tmpDir, "mixed-disqualification-run"),
+      artifact_runner: mixedDisqualificationArtifactRunner()
+    });
+
+    expect(replay.scenario_results.map((result) => result.disqualification_reason)).toEqual([
+      "risk_validation_failed",
+      "data_leakage"
+    ]);
+    expect(replay.evaluation).toMatchObject({
+      status: "disqualified",
+      disqualification_reason: "data_leakage"
+    });
+  });
+
+  it("never keeps a disqualified first iteration as the research best", async () => {
+    const result = await runTradingResearchLoop({
+      run_root: path.join(tmpDir, "disqualified-first-iteration"),
+      session_id: "disqualified-first-iteration",
+      iterations: 1,
+      agent_adapter: new FixtureTradingResearchAgentAdapter(),
+      artifact_runner: mixedDisqualificationArtifactRunner()
+    });
+
+    expect(result.entries[0]).toMatchObject({
+      decision: "discard",
+      evaluation: {
+        status: "disqualified",
+        disqualification_reason: "data_leakage"
+      }
+    });
+    expect(result.best_score).toBeUndefined();
+    expect(result.best_artifact_dir).toBeUndefined();
+  });
+
+  it("removes evaluator scenario files even when provider close fails", async () => {
+    const outputDir = path.join(tmpDir, "provider-close-failure");
+    await expect(runTradingReplaySet({
+      artifact_dir: path.join(tmpDir, "provider-close-failure-artifact"),
+      manifest: {
+        id: "provider-close-failure-artifact",
+        name: "Provider close failure artifact",
+        entrypoint: ["python3", "run.py"],
+        editable_paths: ["run.py"],
+        api_contract: "trading_api_provider_v1"
+      },
+      output_dir: outputDir,
+      scenarios: [defaultReplayTradingScenarioSet[0]],
+      artifact_runner: mixedDisqualificationArtifactRunner(),
+      replay_provider_factory: async (candidateInput) => ({
+        base_url: "",
+        close: async () => {
+          throw new Error("provider_close_failed");
+        },
+        requests: () => [],
+        candidate_input: candidateInput
+      })
+    })).rejects.toThrow("provider_close_failed");
+    await expect(readdir(outputDir)).resolves.toEqual([]);
+  });
+
+  it("exposes only candidate inputs through replay and paper provider sessions", async () => {
+    const scenario = defaultReplayTradingScenarioSet[0];
+    const provider = await startReplayTradingApiProvider(toReplayTradingCandidateInput(scenario), {
       listen_host: "0.0.0.0",
       sandbox_host: "host.docker.internal"
     });
+    const paperProvider = await startPaperTradingApiProvider(createGatewayRuntimeBinding({
+      marketData: fakeGatewayMarketDataPort()
+    }));
     try {
       expect(provider.base_url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
       expect(provider.sandbox_base_url).toMatch(/^http:\/\/host\.docker\.internal:\d+$/);
 
-      const response = await fetch(`${provider.base_url}/market/snapshot`);
-      expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
-        symbol: "BTCUSDT",
-        expected_direction: "long"
-      });
+      const replayResponse = await fetch(`${provider.base_url}/market/snapshot`);
+      const paperResponse = await fetch(`${paperProvider.base_url}/market/snapshot`);
+      const replayAccountResponse = await fetch(`${provider.base_url}/account/state`);
+      const paperAccountResponse = await fetch(`${paperProvider.base_url}/account/state`);
+      expect(replayResponse.status).toBe(200);
+      expect(paperResponse.status).toBe(200);
+      expect(replayAccountResponse.status).toBe(200);
+      expect(paperAccountResponse.status).toBe(200);
+      const replayMarket = await replayResponse.json() as Record<string, unknown>;
+      const paperMarket = await paperResponse.json() as Record<string, unknown>;
+      const replayAccount = await replayAccountResponse.json() as Record<string, unknown>;
+      const paperAccount = await paperAccountResponse.json() as Record<string, unknown>;
+      expect(replayMarket).toMatchObject({ symbol: "BTCUSDT" });
+      expect(paperMarket).toMatchObject({ symbol: "BTCUSDT" });
+      expect(replayMarket).not.toHaveProperty("expected_direction");
+      expect(paperMarket).not.toHaveProperty("expected_direction");
+      expect(replayAccount).not.toHaveProperty("target_risk_fraction");
+      expect(paperAccount).not.toHaveProperty("target_risk_fraction");
+
+      for (const session of [provider, paperProvider]) {
+        expect(session).toHaveProperty("candidate_input.market.symbol", "BTCUSDT");
+        expect(session).not.toHaveProperty("scenario");
+        expect(session).not.toHaveProperty("outcome");
+        expect(session).not.toHaveProperty("candidate_input.market.expected_direction");
+        expect(session).not.toHaveProperty("candidate_input.account.target_risk_fraction");
+      }
     } finally {
       await provider.close();
+      await paperProvider.close();
     }
   });
 
@@ -480,9 +768,25 @@ describe("Trading research research loop MVP", () => {
     ]);
     expect(scenarioResults.every((result) => result.sandbox_name?.startsWith("ouro-s10-test-"))).toBe(true);
 
+    const scenarioOutputRoots = ["scenario-001", "scenario-002"].map((scenarioSlot) =>
+      path.join(tmpDir, "sbx-session", "iterations", "001", "run", scenarioSlot)
+    );
+    await expect(readdir(path.join(tmpDir, "sbx-session", "iterations", "001", "run")))
+      .resolves.toEqual(["replay-set.json"]);
+
     const commands = (await readFile(commandLog, "utf8")).trim().split("\n");
+    expect(commands.join("\n")).not.toMatch(/trend_long|range_flat/i);
     expect(commands.filter((command) => command === "version")).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("create --name ouro-s10-test-"))).toHaveLength(2);
+    expect(scenarioOutputRoots.every((outputRoot) =>
+      commands.some((command) => command.startsWith("create --name ") &&
+        command.endsWith(` shell ${path.join(outputRoot, "sandbox-workspace")}`))
+    )).toBe(true);
+    expect(scenarioOutputRoots.every((outputRoot) =>
+      commands.some((command) => command.startsWith(
+        `exec -w ${path.join(outputRoot, "sandbox-workspace", "artifact")} `
+      ))
+    )).toBe(true);
     expect(commands.filter((command) => command.startsWith("exec -d -w "))).toHaveLength(0);
     expect(commands.filter((command) => command.startsWith("exec -w "))).toHaveLength(2);
     expect(commands.filter((command) => command.startsWith("stop ouro-s10-test-"))).toHaveLength(2);
@@ -490,6 +794,53 @@ describe("Trading research research loop MVP", () => {
     expect(commands.join("\n")).toContain("replay-provider-runner.py --sidecar-script");
     expect(commands.join("\n")).toContain("--provider-base-url http://127.0.0.1:");
     delete process.env.SBX_FAKE_COMMAND_LOG;
+  });
+
+  it("mounts only candidate input in an opaque sbx workspace before evaluator cleanup", async () => {
+    const fakeSbx = path.join(tmpDir, "sbx-direct");
+    const commandLog = path.join(tmpDir, "sbx-direct-commands.log");
+    const artifactDir = path.join(tmpDir, "sbx-direct-artifact");
+    const outputDir = path.join(tmpDir, "sbx-direct-run", "scenario-001");
+    const sandboxWorkspace = path.join(outputDir, "sandbox-workspace");
+    await writeFile(fakeSbx, fakeSbxTradingScript(), "utf8");
+    await chmod(fakeSbx, 0o755);
+    await cp(path.resolve("artifacts/trading-system"), artifactDir, { recursive: true });
+    await mkdir(outputDir, { recursive: true });
+    await writeFile(path.join(outputDir, "evaluator-owned-sentinel"), "preserve\n", "utf8");
+    process.env.SBX_FAKE_COMMAND_LOG = commandLog;
+    const provider = await startReplayTradingApiProvider(
+      toReplayTradingCandidateInput(defaultReplayTradingScenarioSet[0])
+    );
+    try {
+      const runner = new DockerSandboxesSbxTradingArtifactRunner({
+        sbxPath: fakeSbx,
+        workspacePath: tmpDir,
+        sandboxNamePrefix: "ouro-s10-direct"
+      });
+      const run = await runner.run({
+        artifact_dir: artifactDir,
+        manifest: await readTradingSystemManifest(artifactDir),
+        provider,
+        output_dir: outputDir
+      });
+      expect(run.status).toBe("completed");
+      const sidecarInput = JSON.parse(
+        await readFile(path.join(sandboxWorkspace, "replay-provider-scenario.json"), "utf8")
+      ) as Record<string, unknown>;
+      expect(Object.keys(sidecarInput).sort()).toEqual(["account", "market"]);
+      expect(JSON.stringify(sidecarInput)).not.toMatch(
+        /expected_direction|target_risk_fraction|outcome|exit_price|fee_bps|slippage_bps|funding_bps|trend_long|range_flat/i
+      );
+      await expect(readFile(path.join(outputDir, "evaluator-owned-sentinel"), "utf8"))
+        .resolves.toBe("preserve\n");
+      const commands = await readFile(commandLog, "utf8");
+      expect(commands).toContain(`shell ${sandboxWorkspace}`);
+      expect(commands).toContain(`exec -w ${path.join(sandboxWorkspace, "artifact")}`);
+      expect(commands).not.toMatch(/trend_long|range_flat/i);
+    } finally {
+      await provider.close();
+      delete process.env.SBX_FAKE_COMMAND_LOG;
+    }
   });
 
   it("records sbx create failure command evidence in replay scenario results", async () => {
@@ -532,7 +883,22 @@ describe("Trading research research loop MVP", () => {
           stdout_preview: expect.stringContaining("Client Version:")
         }),
         expect.objectContaining({
-          command: [fakeSbx, "create", "--name", scenarioResult?.sandbox_name, "shell", tmpDir],
+          command: [
+            fakeSbx,
+            "create",
+            "--name",
+            scenarioResult?.sandbox_name,
+            "shell",
+            path.join(
+              tmpDir,
+              "sbx-create-failed-session",
+              "iterations",
+              "001",
+              "run",
+              "scenario-001",
+              "sandbox-workspace"
+            )
+          ],
           exit_code: 42,
           stderr_preview: "create failed: run-control unavailable\n"
         })
@@ -685,10 +1051,20 @@ describe("Trading research research loop MVP", () => {
 
 function replayRunForOrder(input: {
   scenario: ReplayTradingScenario;
-  side: "buy" | "sell";
+  side: "buy" | "sell" | "hold";
   accepted: boolean;
   validationReason: string;
+  quantity?: number;
+  orderType?: "market" | "limit" | "none";
+  providerBody?: unknown;
 }): ArtifactRunResult {
+  const order = {
+    symbol: "BTCUSDT",
+    side: input.side,
+    quantity: input.quantity ?? 1,
+    order_type: input.orderType ?? "market" as const,
+    reason: "costed replay setup"
+  };
   return {
     status: "completed",
     runner_kind: "host_process",
@@ -699,15 +1075,11 @@ function replayRunForOrder(input: {
     stderr: "",
     exit_code: 0,
     events: [
-      { event: "market_snapshot", ...input.scenario.market },
+      { event: "market_snapshot", ...toReplayTradingCandidateInput(input.scenario).market },
       { event: "account_state", ...input.scenario.account },
       {
         event: "order_request",
-        symbol: "BTCUSDT",
-        side: input.side,
-        quantity: 1,
-        order_type: "market",
-        reason: "costed replay setup"
+        ...order
       },
       {
         event: "order_validation",
@@ -720,8 +1092,78 @@ function replayRunForOrder(input: {
     provider_requests: [
       { at: "2026-05-12T01:00:01.000Z", method: "GET", path: "/market/snapshot", response_status: 200 },
       { at: "2026-05-12T01:00:02.000Z", method: "GET", path: "/account/state", response_status: 200 },
-      { at: "2026-05-12T01:00:03.000Z", method: "POST", path: "/orders/validate", response_status: 200 }
+      {
+        at: "2026-05-12T01:00:03.000Z",
+        method: "POST",
+        path: "/orders/validate",
+        body: input.providerBody ?? order,
+        response_status: 200
+      }
     ]
+  };
+}
+
+function mixedDisqualificationArtifactRunner(): TradingArtifactRunner {
+  return {
+    kind: "host_process",
+    async run(input) {
+      await mkdir(input.output_dir, { recursive: true });
+      await writeFile(path.join(input.output_dir, "candidate-output"), "sealed\n", "utf8");
+      const market = input.provider.candidate_input.market;
+      const account = input.provider.candidate_input.account;
+      const firstScenario = market.moving_average_fast > market.moving_average_slow;
+      const order = firstScenario
+        ? {
+            symbol: market.symbol,
+            side: "buy" as const,
+            quantity: 100,
+            order_type: "market" as const,
+            reason: "ordinary risk rejection before a later boundary probe"
+          }
+        : {
+            symbol: market.symbol,
+            side: "hold" as const,
+            quantity: 0,
+            order_type: "none" as const,
+            reason: "flat causal signal"
+          };
+      const events: ArtifactRunResult["events"] = [
+        { event: "market_snapshot", ...market },
+        { event: "account_state", ...account },
+        { event: "order_request", ...order }
+      ];
+      const providerRequests: ArtifactRunResult["provider_requests"] = [
+        { at: "2026-05-12T01:00:01.000Z", method: "GET", path: "/market/snapshot", response_status: 200 },
+        { at: "2026-05-12T01:00:02.000Z", method: "GET", path: "/account/state", response_status: 200 },
+        {
+          at: "2026-05-12T01:00:03.000Z",
+          method: "POST",
+          path: "/orders/validate",
+          body: order,
+          response_status: 200
+        },
+        ...(!firstScenario
+          ? [{
+              at: "2026-05-12T01:00:04.000Z",
+              method: "GET",
+              path: "/evaluation/outcome",
+              response_status: 404
+            }]
+          : [])
+      ];
+      return {
+        status: "completed",
+        runner_kind: "host_process",
+        artifact_dir: input.artifact_dir,
+        entrypoint: input.manifest.entrypoint,
+        events_path: path.join(input.output_dir, "events.jsonl"),
+        stdout: "",
+        stderr: "",
+        exit_code: 0,
+        events,
+        provider_requests: providerRequests
+      };
+    }
   };
 }
 

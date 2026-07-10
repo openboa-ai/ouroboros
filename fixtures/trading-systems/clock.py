@@ -120,7 +120,18 @@ def paper_order_payload(args: argparse.Namespace) -> dict[str, object]:
     try:
         market = read_provider_json(provider_base_url, "/market/snapshot")
         read_provider_json(provider_base_url, "/account/state")
-        direction = market.get("expected_direction")
+        fast_average = market.get("moving_average_fast")
+        slow_average = market.get("moving_average_slow")
+        if isinstance(fast_average, (int, float)) and isinstance(slow_average, (int, float)):
+            direction = (
+                "flat"
+                if fast_average == slow_average
+                else "short"
+                if fast_average < slow_average
+                else "long"
+            )
+        else:
+            direction = "unknown"
         if direction == "flat":
             return {
                 "event": "hold",
@@ -128,7 +139,7 @@ def paper_order_payload(args: argparse.Namespace) -> dict[str, object]:
                 "instance_id": args.instance_id,
                 "authority_status": "trace_only",
                 "at": args.start_at,
-                "reason": "runtime_api_market_expected_direction_flat",
+                "reason": "runtime_api_market_signal_flat",
             }
 
         side = "sell" if direction == "short" else "buy"
@@ -152,7 +163,7 @@ def paper_order_payload(args: argparse.Namespace) -> dict[str, object]:
             "order_type": "limit",
             "quantity": quantity,
             "limit_price": limit_price,
-            "reason": f"runtime_api_market_expected_direction_{direction or 'unknown'}_validation_{validation.get('reason', 'unknown')}",
+            "reason": f"runtime_api_market_signal_{direction}_validation_{validation.get('reason', 'unknown')}",
             "authority_status": "trace_only",
             "at": args.start_at,
         }

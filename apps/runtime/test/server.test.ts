@@ -9,6 +9,7 @@ import type {
   PaperTradingApiProviderOptions
 } from "@ouroboros/application/trading/gateway/runtime-binding";
 import type { ReplayTradingApiProviderSession } from "@ouroboros/application/trading/research/types";
+import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import { OUROBOROS_COMMAND_KINDS } from "@ouroboros/domain";
 import { buildServer, paperTradingApiProviderNetworkOptions } from "../src/server";
@@ -23,8 +24,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
-
-let paperProviderSequence = 0;
 
 function buildRuntimeTestServer(options: Parameters<typeof buildServer>[0]) {
   return buildServer({
@@ -1925,7 +1924,6 @@ async function networklessPaperTradingApiProvider(
   binding: GatewayRuntimeBinding,
   options: PaperTradingApiProviderOptions
 ): Promise<ReplayTradingApiProviderSession> {
-  paperProviderSequence += 1;
   const market = await binding.marketData.readMarketSnapshot();
   const account = options.readAccountState
     ? await options.readAccountState()
@@ -1942,17 +1940,9 @@ async function networklessPaperTradingApiProvider(
     sandbox_base_url: "",
     close: async () => undefined,
     requests: () => [],
-    scenario: {
-      id: `networkless-paper-provider-${paperProviderSequence}`,
-      description: "Networkless paper runtime provider used by runtime controller tests.",
+    candidate_input: toReplayTradingCandidateInput({
       market,
-      account,
-      outcome: {
-        exit_price: market.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
+      account
+    })
   };
 }

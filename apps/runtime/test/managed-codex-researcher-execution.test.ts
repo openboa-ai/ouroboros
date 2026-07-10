@@ -7,7 +7,7 @@ import { loadTradingResearchRuntimeConfig } from "@ouroboros/application/trading
 import { validateOrderRequest } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
   ReplayTradingApiProviderSession,
-  ReplayTradingScenario,
+  ReplayTradingCandidateInput,
   TradingProviderRequestLog,
   TradingSystemEvent
 } from "@ouroboros/application/trading/research/types";
@@ -232,9 +232,9 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
     async run(input) {
-      const market = input.provider.scenario.market;
-      const account = input.provider.scenario.account;
-      const orderRequest = market.expected_direction === "flat"
+      const market = input.provider.candidate_input.market;
+      const account = input.provider.candidate_input.account;
+      const orderRequest = market.moving_average_fast === market.moving_average_slow
         ? {
             symbol: market.symbol,
             side: "hold" as const,
@@ -244,8 +244,8 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
           }
         : {
             symbol: market.symbol,
-            side: market.expected_direction === "short" ? "sell" as const : "buy" as const,
-            quantity: Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+            side: market.moving_average_fast < market.moving_average_slow ? "sell" as const : "buy" as const,
+            quantity: Number((account.equity * Math.min(0.02, account.max_risk_fraction) / market.price).toFixed(8)),
             order_type: "market" as const,
             reason: "networkless managed Codex runner preserves TradingApiProvider boundary"
           };
@@ -269,36 +269,37 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         stdout: events.map((event) => JSON.stringify(event)).join("\n"),
         stderr: "",
         events,
-        provider_requests: providerBoundaryRequests()
+        provider_requests: providerBoundaryRequests(orderRequest)
       };
     }
   };
 }
 
 async function networklessReplayTradingApiProvider(
-  scenario: ReplayTradingScenario
+  candidateInput: ReplayTradingCandidateInput
 ): Promise<ReplayTradingApiProviderSession> {
   return {
     base_url: "",
     close: async () => undefined,
-    requests: () => providerBoundaryRequests(),
-    scenario
+    requests: () => [],
+    candidate_input: candidateInput
   };
 }
 
-function providerBoundaryRequests(): TradingProviderRequestLog[] {
+function providerBoundaryRequests(orderRequest?: unknown): TradingProviderRequestLog[] {
   return [
     providerRequest("GET", "/market/snapshot"),
     providerRequest("GET", "/account/state"),
-    providerRequest("POST", "/orders/validate")
+    providerRequest("POST", "/orders/validate", orderRequest)
   ];
 }
 
-function providerRequest(method: string, requestPath: string): TradingProviderRequestLog {
+function providerRequest(method: string, requestPath: string, body?: unknown): TradingProviderRequestLog {
   return {
     at: "2026-05-16T00:00:00.000Z",
     method,
     path: requestPath,
+    ...(body === undefined ? {} : { body }),
     response_status: 200
   };
 }

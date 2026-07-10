@@ -1116,6 +1116,9 @@ async function recordArenaResearchRecords(input: {
 function arenaDisqualificationReason(
   entry: TradingResearchNotebookEntry
 ): NonNullable<TradingEvaluationResultRecord["disqualification_reason"]> {
+  if (entry.evaluation.disqualification_reason) {
+    return entry.evaluation.disqualification_reason;
+  }
   if (entry.agent_status === "failed") {
     return "research_worker_failed";
   }
@@ -1147,6 +1150,12 @@ function arenaFindingForAdmission(
       summary: "ResearchWorker reported no candidate change; duplicate population entry rejected."
     };
   }
+  if (isAntiHackingEvaluation(entry)) {
+    return {
+      finding_kind: "anti_hacking_case",
+      summary: `Candidate violated the sealed ResearchPreflight boundary (${entry.evaluation.disqualification_reason}): ${entry.evaluation.summary}`
+    };
+  }
   if (admission.status === "quarantined") {
     return {
       finding_kind: "failure_analysis",
@@ -1162,6 +1171,12 @@ function arenaFindingForAdmission(
         finding_kind: "negative_result",
         summary: "Candidate remained executable but lost money after costs."
       };
+}
+
+function isAntiHackingEvaluation(entry: TradingResearchNotebookEntry): boolean {
+  return entry.evaluation.disqualification_reason === "data_leakage" ||
+    entry.evaluation.disqualification_reason === "lookahead_leakage" ||
+    entry.evaluation.disqualification_reason === "runtime_self_report_only";
 }
 
 async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {

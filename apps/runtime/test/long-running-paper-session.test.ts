@@ -9,6 +9,7 @@ import type {
 import type {
   ReplayTradingApiProviderSession
 } from "@ouroboros/application/trading/research/types";
+import { toReplayTradingCandidateInput } from "@ouroboros/application/trading/research/replay-trading-api-provider";
 import type {
   OuroborosCommandKind,
   OuroborosCommandRequest,
@@ -845,18 +846,10 @@ async function networklessPaperTradingApiProvider(
     sandbox_base_url: "http://paper-runtime.test",
     close: async () => undefined,
     requests: () => [],
-    scenario: {
-      id: "long-running-paper-runtime",
-      description: "Networkless provider for long-running paper session tests.",
+    candidate_input: toReplayTradingCandidateInput({
       market,
-      account,
-      outcome: {
-        exit_price: market.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
+      account
+    })
   };
 }
 

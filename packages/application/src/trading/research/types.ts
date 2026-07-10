@@ -1,7 +1,8 @@
 import type {
   PaperTradingMarketDataFreshness,
   PaperTradingMarketDataSourceKind,
-  PaperTradingMarketDataSourcePriority
+  PaperTradingMarketDataSourcePriority,
+  TradingEvaluationDisqualificationReason
 } from "@ouroboros/domain";
 
 export type TradingResearchAgentProvider = "codex" | "claude_code" | "fixture";
@@ -78,12 +79,16 @@ export interface MarketSnapshot {
   stream_marker?: string;
 }
 
+export type TradingApiMarketSnapshot = Omit<MarketSnapshot, "expected_direction">;
+
 export interface AccountState {
   equity: number;
   max_position_notional: number;
   max_risk_fraction: number;
   target_risk_fraction: number;
 }
+
+export type TradingApiAccountState = Omit<AccountState, "target_risk_fraction">;
 
 export interface OrderRequest {
   symbol: string;
@@ -119,7 +124,12 @@ export interface ReplayTradingApiProviderSession {
   sandbox_base_url?: string;
   close(): Promise<void>;
   requests(): TradingProviderRequestLog[];
-  scenario: ReplayTradingScenario;
+  candidate_input: ReplayTradingCandidateInput;
+}
+
+export interface ReplayTradingCandidateInput {
+  market: TradingApiMarketSnapshot;
+  account: TradingApiAccountState;
 }
 
 export interface ReplayTradingScenario {
@@ -197,6 +207,7 @@ export interface TradingEvaluationResult {
   summary: string;
   risk_decision: TradingRiskDecision;
   profit_loss: TradingProfitLoss;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
   scenario_results?: TradingScenarioEvaluationResult[];
 }
 
@@ -211,10 +222,13 @@ export interface TradingScenarioEvaluationResult {
   summary: string;
   risk_decision: TradingRiskDecision;
   profit_loss: TradingProfitLoss;
+  disqualification_reason?: TradingEvaluationDisqualificationReason;
   events_path: string;
   provider_request_count: number;
   runner_command_count: number;
   runner_command_evidence?: TradingArtifactCommandEvidenceSummary[];
+  candidate_events: TradingSystemEvent[];
+  provider_requests: TradingProviderRequestLog[];
 }
 
 export interface TradingResearchNotebookEntry {

@@ -1,14 +1,16 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DockerSandboxesSbxTradingArtifactRunner, type TradingArtifactRunner } from "./artifact-runner";
 import { evaluateTradingRun } from "./evaluator";
 import {
   defaultReplayTradingScenarioSet,
   type ReplayTradingApiProviderOptions,
-  startReplayTradingApiProvider
+  startReplayTradingApiProvider,
+  toReplayTradingCandidateInput
 } from "./replay-trading-api-provider";
 import type {
   ReplayTradingApiProviderSession,
+  ReplayTradingCandidateInput,
   ReplayTradingScenario,
   TradingArtifactCommandEvidence,
   TradingArtifactCommandEvidenceSummary,
@@ -19,7 +21,7 @@ import type {
 } from "./types";
 
 export type ReplayTradingApiProviderFactory = (
-  scenario: ReplayTradingScenario,
+  input: ReplayTradingCandidateInput,
   options: ReplayTradingApiProviderOptions
 ) => Promise<ReplayTradingApiProviderSession>;
 
@@ -51,9 +53,11 @@ export async function runTradingReplaySet(
   await mkdir(outputRoot, { recursive: true });
   const scenarioResults: TradingScenarioEvaluationResult[] = [];
 
-  for (const scenario of scenarios) {
+  for (const [scenarioIndex, scenario] of scenarios.entries()) {
+    const scenarioSlot = `scenario-${String(scenarioIndex + 1).padStart(3, "0")}`;
+    const scenarioOutputDir = resolvePathInsideRoot(outputRoot, [scenarioSlot], "scenario_output_dir");
     const provider = await (input.replay_provider_factory ?? startReplayTradingApiProvider)(
-      scenario,
+      toReplayTradingCandidateInput(scenario),
       replayProviderOptionsFor(artifactRunner.kind)
     );
     try {
@@ -61,7 +65,7 @@ export async function runTradingReplaySet(
         artifact_dir: input.artifact_dir,
         manifest: input.manifest,
         provider,
-        output_dir: resolvePathInsideRoot(outputRoot, [sanitizePathSegment(scenario.id)], "scenario_output_dir")
+        output_dir: scenarioOutputDir
       });
       const evaluation = evaluateTradingRun(run, scenario);
       scenarioResults.push({
@@ -75,13 +79,20 @@ export async function runTradingReplaySet(
         summary: evaluation.summary,
         risk_decision: evaluation.risk_decision,
         profit_loss: evaluation.profit_loss,
+        disqualification_reason: evaluation.disqualification_reason,
         events_path: run.events_path,
         provider_request_count: run.provider_requests.length,
         runner_command_count: run.command_evidence?.length ?? 0,
-        runner_command_evidence: commandEvidenceSummaries(run.command_evidence)
+        runner_command_evidence: commandEvidenceSummaries(run.command_evidence),
+        candidate_events: run.events.map((event) => ({ ...event })),
+        provider_requests: run.provider_requests.map((request) => ({ ...request }))
       });
     } finally {
-      await provider.close();
+      try {
+        await provider.close();
+      } finally {
+        await rm(scenarioOutputDir, { recursive: true, force: true });
+      }
     }
   }
 
@@ -90,13 +101,7 @@ export async function runTradingReplaySet(
   await writeFile(
     eventsPath,
     `${JSON.stringify({
-      scenario_results: scenarioResults,
-      aggregate: {
-        status: evaluation.status,
-        score: evaluation.score,
-        risk_decision: evaluation.risk_decision,
-        summary: evaluation.summary
-      }
+      aggregate: toResearchPreflightFeedback(evaluation)
     }, null, 2)}\n`,
     "utf8"
   );
@@ -105,6 +110,22 @@ export async function runTradingReplaySet(
     evaluation,
     scenario_results: scenarioResults,
     events_path: eventsPath
+  };
+}
+
+export function toResearchPreflightFeedback(
+  evaluation: TradingEvaluationResult
+): TradingEvaluationResult {
+  return {
+    status: evaluation.status,
+    score: evaluation.score,
+    metrics: evaluation.metrics.map((metric) => ({ ...metric })),
+    summary: evaluation.summary,
+    risk_decision: evaluation.risk_decision,
+    profit_loss: { ...evaluation.profit_loss },
+    ...(evaluation.disqualification_reason === undefined
+      ? {}
+      : { disqualification_reason: evaluation.disqualification_reason })
   };
 }
 
@@ -119,6 +140,7 @@ function aggregateScenarioResults(
   const profitLoss = aggregateProfitLoss(scenarioResults.map((result) => result.profit_loss));
   const status = acceptedCount === scenarioCount ? "accepted" : "disqualified";
   const riskDecision = aggregateRiskDecision(scenarioResults);
+  const providerBoundaryScore = aggregateMetricScore(scenarioResults, "provider_boundary");
 
   return {
     status,
@@ -135,6 +157,11 @@ function aggregateScenarioResults(
         detail: `${acceptedCount}/${scenarioCount} replay scenarios accepted`
       },
       {
+        name: "provider_boundary",
+        score: providerBoundaryScore,
+        detail: `aggregate external provider protocol score across ${scenarioCount} replay scenarios`
+      },
+      {
         name: "net_revenue",
         score: profitLoss.net_revenue_usdt > 0 ? 1 : 0,
         detail: `aggregate net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs`
@@ -145,8 +172,41 @@ function aggregateScenarioResults(
       : `Rejected replay set with net revenue ${profitLoss.net_revenue_usdt.toFixed(6)} USDT after costs across ${scenarioCount} scenarios.`,
     risk_decision: riskDecision,
     profit_loss: profitLoss,
+    ...(status === "accepted"
+      ? {}
+      : {
+          disqualification_reason: aggregateDisqualificationReason(scenarioResults)
+        }),
     scenario_results: scenarioResults
   };
+}
+
+function aggregateMetricScore(
+  scenarioResults: TradingScenarioEvaluationResult[],
+  metricName: string
+): number {
+  const total = scenarioResults.reduce((sum, result) =>
+    sum + (result.metrics.find((metric) => metric.name === metricName)?.score ?? 0), 0
+  );
+  return roundScore(total / scenarioResults.length);
+}
+
+function aggregateDisqualificationReason(
+  scenarioResults: TradingScenarioEvaluationResult[]
+): NonNullable<TradingEvaluationResult["disqualification_reason"]> {
+  const reasons = scenarioResults
+    .filter((result) => result.status === "disqualified")
+    .map((result) => result.disqualification_reason)
+    .filter((reason): reason is NonNullable<typeof reason> => reason !== undefined);
+  return reasons.find(isBoundaryIntegrityReason) ?? reasons[0] ?? "unreproducible";
+}
+
+function isBoundaryIntegrityReason(
+  reason: NonNullable<TradingEvaluationResult["disqualification_reason"]>
+): boolean {
+  return reason === "data_leakage" ||
+    reason === "lookahead_leakage" ||
+    reason === "runtime_self_report_only";
 }
 
 function aggregateProfitLoss(items: TradingProfitLoss[]): TradingProfitLoss {
@@ -182,10 +242,6 @@ function aggregateRiskDecision(
     return "no_order_request";
   }
   return "invalid_order_request";
-}
-
-function sanitizePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
 function safeAbsoluteRoot(rootPath: string): string {

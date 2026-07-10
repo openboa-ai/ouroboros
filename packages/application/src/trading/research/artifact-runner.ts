@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -113,7 +113,8 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
   constructor(private readonly options: DockerSandboxesSbxTradingArtifactRunnerOptions = {}) {}
 
   async run(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult> {
-    const eventsPath = await prepareEventsPath(input.output_dir);
+    const sandboxWorkspace = await prepareSandboxWorkspace(input);
+    const eventsPath = await prepareEventsPath(sandboxWorkspace.root);
     const commandEvidence: TradingArtifactCommandEvidence[] = [];
     const sandboxName = this.sandboxName(input);
     const baseResult = {
@@ -146,7 +147,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       "--name",
       sandboxName,
       "shell",
-      this.workspacePath
+      sandboxWorkspace.root
     ]);
     commandEvidence.push(create);
     if (create.exit_code !== 0) {
@@ -168,7 +169,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
       if (!command) {
         throw new Error("Trading artifact manifest entrypoint is empty");
       }
-      const sidecar = await this.prepareReplayProvider(input);
+      const sidecar = await this.prepareReplayProvider(input, sandboxWorkspace.root);
       const providerBaseUrl = sidecar?.baseUrl ?? input.provider.sandbox_base_url ?? input.provider.base_url;
       const execResult = await this.runSbxCommand(
         sidecar
@@ -176,7 +177,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
               this.sbxPath,
               "exec",
               "-w",
-              input.artifact_dir,
+              sandboxWorkspace.artifact_dir,
               sandboxName,
               "python3",
               sidecar.runnerScriptPath,
@@ -202,7 +203,7 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
               this.sbxPath,
               "exec",
               "-w",
-              input.artifact_dir,
+              sandboxWorkspace.artifact_dir,
               sandboxName,
               "env",
               `TRADING_API_BASE_URL=${providerBaseUrl}`,
@@ -292,20 +293,21 @@ export class DockerSandboxesSbxTradingArtifactRunner implements TradingArtifactR
   }
 
   private async prepareReplayProvider(
-    input: TradingArtifactRunnerInput
+    input: TradingArtifactRunnerInput,
+    sandboxWorkspaceRoot: string
   ): Promise<SandboxReplayProviderSidecar | undefined> {
     if (this.replayProviderTransport !== "sandbox_sidecar") {
       return undefined;
     }
     const port = sandboxProviderPort(input.output_dir);
-    const outputRoot = safeAbsoluteRoot(input.output_dir);
+    const outputRoot = safeAbsoluteRoot(sandboxWorkspaceRoot);
     const scriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-sidecar.py"], "sidecar_script");
     const runnerScriptPath = resolvePathInsideRoot(outputRoot, ["replay-provider-runner.py"], "sidecar_runner");
     const scenarioPath = resolvePathInsideRoot(outputRoot, ["replay-provider-scenario.json"], "sidecar_scenario");
     const requestsPath = resolvePathInsideRoot(outputRoot, ["provider-requests.jsonl"], "sidecar_requests");
     await writeFile(scriptPath, sandboxReplayProviderScript(), "utf8");
     await writeFile(runnerScriptPath, sandboxReplayProviderRunnerScript(), "utf8");
-    await writeFile(scenarioPath, `${JSON.stringify(input.provider.scenario, null, 2)}\n`, "utf8");
+    await writeFile(scenarioPath, `${JSON.stringify(input.provider.candidate_input, null, 2)}\n`, "utf8");
     await rm(requestsPath, { force: true });
     return {
       baseUrl: `http://127.0.0.1:${port}`,
@@ -337,6 +339,11 @@ interface SandboxReplayProviderSidecar {
   requestsPath: string;
 }
 
+interface SandboxExecutionWorkspace {
+  root: string;
+  artifact_dir: string;
+}
+
 export async function runTradingArtifact(input: TradingArtifactRunnerInput): Promise<ArtifactRunResult> {
   return new DockerSandboxesSbxTradingArtifactRunner().run(input);
 }
@@ -359,6 +366,22 @@ async function prepareEventsPath(outputDir: string): Promise<string> {
   const eventsPath = resolvePathInsideRoot(outputRoot, ["events.jsonl"], "events_path");
   await rm(eventsPath, { force: true });
   return eventsPath;
+}
+
+async function prepareSandboxWorkspace(
+  input: TradingArtifactRunnerInput
+): Promise<SandboxExecutionWorkspace> {
+  const outputRoot = safeAbsoluteRoot(input.output_dir);
+  await mkdir(outputRoot, { recursive: true });
+  const root = resolvePathInsideRoot(outputRoot, ["sandbox-workspace"], "sandbox_workspace");
+  await rm(root, { recursive: true, force: true });
+  await mkdir(root, { recursive: true });
+  const artifactDir = resolvePathInsideRoot(root, ["artifact"], "sandbox_artifact_dir");
+  await cp(input.artifact_dir, artifactDir, { recursive: true });
+  return {
+    root,
+    artifact_dir: artifactDir
+  };
 }
 
 async function readEventsIfPresent(eventsPath: string): Promise<TradingSystemEvent[]> {

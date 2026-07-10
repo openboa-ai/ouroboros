@@ -6,7 +6,12 @@ import type {
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import { recordPaperExecutionResult } from "./paper-execution";
-import { validateOrderRequest } from "../research/replay-trading-api-provider";
+import {
+  toReplayTradingCandidateInput,
+  toTradingApiAccountState,
+  toTradingApiMarketSnapshot,
+  validateOrderRequest
+} from "../research/replay-trading-api-provider";
 import type {
   AccountState,
   MarketSnapshot,
@@ -185,14 +190,14 @@ export async function startPaperTradingApiProvider(
     try {
       if (method === "GET" && path === "/market/snapshot") {
         const market = await binding.marketData.readMarketSnapshot();
-        sendJson(response, 200, market);
+        sendJson(response, 200, toTradingApiMarketSnapshot(market));
         pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
 
       if (method === "GET" && path === "/account/state") {
         const account = await readAccountState();
-        sendJson(response, 200, account);
+        sendJson(response, 200, toTradingApiAccountState(account));
         pushBoundedRequestLog(requestLog, logRequest(method, path, body, 200), requestLogLimit);
         return;
       }
@@ -235,18 +240,10 @@ export async function startPaperTradingApiProvider(
       : undefined,
     close: () => close(server),
     requests: () => [...requestLog],
-    scenario: {
-      id: "binance-production-public-paper",
-      description: "Paper TradingApiProvider backed by Binance production public BTCUSDT market data.",
+    candidate_input: toReplayTradingCandidateInput({
       market: initialMarket,
-      account: initialAccount,
-      outcome: {
-        exit_price: initialMarket.price,
-        fee_bps: 4,
-        slippage_bps: 3,
-        funding_bps: 1
-      }
-    }
+      account: initialAccount
+    })
   };
 }
 

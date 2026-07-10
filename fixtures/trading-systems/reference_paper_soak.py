@@ -123,9 +123,19 @@ def bounded_quantity(account: dict[str, object], market: dict[str, object], requ
     return f"{quantity:.6f}".rstrip("0").rstrip(".")
 
 
+def market_direction(market: dict[str, object]) -> str:
+    fast_average = market.get("moving_average_fast")
+    slow_average = market.get("moving_average_slow")
+    if not isinstance(fast_average, (int, float)) or not isinstance(slow_average, (int, float)):
+        return "unknown"
+    if fast_average == slow_average:
+        return "flat"
+    return "short" if fast_average < slow_average else "long"
+
+
 def order_event(args: argparse.Namespace, tick: int, market: dict[str, object], account: dict[str, object]) -> dict[str, object]:
     base_url = os.environ["TRADING_API_BASE_URL"]
-    side = "sell" if market.get("expected_direction") == "short" else "buy"
+    side = "sell" if market_direction(market) == "short" else "buy"
     quantity = bounded_quantity(account, market, args.paper_order_request)
     limit_price = decimal_string(market.get("price"), "65000")
     validation = post_json(base_url, "/orders/validate", {
@@ -213,7 +223,7 @@ def stopped(args: argparse.Namespace, tick: int) -> dict[str, object]:
 
 def decision_event(args: argparse.Namespace, tick: int, market: dict[str, object], account: dict[str, object]) -> dict[str, object]:
     if tick == 1:
-        if market.get("expected_direction") == "flat":
+        if market_direction(market) == "flat":
             return hold_event(args, tick)
         return order_event(args, tick, market, account)
     if tick == 2:

@@ -10,7 +10,7 @@ import type {
   AgentEditResult,
   ManagedResearchAgent,
   ReplayTradingApiProviderSession,
-  ReplayTradingScenario,
+  ReplayTradingCandidateInput,
   TradingProviderRequestLog,
   TradingResearchAgentAdapter,
   TradingSystemEvent
@@ -191,6 +191,42 @@ describe("CandidateArena paper evidence context", () => {
         result_status: "disqualified",
         evidence_disposition: "quarantined_for_review",
         disqualification_reason: "runtime_crash"
+      })
+    ]);
+  });
+
+  it("quarantines evaluator probing as anti-hacking memory without a runnable candidate", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: evaluatorProbingReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.created_candidate_ids).toEqual([]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        status: "quarantined",
+        reason: "evaluation_disqualified",
+        runnable_paper_handoff: false
+      })
+    ]);
+    await expect(store.listTradingEvaluationResults()).resolves.toEqual([
+      expect.objectContaining({
+        result_status: "disqualified",
+        disqualification_reason: "data_leakage"
+      })
+    ]);
+    await expect(store.listResearchFindings()).resolves.toEqual([
+      expect.objectContaining({
+        finding_kind: "anti_hacking_case",
+        summary: expect.stringContaining("data_leakage")
       })
     ]);
   });
@@ -1700,19 +1736,19 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
     async run(input) {
-      const market = input.provider.scenario.market;
-      const account = input.provider.scenario.account;
-      const shouldHold = market.expected_direction === "flat";
+      const market = input.provider.candidate_input.market;
+      const account = input.provider.candidate_input.account;
+      const shouldHold = market.moving_average_fast === market.moving_average_slow;
       const orderRequest = {
         symbol: market.symbol,
         side: shouldHold
           ? "hold" as const
-          : market.expected_direction === "short"
+          : market.moving_average_fast < market.moving_average_slow
             ? "sell" as const
             : "buy" as const,
         quantity: shouldHold
           ? 0
-          : Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+          : Number((account.equity * Math.min(0.02, account.max_risk_fraction) / market.price).toFixed(8)),
         order_type: shouldHold ? "none" as const : "market" as const,
         reason: "networkless arena context runner preserves TradingApiProvider boundary"
       };
@@ -1736,7 +1772,7 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         stdout: events.map((event) => JSON.stringify(event)).join("\n"),
         stderr: "",
         events,
-        provider_requests: providerBoundaryRequests()
+        provider_requests: providerBoundaryRequests(orderRequest)
       };
     }
   };
@@ -1746,8 +1782,8 @@ function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
     async run(input) {
-      const market = input.provider.scenario.market;
-      const account = input.provider.scenario.account;
+      const market = input.provider.candidate_input.market;
+      const account = input.provider.candidate_input.account;
       const orderRequest = {
         symbol: market.symbol,
         side: "sell" as const,
@@ -1775,7 +1811,7 @@ function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {
         stdout: events.map((event) => JSON.stringify(event)).join("\n"),
         stderr: "",
         events,
-        provider_requests: providerBoundaryRequests()
+        provider_requests: providerBoundaryRequests(orderRequest)
       };
     }
   };
@@ -1803,30 +1839,48 @@ function crashedReplayArtifactRunner(): TradingArtifactRunner {
   };
 }
 
+function evaluatorProbingReplayArtifactRunner(): TradingArtifactRunner {
+  const runner = networklessReplayArtifactRunner();
+  return {
+    kind: "host_process",
+    async run(input) {
+      const run = await runner.run(input);
+      return {
+        ...run,
+        provider_requests: [
+          ...run.provider_requests,
+          providerRequest("GET", "/evaluation/outcome")
+        ]
+      };
+    }
+  };
+}
+
 async function networklessReplayTradingApiProvider(
-  scenario: ReplayTradingScenario
+  candidateInput: ReplayTradingCandidateInput
 ): Promise<ReplayTradingApiProviderSession> {
   return {
     base_url: "",
     close: async () => undefined,
-    requests: () => providerBoundaryRequests(),
-    scenario
+    requests: () => [],
+    candidate_input: candidateInput
   };
 }
 
-function providerBoundaryRequests(): TradingProviderRequestLog[] {
+function providerBoundaryRequests(orderRequest?: unknown): TradingProviderRequestLog[] {
   return [
     providerRequest("GET", "/market/snapshot"),
     providerRequest("GET", "/account/state"),
-    providerRequest("POST", "/orders/validate")
+    providerRequest("POST", "/orders/validate", orderRequest)
   ];
 }
 
-function providerRequest(method: string, requestPath: string): TradingProviderRequestLog {
+function providerRequest(method: string, requestPath: string, body?: unknown): TradingProviderRequestLog {
   return {
     at: "2026-05-16T00:00:00.000Z",
     method,
     path: requestPath,
+    ...(body === undefined ? {} : { body }),
     response_status: 200
   };
 }
