@@ -1681,12 +1681,140 @@ export interface PaperTradingDecisionSummary {
   authority_status: "trace_only";
 }
 
+export type PaperTradingEvidencePurpose = "research_feedback" | "qualification";
+
+export type PaperTradingEvaluationInvalidationReason =
+  | "commitment_missing"
+  | "commitment_digest_mismatch"
+  | "candidate_identity_mismatch"
+  | "candidate_version_identity_mismatch"
+  | "system_code_identity_mismatch"
+  | "stored_artifact_digest_mismatch"
+  | "resolved_artifact_digest_mismatch"
+  | "runtime_identity_mismatch"
+  | "provider_identity_mismatch"
+  | "capability_policy_mismatch"
+  | "secret_policy_mismatch"
+  | "evaluation_policy_identity_mismatch"
+  | "initial_account_identity_mismatch"
+  | "paper_only_authority_violation";
+
+export interface PaperTradingEvaluationRuntimeIdentity {
+  artifact_kind: SystemCodeKind;
+  runtime_kind: SystemCodeRuntimeKind;
+  entrypoint: string[];
+  artifact_runtime_contract_ref?: Ref;
+}
+
+export interface PaperTradingEvaluationProviderIdentity {
+  runtime_provider_kind: "none" | "managed_agent";
+  agent_profile_ref?: Ref;
+  model?: string;
+  provider_configuration_digest?: string;
+  qualification_eligible: boolean;
+  ineligibility_reason?: "provider_identity_unavailable";
+}
+
+export interface PaperTradingEvaluationPolicyIdentity {
+  market_data_policy_version: string;
+  gateway_policy_version: string;
+  cost_policy_version: string;
+  funding_policy_version: string;
+  slippage_policy_version: string;
+  fill_policy_version: string;
+  risk_policy_version: string;
+  paper_account_policy_version: string;
+  decision_event_protocol_version: string;
+  persistent_state_boundary_version: string;
+}
+
+export interface PaperTradingEvaluationDataIdentity {
+  symbol: "BTCUSDT";
+  market_data_port: "gateway_owned";
+  allowed_market_data_source: PaperTradingMarketDataSourceKind;
+  market_data_configuration_digest: string;
+  private_exchange_access: "forbidden";
+  live_order_access: "forbidden";
+}
+
+export interface PaperTradingEvaluationWindowPolicy {
+  interval_ms: number;
+  release_policy: "closed_observation" | "sealed_until_adjudication";
+  eligibility_policy_version: string;
+}
+
+export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
+  record_kind: "paper_trading_evaluation_commitment";
+  paper_trading_evaluation_commitment_id: string;
+  evidence_purpose: PaperTradingEvidencePurpose;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  resolved_artifact_digest: string;
+  runtime_identity: PaperTradingEvaluationRuntimeIdentity;
+  provider_identity: PaperTradingEvaluationProviderIdentity;
+  capability_policy_ref: Ref;
+  secret_policy_ref: Ref;
+  policy_identity: PaperTradingEvaluationPolicyIdentity;
+  data_identity: PaperTradingEvaluationDataIdentity;
+  window_policy: PaperTradingEvaluationWindowPolicy;
+  initial_account_snapshot: PaperTradingAccountSnapshot;
+  committed_at: string;
+  commitment_digest: string;
+  authority_status: "not_live";
+}
+
+export function paperTradingEvaluationCommitmentDigestInput(
+  record: PaperTradingEvaluationCommitmentRecord
+): string {
+  const {
+    record_kind: _recordKind,
+    version: _version,
+    paper_trading_evaluation_commitment_id: _id,
+    committed_at: _committedAt,
+    commitment_digest: _commitmentDigest,
+    ...payload
+  } = record;
+  return canonicalPaperTradingCommitmentJson(payload);
+}
+
+function canonicalPaperTradingCommitmentJson(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("paper_trading_commitment_non_canonical_value");
+    }
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalPaperTradingCommitmentJson(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => {
+      if (item === undefined) {
+        throw new Error("paper_trading_commitment_non_canonical_value");
+      }
+      return `${JSON.stringify(key)}:${canonicalPaperTradingCommitmentJson(item)}`;
+    }).join(",")}}`;
+  }
+  throw new Error("paper_trading_commitment_non_canonical_value");
+}
+
 export interface PaperTradingEvaluationRecord extends BaseRecord {
   record_kind: "paper_trading_evaluation";
   paper_trading_evaluation_id: string;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref?: Ref;
   status: PaperTradingEvaluationStatus;
   interval_ms: number;
   observation_count: number;
@@ -1701,6 +1829,7 @@ export interface PaperTradingEvaluationRecord extends BaseRecord {
   processed_trading_system_event_ids?: string[];
   processed_public_trade_ids?: string[];
   latest_public_execution_snapshot?: PaperTradingPublicExecutionSnapshotSummary;
+  invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   latest_failure_reason?: string;
   authority_status: "not_live";
 }
@@ -1709,6 +1838,7 @@ export interface PaperTradingObservationRecord extends BaseRecord {
   record_kind: "paper_trading_observation";
   paper_trading_observation_id: string;
   paper_trading_evaluation_ref: Ref;
+  paper_trading_evaluation_commitment_ref?: Ref;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
   trading_run_ref: Ref;
@@ -3065,12 +3195,23 @@ export type PaperTradingEvaluationStatus =
   | "not_started"
   | "running"
   | "stopped"
-  | "failed";
+  | "failed"
+  | "invalidated";
+
+export type PaperTradingEvaluationFreezeStatus =
+  | "committed"
+  | "verified"
+  | "invalidated";
 
 export interface PaperTradingEvaluationReadModel {
   evaluation_kind: "paper_trading_evaluation";
   evaluation_id?: string;
   status: PaperTradingEvaluationStatus;
+  evidence_purpose?: PaperTradingEvidencePurpose;
+  commitment_id?: string;
+  commitment_digest?: string;
+  freeze_status?: PaperTradingEvaluationFreezeStatus;
+  invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   candidate_id?: string;
   candidate_version_id?: string;
   trading_run_id?: string;
@@ -3112,6 +3253,8 @@ export type PaperTradingPromotionGateStatus =
   | "needs_resume"
   | "paper_evidence_recorded"
   | "paper_failed"
+  | "not_qualification_evidence"
+  | "invalidated"
   | "not_evaluated";
 
 export type PaperTradingQualificationStatus =
@@ -3119,7 +3262,8 @@ export type PaperTradingQualificationStatus =
   | "qualified"
   | "needs_resume"
   | "blocked_by_quality"
-  | "paper_failed";
+  | "paper_failed"
+  | "not_qualification_evidence";
 
 export type PaperTradingQualificationReason =
   | "min_observation_count_not_met"
@@ -3128,7 +3272,10 @@ export type PaperTradingQualificationReason =
   | "failed_observation_ratio_exceeded"
   | "latest_market_snapshot_missing"
   | "fill_public_execution_evidence_missing"
-  | "paper_evaluation_failed";
+  | "paper_evaluation_failed"
+  | "evidence_purpose_not_qualification"
+  | "paper_evaluation_commitment_missing"
+  | "paper_evaluation_invalidated";
 
 export interface PaperTradingLearningSummaryReadModel {
   rank?: number;
@@ -3223,6 +3370,11 @@ export interface PaperTradingBoardEntryReadModel {
   display_name: string;
   evaluation_id: string;
   status: PaperTradingEvaluationStatus;
+  evidence_purpose?: PaperTradingEvidencePurpose;
+  commitment_id?: string;
+  commitment_digest?: string;
+  freeze_status?: PaperTradingEvaluationFreezeStatus;
+  invalidation_reason?: PaperTradingEvaluationInvalidationReason;
   runner_status: PaperTradingBoardRunnerStatus;
   promotion_gate_status: PaperTradingPromotionGateStatus;
   qualification_status: PaperTradingQualificationStatus;
@@ -3661,6 +3813,7 @@ export type FixtureRecord =
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
   | CandidateAdmissionDecisionRecord
+  | PaperTradingEvaluationCommitmentRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaTickRecord
