@@ -248,7 +248,7 @@ git commit -m "feat: persist isolated paper TradingRuns"
 - Consumes: run-specific candidate projection, artifact resolver, sandbox registry, Gateway market
   binding, provider factory, runner, and StorePort.
 
-- [ ] **Step 1: Write failing prepare-without-effects tests**
+- [x] **Step 1: Write failing prepare-without-effects tests**
 
 Construct a LocalStore candidate plus an additional qualification run and inject counting fakes for
 artifact resolution, provider creation, sandbox start, and market reads:
@@ -275,13 +275,13 @@ expect(await store.listPaperTradingObservations(prepared.evaluation.paper_tradin
 Also assert that `evidencePurpose` must equal the run's persisted
 `paper_evidence_purpose`; mismatch fails before a commitment write.
 
-- [ ] **Step 2: Run the unit test and confirm RED**
+- [x] **Step 2: Run the unit test and confirm RED**
 
 Run: `npx vitest run packages/application/src/trading/paper/session-service.test.ts`
 
 Expected: FAIL because the service does not exist.
 
-- [ ] **Step 3: Extract preparation and verification**
+- [x] **Step 3: Extract preparation and verification**
 
 Define:
 
@@ -306,7 +306,7 @@ export class PaperTradingSessionService {
   }): Promise<PreparedPaperTradingSession>;
   activate(prepared: PreparedPaperTradingSession): Promise<PaperTradingEvaluationRecord>;
   observe(tradingRunId: string): Promise<RecordPaperTradingEvaluationObservationResult>;
-  schedule(tradingRunId: string): void;
+  schedule(tradingRunId: string): Promise<void>;
   stop(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   active(tradingRunId: string): boolean;
   stopAllSessions(): Promise<void>;
@@ -329,13 +329,13 @@ session before provider, sandbox, market, runner, Gateway, Ledger, or observatio
 no verified pair authority exists yet. For `clock: "scheduled"`, the public adapter explicitly
 performs the first observation and calls `schedule`, preserving current response order.
 
-- [ ] **Step 4: Make sandbox refresh run-specific**
+- [x] **Step 4: Make sandbox refresh run-specific**
 
 Load `store.getCandidateForTradingRun(tradingRunId)` before every refresh and use that projection's
 sandbox. Never read `getCandidate(candidateId).runtime.sandbox` for an additional run. After writing
 logs, reload the same run-specific projection.
 
-- [ ] **Step 5: Add standalone-qualification rejection and independent-stop tests**
+- [x] **Step 5: Add standalone-qualification rejection and independent-stop tests**
 
 First assert that activating the prepared qualification session fails with
 `paper_trading_comparison_authority_required` and leaves provider, sandbox, market, Ledger, and
@@ -358,7 +358,7 @@ expect((await store.getTradingRun(candidate.runtime.ref.id))?.runtime_lifecycle_
 
 Also verify provider and sandbox IDs differ from a concurrently active default session.
 
-- [ ] **Step 6: Run service tests and application typecheck**
+- [x] **Step 6: Run service tests and application typecheck**
 
 Run: `npx vitest run packages/application/src/trading/paper/session-service.test.ts`
 
@@ -366,7 +366,7 @@ Run: `npm run typecheck -w @ouroboros/application`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit the internal lifecycle**
+- [x] **Step 7: Commit the internal lifecycle**
 
 ```bash
 git add packages/application/src/trading/paper/session-service.ts packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/paper/commands.ts
