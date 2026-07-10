@@ -121,6 +121,39 @@ promote Linear scratchpad text above repo code, tests, and docs.
 8. Keep durable outcomes in repo code, tests, docs, and validation. Write Linear progress notes
    through the `linear` skill and repo-local GraphQL path only when issue workflow needs it.
 
+## App Launch Workflow
+
+When the user asks to launch, open, run, or inspect the Ouroboros app, treat the primary app as the
+Tauri Desktop app in `apps/operator-desktop` unless they explicitly ask for Web, TUI, CLI, or a
+packaged release artifact. Do not conclude the Desktop app is missing from a stale checkout.
+
+Before launching an app surface:
+
+1. Read this file, [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and
+   [Operator Desktop Performance And Release](docs/operator-desktop-performance-release.md).
+2. Recover branch and dirty state, then fetch `origin/main` and report exact divergence. If the
+   branch is behind and can be fast-forwarded without touching unrelated dirty files, run
+   `git pull --ff-only origin main` before app launch. If it cannot be fast-forwarded cleanly,
+   report the blocker instead of falling back to a stale surface.
+3. Verify `apps/operator-desktop/package.json` and `apps/operator-desktop/src-tauri/tauri.conf.json`
+   exist after sync. If a newly synced dependency is missing, run `npm install` from the repo root
+   before launching.
+4. Launch source-checkout Desktop development with `npm run dev:operator-desktop`. This builds the
+   shared Operator UI into the Tauri `frontendDist` target and opens the native macOS app; it does
+   not require `npm run dev:operator-web`.
+5. For packaged-app checks, use `npm run package:operator-desktop`, then
+   `npm run open:operator-desktop`, then `npm run verify:operator-desktop-release`.
+6. Verify the native process, not only HTTP or browser reachability. On macOS,
+   `pgrep -fl ouroboros-operator-desktop` and System Events process checks are valid evidence. The
+   runtime health endpoint is supporting evidence: `curl -fsS http://127.0.0.1:4173/health`.
+7. Use `npm run dev:operator-web` only when the user asks for the browser development surface or a
+   Web-specific UI check. Use `ouroboros tui` only when the user asks for the terminal interface.
+
+Ouroboros Desktop is Tauri, not Electron. The Web app is shared UI source and a browser/development
+surface; it is not the default interactive operator app. If multiple helper surfaces were started
+while diagnosing a launch, close unnecessary Web/TUI sessions and leave only the requested app
+surface plus required runtime process running.
+
 ## Skill-First Gate
 
 Use `.agents/skills/AGENTS.md` before routing multi-step repo work. Keep `project-context`, `llm-wiki`, `writeback_needed`, `superpowers:using-superpowers`, and Skill-First Gate active.

@@ -15,6 +15,76 @@ shared Operator UI into the Tauri `frontendDist` target and opens the native app
 the `apps/operator-web` dev server. Use `npm run dev:operator-web` only when directly developing the
 shared browser/development surface.
 
+## Agent Launch Checklist
+
+When an operator asks to launch "the app", launch Desktop first. Desktop is the Tauri app in
+`apps/operator-desktop`; Electron is intentionally absent. Web and TUI are secondary surfaces.
+
+Use this checklist before opening anything:
+
+1. Sync repo truth first:
+
+   ```bash
+   git fetch origin main
+   git status --short --branch
+   git rev-list --left-right --count HEAD...origin/main
+   ```
+
+   If local `main` is behind and there is no conflicting dirty work, fast-forward with:
+
+   ```bash
+   git pull --ff-only origin main
+   ```
+
+   A stale checkout can miss `apps/operator-desktop` entirely. Do not fall back to Web or TUI until
+   remote `main` has been checked.
+
+2. Confirm the Desktop files and dependency surface:
+
+   ```bash
+   test -f apps/operator-desktop/package.json
+   test -f apps/operator-desktop/src-tauri/tauri.conf.json
+   npm ls @tauri-apps/cli -w @ouroboros/operator-desktop
+   ```
+
+   If `@tauri-apps/cli` is missing after a sync, run `npm install` from the repo root, then verify:
+
+   ```bash
+   npx tauri --version
+   ```
+
+3. For a source checkout, prefer the native development app:
+
+   ```bash
+   npm run dev:operator-desktop
+   ```
+
+   The first run may compile Rust dependencies and take longer than Web/TUI startup. Keep the
+   terminal session alive; the dev app exits when that process exits.
+
+4. For a packaged local app, build and open the macOS bundle:
+
+   ```bash
+   npm run package:operator-desktop
+   npm run open:operator-desktop
+   npm run verify:operator-desktop-release
+   ```
+
+5. Verify the native app actually opened:
+
+   ```bash
+   pgrep -fl ouroboros-operator-desktop
+   osascript -e 'tell application "System Events" to get name of every process whose name contains "ouroboros" or name contains "Ouroboros"'
+   curl -fsS http://127.0.0.1:4173/health
+   ```
+
+   HTTP health confirms the runtime. It does not prove the native operator window opened; use a
+   process or macOS app check for Desktop evidence.
+
+Cleanup rule: if Web or TUI was started only while diagnosing Desktop launch, stop those helper
+sessions once Desktop is running. Leave the Desktop dev process and any required runtime process
+alive for the operator.
+
 ## Runtime Packaging
 
 The Desktop app starts the runtime in this order:
