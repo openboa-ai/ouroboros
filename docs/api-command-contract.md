@@ -32,16 +32,25 @@ Current command groups:
 - `candidate`: select, run candidate evaluation, run candidate replay, and compatibility paper
   evidence readback. `candidate.select` chooses one candidate for proof; primary paper evaluation
   starts through `trading_run.start`.
-- `trading_candidate`: promote a paper-backed candidate into Trading review. `trading_candidate.promote`
-  records `TradingPromotion` state for the operator cockpit only after the selected candidate has
-  `qualified` `PaperTradingQualification` evidence. Collecting, resume-needed, failed, or
-  quality-blocked paper evaluations return a command error with qualification reasons and do not
-  create a promotion record. This command does not bind live authority, submit exchange orders, or
-  bypass `PaperTradingQualification`.
+- `trading_candidate`: request that a paper-backed candidate enter Trading review.
+  `trading_candidate.promote` rejects research-feedback, uncommitted, collecting, resume-needed,
+  failed, invalidated, or quality-blocked evaluations with qualification reasons. A standalone
+  `qualified` window is also rejected with `paper_trading_comparison_required`; no promotion record
+  is created until a persisted external comparison verdict is promotion eligible. Promotion is
+  deliberately unavailable until the prospective champion/challenger comparison service exists.
+  This command does not bind
+  live authority, submit exchange orders, or bypass `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
   `revenue - cost` over time before their performance counts as product evidence.
   `trading_run.start` starts or resumes the selected `TradingSystem` as a managed paper session.
+  Every currently reachable start creates `evidence_purpose: "research_feedback"`; command payloads
+  cannot select or override purpose. Before provider, sandbox, market, Gateway, Ledger, or score
+  effects, the application resolves executable bytes, persists an append-only
+  `PaperTradingEvaluationCommitment`, creates the linked evaluation, and verifies the frozen chain.
+  Resume, recovery, scheduled observation, and manual observation reverify the original commitment
+  instead of reconstructing it from current mutable state. A mismatch terminally invalidates the
+  evaluation and records no new paper observation.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
@@ -111,24 +120,46 @@ application path that may turn research or provider output into a materialized c
 The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
 `net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
 (`active`, `needs_resume`, or `inactive`), exposes qualification status and reasons, and exposes
-promotion-gate state without enabling live authority. Each row also exposes `trend` and
+promotion-gate state without enabling live authority. Selected evaluation and board rows expose
+evidence purpose, commitment ID and digest, freeze status, and stable invalidation reason. A row is
+`verified` only when its persisted commitment digest and evaluation identity chain match; mere
+record presence is insufficient. Each row also exposes `trend` and
 `blocker_density` as `not_promotion_authority` explanation signals; these fields do not participate
 in rank, qualification, or promotion policy. Latest paper failures must preserve the raw
 reason and add `PaperTradingFailure` kind, summary, and next action for operator remediation.
 CLI, TUI, and Web surfaces must render the classified kind, human summary, and next action before
 raw failure text.
 Qualification is not the rank metric. It is
-the evidence-quality gate: observation window size, elapsed time, runner health when known, failed
-observation ratio, market snapshot presence, and public execution evidence for fills. UI, CLI, TUI,
-and researcher context must treat this board as product evaluation evidence, while CandidateArena
-leaderboard remains research preflight.
+the evidence-quality gate for an eligible qualification-purpose evaluation: observation window
+size, elapsed time derived from actual observation timestamps, runner health when known, failed
+observation ratio, market snapshot presence,
+public execution evidence for fills, a complete contiguous observation/commitment identity chain,
+fake-account-reconciled score, and a frozen provider identity explicitly eligible for
+qualification. Every observation delta must reconcile to its cumulative score, every present
+observation account must reconcile to that cumulative score under the committed initial equity,
+account-less failure observations must preserve the prior score, and the final observation
+score/account must match the evaluation. A mature profitable
+research-feedback row or provider-ineligible window remains
+`not_qualification_evidence`. UI, CLI, and TUI must distinguish board rank from qualification and
+promotion authority, while CandidateArena leaderboard remains research preflight.
 When compacting this board into researcher context, do not invent runner authority: if the current
 process cannot see the in-memory runner, keep the paper status and score but mark runner state as
 unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`. The
 compacted researcher context should include deterministic blocker groups and next actions derived
 from qualification reasons, so the next CandidateArena tick can respond to evidence-window,
 runner-health, market-provenance, fill-provenance, and observation-quality failures without making
-those groups a second promotion gate. Selected paper evidence should also carry a compact
+those groups a second promotion gate. Expected research-feedback purpose is an authority label, not
+an adaptive research failure, so it must not become a finding-cluster blocker. Only a canonically
+matching `research_feedback` commitment with `closed_observation` release policy enters these paper
+research projections, and its observation chain and score must reconcile to the committed fake
+account. Candidate-level Ledger activity cannot create a paper research projection by itself.
+Qualification-purpose, invalidated, or integrity-failed scores, failures, observations, Ledger
+fields, and commitment digests remain omitted even after a run stops or fails; a future adjudicator
+owns release. The same predicate gates `paper_trading_evaluation_leader` source selection; sealed or
+corrupt paper evidence cannot become the next ResearchWorker's parent. Candidate-aggregate Ledger
+summaries are omitted until evidence can be resolved by the released evaluation's exact TradingRun.
+Selected paper
+evidence should also carry a compact
 `lineage` summary: lineage status, research direction, parent candidate, latest finding,
 evaluation status, and `lineage_only` authority. That lets the next ResearchWorker react to
 paper-backed lineage evidence without treating lineage as promotion authority.

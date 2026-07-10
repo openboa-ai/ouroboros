@@ -1,7 +1,7 @@
 # PaperTradingEvaluation Commitment Design
 
 **Date:** 2026-07-10
-**Status:** Approved for implementation
+**Status:** Implemented; repository-wide verification pending
 **Scope:** CandidateArena P0 evaluation lifecycle
 **Depends on:** Candidate admission gating and sealed ResearchPreflight
 
@@ -116,6 +116,7 @@ export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
   evidence_purpose: PaperTradingEvidencePurpose;
   candidate_ref: Ref;
   candidate_version_ref: Ref;
+  trading_run_ref: Ref;
   system_code_ref: Ref;
   system_code_artifact_digest: string;
   resolved_artifact_digest: string;
@@ -326,13 +327,25 @@ invalidated qualification evaluation returns `blocked_by_quality` with
 `paper_evaluation_invalidated`. These results are explicit so old or corrupted evidence cannot fall
 through to maturity checks.
 
+A qualification commitment whose frozen provider identity has `qualification_eligible: false`
+returns `not_qualification_evidence` with
+`provider_identity_not_qualification_eligible`. Advancing the current eligibility policy version
+does not rewrite or invalidate a canonical closed commitment during readback; active lifecycle
+verification separately detects current policy drift before more evidence is recorded.
+
 For a qualification commitment, the existing maturity and quality checks still apply. Passing them
-means only that the evidence window is usable. It does not claim that the candidate beat a champion.
+requires a complete contiguous observation chain whose evaluation, commitment, candidate,
+candidate-version, and TradingRun refs match. Every checkpoint delta must reconcile to its
+cumulative score, every present checkpoint account must reproduce that cumulative score under the
+committed initial equity, account-less failure checkpoints must preserve the prior score, and the
+final observation score/account must match the evaluation. Passing those checks means only that the
+evidence window is usable. It does not claim that the candidate beat a champion.
 
 `trading_candidate.promote` rejects every evaluation whose purpose is not `qualification`, whose
-evaluation is invalidated, or whose qualification status is not `qualified`. Because no current
-command creates qualification commitments, promotion is deliberately unavailable until the paired
-comparison frontier exists.
+evaluation is invalidated, or whose qualification status is not `qualified`. It also rejects a
+standalone qualified evaluation with `paper_trading_comparison_required`. Because no current
+comparison verdict can be promotion eligible, promotion is deliberately unavailable until the
+paired comparison frontier exists.
 
 ## Store Semantics
 
@@ -433,6 +446,33 @@ It does not implement:
 - long-lived ResearchWorker scheduling;
 - a new UI design;
 - live exchange or private-account authority.
+
+## Implementation Outcome
+
+The bounded frontier now provides:
+
+- append-only commitment persistence and canonical digest validation;
+- real executable-byte resolution for Python artifacts and immutable container digest enforcement;
+- matching commitment references across candidate, candidate version, TradingRun, evaluation, and
+  observation records;
+- verification before start, resume, recovery, scheduled observation, and manual observation;
+- initial verification before provider, sandbox, or evidence effects, plus terminal invalidation,
+  runner shutdown, and no further market, Gateway, Ledger, score, or observation effects when the
+  frozen identity later drifts;
+- explicit research-feedback ineligibility for qualification and promotion;
+- qualification rejection for provider-ineligible identities, incomplete observation chains,
+  checkpoint delta/account discontinuity, and final scores that do not reconcile to the committed
+  fake-account lineage;
+- canonical historical policy readback without silently applying a newer eligibility-policy
+  version, while active sessions still invalidate on current-policy drift;
+- shared Operator fields for purpose, commitment identity, canonical freeze state, and invalidation;
+- an Arena information barrier that admits only released, non-invalidated research-feedback
+  observations and omits qualification-purpose or invalidated scores, failures, observations,
+  candidate-level Ledger fields, and commitment digests from both prompt projections and next-source
+  selection.
+
+Current public start paths still create only `research_feedback`. Synthetic qualification fixtures
+exist only to verify the gate and information barrier; they are not a product qualification path.
 
 ## Follow-on Frontier
 

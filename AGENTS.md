@@ -205,9 +205,11 @@ Canonical Ouroboros nouns for the current product surface:
 | `SystemCode` | Executable code produced for a TradingSystem. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
-| `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
+| `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes a paper evaluation's evidence purpose and executable, runtime, policy, data, account, and authority identities before evidence exists. |
+| `PaperTradingEvidencePurpose` | Precommitted `research_feedback` or `qualification` purpose; one evaluation window cannot carry both or be upgraded after outcomes are known. |
+| `PaperTradingQualification` | Evidence-quality gate for an eligible qualification-purpose PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
-| `TradingPromotion` | Paper-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
+| `TradingPromotion` | Qualification- and external-comparison-verdict-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
 | `TradingReview` | Operator projection of the active Trading review candidate; it separates promoted Trading review target from the current Arena selected candidate. |
 | `Improvement` | Compatibility/AAR lineage noun for proposal and experiment flows that predate the primary CandidateArena workflow. |
 | `TradingReviewPacket` | Structured read-only evidence packet inside `TradingReview` that explains verdict, blocker, paper performance, runner health, Ledger continuity, lineage, provenance, risk, authority, and next action for the active review target. |

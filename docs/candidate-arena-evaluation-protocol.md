@@ -1,8 +1,9 @@
 # CandidateArena Evaluation Protocol
 
-Status: P0 target contract. This document defines the first implementation frontier required by
-[CandidateArena And Research Goal](candidate-arena-research-goal.md). The current implementation is
-not yet evidence of conformance.
+Status: P0 target contract with partial implementation evidence. This document defines the bounded
+frontiers required by [CandidateArena And Research Goal](candidate-arena-research-goal.md). Current
+commitment, admission, and sealed-preflight tests demonstrate only the explicitly listed partial
+conformance; they do not establish prospective champion superiority or P0 completion.
 
 ## Purpose
 
@@ -190,35 +191,53 @@ The following current surfaces require implementation work before P0 can pass:
 
 - `packages/application/src/trading/research/replay-trading-api-provider.ts` exposes evaluator-like
   directional hints in its small replay scenario payload.
-- `packages/application/src/candidate/arena.ts` now persists a digest-backed
-  `CandidateAdmissionDecision` before materialization and feeds rejected findings to later workers,
-  but it still combines generation, evaluation recording, adaptive context, and scheduling without
-  a frozen evidence-purpose boundary.
 - `packages/application/src/services/operator.ts` selects a created research candidate for paper
   without a separate conformance proof for the target protocol.
-- Paper-board evidence is fed back into new research, but current records do not distinguish that
-  adaptive feedback from prospective qualification evidence.
-- Current paper sessions do not provide a committed champion-and-challenger comparison on the same
-  market opportunity stream.
+- No application service can yet create a prospective `qualification` commitment, pair champion and
+  challenger before outcomes exist, or adjudicate superiority on one shared eligible market stream.
+- No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
+  current information barrier therefore remains intentionally one-way.
+- `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
+  integrity, including per-observation delta/account continuity. New promotion is fully closed until
+  a comparison verdict exists, and the future verdict path must also require run-specific Ledger
+  completeness. Candidate-level aggregate Ledger state is insufficient once one CandidateVersion
+  owns multiple TradingRuns.
+- ResearchWorkers are tick-scoped invocations rather than durable long-lived workers with explicit
+  budget, recovery, and causal memory ownership.
+- The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
+  provider-identity ineligibility, and behavior-level duplicate detection is incomplete.
 
 These are target gaps, not permission to widen one patch across every subsystem. Each implementation
 frontier must preserve the full protocol while remaining independently testable.
 
-The admission frontier is partial conformance evidence only. It demonstrates that failed,
+The implemented admission and commitment frontiers are partial conformance evidence only. They
+demonstrate that failed,
 unchanged, crashed, disqualified, and quarantined submissions cannot materialize a runnable paper
 candidate; valid accepted negative results remain research memory; low-cost rejection is not
-treated as favorable allocation evidence; and admission outcomes are distinct from infrastructure
-failure. It does not demonstrate immutable evidence purpose, candidate freeze, evaluator secrecy,
-prospective qualification, champion/challenger comparability, or P0 completion.
+treated as favorable allocation evidence; admission outcomes are distinct from infrastructure
+failure; every reachable paper start is precommitted as research feedback; executable or policy
+drift invalidates before new evidence; research history cannot qualify or promote; and active
+qualification-purpose, invalidated, integrity-failed, and candidate-Ledger-only evidence is excluded
+from Arena paper-learning projections and next-generation source selection. Candidate-aggregate
+Ledger summaries remain absent until they can be resolved by exact TradingRun. Standalone
+qualification cannot create a new promotion. It does not
+demonstrate evaluator secrecy, prospective qualification, champion/challenger comparability, a
+superiority verdict, post-adjudication release, or P0 completion.
 
 ## Implementation Frontier Order
 
-1. Define evidence purpose, candidate freeze, admission, quarantine, and comparison contracts in
-   domain types and persistence validation.
-2. Put a dedicated admission policy between `ResearchPreflight` and candidate materialization.
-3. Remove evaluator-answer leakage and add adversarial sealed-preflight fixtures.
-4. Add immutable research-feedback and qualification window lifecycle.
-5. Add comparable concurrent paper sessions for champion and challenger on one public market stream.
-6. Release closed findings and lineage to long-running ResearchWorkers without exposing active
-   qualification outcomes.
-7. Add restart, soak, operator parity, and scientific-control evidence before claiming P0 complete.
+1. **Partial:** evidence purpose, candidate freeze, admission, and quarantine contracts are
+   persisted and validated; the paired comparison contract remains to be materialized.
+2. **Implemented:** a dedicated admission policy gates candidate materialization after
+   `ResearchPreflight`.
+3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
+   broader adversarial coverage remain.
+4. **Implemented for current starts:** immutable research-feedback commitments, verification,
+   invalidation, restart, qualification ineligibility, and research projection sealing exist.
+   Qualification-purpose creation remains intentionally unavailable.
+5. **Next frontier:** add comparable prospective paper sessions for champion and challenger on one
+   public market stream and produce a separate adjudication verdict.
+6. **Partial:** released research-feedback findings feed later workers and active qualification
+   evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
+7. **Partial:** restart, focused soak, interface parity, and repository guards exist; paired
+   scientific-control and full P0 evidence remain.

@@ -18,9 +18,11 @@ that pack every axis into one identifier.
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |
 | `ResearchPreflight` | Replay, backtest, or simulation used during candidate creation; useful evidence, not final product authority. |
 | `PaperTradingEvaluation` | Continuous selected-candidate paper TradingRun evidence ranked by accumulated `revenue - cost`. |
-| `PaperTradingQualification` | Evidence-quality gate for a PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
+| `PaperTradingEvaluationCommitment` | Append-only pre-start record that fixes evidence purpose and the executable, runtime, policy, data, account, and authority identities under which a PaperTradingEvaluation may count. |
+| `PaperTradingEvidencePurpose` | Precommitted `research_feedback` or `qualification` purpose; one paper window cannot carry both or be upgraded after outcomes are known. |
+| `PaperTradingQualification` | Evidence-quality gate for an eligible qualification-purpose PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
-| `TradingPromotion` | Paper-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
+| `TradingPromotion` | Qualification- and external-comparison-verdict-backed state that moves one candidate into Trading review; it is not live exchange promotion and carries `not_live` authority. |
 | `TradingReview` | Operator projection of the active Trading review candidate; it separates promoted Trading review target from the current Arena selected candidate. |
 | `TradingReviewPacket` | Structured read-only evidence packet inside `TradingReview` that explains verdict, blocker, paper performance, runner health, Ledger continuity, lineage, provenance, risk, authority, and next action. |
 | `TradingSystemDecision` | `OrderRequest`, `hold`, or no-action signal emitted by a selected TradingSystem according to its own decision cadence. |
@@ -74,6 +76,9 @@ standard term fits. Record that decision in repo docs and tests.
 - Do not make paper observations force TradingSystem decisions. Observations are checkpoint/readback
   events; they consume newly emitted TradingSystemDecision records when present and otherwise record
   no-order continuity.
+- Do not infer or mutate `PaperTradingEvidencePurpose` from results. Research-feedback evidence may
+  guide later ResearchWorkers but cannot qualify or authorize promotion; qualification evidence
+  remains sealed from research until prospective adjudication releases it.
 - Do not reuse old sandbox output as a fresh paper decision.
 - Do not confuse TradingPromotion with live promotion. TradingPromotion only selects a paper-backed
   Trading review candidate while live/private authority remains disabled.
