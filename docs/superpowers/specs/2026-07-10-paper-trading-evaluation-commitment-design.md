@@ -126,6 +126,7 @@ export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
     artifact_runtime_contract_ref?: Ref;
   };
   provider_identity: {
+    runtime_provider_kind: "none" | "managed_agent";
     agent_profile_ref?: Ref;
     model?: string;
     provider_configuration_digest?: string;
@@ -150,6 +151,7 @@ export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
     symbol: "BTCUSDT";
     market_data_port: "gateway_owned";
     allowed_market_data_source: PaperTradingMarketDataSourceKind;
+    market_data_configuration_digest: string;
     private_exchange_access: "forbidden";
     live_order_access: "forbidden";
   };
@@ -170,15 +172,17 @@ content and digest inputs must remain equivalent to this contract.
 
 ### Evaluation and observation linkage
 
-`PaperTradingEvaluationRecord` gains a required `paper_trading_evaluation_commitment_ref`. Its
-`status` gains `invalidated`. It also records the latest stable invalidation reason when invalidated.
+`PaperTradingEvaluationRecord` gains `paper_trading_evaluation_commitment_ref`. The TypeScript field
+is optional only at the persistence read boundary so legacy JSON can be represented; every new
+non-invalidated write requires it. Its `status` gains `invalidated`. It also records the latest
+stable invalidation reason when invalidated.
 
 `PaperTradingObservationRecord` gains the same required commitment ref. The store rejects an
 observation unless its evaluation, candidate, candidate version, trading run, and commitment refs
 match the referenced evaluation and commitment exactly.
 
-The commitment ref is required for newly written records. Legacy records without it are treated as
-uncommitted evidence and are never inferred to be qualification evidence.
+The commitment ref is required for newly written records and observations. Legacy records without
+it are treated as uncommitted evidence and are never inferred to be qualification evidence.
 
 ### Invalidation reasons
 
@@ -316,6 +320,11 @@ window begins and applies equal market, cost, risk, timing, and evidence policie
 `PaperTradingQualificationStatus` gains `not_qualification_evidence`, with reason
 `evidence_purpose_not_qualification`. `qualifyPaperTradingEvaluation` returns this terminal result
 before maturity or quality checks when the linked commitment is not `qualification`.
+
+A missing commitment returns the same status with `paper_evaluation_commitment_missing`. An
+invalidated qualification evaluation returns `blocked_by_quality` with
+`paper_evaluation_invalidated`. These results are explicit so old or corrupted evidence cannot fall
+through to maturity checks.
 
 For a qualification commitment, the existing maturity and quality checks still apply. Passing them
 means only that the evidence window is usable. It does not claim that the candidate beat a champion.
