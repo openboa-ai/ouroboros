@@ -3,9 +3,14 @@ import type {
   PrivateReadinessPolicyGateInput
 } from "./private-readiness-policy";
 import type { PrivateReadGateDecision } from "./private-read-gate";
+import type {
+  CandidateAdmissionDecisionRecord,
+  CandidateAdmissionReason
+} from "./candidate-admission-policy";
 
 export * from "./private-read-gate";
 export * from "./private-readiness-policy";
+export * from "./candidate-admission-policy";
 
 export type FixtureMode = "fixture_convenience_mode" | "local_promoted_candidate_bundle";
 
@@ -149,7 +154,11 @@ export type ResearchWorkerStatus = "active" | "failed" | "retired";
 
 export type CandidateArenaTickStatus = "completed" | "completed_with_errors" | "failed";
 
-export type CandidateArenaDirectionResultStatus = "created" | "failed";
+export type CandidateArenaDirectionResultStatus =
+  | "created"
+  | "duplicate"
+  | "quarantined"
+  | "failed";
 
 export type CandidateArenaTickPaperTradingContinuationStatus = "started" | "failed";
 
@@ -178,6 +187,10 @@ export type TradingEvaluationDisqualificationReason =
   | "seed_cherry_pick"
   | "oos_overfit"
   | "unreproducible"
+  | "research_worker_failed"
+  | "runtime_crash"
+  | "risk_validation_failed"
+  | "no_order_request"
   | "runtime_self_report_only";
 
 export type TradingEvaluationQuarantineReason =
@@ -192,6 +205,7 @@ export type ResearchFindingKind =
   | "negative_result"
   | "failure_analysis"
   | "anti_hacking_case"
+  | "duplicate_result"
   | "next_artifact_hint";
 
 export type ImprovementProposalStatus =
@@ -2536,6 +2550,8 @@ export interface CandidateArenaTickDirectionResultReadModel {
   candidate_id?: string;
   finding?: string;
   error?: string;
+  admission_decision_id?: string;
+  admission_reason?: CandidateAdmissionReason;
   net_revenue_usdt?: number;
   research_efficiency?: CandidateArenaResearchEfficiencyReadModel;
 }
@@ -3644,6 +3660,7 @@ export type FixtureRecord =
   | ExperimentRunRecord
   | TradingEvaluationTaskRecord
   | TradingEvaluationResultRecord
+  | CandidateAdmissionDecisionRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaTickRecord

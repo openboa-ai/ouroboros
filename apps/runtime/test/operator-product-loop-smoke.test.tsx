@@ -1,5 +1,5 @@
 import React from "react";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { renderToString } from "ink";
@@ -1844,7 +1844,9 @@ function paperDirectArenaArtifactRunner(): TradingArtifactRunner {
   return {
     kind: "host_process",
     async run(input) {
-      await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
+      const runPath = path.join(input.artifact_dir, "run.py");
+      const source = await readFile(runPath, "utf8");
+      await writeFile(runPath, paperDirectArenaArtifact(arenaResearchDirection(source)), "utf8");
       return replayRunner.run(input);
     }
   };
@@ -1874,13 +1876,19 @@ function delayedPaperDirectArenaArtifactRunner(): TradingArtifactRunner & {
         blocked = true;
         await released;
       }
-      await writeFile(path.join(input.artifact_dir, "run.py"), paperDirectArenaArtifact(), "utf8");
+      const runPath = path.join(input.artifact_dir, "run.py");
+      const source = await readFile(runPath, "utf8");
+      await writeFile(runPath, paperDirectArenaArtifact(arenaResearchDirection(source)), "utf8");
       return replayRunner.run(input);
     }
   };
 }
 
-function paperDirectArenaArtifact(): string {
+function arenaResearchDirection(source: string): string {
+  return /^ARENA_RESEARCH_DIRECTION = "([^"]+)"$/m.exec(source)?.[1] ?? "other";
+}
+
+function paperDirectArenaArtifact(direction: string): string {
   return `#!/usr/bin/env python3
 import argparse
 import json
@@ -1888,6 +1896,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+ARENA_RESEARCH_DIRECTION = "${direction}"
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -1927,7 +1936,7 @@ append_line(json.dumps({
     "side": "buy",
     "order_type": "market",
     "quantity": "0.001",
-    "reason": "paper-direct arena fixture order",
+    "reason": f"{ARENA_RESEARCH_DIRECTION} paper-direct arena fixture order",
 }, sort_keys=True), log_path)
 
 tick = 0

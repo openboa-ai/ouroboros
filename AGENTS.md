@@ -198,6 +198,7 @@ Canonical Ouroboros nouns for the current product surface:
 | `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests and external evaluation to classify a submission as admitted, duplicate, or quarantined before candidate materialization; it grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
 | `FindingCluster` | Read-only CandidateArena grouping of paper-backed findings by direction, blocker, market regime, and protocol failure for the next ResearchWorker context. |
 | `TradingSystem` | Agent-built BTCUSDT USD-M futures trading system. |

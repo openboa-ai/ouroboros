@@ -16,6 +16,7 @@ import {
 import type {
   AccountPositionRiskMirrorSurfaceRecord,
   ArtifactLineageRecord,
+  CandidateAdmissionDecisionRecord,
   ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
@@ -2409,6 +2410,91 @@ describe("LocalStore", () => {
     await expect(reloadedStore.listResearchFindings()).resolves.toEqual([finding]);
   });
 
+  it("records and reloads a policy-consistent candidate admission decision", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const records = validCandidateAdmissionRecords();
+    const sourceSystemCode = validCandidateAdmissionSourceSystemCode();
+
+    await store.recordSystemCode(sourceSystemCode);
+    await store.recordExperimentRun(records.experiment);
+    await store.recordTradingEvaluationResult(records.evaluation);
+    await store.recordResearchFinding(records.finding);
+    const recorded = await store.recordCandidateAdmissionDecision(records.admission);
+
+    expect(recorded).toEqual(records.admission);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([records.admission]);
+    const persisted = await readStoreJson<CandidateAdmissionDecisionRecord>(
+      "candidate-admission-decisions",
+      "items",
+      `${records.admission.candidate_admission_decision_id}.json`
+    );
+    expect(persisted).toEqual(records.admission);
+
+    const reloadedStore = new LocalStore(tmpDir);
+    await expect(reloadedStore.listCandidateAdmissionDecisions()).resolves.toEqual([
+      records.admission
+    ]);
+  });
+
+  it("rejects inconsistent or dangling candidate admission decisions", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const records = validCandidateAdmissionRecords();
+    const sourceSystemCode = validCandidateAdmissionSourceSystemCode();
+
+    await store.recordSystemCode(sourceSystemCode);
+    await store.recordExperimentRun(records.experiment);
+    await store.recordTradingEvaluationResult(records.evaluation);
+    await store.recordResearchFinding(records.finding);
+
+    await expectStoreError(
+      store.recordCandidateAdmissionDecision({
+        ...records.admission,
+        status: "duplicate",
+        reason: "no_candidate_change",
+        runnable_paper_handoff: false
+      }),
+      "invalid_candidate_admission_decision_input"
+    );
+    await expectStoreError(
+      store.recordCandidateAdmissionDecision({
+        ...records.admission,
+        source_artifact_digest: records.admission.submitted_artifact_digest
+      }),
+      "invalid_candidate_admission_decision_input"
+    );
+    await expectStoreError(
+      store.recordCandidateAdmissionDecision({
+        ...records.admission,
+        submitted_artifact_digest: "sha256:not-the-referenced-system-code"
+      }),
+      "candidate_admission_reference_mismatch"
+    );
+    await expectStoreError(
+      store.recordCandidateAdmissionDecision({
+        ...records.admission,
+        source_system_code_ref: {
+          record_kind: "system_code",
+          id: sourceSystemCode.system_code_id
+        },
+        source_artifact_digest: "sha256:not-the-referenced-source-system-code"
+      } as CandidateAdmissionDecisionRecord),
+      "candidate_admission_reference_mismatch"
+    );
+    await expectStoreError(
+      store.recordCandidateAdmissionDecision({
+        ...records.admission,
+        research_finding_ref: {
+          record_kind: "research_finding",
+          id: "missing-research-finding"
+        }
+      }),
+      "candidate_admission_reference_not_found"
+    );
+    await expect(countJsonFiles("candidate-admission-decisions", "items")).resolves.toBe(0);
+  });
+
   it("records artifact change lineage linked to stored findings", async () => {
     const store = new LocalStore(tmpDir);
     await store.initialize();
@@ -3176,6 +3262,139 @@ function validResearchFindingRecord(): ResearchFindingRecord {
     ],
     created_at: "2026-05-11T00:00:00.000Z",
     authority_status: "research_trace_only"
+  };
+}
+
+function validCandidateAdmissionRecords(): {
+  experiment: ExperimentRunRecord;
+  evaluation: TradingEvaluationResultRecord;
+  finding: ResearchFindingRecord;
+  admission: CandidateAdmissionDecisionRecord;
+} {
+  const experiment: ExperimentRunRecord = {
+    record_kind: "experiment_run",
+    version: 1,
+    experiment_run_id: "experiment-run-candidate-admission-001",
+    research_worker_ref: { record_kind: "research_worker", id: "research-worker-admission-001" },
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: "research-direction-admission-001"
+    },
+    system_code_ref: { record_kind: "system_code", id: FIXTURE_SYSTEM_CODE_ID },
+    trading_evaluation_task_ref: {
+      record_kind: "trading_evaluation_task",
+      id: "trading-evaluation-task-admission-001"
+    },
+    trace_ref: { record_kind: "trace_placeholder", id: "trace-candidate-admission-001" },
+    submitted_at: "2026-07-10T00:00:00.000Z",
+    status: "evaluated",
+    authority_status: "not_live"
+  };
+  const evaluation: TradingEvaluationResultRecord = {
+    record_kind: "trading_evaluation_result",
+    version: 1,
+    trading_evaluation_result_id: "trading-evaluation-result-candidate-admission-001",
+    experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    trading_evaluation_task_ref: experiment.trading_evaluation_task_ref,
+    evaluator_ref: { record_kind: "external_evaluator", id: "candidate-admission-evaluator-v1" },
+    result_status: "accepted",
+    evidence_disposition: "not_counted",
+    score_summary: {
+      total_score: 0.7,
+      oos_score: 0.7,
+      drawdown_score: 0.7,
+      turnover_score: 0.7,
+      cost_survival_score: 0.7,
+      reproducibility_score: 0.7,
+      complexity_penalty: 0
+    },
+    metric_refs: [{ record_kind: "metric_snapshot", id: "metric-candidate-admission-001" }],
+    evaluator_trace_ref: {
+      record_kind: "trace_placeholder",
+      id: "trace-evaluator-candidate-admission-001"
+    },
+    completed_at: "2026-07-10T00:01:00.000Z",
+    authority_status: "not_counted"
+  };
+  const finding: ResearchFindingRecord = {
+    record_kind: "research_finding",
+    version: 1,
+    research_finding_id: "research-finding-candidate-admission-001",
+    research_worker_ref: experiment.research_worker_ref,
+    research_direction_ref: experiment.research_direction_ref,
+    experiment_run_ref: evaluation.experiment_run_ref,
+    trading_evaluation_result_ref: {
+      record_kind: "trading_evaluation_result",
+      id: evaluation.trading_evaluation_result_id
+    },
+    finding_kind: "positive_result",
+    summary: "Accepted external research evidence is eligible for candidate admission.",
+    supporting_record_refs: [
+      {
+        record_kind: "trading_evaluation_result",
+        id: evaluation.trading_evaluation_result_id
+      }
+    ],
+    created_at: "2026-07-10T00:02:00.000Z",
+    authority_status: "research_trace_only"
+  };
+  return {
+    experiment,
+    evaluation,
+    finding,
+    admission: {
+      record_kind: "candidate_admission_decision",
+      version: 1,
+      candidate_admission_decision_id: "candidate-admission-decision-001",
+      source_system_code_ref: {
+        record_kind: "system_code",
+        id: "system-code-candidate-admission-source-001"
+      },
+      system_code_ref: experiment.system_code_ref,
+      experiment_run_ref: evaluation.experiment_run_ref,
+      trading_evaluation_result_ref: finding.trading_evaluation_result_ref,
+      research_finding_ref: {
+        record_kind: "research_finding",
+        id: finding.research_finding_id
+      },
+      source_artifact_digest: "sha256:source-candidate-admission-001",
+      submitted_artifact_digest: "sha256:fixture-clock-python-artifact-v1",
+      research_worker_outcome: "changed",
+      experiment_status: "evaluated",
+      evaluation_status: "accepted",
+      evidence_disposition: "not_counted",
+      status: "admitted",
+      reason: "evaluation_accepted",
+      runnable_paper_handoff: true,
+      decided_at: "2026-07-10T00:03:00.000Z",
+      authority_status: "not_live"
+    }
+  };
+}
+
+function validCandidateAdmissionSourceSystemCode(): SystemCodeRecord {
+  return {
+    record_kind: "system_code",
+    version: 1,
+    system_code_id: "system-code-candidate-admission-source-001",
+    artifact_kind: "python_file",
+    artifact_path: "fixtures/trading-systems/clock.py",
+    artifact_digest: "sha256:source-candidate-admission-001",
+    runtime_kind: "python",
+    entrypoint: ["python3", "fixtures/trading-systems/clock.py"],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log", "order_request"]
+    },
+    secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "candidate-admission-source"
+    },
+    provenance_refs: [],
+    status: "registered",
+    created_at: "2026-07-10T00:00:00.000Z",
+    authority_status: "not_live"
   };
 }
 

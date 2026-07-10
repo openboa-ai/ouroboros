@@ -85,6 +85,29 @@ count, runner command count, scenario count, and elapsed milliseconds for a Cand
 direction result with `not_promotion_authority`, so researchers can compare autonomy efficiency
 without weakening paper evidence or Trading review authority.
 
+`CandidateAdmissionDecision` is the research-only external gate between `ResearchPreflight` and
+candidate materialization. A CandidateArena direction result is `created` only when the persisted
+decision is `admitted` with `runnable_paper_handoff: true`. Unchanged output is `duplicate` and
+invalid external evaluation is `quarantined`. Every completed admission outcome carries
+`admission_decision_id` and `admission_reason`; duplicate and quarantined results also carry a
+finding summary without a candidate id. Infrastructure exceptions remain `failed`. Changed versus
+unchanged is derived from the source and submitted SystemCode artifact
+digests, not the ResearchWorker's edit self-report. Only `not_counted` research evidence can be
+admitted; already counted evidence is quarantined instead of being repurposed as a runnable
+handoff. A tick is `completed` when every direction
+reaches an admission outcome, even if none is admitted; `completed_with_errors` or `failed` is
+reserved for partial or total infrastructure failure. Admission does not qualify paper evidence,
+change paper rank, grant promotion, or enable live authority.
+
+Admission persists references to both the exact source SystemCode snapshot and submitted
+SystemCode. LocalStore verifies each stored digest against its referenced record and checks that the
+ExperimentRun, TradingEvaluationResult, and ResearchFinding form one consistent evidence chain.
+
+The legacy `runAgentTradingCycle` and `runCandidateGeneration` direct-materialization helpers are
+retired and return `agent_trading_cycle_retired_use_candidate_arena` and
+`candidate_generation_retired_use_candidate_arena`, respectively. CandidateArena is the only
+application path that may turn research or provider output into a materialized candidate.
+
 The `paper_trading_board` ranks persisted paper evaluations by `net_revenue_usdt` first and
 `net_return_pct` second. It keeps negative paper evaluations visible, exposes runner state
 (`active`, `needs_resume`, or `inactive`), exposes qualification status and reasons, and exposes

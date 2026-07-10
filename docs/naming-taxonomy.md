@@ -12,6 +12,7 @@ that pack every axis into one identifier.
 | `ResearchWorker` | Candidate generator operating within one ResearchDirection for a CandidateArena tick. |
 | `ResearchDirection` | Arena research lane such as trend following, mean reversion, volatility regime, funding-aware risk, or execution-cost robustness. |
 | `CandidateArenaTick` | One arena iteration that records per-direction candidate creation, failure, finding, and lineage evidence. |
+| `CandidateAdmissionDecision` | Research-only external gate that uses source/submitted SystemCode digests and external evaluation to classify a submission as admitted, duplicate, or quarantined before candidate materialization; it grants no paper qualification or live authority. |
 | `ResearchEfficiency` | Authority-free provider-request, runner-command, scenario-count, and elapsed-time summary for comparing research cost and latency. |
 | `TradingSystem` | Executable BTCUSDT USD-M futures candidate system; it may include code, rules, model calls, tools, or an internal agent runtime. |
 | `SystemCode` | Code packaging and verification surface for a TradingSystem, not the limit of what the system can do. |

@@ -2,6 +2,7 @@ import type {
   AgentProfileId,
   AgentProfileRecord,
   ArtifactLineageRecord,
+  CandidateAdmissionDecisionRecord,
   CandidateArenaTickRecord,
   CandidateEvaluationRunOutcome,
   CandidateInspectReadModel,
@@ -88,6 +89,10 @@ export interface OuroborosStorePort {
   listCandidateArenaTicks(): Promise<CandidateArenaTickRecord[]>;
   recordSystemCode(systemCode: SystemCodeRecord): Promise<SystemCodeRecord>;
   getSystemCode(systemCodeId: string): Promise<SystemCodeRecord | undefined>;
+  recordCandidateAdmissionDecision(
+    record: CandidateAdmissionDecisionRecord
+  ): Promise<CandidateAdmissionDecisionRecord>;
+  listCandidateAdmissionDecisions(): Promise<CandidateAdmissionDecisionRecord[]>;
   recordExperimentRun(record: ExperimentRunRecord): Promise<ExperimentRunRecord>;
   recordTradingEvaluationResult(record: TradingEvaluationResultRecord): Promise<TradingEvaluationResultRecord>;
   recordResearchFinding(record: ResearchFindingRecord): Promise<ResearchFindingRecord>;

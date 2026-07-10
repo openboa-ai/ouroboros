@@ -190,9 +190,10 @@ The following current surfaces require implementation work before P0 can pass:
 
 - `packages/application/src/trading/research/replay-trading-api-provider.ts` exposes evaluator-like
   directional hints in its small replay scenario payload.
-- `packages/application/src/candidate/arena.ts` combines generation, evaluation recording,
-  materialization, adaptive context, and scheduling without a distinct admission policy or frozen
-  evidence-purpose boundary.
+- `packages/application/src/candidate/arena.ts` now persists a digest-backed
+  `CandidateAdmissionDecision` before materialization and feeds rejected findings to later workers,
+  but it still combines generation, evaluation recording, adaptive context, and scheduling without
+  a frozen evidence-purpose boundary.
 - `packages/application/src/services/operator.ts` selects a created research candidate for paper
   without a separate conformance proof for the target protocol.
 - Paper-board evidence is fed back into new research, but current records do not distinguish that
@@ -202,6 +203,13 @@ The following current surfaces require implementation work before P0 can pass:
 
 These are target gaps, not permission to widen one patch across every subsystem. Each implementation
 frontier must preserve the full protocol while remaining independently testable.
+
+The admission frontier is partial conformance evidence only. It demonstrates that failed,
+unchanged, crashed, disqualified, and quarantined submissions cannot materialize a runnable paper
+candidate; valid accepted negative results remain research memory; low-cost rejection is not
+treated as favorable allocation evidence; and admission outcomes are distinct from infrastructure
+failure. It does not demonstrate immutable evidence purpose, candidate freeze, evaluator secrecy,
+prospective qualification, champion/challenger comparability, or P0 completion.
 
 ## Implementation Frontier Order
 

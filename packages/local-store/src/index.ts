@@ -38,7 +38,8 @@ import type {
 } from "./trading-substrate-surfaces";
 import {
   buildImprovementReadModel,
-  buildLedgerReadModel
+  buildLedgerReadModel,
+  isCandidateAdmissionDecisionConsistent
 } from "@ouroboros/domain";
 export type { PrivateReadinessPostureQueryInput } from "./private-readiness-postures";
 export type {
@@ -57,6 +58,7 @@ import type {
   AgentSessionRecord,
   ExperimentRunRecord,
   ArtifactLineageRecord,
+  CandidateAdmissionDecisionRecord,
   ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
@@ -208,6 +210,7 @@ export type LocalStoreErrorCode =
   | "run_control_reload_failed"
   | "sandbox_reload_failed"
   | "invalid_research_finding_input"
+  | "invalid_candidate_admission_decision_input"
   | "invalid_artifact_lineage_input"
   | "invalid_improvement_proposal_input"
   | "invalid_research_orchestration_run_input"
@@ -217,7 +220,9 @@ export type LocalStoreErrorCode =
   | "improvement_proposal_materialization_reload_failed"
   | "research_finding_not_found"
   | "improvement_proposal_not_found"
-  | "artifact_lineage_not_found";
+  | "artifact_lineage_not_found"
+  | "candidate_admission_reference_not_found"
+  | "candidate_admission_reference_mismatch";
 
 export class LocalStoreError extends Error {
   readonly code: LocalStoreErrorCode;
@@ -297,6 +302,7 @@ type Collection =
   | "improvement-proposal-materialization-attempts"
   | "research-orchestration-runs"
   | "experiment-runs"
+  | "candidate-admission-decisions"
   | "candidate-arena-ticks"
   | "trading-evaluation-results";
 
@@ -1204,6 +1210,150 @@ export class LocalStore {
     }
     await this.writeJson(this.itemPath("system-codes", systemCode.system_code_id), systemCode);
     return systemCode;
+  }
+
+  async recordCandidateAdmissionDecision(
+    decision: CandidateAdmissionDecisionRecord
+  ): Promise<CandidateAdmissionDecisionRecord> {
+    if (!isCandidateAdmissionDecisionRecord(decision)) {
+      throw new LocalStoreError(
+        "invalid_candidate_admission_decision_input",
+        "invalid candidate admission decision input",
+        {
+          candidate_admission_decision_id:
+            (decision as Partial<CandidateAdmissionDecisionRecord> | undefined)
+              ?.candidate_admission_decision_id
+        }
+      );
+    }
+    const [sourceSystemCode, systemCode, experiment, evaluation, finding] = await Promise.all([
+      this.readOptionalRecord<SystemCodeRecord>(
+        "system-codes",
+        decision.source_system_code_ref.id
+      ),
+      this.readOptionalRecord<SystemCodeRecord>("system-codes", decision.system_code_ref.id),
+      this.readOptionalRecord<ExperimentRunRecord>(
+        "experiment-runs",
+        decision.experiment_run_ref.id
+      ),
+      this.readOptionalRecord<TradingEvaluationResultRecord>(
+        "trading-evaluation-results",
+        decision.trading_evaluation_result_ref.id
+      ),
+      this.readOptionalRecord<ResearchFindingRecord>(
+        "research-findings",
+        decision.research_finding_ref.id
+      )
+    ]);
+    const referencedRecords: Array<{
+      ref: CandidateAdmissionDecisionRecord[
+        | "source_system_code_ref"
+        | "system_code_ref"
+        | "experiment_run_ref"
+        | "trading_evaluation_result_ref"
+        | "research_finding_ref"
+      ];
+      record: FixtureRecord | undefined;
+    }> = [
+      {
+        ref: decision.source_system_code_ref,
+        record: sourceSystemCode
+      },
+      {
+        ref: decision.system_code_ref,
+        record: systemCode
+      },
+      {
+        ref: decision.experiment_run_ref,
+        record: experiment
+      },
+      {
+        ref: decision.trading_evaluation_result_ref,
+        record: evaluation
+      },
+      {
+        ref: decision.research_finding_ref,
+        record: finding
+      }
+    ];
+    for (const reference of referencedRecords) {
+      if (!reference.record || reference.record.record_kind !== reference.ref.record_kind) {
+        throw new LocalStoreError(
+          "candidate_admission_reference_not_found",
+          `candidate admission reference ${reference.ref.record_kind}:${reference.ref.id} not found`,
+          {
+            candidate_admission_decision_id: decision.candidate_admission_decision_id,
+            referenced_record_kind: reference.ref.record_kind,
+            referenced_record_id: reference.ref.id
+          }
+        );
+      }
+    }
+    if (!sourceSystemCode || !systemCode || !experiment || !evaluation || !finding) {
+      throw new LocalStoreError(
+        "candidate_admission_reference_not_found",
+        "candidate admission reference not found",
+        { candidate_admission_decision_id: decision.candidate_admission_decision_id }
+      );
+    }
+    const mismatchFields = [
+      sourceSystemCode.artifact_digest !== decision.source_artifact_digest
+        ? "source_system_code.artifact_digest"
+        : undefined,
+      systemCode.artifact_digest !== decision.submitted_artifact_digest
+        ? "system_code.artifact_digest"
+        : undefined,
+      experiment.system_code_ref.id !== decision.system_code_ref.id
+        ? "experiment_run.system_code_ref"
+        : undefined,
+      experiment.status !== decision.experiment_status
+        ? "experiment_run.status"
+        : undefined,
+      evaluation.experiment_run_ref.id !== decision.experiment_run_ref.id
+        ? "trading_evaluation_result.experiment_run_ref"
+        : undefined,
+      evaluation.trading_evaluation_task_ref.id !== experiment.trading_evaluation_task_ref.id
+        ? "trading_evaluation_result.trading_evaluation_task_ref"
+        : undefined,
+      evaluation.result_status !== decision.evaluation_status
+        ? "trading_evaluation_result.result_status"
+        : undefined,
+      evaluation.evidence_disposition !== decision.evidence_disposition
+        ? "trading_evaluation_result.evidence_disposition"
+        : undefined,
+      finding.experiment_run_ref.id !== decision.experiment_run_ref.id
+        ? "research_finding.experiment_run_ref"
+        : undefined,
+      finding.trading_evaluation_result_ref.id !== decision.trading_evaluation_result_ref.id
+        ? "research_finding.trading_evaluation_result_ref"
+        : undefined
+    ].filter((field): field is string => Boolean(field));
+    if (mismatchFields.length > 0) {
+      throw new LocalStoreError(
+        "candidate_admission_reference_mismatch",
+        "candidate admission references do not match persisted evidence",
+        {
+          candidate_admission_decision_id: decision.candidate_admission_decision_id,
+          mismatch_fields: mismatchFields
+        }
+      );
+    }
+    await this.writeJson(
+      this.itemPath(
+        "candidate-admission-decisions",
+        decision.candidate_admission_decision_id
+      ),
+      decision
+    );
+    return decision;
+  }
+
+  async listCandidateAdmissionDecisions(): Promise<CandidateAdmissionDecisionRecord[]> {
+    return (
+      await this.readCollection<CandidateAdmissionDecisionRecord>(
+        "candidate-admission-decisions"
+      )
+    ).sort(compareCandidateAdmissionDecisions);
   }
 
   async recordResearchFinding(finding: ResearchFindingRecord): Promise<ResearchFindingRecord> {
@@ -4898,6 +5048,19 @@ function compareResearchFindings(a: ResearchFindingRecord, b: ResearchFindingRec
   return a.research_finding_id.localeCompare(b.research_finding_id);
 }
 
+function compareCandidateAdmissionDecisions(
+  a: CandidateAdmissionDecisionRecord,
+  b: CandidateAdmissionDecisionRecord
+): number {
+  const timeCompare = a.decided_at.localeCompare(b.decided_at);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+  return a.candidate_admission_decision_id.localeCompare(
+    b.candidate_admission_decision_id
+  );
+}
+
 function compareCandidateArenaTicks(a: CandidateArenaTickRecord, b: CandidateArenaTickRecord): number {
   const timeCompare = b.completed_at.localeCompare(a.completed_at);
   if (timeCompare !== 0) {
@@ -5641,6 +5804,68 @@ function isSystemCodeRecord(value: unknown): value is SystemCodeRecord {
   );
 }
 
+function isCandidateAdmissionDecisionRecord(
+  value: unknown
+): value is CandidateAdmissionDecisionRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const raw = value as Partial<CandidateAdmissionDecisionRecord>;
+  if (
+    raw.record_kind !== "candidate_admission_decision" ||
+    raw.version !== 1 ||
+    !nonEmpty(raw.candidate_admission_decision_id) ||
+    !isRef(raw.source_system_code_ref, "system_code") ||
+    !isRef(raw.system_code_ref, "system_code") ||
+    !isRef(raw.experiment_run_ref, "experiment_run") ||
+    !isRef(raw.trading_evaluation_result_ref, "trading_evaluation_result") ||
+    !isRef(raw.research_finding_ref, "research_finding") ||
+    !nonEmpty(raw.source_artifact_digest) ||
+    !nonEmpty(raw.submitted_artifact_digest) ||
+    !isCandidateAdmissionResearchWorkerOutcome(raw.research_worker_outcome) ||
+    !isCandidateAdmissionExperimentStatus(raw.experiment_status) ||
+    !isCandidateAdmissionEvaluationStatus(raw.evaluation_status) ||
+    !isEvidenceDisposition(raw.evidence_disposition) ||
+    !isCandidateAdmissionStatus(raw.status) ||
+    !isCandidateAdmissionReason(raw.reason) ||
+    typeof raw.runnable_paper_handoff !== "boolean" ||
+    !nonEmpty(raw.decided_at) ||
+    raw.authority_status !== "not_live"
+  ) {
+    return false;
+  }
+  return isCandidateAdmissionDecisionConsistent(
+    raw as CandidateAdmissionDecisionRecord
+  );
+}
+
+function isCandidateAdmissionResearchWorkerOutcome(value: unknown): boolean {
+  return value === "changed" || value === "unchanged" || value === "failed";
+}
+
+function isCandidateAdmissionExperimentStatus(value: unknown): boolean {
+  return value === "evaluated" || value === "failed";
+}
+
+function isCandidateAdmissionEvaluationStatus(value: unknown): boolean {
+  return value === "accepted" || value === "quarantined_for_review" || value === "disqualified";
+}
+
+function isCandidateAdmissionStatus(value: unknown): boolean {
+  return value === "admitted" || value === "duplicate" || value === "quarantined";
+}
+
+function isCandidateAdmissionReason(value: unknown): boolean {
+  return value === "evaluation_accepted" ||
+    value === "research_worker_failed" ||
+    value === "no_candidate_change" ||
+    value === "experiment_failed" ||
+    value === "evaluation_disqualified" ||
+    value === "evaluation_quarantined" ||
+    value === "evidence_already_counted" ||
+    value === "evidence_quarantined";
+}
+
 function isResearchFindingRecord(value: unknown): value is ResearchFindingRecord {
   if (!value || typeof value !== "object") {
     return false;
@@ -5848,6 +6073,7 @@ function isResearchFindingKind(value: unknown): boolean {
     value === "negative_result" ||
     value === "failure_analysis" ||
     value === "anti_hacking_case" ||
+    value === "duplicate_result" ||
     value === "next_artifact_hint"
   );
 }
@@ -5894,7 +6120,10 @@ function isCandidateArenaTickSource(value: unknown): boolean {
 }
 
 function isCandidateArenaDirectionResultStatus(value: unknown): boolean {
-  return value === "created" || value === "failed";
+  return value === "created" ||
+    value === "duplicate" ||
+    value === "quarantined" ||
+    value === "failed";
 }
 
 function isCandidateArenaTickPaperTradingContinuation(value: unknown): boolean {
@@ -5941,12 +6170,18 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     candidate_id?: unknown;
     finding?: unknown;
     error?: unknown;
+    admission_decision_id?: unknown;
+    admission_reason?: unknown;
     net_revenue_usdt?: unknown;
     research_efficiency?: unknown;
   };
   const hasCandidateId = raw.candidate_id === undefined || nonEmpty(raw.candidate_id);
   const hasFinding = raw.finding === undefined || nonEmpty(raw.finding);
   const hasError = raw.error === undefined || nonEmpty(raw.error);
+  const hasAdmissionDecisionId = raw.admission_decision_id === undefined ||
+    nonEmpty(raw.admission_decision_id);
+  const hasAdmissionReason = raw.admission_reason === undefined ||
+    isCandidateAdmissionReason(raw.admission_reason);
   const hasNetRevenue = raw.net_revenue_usdt === undefined ||
     (typeof raw.net_revenue_usdt === "number" && Number.isFinite(raw.net_revenue_usdt));
   const hasResearchEfficiency = raw.research_efficiency === undefined ||
@@ -5957,12 +6192,18 @@ function isCandidateArenaTickDirectionResult(value: unknown): boolean {
     hasCandidateId &&
     hasFinding &&
     hasError &&
+    hasAdmissionDecisionId &&
+    hasAdmissionReason &&
     hasNetRevenue &&
     hasResearchEfficiency &&
     (
       raw.status === "created"
         ? nonEmpty(raw.candidate_id)
-        : nonEmpty(raw.error)
+        : raw.status === "failed"
+          ? nonEmpty(raw.error)
+          : nonEmpty(raw.finding) &&
+            nonEmpty(raw.admission_decision_id) &&
+            isCandidateAdmissionReason(raw.admission_reason)
     )
   );
 }
@@ -6020,6 +6261,10 @@ function isTradingEvaluationDisqualificationReason(value: unknown): boolean {
     value === "seed_cherry_pick" ||
     value === "oos_overfit" ||
     value === "unreproducible" ||
+    value === "research_worker_failed" ||
+    value === "runtime_crash" ||
+    value === "risk_validation_failed" ||
+    value === "no_order_request" ||
     value === "runtime_self_report_only"
   );
 }

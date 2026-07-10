@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -99,6 +99,303 @@ describe("CandidateArena paper evidence context", () => {
         direction_kind: "trend_following",
         status: "failed",
         error: "candidate_arena_entrypoint_escapes_artifact_dir"
+      })
+    ]);
+  });
+
+  it("quarantines a failed ResearchWorker before runnable candidate materialization", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new FailedResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.created_candidate_ids).toEqual([]);
+    expect((await store.listCandidates()).filter((candidate) => candidate.status === "materialized"))
+      .toHaveLength(0);
+    expect(outcome.arena.latest_ticks[0]?.status).toBe("completed");
+    expect(outcome.arena.active_researchers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "failed"
+      })
+    ]));
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "trend_following",
+        status: "quarantined",
+        admission_reason: "research_worker_failed",
+        finding: "ResearchWorker failed before artifact execution: diagnostic_worker_failed"
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        status: "quarantined",
+        reason: "research_worker_failed",
+        runnable_paper_handoff: false
+      })
+    ]);
+    await expect(store.listTradingEvaluationResults()).resolves.toEqual([
+      expect.objectContaining({
+        result_status: "disqualified",
+        evidence_disposition: "quarantined_for_review",
+        disqualification_reason: "research_worker_failed"
+      })
+    ]);
+    await expect(store.listResearchFindings()).resolves.toEqual([
+      expect.objectContaining({
+        finding_kind: "failure_analysis",
+        summary: "ResearchWorker failed before artifact execution: diagnostic_worker_failed"
+      })
+    ]);
+  });
+
+  it("quarantines a crashed candidate run before runnable candidate materialization", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["execution_cost_robustness"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: crashedReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "execution_cost_robustness",
+        status: "quarantined",
+        admission_reason: "experiment_failed"
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        experiment_status: "failed",
+        status: "quarantined",
+        reason: "experiment_failed",
+        runnable_paper_handoff: false
+      })
+    ]);
+    await expect(store.listTradingEvaluationResults()).resolves.toEqual([
+      expect.objectContaining({
+        result_status: "disqualified",
+        evidence_disposition: "quarantined_for_review",
+        disqualification_reason: "runtime_crash"
+      })
+    ]);
+  });
+
+  it("records unchanged ResearchWorker output as a duplicate without a population slot", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new NoChangeResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.created_candidate_ids).toEqual([]);
+    expect(outcome.arena.latest_ticks[0]?.status).toBe("completed");
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        status: "duplicate",
+        admission_reason: "no_candidate_change",
+        finding: "ResearchWorker reported no candidate change; duplicate population entry rejected."
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        status: "duplicate",
+        reason: "no_candidate_change",
+        runnable_paper_handoff: false
+      })
+    ]);
+    await expect(store.listResearchFindings()).resolves.toEqual([
+      expect.objectContaining({
+        finding_kind: "duplicate_result"
+      })
+    ]);
+  });
+
+  it("rejects unchanged SystemCode even when the ResearchWorker reports an edit", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["volatility_regime"],
+      researchAgent: "codex",
+      agentFactory: () => new MisreportedEditResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(0);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        direction_kind: "volatility_regime",
+        status: "duplicate",
+        admission_reason: "no_candidate_change"
+      })
+    ]);
+    await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+      expect.objectContaining({
+        research_worker_outcome: "unchanged",
+        status: "duplicate",
+        runnable_paper_handoff: false
+      })
+    ]);
+  });
+
+  it("feeds rejected research into the next generation without rewarding rejection efficiency", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+
+    await runCandidateArenaTick({
+      store,
+      tickId: "rejected-learning-tick-1",
+      directions: ["mean_reversion"],
+      researchAgent: "codex",
+      agentFactory: () => new NoChangeResearchAgent(),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    const capturedContexts: string[] = [];
+    const second = await runCandidateArenaTick({
+      store,
+      tickId: "rejected-learning-tick-2",
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent(capturedContexts),
+      artifactRunner: networklessReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+    const secondTick = second.arena.latest_ticks.find((entry) => entry.tick_id === second.tick_id);
+
+    expect(secondTick?.direction_results.map((entry) => entry.direction_kind)).toEqual([
+      "trend_following",
+      "mean_reversion",
+      "volatility_regime",
+      "funding_aware_risk",
+      "execution_cost_robustness"
+    ]);
+    expect(capturedContexts).toHaveLength(5);
+    const context = JSON.parse(capturedContexts[0]!) as {
+      latest_research_efficiency: Array<{
+        tick_id: string;
+        direction_kind: string;
+        status: string;
+        admission_reason?: string;
+      }>;
+      latest_candidate_admission_rejections: Array<{
+        tick_id: string;
+        direction_kind: string;
+        status: string;
+        admission_reason?: string;
+        finding?: string;
+      }>;
+      adaptive_direction_focus: Array<{
+        direction_kind: string;
+        focus_reason: string;
+      }>;
+    };
+    expect(context.latest_research_efficiency).toEqual([
+      expect.objectContaining({
+        tick_id: "rejected-learning-tick-1",
+        direction_kind: "mean_reversion",
+        status: "duplicate",
+        admission_reason: "no_candidate_change"
+      })
+    ]);
+    expect(context.latest_candidate_admission_rejections).toEqual([
+      expect.objectContaining({
+        tick_id: "rejected-learning-tick-1",
+        direction_kind: "mean_reversion",
+        status: "duplicate",
+        admission_reason: "no_candidate_change",
+        finding: "ResearchWorker reported no candidate change; duplicate population entry rejected."
+      })
+    ]);
+    expect(context.adaptive_direction_focus).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        direction_kind: "mean_reversion",
+        focus_reason: "research_efficiency_budget:low_cost_latency"
+      })
+    ]));
+  });
+
+  it("admits a changed loss-making candidate after recording its negative research evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const materializeCandidate = store.materializeCandidate.bind(store);
+    store.materializeCandidate = async (input) => {
+      await expect(store.listCandidateAdmissionDecisions()).resolves.toEqual([
+        expect.objectContaining({
+          status: "admitted",
+          reason: "evaluation_accepted",
+          runnable_paper_handoff: true
+        })
+      ]);
+      return materializeCandidate(input);
+    };
+
+    const outcome = await runCandidateArenaTick({
+      store,
+      directions: ["trend_following"],
+      researchAgent: "codex",
+      agentFactory: () => new CapturingResearchAgent([]),
+      artifactRunner: acceptedNegativeReplayArtifactRunner(),
+      replayProviderFactory: networklessReplayTradingApiProvider
+    });
+
+    expect(outcome.created_candidate_count).toBe(1);
+    expect(outcome.arena.latest_ticks[0]?.direction_results).toEqual([
+      expect.objectContaining({
+        status: "created",
+        candidate_id: outcome.created_candidate_ids[0],
+        admission_decision_id: expect.any(String),
+        admission_reason: "evaluation_accepted"
+      })
+    ]);
+    const [admission] = await store.listCandidateAdmissionDecisions();
+    const sourceSnapshot = admission
+      ? await store.getSystemCode(admission.source_system_code_ref.id)
+      : undefined;
+    expect(sourceSnapshot).toMatchObject({
+      artifact_digest: admission?.source_artifact_digest
+    });
+    if (!sourceSnapshot || sourceSnapshot.artifact_kind !== "python_file") {
+      throw new Error("candidate admission source SystemCode snapshot missing");
+    }
+    expect(sourceSnapshot.artifact_path).toContain("candidate-arena-runs");
+    expect(sourceSnapshot.artifact_path).toContain(path.join("seed", "run.py"));
+    const candidate = await store.getCandidate(outcome.created_candidate_ids[0]!);
+    expect(candidate?.full_cycle_lineage?.evidence?.evaluation_status).toBe("accepted");
+    const netRevenue = candidate?.full_cycle_lineage?.evidence?.profit_loss?.net_revenue_usdt;
+    if (netRevenue === undefined) {
+      throw new Error("admitted negative candidate missing profit and loss evidence");
+    }
+    expect(netRevenue).toBeLessThan(0);
+    await expect(store.listResearchFindings()).resolves.toEqual([
+      expect.objectContaining({
+        finding_kind: "negative_result",
+        summary: "Candidate remained executable but lost money after costs."
       })
     ]);
   });
@@ -352,8 +649,8 @@ describe("CandidateArena paper evidence context", () => {
           lineage_status: "available",
           direction_kind: "trend_following",
           parent_candidate_id: FIXTURE_CANDIDATE_ID,
-          latest_finding: "Candidate was disqualified by evaluation guardrails.",
-          evaluation_status: "disqualified",
+          latest_finding: "Candidate produced non-negative net revenue after costs.",
+          evaluation_status: "accepted",
           authority_status: "lineage_only"
         }),
         paper_board_learning: expect.objectContaining({
@@ -811,7 +1108,7 @@ describe("CandidateArena paper evidence context", () => {
         protocol_failure_kind: "trading_system_protocol_error",
         candidate_count: 1,
         candidate_ids: [createdCandidate.candidate_id],
-        latest_finding: "Candidate was disqualified by evaluation guardrails.",
+        latest_finding: "Candidate produced non-negative net revenue after costs.",
         next_research_focus: "Inspect the latest paper failure and fix the runtime or protocol issue before review.",
         authority_status: "not_promotion_authority"
       }
@@ -1035,10 +1332,70 @@ class CapturingResearchAgent implements TradingResearchAgentAdapter {
 
   async improveArtifact(input: AgentEditInput): Promise<AgentEditResult> {
     this.contexts.push(input.arena_context ?? "");
+    const runPath = path.join(input.artifact_dir, "run.py");
+    const source = await readFile(runPath, "utf8");
+    await writeFile(
+      runPath,
+      `${source}\n# CandidateArena context captured for iteration ${input.iteration}.\n`,
+      "utf8"
+    );
+    return {
+      status: "edited",
+      summary: "Captured arena context and versioned the candidate artifact.",
+      changed_paths: ["run.py"]
+    };
+  }
+}
+
+class FailedResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-failed-researcher",
+    provider: "codex",
+    model: "failed-researcher",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  async improveArtifact(): Promise<AgentEditResult> {
+    return {
+      status: "failed",
+      summary: "ResearchWorker failed before artifact execution.",
+      failure_reason: "codex_cli_failed",
+      error: "diagnostic_worker_failed",
+      changed_paths: []
+    };
+  }
+}
+
+class NoChangeResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-no-change-researcher",
+    provider: "codex",
+    model: "no-change-researcher",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  async improveArtifact(): Promise<AgentEditResult> {
     return {
       status: "no_change",
-      summary: "Captured arena context without editing the artifact.",
+      summary: "No candidate change was produced.",
       changed_paths: []
+    };
+  }
+}
+
+class MisreportedEditResearchAgent implements TradingResearchAgentAdapter {
+  readonly agent: ManagedResearchAgent = {
+    id: "managed-agent-misreported-edit-researcher",
+    provider: "codex",
+    model: "misreported-edit-researcher",
+    permission_policy: "artifact_workspace_only"
+  };
+
+  async improveArtifact(): Promise<AgentEditResult> {
+    return {
+      status: "edited",
+      summary: "Reported an edit without changing the submitted SystemCode.",
+      changed_paths: ["run.py"]
     };
   }
 }
@@ -1345,11 +1702,18 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
     async run(input) {
       const market = input.provider.scenario.market;
       const account = input.provider.scenario.account;
+      const shouldHold = market.expected_direction === "flat";
       const orderRequest = {
         symbol: market.symbol,
-        side: market.expected_direction === "short" ? "sell" as const : "buy" as const,
-        quantity: Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
-        order_type: "market" as const,
+        side: shouldHold
+          ? "hold" as const
+          : market.expected_direction === "short"
+            ? "sell" as const
+            : "buy" as const,
+        quantity: shouldHold
+          ? 0
+          : Number((account.equity * account.target_risk_fraction / market.price).toFixed(8)),
+        order_type: shouldHold ? "none" as const : "market" as const,
         reason: "networkless arena context runner preserves TradingApiProvider boundary"
       };
       const validation = validateOrderRequest(orderRequest, market, account);
@@ -1373,6 +1737,67 @@ function networklessReplayArtifactRunner(): TradingArtifactRunner {
         stderr: "",
         events,
         provider_requests: providerBoundaryRequests()
+      };
+    }
+  };
+}
+
+function acceptedNegativeReplayArtifactRunner(): TradingArtifactRunner {
+  return {
+    kind: "host_process",
+    async run(input) {
+      const market = input.provider.scenario.market;
+      const account = input.provider.scenario.account;
+      const orderRequest = {
+        symbol: market.symbol,
+        side: "sell" as const,
+        quantity: Number((account.equity * 0.02 / market.price).toFixed(8)),
+        order_type: "market" as const,
+        reason: "valid bounded candidate intentionally produces negative research evidence"
+      };
+      const validation = validateOrderRequest(orderRequest, market, account);
+      const events: TradingSystemEvent[] = [
+        { event: "market_snapshot", ...market },
+        { event: "account_state", ...account },
+        { event: "order_request", ...orderRequest },
+        { event: "order_validation", ...validation },
+        { event: "run_complete", accepted: validation.accepted }
+      ];
+      await mkdir(input.output_dir, { recursive: true });
+      const eventsPath = path.join(input.output_dir, "events.jsonl");
+      await writeFile(eventsPath, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
+      return {
+        status: "completed",
+        runner_kind: "host_process",
+        artifact_dir: input.artifact_dir,
+        entrypoint: input.manifest.entrypoint,
+        events_path: eventsPath,
+        stdout: events.map((event) => JSON.stringify(event)).join("\n"),
+        stderr: "",
+        events,
+        provider_requests: providerBoundaryRequests()
+      };
+    }
+  };
+}
+
+function crashedReplayArtifactRunner(): TradingArtifactRunner {
+  return {
+    kind: "host_process",
+    async run(input) {
+      await mkdir(input.output_dir, { recursive: true });
+      return {
+        status: "crashed",
+        runner_kind: "host_process",
+        artifact_dir: input.artifact_dir,
+        entrypoint: input.manifest.entrypoint,
+        events_path: path.join(input.output_dir, "events.jsonl"),
+        stdout: "",
+        stderr: "candidate runtime crashed during sealed ResearchPreflight",
+        exit_code: 1,
+        events: [],
+        provider_requests: input.provider.requests(),
+        error: "candidate_runtime_crash_for_admission_test"
       };
     }
   };

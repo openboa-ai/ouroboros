@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   ArtifactLineageRecord,
+  CandidateAdmissionDecision,
+  CandidateAdmissionDecisionRecord,
   CandidateArenaTickDirectionResultReadModel,
   CandidateArenaTickPaperTradingContinuationReadModel,
   CandidateArenaTickRecord,
@@ -33,6 +35,10 @@ import type {
   SystemCodeRecord,
   TradingEvaluationResultRecord,
   TradingProfitLossReadModel
+} from "@ouroboros/domain";
+import {
+  decideCandidateAdmission,
+  deriveCandidateAdmissionResearchWorkerOutcome
 } from "@ouroboros/domain";
 import {
   FIXTURE_CANDIDATE_ID,
@@ -97,6 +103,20 @@ type PaperLoopLatencySummary = {
   cadence_status: "on_cadence" | "lagging" | "insufficient_history";
   authority_status: "not_promotion_authority";
 };
+
+type ArenaDirectionRunOutcome =
+  | {
+      status: "created";
+      candidate: CandidateInspectReadModel;
+      admission: CandidateAdmissionDecisionRecord;
+      research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+    }
+  | {
+      status: "duplicate" | "quarantined";
+      admission: CandidateAdmissionDecisionRecord;
+      finding: ResearchFindingRecord;
+      research_efficiency: CandidateArenaResearchEfficiencyReadModel;
+    };
 
 export interface RunCandidateArenaTickInput {
   store: OuroborosStorePort;
@@ -295,7 +315,7 @@ export async function runCandidateArenaTick(
   const settledDirections = await Promise.allSettled(
     directions.map(async (direction) => ({
       direction,
-      created: await runArenaDirection({
+      outcome: await runArenaDirection({
         ...input,
         source: sourceSelection.candidate,
         direction,
@@ -308,21 +328,38 @@ export async function runCandidateArenaTick(
     const direction = directions[index]!;
     const settled = settledDirections[index]!;
     if (settled.status === "fulfilled") {
-      const created = settled.value.created.candidate;
-      createdCandidateIds.push(created.candidate_id);
-      const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
-      directionResults.push({
-        direction_kind: direction,
-        status: "created",
-        agent_provider: input.researchAgent,
-        candidate_id: created.candidate_id,
-        finding: findingSummaryForProfitLoss(
-          profitLoss,
-          created.full_cycle_lineage?.evidence?.evaluation_status
-        ),
-        net_revenue_usdt: profitLoss.net_revenue_usdt,
-        research_efficiency: settled.value.created.research_efficiency
-      });
+      const directionOutcome = settled.value.outcome;
+      if (directionOutcome.status === "created") {
+        const created = directionOutcome.candidate;
+        createdCandidateIds.push(created.candidate_id);
+        const profitLoss = created.full_cycle_lineage?.evidence?.profit_loss ?? ZERO_PROFIT_LOSS;
+        directionResults.push({
+          direction_kind: direction,
+          status: "created",
+          agent_provider: input.researchAgent,
+          candidate_id: created.candidate_id,
+          admission_decision_id:
+            directionOutcome.admission.candidate_admission_decision_id,
+          admission_reason: directionOutcome.admission.reason,
+          finding: findingSummaryForProfitLoss(
+            profitLoss,
+            created.full_cycle_lineage?.evidence?.evaluation_status
+          ),
+          net_revenue_usdt: profitLoss.net_revenue_usdt,
+          research_efficiency: directionOutcome.research_efficiency
+        });
+      } else {
+        directionResults.push({
+          direction_kind: direction,
+          status: directionOutcome.status,
+          agent_provider: input.researchAgent,
+          finding: directionOutcome.finding.summary,
+          admission_decision_id:
+            directionOutcome.admission.candidate_admission_decision_id,
+          admission_reason: directionOutcome.admission.reason,
+          research_efficiency: directionOutcome.research_efficiency
+        });
+      }
     } else {
       directionResults.push({
         direction_kind: direction,
@@ -340,8 +377,7 @@ export async function runCandidateArenaTick(
     completedAt: new Date().toISOString(),
     sourceCandidate: sourceSelection.source_candidate,
     createdCandidateIds,
-    directionResults,
-    totalDirectionCount: directions.length
+    directionResults
   }));
 
   const arena = await buildCandidateArenaReadModel(input.store, runnerStatus, tickCount);
@@ -435,10 +471,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
   tickId: string;
-}): Promise<{
-  candidate: CandidateInspectReadModel;
-  research_efficiency: CandidateArenaResearchEfficiencyReadModel;
-}> {
+}): Promise<ArenaDirectionRunOutcome> {
   const repoRoot = input.repoRoot ?? REPO_ROOT;
   const sessionId = `candidate-arena-${safeId(input.tickId)}-${safeId(input.direction)}`;
   const artifactSourceDir = await sourceResearchArtifactDir({
@@ -446,6 +479,7 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     source: input.source,
     repoRoot
   });
+  const sourceManifest = await readTradingSystemManifest(artifactSourceDir);
   const adapter = input.researchAgent === "fixture"
     ? new DirectionalFixtureTradingResearchAgentAdapter(input.direction)
     : input.agentFactory(input.researchAgent);
@@ -460,6 +494,10 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
     replay_provider_factory: input.replayProviderFactory,
     arena_context: await arenaContext(input.store, input.direction)
   });
+  const sourceArtifact = await arenaEntrypointArtifact(
+    path.join(research.run_root, "seed"),
+    sourceManifest.entrypoint
+  );
   const entry = research.entries.at(-1);
   if (!entry) {
     throw new Error("candidate_arena_missing_research_entry");
@@ -468,6 +506,12 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
   const artifactDir = research.best_artifact_dir ?? entry.artifact_dir;
   const manifest = await readTradingSystemManifest(artifactDir);
   return withArenaStoreMutation(input.store, async () => {
+    const sourceSystemCode = await recordArenaSourceSystemCode({
+      store: input.store,
+      source: input.source,
+      artifact: sourceArtifact,
+      sessionId
+    });
     const systemCode = await recordArenaSystemCode({
       store: input.store,
       artifactDir,
@@ -475,6 +519,26 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       manifestEntrypoint: manifest.entrypoint,
       agent: adapter.agent
     });
+    const researchRecords = await recordArenaResearchRecords({
+      store: input.store,
+      source: input.source,
+      direction: input.direction,
+      entry,
+      sourceSystemCode,
+      systemCode,
+      sourceArtifactDigest: sourceArtifact.artifactDigest,
+      sessionId
+    });
+    if (!researchRecords.admission.runnable_paper_handoff) {
+      return {
+        status: researchRecords.admission.status === "duplicate"
+          ? "duplicate"
+          : "quarantined",
+        admission: researchRecords.admission,
+        finding: researchRecords.finding,
+        research_efficiency: researchEfficiency
+      };
+    }
     const materialized = await input.store.materializeCandidate(arenaMaterializationInput({
       source: input.source,
       sourceSystemCodeRef: input.source.system_code?.ref,
@@ -488,22 +552,14 @@ async function runArenaDirection(input: RunCandidateArenaTickInput & {
       throw new Error("candidate_arena_materialization_failed");
     }
 
-    await recordArenaResearchRecords({
-      store: input.store,
-      candidate: materialized.candidate,
-      source: input.source,
-      direction: input.direction,
-      evaluation: entry.evaluation,
-      systemCode,
-      sessionId
-    });
-
     const candidate = await input.store.getCandidate(materialized.candidate.candidate_id);
     if (!candidate) {
       throw new Error("candidate_arena_projection_failed");
     }
     return {
+      status: "created",
       candidate,
+      admission: researchRecords.admission,
       research_efficiency: researchEfficiency
     };
   });
@@ -543,6 +599,10 @@ class DirectionalFixtureTradingResearchAgentAdapter extends FixtureTradingResear
 
 function editForDirection(source: string, direction: ResearchDirectionKind): string {
   let next = source;
+  const directionDeclaration = `ARENA_RESEARCH_DIRECTION = "${direction}"`;
+  next = /^ARENA_RESEARCH_DIRECTION = ".*"$/m.test(next)
+    ? next.replace(/^ARENA_RESEARCH_DIRECTION = ".*"$/m, directionDeclaration)
+    : `${next.trimEnd()}\n\n${directionDeclaration}\n`;
   const risk = direction === "volatility_regime" ? "0.005" : "0.02";
   next = next.replace(/RISK_FRACTION = [0-9.]+/, `RISK_FRACTION = ${risk}`);
   if (direction === "mean_reversion") {
@@ -757,19 +817,16 @@ async function recordArenaSystemCode(input: {
   manifestEntrypoint: string[];
   agent: ManagedResearchAgent;
 }): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
-  const entrypointPath = input.manifestEntrypoint[1] ?? "run.py";
-  const artifactPath = path.resolve(input.artifactDir, entrypointPath);
-  assertArenaEntrypointInsideArtifactDir(input.artifactDir, artifactPath);
-  const digest = await fileDigest(artifactPath);
+  const artifact = await arenaEntrypointArtifact(input.artifactDir, input.manifestEntrypoint);
   return input.store.recordSystemCode({
     record_kind: "system_code",
     version: 1,
-    system_code_id: `system-code-arena-${safeId(input.sessionId)}-${digest.slice(0, 12)}`,
+    system_code_id: `system-code-arena-${safeId(input.sessionId)}-${artifact.digest.slice(0, 12)}`,
     artifact_kind: "python_file",
-    artifact_path: artifactPath,
-    artifact_digest: `sha256:${digest}`,
+    artifact_path: artifact.artifactPath,
+    artifact_digest: artifact.artifactDigest,
     runtime_kind: "python",
-    entrypoint: ["python3", artifactPath],
+    entrypoint: ["python3", artifact.artifactPath],
     declared_output_contract: {
       contract_kind: "opaque_runtime_boundary",
       declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
@@ -784,6 +841,60 @@ async function recordArenaSystemCode(input: {
     created_at: new Date().toISOString(),
     authority_status: "not_live"
   }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
+}
+
+async function recordArenaSourceSystemCode(input: {
+  store: OuroborosStorePort;
+  source: CandidateInspectReadModel;
+  artifact: Awaited<ReturnType<typeof arenaEntrypointArtifact>>;
+  sessionId: string;
+}): Promise<SystemCodeRecord & { artifact_kind: "python_file" }> {
+  return input.store.recordSystemCode({
+    record_kind: "system_code",
+    version: 1,
+    system_code_id: [
+      "system-code-arena-source",
+      safeId(input.sessionId),
+      input.artifact.digest.slice(0, 12)
+    ].join("-"),
+    artifact_kind: "python_file",
+    artifact_path: input.artifact.artifactPath,
+    artifact_digest: input.artifact.artifactDigest,
+    runtime_kind: "python",
+    entrypoint: ["python3", input.artifact.artifactPath],
+    declared_output_contract: {
+      contract_kind: "opaque_runtime_boundary",
+      declared_output_kinds: ["program_event", "runtime_log", "metric_snapshot", "order_request"]
+    },
+    secret_policy_ref: { record_kind: "secret_policy", id: "no-raw-secrets" },
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "candidate-arena-research-source"
+    },
+    provenance_refs: input.source.system_code?.ref ? [input.source.system_code.ref] : [],
+    status: "registered",
+    created_at: new Date().toISOString(),
+    authority_status: "not_live"
+  }) as Promise<SystemCodeRecord & { artifact_kind: "python_file" }>;
+}
+
+async function arenaEntrypointArtifact(
+  artifactDir: string,
+  manifestEntrypoint: string[]
+): Promise<{
+  artifactPath: string;
+  artifactDigest: string;
+  digest: string;
+}> {
+  const entrypointPath = manifestEntrypoint[1] ?? "run.py";
+  const artifactPath = path.resolve(artifactDir, entrypointPath);
+  assertArenaEntrypointInsideArtifactDir(artifactDir, artifactPath);
+  const digest = await fileDigest(artifactPath);
+  return {
+    artifactPath,
+    artifactDigest: `sha256:${digest}`,
+    digest
+  };
 }
 
 function assertArenaEntrypointInsideArtifactDir(artifactDir: string, artifactPath: string): void {
@@ -868,15 +979,24 @@ function arenaMaterializationInput(input: {
 
 async function recordArenaResearchRecords(input: {
   store: OuroborosStorePort;
-  candidate: CandidateInspectReadModel;
   source: CandidateInspectReadModel;
   direction: ResearchDirectionKind;
-  evaluation: TradingEvaluationResult;
+  entry: TradingResearchNotebookEntry;
+  sourceSystemCode: SystemCodeRecord;
   systemCode: SystemCodeRecord;
+  sourceArtifactDigest: string;
   sessionId: string;
-}): Promise<void> {
+}): Promise<{
+  admission: CandidateAdmissionDecisionRecord;
+  finding: ResearchFindingRecord;
+  result: TradingEvaluationResultRecord;
+}> {
   const suffix = safeId(input.sessionId);
   const now = new Date().toISOString();
+  const evaluation = input.entry.evaluation;
+  const experimentStatus = input.entry.agent_status === "failed" || input.entry.decision === "crash"
+    ? "failed" as const
+    : "evaluated" as const;
   const experiment: ExperimentRunRecord = {
     record_kind: "experiment_run",
     version: 1,
@@ -887,14 +1007,15 @@ async function recordArenaResearchRecords(input: {
     trading_evaluation_task_ref: ref("trading_evaluation_task", "candidate-arena-revenue-cost-v1"),
     trace_ref: ref("trace_placeholder", `trace-${suffix}`),
     submitted_at: now,
-    status: "evaluated",
+    status: experimentStatus,
     authority_status: "not_live"
   };
   await input.store.recordExperimentRun(experiment);
 
-  const metricRefs = input.evaluation.metrics.map((metric) =>
+  const metricRefs = evaluation.metrics.map((metric) =>
     ref("metric_snapshot", `metric-${suffix}-${safeId(metric.name)}`)
   );
+  const resultStatus = evaluation.status === "accepted" ? "accepted" as const : "disqualified" as const;
   const result: TradingEvaluationResultRecord = {
     record_kind: "trading_evaluation_result",
     version: 1,
@@ -902,24 +1023,41 @@ async function recordArenaResearchRecords(input: {
     experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
     trading_evaluation_task_ref: experiment.trading_evaluation_task_ref,
     evaluator_ref: ref("external_evaluator", "candidate-arena-revenue-cost-evaluator-v1"),
-    result_status: input.evaluation.status === "accepted" ? "accepted" : "disqualified",
-    evidence_disposition: "not_counted",
+    result_status: resultStatus,
+    evidence_disposition: resultStatus === "accepted"
+      ? "not_counted"
+      : "quarantined_for_review",
     score_summary: {
-      total_score: input.evaluation.score,
-      oos_score: input.evaluation.score,
-      drawdown_score: input.evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
+      total_score: evaluation.score,
+      oos_score: evaluation.score,
+      drawdown_score: evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
       turnover_score: 1,
-      cost_survival_score: input.evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
+      cost_survival_score: evaluation.profit_loss.net_revenue_usdt >= 0 ? 1 : 0,
       reproducibility_score: 1,
       complexity_penalty: 0
     },
     metric_refs: metricRefs,
     evaluator_trace_ref: ref("trace_placeholder", `trace-evaluator-${suffix}`),
-    ...(input.evaluation.status === "accepted" ? {} : { disqualification_reason: "unreproducible" as const }),
+    ...(resultStatus === "accepted"
+      ? {}
+      : { disqualification_reason: arenaDisqualificationReason(input.entry) }),
     completed_at: now,
     authority_status: "not_counted"
   };
   await input.store.recordTradingEvaluationResult(result);
+
+  const admissionInput = {
+    research_worker_outcome: deriveCandidateAdmissionResearchWorkerOutcome({
+      research_worker_failed: input.entry.agent_status === "failed",
+      source_artifact_digest: input.sourceArtifactDigest,
+      submitted_artifact_digest: input.systemCode.artifact_digest
+    }),
+    experiment_status: experimentStatus,
+    evaluation_status: result.result_status,
+    evidence_disposition: result.evidence_disposition
+  } as const;
+  const decision = decideCandidateAdmission(admissionInput);
+  const findingContent = arenaFindingForAdmission(input.entry, decision);
 
   const finding: ResearchFindingRecord = {
     record_kind: "research_finding",
@@ -929,10 +1067,8 @@ async function recordArenaResearchRecords(input: {
     research_direction_ref: experiment.research_direction_ref,
     experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
     trading_evaluation_result_ref: ref("trading_evaluation_result", result.trading_evaluation_result_id),
-    finding_kind: input.evaluation.profit_loss.net_revenue_usdt >= 0 ? "positive_result" : "negative_result",
-    summary: input.evaluation.profit_loss.net_revenue_usdt >= 0
-      ? "Candidate produced non-negative net revenue after costs."
-      : "Candidate remained executable but lost money after costs.",
+    finding_kind: findingContent.finding_kind,
+    summary: findingContent.summary,
     supporting_record_refs: [
       ref("trading_evaluation_result", result.trading_evaluation_result_id),
       ...metricRefs
@@ -954,6 +1090,78 @@ async function recordArenaResearchRecords(input: {
     authority_status: "lineage_only"
   };
   await input.store.recordArtifactLineage(lineage);
+
+  const admission: CandidateAdmissionDecisionRecord = {
+    record_kind: "candidate_admission_decision",
+    version: 1,
+    candidate_admission_decision_id: `candidate-admission-decision-${suffix}`,
+    source_system_code_ref: ref("system_code", input.sourceSystemCode.system_code_id),
+    system_code_ref: ref("system_code", input.systemCode.system_code_id),
+    experiment_run_ref: ref("experiment_run", experiment.experiment_run_id),
+    trading_evaluation_result_ref: ref(
+      "trading_evaluation_result",
+      result.trading_evaluation_result_id
+    ),
+    research_finding_ref: ref("research_finding", finding.research_finding_id),
+    source_artifact_digest: input.sourceArtifactDigest,
+    submitted_artifact_digest: input.systemCode.artifact_digest,
+    ...admissionInput,
+    ...decision,
+    decided_at: now
+  };
+  await input.store.recordCandidateAdmissionDecision(admission);
+  return { admission, finding, result };
+}
+
+function arenaDisqualificationReason(
+  entry: TradingResearchNotebookEntry
+): NonNullable<TradingEvaluationResultRecord["disqualification_reason"]> {
+  if (entry.agent_status === "failed") {
+    return "research_worker_failed";
+  }
+  if (entry.decision === "crash") {
+    return "runtime_crash";
+  }
+  if (entry.evaluation.risk_decision === "invalid_order_request") {
+    return "risk_validation_failed";
+  }
+  if (entry.evaluation.risk_decision === "no_order_request") {
+    return "no_order_request";
+  }
+  return "unreproducible";
+}
+
+function arenaFindingForAdmission(
+  entry: TradingResearchNotebookEntry,
+  admission: CandidateAdmissionDecision
+): Pick<ResearchFindingRecord, "finding_kind" | "summary"> {
+  if (admission.reason === "research_worker_failed") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `ResearchWorker failed before artifact execution: ${entry.summary}`
+    };
+  }
+  if (admission.reason === "no_candidate_change") {
+    return {
+      finding_kind: "duplicate_result",
+      summary: "ResearchWorker reported no candidate change; duplicate population entry rejected."
+    };
+  }
+  if (admission.status === "quarantined") {
+    return {
+      finding_kind: "failure_analysis",
+      summary: `Candidate was quarantined by ResearchPreflight: ${entry.evaluation.summary}`
+    };
+  }
+  return entry.evaluation.profit_loss.net_revenue_usdt >= 0
+    ? {
+        finding_kind: "positive_result",
+        summary: "Candidate produced non-negative net revenue after costs."
+      }
+    : {
+        finding_kind: "negative_result",
+        summary: "Candidate remained executable but lost money after costs."
+      };
 }
 
 async function arenaContext(store: OuroborosStorePort, direction: ResearchDirectionKind): Promise<string> {
@@ -994,7 +1202,10 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         .map((result) => ({
           tick_id: tick.tick_id,
           direction_kind: result.direction_kind,
+          status: result.status,
           candidate_id: result.candidate_id,
+          admission_decision_id: result.admission_decision_id,
+          admission_reason: result.admission_reason,
           net_revenue_usdt: result.net_revenue_usdt,
           ...result.research_efficiency
         })))
@@ -1071,6 +1282,18 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
       ...arenaResearchEfficiencyBudgetFocus(arena.latest_ticks)
     ],
     finding_clusters: findingClusters,
+    latest_candidate_admission_rejections: arena.latest_ticks
+      .flatMap((tick) => tick.direction_results
+        .filter((result) => result.status === "duplicate" || result.status === "quarantined")
+        .map((result) => ({
+          tick_id: tick.tick_id,
+          direction_kind: result.direction_kind,
+          status: result.status,
+          admission_decision_id: result.admission_decision_id,
+          admission_reason: result.admission_reason,
+          finding: result.finding
+        })))
+      .slice(0, 8),
     latest_tick_failures: arena.latest_ticks
       .flatMap((tick) => tick.direction_results
         .filter((result) => result.status === "failed")
@@ -1223,12 +1446,15 @@ function arenaAdaptiveDirectionFocus(
 function arenaResearchEfficiencyBudgetFocus(
   latestTicks: CandidateArenaTickReadModel[]
 ): ArenaAdaptiveDirectionFocus[] {
-  return [...latestResearchEfficiencyByDirection(latestTicks).entries()]
-    .map(([direction, efficiency]) => ({
-      direction,
-      efficiency,
-      focusScore: researchEfficiencyBudgetFocusScore(efficiency)
-    }))
+  return [...latestResearchOutcomeByDirection(latestTicks).entries()]
+    .flatMap(([direction, result]) =>
+      result.status === "created" && result.research_efficiency
+        ? [{
+            direction,
+            efficiency: result.research_efficiency,
+            focusScore: researchEfficiencyBudgetFocusScore(result.research_efficiency)
+          }]
+        : [])
     .filter((entry) => entry.focusScore > 0)
     .sort((a, b) =>
       b.focusScore - a.focusScore ||
@@ -1246,25 +1472,29 @@ function arenaResearchEfficiencyBudgetFocus(
 function arenaResearchEfficiencyExpensiveDirections(
   latestTicks: CandidateArenaTickReadModel[]
 ): ResearchDirectionKind[] {
-  return [...latestResearchEfficiencyByDirection(latestTicks).entries()]
-    .filter(([, efficiency]) => researchEfficiencyBudgetFocusScore(efficiency) <= 0)
-    .map(([direction]) => direction);
+  return [...latestResearchOutcomeByDirection(latestTicks).entries()]
+    .flatMap(([direction, result]) =>
+      result.research_efficiency && researchEfficiencyBudgetFocusScore(result.research_efficiency) <= 0
+        ? [direction]
+        : []);
 }
 
-function latestResearchEfficiencyByDirection(
+function latestResearchOutcomeByDirection(
   latestTicks: CandidateArenaTickReadModel[]
-): Map<ResearchDirectionKind, CandidateArenaResearchEfficiencyReadModel> {
-  const latestByDirection = new Map<ResearchDirectionKind, CandidateArenaResearchEfficiencyReadModel>();
+): Map<ResearchDirectionKind, CandidateArenaTickDirectionResultReadModel> {
+  const latestByDirection = new Map<
+    ResearchDirectionKind,
+    CandidateArenaTickDirectionResultReadModel
+  >();
   for (const tick of latestTicks) {
     for (const result of tick.direction_results) {
       if (
-        !result.research_efficiency ||
         !isDefaultArenaDirection(result.direction_kind) ||
         latestByDirection.has(result.direction_kind)
       ) {
         continue;
       }
-      latestByDirection.set(result.direction_kind, result.research_efficiency);
+      latestByDirection.set(result.direction_kind, result);
     }
   }
   return latestByDirection;
@@ -1706,7 +1936,10 @@ function arenaResearcher(
   return {
     researcher_id: `research-worker-${safeId(direction)}`,
     direction_kind: direction,
-    status: latestResult?.status === "failed" ? "failed" : "active",
+    status: latestResult?.status === "failed" ||
+      latestResult?.admission_reason === "research_worker_failed"
+      ? "failed"
+      : "active",
     authority_status: "research_only"
   };
 }
@@ -1742,7 +1975,6 @@ function candidateArenaTickRecord(input: {
   startedAt: string;
   completedAt: string;
   sourceCandidate: CandidateArenaTickSourceReadModel;
-  totalDirectionCount: number;
   createdCandidateIds: string[];
   directionResults: CandidateArenaTickDirectionResultReadModel[];
 }): CandidateArenaTickRecord {
@@ -1753,7 +1985,7 @@ function candidateArenaTickRecord(input: {
     tick_id: input.tickId,
     started_at: input.startedAt,
     completed_at: input.completedAt,
-    status: candidateArenaTickStatus(input.createdCandidateIds.length, input.totalDirectionCount),
+    status: candidateArenaTickStatus(input.directionResults),
     source_candidate: input.sourceCandidate,
     created_candidate_refs: input.createdCandidateIds.map((candidateId) =>
       ref("trading_system_candidate", candidateId)
@@ -1779,11 +2011,14 @@ function toCandidateArenaTickReadModel(tick: CandidateArenaTickRecord): Candidat
   };
 }
 
-function candidateArenaTickStatus(createdCount: number, totalDirectionCount: number): CandidateArenaTickStatus {
-  if (createdCount === totalDirectionCount) {
+function candidateArenaTickStatus(
+  directionResults: CandidateArenaTickDirectionResultReadModel[]
+): CandidateArenaTickStatus {
+  const failedCount = directionResults.filter((result) => result.status === "failed").length;
+  if (failedCount === 0) {
     return "completed";
   }
-  return createdCount > 0 ? "completed_with_errors" : "failed";
+  return failedCount < directionResults.length ? "completed_with_errors" : "failed";
 }
 
 function findingSummaryForProfitLoss(
