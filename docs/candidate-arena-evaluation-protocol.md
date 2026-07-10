@@ -101,11 +101,12 @@ Public commands stay on the default `research_feedback` session and cannot selec
 run, evidence purpose, or comparison ID.
 
 An internal qualification-purpose run may be prepared as persistence-only state, but it is inert:
-it must not resolve artifacts, start a provider or sandbox, read market data, create Gateway or
-Ledger evidence, or consume an observation without future comparison authority. The implemented
-multi-run boundary is a prerequisite for the prospective paired-comparison design; it does not
-provide shared ticks, a pair commitment, adjudication, confirmation, a verdict, or promotion
-authority.
+preparation may resolve and freeze executable artifact identity, then persist the commitment and
+`not_started` evaluation, but it must not start a provider or sandbox, read market data, create
+Gateway or Ledger evidence, or consume an observation without future comparison authority. The
+implemented multi-run boundary is a prerequisite for the prospective paired-comparison design; it
+does not provide shared ticks, a pair commitment, adjudication, confirmation, a verdict, or
+promotion authority.
 
 ## Evaluator Information Barrier
 

@@ -72,8 +72,9 @@ Each qualification TradingRun owns a distinct sandbox, provider session, fake ac
 run-control chain, and lifecycle. It reuses the frozen CandidateVersion and SystemCode bytes, not
 runtime state from another session.
 
-Standalone qualification preparation is persistence-only and inert. It cannot resolve artifacts or
-start provider, sandbox, market, Gateway, Ledger, or observation effects until the future
+Standalone qualification preparation may resolve and freeze executable artifact identity, then
+persist the commitment and `not_started` evaluation, but remains runtime-inert. It cannot start
+provider, sandbox, market, Gateway, Ledger, or observation effects until the future
 `PaperTradingComparisonCoordinator` verifies a complete pair commitment. This prerequisite does
 not implement `PaperTradingComparisonCommitment`, shared comparison ticks, adjudication,
 non-overlapping confirmation, a verdict, or promotion integration.
