@@ -64,20 +64,18 @@ The implemented ownership rule is:
   recorded;
 - `getCandidateForTradingRun` resolves through the `TradingRunRecord.candidate_ref` and
   `candidate_version_ref`, not by reverse matching only `CandidateVersion.runtime_ref`;
-- commitment, evaluation, observation, run-control, sandbox, provider, and Ledger validation use
-  the selected TradingRun's own refs;
+- activated additional `research_feedback` commitment, evaluation, observation, run-control,
+  sandbox, provider, and Ledger validation use the selected TradingRun's own refs;
 - an additional run never overwrites the candidate's default runtime projection.
 
-Each qualification TradingRun owns a distinct sandbox, provider session, fake account, event cursor,
-run-control chain, and lifecycle. It reuses the frozen CandidateVersion and SystemCode bytes, not
-runtime state from another session.
-
 Standalone qualification preparation may resolve and freeze executable artifact identity, then
-persist the commitment and `not_started` evaluation, but remains runtime-inert. It cannot start
-provider, sandbox, market, Gateway, Ledger, or observation effects until the future
-`PaperTradingComparisonCoordinator` verifies a complete pair commitment. This prerequisite does
-not implement `PaperTradingComparisonCommitment`, shared comparison ticks, adjudication,
-non-overlapping confirmation, a verdict, or promotion integration.
+persist only its TradingRun and supporting refs, frozen commitment and account identity, and
+`not_started` evaluation. It remains runtime-inert: it cannot start provider, sandbox, market,
+Gateway, Ledger, observation, or lifecycle effects until the future `PaperTradingComparisonCoordinator`
+verifies a complete pair commitment. That future coordinator may establish per-run sandbox, provider,
+fake-account, cursor, run-control, and lifecycle ownership without reusing runtime state from another
+session. This prerequisite does not implement `PaperTradingComparisonCommitment`, shared comparison
+ticks, adjudication, non-overlapping confirmation, a verdict, or promotion integration.
 
 ## Domain Records
 
