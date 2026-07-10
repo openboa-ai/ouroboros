@@ -5,17 +5,12 @@ import type {
 } from "@ouroboros/domain";
 import { isStoreErrorLike, type OuroborosStorePort } from "../../ports/store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
-import type { SystemCodeArtifactResolverPort } from "../../ports/system-code-artifact";
-import type { PaperOrderRequestFixture, SandboxAdapterRegistryPort } from "../../ports/sandbox";
+import type { PaperOrderRequestFixture } from "../../ports/sandbox";
 import {
   createGatewayRuntimeBinding,
   LIVE_GATEWAY_DISABLED_REASON,
-  startPaperTradingApiProvider,
-  type GatewayRuntimeBinding,
   type PaperTradingApiProviderOptions
 } from "../gateway/runtime-binding";
-import type { ReplayTradingApiProviderSession } from "../research/types";
-import { PaperTradingEvaluationRunner } from "./evaluation-runner";
 import { classifyPaperTradingFailure } from "./failures";
 import {
   canRestartFailedPaperTradingEvaluation,
@@ -38,19 +33,9 @@ export interface StartPaperTradingRunPayload {
 
 export interface PaperTradingCommandServiceOptions {
   store: OuroborosStorePort;
-  sandboxAdapters: SandboxAdapterRegistryPort;
   marketData: GatewayMarketDataPort;
   tradingGatewayEnvironment: TradingGatewayEnvironmentReadModel;
-  runner?: PaperTradingEvaluationRunner;
-  intervalMs?: number;
-  sandboxIntervalMs?: number;
-  apiProviderFactory?: (
-    binding: GatewayRuntimeBinding,
-    options: PaperTradingApiProviderOptions
-  ) => Promise<ReplayTradingApiProviderSession>;
-  apiProviderOptions?: Pick<PaperTradingApiProviderOptions, "listen_host" | "sandbox_host">;
-  artifactResolver: SystemCodeArtifactResolverPort;
-  logger?: Pick<Console, "error">;
+  sessions: PaperTradingSessionService;
 }
 
 export class PaperTradingCommandError extends Error {
@@ -65,23 +50,10 @@ export class PaperTradingCommandError extends Error {
 }
 
 export class PaperTradingCommandService {
-  private readonly runner: PaperTradingEvaluationRunner;
   private readonly sessions: PaperTradingSessionService;
 
   constructor(private readonly options: PaperTradingCommandServiceOptions) {
-    this.runner = options.runner ?? new PaperTradingEvaluationRunner();
-    this.sessions = new PaperTradingSessionService({
-      store: options.store,
-      sandboxAdapters: options.sandboxAdapters,
-      marketData: options.marketData,
-      runner: this.runner,
-      intervalMs: options.intervalMs,
-      sandboxIntervalMs: options.sandboxIntervalMs,
-      apiProviderFactory: options.apiProviderFactory ?? startPaperTradingApiProvider,
-      apiProviderOptions: options.apiProviderOptions,
-      artifactResolver: options.artifactResolver,
-      logger: options.logger
-    });
+    this.sessions = options.sessions;
   }
 
   active(tradingRunId: string): boolean {
@@ -140,7 +112,7 @@ export class PaperTradingCommandService {
           status: "failed_requires_repair",
           ...await tradingRunResponse(this.options.store, tradingRunId),
           paper_trading_evaluation: existingEvaluation,
-          runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
+          runner_status: this.sessions.active(tradingRunId) ? "running" : "stopped"
         }
       };
     }
@@ -160,7 +132,7 @@ export class PaperTradingCommandService {
             status: "already_running",
             ...await tradingRunResponse(this.options.store, tradingRunId),
             paper_trading_evaluation: prepared.evaluation,
-            runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
+            runner_status: this.sessions.active(tradingRunId) ? "running" : "stopped"
           }
         };
       }
@@ -200,7 +172,7 @@ export class PaperTradingCommandService {
           trading_gateway_environment: this.options.tradingGatewayEnvironment,
           paper_trading_evaluation: observed.evaluation,
           paper_trading_observation: observed.observation,
-          runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
+          runner_status: this.sessions.active(tradingRunId) ? "running" : "stopped"
         }
       };
     } catch (error) {
@@ -264,7 +236,7 @@ export class PaperTradingCommandService {
         ...await tradingRunResponse(this.options.store, tradingRunId),
         paper_trading_evaluation: observed?.evaluation,
         paper_trading_observation: observed?.observation,
-        runner_status: this.runner.active(tradingRunId) ? "running" : "stopped"
+        runner_status: this.sessions.active(tradingRunId) ? "running" : "stopped"
       }
     };
   }

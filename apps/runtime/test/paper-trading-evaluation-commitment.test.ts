@@ -42,15 +42,28 @@ afterEach(async () => {
 describe("PaperTradingEvaluation commitment lifecycle", () => {
   it("persists a research-feedback commitment before provider, sandbox, or market work", async () => {
     const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const qualificationRun = await store.createPaperTradingRun({
+      idempotency_key: "paper-commitment-public-start-qualification",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification"
+    });
     const order: string[] = [];
     const sandbox = inspectableSandbox(order);
     const marketData = orderedMarketData(order);
+    let providerStarts = 0;
     const server = await buildServer({
       store,
       sandboxAdapters: { deterministic_test: sandbox },
       marketDataPort: marketData,
       paperTradingArtifactResolver: artifactResolver("sha256:resolved-fixture-v1", order),
       paperTradingApiProviderFactory: async (binding, options) => {
+        providerStarts += 1;
         const commitments = await store.listPaperTradingEvaluationCommitments();
         const evaluations = await store.listPaperTradingEvaluations();
         expect(commitments).toEqual([
@@ -75,28 +88,51 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
     });
 
     try {
-      const result = await postCommand(server, {
+      const started = await postCommand(server, {
+        command_kind: "trading_run.start",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+      const malicious = await postCommand(server, {
         command_kind: "trading_run.start",
         payload: {
           candidate_id: FIXTURE_CANDIDATE_ID,
-          evidence_purpose: "qualification"
+          evidence_purpose: "qualification",
+          trading_run_id: qualificationRun.trading_run_id,
+          comparison_id: "forbidden-comparison"
         }
       });
 
-      expect(result.command.status).toBe("succeeded");
+      expect(started.command.status).toBe("succeeded");
+      expect(malicious.command.status).toBe("succeeded");
       expect(order).toEqual([
         "resolve_artifact",
         "start_provider",
         "start_sandbox",
         "resolve_artifact",
-        "read_market"
+        "read_market",
+        "resolve_artifact"
       ]);
       await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual([
-        expect.objectContaining({ evidence_purpose: "research_feedback" })
+        expect.objectContaining({
+          evidence_purpose: "research_feedback",
+          trading_run_ref: { record_kind: "trading_run", id: candidate.runtime.ref.id }
+        })
       ]);
-      expect(result.operator.selected_paper_trading_evaluation).toMatchObject({
+      expect(providerStarts).toBe(1);
+      expect(sandbox.startCalls()).toBe(1);
+      expect(await store.getLatestPaperTradingEvaluationForTradingRun(qualificationRun.trading_run_id))
+        .toBeUndefined();
+      expect(await store.getTradingRun(qualificationRun.trading_run_id)).toMatchObject({
+        runtime_lifecycle_status: "registered"
+      });
+      expect(started.operator.selected_paper_trading_evaluation).toMatchObject({
         status: "running",
-        observation_count: 1
+        observation_count: 1,
+        trading_run_id: candidate.runtime.ref.id
+      });
+      expect(malicious.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        trading_run_id: candidate.runtime.ref.id
       });
     } finally {
       await server.close();

@@ -84,6 +84,7 @@ import {
 } from "@ouroboros/application/trading/paper/commands";
 import { safeId } from "@ouroboros/application/safe-id";
 import { PaperTradingEvaluationRunner } from "@ouroboros/application/trading/paper/evaluation-runner";
+import { PaperTradingSessionService } from "@ouroboros/application/trading/paper/session-service";
 import { registerCoreControllerRoutes } from "./controllers/core";
 import { registerResourceControllerRoutes } from "./controllers/resources";
 import { registerRuntimeRouteModules } from "./registry/routes";
@@ -113,6 +114,7 @@ export interface BuildServerOptions {
     options: PaperTradingApiProviderOptions
   ) => Promise<ReplayTradingApiProviderSession>;
   paperTradingArtifactResolver?: SystemCodeArtifactResolverPort;
+  paperTradingSessionService?: PaperTradingSessionService;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
   operatorApiToken?: string | false;
@@ -250,19 +252,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ?? new DockerSandboxesSbxSandboxAdapter()
   };
   const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
-  const paperTradingCommandService = new PaperTradingCommandService({
+  const paperTradingArtifactResolver = options.paperTradingArtifactResolver
+    ?? new FileSystemCodeArtifactResolver({ repoRoot: process.cwd() });
+  const paperTradingSessionService = options.paperTradingSessionService ?? new PaperTradingSessionService({
     store,
     sandboxAdapters,
     marketData: gatewayMarketDataPort,
-    tradingGatewayEnvironment,
     runner: paperTradingEvaluationRunner,
     intervalMs: paperTradingEvaluationIntervalMs,
     sandboxIntervalMs: options.paperTradingSandboxIntervalMs,
     apiProviderFactory: options.paperTradingApiProviderFactory,
-    artifactResolver: options.paperTradingArtifactResolver ??
-      new FileSystemCodeArtifactResolver({ repoRoot: process.cwd() }),
+    artifactResolver: paperTradingArtifactResolver,
     apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
     logger: console
+  });
+  const paperTradingCommandService = new PaperTradingCommandService({
+    store,
+    marketData: gatewayMarketDataPort,
+    tradingGatewayEnvironment,
+    sessions: paperTradingSessionService
   });
   await store.initialize();
   const persistedResearcherProvider = await store.getResearcherProviderSelection();
@@ -1097,7 +1105,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const operatorService = new OperatorService({
     store,
     candidateArenaRunner,
-    paperTradingEvaluationRunner,
+    paperTradingEvaluationRunner: paperTradingSessionService,
     agentProfileExecFile: options.agentProfileExecFile,
     paperEvidenceAdapter: {
       run: async (candidateId) => paperTradingCommandService.start(candidateId, {})
@@ -1144,7 +1152,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   server.addHook("onClose", async () => {
     await candidateArenaRunner.stopAndDrain();
     await operatorService.drainAutonomousPaperStarts();
-    await paperTradingCommandService.stopAllSessions();
+    await paperTradingSessionService.stopAllSessions();
   });
   await operatorService.resumeAutonomousArenaLoop();
   const operatorController = createOperatorController(operatorService);

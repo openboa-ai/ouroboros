@@ -26,6 +26,7 @@ import type {
   SandboxAdapterStartInput,
   SandboxAdapterStartResult
 } from "@ouroboros/adapters/sandbox/adapter";
+import { PaperTradingSessionService } from "@ouroboros/application/trading/paper/session-service";
 import { buildServer } from "../src/server";
 import { fakeGatewayMarketDataPort } from "./helpers/market-data";
 
@@ -40,6 +41,67 @@ afterEach(async () => {
 });
 
 describe("long-running paper TradingSystem sessions", () => {
+  it("reports an externally clocked shared paper session as active", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const sandboxAdapter = queuedLongRunningSandboxAdapter([[]]);
+    const sandboxAdapters = {
+      deterministic_test: sandboxAdapter,
+      docker_sandboxes_sbx: sandboxAdapter
+    };
+    const marketData = fakeGatewayMarketDataPort();
+    const sessions = new PaperTradingSessionService({
+      store,
+      sandboxAdapters,
+      marketData,
+      artifactResolver: {
+        async resolveArtifactDigest() {
+          return "sha256:shared-session-test";
+        }
+      },
+      apiProviderFactory: networklessPaperTradingApiProvider
+    });
+    const server = await buildServer({
+      store,
+      sandboxAdapters,
+      marketDataPort: marketData,
+      paperTradingArtifactResolver: {
+        async resolveArtifactDigest() {
+          return "sha256:shared-session-test";
+        }
+      },
+      paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
+      paperTradingSessionService: sessions
+    });
+
+    try {
+      const prepared = await sessions.prepare({
+        candidateId: candidate.candidate_id,
+        candidateVersionId: candidate.candidate_version.candidate_version_id,
+        tradingRunId: candidate.runtime.ref.id,
+        evidencePurpose: "research_feedback",
+        clock: "external"
+      });
+      await sessions.activate(prepared);
+
+      const selected = await postCommand(server, {
+        command_kind: "candidate.select",
+        payload: { candidate_id: FIXTURE_CANDIDATE_ID }
+      });
+      expect(selected.operator.selected_paper_trading_evaluation).toMatchObject({
+        status: "running",
+        runner_active: true,
+        trading_run_id: candidate.runtime.ref.id
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("observes a running TradingSystem without replaying old events or inventing snapshot decisions", async () => {
     const store = new LocalStore(tmpDir);
     const sandboxAdapter = queuedLongRunningSandboxAdapter([
