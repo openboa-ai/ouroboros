@@ -2654,6 +2654,7 @@ export type CandidateArenaFindingClusterMarketRegime =
   | "unknown";
 
 export type CandidateArenaFindingClusterBlockerGroupKind =
+  | "evidence_authority"
   | "evidence_window"
   | "runner_health"
   | "observation_quality"
@@ -3253,6 +3254,7 @@ export type PaperTradingPromotionGateStatus =
   | "collecting_paper_evidence"
   | "needs_resume"
   | "paper_evidence_recorded"
+  | "prospective_comparison_required"
   | "paper_failed"
   | "not_qualification_evidence"
   | "invalidated"
@@ -3270,11 +3272,14 @@ export type PaperTradingQualificationReason =
   | "min_observation_count_not_met"
   | "min_elapsed_ms_not_met"
   | "runner_inactive_for_running_evaluation"
+  | "paper_observation_chain_incomplete"
+  | "paper_score_account_mismatch"
   | "failed_observation_ratio_exceeded"
   | "latest_market_snapshot_missing"
   | "fill_public_execution_evidence_missing"
   | "paper_evaluation_failed"
   | "evidence_purpose_not_qualification"
+  | "provider_identity_not_qualification_eligible"
   | "paper_evaluation_commitment_missing"
   | "paper_evaluation_invalidated";
 
@@ -3466,6 +3471,7 @@ export type TradingReviewPacketBlocker =
   | "paper_required";
 
 export type TradingReviewPacketBlockerGroupKind =
+  | "evidence_authority"
   | "evidence_window"
   | "runner_health"
   | "observation_quality"

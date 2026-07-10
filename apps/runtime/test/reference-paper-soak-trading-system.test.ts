@@ -10,6 +10,7 @@ import type {
   OuroborosCommandKind,
   OuroborosCommandRequest,
   OperatorReadModel,
+  SandboxDetailReadModel,
   SystemCodeRecord
 } from "@ouroboros/domain";
 import { parseTradingSystemPaperEventLine } from "@ouroboros/application/trading/paper/events";
@@ -176,13 +177,14 @@ describe("reference paper soak TradingSystem", () => {
   it("soaks a selected reference TradingSystem through live paper observations, fake fills, PnL, and stop", async () => {
     const store = new LocalStore(tmpDir);
     const candidateId = await registerReferenceCandidate(store);
+    const sandboxAdapter = new DeterministicSandboxAdapter({
+      allowedArtifactRoots: [path.dirname(referenceArtifactPath)],
+      allowedCapabilityPolicyIds: [referenceCapabilityPolicyId]
+    });
     const server = await buildServer({
       store,
       sandboxAdapters: {
-        deterministic_test: new DeterministicSandboxAdapter({
-          allowedArtifactRoots: [path.dirname(referenceArtifactPath)],
-          allowedCapabilityPolicyIds: [referenceCapabilityPolicyId]
-        })
+        deterministic_test: sandboxAdapter
       },
       marketDataPort: fakeGatewayMarketDataPort({
         snapshots: [
@@ -240,7 +242,13 @@ describe("reference paper soak TradingSystem", () => {
       expect(started.operator.selected_paper_trading_evaluation.latest_order_request_id).toEqual(expect.any(String));
 
       const tradingRunId = started.operator.selected_paper_trading_evaluation.trading_run_id;
-      await sleep(1_100);
+      const sandbox = started.operator.selected_candidate?.runtime.sandbox;
+      expect(sandbox).toBeDefined();
+      await waitForSandboxEvent(
+        sandboxAdapter,
+        sandbox!,
+        `${sandbox!.sandbox_id}:hold:0002`
+      );
       const held = await postCommand(server, {
         command_kind: "trading_run.observe",
         payload: { trading_run_id: tradingRunId }
@@ -260,7 +268,11 @@ describe("reference paper soak TradingSystem", () => {
         }
       });
 
-      await sleep(1_100);
+      await waitForSandboxEvent(
+        sandboxAdapter,
+        sandbox!,
+        `${sandbox!.sandbox_id}:cancel-order:0003`
+      );
       const canceled = await postCommand(server, {
         command_kind: "trading_run.observe",
         payload: { trading_run_id: tradingRunId }
@@ -287,7 +299,7 @@ describe("reference paper soak TradingSystem", () => {
     } finally {
       await server.close();
     }
-  });
+  }, 15_000);
 });
 
 async function registerReferenceCandidate(store: LocalStore): Promise<string> {
@@ -381,4 +393,27 @@ async function postCommand(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForSandboxEvent(
+  adapter: DeterministicSandboxAdapter,
+  sandbox: SandboxDetailReadModel,
+  eventId: string,
+  timeoutMs = 10_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const observations = await adapter.getArtifactInstanceLogs(sandbox);
+    if ((observations.logs ?? []).some((log) => log.lines.some((line) => {
+      try {
+        return (JSON.parse(line) as { event_id?: string }).event_id === eventId;
+      } catch {
+        return false;
+      }
+    }))) {
+      return;
+    }
+    await sleep(25);
+  }
+  throw new Error(`sandbox event ${eventId} was not observed before timeout`);
 }

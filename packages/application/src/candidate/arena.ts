@@ -65,7 +65,11 @@ import {
 } from "../trading/paper/qualification-blockers";
 import { classifyPaperTradingFailure } from "../trading/paper/failures";
 import { paperTradingLearningSummary } from "../trading/paper/learning";
-import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
+import { paperTradingEvaluationCommitmentMatchesEvaluation } from "../trading/paper/commitment";
+import {
+  paperTradingEvidenceIntegrityReasons,
+  qualifyPaperTradingEvaluation
+} from "../trading/paper/qualification";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -648,7 +652,7 @@ async function sourceCandidate(
     }
     const leader = await latestEvaluatedArenaLeader(
       store,
-      ineligibleLatestPaperEvaluationCandidateIds(latestPaperEvaluations)
+      await ineligibleLatestPaperEvaluationCandidateIds(store, latestPaperEvaluations)
     );
     if (leader) {
       return {
@@ -697,19 +701,27 @@ async function latestPaperTradingEvaluationLeader(
   const candidates = await Promise.all(
     [...latestEvaluations.values()]
       .filter(isEligiblePaperTradingEvaluationSource)
-      .map(async (evaluation) => ({
-        evaluation,
-        candidate: await store.getCandidate(evaluation.candidate_ref.id)
-      }))
+      .map(async (evaluation) => {
+        const released = await releasedResearchFeedbackEvidence(store, evaluation);
+        return released
+          ? {
+              evaluation,
+              candidate: await store.getCandidate(evaluation.candidate_ref.id)
+            }
+          : undefined;
+      })
   );
   return candidates
     .filter((entry): entry is {
       candidate: CandidateInspectReadModel;
       evaluation: PaperTradingEvaluationRecord;
-    } =>
-      Boolean(entry.candidate?.system_code?.ref) &&
-      entry.candidate?.candidate_version.candidate_version_id === entry.evaluation.candidate_version_ref.id
-    )
+    } => {
+      if (!entry?.candidate?.system_code?.ref) {
+        return false;
+      }
+      return entry.candidate.candidate_version.candidate_version_id ===
+        entry.evaluation.candidate_version_ref.id;
+    })
     .sort((left, right) =>
       right.evaluation.latest_score.net_revenue_usdt - left.evaluation.latest_score.net_revenue_usdt ||
       right.evaluation.latest_score.net_return_pct - left.evaluation.latest_score.net_return_pct ||
@@ -738,14 +750,20 @@ function isEligiblePaperTradingEvaluationSource(evaluation: PaperTradingEvaluati
     !evaluation.latest_failure_reason;
 }
 
-function ineligibleLatestPaperEvaluationCandidateIds(
+async function ineligibleLatestPaperEvaluationCandidateIds(
+  store: OuroborosStorePort,
   latestEvaluationByCandidate: Map<string, PaperTradingEvaluationRecord>
-): Set<string> {
-  return new Set(
-    [...latestEvaluationByCandidate.values()]
-      .filter((evaluation) => !isEligiblePaperTradingEvaluationSource(evaluation))
-      .map((evaluation) => evaluation.candidate_ref.id)
+): Promise<Set<string>> {
+  const eligibility = await Promise.all(
+    [...latestEvaluationByCandidate.values()].map(async (evaluation) => ({
+      candidateId: evaluation.candidate_ref.id,
+      eligible: isEligiblePaperTradingEvaluationSource(evaluation) &&
+        Boolean(await releasedResearchFeedbackEvidence(store, evaluation))
+    }))
   );
+  return new Set(eligibility
+    .filter((entry) => !entry.eligible)
+    .map((entry) => entry.candidateId));
 }
 
 function comparePaperTradingEvaluationRecency(
@@ -1226,12 +1244,16 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
         })))
       .slice(0, 8),
     selected_paper_evidence: paperEvidenceCandidates
-      .filter(({ candidate, paperEvaluation }) => candidate?.ledger?.has_activity || paperEvaluation)
+      .filter(({ paperEvaluation }) => paperEvaluation)
       .map(({ entry, candidate, paperEvaluation, paperObservations }) => {
         const candidateId = candidate?.candidate_id ?? entry?.candidate_id;
         const paperBoardEntry = paperTradingBoard.find((boardEntry) => boardEntry.candidate_id === candidateId);
         const latestPaperFailureReason = paperObservations.at(-1)?.failure_reason ??
           paperEvaluation?.latest_failure_reason;
+        const researchDiagnosticReasons = arenaResearchDiagnosticReasons(
+          paperEvaluation,
+          paperBoardEntry?.qualification_reasons ?? []
+        );
         return {
           candidate_id: candidateId,
           direction_kind: entry?.direction_kind ??
@@ -1251,7 +1273,7 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
                 profitLoss: paperEvaluation.latest_score,
                 observationCount: paperEvaluation.observation_count,
                 qualificationStatus: paperBoardEntry.qualification_status,
-                qualificationReasons: paperBoardEntry.qualification_reasons,
+                qualificationReasons: researchDiagnosticReasons,
                 latestFailure: classifyPaperTradingFailure(
                   paperObservations.at(-1)?.failure_reason ?? paperEvaluation.latest_failure_reason
                 )
@@ -1278,16 +1300,6 @@ async function arenaContext(store: OuroborosStorePort, direction: ResearchDirect
               failure_reason: observation.failure_reason,
               failure: classifyPaperTradingFailure(observation.failure_reason)
             })),
-          ledger_chain_complete: candidate?.ledger?.chain_complete ?? false,
-          ledger_chain_count: candidate?.ledger?.chain_count ?? 0,
-          latest_order_request_id: candidate?.ledger?.latest_order_request?.order_request_id,
-          latest_order_request_side: candidate?.ledger?.latest_order_request?.side,
-          latest_order_request_type: candidate?.ledger?.latest_order_request?.order_type,
-          latest_gateway_outcome: candidate?.ledger?.latest_gateway_result?.decision_outcome,
-          latest_execution_status: candidate?.ledger?.latest_execution_result?.status,
-          trading_run_status: candidate?.trading_run?.lifecycle_status
-            ?? candidate?.runtime.runtime_lifecycle_status
-            ?? "recorded",
           authority_status: "not_live"
         };
     }),
@@ -1346,15 +1358,19 @@ function arenaFindingClusters(
     );
     const lineage = arenaPaperEvidenceLineage(candidate, entry);
     const directionKind = entry?.direction_kind ?? lineage.direction_kind ?? "other";
-    const blockerGroup = paperBoardEntry?.blocker_groups[0];
-    const topBlocker = paperBoardEntry?.blocker_density.top_blocker ?? blockerGroup?.blockers[0];
+    const researchDiagnosticReasons = arenaResearchDiagnosticReasons(
+      paperEvaluation,
+      paperBoardEntry?.qualification_reasons ?? []
+    );
+    const blockerGroup = paperTradingQualificationBlockerGroups(researchDiagnosticReasons)[0];
+    const topBlocker = researchDiagnosticReasons[0] ?? blockerGroup?.blockers[0];
     const paperLearning = paperBoardEntry && paperEvaluation
       ? paperTradingLearningSummary({
           rank: paperBoardEntry.rank,
           profitLoss: paperEvaluation.latest_score,
           observationCount: paperEvaluation.observation_count,
           qualificationStatus: paperBoardEntry.qualification_status,
-          qualificationReasons: paperBoardEntry.qualification_reasons,
+          qualificationReasons: researchDiagnosticReasons,
           latestFailure
         })
       : undefined;
@@ -1403,6 +1419,19 @@ function arenaFindingClusters(
       (a.protocol_failure_kind ?? "none").localeCompare(b.protocol_failure_kind ?? "none")
     )
     .slice(0, 8);
+}
+
+function arenaResearchDiagnosticReasons(
+  evaluation: PaperTradingEvaluationRecord | undefined,
+  qualificationReasons: PaperTradingQualificationReason[]
+): PaperTradingQualificationReason[] {
+  if (evaluation?.status === "invalidated") {
+    return ["paper_evaluation_invalidated"];
+  }
+  if (evaluation?.status === "failed") {
+    return ["paper_evaluation_failed"];
+  }
+  return qualificationReasons.filter((reason) => reason !== "evidence_purpose_not_qualification");
 }
 
 async function adaptiveDefaultArenaDirections(store: OuroborosStorePort): Promise<ResearchDirectionKind[]> {
@@ -1710,13 +1739,14 @@ function arenaPaperTradingBoardContext(
 }> {
   return candidates
     .filter(({ paperEvaluation }) => paperEvaluation)
-    .map(({ candidate, entry, paperEvaluation, paperObservations }) => {
+    .map(({ candidate, entry, paperEvaluation, paperCommitment, paperObservations }) => {
       const latestObservation = paperObservations.at(-1);
       const latestMarketSnapshot = latestObservation?.market_snapshot;
       const latestPublicExecutionSnapshot = latestObservation?.public_execution_snapshot ??
         paperEvaluation?.latest_public_execution_snapshot;
       const qualification = qualifyPaperTradingEvaluation({
         evaluation: paperEvaluation!,
+        commitment: paperCommitment,
         observations: paperObservations,
         runnerActive: false,
         policy: {
@@ -1895,6 +1925,36 @@ function arenaPaperPromotionGateStatus(
   return evaluation.observation_count > 0 ? "paper_evidence_recorded" : "not_evaluated";
 }
 
+async function releasedResearchFeedbackEvidence(
+  store: OuroborosStorePort,
+  evaluation: PaperTradingEvaluationRecord
+): Promise<{
+  commitment: NonNullable<Awaited<ReturnType<OuroborosStorePort["getPaperTradingEvaluationCommitment"]>>>;
+  observations: Awaited<ReturnType<OuroborosStorePort["listPaperTradingObservations"]>>;
+} | undefined> {
+  if (evaluation.status === "invalidated" || evaluation.observation_count <= 0) {
+    return undefined;
+  }
+  const commitmentId = evaluation.paper_trading_evaluation_commitment_ref?.id;
+  const commitment = commitmentId
+    ? await store.getPaperTradingEvaluationCommitment(commitmentId)
+    : undefined;
+  if (
+    !commitment ||
+    !paperTradingEvaluationCommitmentMatchesEvaluation(commitment, evaluation) ||
+    commitment.evidence_purpose !== "research_feedback" ||
+    commitment.window_policy.release_policy !== "closed_observation"
+  ) {
+    return undefined;
+  }
+  const observations = await store.listPaperTradingObservations(
+    evaluation.paper_trading_evaluation_id
+  );
+  return paperTradingEvidenceIntegrityReasons({ evaluation, commitment, observations }).length === 0
+    ? { commitment, observations }
+    : undefined;
+}
+
 async function arenaPaperEvidenceCandidates(
   store: OuroborosStorePort,
   arena: CandidateArenaReadModel
@@ -1902,6 +1962,7 @@ async function arenaPaperEvidenceCandidates(
   entry?: CandidateArenaReadModel["leaderboard"][number];
   candidate?: CandidateInspectReadModel;
   paperEvaluation?: Awaited<ReturnType<OuroborosStorePort["getLatestPaperTradingEvaluationForCandidate"]>>;
+  paperCommitment?: Awaited<ReturnType<OuroborosStorePort["getPaperTradingEvaluationCommitment"]>>;
   paperObservations: Awaited<ReturnType<OuroborosStorePort["listPaperTradingObservations"]>>;
 }>> {
   const leaderboardEntries = arena.leaderboard.slice(0, 8);
@@ -1915,7 +1976,7 @@ async function arenaPaperEvidenceCandidates(
     }
     const candidate = await store.getCandidate(summary.candidate_id);
     const paperEvaluation = await store.getLatestPaperTradingEvaluationForCandidate(summary.candidate_id);
-    if (candidate?.ledger?.has_activity || paperEvaluation) {
+    if (candidate && paperEvaluation) {
       candidateIds.add(summary.candidate_id);
     }
   }));
@@ -1925,14 +1986,15 @@ async function arenaPaperEvidenceCandidates(
     const paperEvaluation = candidate
       ? await store.getLatestPaperTradingEvaluationForCandidate(candidate.candidate_id)
       : undefined;
-    const paperObservations = paperEvaluation
-      ? await store.listPaperTradingObservations(paperEvaluation.paper_trading_evaluation_id)
-      : [];
+    const released = paperEvaluation
+      ? await releasedResearchFeedbackEvidence(store, paperEvaluation)
+      : undefined;
     return {
       entry: entriesByCandidateId.get(candidateId),
       candidate,
-      paperEvaluation,
-      paperObservations
+      paperEvaluation: released ? paperEvaluation : undefined,
+      paperCommitment: released?.commitment,
+      paperObservations: released?.observations ?? []
     };
   }));
 }

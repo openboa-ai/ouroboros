@@ -1,9 +1,12 @@
 import type {
+  PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
   PaperTradingQualificationReason,
   PaperTradingQualificationStatus
 } from "@ouroboros/domain";
+import { paperTradingEvaluationCommitmentMatchesEvaluation } from "./commitment";
+import { paperTradingScoreFromAccount } from "./engine";
 
 export interface PaperTradingQualificationPolicy {
   minObservationCount: number;
@@ -31,8 +34,32 @@ export const DEFAULT_PAPER_TRADING_QUALIFICATION_POLICY: PaperTradingQualificati
   assessRunnerHealth: true
 };
 
+export function paperTradingEvidenceIntegrityReasons(input: {
+  evaluation: PaperTradingEvaluationRecord;
+  commitment?: PaperTradingEvaluationCommitmentRecord;
+  observations: PaperTradingObservationRecord[];
+}): PaperTradingQualificationReason[] {
+  if (
+    !input.commitment ||
+    !paperTradingEvaluationCommitmentMatchesEvaluation(input.commitment, input.evaluation)
+  ) {
+    return ["paper_evaluation_commitment_missing"];
+  }
+  if (!paperObservationChainComplete(input.evaluation, input.commitment, input.observations)) {
+    return ["paper_observation_chain_incomplete"];
+  }
+  if (!paperObservationAccountingComplete(input.evaluation, input.commitment, input.observations)) {
+    return ["paper_score_account_mismatch"];
+  }
+  if (!paperScoreMatchesAccount(input.evaluation, input.commitment)) {
+    return ["paper_score_account_mismatch"];
+  }
+  return [];
+}
+
 export function qualifyPaperTradingEvaluation(input: {
   evaluation: PaperTradingEvaluationRecord;
+  commitment?: PaperTradingEvaluationCommitmentRecord;
   observations: PaperTradingObservationRecord[];
   runnerActive: boolean;
   policy?: Partial<PaperTradingQualificationPolicy>;
@@ -47,7 +74,7 @@ export function qualifyPaperTradingEvaluation(input: {
   const observationBounds = paperEvaluationObservationBounds(input.evaluation, input.observations);
   const evidenceWindow = {
     observation_count: input.evaluation.observation_count,
-    elapsed_ms: paperEvaluationElapsedMs(input.evaluation),
+    elapsed_ms: paperEvaluationElapsedMs(input.evaluation, input.observations),
     failed_observation_count: failedObservationCount,
     ...observationBounds
   };
@@ -56,10 +83,54 @@ export function qualifyPaperTradingEvaluation(input: {
     : 0;
   const reasons: PaperTradingQualificationReason[] = [];
 
+  if (input.evaluation.status === "invalidated") {
+    return {
+      qualification_status: "blocked_by_quality",
+      qualification_reasons: ["paper_evaluation_invalidated"],
+      evidence_window: evidenceWindow
+    };
+  }
+
+  if (
+    !input.commitment ||
+    !paperTradingEvaluationCommitmentMatchesEvaluation(input.commitment, input.evaluation)
+  ) {
+    return {
+      qualification_status: "not_qualification_evidence",
+      qualification_reasons: ["paper_evaluation_commitment_missing"],
+      evidence_window: evidenceWindow
+    };
+  }
+
+  if (input.commitment.evidence_purpose !== "qualification") {
+    return {
+      qualification_status: "not_qualification_evidence",
+      qualification_reasons: ["evidence_purpose_not_qualification"],
+      evidence_window: evidenceWindow
+    };
+  }
+
+  if (!input.commitment.provider_identity.qualification_eligible) {
+    return {
+      qualification_status: "not_qualification_evidence",
+      qualification_reasons: ["provider_identity_not_qualification_eligible"],
+      evidence_window: evidenceWindow
+    };
+  }
+
   if (input.evaluation.status === "failed") {
     return {
       qualification_status: "paper_failed",
       qualification_reasons: ["paper_evaluation_failed"],
+      evidence_window: evidenceWindow
+    };
+  }
+
+  const evidenceIntegrityReasons = paperTradingEvidenceIntegrityReasons(input);
+  if (evidenceIntegrityReasons.length > 0) {
+    return {
+      qualification_status: "blocked_by_quality",
+      qualification_reasons: evidenceIntegrityReasons,
       evidence_window: evidenceWindow
     };
   }
@@ -114,9 +185,163 @@ export function qualifyPaperTradingEvaluation(input: {
   };
 }
 
-function paperEvaluationElapsedMs(evaluation: PaperTradingEvaluationRecord): number {
+function paperObservationChainComplete(
+  evaluation: PaperTradingEvaluationRecord,
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  observations: PaperTradingObservationRecord[]
+): boolean {
+  if (observations.length !== evaluation.observation_count) {
+    return false;
+  }
+  const ordered = [...observations].sort((left, right) => left.sequence - right.sequence);
+  return ordered.every((observation, index) =>
+    observation.sequence === index + 1 &&
+    sameRef(observation.paper_trading_evaluation_ref, {
+      record_kind: "paper_trading_evaluation",
+      id: evaluation.paper_trading_evaluation_id
+    }) &&
+    sameRef(
+      observation.paper_trading_evaluation_commitment_ref,
+      evaluation.paper_trading_evaluation_commitment_ref
+    ) &&
+    sameRef(observation.candidate_ref, commitment.candidate_ref) &&
+    sameRef(observation.candidate_version_ref, commitment.candidate_version_ref) &&
+    sameRef(observation.trading_run_ref, commitment.trading_run_ref)
+  );
+}
+
+function sameRef(
+  left: { record_kind: string; id: string } | undefined,
+  right: { record_kind: string; id: string } | undefined
+): boolean {
+  return Boolean(
+    left &&
+    right &&
+    left.record_kind === right.record_kind &&
+    left.id === right.id
+  );
+}
+
+function paperObservationAccountingComplete(
+  evaluation: PaperTradingEvaluationRecord,
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  observations: PaperTradingObservationRecord[]
+): boolean {
+  const initialEquityUsdt = Number(commitment.initial_account_snapshot.equity_usdt);
+  if (!Number.isFinite(initialEquityUsdt) || initialEquityUsdt <= 0) {
+    return false;
+  }
+  const zeroScore: PaperTradingEvaluationRecord["latest_score"] = {
+    revenue_usdt: 0,
+    cost_usdt: 0,
+    net_revenue_usdt: 0,
+    net_return_pct: 0
+  };
+  if (!sameProfitLoss(
+    paperTradingScoreFromAccount(commitment.initial_account_snapshot, initialEquityUsdt),
+    zeroScore
+  )) {
+    return false;
+  }
+
+  let previousScore = zeroScore;
+  let latestAccount = commitment.initial_account_snapshot;
+  const ordered = [...observations].sort((left, right) => left.sequence - right.sequence);
+  for (const observation of ordered) {
+    if (
+      !validProfitLoss(observation.score_delta) ||
+      !validProfitLoss(observation.cumulative_score) ||
+      !sameProfitLoss(observation.score_delta, profitLossDelta(
+        observation.cumulative_score,
+        previousScore
+      ))
+    ) {
+      return false;
+    }
+    if (observation.paper_account_snapshot) {
+      if (!sameProfitLoss(
+        paperTradingScoreFromAccount(observation.paper_account_snapshot, initialEquityUsdt),
+        observation.cumulative_score
+      )) {
+        return false;
+      }
+      latestAccount = observation.paper_account_snapshot;
+    } else if (!sameProfitLoss(observation.cumulative_score, previousScore)) {
+      return false;
+    }
+    previousScore = observation.cumulative_score;
+  }
+
+  return Boolean(
+    evaluation.paper_account_snapshot &&
+    sameProfitLoss(previousScore, evaluation.latest_score) &&
+    sameJson(latestAccount, evaluation.paper_account_snapshot)
+  );
+}
+
+function profitLossDelta(
+  current: PaperTradingEvaluationRecord["latest_score"],
+  previous: PaperTradingEvaluationRecord["latest_score"]
+): PaperTradingEvaluationRecord["latest_score"] {
+  return {
+    revenue_usdt: roundProfit(current.revenue_usdt - previous.revenue_usdt),
+    cost_usdt: roundProfit(current.cost_usdt - previous.cost_usdt),
+    net_revenue_usdt: roundProfit(current.net_revenue_usdt - previous.net_revenue_usdt),
+    net_return_pct: roundProfit(current.net_return_pct - previous.net_return_pct)
+  };
+}
+
+function validProfitLoss(value: PaperTradingEvaluationRecord["latest_score"]): boolean {
+  return Object.values(value).every((item) => Number.isFinite(item));
+}
+
+function roundProfit(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function paperScoreMatchesAccount(
+  evaluation: PaperTradingEvaluationRecord,
+  commitment: PaperTradingEvaluationCommitmentRecord
+): boolean {
+  const initialEquityUsdt = Number(commitment.initial_account_snapshot.equity_usdt);
+  if (
+    !evaluation.paper_account_snapshot ||
+    !Number.isFinite(initialEquityUsdt) ||
+    initialEquityUsdt <= 0
+  ) {
+    return false;
+  }
+  return sameProfitLoss(
+    paperTradingScoreFromAccount(evaluation.paper_account_snapshot, initialEquityUsdt),
+    evaluation.latest_score
+  );
+}
+
+function sameProfitLoss(
+  left: PaperTradingEvaluationRecord["latest_score"],
+  right: PaperTradingEvaluationRecord["latest_score"]
+): boolean {
+  return left.revenue_usdt === right.revenue_usdt &&
+    left.cost_usdt === right.cost_usdt &&
+    left.net_revenue_usdt === right.net_revenue_usdt &&
+    left.net_return_pct === right.net_return_pct;
+}
+
+function paperEvaluationElapsedMs(
+  evaluation: PaperTradingEvaluationRecord,
+  observations: PaperTradingObservationRecord[]
+): number {
+  if (observations.length === 0) {
+    return 0;
+  }
   const started = Date.parse(evaluation.started_at);
-  const ended = Date.parse(evaluation.stopped_at ?? evaluation.last_observed_at ?? evaluation.started_at);
+  const ended = Date.parse([...observations]
+    .sort((left, right) => left.sequence - right.sequence)
+    .at(-1)!.observed_at);
   if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) {
     return 0;
   }

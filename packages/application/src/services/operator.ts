@@ -11,6 +11,7 @@ import {
   type OuroborosCommandRecord,
   type PaperTradingEvaluationRecord,
   type PaperTradingObservationRecord,
+  type PaperTradingQualificationStatus,
   type Ref,
   type ResearcherProviderReadModel,
   type TradingProfitLossReadModel
@@ -39,6 +40,7 @@ import type { OuroborosStorePort } from "../ports/store";
 import { safeId } from "../safe-id";
 import type { TradingResearchRuntimeAgent } from "../trading/research/runtime-config";
 import { classifyPaperTradingFailure } from "../trading/paper/failures";
+import { paperTradingEvaluationCommitmentMatchesEvaluation } from "../trading/paper/commitment";
 import { paperTradingLearningSummary } from "../trading/paper/learning";
 import { paperTradingQualificationBlockerGroups } from "../trading/paper/qualification-blockers";
 import { qualifyPaperTradingEvaluation } from "../trading/paper/qualification";
@@ -93,6 +95,9 @@ export class OperatorService {
     const selectedObservations = selectedEvaluation
       ? await this.options.store.listPaperTradingObservations(selectedEvaluation.paper_trading_evaluation_id)
       : [];
+    const selectedCommitment = selectedEvaluation
+      ? await paperTradingCommitmentForEvaluation(this.options.store, selectedEvaluation)
+      : undefined;
     const selectedEvaluationRunnerActive = selectedEvaluation
       ? this.options.paperTradingEvaluationRunner?.active(selectedEvaluation.trading_run_ref.id) ??
         selectedEvaluation.status === "running"
@@ -125,6 +130,7 @@ export class OperatorService {
       selected_paper_trading_evaluation: selectedPaperTradingEvaluation(
         selectedCandidate,
         selectedEvaluation,
+        selectedCommitment,
         selectedObservations,
         selectedEvaluationRunnerActive
       ),
@@ -323,9 +329,14 @@ export class OperatorService {
         const observations = await this.options.store.listPaperTradingObservations(
           evaluation.paper_trading_evaluation_id
         );
+        const commitment = await paperTradingCommitmentForEvaluation(
+          this.options.store,
+          evaluation
+        );
         const runnerActive = this.options.paperTradingEvaluationRunner?.active(evaluation.trading_run_ref.id) ?? false;
         const qualification = qualifyPaperTradingEvaluation({
           evaluation,
+          commitment,
           observations,
           runnerActive
         });
@@ -352,30 +363,22 @@ export class OperatorService {
             required_command: `ouroboros candidate paper start ${candidateId}`
           });
         }
-        const promotion = await this.options.store.recordTradingPromotion({
-          record_kind: "trading_promotion",
-          version: 1,
-          trading_promotion_id: "active-trading-promotion",
-          status: "promoted_for_trading_review",
-          candidate_ref: ref("trading_system_candidate", candidate.candidate_id),
-          candidate_version_ref: ref("candidate_version", candidate.active_version_id),
-          paper_trading_evaluation_ref: ref(
-            "paper_trading_evaluation",
-            evaluation.paper_trading_evaluation_id
-          ),
-          promoted_at: new Date().toISOString(),
-          authority_status: "not_live"
+        // TradingPromotion authority stays closed until paired verdict records exist.
+        throw new OperatorCommandError(409, "paper_trading_comparison_required", {
+          candidate_id: candidateId,
+          ...(attemptedReplacementCandidateId
+            ? {
+                active_trading_review_candidate_id: activeTradingReviewCandidateId,
+                attempted_replacement_candidate_id: attemptedReplacementCandidateId
+              }
+            : {}),
+          paper_trading_evaluation_id: evaluation.paper_trading_evaluation_id,
+          paper_qualification_status: qualification.qualification_status,
+          paper_qualification_reasons: qualification.qualification_reasons,
+          paper_evidence_window: qualification.evidence_window,
+          required_evidence: "promotion_eligible_paper_trading_comparison_verdict",
+          next_action: "Run a prospective champion/challenger comparison and obtain a promotion-eligible external verdict."
         });
-        const replacedCandidateId = previousPromotion?.candidate_ref.id !== candidateId
-          ? previousPromotion?.candidate_ref.id
-          : undefined;
-        this.selectedCandidateId = candidateId;
-        return {
-          result: { trading_promotion: promotion },
-          summary: replacedCandidateId
-            ? `Replaced Trading review target ${replacedCandidateId} with ${candidateId}.`
-            : `Promoted ${candidateId} to Trading review.`
-        };
       },
       "candidate.paper_evidence.run": async (payload) => {
         const candidateId = parseCommandCandidateId(payload);
@@ -914,6 +917,7 @@ async function buildPaperTradingBoard(
   const entries = await Promise.all([...latestByCandidate.values()].map(async (evaluation) => {
     const candidate = await store.getCandidate(evaluation.candidate_ref.id);
     const observations = await store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id);
+    const commitment = await paperTradingCommitmentForEvaluation(store, evaluation);
     const latestObservation = observations.at(-1);
     const latestMarketSnapshot = latestObservation?.market_snapshot;
     const latestPublicExecutionSnapshot = latestObservation?.public_execution_snapshot ??
@@ -927,6 +931,7 @@ async function buildPaperTradingBoard(
     const paperAccountSnapshot = latestObservation?.paper_account_snapshot ?? evaluation.paper_account_snapshot;
     const qualification = qualifyPaperTradingEvaluation({
       evaluation,
+      commitment,
       observations,
       runnerActive
     });
@@ -940,7 +945,16 @@ async function buildPaperTradingBoard(
       evaluation_id: evaluation.paper_trading_evaluation_id,
       status: evaluation.status,
       runner_status: runnerStatus,
-      promotion_gate_status: paperTradingPromotionGateStatus(evaluation, runnerStatus),
+      promotion_gate_status: paperTradingPromotionGateStatus(
+        evaluation,
+        runnerStatus,
+        qualification.qualification_status
+      ),
+      evidence_purpose: commitment?.evidence_purpose,
+      commitment_id: commitment?.paper_trading_evaluation_commitment_id,
+      commitment_digest: commitment?.commitment_digest,
+      freeze_status: paperTradingEvaluationFreezeStatus(evaluation, commitment),
+      invalidation_reason: evaluation.invalidation_reason,
       qualification_status: qualification.qualification_status,
       qualification_reasons: qualification.qualification_reasons,
       evidence_window: qualification.evidence_window,
@@ -1143,11 +1157,14 @@ async function buildTradingPromotionReadModel(input: {
   const observations = evaluation
     ? await input.store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
     : [];
+  const commitment = evaluation
+    ? await paperTradingCommitmentForEvaluation(input.store, evaluation)
+    : undefined;
   const runnerActive = evaluation
     ? input.runner?.active(evaluation.trading_run_ref.id) ?? false
     : false;
   const qualification = evaluation
-    ? qualifyPaperTradingEvaluation({ evaluation, observations, runnerActive })
+    ? qualifyPaperTradingEvaluation({ evaluation, commitment, observations, runnerActive })
     : undefined;
   const runnerStatus = evaluation
     ? paperTradingBoardRunnerStatus(evaluation, runnerActive)
@@ -1197,6 +1214,9 @@ async function buildTradingReviewReadModel(input: {
   const activeObservations = activeEvaluation
     ? await input.store.listPaperTradingObservations(activeEvaluation.paper_trading_evaluation_id)
     : [];
+  const activeCommitment = activeEvaluation
+    ? await paperTradingCommitmentForEvaluation(input.store, activeEvaluation)
+    : undefined;
   const activeRunner = activeEvaluation
     ? input.runner?.active(activeEvaluation.trading_run_ref.id) ?? activeEvaluation.status === "running"
     : false;
@@ -1213,6 +1233,7 @@ async function buildTradingReviewReadModel(input: {
   const paperEvaluation = selectedPaperTradingEvaluation(
     activeCandidate,
     activeEvaluation,
+    activeCommitment,
     activeObservations,
     activeRunner
   );
@@ -1514,6 +1535,9 @@ function tradingPromotionReadinessFromQualification(
   if (status === "needs_resume") {
     return "needs_resume";
   }
+  if (status === "not_qualification_evidence") {
+    return "paper_required";
+  }
   if (status === "blocked_by_quality" || status === "paper_failed") {
     return "blocked_by_quality";
   }
@@ -1528,6 +1552,9 @@ function tradingPromotionNextAction(
   }
   if (status === "needs_resume") {
     return "Resume paper trading before treating this Trading review candidate as current.";
+  }
+  if (status === "not_qualification_evidence") {
+    return "Run a prospective qualification comparison; research feedback cannot authorize promotion.";
   }
   if (status === "blocked_by_quality" || status === "paper_failed") {
     return "Fix paper evidence quality before this candidate can be trusted.";
@@ -1552,10 +1579,47 @@ function ref(record_kind: string, id: string): Ref {
   return { record_kind, id };
 }
 
+async function paperTradingCommitmentForEvaluation(
+  store: OuroborosStorePort,
+  evaluation: PaperTradingEvaluationRecord
+) {
+  const commitmentId = evaluation.paper_trading_evaluation_commitment_ref?.id;
+  if (!commitmentId) {
+    return undefined;
+  }
+  const commitment = await store.getPaperTradingEvaluationCommitment(commitmentId);
+  return commitment && paperTradingEvaluationCommitmentMatchesEvaluation(commitment, evaluation)
+    ? commitment
+    : undefined;
+}
+
+function paperTradingEvaluationFreezeStatus(
+  evaluation: PaperTradingEvaluationRecord,
+  commitment: Awaited<ReturnType<OuroborosStorePort["getPaperTradingEvaluationCommitment"]>>
+): OperatorReadModel["selected_paper_trading_evaluation"]["freeze_status"] {
+  if (evaluation.status === "invalidated") {
+    return "invalidated";
+  }
+  if (!commitment || !paperTradingEvaluationCommitmentMatchesEvaluation(commitment, evaluation)) {
+    return undefined;
+  }
+  return evaluation.status === "not_started" ? "committed" : "verified";
+}
+
 function paperTradingPromotionGateStatus(
   evaluation: PaperTradingEvaluationRecord,
-  runnerStatus: OperatorReadModel["paper_trading_board"]["entries"][number]["runner_status"]
+  runnerStatus: OperatorReadModel["paper_trading_board"]["entries"][number]["runner_status"],
+  qualificationStatus: PaperTradingQualificationStatus
 ): OperatorReadModel["paper_trading_board"]["entries"][number]["promotion_gate_status"] {
+  if (evaluation.status === "invalidated") {
+    return "invalidated";
+  }
+  if (qualificationStatus === "not_qualification_evidence") {
+    return "not_qualification_evidence";
+  }
+  if (qualificationStatus === "qualified") {
+    return "prospective_comparison_required";
+  }
   if (evaluation.status === "failed") {
     return "paper_failed";
   }
@@ -1571,6 +1635,7 @@ function paperTradingPromotionGateStatus(
 export function selectedPaperTradingEvaluation(
   candidate: CandidateInspectReadModel | undefined,
   evaluation?: PaperTradingEvaluationRecord,
+  commitment?: Awaited<ReturnType<OuroborosStorePort["getPaperTradingEvaluationCommitment"]>>,
   observations: PaperTradingObservationRecord[] = [],
   runnerActive = false
 ): OperatorReadModel["selected_paper_trading_evaluation"] {
@@ -1595,6 +1660,11 @@ export function selectedPaperTradingEvaluation(
       candidateId: evaluation.candidate_ref.id,
       candidateVersionId: evaluation.candidate_version_ref.id,
       status: evaluation.status,
+      evidencePurpose: commitment?.evidence_purpose,
+      commitmentId: commitment?.paper_trading_evaluation_commitment_id,
+      commitmentDigest: commitment?.commitment_digest,
+      freezeStatus: paperTradingEvaluationFreezeStatus(evaluation, commitment),
+      invalidationReason: evaluation.invalidation_reason,
       tradingRunId: evaluation.trading_run_ref.id,
       tradingRunStatus: candidate.trading_run?.lifecycle_status,
       runnerActive,
@@ -1696,6 +1766,11 @@ function paperTradingEvaluationReadModel(input: {
   candidateId?: string;
   candidateVersionId?: string;
   status: OperatorReadModel["selected_paper_trading_evaluation"]["status"];
+  evidencePurpose?: OperatorReadModel["selected_paper_trading_evaluation"]["evidence_purpose"];
+  commitmentId?: string;
+  commitmentDigest?: string;
+  freezeStatus?: OperatorReadModel["selected_paper_trading_evaluation"]["freeze_status"];
+  invalidationReason?: OperatorReadModel["selected_paper_trading_evaluation"]["invalidation_reason"];
   tradingRunId?: string;
   tradingRunStatus?: OperatorReadModel["selected_paper_trading_evaluation"]["trading_run_status"];
   runnerActive: boolean;
@@ -1723,6 +1798,11 @@ function paperTradingEvaluationReadModel(input: {
     evaluation_kind: "paper_trading_evaluation",
     evaluation_id: input.evaluationId,
     status: input.status,
+    evidence_purpose: input.evidencePurpose,
+    commitment_id: input.commitmentId,
+    commitment_digest: input.commitmentDigest,
+    freeze_status: input.freezeStatus,
+    invalidation_reason: input.invalidationReason,
     candidate_id: input.candidateId,
     candidate_version_id: input.candidateVersionId,
     trading_run_id: input.tradingRunId,

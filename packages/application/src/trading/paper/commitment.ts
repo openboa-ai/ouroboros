@@ -261,6 +261,36 @@ export function paperTradingEvaluationCommitmentDigest(
     .digest("hex")}`;
 }
 
+export function paperTradingEvaluationCommitmentMatchesEvaluation(
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  evaluation: PaperTradingEvaluationRecord
+): boolean {
+  try {
+    const purposeMatchesRelease =
+      (commitment.evidence_purpose === "research_feedback" &&
+        commitment.window_policy.release_policy === "closed_observation") ||
+      (commitment.evidence_purpose === "qualification" &&
+        commitment.window_policy.release_policy === "sealed_until_adjudication");
+    return commitment.commitment_digest === paperTradingEvaluationCommitmentDigest(commitment) &&
+      sameRef(
+        evaluation.paper_trading_evaluation_commitment_ref,
+        ref(
+          "paper_trading_evaluation_commitment",
+          commitment.paper_trading_evaluation_commitment_id
+        )
+      ) &&
+      sameRef(evaluation.candidate_ref, commitment.candidate_ref) &&
+      sameRef(evaluation.candidate_version_ref, commitment.candidate_version_ref) &&
+      sameRef(evaluation.trading_run_ref, commitment.trading_run_ref) &&
+      evaluation.interval_ms === commitment.window_policy.interval_ms &&
+      purposeMatchesRelease &&
+      commitment.authority_status === "not_live" &&
+      evaluation.authority_status === "not_live";
+  } catch {
+    return false;
+  }
+}
+
 export function paperTradingMarketDataConfigurationDigest(
   marketData: GatewayMarketDataPort
 ): string {
