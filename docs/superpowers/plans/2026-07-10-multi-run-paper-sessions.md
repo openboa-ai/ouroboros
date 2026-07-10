@@ -388,7 +388,7 @@ git commit -m "refactor: isolate paper TradingRun sessions"
 - Preserves: `PaperTradingCommandService.start(candidateId, payload)`, observe, stop, and response
   shapes.
 
-- [ ] **Step 1: Add public-boundary regression tests**
+- [x] **Step 1: Add public-boundary regression tests**
 
 POST normal and malicious payloads:
 
@@ -406,7 +406,7 @@ Assert both operate only the candidate's default `runtime.ref.id`, persist or re
 `research_feedback` commitment, and create no commitment, provider, or sandbox for the supplied run
 ID.
 
-- [ ] **Step 2: Delegate command lifecycle to the session service**
+- [x] **Step 2: Delegate command lifecycle to the session service**
 
 `PaperTradingCommandService.start` resolves the selected candidate and calls:
 
@@ -424,20 +424,20 @@ Preserve start, resume, already-running, invalidation, first-observation, and re
 delegating to `activate`, `observe`, and schedule methods. Payload parsing remains limited to
 `runtime_environment` and `paper_order_request`.
 
-- [ ] **Step 3: Wire one shared service at the composition root**
+- [x] **Step 3: Wire one shared service at the composition root**
 
 Build one `PaperTradingSessionService` from the existing runner, store, sandbox adapters, market
 port, provider factory, artifact resolver, intervals, and logger. Inject it into
 `PaperTradingCommandService`; Operator runner-active checks use the session service's `active`
 method so externally clocked sessions are not mislabeled `needs_resume`.
 
-- [ ] **Step 4: Run lifecycle and commitment tests**
+- [x] **Step 4: Run lifecycle and commitment tests**
 
 Run: `npx vitest run apps/runtime/test/paper-trading-evaluation-commitment.test.ts apps/runtime/test/long-running-paper-session.test.ts apps/runtime/test/reference-paper-soak-trading-system.test.ts`
 
 Expected: PASS outside the restricted listener sandbox.
 
-- [ ] **Step 5: Commit command compatibility**
+- [x] **Step 5: Commit command compatibility**
 
 ```bash
 git add packages/application/src/trading/paper/commands.ts apps/runtime/src/server.ts apps/runtime/test/paper-trading-evaluation-commitment.test.ts apps/runtime/test/long-running-paper-session.test.ts
