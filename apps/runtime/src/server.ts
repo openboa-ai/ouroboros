@@ -114,7 +114,7 @@ export interface BuildServerOptions {
     options: PaperTradingApiProviderOptions
   ) => Promise<ReplayTradingApiProviderSession>;
   paperTradingArtifactResolver?: SystemCodeArtifactResolverPort;
-  paperTradingSessionService?: PaperTradingSessionService;
+  onPaperTradingSessionServiceCreated?: (service: PaperTradingSessionService) => void;
   candidateArenaArtifactRunner?: TradingArtifactRunner;
   candidateArenaReplayProviderFactory?: ReplayTradingApiProviderFactory;
   operatorApiToken?: string | false;
@@ -254,7 +254,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const sandboxHost = options.tradingApiProviderSandboxHost ?? process.env.OUROBOROS_TRADING_API_SANDBOX_HOST;
   const paperTradingArtifactResolver = options.paperTradingArtifactResolver
     ?? new FileSystemCodeArtifactResolver({ repoRoot: process.cwd() });
-  const paperTradingSessionService = options.paperTradingSessionService ?? new PaperTradingSessionService({
+  const paperTradingSessionService = new PaperTradingSessionService({
     store,
     sandboxAdapters,
     marketData: gatewayMarketDataPort,
@@ -266,6 +266,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     apiProviderOptions: paperTradingApiProviderNetworkOptions({ sandboxHost }),
     logger: console
   });
+  options.onPaperTradingSessionServiceCreated?.(paperTradingSessionService);
   const paperTradingCommandService = new PaperTradingCommandService({
     store,
     marketData: gatewayMarketDataPort,

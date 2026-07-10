@@ -54,17 +54,7 @@ describe("long-running paper TradingSystem sessions", () => {
       docker_sandboxes_sbx: sandboxAdapter
     };
     const marketData = fakeGatewayMarketDataPort();
-    const sessions = new PaperTradingSessionService({
-      store,
-      sandboxAdapters,
-      marketData,
-      artifactResolver: {
-        async resolveArtifactDigest() {
-          return "sha256:shared-session-test";
-        }
-      },
-      apiProviderFactory: networklessPaperTradingApiProvider
-    });
+    let sessions: PaperTradingSessionService | undefined;
     const server = await buildServer({
       store,
       sandboxAdapters,
@@ -75,10 +65,15 @@ describe("long-running paper TradingSystem sessions", () => {
         }
       },
       paperTradingApiProviderFactory: networklessPaperTradingApiProvider,
-      paperTradingSessionService: sessions
+      onPaperTradingSessionServiceCreated(service) {
+        sessions = service;
+      }
     });
 
     try {
+      if (!sessions) {
+        throw new Error("server did not create a paper trading session service");
+      }
       const prepared = await sessions.prepare({
         candidateId: candidate.candidate_id,
         candidateVersionId: candidate.candidate_version.candidate_version_id,
