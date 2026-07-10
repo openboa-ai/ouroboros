@@ -233,6 +233,19 @@ describe("PaperTradingSessionService", () => {
     expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
   });
 
+  it("rejects stopping a prepared qualification run before lifecycle effects", async () => {
+    const fixture = await prepareGuardedSession("qualification");
+    const stateBeforeStop = await guardedSessionState(fixture.store, fixture.tradingRunId);
+
+    await expect(fixture.service.stop(fixture.tradingRunId)).rejects.toMatchObject({
+      code: "paper_trading_comparison_authority_required"
+    });
+
+    expect(fixture.effectCounts()).toEqual({ providerStarts: 0, sandboxStarts: 0, marketReads: 0 });
+    expect(fixture.service.active(fixture.tradingRunId)).toBe(false);
+    expect(await guardedSessionState(fixture.store, fixture.tradingRunId)).toEqual(stateBeforeStop);
+  });
+
   it("rejects observation of an unactivated research-feedback run before runtime effects", async () => {
     const fixture = await prepareGuardedSession("research_feedback");
 
@@ -326,4 +339,22 @@ async function prepareGuardedSession(evidencePurpose: "qualification" | "researc
     tradingRunId: run.trading_run_id,
     effectCounts: () => ({ providerStarts, sandboxStarts, marketReads })
   };
+}
+
+async function guardedSessionState(store: LocalStore, tradingRunId: string) {
+  const evaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+  const candidate = await store.getCandidateForTradingRun(tradingRunId);
+  return structuredClone({
+    tradingRun: await store.getTradingRun(tradingRunId),
+    commitment: evaluation?.paper_trading_evaluation_commitment_ref
+      ? await store.getPaperTradingEvaluationCommitment(evaluation.paper_trading_evaluation_commitment_ref.id)
+      : undefined,
+    evaluation,
+    observations: evaluation
+      ? await store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
+      : [],
+    runControl: candidate?.runtime.run_control,
+    sandbox: candidate?.runtime.sandbox,
+    ledger: candidate?.ledger
+  });
 }

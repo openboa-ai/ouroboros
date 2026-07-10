@@ -361,6 +361,35 @@ export class PaperTradingSessionService {
     if (!candidate) {
       return undefined;
     }
+    const run = await this.options.store.getTradingRun(tradingRunId);
+    if (!run) {
+      throw new PaperTradingSessionError("trading_run_not_found", "trading run was not found");
+    }
+    const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+    const commitment = existing?.paper_trading_evaluation_commitment_ref
+      ? await this.options.store.getPaperTradingEvaluationCommitment(
+          existing.paper_trading_evaluation_commitment_ref.id
+        )
+      : undefined;
+    if (
+      run.paper_evidence_purpose === "qualification" ||
+      commitment?.evidence_purpose === "qualification"
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_authority_required",
+        "Qualification PaperTradingSession stop requires verified comparison authority."
+      );
+    }
+    if (
+      run.paper_evidence_purpose &&
+      commitment?.evidence_purpose &&
+      run.paper_evidence_purpose !== commitment.evidence_purpose
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_evidence_purpose_mismatch",
+        "PaperTradingSession stop requires matching persisted TradingRun and commitment purposes."
+      );
+    }
     const candidateVersionId = candidate.candidate_version.candidate_version_id;
     await this.options.store.recordRunControlAudit(tradingRunLifecycleAuditInput({
       idempotencyKey: `trading-run-stop:${tradingRunId}:${candidateVersionId}`,
@@ -374,7 +403,6 @@ export class PaperTradingSessionService {
       message: "Trading run stop recorded."
     }));
     await this.stopTerminalSession(tradingRunId);
-    const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
     if (!existing || existing.status === "invalidated") {
       return existing;
     }

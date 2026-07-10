@@ -208,14 +208,18 @@ export class PaperTradingCommandService {
     if (!candidate) {
       return { statusCode: 404, body: { error: "trading_run_not_found", trading_run_id: tradingRunId } };
     }
+    const defaultCandidate = await this.options.store.getCandidate(candidate.candidate_id);
+    if (!defaultCandidate || defaultCandidate.runtime.ref.id !== tradingRunId) {
+      return { statusCode: 422, body: { error: "paper_trading_run_internal_only" } };
+    }
     const existing = await this.options.store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
     let observed: Awaited<ReturnType<PaperTradingSessionService["observe"]>> | undefined;
-    if (candidate.runtime.runtime_lifecycle_status === "running" && existing?.status !== "invalidated") {
+    if (defaultCandidate.runtime.runtime_lifecycle_status === "running" && existing?.status !== "invalidated") {
       try {
         const run = await this.options.store.getTradingRun(tradingRunId);
         await this.sessions.prepare({
-          candidateId: candidate.candidate_id,
-          candidateVersionId: candidate.candidate_version.candidate_version_id,
+          candidateId: defaultCandidate.candidate_id,
+          candidateVersionId: defaultCandidate.candidate_version.candidate_version_id,
           tradingRunId,
           evidencePurpose: run?.paper_evidence_purpose ?? "research_feedback",
           clock: "scheduled"
@@ -245,6 +249,10 @@ export class PaperTradingCommandService {
     const candidate = await this.options.store.getCandidateForTradingRun(tradingRunId);
     if (!candidate) {
       return { statusCode: 404, body: { error: "trading_run_not_found", trading_run_id: tradingRunId } };
+    }
+    const defaultCandidate = await this.options.store.getCandidate(candidate.candidate_id);
+    if (!defaultCandidate || defaultCandidate.runtime.ref.id !== tradingRunId) {
+      return { statusCode: 422, body: { error: "paper_trading_run_internal_only" } };
     }
     const stopped = await this.sessions.stop(tradingRunId);
     return {

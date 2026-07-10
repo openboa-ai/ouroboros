@@ -208,6 +208,87 @@ describe("PaperTradingEvaluation commitment lifecycle", () => {
     }
   });
 
+  it("rejects public observation and stop for internal additional runs without exposing their evidence", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const candidate = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+    if (!candidate) {
+      throw new Error("fixture candidate was not materialized");
+    }
+    const additionalRun = await store.createPaperTradingRun({
+      idempotency_key: "paper-commitment-public-command-additional",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "research_feedback"
+    });
+    const qualificationRun = await store.createPaperTradingRun({
+      idempotency_key: "paper-commitment-public-command-qualification",
+      candidate_id: candidate.candidate_id,
+      candidate_version_id: candidate.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification"
+    });
+    const order: string[] = [];
+    const sandbox = inspectableSandbox(order);
+    let sessionService: import("@ouroboros/application/trading/paper/session-service").PaperTradingSessionService | undefined;
+    const server = await buildServer({
+      store,
+      sandboxAdapters: { deterministic_test: sandbox },
+      marketDataPort: orderedMarketData(order),
+      paperTradingArtifactResolver: artifactResolver("sha256:resolved-fixture-v1", order),
+      paperTradingApiProviderFactory: staticPaperTradingApiProvider,
+      onPaperTradingSessionServiceCreated(service) {
+        sessionService = service;
+      }
+    });
+
+    try {
+      if (!sessionService) {
+        throw new Error("paper session service was not created");
+      }
+      const preparedAdditional = await sessionService.prepare({
+        candidateId: candidate.candidate_id,
+        candidateVersionId: candidate.candidate_version.candidate_version_id,
+        tradingRunId: additionalRun.trading_run_id,
+        evidencePurpose: "research_feedback",
+        clock: "external"
+      });
+      await sessionService.activate(preparedAdditional);
+      const preparedQualification = await sessionService.prepare({
+        candidateId: candidate.candidate_id,
+        candidateVersionId: candidate.candidate_version.candidate_version_id,
+        tradingRunId: qualificationRun.trading_run_id,
+        evidencePurpose: "qualification",
+        clock: "external"
+      });
+      const additionalBefore = await internalRunState(store, additionalRun.trading_run_id);
+      const qualificationBefore = await internalRunState(store, qualificationRun.trading_run_id);
+      const effectsBefore = [...order];
+
+      for (const command_kind of ["trading_run.observe", "trading_run.stop"] as const) {
+        for (const trading_run_id of [additionalRun.trading_run_id, qualificationRun.trading_run_id]) {
+          const response = await server.inject({
+            method: "POST",
+            url: "/api/commands",
+            payload: { command_kind, payload: { trading_run_id } }
+          });
+
+          expect(response.statusCode, response.body).toBe(422);
+          expect(response.json()).toMatchObject({ error: "paper_trading_run_internal_only" });
+          expect(response.json()).not.toHaveProperty("result");
+        }
+      }
+
+      expect(await internalRunState(store, additionalRun.trading_run_id)).toEqual(additionalBefore);
+      expect(await internalRunState(store, qualificationRun.trading_run_id)).toEqual(qualificationBefore);
+      expect(order).toEqual(effectsBefore);
+      expect(sessionService.active(additionalRun.trading_run_id)).toBe(true);
+      expect(sessionService.active(qualificationRun.trading_run_id)).toBe(false);
+      expect(preparedQualification.evaluation.status).toBe("not_started");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("invalidates changed artifact bytes before restart side effects or evidence", async () => {
     const store = new LocalStore(tmpDir);
     const firstServer = await buildServer({
@@ -610,4 +691,22 @@ async function postCommand(
   });
   expect([200, 409], response.body).toContain(response.statusCode);
   return response.json();
+}
+
+async function internalRunState(store: LocalStore, tradingRunId: string) {
+  const evaluation = await store.getLatestPaperTradingEvaluationForTradingRun(tradingRunId);
+  const candidate = await store.getCandidateForTradingRun(tradingRunId);
+  return structuredClone({
+    tradingRun: await store.getTradingRun(tradingRunId),
+    commitment: evaluation?.paper_trading_evaluation_commitment_ref
+      ? await store.getPaperTradingEvaluationCommitment(evaluation.paper_trading_evaluation_commitment_ref.id)
+      : undefined,
+    evaluation,
+    observations: evaluation
+      ? await store.listPaperTradingObservations(evaluation.paper_trading_evaluation_id)
+      : [],
+    runControl: candidate?.runtime.run_control,
+    sandbox: candidate?.runtime.sandbox,
+    ledger: candidate?.ledger
+  });
 }
