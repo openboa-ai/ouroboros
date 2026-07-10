@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type {
   CandidateInspectReadModel,
   PaperTradingEvaluationCommitmentRecord,
+  PaperTradingEvaluationInvalidationReason,
   PaperTradingEvaluationRecord,
   PaperTradingEvidencePurpose,
   SandboxDetailReadModel
@@ -62,6 +63,28 @@ export interface PreparedPaperTradingSession {
   verification: Extract<PaperTradingEvaluationCommitmentVerification, { status: "verified" }>;
   clock: PaperTradingSessionClock;
 }
+
+export type PaperTradingRecoveryOutcome =
+  | {
+      tradingRunId: string;
+      status: "recovered";
+      clock: PaperTradingSessionClock;
+    }
+  | {
+      tradingRunId: string;
+      status: "invalidated";
+      reason: PaperTradingEvaluationInvalidationReason;
+    }
+  | {
+      tradingRunId: string;
+      status: "failed";
+      error: string;
+    }
+  | {
+      tradingRunId: string;
+      status: "skipped";
+      reason: "evaluation_not_running" | "qualification";
+    };
 
 export class PaperTradingSessionError extends Error {
   constructor(
@@ -374,6 +397,90 @@ export class PaperTradingSessionService {
       ]);
     }
     await this.runner.drain();
+  }
+
+  async recoverRunningEvaluations(): Promise<PaperTradingRecoveryOutcome[]> {
+    const latestByTradingRun = new Map<string, PaperTradingEvaluationRecord>();
+    for (const evaluation of await this.options.store.listPaperTradingEvaluations()) {
+      const tradingRunId = evaluation.trading_run_ref.id;
+      const existing = latestByTradingRun.get(tradingRunId);
+      if (!existing || paperTradingEvaluationComesAfter(evaluation, existing)) {
+        latestByTradingRun.set(tradingRunId, evaluation);
+      }
+    }
+
+    const evaluations = [...latestByTradingRun.values()].sort((left, right) =>
+      left.started_at.localeCompare(right.started_at) ||
+      left.paper_trading_evaluation_id.localeCompare(right.paper_trading_evaluation_id)
+    );
+    const outcomes: PaperTradingRecoveryOutcome[] = [];
+    for (const evaluation of evaluations) {
+      const tradingRunId = evaluation.trading_run_ref.id;
+      if (evaluation.status !== "running") {
+        outcomes.push({ tradingRunId, status: "skipped", reason: "evaluation_not_running" });
+        continue;
+      }
+
+      try {
+        const run = await this.options.store.getTradingRun(tradingRunId);
+        const commitment = evaluation.paper_trading_evaluation_commitment_ref
+          ? await this.options.store.getPaperTradingEvaluationCommitment(
+              evaluation.paper_trading_evaluation_commitment_ref.id
+            )
+          : undefined;
+        const evidencePurpose = run?.paper_evidence_purpose ??
+          commitment?.evidence_purpose ??
+          "research_feedback";
+        const prepared = await this.prepare({
+          candidateId: evaluation.candidate_ref.id,
+          candidateVersionId: evaluation.candidate_version_ref.id,
+          tradingRunId,
+          evidencePurpose,
+          clock: "external"
+        });
+        if (prepared.commitment.evidence_purpose === "qualification") {
+          outcomes.push({ tradingRunId, status: "skipped", reason: "qualification" });
+          continue;
+        }
+
+        const defaultCandidate = await this.options.store.getCandidate(evaluation.candidate_ref.id);
+        const clock: PaperTradingSessionClock =
+          defaultCandidate?.candidate_id === evaluation.candidate_ref.id &&
+          defaultCandidate.candidate_version.candidate_version_id === evaluation.candidate_version_ref.id &&
+          defaultCandidate.runtime.ref.id === tradingRunId
+            ? "scheduled"
+            : "external";
+        await this.activate({ ...prepared, clock });
+        if (clock === "scheduled") {
+          await this.schedule(tradingRunId);
+        }
+        outcomes.push({ tradingRunId, status: "recovered", clock });
+      } catch (error) {
+        if (
+          error instanceof PaperTradingSessionError &&
+          error.code === "paper_trading_evaluation_invalidated"
+        ) {
+          const invalidated = await this.options.store
+            .getLatestPaperTradingEvaluationForTradingRun(tradingRunId)
+            .catch(() => undefined);
+          if (invalidated?.status === "invalidated" && invalidated.invalidation_reason) {
+            outcomes.push({
+              tradingRunId,
+              status: "invalidated",
+              reason: invalidated.invalidation_reason
+            });
+            continue;
+          }
+        }
+        await this.stopTerminalSession(tradingRunId).catch(() => undefined);
+        outcomes.push({
+          tradingRunId,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    return outcomes;
   }
 
   private gatewayBinding(): GatewayRuntimeBinding {
@@ -748,4 +855,14 @@ function hasFreshSandboxHeartbeat(
       observedAt > previousHeartbeatAt
     );
   }) ?? false;
+}
+
+function paperTradingEvaluationComesAfter(
+  candidate: PaperTradingEvaluationRecord,
+  existing: PaperTradingEvaluationRecord
+): boolean {
+  return candidate.started_at > existing.started_at || (
+    candidate.started_at === existing.started_at &&
+    candidate.paper_trading_evaluation_id > existing.paper_trading_evaluation_id
+  );
 }
