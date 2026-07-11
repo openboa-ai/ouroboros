@@ -77,8 +77,9 @@ new internal record families.
 
 ## Deterministic Comparison Identity
 
-Move the existing comparison idempotency-key-to-ID derivation into a domain-owned pure helper so the
-campaign, coordinator, and Store use one rule:
+Keep Node hashing out of `@ouroboros/domain`, which is also consumed by browser surfaces. Extract
+the existing coordinator derivation into an application-owned identity helper used by the campaign
+and coordinator:
 
 ```ts
 interface PaperTradingComparisonIds {
@@ -90,6 +91,12 @@ paperTradingComparisonIdsForIdempotencyKey(
   idempotencyKey: string
 ): PaperTradingComparisonIds;
 ```
+
+LocalStore independently derives the same IDs with `node:crypto` before accepting a campaign or
+slot preparation. A fixed shared test vector and cross-layer campaign tests prevent derivation
+drift without reversing the domain/application/adapter dependency direction. Domain runtime shape
+validates canonical key/ID format, contiguous indices, uniqueness, and count; Store is the hash
+parity authority.
 
 Each slot idempotency key is canonical and derived from campaign identity and one-based index:
 
