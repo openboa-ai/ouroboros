@@ -1865,6 +1865,48 @@ export interface PaperTradingComparisonTickRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export interface PaperTradingComparisonActivationSide {
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  paper_trading_evaluation_ref: Ref;
+}
+
+export interface PaperTradingComparisonActivationPolicy {
+  policy_version: "paper-comparison-activation-v1";
+  maximum_start_skew_ms: number;
+  maximum_retry_count_per_side: number;
+  maximum_provider_request_count_per_side: number;
+  maximum_activation_elapsed_ms: 60_000;
+  cleanup_timeout_ms: 10_000;
+  require_both_running_before_observation: true;
+  partial_start_policy: "stop_started_side_before_retry";
+  restart_policy: "recover_both_or_stop_both";
+  market_view_policy: "first_tick_then_contiguous_persisted_ticks";
+}
+
+export interface PaperTradingComparisonActivationRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_activation";
+  paper_trading_comparison_activation_id: string;
+  paper_trading_comparison_commitment_ref: Ref;
+  paper_trading_comparison_commitment_digest: string;
+  first_tick_ref: Ref;
+  first_tick_digest: string;
+  champion: PaperTradingComparisonActivationSide;
+  challenger: PaperTradingComparisonActivationSide;
+  market_data_configuration_digest: string;
+  activation_policy: PaperTradingComparisonActivationPolicy;
+  activation_scope: "qualification_pair";
+  activation_status: "authorized";
+  authorized_at: string;
+  activation_digest: string;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  private_exchange_access: "forbidden";
+  credentials_access: "forbidden";
+  authority_status: "not_live";
+}
+
 export interface PaperTradingQualificationPolicy {
   minObservationCount: number;
   minElapsedMs: number;
@@ -2049,6 +2091,38 @@ export function paperTradingComparisonTickDigestInput(
   return paperTradingComparisonPersistedRecordDigestInput(payload);
 }
 
+export function paperTradingComparisonActivationPolicyFor(
+  comparisonPolicy: PaperTradingComparisonPolicy
+): PaperTradingComparisonActivationPolicy {
+  return {
+    policy_version: "paper-comparison-activation-v1",
+    maximum_start_skew_ms: comparisonPolicy.maximum_start_skew_ms,
+    maximum_retry_count_per_side: comparisonPolicy.maximum_retry_count_per_side,
+    maximum_provider_request_count_per_side:
+      comparisonPolicy.maximum_provider_request_count_per_side,
+    maximum_activation_elapsed_ms: 60_000,
+    cleanup_timeout_ms: 10_000,
+    require_both_running_before_observation: true,
+    partial_start_policy: "stop_started_side_before_retry",
+    restart_policy: "recover_both_or_stop_both",
+    market_view_policy: "first_tick_then_contiguous_persisted_ticks"
+  };
+}
+
+export function paperTradingComparisonActivationDigestInput(
+  record: PaperTradingComparisonActivationRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_activation_id: _id,
+    authorized_at: _authorizedAt,
+    activation_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
 export const PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT: PaperTradingAccountSnapshot = {
   wallet_balance_usdt: "10000", available_balance_usdt: "10000", equity_usdt: "10000",
   realized_pnl_usdt: "0", unrealized_pnl_usdt: "0", fee_paid_usdt: "0",
@@ -2193,6 +2267,76 @@ export function paperTradingComparisonTickHasRuntimeShape(
     execution.gap_detected === false &&
     comparisonIso(value.observed_at) &&
     comparisonDigest(value.tick_digest) &&
+    value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonActivationSideHasRuntimeShape(
+  value: unknown,
+  role: "champion" | "challenger"
+): value is PaperTradingComparisonActivationSide {
+  return comparisonObject(value) &&
+    value.role === role &&
+    comparisonRef(value.trading_run_ref, "trading_run") &&
+    comparisonRef(
+      value.paper_trading_evaluation_commitment_ref,
+      "paper_trading_evaluation_commitment"
+    ) &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation");
+}
+
+export function paperTradingComparisonActivationPolicyHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationPolicy {
+  return comparisonObject(value) &&
+    value.policy_version === "paper-comparison-activation-v1" &&
+    comparisonNonNegative(value.maximum_start_skew_ms) &&
+    comparisonNonNegative(value.maximum_retry_count_per_side) &&
+    comparisonPositive(value.maximum_provider_request_count_per_side) &&
+    value.maximum_activation_elapsed_ms === 60_000 &&
+    value.cleanup_timeout_ms === 10_000 &&
+    value.require_both_running_before_observation === true &&
+    value.partial_start_policy === "stop_started_side_before_retry" &&
+    value.restart_policy === "recover_both_or_stop_both" &&
+    value.market_view_policy === "first_tick_then_contiguous_persisted_ticks";
+}
+
+export function paperTradingComparisonActivationHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonActivationRecord {
+  if (
+    !comparisonObject(value) ||
+    !paperTradingComparisonActivationSideHasRuntimeShape(value.champion, "champion") ||
+    !paperTradingComparisonActivationSideHasRuntimeShape(value.challenger, "challenger") ||
+    !paperTradingComparisonActivationPolicyHasRuntimeShape(value.activation_policy)
+  ) {
+    return false;
+  }
+  const champion = value.champion;
+  const challenger = value.challenger;
+  return value.record_kind === "paper_trading_comparison_activation" &&
+    value.version === 1 &&
+    comparisonString(value.paper_trading_comparison_activation_id) &&
+    comparisonRef(
+      value.paper_trading_comparison_commitment_ref,
+      "paper_trading_comparison_commitment"
+    ) &&
+    comparisonDigest(value.paper_trading_comparison_commitment_digest) &&
+    comparisonRef(value.first_tick_ref, "paper_trading_comparison_tick") &&
+    comparisonDigest(value.first_tick_digest) &&
+    champion.trading_run_ref.id !== challenger.trading_run_ref.id &&
+    champion.paper_trading_evaluation_commitment_ref.id !==
+      challenger.paper_trading_evaluation_commitment_ref.id &&
+    champion.paper_trading_evaluation_ref.id !==
+      challenger.paper_trading_evaluation_ref.id &&
+    comparisonDigest(value.market_data_configuration_digest) &&
+    value.activation_scope === "qualification_pair" &&
+    value.activation_status === "authorized" &&
+    comparisonIso(value.authorized_at) &&
+    comparisonDigest(value.activation_digest) &&
+    value.live_exchange_authority === false &&
+    value.order_submission_authority === false &&
+    value.private_exchange_access === "forbidden" &&
+    value.credentials_access === "forbidden" &&
     value.authority_status === "not_live";
 }
 
@@ -4440,6 +4584,7 @@ export type FixtureRecord =
   | PaperTradingComparisonPreparationRecord
   | PaperTradingComparisonCommitmentRecord
   | PaperTradingComparisonTickRecord
+  | PaperTradingComparisonActivationRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaTickRecord
