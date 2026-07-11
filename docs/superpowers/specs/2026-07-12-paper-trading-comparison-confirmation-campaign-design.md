@@ -1,7 +1,7 @@
 # Paper Trading Comparison Confirmation Campaign Design
 
 **Date:** 2026-07-12
-**Status:** Approved by standing Goal authority; implementation not started
+**Status:** Implemented and repository-verified internally; public composition intentionally absent
 **Depends on:** Repository-verified sealed `PaperTradingComparisonVerdict`
 
 ## Goal
@@ -322,6 +322,24 @@ TradingPromotion review and separately release closed evidence into causal resea
 12. No public command, operator projection, Finding/Lineage release, TradingPromotion creation,
     private access, direct order, or live authority is added.
 13. Focused tests, workspace typechecks, repository guards, and the full suite pass.
+
+## Implementation Evidence
+
+- Domain records and independent LocalStore validation freeze source identity, deterministic slots,
+  policy, timing, aggregate arithmetic, pair ownership, and exact replay.
+- Application campaign/window services precommit, materialize only the next legal slot, and settle
+  complete verdict or expiry sets without score-aware early stopping.
+- `comparison-confirmation-campaign.integration.test.ts` runs real LocalStore comparison graphs
+  through symmetric runtime activation, paired checkpoints, a TradingSystem order event, public
+  aggTrade fill, fee/slippage/funding cost, sealed verdicts, mixed and all-improved campaigns, and
+  restart settlement replay.
+- The integration proves the source verdict is excluded, arbitrary active-pair comparison is
+  blocked, mixed evidence is `not_confirmed`, all improved slots are `confirmed_improvement`, and no
+  `TradingPromotion` is created.
+- Paired qualification now compares checkpoint-declared `ledger_chain` IDs with complete exact-run
+  chains while retaining order, Gateway, and execution lineage checks.
+- Final verification passed 455 focused tests, all workspace typechecks, repository guards, and the
+  full 108-file/1,625-test suite with localhost provider execution enabled.
 
 ## Out Of Scope
 

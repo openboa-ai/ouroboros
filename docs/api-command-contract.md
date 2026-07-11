@@ -36,10 +36,11 @@ Current command groups:
   `trading_candidate.promote` rejects research-feedback, uncommitted, collecting, resume-needed,
   failed, invalidated, or quality-blocked evaluations with qualification reasons. A standalone
   `qualified` window is also rejected with `paper_trading_comparison_required`; no promotion record
-  is created until external comparison evidence is promotion eligible. Current single-window
-  `PaperTradingComparisonVerdict` records are deliberately `not_eligible`; promotion remains
-  unavailable until a precommitted confirmation campaign and promotion integration exist. This
-  command does not bind
+  is created until external comparison evidence is promotion eligible. Single-window
+  `PaperTradingComparisonVerdict` records are deliberately `not_eligible`. An internal sealed
+  confirmation campaign can now produce protocol-level `eligible` only when every precommitted
+  prospective slot improves, but promotion remains unavailable until a separately reviewed command
+  integration consumes that outcome. This command does not bind
   live authority, submit exchange orders, or bypass `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
@@ -87,19 +88,24 @@ Current command groups:
   `PaperTradingComparisonQualificationService` may assess one cleanly stopped window only after the
   shared graph gate passes. It requires both canonical side qualifications, the frozen pair count
   and activation-to-latest-tick elapsed minimums, and exact equality between checkpoint-declared
-  Ledger refs and complete chains from each additional qualification TradingRun. Its result carries
-  `not_verdict`, performs no writes, and is not a command, score comparison, winner, release, or
-  promotion decision. An internal `PaperTradingComparisonVerdictService` reassesses qualification,
+  `ledger_chain` IDs and complete chains from each additional qualification TradingRun. Its result
+  carries `not_verdict`, performs no writes, and is not a command, score comparison, winner,
+  release, or promotion decision. An internal `PaperTradingComparisonVerdictService` reassesses qualification,
   reloads the exact stopped graph, and persists one append-only external verdict. Qualified windows
   compare only frozen paper `net_revenue_usdt` against the precommitted minimum lift; settled
   unqualified windows persist `comparison_ineligible` without score fields. Every outcome is
-  `sealed`, `not_eligible`, and `not_live`. A terminal verdict releases only the candidate-version
-  experiment pair for another precommitted window; it does not count confirmation, select a
-  champion, release Finding/Lineage memory, or create TradingPromotion. The service and Store
-  methods remain uncomposed from apps, controllers, operator projections, and public
-  `OuroborosCommand`. Process resume, a precommitted confirmation campaign, evidence release,
-  promotion integration, private access, and live authority remain pending and outside this command
-  contract.
+  `sealed`, `not_eligible`, and `not_live`. A terminal verdict releases only its standalone
+  preparation or the next exact reserved campaign slot; it cannot count itself as confirmation.
+  Internal `PaperTradingComparisonConfirmationCampaignService` and
+  `PaperTradingComparisonConfirmationWindowService` now precommit deterministic future slots from
+  one exact improved source verdict, materialize only the next slot, and settle every reserved
+  improved, non-improved, ineligible, or expired result. LocalStore enforces active-pair ownership,
+  strict sequence, non-overlap, bounded first-tick delay, source-verdict exclusion, and exact replay.
+  Only an all-improved outcome is protocol-level `eligible`; it still does not select a champion,
+  release Finding/Lineage memory, or create TradingPromotion. These services and Store methods
+  remain uncomposed from apps, controllers, operator projections, and public `OuroborosCommand`.
+  Process resume, evidence release, promotion integration, private access, and live authority remain
+  pending and outside this command contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read

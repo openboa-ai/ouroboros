@@ -94,8 +94,8 @@ are non-economic causal evidence only and grant no lifecycle, Ledger, evaluation
 direct-order, verdict, promotion, or live authority. Restart rematerializes committed bundles,
 stops unowned sessions, and never fabricates view, delivery, acknowledgement, decision, or economic
 evidence. Internal bounded cadence through the frozen maximum, minimum-window paired qualification,
-and one single-window verdict are implemented. Process resume, production composition, a
-precommitted confirmation campaign, evidence release, and promotion remain pending.
+one single-window verdict, and a precommitted multi-window confirmation campaign are implemented.
+Process resume, production composition, evidence release, and promotion remain pending.
 
 After a comparison settles, `PaperTradingComparisonVerdictService` first reruns paired
 qualification, reloads exact terminal evidence, and asks LocalStore to persist one append-only
@@ -110,6 +110,18 @@ tick. Exact replay, including after restart and clock advance, reuses the sealed
 Any terminal verdict releases only the experiment pair for a new precommitted comparison. It does
 not count confirmation, select a champion, release Finding/Lineage memory, create TradingPromotion,
 or enter a public/operator surface.
+
+One exact sealed `challenger_improved` verdict may start a
+`PaperTradingComparisonConfirmationCampaign`, but that source verdict never counts as a campaign
+result. The campaign freezes every deterministic future slot, the exact pair and policies, strict
+sequence, non-overlap, bounded start delay, and `all_reserved_windows_must_improve` before its first
+tick. Each slot materializes only after the prior slot's verdict; negative or ineligible evidence
+cannot stop the campaign early, and missed unmaterialized slots become explicit expiry results.
+Only all improved reserved slots produce a sealed protocol-level `eligible` campaign outcome. Mixed,
+ineligible, or expired campaigns are `not_confirmed`. Exact outcome replay survives restart and
+clock advance, while active pair ownership is released only by the aggregate outcome. Campaign
+records and outcomes remain hidden from CandidateArena memory and public/operator surfaces and do
+not create TradingPromotion, private access, direct orders, or live authority.
 
 ## Candidate Freeze
 
@@ -325,19 +337,23 @@ The following current surfaces require implementation work before P0 can pass:
   proven third checkpoint. Internal application-only driver/runner components can advance an owned
   graph to its frozen maximum boundary. A read-only paired qualification service now admits only a
   cleanly stopped window whose shared count/elapsed minimums, both canonical side qualifications,
-  and exact run-specific Ledger sets are complete. A separate internal service now persists one
-  exact positive, negative, or ineligible single-window verdict and releases the terminated pair
-  for another precommitted experiment. These components are not composed into a production command
-  or runtime, cannot resume provider processes after restart, and cannot run a confirmation
-  campaign, release evidence, select a champion, or promote a candidate.
+  and exact checkpoint-declared run-specific `ledger_chain` sets are complete. A separate internal
+  service persists one exact positive, negative, or ineligible single-window verdict and releases
+  the terminated pair for another precommitted experiment. Internal campaign services then reserve
+  deterministic future slots, enforce strict sequence/non-overlap/deadlines, count all terminal
+  results, and persist one restart-stable confirmed or not-confirmed outcome. These components are
+  not composed into a production command or runtime, cannot resume provider processes after
+  restart, and cannot release evidence, select a champion, or promote a candidate.
 - No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
   current information barrier therefore remains intentionally one-way.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
   integrity, including per-observation delta/account continuity. Paired qualification and the
-  single-window verdict require run-specific Ledger completeness. New promotion remains fully
-  closed because every current verdict is `not_eligible`; a future campaign must be committed before
-  any campaign-bound outcomes and count every reserved terminal result. Candidate-level aggregate
-  Ledger state is insufficient once one CandidateVersion owns multiple TradingRuns.
+  single-window verdict require run-specific Ledger completeness. Single-window verdicts remain
+  `not_eligible`; a sealed all-improved campaign outcome may be protocol-level `eligible`, but new
+  promotion remains fully closed because no promotion integration consumes it. Every campaign is
+  committed before campaign-bound outcomes and counts every reserved terminal result.
+  Candidate-level aggregate Ledger state is insufficient once one CandidateVersion owns multiple
+  TradingRuns.
 - ResearchWorkers are tick-scoped invocations rather than durable long-lived workers with explicit
   budget, recovery, and causal memory ownership.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
@@ -396,13 +412,15 @@ completion.
    paired LocalStore bundles through sequence 3; one-step graph reconstruction; non-overlapping
    process-local scheduling; frozen maximum-bound stopping; symmetric cleanup; conservative restart
    recovery; read-only clean-stop, canonical-side, shared-minimum, and exact-run Ledger
-   qualification; append-only positive, negative, and ineligible verdicts; restart-stable exact
-   replay; terminal pair release; and no public composition. **Next frontier:** a confirmation
-   campaign committed before its first outcome, reserving non-overlapping windows and counting every
-   terminal result. Production composition remains a later frontier.
+   qualification; append-only positive, negative, and ineligible verdicts; deterministic
+   precommitted confirmation slots; strict sequence, non-overlap, and deadline gates; all-result
+   confirmed/not-confirmed aggregation; restart-stable exact replay; campaign-bound pair release;
+   and no public composition. **Next frontier:** separately release sealed campaign evidence into
+   causal Finding/Lineage memory and consume eligible outcomes in TradingPromotion review.
+   Production composition remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
    three-checkpoint scientific-control window, read-only qualification, and sealed single-window
-   verdict are proven internally, while production composition, longer soak evidence, confirmation,
-   and full P0 evidence remain.
+   verdict and multi-window confirmation campaign are proven internally, while production
+   composition, longer soak evidence, evidence release, and full P0 evidence remain.

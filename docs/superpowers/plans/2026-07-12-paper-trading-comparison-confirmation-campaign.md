@@ -21,6 +21,9 @@ records, existing comparison coordinator and verdict evidence.
 **Design:**
 `docs/superpowers/specs/2026-07-12-paper-trading-comparison-confirmation-campaign-design.md`
 
+**Status:** Complete. Internal evidence and lifecycle verification are implemented; public
+composition, Finding/Lineage release, and TradingPromotion integration remain separate frontiers.
+
 ## Global Constraints
 
 - The source improved verdict starts the campaign but never counts as a campaign result.
@@ -58,7 +61,7 @@ records, existing comparison coordinator and verdict evidence.
 - Produces: campaign/outcome digest inputs and runtime-shape functions
 - Preserves: existing comparison IDs for every existing idempotency key
 
-- [ ] **Step 1: Write failing domain identity and schema tests**
+- [x] **Step 1: Write failing domain identity and schema tests**
 
 Assert the existing key remains stable and campaign slot IDs use the same helper:
 
@@ -77,7 +80,7 @@ wrong counts, confirmed mixed outcomes, non-sealed release, and private/live aut
 and 4 reject hash-derivation drift and source-verdict inclusion because those checks require linked
 records.
 
-- [ ] **Step 2: Run the domain test and verify RED**
+- [x] **Step 2: Run the domain test and verify RED**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-confirmation-campaign.test.ts
@@ -85,7 +88,7 @@ npx vitest run packages/domain/src/paper-trading-comparison-confirmation-campaig
 
 Expected: FAIL because the campaign exports do not exist.
 
-- [ ] **Step 3: Extract application comparison ID derivation**
+- [x] **Step 3: Extract application comparison ID derivation**
 
 Implement:
 
@@ -109,7 +112,7 @@ snake-case result to its existing local names. Keep Node hashing out of domain. 
 own equivalent derivation in Task 3 and validates against the fixed test vector. Do not change
 persisted IDs or public input.
 
-- [ ] **Step 4: Implement campaign and outcome runtime contracts**
+- [x] **Step 4: Implement campaign and outcome runtime contracts**
 
 Implement the exact records from the design, canonical digest inputs that remove record metadata,
 and strict runtime shapes. Campaign shape must require canonical slot key/ID format, contiguous
@@ -125,7 +128,7 @@ const confirmed = slot_results.every((result) =>
   result.status === "challenger_improved");
 ```
 
-- [ ] **Step 5: Run domain and coordinator regressions**
+- [x] **Step 5: Run domain and coordinator regressions**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-confirmation-campaign.test.ts packages/application/src/trading/paper/comparison-identity.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts -t "deterministic|exact replay|active-tuple"
@@ -135,7 +138,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: campaign schema tests pass, existing IDs/replay remain exact, and both typechecks pass.
 
-- [ ] **Step 6: Commit campaign evidence vocabulary**
+- [x] **Step 6: Commit campaign evidence vocabulary**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-confirmation-campaign.test.ts packages/application/src/trading/paper/comparison-identity.ts packages/application/src/trading/paper/comparison-identity.test.ts packages/application/src/trading/paper/comparison-coordinator.ts packages/application/src/trading/paper/comparison-coordinator.test.ts
@@ -153,7 +156,7 @@ git commit -m "feat: define paper confirmation campaign evidence"
 - Produces: `decidePaperTradingComparisonConfirmationCampaign`
 - Produces: counts, campaign outcome, eligibility, and next action
 
-- [ ] **Step 1: Write failing pure-decision tests**
+- [x] **Step 1: Write failing pure-decision tests**
 
 Use:
 
@@ -178,7 +181,7 @@ Cover all-improved, one not-improved, one ineligible, one expired, mixed failure
 missing, duplicate, foreign-comparison, verdict-bearing expiry, verdict-less completed result,
 input mutation, and deterministic replay.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-confirmation-decision.test.ts
@@ -186,20 +189,20 @@ npx vitest run packages/application/src/trading/paper/comparison-confirmation-de
 
 Expected: FAIL because the decision module does not exist.
 
-- [ ] **Step 3: Implement exact all-window decision**
+- [x] **Step 3: Implement exact all-window decision**
 
 Validate the campaign runtime shape and complete slot list, derive counts, then set confirmed only
 when `improved_count === campaign.slots.length`. Throw
 `invalid_paper_trading_comparison_confirmation_decision_input` for every malformed combination.
 
-- [ ] **Step 4: Run tests and typecheck**
+- [x] **Step 4: Run tests and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-confirmation-decision.test.ts packages/application/src/trading/paper/comparison-verdict-decision.test.ts
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 5: Commit pure campaign decision**
+- [x] **Step 5: Commit pure campaign decision**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-confirmation-decision.ts packages/application/src/trading/paper/comparison-confirmation-decision.test.ts
@@ -218,7 +221,7 @@ git commit -m "feat: decide paper confirmation campaigns"
 - Changes: active-pair ownership includes a campaign without outcome
 - Changes: only the next exact campaign slot may reserve that pair
 
-- [ ] **Step 1: Write failing LocalStore campaign tests**
+- [x] **Step 1: Write failing LocalStore campaign tests**
 
 Add Store tests that persist one campaign from an exact improved source verdict, replay it, reload
 it after restart, and reject malformed shape, digest drift, non-improved source, source identity
@@ -229,7 +232,7 @@ Before campaign outcome, assert an arbitrary same-pair preparation rejects with
 before slot-1 verdict rejects with `paper_trading_comparison_confirmation_slot_not_ready`. After an
 exact slot-1 verdict, slot 2 succeeds; any changed pair/policy/ID rejects.
 
-- [ ] **Step 2: Run selected Store tests and verify RED**
+- [x] **Step 2: Run selected Store tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "confirmation campaign|campaign pair|confirmation slot"
@@ -237,7 +240,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "confirmation ca
 
 Expected: FAIL because campaign Store methods and ownership do not exist.
 
-- [ ] **Step 3: Add Store port and campaign collection**
+- [x] **Step 3: Add Store port and campaign collection**
 
 Add:
 
@@ -262,14 +265,14 @@ LocalStore's private ID derivation must produce the same
 `paper-trading-comparison-74f7a27ffac400ff` vector for
 `paper-comparison-coordinator-001` before campaign tests can pass.
 
-- [ ] **Step 4: Enforce active campaign slot ownership**
+- [x] **Step 4: Enforce active campaign slot ownership**
 
 In `reservePaperTradingComparisonPreparationUnlocked`, resolve any active campaign for the unordered
 pair. Permit only its first unmaterialized slot, and only after every prior slot has an exact
 verdict. Validate the preparation's frozen sides, selection, policy, market digest, paper identity,
 and IDs against the campaign. Existing non-campaign active-pair behavior remains unchanged.
 
-- [ ] **Step 5: Run LocalStore and typecheck regressions**
+- [x] **Step 5: Run LocalStore and typecheck regressions**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts
@@ -277,7 +280,7 @@ npm run typecheck --workspace @ouroboros/local-store
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 6: Commit campaign pair authority**
+- [x] **Step 6: Commit campaign pair authority**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
@@ -296,7 +299,7 @@ git commit -m "feat: reserve paper confirmation campaigns"
 - Changes: campaign slot first-tick gate
 - Changes: campaign pair release requires campaign outcome
 
-- [ ] **Step 1: Write failing first-tick and outcome tests**
+- [x] **Step 1: Write failing first-tick and outcome tests**
 
 For slot 1, reject first tick at/before campaign commitment and after its frozen deadline. For slot
 2, reject overlap with prior `window_ended_at`, a tick at/before prior `evaluated_at`, and late
@@ -307,13 +310,13 @@ missing/foreign/reordered verdicts, wrong counts, false eligibility, changed rep
 before all results or expiry. Before outcome arbitrary same-pair preparation remains blocked; after
 outcome it succeeds.
 
-- [ ] **Step 2: Run selected tests and verify RED**
+- [x] **Step 2: Run selected tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "campaign first tick|campaign outcome|campaign release"
 ```
 
-- [ ] **Step 3: Add outcome Store methods**
+- [x] **Step 3: Add outcome Store methods**
 
 Add:
 
@@ -334,13 +337,13 @@ Persist under
 ordered slot evidence, exact verdict refs/digests, strict non-overlap, count arithmetic, eligibility,
 and deterministic outcome identity.
 
-- [ ] **Step 4: Add first-tick timing and release gates**
+- [x] **Step 4: Add first-tick timing and release gates**
 
 Before `recordPaperTradingComparisonTickUnlocked` writes sequence 1, resolve a campaign slot by
 comparison ID and enforce the design's lower/upper time bounds. Treat a campaign as active in pair
 reservation until its exact outcome exists, even when the latest slot already has a verdict.
 
-- [ ] **Step 5: Run full Store and typechecks**
+- [x] **Step 5: Run full Store and typechecks**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts
@@ -348,7 +351,7 @@ npm run typecheck --workspace @ouroboros/local-store
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 6: Commit timing and outcome authority**
+- [x] **Step 6: Commit timing and outcome authority**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
@@ -394,7 +397,7 @@ class PaperTradingComparisonConfirmationWindowService {
 }
 ```
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Require invalid IDs to reject before dependencies. `precommit` must load source verdict/comparison,
 derive one campaign and all slots, use a server-owned time after source evaluation, and exact-replay
@@ -409,13 +412,13 @@ returned graph; replay must create no provider/sandbox/market effect.
 slot remains inside deadline, create expiry results after deadline, delegate to the pure decision,
 persist exact output, and replay after clock advance.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-confirmation-campaign-service.test.ts packages/application/src/trading/paper/comparison-confirmation-window-service.test.ts
 ```
 
-- [ ] **Step 3: Implement campaign service**
+- [x] **Step 3: Implement campaign service**
 
 Use stable errors:
 
@@ -430,20 +433,20 @@ type PaperTradingComparisonConfirmationCampaignServiceErrorCode =
 Precommit and settlement persistence calls stay outside graph-error wrapping so Store conflict codes
 survive unchanged. Existing campaign/outcome timestamps are reused for replay.
 
-- [ ] **Step 4: Implement next-slot service**
+- [x] **Step 4: Implement next-slot service**
 
 Inject `Pick<PaperTradingComparisonCoordinator, "prepare">`. Build exact coordinator input from the
 campaign's next slot and frozen candidate/admission refs. Verify returned preparation, commitment,
 sides, selection, policies, and IDs before return.
 
-- [ ] **Step 5: Run focused regressions and typecheck**
+- [x] **Step 5: Run focused regressions and typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-confirmation-decision.test.ts packages/application/src/trading/paper/comparison-confirmation-campaign-service.test.ts packages/application/src/trading/paper/comparison-confirmation-window-service.test.ts packages/application/src/trading/paper/comparison-verdict-service.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 6: Commit campaign application services**
+- [x] **Step 6: Commit campaign application services**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-confirmation-campaign-service.ts packages/application/src/trading/paper/comparison-confirmation-campaign-service.test.ts packages/application/src/trading/paper/comparison-confirmation-window-service.ts packages/application/src/trading/paper/comparison-confirmation-window-service.test.ts
@@ -466,7 +469,7 @@ git commit -m "feat: run paper confirmation campaigns"
   restart replay, expiry, and campaign pair release
 - Records: campaign remains uncomposed; promotion/research release remain next frontiers
 
-- [ ] **Step 1: Write the real LocalStore lifecycle integration**
+- [x] **Step 1: Write the real LocalStore lifecycle integration**
 
 Use exact persisted source comparison/verdict evidence and a two-slot campaign. Assert source verdict
 is absent from slot results, arbitrary same-pair preparation is blocked, each next slot prepares
@@ -475,21 +478,21 @@ inertly only after prior verdict, first ticks are non-overlapping, one mixed cam
 clock advance, and only campaign outcome releases pair ownership. Compare provider, sandbox, market,
 decision, Ledger, observation, score, and promotion counts before/after campaign control operations.
 
-- [ ] **Step 2: Run integration and Store regressions**
+- [x] **Step 2: Run integration and Store regressions**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts
 npx vitest run packages/local-store/test/local-store.test.ts
 ```
 
-- [ ] **Step 3: Update canonical docs**
+- [x] **Step 3: Update canonical docs**
 
 Add the campaign and outcome nouns, source-verdict exclusion, deterministic slot reservation,
 strict non-overlap/deadline, all-window decision, and protocol-level eligibility. State explicitly
 that no TradingPromotion, Finding/Lineage release, public composition, private access, or live
 authority exists.
 
-- [ ] **Step 4: Verify no forbidden composition**
+- [x] **Step 4: Verify no forbidden composition**
 
 ```bash
 rg -n "ConfirmationCampaignService|ConfirmationWindowService|recordPaperTradingComparisonConfirmation" apps packages --glob '!**/*.test.ts'
@@ -499,7 +502,7 @@ rg -n 'createTradingPromotion|release_status: "released"|private_exchange_access
 Expected: internal domain/application/Store surfaces only and no promotion, release, private, or live
 composition.
 
-- [ ] **Step 5: Run repository-wide verification**
+- [x] **Step 5: Run repository-wide verification**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-confirmation-campaign.test.ts packages/application/src/trading/paper/comparison-confirmation-decision.test.ts packages/application/src/trading/paper/comparison-confirmation-campaign-service.test.ts packages/application/src/trading/paper/comparison-confirmation-window-service.test.ts packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts packages/application/src/trading/paper/comparison-verdict-service.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts
@@ -509,7 +512,7 @@ npm test
 git diff --check
 ```
 
-- [ ] **Step 6: Commit lifecycle and durable truth**
+- [x] **Step 6: Commit lifecycle and durable truth**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-confirmation-campaign.integration.test.ts AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-12-paper-trading-comparison-confirmation-campaign-design.md docs/superpowers/plans/2026-07-12-paper-trading-comparison-confirmation-campaign.md
