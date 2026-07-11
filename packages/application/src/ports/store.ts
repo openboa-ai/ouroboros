@@ -10,6 +10,7 @@ import type {
   CandidateMaterializationInput,
   CandidateMaterializationOutcome,
   CandidateSummaryReadModel,
+  CandidateVersionRecord,
   EvaluationExecutionMode,
   ExperimentRunRecord,
   ImprovementProposalRecord,
@@ -25,6 +26,8 @@ import type {
   PaperTradingEvaluationRecord,
   PaperTradingEvidencePurpose,
   PaperTradingObservationRecord,
+  PaperTradingComparisonCommitmentRecord,
+  PaperTradingComparisonPreparationRecord,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -102,6 +105,12 @@ export interface OuroborosStorePort {
   recordCandidateAdmissionDecision(
     record: CandidateAdmissionDecisionRecord
   ): Promise<CandidateAdmissionDecisionRecord>;
+  getCandidateAdmissionDecision(
+    decisionId: string
+  ): Promise<CandidateAdmissionDecisionRecord | undefined>;
+  getCandidateVersion(
+    candidateVersionId: string
+  ): Promise<CandidateVersionRecord | undefined>;
   listCandidateAdmissionDecisions(): Promise<CandidateAdmissionDecisionRecord[]>;
   recordExperimentRun(record: ExperimentRunRecord): Promise<ExperimentRunRecord>;
   recordTradingEvaluationResult(record: TradingEvaluationResultRecord): Promise<TradingEvaluationResultRecord>;
@@ -129,6 +138,7 @@ export interface OuroborosStorePort {
   getResearcherProviderSelection(): Promise<ResearcherProviderSelectionRecord | undefined>;
   recordResearcherProviderSelection(selection: ResearcherProviderSelectionRecord): Promise<ResearcherProviderSelectionRecord>;
   getLatestTradingPromotion(): Promise<TradingPromotionRecord | undefined>;
+  getTradingPromotion(promotionId: string): Promise<TradingPromotionRecord | undefined>;
   recordTradingPromotion(promotion: TradingPromotionRecord): Promise<TradingPromotionRecord>;
   listOuroborosCommands(): Promise<OuroborosCommandRecord[]>;
   recordOuroborosCommand(command: OuroborosCommandRecord): Promise<OuroborosCommandRecord>;
@@ -155,6 +165,9 @@ export interface OuroborosStorePort {
   ): Promise<PaperTradingEvaluationCommitmentRecord | undefined>;
   listPaperTradingEvaluationCommitments(): Promise<PaperTradingEvaluationCommitmentRecord[]>;
   recordPaperTradingEvaluation(evaluation: PaperTradingEvaluationRecord): Promise<PaperTradingEvaluationRecord>;
+  getPaperTradingEvaluation(
+    evaluationId: string
+  ): Promise<PaperTradingEvaluationRecord | undefined>;
   listPaperTradingEvaluations(): Promise<PaperTradingEvaluationRecord[]>;
   getLatestPaperTradingEvaluationForCandidate(candidateId: string): Promise<PaperTradingEvaluationRecord | undefined>;
   getLatestPaperTradingEvaluationForTradingRun(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined>;
@@ -163,6 +176,20 @@ export interface OuroborosStorePort {
     evaluation: PaperTradingEvaluationRecord
   ): Promise<PaperTradingObservationRecord>;
   listPaperTradingObservations(evaluationId: string): Promise<PaperTradingObservationRecord[]>;
+  reservePaperTradingComparisonPreparation(
+    preparation: PaperTradingComparisonPreparationRecord
+  ): Promise<PaperTradingComparisonPreparationRecord>;
+  getPaperTradingComparisonPreparation(
+    preparationId: string
+  ): Promise<PaperTradingComparisonPreparationRecord | undefined>;
+  listPaperTradingComparisonPreparations(): Promise<PaperTradingComparisonPreparationRecord[]>;
+  recordPaperTradingComparisonCommitment(
+    commitment: PaperTradingComparisonCommitmentRecord
+  ): Promise<PaperTradingComparisonCommitmentRecord>;
+  getPaperTradingComparisonCommitment(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonCommitmentRecord | undefined>;
+  listPaperTradingComparisonCommitments(): Promise<PaperTradingComparisonCommitmentRecord[]>;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

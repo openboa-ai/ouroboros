@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FIXTURE_CANDIDATE_ID, FIXTURE_SYSTEM_CODE_ID, LocalStore } from "../src/index";
+import {
+  FIXTURE_CANDIDATE_ID,
+  FIXTURE_SYSTEM_CODE_ID,
+  LocalStore,
+  type SandboxObservationInput
+} from "../src/index";
 import {
   BINANCE_BTCUSDT_QUERY,
   BINANCE_PRIVATE_READINESS_SECURITY_TYPES,
@@ -18,6 +23,7 @@ import type {
   AccountPositionRiskMirrorSurfaceRecord,
   ArtifactLineageRecord,
   CandidateAdmissionDecisionRecord,
+  CandidateInspectReadModel,
   ImprovementProposalRecord,
   ResearchFindingRecord,
   ResearchOrchestrationRunRecord,
@@ -35,6 +41,11 @@ import type {
   GatewayResultRecord,
   OrderFillSurfaceRecord,
   OrderRequestRecord,
+  PaperTradingAccountSnapshot,
+  PaperTradingComparisonCandidateSide,
+  PaperTradingComparisonCommitmentRecord,
+  PaperTradingComparisonPreparationRecord,
+  PaperTradingComparisonSide,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
@@ -53,9 +64,23 @@ import type {
   StageBindingRecord,
   TracePlaceholderRecord,
   TradingEvaluationResultRecord,
-  TradingRunRecord
+  TradingPromotionRecord,
+  TradingRunRecord,
+  TradingSystemCandidateRecord
 } from "@ouroboros/domain";
-import { paperTradingEvaluationCommitmentDigestInput } from "@ouroboros/domain";
+import {
+  PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
+  paperTradingComparisonAdmissionDecisionDigestInput,
+  paperTradingComparisonCandidateVersionDigestInput,
+  paperTradingComparisonCommitmentDigestInput,
+  paperTradingComparisonEvaluationCommitmentRecordDigestInput,
+  paperTradingComparisonEvaluationRecordDigestInput,
+  paperTradingComparisonObservationChainDigestInput,
+  paperTradingComparisonPreparationDigestInput,
+  paperTradingComparisonSystemCodeRecordDigestInput,
+  paperTradingComparisonTradingPromotionDigestInput,
+  paperTradingEvaluationCommitmentDigestInput
+} from "@ouroboros/domain";
 
 type LocalStoreProjectionInternals = {
   rebuildProjectionsUnlocked(): Promise<void>;
@@ -3336,7 +3361,2553 @@ describe("LocalStore", () => {
     expect(second.attempt.attempt_id).toBe(first.attempt.attempt_id);
     expect(candidates.filter((candidate) => candidate.status === "materialized")).toHaveLength(1);
   });
+
+  it("records exact paper comparison preparation replay and rejects drift or role-swapped active intent", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const championRunsBefore = await store.listTradingRunsForCandidateVersion(
+      fixture.preparation.champion.candidate_version_ref.id
+    );
+    const first = await store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    const repeated = await store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    expect(repeated).toEqual(first);
+
+    const swappedEvidence = await recordQualifiedPromotionEvidence(
+      store,
+      fixture.challenger,
+      "role-swap",
+      "2026-07-09T21:32:00.000Z"
+    );
+    const challengerRunsAfterRoleSwapEvidence = await store.listTradingRunsForCandidateVersion(
+      fixture.preparation.challenger.candidate_version_ref.id
+    );
+    const swappedPromotion: TradingPromotionRecord = {
+      ...fixture.promotion,
+      trading_promotion_id: "trading-promotion-role-swap",
+      candidate_ref: { ...fixture.preparation.challenger.candidate_ref },
+      candidate_version_ref: { ...fixture.preparation.challenger.candidate_version_ref },
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: swappedEvidence.evaluation.paper_trading_evaluation_id
+      },
+      promoted_at: "2026-07-09T22:03:00.000Z"
+    };
+    await store.recordTradingPromotion(swappedPromotion);
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(withPreparationDigest({
+        ...fixture.preparation,
+        comparison_policy: {
+          ...fixture.preparation.comparison_policy,
+          minimum_net_revenue_lift_usdt: 25
+        },
+        preparation_digest: ""
+      })),
+      "paper_trading_comparison_preparation_conflict"
+    );
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(withPreparationDigest({
+        ...fixture.preparation,
+        paper_trading_comparison_preparation_id: "paper-comparison-preparation-role-swap",
+        paper_trading_comparison_commitment_id: "paper-comparison-role-swap",
+        committed_at: "2026-07-10T00:00:02.000Z",
+        champion: { ...fixture.preparation.challenger, role: "champion" },
+        challenger: { ...fixture.preparation.champion, role: "challenger" },
+        champion_selection: {
+          selection_kind: "trading_review",
+          trading_promotion_ref: {
+            record_kind: "trading_promotion",
+            id: swappedPromotion.trading_promotion_id
+          },
+          trading_promotion_digest: comparisonExactRecordDigest(
+            paperTradingComparisonTradingPromotionDigestInput(swappedPromotion)
+          ),
+          paper_trading_evaluation_ref: { ...swappedPromotion.paper_trading_evaluation_ref },
+          paper_trading_evaluation_record_digest: comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationRecordDigestInput(swappedEvidence.evaluation)
+          ),
+          paper_trading_evaluation_commitment_ref: {
+            record_kind: "paper_trading_evaluation_commitment",
+            id: swappedEvidence.commitment.paper_trading_evaluation_commitment_id
+          },
+          paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationCommitmentRecordDigestInput(swappedEvidence.commitment)
+          ),
+          paper_trading_observation_chain_digest: comparisonExactRecordDigest(
+            paperTradingComparisonObservationChainDigestInput(swappedEvidence.observations)
+          )
+        },
+        preparation_digest: ""
+      })),
+      "paper_trading_comparison_active_pair_conflict"
+    );
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([
+      fixture.preparation
+    ]);
+    await expect(store.listTradingRunsForCandidateVersion(
+      fixture.preparation.champion.candidate_version_ref.id
+    )).resolves.toEqual(championRunsBefore);
+    await expect(store.listTradingRunsForCandidateVersion(
+      fixture.preparation.challenger.candidate_version_ref.id
+    )).resolves.toEqual(challengerRunsAfterRoleSwapEvidence);
+  });
+
+  it("serializes concurrent paper comparison preparation reservations for one candidate-version pair", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const competing = withPreparationDigest({
+      ...fixture.preparation,
+      paper_trading_comparison_preparation_id: "paper-comparison-preparation-competing",
+      paper_trading_comparison_commitment_id: "paper-comparison-competing",
+      preparation_digest: ""
+    });
+    const results = await Promise.allSettled([
+      store.reservePaperTradingComparisonPreparation(fixture.preparation),
+      store.reservePaperTradingComparisonPreparation(competing)
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const [rejected] = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    expect(rejected?.reason).toMatchObject({
+      code: "paper_trading_comparison_active_pair_conflict"
+    });
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toHaveLength(1);
+  });
+
+  it.each(["evaluation-mutation", "observation-append"] as const)(
+    "freezes selected paper comparison promotion evidence before any side write: %s",
+    async (writer) => {
+      const store = new LocalStore(path.join(tmpDir, writer));
+      await store.initialize();
+      const fixture = await comparisonPreparationFixture(store);
+      const commitmentsBefore = await store.listPaperTradingEvaluationCommitments();
+      const evaluationsBefore = await store.listPaperTradingEvaluations();
+      await store.reservePaperTradingComparisonPreparation(fixture.preparation);
+      const promotionEvidenceBefore = await promotionEvidenceSnapshot(store, fixture);
+      await expectStoreError(
+        invokeFrozenPromotionEvidenceWriter(store, fixture, writer),
+        "paper_trading_comparison_frozen_authority_write_conflict"
+      );
+      await expect(promotionEvidenceSnapshot(store, fixture)).resolves.toEqual(
+        promotionEvidenceBefore
+      );
+      await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual(
+        commitmentsBefore
+      );
+      await expect(store.listPaperTradingEvaluations()).resolves.toEqual(evaluationsBefore);
+      await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+    }
+  );
+
+  it.each(["evaluation-mutation", "observation-append"] as const)(
+    "keeps selected paper comparison promotion evidence frozen after side creation: %s",
+    async (writer) => {
+      const store = new LocalStore(path.join(tmpDir, `after-sides-${writer}`));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      const sideBefore = await boundComparisonEvidenceSnapshot(store, fixture);
+      const promotionBefore = await promotionEvidenceSnapshot(store, fixture);
+      await expectStoreError(
+        invokeFrozenPromotionEvidenceWriter(store, fixture, writer),
+        "paper_trading_comparison_frozen_authority_write_conflict"
+      );
+      await expect(boundComparisonEvidenceSnapshot(store, fixture)).resolves.toEqual(sideBefore);
+      await expect(promotionEvidenceSnapshot(store, fixture)).resolves.toEqual(promotionBefore);
+      await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+    }
+  );
+
+  it.each(["evaluation-mutation", "observation-append"] as const)(
+    "keeps selected paper comparison promotion evidence byte-identical after pair append: %s",
+    async (writer) => {
+      const store = new LocalStore(path.join(tmpDir, `after-pair-${writer}`));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      const before = {
+        promotion: await promotionEvidenceSnapshot(store, fixture),
+        graphBytes: await comparisonGraphByteSnapshot(store)
+      };
+      await expectStoreError(
+        invokeFrozenPromotionEvidenceWriter(store, fixture, writer),
+        "paper_trading_comparison_frozen_authority_write_conflict"
+      );
+      await expect(promotionEvidenceSnapshot(store, fixture)).resolves.toEqual(before.promotion);
+      await expect(comparisonGraphByteSnapshot(store)).resolves.toEqual(before.graphBytes);
+    }
+  );
+
+  it("atomically appends a valid paper comparison pair before a concurrent side mutation", async () => {
+    const store = new InterleavingComparisonLocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    store.pauseExactEvaluationRead();
+    const pairAppend = store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    await store.exactEvaluationReadEntered;
+    const sideMutation = store.recordPaperTradingEvaluation({
+      ...fixture.challengerEvaluation,
+      latest_score: {
+        revenue_usdt: 1,
+        cost_usdt: 0,
+        net_revenue_usdt: 1,
+        net_return_pct: 0.0001
+      }
+    });
+    await expectPromiseStillPending(sideMutation);
+    store.releaseExactEvaluationRead();
+    await expect(pairAppend).resolves.toEqual(fixture.comparison);
+    await expectStoreError(
+      sideMutation,
+      "paper_trading_comparison_inert_graph_mutation_forbidden"
+    );
+    await expect(store.getPaperTradingEvaluation(
+      fixture.challengerEvaluation.paper_trading_evaluation_id
+    )).resolves.toEqual(fixture.challengerEvaluation);
+  });
+
+  it("rejects paper comparison pair append when a side mutation wins the evidence transaction", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingEvaluation({
+      ...fixture.challengerEvaluation,
+      latest_score: {
+        revenue_usdt: 1,
+        cost_usdt: 0,
+        net_revenue_usdt: 1,
+        net_return_pct: 0.0001
+      }
+    });
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment(fixture.comparison),
+      "paper_trading_comparison_commitment_reference_mismatch"
+    );
+    await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+  });
+
+  const controlledPairWriterKinds = [
+    "create-run-exact",
+    "alternate-commitment",
+    "alternate-commitment-evaluation-chain",
+    "evaluation",
+    "observation",
+    "ledger",
+    "run-control",
+    "sandbox-start"
+  ] as const;
+
+  it.each(controlledPairWriterKinds)(
+    "holds representative paper comparison %s writer behind pair validation",
+    async (writer) => {
+      const store = new InterleavingComparisonLocalStore(path.join(tmpDir, writer));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      const pausesEvaluation = writer === "evaluation" || writer === "observation";
+      if (pausesEvaluation) store.pauseExactEvaluationRead();
+      else store.pauseExactRunRead();
+      const pairAppend = store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      await (pausesEvaluation ? store.exactEvaluationReadEntered : store.exactRunReadEntered);
+      const sideWriter = invokeBoundSideWriter(store, fixture, writer);
+      await expectPromiseStillPending(sideWriter);
+      if (pausesEvaluation) store.releaseExactEvaluationRead();
+      else store.releaseExactRunRead();
+      await expect(pairAppend).resolves.toEqual(fixture.comparison);
+      if (writer === "create-run-exact") {
+        await expect(sideWriter).resolves.toEqual(fixture.challengerRun);
+      } else {
+        await expectStoreError(
+          sideWriter,
+          "paper_trading_comparison_inert_graph_mutation_forbidden"
+        );
+      }
+    }
+  );
+
+  it.each([
+    "candidate-version-runtime",
+    "system-code-entrypoint",
+    "admission-content",
+    "promotion-content",
+    "promotion-evaluation-content",
+    "promotion-commitment-content",
+    "promotion-observation-content"
+  ] as const)("rejects frozen paper comparison same-ID drift: %s", async (drift) => {
+    const store = new LocalStore(path.join(tmpDir, drift));
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    await store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    const tradingRunFilesBefore = (await readdir(
+      path.join(store.root(), "trading-runs", "items")
+    )).sort();
+    if (drift === "candidate-version-runtime") {
+      const record = (await store.getCandidateVersion(
+        fixture.preparation.champion.candidate_version_ref.id
+      ))!;
+      await overwriteComparisonFixtureRecord(store, "candidate-versions", record.candidate_version_id, {
+        ...record,
+        runtime_ref: { record_kind: "trading_run", id: "same-id-drifted-default-run" }
+      });
+    } else if (drift === "system-code-entrypoint") {
+      const record = (await store.getSystemCode(
+        fixture.preparation.champion.system_code_ref.id
+      ))!;
+      await overwriteComparisonFixtureRecord(store, "system-codes", record.system_code_id, {
+        ...record,
+        entrypoint: ["python3", "same-id-drifted.py"],
+        capability_policy_ref: {
+          record_kind: "capability_policy",
+          id: "same-id-drifted-capability-policy"
+        }
+      });
+    } else if (drift === "admission-content") {
+      const record = (await store.getCandidateAdmissionDecision(
+        fixture.preparation.champion.candidate_admission_decision_ref.id
+      ))!;
+      await overwriteComparisonFixtureRecord(
+        store,
+        "candidate-admission-decisions",
+        record.candidate_admission_decision_id,
+        { ...record, decided_at: "2026-07-09T23:59:58.000Z" }
+      );
+    } else if (drift === "promotion-content") {
+      const selection = fixture.preparation.champion_selection;
+      if (selection.selection_kind !== "trading_review") throw new Error("expected selection");
+      const record = (await store.getTradingPromotion(selection.trading_promotion_ref.id))!;
+      await overwriteComparisonFixtureRecord(store, "trading-promotions", record.trading_promotion_id, {
+        ...record,
+        paper_trading_evaluation_ref: {
+          record_kind: "paper_trading_evaluation",
+          id: "same-id-drifted-selection-evaluation"
+        }
+      });
+    } else if (drift === "promotion-evaluation-content") {
+      const record = fixture.championPromotionEvidence.evaluation;
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-evaluations",
+        record.paper_trading_evaluation_id,
+        { ...record, latest_failure_reason: "same-id-promotion-evaluation-drift" }
+      );
+    } else if (drift === "promotion-commitment-content") {
+      const record = fixture.championPromotionEvidence.commitment;
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-evaluation-commitments",
+        record.paper_trading_evaluation_commitment_id,
+        { ...record, committed_at: "2026-07-09T21:00:00.001Z" }
+      );
+    } else {
+      const [record] = fixture.championPromotionEvidence.observations;
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-observations",
+        record!.paper_trading_observation_id,
+        { ...record, failure_reason: "same-id-promotion-observation-drift" }
+      );
+    }
+    const commitmentsAfterTestDrift = await store.listPaperTradingEvaluationCommitments();
+    const evaluationsAfterTestDrift = await store.listPaperTradingEvaluations();
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(fixture.preparation),
+      "paper_trading_comparison_frozen_record_digest_mismatch"
+    );
+    await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual(
+      commitmentsAfterTestDrift
+    );
+    await expect(store.listPaperTradingEvaluations()).resolves.toEqual(
+      evaluationsAfterTestDrift
+    );
+    expect((await readdir(path.join(store.root(), "trading-runs", "items"))).sort())
+      .toEqual(tradingRunFilesBefore);
+  });
+
+  it("keeps current materialization valid when optional record fields persist by omission", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const { system_code_ref: _systemCodeRef, ...withoutOptionalSystemCode } =
+      validMaterializationInput();
+    const outcome = await store.materializeCandidate(withoutOptionalSystemCode);
+    expect(outcome.status).toBe("materialized");
+    if (outcome.status !== "materialized") throw new Error("materialization failed");
+    const version = await store.getCandidateVersion(
+      outcome.candidate.candidate_version.candidate_version_id
+    );
+    expect(version).toBeDefined();
+    expect(Object.hasOwn(version!, "system_code_ref")).toBe(false);
+    expect(() => paperTradingComparisonCandidateVersionDigestInput(version!)).not.toThrow();
+  });
+
+  const preparationRejectionCases: Array<[string, ComparisonPreparationFixtureOptions]> = [
+    ["missing admission", { omitChampionAdmission: true }],
+    ["mismatched admission", { mismatchChampionAdmission: true }],
+    ["duplicate admission", { championAdmissionStatus: "duplicate" }],
+    ["quarantined admission", { championAdmissionStatus: "quarantined" }],
+    ["admission after preparation", { futureChampionAdmission: true }],
+    ["duplicate stored executable", { duplicateChallengerSystemCode: true }],
+    ["missing champion promotion", { omitChampionPromotion: true }],
+    ["mismatched champion promotion", { mismatchChampionPromotion: true }],
+    ["missing promotion evaluation", { missingPromotionEvaluation: true }],
+    ["wrong promotion evaluation refs", { wrongPromotionEvaluationRef: true }],
+    ["qualification before champion admission", { preAdmissionQualification: true }],
+    ["reversed promotion observation time", { reversePromotionObservationTime: true }],
+    ["challenger SystemCode after admission", { challengerSystemCodeAfterAdmission: true }],
+    ["promotion after preparation", { futureChampionPromotion: true }],
+    ["bootstrap with existing promotion", { comparisonMode: "bootstrap" }]
+  ];
+
+  it.each(preparationRejectionCases)(
+    "rejects %s before paper comparison preparation or side writes",
+    async (_label, options) => {
+      const store = new LocalStore(path.join(tmpDir, _label.replaceAll(" ", "-")));
+      await store.initialize();
+      const fixture = await comparisonPreparationFixture(store, options);
+      const runsBefore = await store.listTradingRunsForCandidateVersion(
+        fixture.preparation.champion.candidate_version_ref.id
+      );
+      const commitmentsBefore = await store.listPaperTradingEvaluationCommitments();
+      const evaluationsBefore = await store.listPaperTradingEvaluations();
+      await expectStoreError(
+        store.reservePaperTradingComparisonPreparation(fixture.preparation),
+        options.omitChampionAdmission
+          ? "paper_trading_comparison_preparation_reference_not_found"
+          : options.duplicateChallengerSystemCode
+            ? "paper_trading_comparison_duplicate_executable"
+            : options.championAdmissionStatus || options.mismatchChampionAdmission ||
+                options.futureChampionAdmission || options.challengerSystemCodeAfterAdmission
+              ? "paper_trading_comparison_candidate_not_admitted"
+              : options.missingPromotionEvaluation
+                ? "paper_trading_comparison_preparation_reference_not_found"
+                : "paper_trading_comparison_champion_selection_mismatch"
+      );
+      await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([]);
+      await expect(store.listPaperTradingEvaluationCommitments()).resolves.toEqual(
+        commitmentsBefore
+      );
+      await expect(store.listPaperTradingEvaluations()).resolves.toEqual(evaluationsBefore);
+      await expect(store.listTradingRunsForCandidateVersion(
+        fixture.preparation.champion.candidate_version_ref.id
+      )).resolves.toEqual(runsBefore);
+    }
+  );
+
+  it("isolates the exact paper comparison promotion evaluation ref with a second same-champion chain", async () => {
+    const store = new LocalStore(path.join(tmpDir, "same-champion-exact-ref"));
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store, {
+      wrongPromotionEvaluationRef: true
+    });
+    const alternate = fixture.alternateChampionPromotionEvidence;
+    const selection = fixture.preparation.champion_selection;
+    if (!alternate || selection.selection_kind !== "trading_review") {
+      throw new Error("alternate promotion evidence missing");
+    }
+    expect(alternate.commitment.candidate_ref).toEqual(
+      fixture.championPromotionEvidence.commitment.candidate_ref
+    );
+    expect(fixture.promotion.paper_trading_evaluation_ref.id).not.toBe(
+      selection.paper_trading_evaluation_ref.id
+    );
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(fixture.preparation),
+      "paper_trading_comparison_champion_selection_mismatch"
+    );
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([]);
+    await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+  });
+
+  it.each([
+    "malformed-managed-provider",
+    "wrong-system-code",
+    "nested-fill-source-trade",
+    "nested-public-execution-trade"
+  ] as const)("rejects semantic paper comparison promotion closure corruption: %s", async (kind) => {
+    const store = new LocalStore(path.join(tmpDir, kind));
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const evidence = fixture.championPromotionEvidence;
+    let commitment = evidence.commitment;
+    let evaluation = evidence.evaluation;
+    if (kind === "malformed-managed-provider") {
+      commitment = withPaperTradingCommitmentDigest({
+        ...commitment,
+        provider_identity: {
+          runtime_provider_kind: "managed_agent",
+          agent_profile_ref: { record_kind: "agent_profile", id: "codex" },
+          model: {} as never,
+          provider_configuration_digest: "sha256:provider",
+          qualification_eligible: true
+        },
+        commitment_digest: ""
+      });
+    } else if (kind === "wrong-system-code") {
+      commitment = withPaperTradingCommitmentDigest({
+        ...commitment,
+        system_code_ref: { record_kind: "system_code", id: "wrong-frozen-system-code" },
+        commitment_digest: ""
+      });
+    } else if (kind === "nested-fill-source-trade") {
+      evaluation = {
+        ...evaluation,
+        latest_fill: {
+          fill_id: "fill-malformed",
+          order_id: "order-malformed",
+          fill_status: "filled",
+          fill_price: "60000",
+          fill_quantity: "0.01",
+          fee_usdt: "0.1",
+          slippage_usdt: "0",
+          funding_usdt: "0",
+          trade_time: evaluation.stopped_at!,
+          source_trade_id: {} as never
+        }
+      };
+    } else {
+      evaluation = {
+        ...evaluation,
+        latest_public_execution_snapshot: {
+          symbol: "BTCUSDT",
+          observed_at: evaluation.stopped_at!,
+          source_kind: "binance_production_public_rest",
+          stream_marker: "malformed-aggregate-trade",
+          agg_trades: [null] as never,
+          authority_status: "read_only"
+        }
+      };
+    }
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluation-commitments",
+      commitment.paper_trading_evaluation_commitment_id,
+      commitment
+    );
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      evaluation.paper_trading_evaluation_id,
+      evaluation
+    );
+    const selection = fixture.preparation.champion_selection;
+    if (selection.selection_kind !== "trading_review") throw new Error("expected selection");
+    const preparation = withPreparationDigest({
+      ...fixture.preparation,
+      champion_selection: {
+        ...selection,
+        paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+          paperTradingComparisonEvaluationCommitmentRecordDigestInput(commitment)
+        ),
+        paper_trading_evaluation_record_digest: comparisonExactRecordDigest(
+          paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+        )
+      },
+      preparation_digest: ""
+    });
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(preparation),
+      "paper_trading_comparison_champion_selection_mismatch"
+    );
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([]);
+  });
+
+  it.each([
+    "missing-market",
+    "failed-ratio",
+    "accounting-discontinuity",
+    "bad-commitment-self-digest"
+  ] as const)("rejects directly stored unqualified paper comparison promotion evidence: %s", async (kind) => {
+    const store = new LocalStore(path.join(tmpDir, `direct-qualification-${kind}`));
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const selection = fixture.preparation.champion_selection;
+    if (selection.selection_kind !== "trading_review") throw new Error("expected selection");
+    let commitment = structuredClone(fixture.championPromotionEvidence.commitment);
+    const evaluation = structuredClone(fixture.championPromotionEvidence.evaluation);
+    const observations = structuredClone(fixture.championPromotionEvidence.observations);
+    if (kind === "missing-market") {
+      for (const observation of observations) delete observation.market_snapshot;
+    } else if (kind === "failed-ratio") {
+      for (const observation of observations.slice(0, 4)) {
+        observation.status = "failed";
+        observation.failure_reason = "isolated failed-ratio evidence";
+      }
+    } else if (kind === "accounting-discontinuity") {
+      observations[0]!.score_delta.revenue_usdt = 1;
+      observations[0]!.cumulative_score.revenue_usdt = 1;
+    } else {
+      commitment = {
+        ...commitment,
+        data_identity: {
+          ...commitment.data_identity,
+          market_data_configuration_digest: "sha256:self-digest-isolated-drift"
+        }
+      };
+    }
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluation-commitments",
+      commitment.paper_trading_evaluation_commitment_id,
+      commitment
+    );
+    for (const observation of observations) {
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-observations",
+        observation.paper_trading_observation_id,
+        observation
+      );
+    }
+    const preparation = withPreparationDigest({
+      ...fixture.preparation,
+      champion_selection: {
+        ...selection,
+        paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+          paperTradingComparisonEvaluationCommitmentRecordDigestInput(commitment)
+        ),
+        paper_trading_evaluation_record_digest: comparisonExactRecordDigest(
+          paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+        ),
+        paper_trading_observation_chain_digest: comparisonExactRecordDigest(
+          paperTradingComparisonObservationChainDigestInput(observations)
+        )
+      },
+      preparation_digest: ""
+    });
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(preparation),
+      "paper_trading_comparison_champion_selection_mismatch"
+    );
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([]);
+  });
+
+  it("accepts a key-reordered but semantically identical paper comparison promotion account", async () => {
+    const store = new LocalStore(path.join(tmpDir, "qualification-account-key-order"));
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const evaluation = structuredClone(fixture.championPromotionEvidence.evaluation);
+    const account = evaluation.paper_account_snapshot;
+    if (!account) throw new Error("qualification account missing");
+    const reorderedPosition = Object.fromEntries(
+      Object.entries(account.position).reverse()
+    ) as unknown as PaperTradingAccountSnapshot["position"];
+    evaluation.paper_account_snapshot = Object.fromEntries(
+      Object.entries(account).reverse().map(([key, value]) =>
+        key === "position" ? [key, reorderedPosition] : [key, value]
+      )
+    ) as unknown as PaperTradingAccountSnapshot;
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      evaluation.paper_trading_evaluation_id,
+      evaluation
+    );
+    await expect(store.reservePaperTradingComparisonPreparation(fixture.preparation))
+      .resolves.toEqual(fixture.preparation);
+  });
+
+  it("rejects a paper comparison preparation whose sides share one CandidateVersion", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const invalid = withPreparationDigest({
+      ...fixture.preparation,
+      challenger: {
+        ...fixture.preparation.challenger,
+        candidate_version_ref: { ...fixture.preparation.champion.candidate_version_ref }
+      },
+      preparation_digest: ""
+    });
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(invalid),
+      "invalid_paper_trading_comparison_preparation_input"
+    );
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([]);
+  });
+
+  it("records and reloads an exact paper comparison commitment", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    const first = await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const repeated = await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    expect(repeated).toEqual(first);
+    await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([
+      fixture.comparison
+    ]);
+    const reloaded = new LocalStore(tmpDir);
+    await expect(reloaded.getPaperTradingComparisonCommitment(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual(fixture.comparison);
+  });
+
+  it.each(["evaluation-content", "observation-chain"] as const)(
+    "revalidates frozen paper comparison promotion %s before pair append",
+    async (drift) => {
+      const store = new LocalStore(path.join(tmpDir, `pair-revalidation-${drift}`));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      if (drift === "evaluation-content") {
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-evaluations",
+          fixture.championPromotionEvidence.evaluation.paper_trading_evaluation_id,
+          {
+            ...fixture.championPromotionEvidence.evaluation,
+            latest_failure_reason: "test-only-bypass-of-frozen-evidence-guard"
+          }
+        );
+      } else {
+        const last = fixture.championPromotionEvidence.observations.at(-1)!;
+        await overwriteComparisonFixtureRecord(
+          store,
+          "paper-trading-observations",
+          last.paper_trading_observation_id,
+          { ...last, market_snapshot: { ...last.market_snapshot!, price: 60_001 } }
+        );
+      }
+      await expectStoreError(
+        store.recordPaperTradingComparisonCommitment(fixture.comparison),
+        "paper_trading_comparison_frozen_record_digest_mismatch"
+      );
+      await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+    }
+  );
+
+  const postPairWriterCases = [
+    ["createPaperTradingRun exact replay", "create-run-exact", "no_change"],
+    ["recordPaperTradingEvaluationCommitment exact replay", "commitment-exact", "no_change"],
+    ["recordPaperTradingEvaluation exact replay", "evaluation-exact", "no_change"],
+    ["alternate commitment for bound run", "alternate-commitment", "reject"],
+    ["alternate commitment/evaluation chain", "alternate-commitment-evaluation-chain", "reject"],
+    ["recordPaperTradingEvaluation mutation", "evaluation", "reject"],
+    ["recordPaperTradingObservation", "observation", "reject"],
+    ["recordLedger", "ledger", "reject"],
+    ["recordRunControlAudit", "run-control", "reject"],
+    ["recordSandboxStart", "sandbox-start", "reject"],
+    ["recordSandboxObservations", "sandbox-observations", "reject"],
+    ["stopSandbox", "sandbox-stop", "reject"]
+  ] as const;
+
+  it.each(postPairWriterCases)(
+    "serializes and guards post-paper-comparison writer: %s",
+    async (_label, writer, expected) => {
+      const store = new LocalStore(path.join(tmpDir, writer));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      if (writer === "sandbox-observations" || writer === "sandbox-stop") {
+        await seedBoundSandboxForWriterTest(store, fixture);
+      }
+      const before = await boundComparisonEvidenceSnapshot(store, fixture);
+      const call = invokeBoundSideWriter(store, fixture, writer);
+      if (expected === "no_change") await expect(call).resolves.toBeDefined();
+      else {
+        await expectStoreError(call, "paper_trading_comparison_inert_graph_mutation_forbidden");
+      }
+      await expect(boundComparisonEvidenceSnapshot(store, fixture)).resolves.toEqual(before);
+    }
+  );
+
+  it.each([
+    ["recordSystemCode", "system-code"],
+    ["recordCandidateAdmissionDecision", "admission"],
+    ["recordTradingPromotion", "promotion"]
+  ] as const)("rejects frozen paper comparison authority writer drift after pair: %s", async (_label, writer) => {
+    const store = new LocalStore(path.join(tmpDir, writer));
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const before = await boundComparisonEvidenceSnapshot(store, fixture);
+    const call = writer === "system-code"
+      ? store.recordSystemCode({
+          ...(await store.getSystemCode(fixture.preparation.champion.system_code_ref.id))!,
+          entrypoint: ["python3", "frozen-writer-drift.py"]
+        })
+      : writer === "admission"
+        ? store.recordCandidateAdmissionDecision({
+            ...(await store.getCandidateAdmissionDecision(
+              fixture.preparation.champion.candidate_admission_decision_ref.id
+            ))!,
+            decided_at: "2026-07-09T20:55:00.001Z"
+          })
+        : store.recordTradingPromotion({
+            ...fixture.promotion,
+            promoted_at: "2026-07-09T21:31:00.001Z"
+          });
+    await expectStoreError(call, "paper_trading_comparison_frozen_authority_write_conflict");
+    await expect(boundComparisonEvidenceSnapshot(store, fixture)).resolves.toEqual(before);
+  });
+
+  it("allows deterministic CandidateVersion materialization replay without changing frozen bytes", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const versionBefore = await store.getCandidateVersion(
+      fixture.preparation.challenger.candidate_version_ref.id
+    );
+    await expect(store.materializeCandidate(fixture.challengerMaterializationInput))
+      .resolves.toMatchObject({ status: "materialized" });
+    await expect(store.getCandidateVersion(
+      fixture.preparation.challenger.candidate_version_ref.id
+    )).resolves.toEqual(versionBefore);
+  });
+
+  it("rejects paper comparison drift, preparation mismatch, and invalid side graphs", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment({
+        ...fixture.comparison,
+        committed_at: "2026-07-10T00:01:00.000Z"
+      }),
+      "paper_trading_comparison_commitment_conflict"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment(withComparisonDigest({
+        ...fixture.comparison,
+        paper_trading_comparison_commitment_id: "paper-comparison-missing-preparation",
+        preparation_ref: {
+          record_kind: "paper_trading_comparison_preparation",
+          id: "missing-paper-comparison-preparation"
+        },
+        commitment_digest: ""
+      })),
+      "paper_trading_comparison_preparation_reference_not_found"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment(withComparisonDigest({
+        ...fixture.comparison,
+        paper_trading_comparison_commitment_id: "paper-comparison-zero-minimum",
+        comparison_policy: {
+          ...fixture.comparison.comparison_policy,
+          minimum_observation_count: 0,
+          minimum_elapsed_ms: 0
+        },
+        commitment_digest: ""
+      })),
+      "invalid_paper_trading_comparison_commitment_input"
+    );
+    const invalidStore = new LocalStore(path.join(tmpDir, "wrong-market"));
+    await invalidStore.initialize();
+    const invalidFixture = await storedComparisonFixture(invalidStore);
+    await expectStoreError(
+      invalidStore.recordPaperTradingComparisonCommitment(withComparisonDigest({
+        ...invalidFixture.comparison,
+        market_data_configuration_digest: "sha256:different-market",
+        commitment_digest: ""
+      })),
+      "paper_trading_comparison_preparation_mismatch"
+    );
+  });
+
+  it.each([
+    ["provider-ineligible", "paper_trading_comparison_commitment_reference_mismatch"],
+    ["window-policy-mismatch", "paper_trading_comparison_commitment_reference_mismatch"],
+    ["duplicate-resolved-artifact", "paper_trading_comparison_commitment_reference_mismatch"],
+    ["evaluation-outcome-state", "paper_trading_comparison_commitment_reference_mismatch"],
+    ["replacement-evaluation-id", "paper_trading_comparison_commitment_reference_mismatch"],
+    ["side-time-before-preparation", "paper_trading_comparison_commitment_reference_mismatch"],
+    ["run-time-before-preparation", "paper_trading_comparison_commitment_reference_mismatch"]
+  ] as const)("rejects malformed inert paper comparison side graph %s", async (malformation, code) => {
+    const store = new LocalStore(path.join(tmpDir, malformation));
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store, { malformation });
+    await expectStoreError(store.recordPaperTradingComparisonCommitment(fixture.comparison), code);
+    await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+  });
+
+  it("rejects a paper comparison side that references the CandidateVersion default runtime", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    const version = (await store.getCandidateVersion(
+      fixture.comparison.champion.candidate_version_ref.id
+    ))!;
+    const crafted = withComparisonDigest({
+      ...fixture.comparison,
+      champion: {
+        ...fixture.comparison.champion,
+        trading_run_ref: { ...version.runtime_ref }
+      },
+      commitment_digest: ""
+    });
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment(crafted),
+      "paper_trading_comparison_commitment_reference_mismatch"
+    );
+  });
+
+  it.each([
+    "commitment-authority",
+    "private-exchange-access",
+    "non-neutral-account",
+    "ref-kind-drift"
+  ] as const)("rejects persisted self-consistent paper comparison inert-state drift: %s", async (drift) => {
+    const store = new LocalStore(path.join(tmpDir, drift));
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const nonNeutralAccount = {
+      ...structuredClone(PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT),
+      wallet_balance_usdt: "10001",
+      available_balance_usdt: "10001",
+      equity_usdt: "10001",
+      realized_pnl_usdt: "1"
+    };
+    const changedCommitment = withPaperTradingCommitmentDigest({
+      ...fixture.challengerCommitment,
+      ...(drift === "commitment-authority" ? { authority_status: "live" as never } : {}),
+      ...(drift === "private-exchange-access"
+        ? { data_identity: {
+            ...fixture.challengerCommitment.data_identity,
+            private_exchange_access: "allowed" as never
+          } }
+        : {}),
+      ...(drift === "non-neutral-account" ? { initial_account_snapshot: nonNeutralAccount } : {}),
+      ...(drift === "ref-kind-drift"
+        ? { candidate_ref: {
+            record_kind: "same-id-wrong-kind",
+            id: fixture.challengerCommitment.candidate_ref.id
+          } }
+        : {}),
+      commitment_digest: ""
+    });
+    const changedEvaluation = drift === "non-neutral-account"
+      ? { ...fixture.challengerEvaluation, paper_account_snapshot: nonNeutralAccount }
+      : fixture.challengerEvaluation;
+    const changedPair = withComparisonDigest({
+      ...fixture.comparison,
+      challenger: {
+        ...fixture.comparison.challenger,
+        paper_trading_evaluation_commitment_digest: changedCommitment.commitment_digest,
+        paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+          paperTradingComparisonEvaluationCommitmentRecordDigestInput(changedCommitment)
+        ),
+        paper_trading_evaluation_record_digest: comparisonExactRecordDigest(
+          paperTradingComparisonEvaluationRecordDigestInput(changedEvaluation)
+        )
+      },
+      commitment_digest: ""
+    });
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluation-commitments",
+      changedCommitment.paper_trading_evaluation_commitment_id,
+      changedCommitment
+    );
+    if (changedEvaluation !== fixture.challengerEvaluation) {
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-evaluations",
+        fixture.challengerEvaluation.paper_trading_evaluation_id,
+        changedEvaluation
+      );
+    }
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-comparison-commitments",
+      changedPair.paper_trading_comparison_commitment_id,
+      changedPair
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment(changedPair),
+      "paper_trading_comparison_commitment_reference_mismatch"
+    );
+  });
+
+  it("rejects paper comparison same-ID side time rewrites while pair bytes stay unchanged", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const pairBefore = await readComparisonFixtureRecord<PaperTradingComparisonCommitmentRecord>(
+      store,
+      "paper-trading-comparison-commitments",
+      fixture.comparison.paper_trading_comparison_commitment_id
+    );
+    const rewrittenAt = "2026-07-10T00:00:00.001Z";
+    const changedCommitment = withPaperTradingCommitmentDigest({
+      ...fixture.challengerCommitment,
+      committed_at: rewrittenAt,
+      commitment_digest: ""
+    });
+    const changedEvaluation = { ...fixture.challengerEvaluation, started_at: rewrittenAt };
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluation-commitments",
+      changedCommitment.paper_trading_evaluation_commitment_id,
+      changedCommitment
+    );
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      changedEvaluation.paper_trading_evaluation_id,
+      changedEvaluation
+    );
+    expect(changedCommitment.commitment_digest)
+      .toBe(fixture.challengerCommitment.commitment_digest);
+    await expectStoreError(
+      store.recordPaperTradingComparisonCommitment(pairBefore),
+      "paper_trading_comparison_commitment_reference_mismatch"
+    );
+  });
+
+  it.each(["missing-provider-identity", "missing-account-position"] as const)(
+    "returns a stable paper comparison graph error for persisted malformed nested data: %s",
+    async (malformation) => {
+      const store = new LocalStore(path.join(tmpDir, malformation));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      const { provider_identity: _providerIdentity, ...withoutProvider } =
+        fixture.challengerCommitment;
+      const { position: _position, ...accountWithoutPosition } =
+        fixture.challengerCommitment.initial_account_snapshot;
+      const malformedCommitment = withPaperTradingCommitmentDigest({
+        ...(malformation === "missing-provider-identity"
+          ? withoutProvider
+          : {
+              ...fixture.challengerCommitment,
+              initial_account_snapshot: accountWithoutPosition as never
+            }),
+        commitment_digest: ""
+      } as PaperTradingEvaluationCommitmentRecord);
+      const malformedPair = withComparisonDigest({
+        ...fixture.comparison,
+        challenger: {
+          ...fixture.comparison.challenger,
+          paper_trading_evaluation_commitment_digest: malformedCommitment.commitment_digest,
+          paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationCommitmentRecordDigestInput(malformedCommitment)
+          )
+        },
+        commitment_digest: ""
+      });
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-evaluation-commitments",
+        malformedCommitment.paper_trading_evaluation_commitment_id,
+        malformedCommitment
+      );
+      await overwriteComparisonFixtureRecord(
+        store,
+        "paper-trading-comparison-commitments",
+        malformedPair.paper_trading_comparison_commitment_id,
+        malformedPair
+      );
+      await expectStoreError(
+        store.recordPaperTradingComparisonCommitment(malformedPair),
+        "paper_trading_comparison_commitment_reference_mismatch"
+      );
+    }
+  );
+
+  it.each(["candidate", "candidate-version", "trading-run", "system-code"] as const)(
+    "rejects persisted paper comparison same-ID loaded-record drift: %s",
+    async (drift) => {
+      const store = new LocalStore(path.join(tmpDir, drift));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+      let replay = fixture.comparison;
+      if (drift === "candidate") {
+        const candidate = await readComparisonFixtureRecord<TradingSystemCandidateRecord>(
+          store,
+          "candidates",
+          fixture.comparison.challenger.candidate_ref.id
+        );
+        await overwriteComparisonFixtureRecord(store, "candidates", candidate.candidate_id, {
+          ...candidate,
+          candidate_id: "same-path-drifted-candidate-id"
+        });
+      } else if (drift === "candidate-version") {
+        const version = (await store.getCandidateVersion(
+          fixture.comparison.challenger.candidate_version_ref.id
+        ))!;
+        const changedVersion = {
+          ...version,
+          runtime_ref: { ...fixture.comparison.challenger.trading_run_ref }
+        };
+        await overwriteComparisonFixtureRecord(
+          store,
+          "candidate-versions",
+          version.candidate_version_id,
+          changedVersion
+        );
+        replay = await rewriteFrozenSideDigestsForSemanticTest(store, fixture, {
+          candidate_version_digest: comparisonExactRecordDigest(
+            paperTradingComparisonCandidateVersionDigestInput(changedVersion)
+          )
+        });
+      } else if (drift === "trading-run") {
+        const run = (await store.getTradingRun(fixture.challengerRun.trading_run_id))!;
+        await overwriteComparisonFixtureRecord(store, "trading-runs", run.trading_run_id, {
+          ...run,
+          trace_ref: { record_kind: "trace_placeholder", id: "unexpected-prestart-trace" }
+        });
+      } else {
+        const code = (await store.getSystemCode(fixture.comparison.challenger.system_code_ref.id))!;
+        const changedCode = { ...code, entrypoint: ["python3", "same-id-drifted-entrypoint.py"] };
+        await overwriteComparisonFixtureRecord(
+          store,
+          "system-codes",
+          code.system_code_id,
+          changedCode
+        );
+        replay = await rewriteFrozenSideDigestsForSemanticTest(store, fixture, {
+          system_code_record_digest: comparisonExactRecordDigest(
+            paperTradingComparisonSystemCodeRecordDigestInput(changedCode)
+          )
+        });
+      }
+      await expectStoreError(
+        store.recordPaperTradingComparisonCommitment(replay),
+        "paper_trading_comparison_commitment_reference_mismatch"
+      );
+    }
+  );
+
+  it.each(controlledPairWriterKinds)(
+    "makes representative paper comparison %s writer visible when it wins before pair validation",
+    async (writer) => {
+      const store = new LocalStore(path.join(tmpDir, `writer-first-${writer}`));
+      await store.initialize();
+      const fixture = await storedComparisonFixture(store);
+      await invokeBoundSideWriter(store, fixture, writer);
+      if (writer === "create-run-exact") {
+        await expect(store.recordPaperTradingComparisonCommitment(fixture.comparison))
+          .resolves.toEqual(fixture.comparison);
+      } else {
+        await expectStoreError(
+          store.recordPaperTradingComparisonCommitment(fixture.comparison),
+          "paper_trading_comparison_commitment_reference_mismatch"
+        );
+        await expect(store.listPaperTradingComparisonCommitments()).resolves.toEqual([]);
+      }
+    }
+  );
+
+  it("serializes paper comparison champion currentness and append against promotion writes", async () => {
+    const store = new InterleavingComparisonLocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    store.pauseLatestPromotionRead();
+    const reservation = store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    await store.latestPromotionReadEntered;
+    const laterPromotionWrite = store.recordTradingPromotion(laterChampionPromotion(fixture));
+    await expectPromiseStillPending(laterPromotionWrite);
+    store.releaseLatestPromotionRead();
+    await expect(reservation).resolves.toEqual(fixture.preparation);
+    await expect(laterPromotionWrite).resolves.toMatchObject({
+      trading_promotion_id: "trading-promotion-after-reservation"
+    });
+  });
+
+  it("rejects a stale paper comparison selection when promotion wins the evidence transaction", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    await store.recordTradingPromotion(laterChampionPromotion(fixture));
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(fixture.preparation),
+      "paper_trading_comparison_champion_selection_mismatch"
+    );
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([]);
+  });
+
+  it("blocks same-ID SystemCode drift until paper comparison reservation then rejects it", async () => {
+    const store = new InterleavingComparisonLocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const code = (await store.getSystemCode(fixture.preparation.champion.system_code_ref.id))!;
+    store.pauseLatestPromotionRead();
+    const reservation = store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    await store.latestPromotionReadEntered;
+    const driftWrite = store.recordSystemCode({ ...code, entrypoint: ["python3", "drift.py"] });
+    await expectPromiseStillPending(driftWrite);
+    store.releaseLatestPromotionRead();
+    await expect(reservation).resolves.toEqual(fixture.preparation);
+    await expectStoreError(
+      driftWrite,
+      "paper_trading_comparison_frozen_authority_write_conflict"
+    );
+  });
+
+  it("freezes promotion evaluation content in the paper comparison reservation transaction", async () => {
+    const store = new InterleavingComparisonLocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    store.pauseExactEvaluationRead();
+    const reservation = store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    await store.exactEvaluationReadEntered;
+    const evidenceWrite = store.recordPaperTradingEvaluation({
+      ...fixture.championPromotionEvidence.evaluation,
+      latest_failure_reason: "concurrent-promotion-evidence-drift"
+    });
+    await expectPromiseStillPending(evidenceWrite);
+    store.releaseExactEvaluationRead();
+    await expect(reservation).resolves.toEqual(fixture.preparation);
+    await expectStoreError(
+      evidenceWrite,
+      "paper_trading_comparison_frozen_authority_write_conflict"
+    );
+  });
+
+  it("rejects same-ID SystemCode drift that reaches the paper comparison transaction first", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await comparisonPreparationFixture(store);
+    const code = (await store.getSystemCode(fixture.preparation.champion.system_code_ref.id))!;
+    await expectStoreError(
+      store.recordSystemCode({ ...code, entrypoint: ["python3", "writer-first-drift.py"] }),
+      "authority_evidence_identity_conflict"
+    );
+    await expect(store.getSystemCode(code.system_code_id)).resolves.toEqual(code);
+    await expect(store.reservePaperTradingComparisonPreparation(fixture.preparation))
+      .resolves.toEqual(fixture.preparation);
+  });
+
+  it("routes improvement proposal SystemCode writes through paper comparison identity checks", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    await store.recordResearchFinding(validResearchFindingRecord());
+    await store.recordResearchFinding(validAntiHackingResearchFindingRecord());
+    const improvementInput = validImprovementProposalMaterializationInput();
+    const suffix = createHash("sha256")
+      .update(improvementInput.idempotency_key)
+      .digest("hex")
+      .slice(0, 16);
+    const frozenCode: SystemCodeRecord = {
+      ...validProposedSystemCodeRecord(),
+      system_code_id: `research-system-code-proposal-${suffix}`,
+      artifact_digest: "sha256:frozen-improvement-system-code",
+      entrypoint: ["python3", "frozen-improvement.py"]
+    };
+    const fixture = await comparisonPreparationFixture(store, {
+      challengerSystemCode: frozenCode
+    });
+    await store.reservePaperTradingComparisonPreparation(fixture.preparation);
+    const attemptsBefore = await store.listImprovementProposalMaterializationAttempts();
+    const proposalsBefore = await store.listImprovementProposals();
+    const lineagesBefore = await store.listArtifactLineages();
+    await expectStoreError(
+      store.materializeImprovementProposal(improvementInput),
+      "paper_trading_comparison_frozen_authority_write_conflict"
+    );
+    await expect(store.listImprovementProposalMaterializationAttempts()).resolves.toEqual(
+      attemptsBefore
+    );
+    await expect(store.listImprovementProposals()).resolves.toEqual(proposalsBefore);
+    await expect(store.listArtifactLineages()).resolves.toEqual(lineagesBefore);
+    await expect(store.getSystemCode(frozenCode.system_code_id)).resolves.toEqual(frozenCode);
+  });
 });
+
+interface ComparisonPreparationFixtureOptions {
+  championAdmissionStatus?: "admitted" | "duplicate" | "quarantined";
+  omitChampionAdmission?: boolean;
+  mismatchChampionAdmission?: boolean;
+  futureChampionAdmission?: boolean;
+  omitChampionPromotion?: boolean;
+  mismatchChampionPromotion?: boolean;
+  futureChampionPromotion?: boolean;
+  missingPromotionEvaluation?: boolean;
+  wrongPromotionEvaluationRef?: boolean;
+  preAdmissionQualification?: boolean;
+  reversePromotionObservationTime?: boolean;
+  challengerSystemCodeAfterAdmission?: boolean;
+  comparisonMode?: "bootstrap" | "champion_challenge";
+  duplicateChallengerSystemCode?: boolean;
+  challengerSystemCode?: SystemCodeRecord;
+}
+
+async function overwriteComparisonFixtureRecord(
+  store: LocalStore,
+  collection: string,
+  id: string,
+  record: unknown
+): Promise<void> {
+  await mkdir(path.join(store.root(), collection, "items"), { recursive: true });
+  await writeFile(
+    path.join(store.root(), collection, "items", `${encodeURIComponent(id)}.json`),
+    `${JSON.stringify(record, null, 2)}\n`,
+    "utf8"
+  );
+}
+
+async function readComparisonFixtureRecord<T>(
+  store: LocalStore,
+  collection: string,
+  id: string
+): Promise<T> {
+  return JSON.parse(await readFile(
+    path.join(store.root(), collection, "items", `${encodeURIComponent(id)}.json`),
+    "utf8"
+  )) as T;
+}
+
+async function comparisonPreparationFixture(
+  store: LocalStore,
+  options: ComparisonPreparationFixtureOptions = {}
+) {
+  const champion = await store.getCandidate(FIXTURE_CANDIDATE_ID);
+  if (!champion) throw new Error("fixture champion was not materialized");
+  const challengerCode = options.challengerSystemCode ?? {
+    ...validProposedSystemCodeRecord(),
+    system_code_id: "system-code-paper-comparison-challenger",
+    artifact_digest: options.duplicateChallengerSystemCode
+      ? (await store.getSystemCode(FIXTURE_SYSTEM_CODE_ID))!.artifact_digest
+      : "sha256:paper-comparison-challenger",
+    artifact_path: "fixtures/trading-systems/clock.py",
+    capability_policy_ref: {
+      record_kind: "capability_policy",
+      id: "candidate-arena-paper-system-code"
+    },
+    created_at: options.challengerSystemCodeAfterAdmission
+      ? "2026-07-09T20:57:00.000Z"
+      : "2026-07-09T20:50:00.000Z",
+    secret_policy_ref: {
+      record_kind: "secret_policy",
+      id: "secret-policy-no-raw-values-v1"
+    }
+  };
+  await store.recordSystemCode(challengerCode);
+  const challengerMaterializationInput: CandidateMaterializationInput = {
+    ...validMaterializationInput(),
+    idempotency_key: "paper-comparison-challenger",
+    system_code_ref: options.duplicateChallengerSystemCode
+      ? { record_kind: "system_code", id: FIXTURE_SYSTEM_CODE_ID }
+      : { record_kind: "system_code", id: challengerCode.system_code_id }
+  };
+  const challengerOutcome = await store.materializeCandidate(challengerMaterializationInput);
+  if (challengerOutcome.status !== "materialized") {
+    throw new Error("comparison challenger was not materialized");
+  }
+  const challenger = challengerOutcome.candidate;
+  const championAdmission = await recordComparisonAdmissionEvidence(
+    store,
+    champion,
+    "champion",
+    options.championAdmissionStatus ?? "admitted",
+    options.omitChampionAdmission ?? false,
+    options.futureChampionAdmission
+      ? "2026-07-10T00:01:00.000Z"
+      : options.preAdmissionQualification
+        ? "2026-07-09T21:15:00.000Z"
+        : "2026-07-09T20:55:00.000Z"
+  );
+  const challengerAdmission = await recordComparisonAdmissionEvidence(
+    store,
+    challenger,
+    "challenger",
+    "admitted",
+    false,
+    "2026-07-09T20:56:00.000Z"
+  );
+  const comparisonMode = options.comparisonMode ?? "champion_challenge";
+  let championPromotionEvidence = await recordQualifiedPromotionEvidence(
+    store,
+    champion,
+    "champion",
+    "2026-07-09T21:00:00.000Z"
+  );
+  if (options.reversePromotionObservationTime) {
+    championPromotionEvidence = await reverseQualificationObservationTime(
+      store,
+      championPromotionEvidence
+    );
+  }
+  const alternateChampionPromotionEvidence = options.wrongPromotionEvaluationRef
+    ? await recordQualifiedPromotionEvidence(
+        store,
+        champion,
+        "alternate-champion-authority",
+        "2026-07-09T21:00:00.000Z"
+      )
+    : undefined;
+  const promotion: TradingPromotionRecord = {
+    record_kind: "trading_promotion",
+    version: 1,
+    trading_promotion_id: "trading-promotion-comparison-champion",
+    status: "promoted_for_trading_review",
+    candidate_ref: options.mismatchChampionPromotion
+      ? { record_kind: "trading_system_candidate", id: challenger.candidate_id }
+      : { record_kind: "trading_system_candidate", id: champion.candidate_id },
+    candidate_version_ref: options.mismatchChampionPromotion
+      ? {
+          record_kind: "candidate_version",
+          id: challenger.candidate_version.candidate_version_id
+        }
+      : {
+          record_kind: "candidate_version",
+          id: champion.candidate_version.candidate_version_id
+        },
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: championPromotionEvidence.evaluation.paper_trading_evaluation_id
+    },
+    promoted_at: options.futureChampionPromotion
+      ? "2026-07-10T00:01:00.000Z"
+      : "2026-07-09T21:31:00.000Z",
+    authority_status: "not_live"
+  };
+  if (options.missingPromotionEvaluation) {
+    await rm(path.join(
+      store.root(),
+      "paper-trading-evaluations/items",
+      `${encodeURIComponent(championPromotionEvidence.evaluation.paper_trading_evaluation_id)}.json`
+    ), { force: true });
+  }
+  if (!options.omitChampionPromotion) await store.recordTradingPromotion(promotion);
+  const preparationWithoutDigest: PaperTradingComparisonPreparationRecord = {
+    record_kind: "paper_trading_comparison_preparation",
+    version: 1,
+    paper_trading_comparison_preparation_id: "paper-comparison-preparation-store-001",
+    paper_trading_comparison_commitment_id: "paper-comparison-store-001",
+    champion: await comparisonCandidateSide(
+      store,
+      "champion",
+      champion,
+      options.mismatchChampionAdmission ? challengerAdmission : championAdmission
+    ),
+    challenger: await comparisonCandidateSide(
+      store,
+      "challenger",
+      challenger,
+      challengerAdmission
+    ),
+    champion_selection: comparisonMode === "bootstrap"
+      ? { selection_kind: "bootstrap" }
+      : {
+          selection_kind: "trading_review",
+          trading_promotion_ref: {
+            record_kind: "trading_promotion",
+            id: promotion.trading_promotion_id
+          },
+          trading_promotion_digest: comparisonExactRecordDigest(
+            paperTradingComparisonTradingPromotionDigestInput(promotion)
+          ),
+          paper_trading_evaluation_ref: {
+            record_kind: "paper_trading_evaluation",
+            id: (alternateChampionPromotionEvidence ?? championPromotionEvidence)
+              .evaluation.paper_trading_evaluation_id
+          },
+          paper_trading_evaluation_record_digest: comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationRecordDigestInput(
+              (alternateChampionPromotionEvidence ?? championPromotionEvidence).evaluation
+            )
+          ),
+          paper_trading_evaluation_commitment_ref: {
+            record_kind: "paper_trading_evaluation_commitment",
+            id: (alternateChampionPromotionEvidence ?? championPromotionEvidence)
+              .commitment.paper_trading_evaluation_commitment_id
+          },
+          paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationCommitmentRecordDigestInput(
+              (alternateChampionPromotionEvidence ?? championPromotionEvidence).commitment
+            )
+          ),
+          paper_trading_observation_chain_digest: comparisonExactRecordDigest(
+            paperTradingComparisonObservationChainDigestInput(
+              (alternateChampionPromotionEvidence ?? championPromotionEvidence).observations
+            )
+          )
+        },
+    comparison_policy: {
+      ...validPaperTradingComparisonCommitment().comparison_policy,
+      comparison_mode: comparisonMode
+    },
+    market_data_configuration_digest:
+      validPaperTradingCommitment().data_identity.market_data_configuration_digest,
+    paper_policy_identity: structuredClone(
+      validPaperTradingComparisonCommitment().paper_policy_identity
+    ),
+    committed_at: "2026-07-10T00:00:00.000Z",
+    preparation_digest: "",
+    authority_status: "not_live"
+  };
+  return {
+    champion,
+    challenger,
+    championAdmission,
+    challengerAdmission,
+    challengerMaterializationInput,
+    promotion,
+    championPromotionEvidence,
+    alternateChampionPromotionEvidence,
+    preparation: withPreparationDigest(preparationWithoutDigest)
+  };
+}
+
+async function comparisonCandidateSide(
+  store: LocalStore,
+  role: "champion" | "challenger",
+  candidate: CandidateInspectReadModel,
+  admission: CandidateAdmissionDecisionRecord
+): Promise<PaperTradingComparisonCandidateSide> {
+  const candidateVersion = await store.getCandidateVersion(
+    candidate.candidate_version.candidate_version_id
+  );
+  const systemCode = candidateVersion?.system_code_ref
+    ? await store.getSystemCode(candidateVersion.system_code_ref.id)
+    : undefined;
+  if (!candidateVersion || !systemCode) {
+    throw new Error(`comparison ${role} exact CandidateVersion/SystemCode was not found`);
+  }
+  return {
+    role,
+    candidate_ref: { record_kind: "trading_system_candidate", id: candidate.candidate_id },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: candidateVersion.candidate_version_id
+    },
+    candidate_version_digest: comparisonExactRecordDigest(
+      paperTradingComparisonCandidateVersionDigestInput(candidateVersion)
+    ),
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    system_code_record_digest: comparisonExactRecordDigest(
+      paperTradingComparisonSystemCodeRecordDigestInput(systemCode)
+    ),
+    system_code_artifact_digest: systemCode.artifact_digest,
+    candidate_admission_decision_ref: {
+      record_kind: "candidate_admission_decision",
+      id: admission.candidate_admission_decision_id
+    },
+    admission_decision_digest: comparisonExactRecordDigest(
+      paperTradingComparisonAdmissionDecisionDigestInput(admission)
+    )
+  };
+}
+
+function comparisonExactRecordDigest(input: string): string {
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+async function recordComparisonAdmissionEvidence(
+  store: LocalStore,
+  candidate: CandidateInspectReadModel,
+  suffix: "champion" | "challenger",
+  status: "admitted" | "duplicate" | "quarantined",
+  omitDecision: boolean,
+  decidedAt?: string
+): Promise<CandidateAdmissionDecisionRecord> {
+  const systemCodeId = candidate.system_code?.ref?.id;
+  const systemCode = systemCodeId ? await store.getSystemCode(systemCodeId) : undefined;
+  if (!systemCode) throw new Error(`comparison ${suffix} SystemCode was not found`);
+  const base = validCandidateAdmissionRecords();
+  const sourceDigest = status === "duplicate"
+    ? systemCode.artifact_digest
+    : `sha256:comparison-admission-source-${suffix}`;
+  const sourceSystemCode: SystemCodeRecord = {
+    ...validCandidateAdmissionSourceSystemCode(),
+    system_code_id: `system-code-comparison-admission-source-${suffix}`,
+    artifact_digest: sourceDigest,
+    created_at: "2026-07-09T20:51:00.000Z"
+  };
+  const experiment: ExperimentRunRecord = {
+    ...base.experiment,
+    experiment_run_id: `experiment-run-comparison-admission-${suffix}`,
+    research_worker_ref: {
+      record_kind: "research_worker",
+      id: `research-worker-comparison-admission-${suffix}`
+    },
+    research_direction_ref: {
+      record_kind: "research_direction",
+      id: `research-direction-comparison-admission-${suffix}`
+    },
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    trading_evaluation_task_ref: {
+      record_kind: "trading_evaluation_task",
+      id: `trading-evaluation-task-comparison-admission-${suffix}`
+    },
+    submitted_at: "2026-07-09T20:52:00.000Z"
+  };
+  const evaluation: TradingEvaluationResultRecord = {
+    ...base.evaluation,
+    trading_evaluation_result_id: `trading-evaluation-result-comparison-admission-${suffix}`,
+    experiment_run_ref: { record_kind: "experiment_run", id: experiment.experiment_run_id },
+    trading_evaluation_task_ref: { ...experiment.trading_evaluation_task_ref },
+    result_status: status === "quarantined" ? "quarantined_for_review" : "accepted",
+    completed_at: "2026-07-09T20:53:00.000Z"
+  };
+  const finding: ResearchFindingRecord = {
+    ...base.finding,
+    research_finding_id: `research-finding-comparison-admission-${suffix}`,
+    research_worker_ref: { ...experiment.research_worker_ref },
+    research_direction_ref: { ...experiment.research_direction_ref },
+    experiment_run_ref: { ...evaluation.experiment_run_ref },
+    trading_evaluation_result_ref: {
+      record_kind: "trading_evaluation_result",
+      id: evaluation.trading_evaluation_result_id
+    },
+    supporting_record_refs: [{
+      record_kind: "trading_evaluation_result",
+      id: evaluation.trading_evaluation_result_id
+    }],
+    created_at: "2026-07-09T20:54:00.000Z"
+  };
+  const admission: CandidateAdmissionDecisionRecord = {
+    ...base.admission,
+    candidate_admission_decision_id: `candidate-admission-comparison-${suffix}`,
+    source_system_code_ref: {
+      record_kind: "system_code",
+      id: sourceSystemCode.system_code_id
+    },
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    experiment_run_ref: { ...evaluation.experiment_run_ref },
+    trading_evaluation_result_ref: { ...finding.trading_evaluation_result_ref },
+    research_finding_ref: {
+      record_kind: "research_finding",
+      id: finding.research_finding_id
+    },
+    source_artifact_digest: sourceDigest,
+    submitted_artifact_digest: systemCode.artifact_digest,
+    research_worker_outcome: status === "duplicate" ? "unchanged" : "changed",
+    evaluation_status: status === "quarantined" ? "quarantined_for_review" : "accepted",
+    status,
+    reason: status === "admitted"
+      ? "evaluation_accepted"
+      : status === "duplicate"
+        ? "no_candidate_change"
+        : "evaluation_quarantined",
+    runnable_paper_handoff: status === "admitted",
+    decided_at: decidedAt ?? base.admission.decided_at
+  };
+  await store.recordSystemCode(sourceSystemCode);
+  await store.recordExperimentRun(experiment);
+  await store.recordTradingEvaluationResult(evaluation);
+  await store.recordResearchFinding(finding);
+  if (!omitDecision) await store.recordCandidateAdmissionDecision(admission);
+  return admission;
+}
+
+async function recordQualifiedPromotionEvidence(
+  store: LocalStore,
+  candidate: CandidateInspectReadModel,
+  suffix: string,
+  startedAt: string
+): Promise<{
+  run: TradingRunRecord;
+  commitment: PaperTradingEvaluationCommitmentRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  observations: PaperTradingObservationRecord[];
+}> {
+  const run = await store.createPaperTradingRun({
+    idempotency_key: `promotion-evidence-${suffix}`,
+    candidate_id: candidate.candidate_id,
+    candidate_version_id: candidate.candidate_version.candidate_version_id,
+    evidence_purpose: "qualification",
+    created_at: startedAt
+  });
+  const systemCode = (await store.getSystemCode(run.system_code_ref!.id))!;
+  const commitment = qualificationCommitment(
+    candidate,
+    run,
+    systemCode,
+    `paper-commitment-promotion-${suffix}`,
+    startedAt
+  );
+  await store.recordPaperTradingEvaluationCommitment(commitment);
+  let evaluation: PaperTradingEvaluationRecord = {
+    ...validPaperTradingEvaluation(commitment),
+    paper_trading_evaluation_id: `paper-evaluation-promotion-${suffix}`,
+    candidate_ref: { ...commitment.candidate_ref },
+    candidate_version_ref: { ...commitment.candidate_version_ref },
+    trading_run_ref: { ...commitment.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    observation_count: 0,
+    started_at: startedAt,
+    latest_score: zeroPaperTradingProfitLoss(),
+    paper_account_snapshot: structuredClone(commitment.initial_account_snapshot),
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: []
+  };
+  await store.recordPaperTradingEvaluation(evaluation);
+  const observations: PaperTradingObservationRecord[] = [];
+  for (let sequence = 1; sequence <= 30; sequence += 1) {
+    const observedAt = new Date(Date.parse(startedAt) + sequence * 60_000).toISOString();
+    const observation: PaperTradingObservationRecord = {
+      record_kind: "paper_trading_observation",
+      version: 1,
+      paper_trading_observation_id: `paper-observation-promotion-${suffix}-${sequence}`,
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: evaluation.paper_trading_evaluation_id
+      },
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment",
+        id: commitment.paper_trading_evaluation_commitment_id
+      },
+      candidate_ref: { ...commitment.candidate_ref },
+      candidate_version_ref: { ...commitment.candidate_version_ref },
+      trading_run_ref: { ...commitment.trading_run_ref },
+      sequence,
+      status: "no_order",
+      observed_at: observedAt,
+      ...(sequence === 30
+        ? {
+            market_snapshot: {
+              symbol: "BTCUSDT" as const,
+              price: 60_000,
+              observed_at: observedAt,
+              source_kind: "binance_production_public_rest" as const,
+              authority_status: "read_only" as const
+            }
+          }
+        : {}),
+      paper_account_snapshot: structuredClone(commitment.initial_account_snapshot),
+      open_orders: [],
+      processed_trading_system_event_ids: [],
+      processed_public_trade_ids: [],
+      score_delta: zeroPaperTradingProfitLoss(),
+      cumulative_score: zeroPaperTradingProfitLoss(),
+      authority_status: "not_live"
+    };
+    const { next_observation_at: _next, stopped_at: _stopped, ...previous } = evaluation;
+    evaluation = {
+      ...previous,
+      status: sequence === 30 ? "stopped" : "running",
+      observation_count: sequence,
+      last_observed_at: observedAt,
+      ...(sequence === 30
+        ? { stopped_at: observedAt }
+        : {
+            next_observation_at: new Date(
+              Date.parse(startedAt) + (sequence + 1) * 60_000
+            ).toISOString()
+          })
+    };
+    await store.recordPaperTradingObservation(observation, evaluation);
+    observations.push(observation);
+  }
+  return { run, commitment, evaluation, observations };
+}
+
+async function reverseQualificationObservationTime(
+  store: LocalStore,
+  evidence: Awaited<ReturnType<typeof recordQualifiedPromotionEvidence>>
+): Promise<Awaited<ReturnType<typeof recordQualifiedPromotionEvidence>>> {
+  const observations = structuredClone(evidence.observations);
+  const previous = observations[9];
+  const current = observations[10];
+  if (!previous || !current) throw new Error("qualification fixture requires observations");
+  observations[10] = {
+    ...current,
+    observed_at: new Date(Date.parse(previous.observed_at) - 1_000).toISOString()
+  };
+  await overwriteComparisonFixtureRecord(
+    store,
+    "paper-trading-observations",
+    current.paper_trading_observation_id,
+    observations[10]
+  );
+  return { ...evidence, observations };
+}
+
+function withPreparationDigest(
+  preparation: PaperTradingComparisonPreparationRecord
+): PaperTradingComparisonPreparationRecord {
+  return {
+    ...preparation,
+    preparation_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonPreparationDigestInput(preparation))
+      .digest("hex")}`
+  };
+}
+
+async function storedComparisonFixture(
+  store: LocalStore,
+  input: {
+    malformation?:
+      | "provider-ineligible"
+      | "window-policy-mismatch"
+      | "duplicate-resolved-artifact"
+      | "evaluation-outcome-state"
+      | "replacement-evaluation-id"
+      | "side-time-before-preparation"
+      | "run-time-before-preparation";
+  } = {}
+) {
+  const preparationFixture = await comparisonPreparationFixture(store);
+  const {
+    champion,
+    challenger,
+    preparation,
+    promotion,
+    championPromotionEvidence,
+    challengerMaterializationInput
+  } = preparationFixture;
+  await store.reservePaperTradingComparisonPreparation(preparation);
+  const championRun = await store.createPaperTradingRun({
+    idempotency_key: "paper-comparison-store:champion",
+    candidate_id: champion.candidate_id,
+    candidate_version_id: champion.candidate_version.candidate_version_id,
+    evidence_purpose: "qualification",
+    created_at: "2026-07-10T00:00:00.000Z"
+  });
+  const challengerRun = await store.createPaperTradingRun({
+    idempotency_key: "paper-comparison-store:challenger",
+    candidate_id: challenger.candidate_id,
+    candidate_version_id: challenger.candidate_version.candidate_version_id,
+    evidence_purpose: "qualification",
+    created_at: "2026-07-10T00:00:00.000Z"
+  });
+  if (input.malformation === "run-time-before-preparation") {
+    await overwriteComparisonFixtureRecord(store, "trading-runs", challengerRun.trading_run_id, {
+      ...challengerRun,
+      created_at: "2026-07-09T23:59:59.999Z"
+    });
+  }
+  const championCommitment = qualificationCommitment(
+    champion,
+    championRun,
+    (await store.getSystemCode(championRun.system_code_ref!.id))!,
+    "paper-commitment-comparison-champion",
+    preparation.committed_at
+  );
+  let challengerCommitment = qualificationCommitment(
+    challenger,
+    challengerRun,
+    (await store.getSystemCode(challengerRun.system_code_ref!.id))!,
+    "paper-commitment-comparison-challenger",
+    preparation.committed_at
+  );
+  if (input.malformation === "provider-ineligible") {
+    challengerCommitment = withPaperTradingCommitmentDigest({
+      ...challengerCommitment,
+      provider_identity: {
+        runtime_provider_kind: "managed_agent",
+        agent_profile_ref: { record_kind: "agent_profile", id: "codex" },
+        model: "gpt-5-codex",
+        provider_configuration_digest: "sha256:well-shaped-ineligible-provider",
+        qualification_eligible: false,
+        ineligibility_reason: "provider_identity_unavailable"
+      },
+      commitment_digest: ""
+    });
+  }
+  if (input.malformation === "window-policy-mismatch") {
+    challengerCommitment = withPaperTradingCommitmentDigest({
+      ...challengerCommitment,
+      window_policy: {
+        ...challengerCommitment.window_policy,
+        eligibility_policy_version: "paper-evidence-eligibility-v2"
+      },
+      commitment_digest: ""
+    });
+  }
+  if (input.malformation === "duplicate-resolved-artifact") {
+    challengerCommitment = withPaperTradingCommitmentDigest({
+      ...challengerCommitment,
+      resolved_artifact_digest: championCommitment.resolved_artifact_digest,
+      commitment_digest: ""
+    });
+  }
+  if (input.malformation === "side-time-before-preparation") {
+    challengerCommitment = withPaperTradingCommitmentDigest({
+      ...challengerCommitment,
+      committed_at: "2026-07-09T23:59:59.999Z",
+      commitment_digest: ""
+    });
+  }
+  const championEvaluation: PaperTradingEvaluationRecord = {
+    ...validPaperTradingEvaluation(championCommitment),
+    paper_trading_evaluation_id: "paper-evaluation-comparison-champion",
+    candidate_ref: { ...championCommitment.candidate_ref },
+    candidate_version_ref: { ...championCommitment.candidate_version_ref },
+    trading_run_ref: { ...championCommitment.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: championCommitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    observation_count: 0,
+    latest_score: zeroPaperTradingProfitLoss(),
+    paper_account_snapshot: structuredClone(championCommitment.initial_account_snapshot),
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: []
+  };
+  let challengerEvaluation: PaperTradingEvaluationRecord = {
+    ...validPaperTradingEvaluation(challengerCommitment),
+    paper_trading_evaluation_id: "paper-evaluation-comparison-challenger",
+    candidate_ref: { ...challengerCommitment.candidate_ref },
+    candidate_version_ref: { ...challengerCommitment.candidate_version_ref },
+    trading_run_ref: { ...challengerCommitment.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: challengerCommitment.paper_trading_evaluation_commitment_id
+    },
+    status: "not_started",
+    observation_count: 0,
+    latest_score: zeroPaperTradingProfitLoss(),
+    paper_account_snapshot: structuredClone(challengerCommitment.initial_account_snapshot),
+    open_orders: [],
+    processed_trading_system_event_ids: [],
+    processed_public_trade_ids: []
+  };
+  await store.recordPaperTradingEvaluationCommitment(championCommitment);
+  await store.recordPaperTradingEvaluation(championEvaluation);
+  await store.recordPaperTradingEvaluationCommitment(challengerCommitment);
+  await store.recordPaperTradingEvaluation(challengerEvaluation);
+  if (input.malformation === "evaluation-outcome-state") {
+    challengerEvaluation = {
+      ...challengerEvaluation,
+      latest_score: {
+        revenue_usdt: 1,
+        cost_usdt: 0,
+        net_revenue_usdt: 1,
+        net_return_pct: 0.0001
+      },
+      next_observation_at: "2026-07-10T00:01:00.000Z"
+    };
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      challengerEvaluation.paper_trading_evaluation_id,
+      challengerEvaluation
+    );
+  }
+  if (input.malformation === "replacement-evaluation-id") {
+    await store.recordPaperTradingEvaluation({
+      ...challengerEvaluation,
+      paper_trading_evaluation_id: "paper-evaluation-comparison-challenger-replacement"
+    });
+  }
+  const comparison = withComparisonDigest({
+    ...validPaperTradingComparisonCommitment(),
+    paper_trading_comparison_commitment_id:
+      preparation.paper_trading_comparison_commitment_id,
+    preparation_ref: {
+      record_kind: "paper_trading_comparison_preparation",
+      id: preparation.paper_trading_comparison_preparation_id
+    },
+    champion: comparisonSide(preparation.champion, championCommitment, championEvaluation),
+    challenger: comparisonSide(preparation.challenger, challengerCommitment, challengerEvaluation),
+    champion_selection: structuredClone(preparation.champion_selection),
+    comparison_policy: structuredClone(preparation.comparison_policy),
+    market_data_configuration_digest: preparation.market_data_configuration_digest,
+    paper_policy_identity: structuredClone(preparation.paper_policy_identity),
+    committed_at: preparation.committed_at,
+    commitment_digest: ""
+  });
+  return {
+    champion,
+    challenger,
+    championRun,
+    challengerRun,
+    championCommitment,
+    challengerCommitment,
+    championEvaluation,
+    challengerEvaluation,
+    preparation,
+    promotion,
+    championPromotionEvidence,
+    challengerMaterializationInput,
+    comparison
+  };
+}
+
+function qualificationCommitment(
+  candidate: CandidateInspectReadModel,
+  run: TradingRunRecord,
+  systemCode: SystemCodeRecord,
+  id: string,
+  committedAt: string
+): PaperTradingEvaluationCommitmentRecord {
+  const base = validPaperTradingCommitment();
+  return withPaperTradingCommitmentDigest({
+    ...base,
+    paper_trading_evaluation_commitment_id: id,
+    evidence_purpose: "qualification",
+    candidate_ref: { record_kind: "trading_system_candidate", id: candidate.candidate_id },
+    candidate_version_ref: {
+      record_kind: "candidate_version",
+      id: candidate.candidate_version.candidate_version_id
+    },
+    trading_run_ref: { record_kind: "trading_run", id: run.trading_run_id },
+    system_code_ref: { record_kind: "system_code", id: systemCode.system_code_id },
+    system_code_artifact_digest: systemCode.artifact_digest,
+    resolved_artifact_digest: `sha256:resolved-${systemCode.system_code_id}`,
+    runtime_identity: {
+      artifact_kind: systemCode.artifact_kind,
+      runtime_kind: systemCode.runtime_kind,
+      entrypoint: [...systemCode.entrypoint],
+      ...(systemCode.artifact_runtime_contract_ref
+        ? { artifact_runtime_contract_ref: { ...systemCode.artifact_runtime_contract_ref } }
+        : {})
+    },
+    capability_policy_ref: { ...systemCode.capability_policy_ref },
+    secret_policy_ref: { ...systemCode.secret_policy_ref },
+    window_policy: {
+      ...base.window_policy,
+      release_policy: "sealed_until_adjudication"
+    },
+    committed_at: committedAt,
+    commitment_digest: ""
+  });
+}
+
+function comparisonSide(
+  frozen: PaperTradingComparisonCandidateSide,
+  commitment: PaperTradingEvaluationCommitmentRecord,
+  evaluation: PaperTradingEvaluationRecord
+): PaperTradingComparisonSide {
+  return {
+    ...structuredClone(frozen),
+    trading_run_ref: { ...commitment.trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: commitment.paper_trading_evaluation_commitment_id
+    },
+    paper_trading_evaluation_commitment_digest: commitment.commitment_digest,
+    paper_trading_evaluation_commitment_record_digest: comparisonExactRecordDigest(
+      paperTradingComparisonEvaluationCommitmentRecordDigestInput(commitment)
+    ),
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: evaluation.paper_trading_evaluation_id
+    },
+    paper_trading_evaluation_record_digest: comparisonExactRecordDigest(
+      paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+    )
+  };
+}
+
+function withComparisonDigest(
+  comparison: PaperTradingComparisonCommitmentRecord
+): PaperTradingComparisonCommitmentRecord {
+  return {
+    ...comparison,
+    commitment_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonCommitmentDigestInput(comparison))
+      .digest("hex")}`
+  };
+}
+
+const boundSideWriterKinds = [
+  "create-run-exact",
+  "commitment-exact",
+  "evaluation-exact",
+  "alternate-commitment",
+  "alternate-commitment-evaluation-chain",
+  "evaluation",
+  "observation",
+  "ledger",
+  "run-control",
+  "sandbox-start",
+  "sandbox-observations",
+  "sandbox-stop"
+] as const;
+type BoundSideWriterKind = (typeof boundSideWriterKinds)[number];
+
+async function invokeBoundSideWriter(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedComparisonFixture>>,
+  writer: BoundSideWriterKind
+): Promise<unknown> {
+  if (writer === "create-run-exact") {
+    return store.createPaperTradingRun({
+      idempotency_key: "paper-comparison-store:challenger",
+      candidate_id: fixture.challenger.candidate_id,
+      candidate_version_id: fixture.challenger.candidate_version.candidate_version_id,
+      evidence_purpose: "qualification",
+      created_at: fixture.preparation.committed_at
+    });
+  }
+  if (writer === "commitment-exact") {
+    return store.recordPaperTradingEvaluationCommitment(fixture.challengerCommitment);
+  }
+  if (writer === "evaluation-exact") {
+    return store.recordPaperTradingEvaluation(fixture.challengerEvaluation);
+  }
+  if (writer === "evaluation") {
+    return store.recordPaperTradingEvaluation({
+      ...fixture.challengerEvaluation,
+      latest_failure_reason: "post-pair-mutation"
+    });
+  }
+  if (writer === "alternate-commitment" ||
+    writer === "alternate-commitment-evaluation-chain") {
+    const commitment = alternateSideCommitment(fixture);
+    await store.recordPaperTradingEvaluationCommitment(commitment);
+    if (writer === "alternate-commitment") return commitment;
+    return store.recordPaperTradingEvaluation({
+      ...fixture.challengerEvaluation,
+      paper_trading_evaluation_id: "paper-evaluation-comparison-challenger-alternate-chain",
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment",
+        id: commitment.paper_trading_evaluation_commitment_id
+      }
+    });
+  }
+  if (writer === "observation") {
+    const observedAt = "2026-07-10T00:01:00.000Z";
+    const observation = {
+      ...validPaperTradingObservation(
+        fixture.challengerCommitment,
+        fixture.challengerEvaluation
+      ),
+      paper_trading_observation_id: "paper-observation-post-pair-mutation",
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation" as const,
+        id: fixture.challengerEvaluation.paper_trading_evaluation_id
+      },
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment" as const,
+        id: fixture.challengerCommitment.paper_trading_evaluation_commitment_id
+      },
+      candidate_ref: { ...fixture.challengerCommitment.candidate_ref },
+      candidate_version_ref: { ...fixture.challengerCommitment.candidate_version_ref },
+      trading_run_ref: { ...fixture.challengerCommitment.trading_run_ref },
+      sequence: 1,
+      observed_at: observedAt
+    };
+    return store.recordPaperTradingObservation(observation, {
+      ...fixture.challengerEvaluation,
+      status: "running",
+      observation_count: 1,
+      last_observed_at: observedAt,
+      next_observation_at: "2026-07-10T00:02:00.000Z"
+    });
+  }
+  if (writer === "ledger") {
+    return store.recordLedger({
+      ...validLedgerInput(fixture.challenger.candidate_version.candidate_version_id),
+      idempotency_key: "post-pair-ledger",
+      candidate_id: fixture.challenger.candidate_id,
+      candidate_version_id: fixture.challenger.candidate_version.candidate_version_id,
+      runtime_id: fixture.challengerRun.trading_run_id
+    });
+  }
+  if (writer === "run-control") {
+    return store.recordRunControlAudit({
+      ...validRunControlAuditInput(
+        fixture.challenger.candidate_version.candidate_version_id
+      ),
+      idempotency_key: "post-pair-run-control",
+      candidate_id: fixture.challenger.candidate_id,
+      candidate_version_id: fixture.challenger.candidate_version.candidate_version_id,
+      runtime_id: fixture.challengerRun.trading_run_id
+    });
+  }
+  const sandbox = boundSideSandboxInput(fixture);
+  if (writer === "sandbox-start") return store.recordSandboxStart(sandbox);
+  if (writer === "sandbox-observations") {
+    return store.recordSandboxObservations(sandbox.instance.sandbox_id, {
+      lifecycle_status: "running",
+      logs: [],
+      heartbeats: [],
+      command_evidence: []
+    });
+  }
+  return store.stopSandbox(
+    { sandbox_id: sandbox.instance.sandbox_id, stopped_at: "2026-07-10T00:02:00.000Z" },
+    {}
+  );
+}
+
+function alternateSideCommitment(
+  fixture: Awaited<ReturnType<typeof storedComparisonFixture>>
+): PaperTradingEvaluationCommitmentRecord {
+  return withPaperTradingCommitmentDigest({
+    ...fixture.challengerCommitment,
+    paper_trading_evaluation_commitment_id:
+      "paper-commitment-comparison-challenger-alternate-chain",
+    commitment_digest: ""
+  });
+}
+
+function boundSideSandboxInput(
+  fixture: Awaited<ReturnType<typeof storedComparisonFixture>>
+): SandboxObservationInput {
+  return {
+    instance: {
+      record_kind: "sandbox",
+      version: 1,
+      sandbox_id: "sandbox-post-pair-writer",
+      adapter_kind: "deterministic_test",
+      system_code_ref: { ...fixture.challengerRun.system_code_ref! },
+      runtime_ref: {
+        record_kind: "trading_run",
+        id: fixture.challengerRun.trading_run_id
+      },
+      sandbox_placement_ref: { ...fixture.challengerRun.placement_ref },
+      lifecycle_status: "running",
+      sandbox_name: "paper-comparison-post-pair-writer",
+      created_at: "2026-07-10T00:01:00.000Z",
+      started_at: "2026-07-10T00:01:00.000Z",
+      log_refs: [],
+      heartbeat_refs: [],
+      command_evidence_refs: [],
+      authority_status: "not_live"
+    }
+  };
+}
+
+async function seedBoundSandboxForWriterTest(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedComparisonFixture>>
+): Promise<void> {
+  const sandbox = boundSideSandboxInput(fixture).instance;
+  await overwriteComparisonFixtureRecord(store, "sandboxes", sandbox.sandbox_id, sandbox);
+}
+
+async function boundComparisonEvidenceSnapshot(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedComparisonFixture>>
+): Promise<unknown> {
+  const collections = [
+    "order-requests",
+    "gateway-results",
+    "execution-results",
+    "run-control-commands",
+    "run-control-decisions",
+    "runtime-audit-events",
+    "sandboxes",
+    "sandbox-logs",
+    "runtime-heartbeats",
+    "sandbox-command-evidence"
+  ];
+  return {
+    run: await store.getTradingRun(fixture.challengerRun.trading_run_id),
+    commitment: await store.getPaperTradingEvaluationCommitment(
+      fixture.challengerCommitment.paper_trading_evaluation_commitment_id
+    ),
+    evaluation: await store.getPaperTradingEvaluation(
+      fixture.challengerEvaluation.paper_trading_evaluation_id
+    ),
+    observations: await store.listPaperTradingObservations(
+      fixture.challengerEvaluation.paper_trading_evaluation_id
+    ),
+    allCommitments: await store.listPaperTradingEvaluationCommitments(),
+    allEvaluations: await store.listPaperTradingEvaluations(),
+    files: Object.fromEntries(await Promise.all(collections.map(async (collection) => [
+      collection,
+      await readdir(path.join(store.root(), collection, "items")).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+      })
+    ])))
+  };
+}
+
+async function comparisonGraphByteSnapshot(
+  store: LocalStore
+): Promise<Record<string, Array<{ file: string; bytes: string }>>> {
+  const collections = [
+    "trading-promotions",
+    "paper-trading-comparison-preparations",
+    "paper-trading-comparison-commitments",
+    "trading-runs",
+    "paper-trading-evaluation-commitments",
+    "paper-trading-evaluations",
+    "paper-trading-observations"
+  ];
+  return Object.fromEntries(await Promise.all(collections.map(async (collection) => {
+    const itemDir = path.join(store.root(), collection, "items");
+    const files = (await readdir(itemDir).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    })).sort();
+    return [collection, await Promise.all(files.map(async (file) => ({
+      file,
+      bytes: await readFile(path.join(itemDir, file), "utf8")
+    })))] as const;
+  })));
+}
+
+type PromotionEvidenceFixture = {
+  championPromotionEvidence: Awaited<ReturnType<typeof recordQualifiedPromotionEvidence>>;
+};
+
+async function promotionEvidenceSnapshot(
+  store: LocalStore,
+  fixture: PromotionEvidenceFixture
+): Promise<unknown> {
+  const evidence = fixture.championPromotionEvidence;
+  return {
+    commitment: await store.getPaperTradingEvaluationCommitment(
+      evidence.commitment.paper_trading_evaluation_commitment_id
+    ),
+    evaluation: await store.getPaperTradingEvaluation(
+      evidence.evaluation.paper_trading_evaluation_id
+    ),
+    observations: await store.listPaperTradingObservations(
+      evidence.evaluation.paper_trading_evaluation_id
+    )
+  };
+}
+
+async function invokeFrozenPromotionEvidenceWriter(
+  store: LocalStore,
+  fixture: PromotionEvidenceFixture,
+  writer: "evaluation-mutation" | "observation-append"
+): Promise<unknown> {
+  const evidence = fixture.championPromotionEvidence;
+  if (writer === "evaluation-mutation") {
+    return store.recordPaperTradingEvaluation({
+      ...evidence.evaluation,
+      latest_failure_reason: "attempted-frozen-promotion-evaluation-mutation"
+    });
+  }
+  const last = evidence.observations.at(-1);
+  if (!last) throw new Error("promotion evidence fixture has no observations");
+  const observedAt = new Date(Date.parse(last.observed_at) + 60_000).toISOString();
+  const { market_snapshot: _marketSnapshot, ...lastWithoutMarketSnapshot } = last;
+  const observation: PaperTradingObservationRecord = {
+    ...lastWithoutMarketSnapshot,
+    paper_trading_observation_id: `${last.paper_trading_observation_id}-append-attempt`,
+    sequence: last.sequence + 1,
+    observed_at: observedAt
+  };
+  const { stopped_at: _stoppedAt, ...evaluationWithoutStoppedAt } = evidence.evaluation;
+  return store.recordPaperTradingObservation(observation, {
+    ...evaluationWithoutStoppedAt,
+    status: "stopped",
+    observation_count: observation.sequence,
+    last_observed_at: observedAt,
+    stopped_at: observedAt
+  });
+}
+
+async function rewriteFrozenSideDigestsForSemanticTest(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedComparisonFixture>>,
+  updates: Partial<PaperTradingComparisonSide>
+): Promise<PaperTradingComparisonCommitmentRecord> {
+  const preparation = withPreparationDigest({
+    ...fixture.preparation,
+    challenger: { ...fixture.preparation.challenger, ...updates },
+    preparation_digest: ""
+  });
+  const pair = withComparisonDigest({
+    ...fixture.comparison,
+    challenger: { ...fixture.comparison.challenger, ...updates },
+    commitment_digest: ""
+  });
+  await overwriteComparisonFixtureRecord(
+    store,
+    "paper-trading-comparison-preparations",
+    preparation.paper_trading_comparison_preparation_id,
+    preparation
+  );
+  await overwriteComparisonFixtureRecord(
+    store,
+    "paper-trading-comparison-commitments",
+    pair.paper_trading_comparison_commitment_id,
+    pair
+  );
+  return pair;
+}
+
+class InterleavingComparisonLocalStore extends LocalStore {
+  latestPromotionReadEntered: Promise<void> = Promise.resolve();
+  exactEvaluationReadEntered: Promise<void> = Promise.resolve();
+  exactRunReadEntered: Promise<void> = Promise.resolve();
+  private markPromotionReadEntered: (() => void) | undefined;
+  private promotionReadRelease: Promise<void> | undefined;
+  private releasePromotionRead: (() => void) | undefined;
+  private markEvaluationReadEntered: (() => void) | undefined;
+  private evaluationReadRelease: Promise<void> | undefined;
+  private releaseEvaluationRead: (() => void) | undefined;
+  private markRunReadEntered: (() => void) | undefined;
+  private runReadRelease: Promise<void> | undefined;
+  private releaseRunRead: (() => void) | undefined;
+
+  pauseLatestPromotionRead(): void {
+    this.latestPromotionReadEntered = new Promise((resolve) => {
+      this.markPromotionReadEntered = resolve;
+    });
+    this.promotionReadRelease = new Promise((resolve) => {
+      this.releasePromotionRead = resolve;
+    });
+  }
+
+  releaseLatestPromotionRead(): void { this.releasePromotionRead?.(); }
+
+  pauseExactEvaluationRead(): void {
+    this.exactEvaluationReadEntered = new Promise((resolve) => {
+      this.markEvaluationReadEntered = resolve;
+    });
+    this.evaluationReadRelease = new Promise((resolve) => {
+      this.releaseEvaluationRead = resolve;
+    });
+  }
+
+  releaseExactEvaluationRead(): void { this.releaseEvaluationRead?.(); }
+
+  pauseExactRunRead(): void {
+    this.exactRunReadEntered = new Promise((resolve) => {
+      this.markRunReadEntered = resolve;
+    });
+    this.runReadRelease = new Promise((resolve) => {
+      this.releaseRunRead = resolve;
+    });
+  }
+
+  releaseExactRunRead(): void { this.releaseRunRead?.(); }
+
+  override async getLatestTradingPromotion(): Promise<TradingPromotionRecord | undefined> {
+    const result = await super.getLatestTradingPromotion();
+    if (this.promotionReadRelease) {
+      this.markPromotionReadEntered?.();
+      await this.promotionReadRelease;
+      this.promotionReadRelease = undefined;
+      this.releasePromotionRead = undefined;
+      this.markPromotionReadEntered = undefined;
+    }
+    return result;
+  }
+
+  override async getPaperTradingEvaluation(
+    evaluationId: string
+  ): Promise<PaperTradingEvaluationRecord | undefined> {
+    const result = await super.getPaperTradingEvaluation(evaluationId);
+    if (this.evaluationReadRelease) {
+      this.markEvaluationReadEntered?.();
+      await this.evaluationReadRelease;
+      this.evaluationReadRelease = undefined;
+      this.releaseEvaluationRead = undefined;
+      this.markEvaluationReadEntered = undefined;
+    }
+    return result;
+  }
+
+  override async getTradingRun(tradingRunId: string): Promise<TradingRunRecord | undefined> {
+    const result = await super.getTradingRun(tradingRunId);
+    if (this.runReadRelease) {
+      this.markRunReadEntered?.();
+      await this.runReadRelease;
+      this.runReadRelease = undefined;
+      this.releaseRunRead = undefined;
+      this.markRunReadEntered = undefined;
+    }
+    return result;
+  }
+}
+
+function laterChampionPromotion(
+  fixture: Awaited<ReturnType<typeof comparisonPreparationFixture>>
+): TradingPromotionRecord {
+  return {
+    ...fixture.promotion,
+    trading_promotion_id: "trading-promotion-after-reservation",
+    promoted_at: "2026-07-09T23:59:59.500Z"
+  };
+}
+
+async function expectPromiseStillPending(promise: Promise<unknown>): Promise<void> {
+  const state = await Promise.race([
+    promise.then(() => "fulfilled", () => "rejected"),
+    new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 5))
+  ]);
+  expect(state).toBe("pending");
+}
+
+function validPaperTradingComparisonCommitment(): PaperTradingComparisonCommitmentRecord {
+  return {
+    record_kind: "paper_trading_comparison_commitment",
+    version: 1,
+    paper_trading_comparison_commitment_id: "paper-comparison-store-001",
+    preparation_ref: {
+      record_kind: "paper_trading_comparison_preparation",
+      id: "paper-comparison-preparation-store-001"
+    },
+    champion: comparisonPlaceholderSide("champion"),
+    challenger: comparisonPlaceholderSide("challenger"),
+    champion_selection: {
+      selection_kind: "trading_review",
+      trading_promotion_ref: { record_kind: "trading_promotion", id: "replaced-promotion" },
+      trading_promotion_digest: "sha256:replaced-promotion-record",
+      paper_trading_evaluation_ref: {
+        record_kind: "paper_trading_evaluation",
+        id: "replaced-promotion-evaluation"
+      },
+      paper_trading_evaluation_record_digest: "sha256:replaced-promotion-evaluation-record",
+      paper_trading_evaluation_commitment_ref: {
+        record_kind: "paper_trading_evaluation_commitment",
+        id: "replaced-promotion-commitment"
+      },
+      paper_trading_evaluation_commitment_record_digest:
+        "sha256:replaced-promotion-commitment-record",
+      paper_trading_observation_chain_digest: "sha256:replaced-promotion-observation-chain"
+    },
+    comparison_policy: {
+      policy_version: "paper-comparison-v1",
+      comparison_mode: "champion_challenge",
+      symbol: "BTCUSDT",
+      interval_ms: 60_000,
+      minimum_observation_count: 30,
+      minimum_elapsed_ms: 1_800_000,
+      maximum_observation_count: 120,
+      maximum_elapsed_ms: 7_200_000,
+      maximum_start_skew_ms: 5_000,
+      maximum_provider_request_count_per_side: 500,
+      maximum_retry_count_per_side: 3,
+      primary_metric: "net_revenue_usdt",
+      minimum_net_revenue_lift_usdt: 10,
+      required_confirmation_count: 2,
+      require_non_overlapping_windows: true,
+      require_both_qualified: true,
+      release_policy: "sealed_until_adjudication"
+    },
+    market_data_configuration_digest: "sha256:market-data-configuration",
+    paper_policy_identity: {
+      market_data_policy_version: "binance-public-market-v1",
+      gateway_policy_version: "paper-gateway-dry-run-v1",
+      cost_policy_version: "paper-cost-8bps-v1",
+      funding_policy_version: "paper-funding-engine-v1",
+      slippage_policy_version: "paper-public-fill-slippage-v1",
+      fill_policy_version: "paper-public-execution-fill-v1",
+      risk_policy_version: "paper-risk-validation-v1",
+      paper_account_policy_version: "fake-paper-account-10000usdt-v1",
+      decision_event_protocol_version: "trading-system-paper-events-v1",
+      persistent_state_boundary_version: "paper-engine-checkpoint-v1"
+    },
+    committed_at: "2026-07-10T00:00:00.000Z",
+    commitment_digest: "",
+    authority_status: "not_live"
+  };
+}
+
+function comparisonPlaceholderSide(role: "champion" | "challenger"): PaperTradingComparisonSide {
+  return {
+    role,
+    candidate_ref: { record_kind: "trading_system_candidate", id: `replaced-${role}` },
+    candidate_version_ref: { record_kind: "candidate_version", id: `replaced-${role}-version` },
+    candidate_version_digest: `sha256:replaced-${role}-version-record`,
+    system_code_ref: { record_kind: "system_code", id: `replaced-${role}-code` },
+    system_code_record_digest: `sha256:replaced-${role}-code-record`,
+    system_code_artifact_digest: `sha256:replaced-${role}-code-artifact`,
+    candidate_admission_decision_ref: {
+      record_kind: "candidate_admission_decision",
+      id: `replaced-${role}-admission`
+    },
+    admission_decision_digest: `sha256:replaced-${role}-admission-record`,
+    trading_run_ref: { record_kind: "trading_run", id: `replaced-${role}-run` },
+    paper_trading_evaluation_commitment_ref: {
+      record_kind: "paper_trading_evaluation_commitment",
+      id: `replaced-${role}-commitment`
+    },
+    paper_trading_evaluation_commitment_digest: `sha256:replaced-${role}-commitment-content`,
+    paper_trading_evaluation_commitment_record_digest:
+      `sha256:replaced-${role}-commitment-record`,
+    paper_trading_evaluation_ref: {
+      record_kind: "paper_trading_evaluation",
+      id: `replaced-${role}-evaluation`
+    },
+    paper_trading_evaluation_record_digest: `sha256:replaced-${role}-evaluation-record`
+  };
+}
 
 function validMaterializationInput(): CandidateMaterializationInput {
   return {
