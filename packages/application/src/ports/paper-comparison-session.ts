@@ -3,6 +3,7 @@ import type {
   PaperTradingComparisonActivationSideResultReason,
   PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
+  PaperTradingComparisonTickIOWriteContext,
   PaperTradingComparisonTickRecord,
   PaperTradingEvaluationStatus,
   Ref,
@@ -46,6 +47,11 @@ export interface PaperTradingComparisonSessionPort {
     side: PaperTradingComparisonActivationSide;
     authority: PaperTradingComparisonRuntimeWriteContext;
   }): Promise<PaperTradingComparisonSessionSideStatus>;
+  enableComparisonTickAttributionSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonTickIOWriteContext;
+    tick: PaperTradingComparisonTickRecord;
+  }): Promise<void>;
   prepareComparisonCheckpointSide(input: {
     side: PaperTradingComparisonActivationSide;
     authority: PaperTradingComparisonCheckpointWriteContext;

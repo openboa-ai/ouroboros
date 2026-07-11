@@ -336,13 +336,14 @@ git commit -m "feat: preserve comparison tick acknowledgement lineage"
 - Modify: `packages/application/src/ports/paper-comparison-session.ts`
 - Modify: `packages/application/src/trading/paper/session-service.ts`
 - Modify: `packages/application/src/trading/paper/session-service.test.ts`
+- Modify: `packages/application/src/trading/paper/comparison-runtime-activation-coordinator.test.ts`
 
 **Interfaces:**
 - Produces: `enableComparisonTickAttributionSide`
 - Consumes: Task 2 Store persistence and Task 3 provider hooks
 - Preserves: activation and first-checkpoint behavior before enablement
 
-- [ ] **Step 1: Write failing session tests**
+- [x] **Step 1: Write failing session tests**
 
 Start one authorized comparison side, then prove:
 
@@ -356,7 +357,7 @@ Start one authorized comparison side, then prove:
 - cross-role, stale, malformed, or over-budget ack fails;
 - no Ledger, observation, evaluation, run-control, sandbox lifecycle, or market-source read occurs.
 
-- [ ] **Step 2: Run session attribution tests and verify RED**
+- [x] **Step 2: Run session attribution tests and verify RED**
 
 Run:
 
@@ -366,7 +367,7 @@ npx vitest run packages/application/src/trading/paper/session-service.test.ts -t
 
 Expected: FAIL because session enablement and provider hook wiring are missing.
 
-- [ ] **Step 3: Add the focused session method**
+- [x] **Step 3: Add the focused session method**
 
 Add:
 
@@ -384,22 +385,23 @@ outcome, role-bound post-checkpoint running state, provider session, frozen cap,
 and ack hooks derive exact write operations, use total request count including prior provider
 sessions, and return deterministic contexts from persisted records.
 
-- [ ] **Step 4: Run session, provider, Store, and checkpoint regressions**
+- [x] **Step 4: Run session, provider, Store, and checkpoint regressions**
 
 Run:
 
 ```bash
 npx vitest run packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/gateway/runtime-binding.test.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts packages/local-store/test/local-store.test.ts -t "attribution|comparison tick|checkpoint"
+npx vitest run packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/gateway/runtime-binding.test.ts packages/application/src/trading/paper/comparison-checkpoint-coordinator.test.ts packages/application/src/trading/paper/comparison-runtime-activation-coordinator.test.ts
 npm run typecheck --workspace @ouroboros/application
 npm run typecheck --workspace @ouroboros/local-store
 ```
 
 Expected: selected tests and both typechecks pass.
 
-- [ ] **Step 5: Commit session integration**
+- [x] **Step 5: Commit session integration**
 
 ```bash
-git add packages/application/src/ports/paper-comparison-session.ts packages/application/src/trading/paper/session-service.ts packages/application/src/trading/paper/session-service.test.ts
+git add packages/application/src/ports/paper-comparison-session.ts packages/application/src/trading/paper/session-service.ts packages/application/src/trading/paper/session-service.test.ts packages/application/src/trading/paper/comparison-runtime-activation-coordinator.test.ts
 git commit -m "feat: wire role-bound tick attribution"
 ```
 
