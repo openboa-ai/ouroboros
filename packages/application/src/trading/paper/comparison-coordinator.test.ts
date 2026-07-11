@@ -71,6 +71,8 @@ import { LocalStorePaperTradingComparisonWindowStateReader } from
 import { PaperTradingComparisonWindowRunner } from "./comparison-window-runner";
 import { PaperTradingComparisonQualificationService } from
   "./comparison-qualification-service";
+import { PaperTradingComparisonVerdictService } from
+  "./comparison-verdict-service";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
   policy_version: "paper-comparison-v1",
@@ -920,6 +922,117 @@ describe("PaperTradingComparisonCoordinator", () => {
       qualification_reasons: ["champion_ledger_lineage_mismatch"]
     });
 
+    await expect(fixture.coordinator.prepare({
+      ...fixture.input,
+      idempotencyKey: "real-runtime-pair-before-verdict"
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_active_pair_conflict"
+    });
+    const activationOutcomes = await fixture.store
+      .listPaperTradingComparisonActivationOutcomes(
+        started.attempt.paper_trading_comparison_activation_attempt_id
+      );
+    const finalActivationOutcome = activationOutcomes.at(-1);
+    const comparisonTicks = await fixture.store.listPaperTradingComparisonTicks(
+      prepared.commitment.paper_trading_comparison_commitment_id
+    );
+    const latestComparisonTick = comparisonTicks.at(-1);
+    if (!finalActivationOutcome || !latestComparisonTick) {
+      throw new Error("terminal comparison evidence was not persisted");
+    }
+    const verdictEvaluatedAt = new Date(Math.max(
+      Date.parse(finalActivationOutcome.completed_at),
+      Date.parse(latestComparisonTick.observed_at)
+    ) + 1_000).toISOString();
+    const verdictService = new PaperTradingComparisonVerdictService({
+      store: fixture.store,
+      qualifications: qualifier,
+      now: () => verdictEvaluatedAt
+    });
+    const effectsBeforeVerdict = structuredClone(runtimeEffects);
+    const preparationEffectsBeforeVerdict = structuredClone(fixture.effects);
+    const verdict = await verdictService.evaluate({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    });
+    await expect(verdictService.evaluate({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    })).resolves.toEqual(verdict);
+    expect(verdict).toMatchObject({
+      pair_qualification: { qualification_status: "qualified" },
+      verdict_outcome: "challenger_not_improved",
+      champion: { net_revenue_usdt: 0, cost_usdt: 0 },
+      challenger: { net_revenue_usdt: 0, cost_usdt: 0 },
+      metric: {
+        metric_kind: "net_revenue_usdt",
+        champion_value_usdt: 0,
+        challenger_value_usdt: 0,
+        observed_lift_usdt: 0,
+        minimum_lift_usdt: 10
+      },
+      confirmation_disposition: "not_applicable",
+      promotion_eligibility: "not_eligible",
+      release_status: "sealed",
+      next_action: "return_to_candidate_arena",
+      evaluation_authority: "external_to_trading_systems",
+      authority_status: "not_live"
+    });
+    await expect(fixture.store.listPaperTradingComparisonVerdicts(
+      prepared.commitment.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([verdict]);
+    await expect(persistedInertCounts(fixture.store, prepared))
+      .resolves.toEqual(countsBeforeQualification);
+    expect(runtimeEffects).toEqual(effectsBeforeVerdict);
+    expect(fixture.effects).toEqual(preparationEffectsBeforeVerdict);
+
+    const released = await fixture.coordinator.prepare({
+      ...fixture.input,
+      idempotencyKey: "real-runtime-pair-after-verdict"
+    });
+    expect(released.commitment.paper_trading_comparison_commitment_id).not.toBe(
+      prepared.commitment.paper_trading_comparison_commitment_id
+    );
+    expect(released.champion.run.trading_run_id).not.toBe(
+      prepared.champion.run.trading_run_id
+    );
+    expect(released.challenger.run.trading_run_id).not.toBe(
+      prepared.challenger.run.trading_run_id
+    );
+    expect(released.champion.evaluation.paper_trading_evaluation_id).not.toBe(
+      prepared.champion.evaluation.paper_trading_evaluation_id
+    );
+    expect(released.challenger.evaluation.paper_trading_evaluation_id).not.toBe(
+      prepared.challenger.evaluation.paper_trading_evaluation_id
+    );
+    expect(released.champion.run).toMatchObject({
+      runtime_lifecycle_status: "registered"
+    });
+    expect(released.challenger.run).toMatchObject({
+      runtime_lifecycle_status: "registered"
+    });
+    expect(released.champion.evaluation).toMatchObject({
+      status: "not_started",
+      observation_count: 0
+    });
+    expect(released.challenger.evaluation).toMatchObject({
+      status: "not_started",
+      observation_count: 0
+    });
+    expect(JSON.stringify(released)).not.toContain(
+      verdict.paper_trading_comparison_verdict_id
+    );
+    await expect(fixture.store.listPaperTradingComparisonActivations(
+      released.commitment.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([]);
+    await expect(fixture.store.listPaperTradingComparisonVerdicts(
+      released.commitment.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([]);
+    expect(runtimeEffects).toEqual(effectsBeforeVerdict);
+    expect(fixture.effects).toEqual(preparationEffectsBeforeVerdict);
+
     const restartedStore = new LocalStore(fixture.store.root());
     await restartedStore.initialize();
     const restartedSessions = runtimeSessions(restartedStore);
@@ -956,19 +1069,35 @@ describe("PaperTradingComparisonCoordinator", () => {
         outcome_reason: "handoff_cleanup"
       })
     ]));
-    const restartedQualification = await new PaperTradingComparisonQualificationService({
+    const restartedQualifier = new PaperTradingComparisonQualificationService({
       store: restartedStore,
       windowReader: new LocalStorePaperTradingComparisonWindowStateReader({
         store: restartedStore,
         activations: restarted,
         now: () => driverNow
       })
-    }).assess({
+    });
+    const restartedQualification = await restartedQualifier.assess({
       activationId: authorized.activation.paper_trading_comparison_activation_id,
       activationAttemptId:
         started.attempt.paper_trading_comparison_activation_attempt_id
     });
     expect(restartedQualification).toEqual(qualification);
+    const restartedVerdict = await new PaperTradingComparisonVerdictService({
+      store: restartedStore,
+      qualifications: restartedQualifier,
+      now: () => new Date(
+        Date.parse(verdict.evaluated_at) + 24 * 60 * 60_000
+      ).toISOString()
+    }).evaluate({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id
+    });
+    expect(restartedVerdict).toEqual(verdict);
+    await expect(restartedStore.listPaperTradingComparisonVerdicts(
+      prepared.commitment.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([verdict]);
     expect(runtimeEffects).toEqual({
       providerStarts: 2,
       providerCloses: 2,
