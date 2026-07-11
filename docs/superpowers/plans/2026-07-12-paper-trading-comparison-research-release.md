@@ -51,7 +51,7 @@ records, existing confirmation campaign/outcome evidence, CandidateArena fixture
 - Consumes: existing campaign/outcome, ResearchFinding, ArtifactLineage, and canonical persisted
   digest contracts
 
-- [ ] **Step 1: Write failing runtime-shape and digest tests**
+- [x] **Step 1: Write failing runtime-shape and digest tests**
 
 Create a valid release with exact embedded records:
 
@@ -104,7 +104,7 @@ Lineage, empty next focus, bad timestamps, changed embedded-record digests, non-
 promotion/private/live authority, and input containing `undefined`, sparse arrays, cycles, or
 non-finite values.
 
-- [ ] **Step 2: Run the domain test and verify RED**
+- [x] **Step 2: Run the domain test and verify RED**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-research-release.test.ts
@@ -112,7 +112,7 @@ npx vitest run packages/domain/src/paper-trading-comparison-research-release.tes
 
 Expected: FAIL because the release exports do not exist.
 
-- [ ] **Step 3: Implement the exact domain record**
+- [x] **Step 3: Implement the exact domain record**
 
 Add the types from the design. `paperTradingComparisonResearchReleaseDigestInput` removes only
 record metadata, release ID, and `release_digest`, then delegates to
@@ -131,14 +131,14 @@ It must also bind the embedded Finding ID and Lineage ID to deterministic releas
 the embedded Lineage child to equal `system_code_ref`, and require its source findings to contain
 both `source_finding_ref` and the embedded Finding.
 
-- [ ] **Step 4: Run domain tests and typecheck**
+- [x] **Step 4: Run domain tests and typecheck**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-research-release.test.ts packages/domain/src/paper-trading-comparison-confirmation-campaign.test.ts
 npm run typecheck --workspace @ouroboros/domain
 ```
 
-- [ ] **Step 5: Commit the release vocabulary**
+- [x] **Step 5: Commit the release vocabulary**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-research-release.test.ts

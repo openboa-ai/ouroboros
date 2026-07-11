@@ -2421,6 +2421,44 @@ export interface PaperTradingComparisonConfirmationCampaignOutcomeRecord
   authority_status: "not_live";
 }
 
+export type PaperTradingComparisonResearchReleaseKind =
+  | "confirmed_improvement"
+  | "challenger_not_reproduced"
+  | "comparison_evidence_ineligible"
+  | "campaign_slot_expired";
+
+export interface PaperTradingComparisonResearchReleaseRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_research_release";
+  paper_trading_comparison_research_release_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  campaign_outcome_ref: Ref;
+  campaign_outcome_digest: string;
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  system_code_ref: Ref;
+  system_code_artifact_digest: string;
+  source_finding_ref: Ref;
+  source_finding_record_digest: string;
+  source_lineage_ref: Ref;
+  source_lineage_record_digest: string;
+  direction_kind: ResearchDirectionKind;
+  release_kind: PaperTradingComparisonResearchReleaseKind;
+  finding: ResearchFindingRecord;
+  finding_record_digest: string;
+  lineage: ArtifactLineageRecord;
+  lineage_record_digest: string;
+  next_research_focus: string;
+  released_at: string;
+  release_digest: string;
+  research_visibility: "released_to_research";
+  evaluation_authority: "external_to_trading_systems";
+  promotion_authority: false;
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "lineage_only";
+}
+
 export function paperTradingEvaluationCommitmentDigestInput(
   record: PaperTradingEvaluationCommitmentRecord
 ): string {
@@ -2742,6 +2780,22 @@ export function paperTradingComparisonConfirmationCampaignOutcomeDigestInput(
     version: _version,
     paper_trading_comparison_confirmation_campaign_outcome_id: _id,
     outcome_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonResearchReleaseDigestInput(
+  record: PaperTradingComparisonResearchReleaseRecord
+): string {
+  if (!paperTradingComparisonResearchReleaseHasRuntimeShape(record)) {
+    throw comparisonNonPersistable();
+  }
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_research_release_id: _id,
+    release_digest: _digest,
     ...payload
   } = record;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
@@ -3325,6 +3379,214 @@ export function paperTradingComparisonConfirmationCampaignOutcomeHasRuntimeShape
     : outcome.campaign_outcome === "not_confirmed" &&
       outcome.promotion_eligibility === "not_eligible" &&
       outcome.next_action === "return_to_candidate_arena";
+}
+
+const PAPER_TRADING_COMPARISON_RESEARCH_RELEASE_FINDING_KIND = {
+  confirmed_improvement: "positive_result",
+  challenger_not_reproduced: "negative_result",
+  comparison_evidence_ineligible: "failure_analysis",
+  campaign_slot_expired: "failure_analysis"
+} as const satisfies Record<
+  PaperTradingComparisonResearchReleaseKind,
+  ResearchFindingKind
+>;
+
+const PAPER_TRADING_COMPARISON_RESEARCH_DIRECTION_KINDS = new Set<
+  ResearchDirectionKind
+>([
+  "trend_following",
+  "mean_reversion",
+  "volatility_regime",
+  "funding_aware_risk",
+  "liquidation_aware_risk",
+  "execution_cost_robustness",
+  "other"
+]);
+
+function paperTradingComparisonReleasedFindingHasRuntimeShape(
+  value: unknown,
+  release: PaperTradingComparisonResearchReleaseRecord
+): value is ResearchFindingRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "research_finding_id",
+    "research_worker_ref",
+    "research_direction_ref",
+    "experiment_run_ref",
+    "trading_evaluation_result_ref",
+    "finding_kind",
+    "summary",
+    "supporting_record_refs",
+    "created_at",
+    "authority_status"
+  ]) || value.record_kind !== "research_finding" || value.version !== 1 ||
+    value.research_finding_id !==
+      `${release.paper_trading_comparison_research_release_id}-finding` ||
+    !comparisonRef(value.research_worker_ref, "research_worker") ||
+    !comparisonRef(value.research_direction_ref, "research_direction") ||
+    !comparisonRef(value.experiment_run_ref, "experiment_run") ||
+    !comparisonRef(
+      value.trading_evaluation_result_ref,
+      "trading_evaluation_result"
+    ) || value.finding_kind !==
+      PAPER_TRADING_COMPARISON_RESEARCH_RELEASE_FINDING_KIND[
+        release.release_kind
+      ] || !comparisonString(value.summary) ||
+    !Array.isArray(value.supporting_record_refs) ||
+    value.supporting_record_refs.length < 3 ||
+    !value.supporting_record_refs.every((ref) => comparisonRef(ref)) ||
+    !paperTradingComparisonRefsEqual(
+      value.supporting_record_refs[0],
+      release.source_finding_ref
+    ) || !paperTradingComparisonRefsEqual(
+      value.supporting_record_refs[1],
+      release.campaign_ref
+    ) || !paperTradingComparisonRefsEqual(
+      value.supporting_record_refs[2],
+      release.campaign_outcome_ref
+    ) || !value.supporting_record_refs.slice(3).every((ref) =>
+      comparisonRef(ref, "paper_trading_comparison_verdict")) ||
+    value.created_at !== release.released_at ||
+    value.authority_status !== "research_trace_only") {
+    return false;
+  }
+  const supportingRefs = value.supporting_record_refs as Ref[];
+  return new Set(supportingRefs.map((ref) => `${ref.record_kind}:${ref.id}`)).size ===
+    supportingRefs.length;
+}
+
+function paperTradingComparisonReleasedLineageHasRuntimeShape(
+  value: unknown,
+  release: PaperTradingComparisonResearchReleaseRecord
+): value is ArtifactLineageRecord {
+  if (!comparisonObject(value)) return false;
+  const keys = [
+    "record_kind",
+    "version",
+    "artifact_lineage_id",
+    "child_system_code_ref",
+    ...(value.parent_system_code_ref !== undefined
+      ? ["parent_system_code_ref"]
+      : []),
+    "source_finding_refs",
+    "created_by_research_worker_ref",
+    "created_at",
+    "authority_status"
+  ];
+  if (!comparisonHasExactKeys(value, keys) ||
+    value.record_kind !== "artifact_lineage" || value.version !== 1 ||
+    value.artifact_lineage_id !==
+      `${release.paper_trading_comparison_research_release_id}-lineage` ||
+    !paperTradingComparisonRefsEqual(
+      value.child_system_code_ref,
+      release.system_code_ref
+    ) || value.parent_system_code_ref !== undefined &&
+      !comparisonRef(value.parent_system_code_ref, "system_code") ||
+    !Array.isArray(value.source_finding_refs) ||
+    value.source_finding_refs.length < 2 ||
+    !value.source_finding_refs.every((ref) =>
+      comparisonRef(ref, "research_finding")) ||
+    !comparisonRef(value.created_by_research_worker_ref, "research_worker") ||
+    !paperTradingComparisonRefsEqual(
+      value.created_by_research_worker_ref,
+      release.finding.research_worker_ref
+    ) || value.created_at !== release.released_at ||
+    value.authority_status !== "lineage_only") {
+    return false;
+  }
+  const sourceRefs = value.source_finding_refs as Ref[];
+  return sourceRefs.some((ref) =>
+    paperTradingComparisonRefsEqual(ref, release.source_finding_ref)) &&
+    sourceRefs.some((ref) => paperTradingComparisonRefsEqual(ref, {
+      record_kind: "research_finding",
+      id: release.finding.research_finding_id
+    })) && new Set(sourceRefs.map((ref) => `${ref.record_kind}:${ref.id}`)).size ===
+      sourceRefs.length;
+}
+
+export function paperTradingComparisonResearchReleaseHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonResearchReleaseRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_research_release_id",
+    "campaign_ref",
+    "campaign_digest",
+    "campaign_outcome_ref",
+    "campaign_outcome_digest",
+    "candidate_ref",
+    "candidate_version_ref",
+    "system_code_ref",
+    "system_code_artifact_digest",
+    "source_finding_ref",
+    "source_finding_record_digest",
+    "source_lineage_ref",
+    "source_lineage_record_digest",
+    "direction_kind",
+    "release_kind",
+    "finding",
+    "finding_record_digest",
+    "lineage",
+    "lineage_record_digest",
+    "next_research_focus",
+    "released_at",
+    "release_digest",
+    "research_visibility",
+    "evaluation_authority",
+    "promotion_authority",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !== "paper_trading_comparison_research_release" ||
+    value.version !== 1 ||
+    !comparisonRef(
+      value.campaign_ref,
+      "paper_trading_comparison_confirmation_campaign"
+    ) || !comparisonDigest(value.campaign_digest) ||
+    !comparisonRef(
+      value.campaign_outcome_ref,
+      "paper_trading_comparison_confirmation_campaign_outcome"
+    ) || !comparisonDigest(value.campaign_outcome_digest) ||
+    value.paper_trading_comparison_research_release_id !==
+      `${value.campaign_outcome_ref.id}-research-release` ||
+    !comparisonRef(value.candidate_ref, "trading_system_candidate") ||
+    !comparisonRef(value.candidate_version_ref, "candidate_version") ||
+    !comparisonRef(value.system_code_ref, "system_code") ||
+    !comparisonDigest(value.system_code_artifact_digest) ||
+    !comparisonRef(value.source_finding_ref, "research_finding") ||
+    !comparisonDigest(value.source_finding_record_digest) ||
+    !comparisonRef(value.source_lineage_ref, "artifact_lineage") ||
+    !comparisonDigest(value.source_lineage_record_digest) ||
+    !PAPER_TRADING_COMPARISON_RESEARCH_DIRECTION_KINDS.has(
+      value.direction_kind as ResearchDirectionKind
+    ) || !Object.hasOwn(
+      PAPER_TRADING_COMPARISON_RESEARCH_RELEASE_FINDING_KIND,
+      value.release_kind as PropertyKey
+    ) || !comparisonDigest(value.finding_record_digest) ||
+    !comparisonDigest(value.lineage_record_digest) ||
+    !comparisonString(value.next_research_focus) ||
+    !comparisonIso(value.released_at) || !comparisonDigest(value.release_digest) ||
+    value.research_visibility !== "released_to_research" ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_authority !== false ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false ||
+    value.authority_status !== "lineage_only") {
+    return false;
+  }
+  const release = value as unknown as
+    PaperTradingComparisonResearchReleaseRecord;
+  return release.source_finding_ref.id !== release.finding.research_finding_id &&
+    release.source_lineage_ref.id !== release.lineage.artifact_lineage_id &&
+    paperTradingComparisonReleasedFindingHasRuntimeShape(
+      release.finding,
+      release
+    ) && paperTradingComparisonReleasedLineageHasRuntimeShape(
+      release.lineage,
+      release
+    );
 }
 
 export function paperTradingComparisonTradingPromotionHasRuntimeShape(value: unknown): value is TradingPromotionRecord {
