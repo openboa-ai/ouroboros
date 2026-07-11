@@ -1,22 +1,35 @@
 import { createHash } from "node:crypto";
 import {
+  paperTradingComparisonBaselineEvaluation,
   paperTradingComparisonEvaluationRecordDigestInput,
+  paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonRefsEqual,
+  paperTradingComparisonRuntimeControlIdempotencyKey,
+  paperTradingComparisonRuntimeWriteContextHasRuntimeShape,
   type CandidateInspectReadModel,
+  type PaperTradingComparisonActivationAttemptRecord,
+  type PaperTradingComparisonActivationSide,
+  type PaperTradingComparisonRuntimeWriteContext,
   type PaperTradingEvaluationCommitmentRecord,
   type PaperTradingEvaluationInvalidationReason,
   type PaperTradingEvaluationRecord,
   type PaperTradingEvidencePurpose,
   type SandboxDetailReadModel,
-  type SystemCodeRecord
+  type SystemCodeRecord,
+  type TradingRunRecord
 } from "@ouroboros/domain";
 import { FIXTURE_SYSTEM_CODE_ID, type OuroborosStorePort } from "../../ports/store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
+import type {
+  PaperTradingComparisonSessionPort,
+  PaperTradingComparisonSessionSideStatus
+} from "../../ports/paper-comparison-session";
 import type { SystemCodeArtifactResolverPort } from "../../ports/system-code-artifact";
 import type {
   PaperOrderRequestFixture,
   SandboxAdapterObservationResult,
-  SandboxAdapterRegistryPort
+  SandboxAdapterRegistryPort,
+  SandboxStartResult
 } from "../../ports/sandbox";
 import { safeId } from "../../safe-id";
 import {
@@ -70,6 +83,16 @@ export interface PreparedPaperTradingSession {
   clock: PaperTradingSessionClock;
 }
 
+interface LoadedPaperTradingComparisonSessionSide {
+  attempt: PaperTradingComparisonActivationAttemptRecord;
+  candidate: CandidateInspectReadModel;
+  run: TradingRunRecord;
+  commitment: PaperTradingEvaluationCommitmentRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  baseline: PaperTradingEvaluationRecord;
+  systemCode: SystemCodeRecord;
+}
+
 export type PaperTradingRecoveryOutcome =
   | {
       tradingRunId: string;
@@ -103,8 +126,13 @@ export class PaperTradingSessionError extends Error {
   }
 }
 
-export class PaperTradingSessionService {
+export class PaperTradingSessionService implements PaperTradingComparisonSessionPort {
   private readonly apiProviderSessions = new Map<string, ReplayTradingApiProviderSession>();
+  private readonly comparisonApiProviderSessions =
+    new Map<string, ReplayTradingApiProviderSession>();
+  private readonly comparisonGatewayBindings = new Map<string, GatewayRuntimeBinding>();
+  private readonly comparisonProviderRequestCounts = new Map<string, number>();
+  private readonly comparisonTransientCleanupFailures = new Map<string, string>();
   private readonly activeSessions = new Set<string>();
   private readonly runner: PaperTradingEvaluationRunner;
   private readonly intervalMs: number;
@@ -433,6 +461,270 @@ export class PaperTradingSessionService {
     return this.activeSessions.has(tradingRunId);
   }
 
+  async startComparisonSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+    marketData: GatewayMarketDataPort;
+    deadlineAt: string;
+    maximumProviderRequestCount: number;
+    signal: AbortSignal;
+  }): Promise<PaperTradingComparisonSessionSideStatus> {
+    this.assertComparisonSessionInput(input.authority, input.side, "start");
+    if (!Number.isInteger(input.maximumProviderRequestCount) ||
+      input.maximumProviderRequestCount <= 0) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_limit_invalid",
+        "Paper comparison provider request limit must be a positive integer."
+      );
+    }
+    this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+    const loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    if (input.deadlineAt !== loaded.attempt.start_deadline_at) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_start_deadline_mismatch",
+        "Paper comparison start deadline must equal the frozen attempt deadline."
+      );
+    }
+    if (input.maximumProviderRequestCount >
+      loaded.attempt.activation_policy.maximum_provider_request_count_per_side) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_limit_mismatch",
+        "Paper comparison provider request limit exceeds the frozen attempt policy."
+      );
+    }
+    this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+    const resolvedArtifactDigest = await this.options.artifactResolver.resolveArtifactDigest(
+      loaded.systemCode
+    );
+    this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+    if (resolvedArtifactDigest !== loaded.commitment.resolved_artifact_digest) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_resolved_artifact_mismatch",
+        "Paper comparison SystemCode resolved artifact changed after commitment."
+      );
+    }
+    if ((loaded.run.runtime_lifecycle_status !== "registered" &&
+      loaded.run.runtime_lifecycle_status !== "stopped") ||
+      (loaded.evaluation.status !== "not_started" &&
+        loaded.evaluation.status !== "stopped")) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_side_state_mismatch",
+        "Paper comparison side is not in a startable zero-evidence state."
+      );
+    }
+
+    const binding = this.gatewayBinding(input.marketData);
+    const verification = verifyPaperTradingEvaluationCommitment({
+      commitment: loaded.commitment,
+      evaluation: loaded.evaluation,
+      candidate: loaded.candidate,
+      systemCode: loaded.systemCode,
+      resolvedArtifactDigest,
+      marketData: binding.marketData,
+      intervalMs: this.intervalMs
+    });
+    if (verification.status !== "verified") {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_commitment_mismatch",
+        verification.diagnostic,
+        { reason: verification.reason }
+      );
+    }
+
+    const sessionKey = comparisonSessionKey(input.authority);
+    if (this.comparisonTransientCleanupFailures.has(sessionKey)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_transient_sandbox_cleanup_unresolved",
+        "Paper comparison session has unresolved transient sandbox cleanup."
+      );
+    }
+    try {
+      const tradingApiBaseUrl = await this.ensureComparisonApiProviderSession({
+        sessionKey,
+        tradingRunId: loaded.run.trading_run_id,
+        binding,
+        maximumProviderRequestCount: input.maximumProviderRequestCount
+      });
+      this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+      await this.ensureComparisonTradingRunSandbox({
+        loaded,
+        authority: input.authority,
+        tradingApiBaseUrl,
+        signal: input.signal,
+        deadlineAt: input.deadlineAt
+      });
+      this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+      await this.options.store.recordRunControlAudit(
+        comparisonRunControlAuditInput(loaded, input.authority, "start"),
+        input.authority
+      );
+      this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+      const transitionedAt = new Date().toISOString();
+      await this.options.store.recordPaperTradingEvaluation({
+        ...loaded.evaluation,
+        status: "running",
+        stopped_at: undefined,
+        next_observation_at: new Date(
+          Date.parse(transitionedAt) + loaded.evaluation.interval_ms
+        ).toISOString(),
+        latest_failure_reason: undefined
+      }, input.authority);
+      this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+      const status = await this.inspectComparisonSide({
+        side: input.side,
+        authority: input.authority
+      });
+      this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+      return status;
+    } catch (error) {
+      if (error instanceof PaperTradingSessionError && [
+        "paper_trading_comparison_transient_sandbox_cleanup_failed",
+        "paper_trading_comparison_transient_sandbox_cleanup_unavailable"
+      ].includes(error.code)) {
+        this.comparisonTransientCleanupFailures.set(sessionKey, error.code);
+      }
+      const cleanupAuthority: PaperTradingComparisonRuntimeWriteContext = {
+        ...input.authority,
+        operation: "stop"
+      };
+      const cleanupDeadline = new Date(
+        Date.now() + loaded.attempt.activation_policy.cleanup_timeout_ms
+      ).toISOString();
+      await this.stopComparisonSide({
+        side: input.side,
+        authority: cleanupAuthority,
+        deadlineAt: cleanupDeadline,
+        reason: "policy_cleanup"
+      }).catch(() => this.closeComparisonApiProviderSession(
+        sessionKey
+      ).catch(() => undefined));
+      throw error;
+    }
+  }
+
+  async stopComparisonSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+    deadlineAt: string;
+    reason: "symmetric_start" | "partial_start_cleanup" | "policy_cleanup" |
+      "restart_cleanup" | "handoff_cleanup";
+  }): Promise<PaperTradingComparisonSessionSideStatus> {
+    this.assertComparisonSessionInput(input.authority, input.side, "stop");
+    this.assertComparisonDeadline(input.deadlineAt);
+    let loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    this.assertComparisonCleanupDeadline(loaded.attempt, input.deadlineAt);
+    const sessionKey = comparisonSessionKey(input.authority);
+    if (this.comparisonTransientCleanupFailures.has(sessionKey)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_transient_sandbox_cleanup_unresolved",
+        "Paper comparison transient sandbox cleanup remains unresolved."
+      );
+    }
+    const sandbox = loaded.run.sandbox_ref
+      ? await this.options.store.getSandbox(loaded.run.sandbox_ref.id)
+      : undefined;
+    const sideInactive = (loaded.run.runtime_lifecycle_status === "registered" ||
+        loaded.run.runtime_lifecycle_status === "stopped") &&
+      (loaded.evaluation.status === "not_started" || loaded.evaluation.status === "stopped") &&
+      (!sandbox || sandbox.lifecycle_status === "stopped" ||
+        sandbox.lifecycle_status === "removed");
+    if (sideInactive) {
+      await this.closeComparisonApiProviderSession(sessionKey);
+      this.assertComparisonDeadline(input.deadlineAt);
+      const status = await this.inspectComparisonSide({
+        side: input.side,
+        authority: input.authority
+      });
+      this.assertComparisonDeadline(input.deadlineAt);
+      return status;
+    }
+
+    this.assertComparisonDeadline(input.deadlineAt);
+    if (loaded.run.runtime_lifecycle_status !== "registered" &&
+      loaded.run.runtime_lifecycle_status !== "stopped") {
+      await this.options.store.recordRunControlAudit(
+        comparisonRunControlAuditInput(loaded, input.authority, "stop", input.reason),
+        input.authority
+      );
+    }
+    this.assertComparisonDeadline(input.deadlineAt);
+    await this.closeComparisonApiProviderSession(sessionKey);
+    this.assertComparisonDeadline(input.deadlineAt);
+    const linkedSandbox = loaded.run.sandbox_ref
+      ? await this.options.store.getSandbox(loaded.run.sandbox_ref.id)
+      : undefined;
+    this.assertComparisonDeadline(input.deadlineAt);
+    if (linkedSandbox && linkedSandbox.lifecycle_status !== "stopped" &&
+      linkedSandbox.lifecycle_status !== "removed") {
+      const adapter = this.options.sandboxAdapters[linkedSandbox.adapter_kind];
+      const stop = adapter.stopArtifactInstance;
+      if (!stop) {
+        throw new PaperTradingSessionError(
+          "sandbox_adapter_method_not_supported",
+          "sandbox adapter does not support stopArtifactInstance"
+        );
+      }
+      const observations = await stop.call(adapter, linkedSandbox);
+      this.assertComparisonDeadline(input.deadlineAt);
+      await this.options.store.stopSandbox({
+        sandbox_id: linkedSandbox.sandbox_id,
+        stopped_at: observations.stopped_at,
+        removed_at: observations.removed_at
+      }, observations, input.authority);
+    }
+    this.assertComparisonDeadline(input.deadlineAt);
+    loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    this.assertComparisonDeadline(input.deadlineAt);
+    if (loaded.run.runtime_lifecycle_status === "stopped" &&
+      (loaded.evaluation.status === "running" || loaded.evaluation.status === "not_started")) {
+      await this.options.store.recordPaperTradingEvaluation({
+        ...loaded.baseline,
+        status: "stopped",
+        stopped_at: new Date().toISOString()
+      }, input.authority);
+    }
+    this.assertComparisonDeadline(input.deadlineAt);
+    const status = await this.inspectComparisonSide({
+      side: input.side,
+      authority: input.authority
+    });
+    this.assertComparisonDeadline(input.deadlineAt);
+    return status;
+  }
+
+  async inspectComparisonSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+  }): Promise<PaperTradingComparisonSessionSideStatus> {
+    this.assertComparisonSessionInput(
+      input.authority,
+      input.side,
+      input.authority.operation
+    );
+    const loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    const sandbox = loaded.run.sandbox_ref
+      ? await this.options.store.getSandbox(loaded.run.sandbox_ref.id)
+      : undefined;
+    const sessionKey = comparisonSessionKey(input.authority);
+    const provider = this.comparisonApiProviderSessions.get(sessionKey);
+    return {
+      role: input.side.role,
+      trading_run_ref: { ...input.side.trading_run_ref },
+      paper_trading_evaluation_ref: { ...input.side.paper_trading_evaluation_ref },
+      ...(sandbox ? {
+        sandbox_ref: { record_kind: "sandbox", id: sandbox.sandbox_id },
+        sandbox_lifecycle_status: sandbox.lifecycle_status,
+        ...(sandbox.started_at ? { sandbox_started_at: sandbox.started_at } : {})
+      } : {}),
+      runtime_lifecycle_status: loaded.run.runtime_lifecycle_status ?? "unknown",
+      evaluation_status: loaded.evaluation.status,
+      provider_request_count: this.comparisonProviderRequestCount(sessionKey),
+      provider_session_active: provider !== undefined,
+      observed_at: new Date().toISOString(),
+      authority_status: "not_live"
+    };
+  }
+
   async stop(tradingRunId: string): Promise<PaperTradingEvaluationRecord | undefined> {
     const candidate = await this.options.store.getCandidateForTradingRun(tradingRunId);
     if (!candidate) {
@@ -623,12 +915,276 @@ export class PaperTradingSessionService {
     return outcomes;
   }
 
-  private gatewayBinding(): GatewayRuntimeBinding {
-    const binding = createGatewayRuntimeBinding({ environment: "paper", marketData: this.options.marketData });
+  private gatewayBinding(marketData: GatewayMarketDataPort = this.options.marketData): GatewayRuntimeBinding {
+    const binding = createGatewayRuntimeBinding({ environment: "paper", marketData });
     if (binding.status === "disabled") {
       throw new PaperTradingSessionError("gateway_runtime_binding_disabled", "Paper Gateway binding is disabled.");
     }
     return binding;
+  }
+
+  private assertComparisonSessionInput(
+    authority: PaperTradingComparisonRuntimeWriteContext,
+    side: PaperTradingComparisonActivationSide,
+    operation: "start" | "stop"
+  ): void {
+    if (!paperTradingComparisonRuntimeWriteContextHasRuntimeShape(authority)) {
+      throw new PaperTradingSessionError(
+        "invalid_paper_trading_comparison_runtime_write_context",
+        "Paper comparison session requires one valid runtime write context."
+      );
+    }
+    if (authority.operation !== operation || authority.role !== side.role) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_runtime_write_context_mismatch",
+        "Paper comparison session context does not match its side operation."
+      );
+    }
+  }
+
+  private assertComparisonEffectOpen(signal: AbortSignal, deadlineAt: string): void {
+    if (signal.aborted) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_activation_aborted",
+        "Paper comparison activation was aborted."
+      );
+    }
+    this.assertComparisonDeadline(deadlineAt);
+  }
+
+  private assertComparisonDeadline(deadlineAt: string): void {
+    if (!isExactIsoTimestamp(deadlineAt)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_deadline_invalid",
+        "Paper comparison session deadline must be an exact ISO timestamp."
+      );
+    }
+    if (Date.now() > Date.parse(deadlineAt)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_deadline_exceeded",
+        "Paper comparison session deadline was exceeded."
+      );
+    }
+  }
+
+  private assertComparisonCleanupDeadline(
+    attempt: PaperTradingComparisonActivationAttemptRecord,
+    deadlineAt: string
+  ): void {
+    if (Date.parse(deadlineAt) - Date.now() >
+      attempt.activation_policy.cleanup_timeout_ms) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_cleanup_deadline_mismatch",
+        "Paper comparison cleanup deadline exceeds the frozen attempt policy."
+      );
+    }
+  }
+
+  private async loadComparisonSessionSide(
+    side: PaperTradingComparisonActivationSide,
+    authority: PaperTradingComparisonRuntimeWriteContext
+  ): Promise<LoadedPaperTradingComparisonSessionSide> {
+    const [activation, attempt] = await Promise.all([
+      this.options.store.getPaperTradingComparisonActivation(
+        authority.paper_trading_comparison_activation_ref.id
+      ),
+      this.options.store.getPaperTradingComparisonActivationAttempt(
+        authority.paper_trading_comparison_activation_attempt_ref.id
+      )
+    ]);
+    if (!activation || !attempt) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_runtime_write_context_not_found",
+        "Paper comparison activation or attempt was not found."
+      );
+    }
+    const activationSide = activation[authority.role];
+    const attemptSide = attempt[authority.role];
+    const attempts = await this.options.store.listPaperTradingComparisonActivationAttempts(
+      activation.paper_trading_comparison_activation_id
+    );
+    if (
+      authority.paper_trading_comparison_activation_ref.id !==
+        activation.paper_trading_comparison_activation_id ||
+      authority.paper_trading_comparison_activation_digest !== activation.activation_digest ||
+      authority.paper_trading_comparison_activation_attempt_ref.id !==
+        attempt.paper_trading_comparison_activation_attempt_id ||
+      authority.paper_trading_comparison_activation_attempt_digest !== attempt.attempt_digest ||
+      attempt.paper_trading_comparison_activation_ref.id !==
+        activation.paper_trading_comparison_activation_id ||
+      attempt.paper_trading_comparison_activation_digest !== activation.activation_digest ||
+      attempts.at(-1)?.paper_trading_comparison_activation_attempt_id !==
+        attempt.paper_trading_comparison_activation_attempt_id ||
+      !comparisonActivationSidesEqual(side, activationSide) ||
+      !comparisonActivationSidesEqual(side, attemptSide)
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_runtime_write_context_mismatch",
+        "Paper comparison session context does not match the latest frozen side attempt."
+      );
+    }
+
+    const [candidate, run, commitment, evaluation] = await Promise.all([
+      this.options.store.getCandidateForTradingRun(side.trading_run_ref.id),
+      this.options.store.getTradingRun(side.trading_run_ref.id),
+      this.options.store.getPaperTradingEvaluationCommitment(
+        side.paper_trading_evaluation_commitment_ref.id
+      ),
+      this.options.store.getPaperTradingEvaluation(side.paper_trading_evaluation_ref.id)
+    ]);
+    if (!candidate || !run || !commitment || !evaluation) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_side_reference_not_found",
+        "Paper comparison side references an incomplete runtime graph."
+      );
+    }
+    const systemCode = await this.options.store.getSystemCode(commitment.system_code_ref.id);
+    if (!systemCode) {
+      throw new PaperTradingSessionError(
+        "system_code_not_found",
+        `system code ${commitment.system_code_ref.id} not found`
+      );
+    }
+    const baseline = paperTradingComparisonBaselineEvaluation(
+      commitment,
+      side.paper_trading_evaluation_ref
+    );
+    const expectedStatus = evaluation.status === "not_started" ||
+      evaluation.status === "running" || evaluation.status === "stopped"
+      ? evaluation.status
+      : undefined;
+    if (
+      commitment.evidence_purpose !== "qualification" ||
+      run.paper_evidence_purpose !== "qualification" ||
+      run.trading_run_id !== side.trading_run_ref.id ||
+      candidate.candidate_id !== commitment.candidate_ref.id ||
+      candidate.candidate_version.candidate_version_id !==
+        commitment.candidate_version_ref.id ||
+      !paperTradingComparisonRefsEqual(run.candidate_ref, commitment.candidate_ref) ||
+      !paperTradingComparisonRefsEqual(
+        run.candidate_version_ref,
+        commitment.candidate_version_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(run.system_code_ref, commitment.system_code_ref) ||
+      !paperTradingComparisonRefsEqual(evaluation.candidate_ref, commitment.candidate_ref) ||
+      !paperTradingComparisonRefsEqual(
+        evaluation.candidate_version_ref,
+        commitment.candidate_version_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(evaluation.trading_run_ref, commitment.trading_run_ref) ||
+      !paperTradingComparisonRefsEqual(
+        evaluation.paper_trading_evaluation_commitment_ref,
+        side.paper_trading_evaluation_commitment_ref
+      ) ||
+      systemCode.system_code_id !== commitment.system_code_ref.id ||
+      systemCode.artifact_digest !== commitment.system_code_artifact_digest ||
+      expectedStatus === undefined ||
+      !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+        evaluation,
+        baseline,
+        expectedStatus
+      )
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_side_state_mismatch",
+        "Paper comparison side runtime graph is not exact zero-evidence qualification state."
+      );
+    }
+    return { attempt, candidate, run, commitment, evaluation, baseline, systemCode };
+  }
+
+  private async ensureComparisonApiProviderSession(input: {
+    sessionKey: string;
+    tradingRunId: string;
+    binding: GatewayRuntimeBinding;
+    maximumProviderRequestCount: number;
+  }): Promise<string> {
+    const existing = this.comparisonApiProviderSessions.get(input.sessionKey);
+    if (existing) return existing.sandbox_base_url ?? existing.base_url;
+    const priorRequestCount = this.comparisonProviderRequestCounts.get(input.sessionKey) ?? 0;
+    const provider = await this.apiProviderFactory(input.binding, {
+      ...this.options.apiProviderOptions,
+      maximum_request_count: Math.max(
+        0,
+        input.maximumProviderRequestCount - priorRequestCount
+      ),
+      readAccountState: () => this.latestPaperAccountState(
+        input.tradingRunId,
+        input.binding
+      )
+    });
+    this.comparisonGatewayBindings.set(input.sessionKey, input.binding);
+    this.comparisonApiProviderSessions.set(input.sessionKey, provider);
+    return provider.sandbox_base_url ?? provider.base_url;
+  }
+
+  private async ensureComparisonTradingRunSandbox(input: {
+    loaded: LoadedPaperTradingComparisonSessionSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+    tradingApiBaseUrl: string;
+    signal: AbortSignal;
+    deadlineAt: string;
+  }): Promise<SandboxDetailReadModel> {
+    const adapter = this.options.sandboxAdapters.deterministic_test;
+    const sandboxId = `sandbox-${safeRouteId([
+      "paper-comparison",
+      input.loaded.attempt.paper_trading_comparison_activation_attempt_id,
+      input.authority.role,
+      input.loaded.run.trading_run_id
+    ].join(":"))}`;
+    const result = await adapter.startArtifactInstance({
+      artifact: input.loaded.systemCode,
+      instance_id: sandboxId,
+      sandbox_name: `ouro-paper-comparison-${safeRouteId(
+        input.loaded.run.trading_run_id
+      ).slice(0, 34)}-${input.authority.role}`,
+      runtime_ref: { record_kind: "trading_run", id: input.loaded.run.trading_run_id },
+      sandbox_placement_id: input.loaded.run.placement_ref.id,
+      created_at: new Date().toISOString(),
+      interval_ms: this.sandboxIntervalMs,
+      paper_order_request: paperOrderRequestFromCandidateRuntime(input.loaded.candidate),
+      env: { TRADING_API_BASE_URL: input.tradingApiBaseUrl }
+    });
+    try {
+      this.assertComparisonEffectOpen(input.signal, input.deadlineAt);
+    } catch (error) {
+      await stopTransientComparisonSandbox(adapter, result);
+      throw error;
+    }
+    const { placement: _placement, ...withoutPlacement } = result;
+    try {
+      return (await this.options.store.recordSandboxStart(
+        withoutPlacement,
+        input.authority
+      )).sandbox;
+    } catch (error) {
+      await stopTransientComparisonSandbox(adapter, result);
+      throw error;
+    }
+  }
+
+  private comparisonProviderRequestCount(sessionKey: string): number {
+    const priorRequestCount = this.comparisonProviderRequestCounts.get(sessionKey) ?? 0;
+    const provider = this.comparisonApiProviderSessions.get(sessionKey);
+    if (!provider) return priorRequestCount;
+    const requestCount = (provider as ReplayTradingApiProviderSession & {
+      request_count?: () => number;
+    }).request_count;
+    return priorRequestCount + (requestCount
+      ? requestCount.call(provider)
+      : provider.requests().length);
+  }
+
+  private async closeComparisonApiProviderSession(sessionKey: string): Promise<void> {
+    const provider = this.comparisonApiProviderSessions.get(sessionKey);
+    if (!provider) return;
+    this.comparisonProviderRequestCounts.set(
+      sessionKey,
+      this.comparisonProviderRequestCount(sessionKey)
+    );
+    this.comparisonApiProviderSessions.delete(sessionKey);
+    this.comparisonGatewayBindings.delete(sessionKey);
+    await provider.close();
   }
 
   private async verifyExisting(
@@ -968,6 +1524,116 @@ export class PaperTradingSessionService {
 
 function paperOrderRequestFromCandidateRuntime(candidate: CandidateInspectReadModel): PaperOrderRequestFixture {
   return candidate.runtime.sandbox?.sandbox_name?.endsWith("-rejected") ? "rejected" : "valid";
+}
+
+function comparisonActivationSidesEqual(
+  left: PaperTradingComparisonActivationSide,
+  right: PaperTradingComparisonActivationSide
+): boolean {
+  return left.role === right.role &&
+    paperTradingComparisonRefsEqual(left.trading_run_ref, right.trading_run_ref) &&
+    paperTradingComparisonRefsEqual(
+      left.paper_trading_evaluation_commitment_ref,
+      right.paper_trading_evaluation_commitment_ref
+    ) &&
+    paperTradingComparisonRefsEqual(
+      left.paper_trading_evaluation_ref,
+      right.paper_trading_evaluation_ref
+    );
+}
+
+function comparisonSessionKey(
+  authority: PaperTradingComparisonRuntimeWriteContext
+): string {
+  return [
+    authority.paper_trading_comparison_activation_attempt_ref.id,
+    authority.role
+  ].join(":");
+}
+
+function comparisonRunControlAuditInput(
+  loaded: LoadedPaperTradingComparisonSessionSide,
+  authority: PaperTradingComparisonRuntimeWriteContext,
+  operation: "start" | "stop",
+  reason?: "symmetric_start" | "partial_start_cleanup" | "policy_cleanup" |
+    "restart_cleanup" | "handoff_cleanup"
+) {
+  const lifecycleStatus = operation === "start" ? "running" : "stopped";
+  const reasonLabel = reason ? ` (${reason})` : "";
+  return tradingRunLifecycleAuditInput({
+    idempotencyKey: paperTradingComparisonRuntimeControlIdempotencyKey(authority),
+    candidateId: loaded.candidate.candidate_id,
+    candidateVersionId: loaded.candidate.candidate_version.candidate_version_id,
+    tradingRunId: loaded.run.trading_run_id,
+    action: operation,
+    lifecycleStatus,
+    actorId: "runtime-activation-coordinator",
+    reasonSummary: `Authorized paper comparison runtime ${operation}${reasonLabel}.`,
+    message: `Paper comparison runtime ${operation} recorded.`
+  });
+}
+
+function comparisonTransientSandboxDetail(
+  result: SandboxStartResult
+): SandboxDetailReadModel {
+  return {
+    ...result.instance,
+    command_evidence_refs: result.instance.command_evidence_refs ?? [],
+    logs: result.logs.map((log) => ({
+      log_ref: { record_kind: log.record_kind, id: log.sandbox_log_id },
+      lines: [...log.lines],
+      captured_at: log.captured_at,
+      authority_status: log.authority_status
+    })),
+    heartbeats: result.heartbeats.map((heartbeat) => ({
+      heartbeat_ref: {
+        record_kind: heartbeat.record_kind,
+        id: heartbeat.runtime_heartbeat_id
+      },
+      heartbeat_line: heartbeat.heartbeat_line,
+      observed_at: heartbeat.observed_at,
+      authority_status: heartbeat.authority_status
+    })),
+    command_evidence: result.command_evidence.map((evidence) => ({
+      command_evidence_ref: {
+        record_kind: evidence.record_kind,
+        id: evidence.sandbox_command_evidence_id
+      },
+      command: [...evidence.command],
+      exit_code: evidence.exit_code,
+      stdout: evidence.stdout,
+      stderr: evidence.stderr,
+      started_at: evidence.started_at,
+      completed_at: evidence.completed_at,
+      authority_status: evidence.authority_status
+    }))
+  };
+}
+
+async function stopTransientComparisonSandbox(
+  adapter: SandboxAdapterRegistryPort["deterministic_test"],
+  result: SandboxStartResult
+): Promise<void> {
+  const stop = adapter.stopArtifactInstance;
+  if (!stop) {
+    throw new PaperTradingSessionError(
+      "paper_trading_comparison_transient_sandbox_cleanup_unavailable",
+      "Paper comparison sandbox started without a supported cleanup operation."
+    );
+  }
+  try {
+    await stop.call(adapter, comparisonTransientSandboxDetail(result));
+  } catch {
+    throw new PaperTradingSessionError(
+      "paper_trading_comparison_transient_sandbox_cleanup_failed",
+      "Paper comparison transient sandbox cleanup failed."
+    );
+  }
+}
+
+function isExactIsoTimestamp(value: string): boolean {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 function parseFiniteAccountNumber(value: unknown): number | undefined {

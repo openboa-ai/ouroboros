@@ -5687,6 +5687,51 @@ describe("LocalStore", () => {
       )).resolves.toEqual([startResult, stopResult]);
     });
 
+    it("permits context-bound cleanup before a start side result is persisted", async () => {
+      const store = new LocalStore(path.join(tmpDir, "runtime-partial-start-cleanup"));
+      await store.initialize();
+      const fixture = await storedRuntimeActivationFixture(store);
+      const attempt = validRuntimeActivationAttempt(fixture.activation);
+      await store.recordPaperTradingComparisonActivationAttempt(attempt);
+      const sandboxStart = runtimeActivationSandboxStart(
+        fixture,
+        attempt,
+        "challenger"
+      );
+      await store.recordSandboxStart(
+        sandboxStart,
+        runtimeActivationWriteContext(attempt, "challenger", "start")
+      );
+
+      const stopContext = runtimeActivationWriteContext(attempt, "challenger", "stop");
+      await expect(store.recordRunControlAudit(
+        runtimeActivationRunControlInput(fixture, attempt, "challenger", "stop"),
+        stopContext
+      )).resolves.toMatchObject({
+        decision: { resulting_lifecycle_status: "stopped" }
+      });
+      await store.stopSandbox({
+        sandbox_id: sandboxStart.instance.sandbox_id,
+        stopped_at: new Date(Date.parse(attempt.attempted_at) + 7_000).toISOString()
+      }, {}, stopContext);
+      const stopped = runtimeActivationEvaluation(
+        fixture,
+        attempt,
+        "challenger",
+        "stopped"
+      );
+      await store.recordPaperTradingEvaluation(stopped, stopContext);
+
+      await expect(store.listPaperTradingComparisonActivationSideResults(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )).resolves.toEqual([]);
+      await expect(store.getTradingRun(attempt.challenger.trading_run_ref.id))
+        .resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+      await expect(store.getPaperTradingEvaluation(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual(stopped);
+    });
+
     it.each([
       ["missing", undefined, "paper_trading_comparison_inert_graph_mutation_forbidden"],
       ["null", () => null as unknown as PaperTradingComparisonRuntimeWriteContext,

@@ -1401,9 +1401,7 @@ export class LocalStore {
     const roleResults = results.filter((result) => result.role === input.authority.role);
     if (latestOutcome?.outcome_status === "stopped_cleanly" ||
       input.authority.operation === "start" &&
-        (latestOutcome !== undefined || roleResults.some((result) => result.operation === "start")) ||
-      input.authority.operation === "stop" &&
-        !roleResults.some((result) => result.operation === "start")) {
+        (latestOutcome !== undefined || roleResults.some((result) => result.operation === "start"))) {
       throw new LocalStoreError(
         "paper_trading_comparison_runtime_write_state_conflict",
         "paper comparison runtime write context is not open for this side operation"

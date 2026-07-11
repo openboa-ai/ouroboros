@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
+import type { SandboxStartInput } from "../../ports/sandbox";
 import type { OuroborosStorePort } from "../../ports/store";
 import {
   decidePaperTradingQualification,
@@ -55,6 +56,7 @@ import {
 } from "./comparison-coordinator";
 import { PaperTradingComparisonActivationCoordinator } from "./comparison-activation-coordinator";
 import { PaperTradingComparisonTickCoordinator } from "./comparison-tick-coordinator";
+import { PaperTradingComparisonRuntimeActivationCoordinator } from "./comparison-runtime-activation-coordinator";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
   policy_version: "paper-comparison-v1",
@@ -240,6 +242,176 @@ describe("PaperTradingComparisonCoordinator", () => {
     expect(authorized.runtimeEffects).toBe("not_started");
     expect(captured.comparison.verification.activation_authority).toBe("not_granted");
     expect(authorized.comparison.verification.activation_authority).toBe("not_granted");
+  });
+
+  it("starts a real LocalStore pair and conservatively stops it after process restart", async () => {
+    const fixture = await comparisonFixture();
+    const prepared = await fixture.coordinator.prepare(fixture.input);
+    const captureMarketData = comparisonFirstTickMarketData(fixture.marketData);
+    const captured = await new PaperTradingComparisonTickCoordinator({
+      store: fixture.store,
+      comparisons: fixture.coordinator,
+      marketData: captureMarketData,
+      now: () => "2026-07-10T00:00:11.000Z"
+    }).captureFirstTick({
+      comparisonId: prepared.commitment.paper_trading_comparison_commitment_id,
+      idempotencyKey: "real-runtime-pair-first-tick"
+    });
+    const authorized = await new PaperTradingComparisonActivationCoordinator({
+      store: fixture.store,
+      comparisons: fixture.coordinator,
+      now: () => "2026-07-10T00:00:12.000Z"
+    }).authorize({
+      comparisonId: prepared.commitment.paper_trading_comparison_commitment_id,
+      idempotencyKey: "real-runtime-pair-activation"
+    });
+    const runtimeEffects = {
+      providerStarts: 0,
+      providerCloses: 0,
+      sandboxStarts: 0,
+      sandboxStops: 0,
+      fixedMarketReads: 0
+    };
+    const runtimeSessions = () => new PaperTradingSessionService({
+      store: fixture.store,
+      intervalMs: comparisonPolicy.interval_ms,
+      marketData: fixture.marketData,
+      artifactResolver: {
+        async resolveArtifactDigest(systemCode) {
+          return `sha256:resolved-${systemCode.system_code_id}`;
+        }
+      },
+      sandboxAdapters: {
+        deterministic_test: {
+          async startArtifactInstance(input: SandboxStartInput) {
+            runtimeEffects.sandboxStarts += 1;
+            return {
+              placement: {
+                record_kind: "sandbox_placement" as const,
+                version: 1 as const,
+                sandbox_placement_id: input.sandbox_placement_id,
+                placement_kind: "fixture_local_placeholder" as const,
+                authority_status: "not_launched" as const
+              },
+              instance: {
+                record_kind: "sandbox" as const,
+                version: 1 as const,
+                sandbox_id: input.instance_id,
+                adapter_kind: "deterministic_test" as const,
+                system_code_ref: {
+                  record_kind: "system_code",
+                  id: input.artifact.system_code_id
+                },
+                runtime_ref: input.runtime_ref,
+                sandbox_placement_ref: {
+                  record_kind: "sandbox_placement",
+                  id: input.sandbox_placement_id
+                },
+                lifecycle_status: "running" as const,
+                sandbox_name: input.sandbox_name,
+                created_at: input.created_at,
+                started_at: input.created_at,
+                log_refs: [],
+                heartbeat_refs: [],
+                authority_status: "not_live" as const
+              },
+              logs: [],
+              heartbeats: [],
+              command_evidence: []
+            };
+          },
+          async stopArtifactInstance() {
+            runtimeEffects.sandboxStops += 1;
+            return {
+              lifecycle_status: "stopped" as const,
+              stopped_at: new Date().toISOString()
+            };
+          }
+        }
+      } as never,
+      async apiProviderFactory(binding) {
+        runtimeEffects.providerStarts += 1;
+        await binding.marketData.readMarketSnapshot();
+        runtimeEffects.fixedMarketReads += 1;
+        return {
+          base_url: `http://comparison-provider-${runtimeEffects.providerStarts}.test`,
+          async close() {
+            runtimeEffects.providerCloses += 1;
+          },
+          requests: () => [{
+            at: new Date().toISOString(),
+            method: "GET",
+            path: "/market/snapshot",
+            response_status: 200
+          }],
+          request_count: () => 1,
+          candidate_input: {} as never
+        };
+      }
+    });
+    const runtime = new PaperTradingComparisonRuntimeActivationCoordinator({
+      store: fixture.store,
+      sessions: runtimeSessions(),
+      marketData: captureMarketData
+    });
+
+    const started = await runtime.start({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      idempotencyKey: "real-runtime-pair-start"
+    });
+
+    expect(started).toMatchObject({
+      status: "both_running",
+      outcome: { outcome_sequence: 1, outcome_status: "both_running" }
+    });
+    await expect(fixture.store.getTradingRun(
+      prepared.champion.run.trading_run_id
+    )).resolves.toMatchObject({ runtime_lifecycle_status: "running" });
+    await expect(fixture.store.getTradingRun(
+      prepared.challenger.run.trading_run_id
+    )).resolves.toMatchObject({ runtime_lifecycle_status: "running" });
+    await expect(fixture.store.listPaperTradingObservations(
+      prepared.champion.evaluation.paper_trading_evaluation_id
+    )).resolves.toEqual([]);
+    await expect(fixture.store.listPaperTradingObservations(
+      prepared.challenger.evaluation.paper_trading_evaluation_id
+    )).resolves.toEqual([]);
+
+    const restarted = new PaperTradingComparisonRuntimeActivationCoordinator({
+      store: fixture.store,
+      sessions: runtimeSessions(),
+      marketData: captureMarketData
+    });
+    const recovered = await restarted.recoverIncompleteActivations();
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      status: "stopped_cleanly",
+      outcome: {
+        outcome_sequence: 2,
+        outcome_status: "stopped_cleanly",
+        outcome_reason: "restart_cleanup"
+      }
+    });
+    await expect(fixture.store.getTradingRun(
+      prepared.champion.run.trading_run_id
+    )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+    await expect(fixture.store.getTradingRun(
+      prepared.challenger.run.trading_run_id
+    )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+    await expect(fixture.store.listPaperTradingComparisonActivationOutcomes(
+      started.attempt.paper_trading_comparison_activation_attempt_id
+    )).resolves.toHaveLength(2);
+    expect(runtimeEffects).toEqual({
+      providerStarts: 2,
+      providerCloses: 0,
+      sandboxStarts: 2,
+      sandboxStops: 2,
+      fixedMarketReads: 2
+    });
+    expect(fixture.effects.marketReads).toBe(0);
+    expect(captured.tick.paper_trading_comparison_tick_id)
+      .toBe(authorized.activation.first_tick_ref.id);
   });
 
   it("prepares bootstrap selection only when no TradingPromotion exists", async () => {
@@ -1762,6 +1934,46 @@ interface ComparisonFixtureOptions {
   preAdmissionQualification?: boolean;
   reversePromotionObservationTime?: boolean;
   challengerSystemCodeAfterAdmission?: boolean;
+}
+
+function comparisonFirstTickMarketData(
+  source: GatewayMarketDataPort
+): GatewayMarketDataPort {
+  return {
+    ...source,
+    async readMarketSnapshot() {
+      return {
+        symbol: "BTCUSDT",
+        price: 60_000,
+        moving_average_fast: 60_100,
+        moving_average_slow: 59_900,
+        volatility: 0.01,
+        expected_direction: "long",
+        observed_at: "2026-07-10T00:00:10.500Z",
+        source_kind: "binance_production_public_rest",
+        source_priority: "rest_fallback",
+        freshness: "fresh",
+        ws_connected: false,
+        rest_fallback_used: true,
+        gap_detected: false
+      };
+    },
+    async readPublicExecutionSnapshot() {
+      return {
+        symbol: "BTCUSDT",
+        observed_at: "2026-07-10T00:00:10.600Z",
+        source_kind: "binance_production_public_rest",
+        source_priority: "rest_fallback",
+        freshness: "fresh",
+        ws_connected: false,
+        rest_fallback_used: true,
+        gap_detected: false,
+        stream_marker: "comparison-first-tick-integration",
+        agg_trades: [],
+        authority_status: "read_only"
+      };
+    }
+  };
 }
 
 async function comparisonFixture(options: ComparisonFixtureOptions = {}) {

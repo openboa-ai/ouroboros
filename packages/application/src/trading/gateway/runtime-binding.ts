@@ -94,7 +94,12 @@ export interface PaperTradingApiProviderOptions {
   base_host?: string;
   sandbox_host?: string;
   request_log_limit?: number;
+  maximum_request_count?: number;
   readAccountState?: () => AccountState | Promise<AccountState>;
+}
+
+export interface PaperTradingApiProviderSession extends ReplayTradingApiProviderSession {
+  request_count(): number;
 }
 
 export type GatewayOrderExecution = Pick<
@@ -164,10 +169,16 @@ export function createGatewayRuntimeBinding(
 export async function startPaperTradingApiProvider(
   binding: GatewayRuntimeBinding,
   options: PaperTradingApiProviderOptions = {}
-): Promise<ReplayTradingApiProviderSession> {
+): Promise<PaperTradingApiProviderSession> {
   assertPaperBindingEnabled(binding);
   const requestLogLimit = options.request_log_limit ?? 200;
+  const maximumRequestCount = options.maximum_request_count;
+  if (maximumRequestCount !== undefined &&
+    (!Number.isInteger(maximumRequestCount) || maximumRequestCount < 0)) {
+    throw new Error("paper_api_maximum_request_count_invalid");
+  }
   const requestLog: TradingProviderRequestLog[] = [];
+  let requestCount = 0;
   const readAccountState = async () => options.readAccountState
     ? options.readAccountState()
     : binding.account.state;
@@ -176,6 +187,21 @@ export async function startPaperTradingApiProvider(
   const server = http.createServer(async (request, response) => {
     const method = request.method ?? "GET";
     const path = requestPath(request.url);
+    requestCount += 1;
+    if (maximumRequestCount !== undefined && requestCount > maximumRequestCount) {
+      request.resume();
+      sendJson(response, 429, {
+        error: "paper_api_request_limit_exceeded",
+        maximum_request_count: maximumRequestCount,
+        authority_status: "not_live"
+      });
+      pushBoundedRequestLog(
+        requestLog,
+        logRequest(method, path, undefined, 429),
+        requestLogLimit
+      );
+      return;
+    }
     let body: unknown;
     try {
       body = await readJsonBody(request);
@@ -240,6 +266,7 @@ export async function startPaperTradingApiProvider(
       : undefined,
     close: () => close(server),
     requests: () => [...requestLog],
+    request_count: () => requestCount,
     candidate_input: toReplayTradingCandidateInput({
       market: initialMarket,
       account: initialAccount

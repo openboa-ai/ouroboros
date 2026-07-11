@@ -1,0 +1,46 @@
+import type {
+  PaperTradingComparisonActivationSide,
+  PaperTradingComparisonActivationSideResultReason,
+  PaperTradingComparisonRuntimeWriteContext,
+  PaperTradingEvaluationStatus,
+  Ref,
+  SandboxLifecycleStatus,
+  TradingRunLifecycleStatus
+} from "@ouroboros/domain";
+import type { GatewayMarketDataPort } from "./market-data";
+
+export interface PaperTradingComparisonSessionSideStatus {
+  role: "champion" | "challenger";
+  trading_run_ref: Ref;
+  paper_trading_evaluation_ref: Ref;
+  sandbox_ref?: Ref;
+  runtime_lifecycle_status: TradingRunLifecycleStatus | "unknown";
+  evaluation_status: PaperTradingEvaluationStatus | "unknown";
+  sandbox_lifecycle_status?: SandboxLifecycleStatus;
+  sandbox_started_at?: string;
+  provider_request_count: number;
+  provider_session_active: boolean;
+  observed_at: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonSessionPort {
+  startComparisonSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+    marketData: GatewayMarketDataPort;
+    deadlineAt: string;
+    maximumProviderRequestCount: number;
+    signal: AbortSignal;
+  }): Promise<PaperTradingComparisonSessionSideStatus>;
+  stopComparisonSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+    deadlineAt: string;
+    reason: PaperTradingComparisonActivationSideResultReason;
+  }): Promise<PaperTradingComparisonSessionSideStatus>;
+  inspectComparisonSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonRuntimeWriteContext;
+  }): Promise<PaperTradingComparisonSessionSideStatus>;
+}

@@ -50,6 +50,10 @@ import type {
 import type { SandboxStartResult, SandboxAdapterObservationResult } from "./sandbox";
 import { createHash } from "node:crypto";
 
+export type SandboxStartPersistenceInput = Omit<SandboxStartResult, "placement"> & {
+  placement?: SandboxStartResult["placement"];
+};
+
 export const FIXTURE_CANDIDATE_ID = "fixture-candidate-sealed-replay-001";
 export const FIXTURE_SYSTEM_CODE_ID = "fixture-system-code-clock-python-001";
 
@@ -154,9 +158,10 @@ export interface OuroborosStorePort {
   ): Promise<RunControlAuditOutcome>;
   recordPublicMarketLivenessSurface(surface: PublicMarketLivenessSurfaceRecord): Promise<PublicMarketLivenessSurfaceReadModel>;
   getSandbox(sandboxId: string): Promise<SandboxDetailReadModel | undefined>;
+  recordSandboxStart(input: SandboxStartResult): Promise<StartSandboxOutcome>;
   recordSandboxStart(
-    input: SandboxStartResult,
-    authority?: PaperTradingComparisonRuntimeWriteContext
+    input: SandboxStartPersistenceInput,
+    authority: PaperTradingComparisonRuntimeWriteContext
   ): Promise<StartSandboxOutcome>;
   recordSandboxObservations(
     sandboxId: string,
