@@ -342,7 +342,8 @@ export class PaperTradingComparisonRuntimeActivationCoordinator {
       );
     }
     const graph = await this.loadActivationGraph(
-      attempt.paper_trading_comparison_activation_ref.id
+      attempt.paper_trading_comparison_activation_ref.id,
+      { allowProgressedTicks: true }
     );
     const attempts = await this.readAttempts(graph.activation);
     if (!isDeepStrictEqual(attempts.at(-1), attempt)) {
@@ -431,7 +432,10 @@ export class PaperTradingComparisonRuntimeActivationCoordinator {
 
     const recovered: PaperTradingComparisonRuntimeActivationResult[] = [];
     for (const activationId of [...activationIds].sort()) {
-      const graph = await this.loadActivationGraph(activationId);
+      const graph = await this.loadActivationGraph(
+        activationId,
+        { allowProgressedTicks: true }
+      );
       const attempts = await this.readAttempts(graph.activation);
       for (const attempt of attempts) {
         const evidence = await this.readAttemptEvidence(attempt);
@@ -529,7 +533,10 @@ export class PaperTradingComparisonRuntimeActivationCoordinator {
     return activationResult(activation, attempt, cleanup.records, outcome);
   }
 
-  private async loadActivationGraph(activationId: string): Promise<{
+  private async loadActivationGraph(
+    activationId: string,
+    options: { allowProgressedTicks?: boolean } = {}
+  ): Promise<{
     activation: PaperTradingComparisonActivationRecord;
     tick: PaperTradingComparisonTickRecord;
   }> {
@@ -586,8 +593,32 @@ export class PaperTradingComparisonRuntimeActivationCoordinator {
         activation.market_data_configuration_digest ||
       !Array.isArray(activations) || activations.length !== 1 ||
       !isDeepStrictEqual(activations[0], activation) ||
-      !Array.isArray(ticks) || ticks.length !== 1 ||
-      !isDeepStrictEqual(ticks[0], tick)) {
+      !Array.isArray(ticks) || ticks.length === 0 ||
+      options.allowProgressedTicks !== true && ticks.length !== 1 ||
+      !isDeepStrictEqual(ticks[0], tick) ||
+      ticks.some((record, index) =>
+        !paperTradingComparisonTickHasRuntimeShape(record) ||
+        record.tick_digest !== canonicalDigest(
+          paperTradingComparisonTickDigestInput(record)
+        ) ||
+        record.sequence !== index + 1 ||
+        !paperTradingComparisonRefsEqual(
+          record.paper_trading_comparison_commitment_ref,
+          activation.paper_trading_comparison_commitment_ref
+        ) ||
+        record.paper_trading_comparison_commitment_digest !==
+          activation.paper_trading_comparison_commitment_digest ||
+        record.market_data_configuration_digest !==
+          activation.market_data_configuration_digest ||
+        (index === 0
+          ? record.previous_tick_ref !== undefined ||
+            record.previous_tick_digest !== undefined
+          : record.previous_tick_ref?.id !==
+              (ticks[index - 1] as PaperTradingComparisonTickRecord)
+                .paper_trading_comparison_tick_id ||
+            record.previous_tick_digest !==
+              (ticks[index - 1] as PaperTradingComparisonTickRecord).tick_digest)
+      )) {
       throw graphInvalid();
     }
     return { activation, tick };

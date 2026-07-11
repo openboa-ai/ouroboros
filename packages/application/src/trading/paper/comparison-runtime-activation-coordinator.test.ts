@@ -697,6 +697,9 @@ function runtimeActivationFixture(options: RuntimeActivationFixtureOptions = {})
     async enableComparisonTickAttributionSide() {
       throw new Error("unexpected tick attribution in activation test");
     },
+    async advanceComparisonCheckpointSide() {
+      throw new Error("unexpected checkpoint view advance in activation test");
+    },
     async prepareComparisonCheckpointSide() {
       throw new Error("unexpected checkpoint preparation in activation test");
     }

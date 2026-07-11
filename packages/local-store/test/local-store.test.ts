@@ -6593,6 +6593,50 @@ describe("LocalStore", () => {
   });
 
   describe("repeated paired checkpoint transaction", () => {
+    it("accepts a bounded provider baseline after idempotent acknowledgement replay", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedCapturedNextComparisonTickFixture(store);
+      const attempt = await validNextCheckpointAttempt(store, fixture);
+      const replayedRequestBaseline = withCheckpointAttemptDigest({
+        ...attempt,
+        champion: {
+          ...attempt.champion,
+          provider_request_count_before:
+            attempt.champion.provider_request_count_before + 1
+        },
+        challenger: {
+          ...attempt.challenger,
+          provider_request_count_before:
+            attempt.challenger.provider_request_count_before + 2
+        }
+      });
+
+      await expect(store.recordPaperTradingComparisonCheckpointAttempt(
+        replayedRequestBaseline
+      )).resolves.toEqual(replayedRequestBaseline);
+    });
+
+    it("rejects a replayed provider baseline above the frozen request cap", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedCapturedNextComparisonTickFixture(store);
+      const attempt = await validNextCheckpointAttempt(store, fixture);
+      const overCap = withCheckpointAttemptDigest({
+        ...attempt,
+        champion: {
+          ...attempt.champion,
+          provider_request_count_before:
+            fixture.attempt.activation_policy.maximum_provider_request_count_per_side + 1
+        }
+      });
+
+      await expectStoreError(
+        store.recordPaperTradingComparisonCheckpointAttempt(overCap),
+        "paper_trading_comparison_checkpoint_attempt_state_mismatch"
+      );
+    });
+
     it("requires the exact previous paired outcome for checkpoint sequence 2", async () => {
       const store = new LocalStore(tmpDir);
       await store.initialize();
@@ -6757,6 +6801,73 @@ describe("LocalStore", () => {
           fixture.nextCheckpointAttempt[role].paper_trading_evaluation_ref.id
         )).resolves.toEqual(input[role].evaluation);
       }
+    });
+
+    it("preserves an exact stopped successor while recovering committed checkpoints", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedRepeatedCheckpointIntentFixture(store);
+      const input = await validRepeatedPairedCheckpointTransactionInput(store, fixture);
+      await store.recordPaperTradingComparisonPairedCheckpoint(input);
+
+      const stoppedAt = "2026-07-10T00:10:00.000Z";
+      for (const role of ["champion", "challenger"] as const) {
+        const evaluation: PaperTradingEvaluationRecord = {
+          ...input[role].evaluation,
+          status: "stopped",
+          stopped_at: stoppedAt
+        };
+        const run = await store.getTradingRun(evaluation.trading_run_ref.id);
+        if (!run) throw new Error(`missing ${role} TradingRun`);
+        const stoppedRun: TradingRunRecord = {
+          ...run,
+          runtime_lifecycle_status: "stopped"
+        };
+        await writeStoreJson(
+          stoppedRun,
+          "trading-runs",
+          "items",
+          `${encodeURIComponent(stoppedRun.trading_run_id)}.json`
+        );
+        await writeStoreJson(
+          evaluation,
+          "paper-trading-evaluations",
+          "items",
+          `${encodeURIComponent(evaluation.paper_trading_evaluation_id)}.json`
+        );
+      }
+
+      const reloaded = new LocalStore(store.root());
+      await expect(reloaded.recoverPaperTradingComparisonCheckpointTransactions())
+        .resolves.toEqual([fixture.checkpoint.outcome, input.outcome]);
+      for (const role of ["champion", "challenger"] as const) {
+        await expect(reloaded.getTradingRun(input[role].evaluation.trading_run_ref.id))
+          .resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+        await expect(reloaded.getPaperTradingEvaluation(
+          input[role].evaluation.paper_trading_evaluation_id
+        )).resolves.toMatchObject({ status: "stopped", stopped_at: stoppedAt });
+      }
+
+      const championEvaluation = await reloaded.getPaperTradingEvaluation(
+        input.champion.evaluation.paper_trading_evaluation_id
+      );
+      if (!championEvaluation) throw new Error("missing stopped champion evaluation");
+      await writeStoreJson(
+        {
+          ...championEvaluation,
+          latest_score: {
+            ...championEvaluation.latest_score,
+            net_revenue_usdt: championEvaluation.latest_score.net_revenue_usdt + 1
+          }
+        },
+        "paper-trading-evaluations",
+        "items",
+        `${encodeURIComponent(championEvaluation.paper_trading_evaluation_id)}.json`
+      );
+      await expectStoreError(
+        new LocalStore(store.root()).recoverPaperTradingComparisonCheckpointTransactions(),
+        "paper_trading_comparison_paired_checkpoint_materialization_conflict"
+      );
     });
   });
 
@@ -8630,17 +8741,17 @@ async function seedNextComparisonTickAttribution(
       authority_status: "not_live"
     });
     const acknowledgement = validComparisonTickAcknowledgement(delivery);
-    await overwriteComparisonFixtureRecord(
-      store,
-      "paper-trading-comparison-tick-deliveries",
-      delivery.paper_trading_comparison_tick_delivery_id,
-      delivery
+    await store.recordPaperTradingComparisonTickDelivery(
+      delivery,
+      nextComparisonTickIOWriteContext(
+        fixture,
+        role,
+        "deliver_market_snapshot"
+      )
     );
-    await overwriteComparisonFixtureRecord(
-      store,
-      "paper-trading-comparison-tick-acknowledgements",
-      acknowledgement.paper_trading_comparison_tick_acknowledgement_id,
-      acknowledgement
+    await store.recordPaperTradingComparisonTickAcknowledgement(
+      acknowledgement,
+      nextComparisonTickIOWriteContext(fixture, role, "acknowledge_tick")
     );
     nextDeliveries.push(delivery);
     nextAcknowledgements.push(acknowledgement);
@@ -9020,6 +9131,21 @@ function comparisonTickIOWriteContext(
     },
     tick_digest: fixture.tick.tick_digest,
     operation
+  };
+}
+
+function nextComparisonTickIOWriteContext(
+  fixture: Awaited<ReturnType<typeof storedCapturedNextComparisonTickFixture>>,
+  role: "champion" | "challenger",
+  operation: PaperTradingComparisonTickIOWriteContext["operation"]
+): PaperTradingComparisonTickIOWriteContext {
+  return {
+    ...comparisonTickIOWriteContext(fixture, role, operation),
+    tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: fixture.nextTick.paper_trading_comparison_tick_id
+    },
+    tick_digest: fixture.nextTick.tick_digest
   };
 }
 

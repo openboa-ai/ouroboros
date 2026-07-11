@@ -610,8 +610,11 @@ interface PaperTradingComparisonTickAttributionState {
   attempt: PaperTradingComparisonActivationAttemptRecord;
   comparison: PaperTradingComparisonCommitmentRecord;
   tick: PaperTradingComparisonTickRecord;
+  checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord;
   checkpointOutcome: PaperTradingComparisonCheckpointOutcomeRecord;
   checkpointEvidence: PaperTradingComparisonCheckpointSideEvidence;
+  providerRequestCountBefore: number;
+  deliveryNotBefore: string;
   sideState: PaperTradingComparisonRuntimeSideState;
 }
 
@@ -3597,17 +3600,20 @@ export class LocalStore {
     let activationOutcomes: PaperTradingComparisonActivationOutcomeRecord[];
     let checkpointAttempts: PaperTradingComparisonCheckpointAttemptRecord[];
     let checkpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
+    let observations: PaperTradingObservationRecord[];
     try {
       closure = await this.loadPaperTradingComparisonActivationAttemptClosure(
         activationAttempt
       );
-      [state, activationAttempts, activationOutcomes, checkpointAttempts, checkpointOutcomes] =
+      [state, activationAttempts, activationOutcomes, checkpointAttempts, checkpointOutcomes,
+        observations] =
         await Promise.all([
           this.loadPaperTradingComparisonRuntimeSideState(
             activationAttempt,
             authority.role,
             closure.comparison,
-            "paper_trading_comparison_checkpoint_write_state_conflict"
+            "paper_trading_comparison_checkpoint_write_state_conflict",
+            { allowCommittedCheckpoint: true }
           ),
           this.listPaperTradingComparisonActivationAttempts(
             activation.paper_trading_comparison_activation_id
@@ -3620,6 +3626,9 @@ export class LocalStore {
           ),
           this.listPaperTradingComparisonCheckpointOutcomes(
             checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+          ),
+          this.listPaperTradingObservations(
+            checkpointSide.paper_trading_evaluation_ref.id
           )
         ]);
     } catch {
@@ -3636,6 +3645,7 @@ export class LocalStore {
       activationOutcome.outcome_status !== "both_running" ||
       checkpointAttempts.at(-1)?.paper_trading_comparison_checkpoint_attempt_id !==
         checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+      checkpointAttempts.length !== checkpointAttempt.checkpoint_sequence ||
       checkpointOutcomes.length !== 0 ||
       state.run.runtime_lifecycle_status !== "running" ||
       state.evaluation.status !== "running" ||
@@ -3644,8 +3654,10 @@ export class LocalStore {
       checkpointSide.evaluation_record_digest !== comparisonExactRecordDigest(
         paperTradingComparisonEvaluationRecordDigestInput(state.evaluation)
       ) ||
+      observations.length !== checkpointAttempt.checkpoint_sequence - 1 ||
+      observations.some((observation, index) => observation.sequence !== index + 1) ||
       checkpointSide.observation_chain_digest !== comparisonExactRecordDigest(
-        paperTradingComparisonObservationChainDigestInput([])
+        paperTradingComparisonObservationChainDigestInput(observations)
       )
     ) {
       throw new LocalStoreError(
@@ -5387,11 +5399,11 @@ export class LocalStore {
       state.comparison.comparison_policy.maximum_elapsed_ms;
     if (
       delivery.provider_request_count_at_delivery <=
-        state.checkpointEvidence.provider_request_count_after ||
+        state.providerRequestCountBefore ||
       delivery.provider_request_count_at_delivery >
         state.attempt.activation_policy.maximum_provider_request_count_per_side ||
       Date.parse(delivery.delivered_at) <
-        Date.parse(state.checkpointOutcome.completed_at) ||
+        Date.parse(state.deliveryNotBefore) ||
       Date.parse(delivery.delivered_at) > maximumCompletedAt
     ) {
       throw new LocalStoreError(
@@ -5800,9 +5812,10 @@ export class LocalStore {
     let activationOutcomes: PaperTradingComparisonActivationOutcomeRecord[];
     let checkpointAttempts: PaperTradingComparisonCheckpointAttemptRecord[];
     let sideResults: PaperTradingComparisonActivationSideResultRecord[];
+    let tick: PaperTradingComparisonTickRecord | undefined;
     try {
       closure = await this.loadPaperTradingComparisonActivationAttemptClosure(attempt);
-      [attempts, activationOutcomes, checkpointAttempts, sideResults] =
+      [attempts, activationOutcomes, checkpointAttempts, sideResults, tick] =
         await Promise.all([
           this.listPaperTradingComparisonActivationAttempts(
             closure.activation.paper_trading_comparison_activation_id
@@ -5815,7 +5828,8 @@ export class LocalStore {
           ),
           this.listPaperTradingComparisonActivationSideResults(
             attempt.paper_trading_comparison_activation_attempt_id
-          )
+          ),
+          this.getPaperTradingComparisonTick(authority.tick_ref.id)
         ]);
     } catch {
       throw new LocalStoreError(
@@ -5846,30 +5860,99 @@ export class LocalStore {
       !paperTradingComparisonRefsEqual(
         authority.trading_run_ref,
         attempt[authority.role].trading_run_ref
-      ) ||
+      )
+    ) {
+      throw new LocalStoreError(
+        errors.referenceMismatch,
+        "comparison tick IO authority does not match its frozen activation side",
+        {
+          activation_ref_matches: paperTradingComparisonRefsEqual(
+            authority.paper_trading_comparison_activation_ref,
+            {
+              record_kind: "paper_trading_comparison_activation",
+              id: closure.activation.paper_trading_comparison_activation_id
+            }
+          ),
+          activation_digest_matches:
+            authority.paper_trading_comparison_activation_digest ===
+            closure.activation.activation_digest,
+          activation_attempt_ref_matches: paperTradingComparisonRefsEqual(
+            authority.paper_trading_comparison_activation_attempt_ref,
+            {
+              record_kind: "paper_trading_comparison_activation_attempt",
+              id: attempt.paper_trading_comparison_activation_attempt_id
+            }
+          ),
+          activation_attempt_digest_matches:
+            authority.paper_trading_comparison_activation_attempt_digest ===
+            attempt.attempt_digest,
+          trading_run_ref_matches: paperTradingComparisonRefsEqual(
+            authority.trading_run_ref,
+            attempt[authority.role].trading_run_ref
+          )
+        }
+      );
+    }
+    if (!tick) {
+      throw new LocalStoreError(
+        errors.referenceNotFound,
+        "comparison tick IO tick was not found"
+      );
+    }
+    if (
       !paperTradingComparisonRefsEqual(
         authority.tick_ref,
         {
           record_kind: "paper_trading_comparison_tick",
-          id: closure.tick.paper_trading_comparison_tick_id
+          id: tick.paper_trading_comparison_tick_id
         }
       ) ||
-      authority.tick_digest !== closure.tick.tick_digest
+      authority.tick_digest !== tick.tick_digest ||
+      !paperTradingComparisonRefsEqual(
+        tick.paper_trading_comparison_commitment_ref,
+        {
+          record_kind: "paper_trading_comparison_commitment",
+          id: closure.comparison.paper_trading_comparison_commitment_id
+        }
+      ) ||
+      tick.paper_trading_comparison_commitment_digest !==
+        closure.comparison.commitment_digest ||
+      tick.sequence === 1 && !samePersistedComparisonRecord(tick, closure.tick)
     ) {
       throw new LocalStoreError(
         errors.referenceMismatch,
-        "comparison tick IO authority does not match its frozen activation side"
+        "comparison tick IO authority does not match its frozen comparison tick",
+        {
+          authority_tick_id: authority.tick_ref.id,
+          resolved_tick_id: tick.paper_trading_comparison_tick_id,
+          tick_ref_matches: paperTradingComparisonRefsEqual(
+            authority.tick_ref,
+            {
+              record_kind: "paper_trading_comparison_tick",
+              id: tick.paper_trading_comparison_tick_id
+            }
+          ),
+          tick_digest_matches: authority.tick_digest === tick.tick_digest,
+          comparison_ref_matches: paperTradingComparisonRefsEqual(
+            tick.paper_trading_comparison_commitment_ref,
+            {
+              record_kind: "paper_trading_comparison_commitment",
+              id: closure.comparison.paper_trading_comparison_commitment_id
+            }
+          )
+        }
       );
     }
 
     const latestActivationOutcome = activationOutcomes.at(-1);
-    const checkpointAttempt = checkpointAttempts[0];
+    const checkpointAttempt = checkpointAttempts.at(-1);
     if (
       attempts.at(-1)?.paper_trading_comparison_activation_attempt_id !==
         attempt.paper_trading_comparison_activation_attempt_id ||
       latestActivationOutcome?.outcome_status !== "both_running" ||
-      checkpointAttempts.length !== 1 ||
+      checkpointAttempts.length !== tick.sequence ||
       !checkpointAttempt ||
+      checkpointAttempt.checkpoint_sequence !== tick.sequence ||
       !paperTradingComparisonRefsEqual(
         checkpointAttempt.activation_outcome_ref,
         latestActivationOutcome && {
@@ -5883,13 +5966,13 @@ export class LocalStore {
     ) {
       throw new LocalStoreError(
         errors.stateConflict,
-        "comparison tick IO requires the exact latest both-running checkpoint attempt"
+        "comparison tick IO requires the exact latest contiguous both-running checkpoint attempt"
       );
     }
 
-    let checkpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
+    let currentCheckpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
     try {
-      checkpointOutcomes = await this.listPaperTradingComparisonCheckpointOutcomes(
+      currentCheckpointOutcomes = await this.listPaperTradingComparisonCheckpointOutcomes(
         checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
       );
     } catch {
@@ -5898,20 +5981,69 @@ export class LocalStore {
         "comparison tick checkpoint outcome evidence is corrupt"
       );
     }
-    const checkpointOutcome = checkpointOutcomes[0];
+    let checkpointOutcome: PaperTradingComparisonCheckpointOutcomeRecord | undefined;
+    if (tick.sequence === 1) {
+      checkpointOutcome = currentCheckpointOutcomes[0];
+      if (
+        currentCheckpointOutcomes.length !== 1 ||
+        checkpointOutcome?.next_action !== "serve_and_acknowledge_current_tick" ||
+        !paperTradingComparisonRefsEqual(checkpointOutcome?.tick_ref, authority.tick_ref) ||
+        checkpointOutcome?.tick_digest !== authority.tick_digest
+      ) {
+        throw new LocalStoreError(
+          errors.stateConflict,
+          "comparison tick IO requires one committed first paired checkpoint"
+        );
+      }
+    } else {
+      const previousCheckpointAttempt = checkpointAttempts.at(-2);
+      let previousCheckpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
+      try {
+        previousCheckpointOutcomes = previousCheckpointAttempt
+          ? await this.listPaperTradingComparisonCheckpointOutcomes(
+              previousCheckpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+            )
+          : [];
+      } catch {
+        throw new LocalStoreError(
+          errors.graphInvalid,
+          "comparison tick predecessor checkpoint outcome evidence is corrupt"
+        );
+      }
+      checkpointOutcome = previousCheckpointOutcomes[0];
+      if (
+        currentCheckpointOutcomes.length !== 0 ||
+        !previousCheckpointAttempt ||
+        previousCheckpointAttempt.checkpoint_sequence !== tick.sequence - 1 ||
+        previousCheckpointOutcomes.length !== 1 ||
+        !checkpointOutcome ||
+        !paperTradingComparisonRefsEqual(
+          checkpointAttempt.previous_checkpoint_outcome_ref,
+          {
+            record_kind: "paper_trading_comparison_checkpoint_outcome",
+            id: checkpointOutcome.paper_trading_comparison_checkpoint_outcome_id
+          }
+        ) ||
+        checkpointAttempt.previous_checkpoint_outcome_digest !==
+          checkpointOutcome.outcome_digest ||
+        checkpointOutcome.next_action === "close_failed_comparison" ||
+        checkpointOutcome.next_action === "recover_cleanup"
+      ) {
+        throw new LocalStoreError(
+          errors.stateConflict,
+          "comparison tick IO requires one open checkpoint after an exact paired predecessor"
+        );
+      }
+    }
     const checkpointEvidence = checkpointOutcome?.[authority.role];
     if (
-      checkpointOutcomes.length !== 1 ||
       !checkpointOutcome ||
       checkpointOutcome.outcome_status !== "paired" ||
-      checkpointOutcome.next_action !== "serve_and_acknowledge_current_tick" ||
-      !checkpointEvidence ||
-      !paperTradingComparisonRefsEqual(checkpointOutcome.tick_ref, authority.tick_ref) ||
-      checkpointOutcome.tick_digest !== authority.tick_digest
+      !checkpointEvidence
     ) {
       throw new LocalStoreError(
         errors.stateConflict,
-        "comparison tick IO requires one committed paired checkpoint"
+        "comparison tick IO requires one exact paired checkpoint baseline"
       );
     }
 
@@ -5955,9 +6087,16 @@ export class LocalStore {
     return {
       attempt,
       comparison: closure.comparison,
-      tick: closure.tick,
+      tick,
+      checkpointAttempt,
       checkpointOutcome,
       checkpointEvidence,
+      providerRequestCountBefore: tick.sequence === 1
+        ? checkpointEvidence.provider_request_count_after
+        : checkpointAttempt[authority.role].provider_request_count_before,
+      deliveryNotBefore: tick.sequence === 1
+        ? checkpointOutcome.completed_at
+        : checkpointAttempt.attempted_at,
       sideState
     };
   }
@@ -7615,8 +7754,10 @@ export class LocalStore {
                 }
               ) && priorEvidence.tick_acknowledgement_digest ===
                 priorAcknowledgement.acknowledgement_digest) &&
-            attempt[role].provider_request_count_before ===
-              priorAcknowledgement.provider_request_count_at_acknowledgement
+            attempt[role].provider_request_count_before >=
+              priorAcknowledgement.provider_request_count_at_acknowledgement &&
+            attempt[role].provider_request_count_before <=
+              activationAttempt.activation_policy.maximum_provider_request_count_per_side
           );
       return Boolean(
         result &&
@@ -8511,6 +8652,12 @@ export class LocalStore {
       samePersistedComparisonRecord(after, record)
     ) ?? -1;
     if (existingHistoryIndex > afterHistoryIndex && afterHistoryIndex >= 0) return;
+    const latestHistoryRecord = transitionHistory?.at(-1);
+    if (latestHistoryRecord && this.checkpointTransitionHasExactStoppedSuccessor(
+      collection,
+      existing,
+      latestHistoryRecord
+    )) return;
     if (existing !== undefined &&
       !samePersistedComparisonRecord(existing, before) &&
       !samePersistedComparisonRecord(existing, after)) {
@@ -8522,6 +8669,38 @@ export class LocalStore {
     if (!samePersistedComparisonRecord(existing, after)) {
       await this.writeJson(this.itemPath(collection, id), after);
     }
+  }
+
+  private checkpointTransitionHasExactStoppedSuccessor(
+    collection: "trading-runs" | "paper-trading-evaluations",
+    existing: unknown,
+    latestHistoryRecord: TradingRunRecord | PaperTradingEvaluationRecord
+  ): boolean {
+    if (!isPlainObject(existing)) return false;
+    if (collection === "trading-runs") {
+      const stopped = existing as unknown as TradingRunRecord;
+      const running = latestHistoryRecord as TradingRunRecord;
+      return stopped.record_kind === "trading_run" &&
+        running.record_kind === "trading_run" &&
+        stopped.runtime_lifecycle_status === "stopped" &&
+        running.runtime_lifecycle_status === "running" &&
+        samePersistedComparisonRecord(
+          { ...stopped, runtime_lifecycle_status: "running" },
+          running
+        );
+    }
+
+    const stopped = existing as unknown as PaperTradingEvaluationRecord;
+    const running = latestHistoryRecord as PaperTradingEvaluationRecord;
+    if (stopped.record_kind !== "paper_trading_evaluation" ||
+      running.record_kind !== "paper_trading_evaluation" ||
+      stopped.status !== "stopped" || running.status !== "running" ||
+      !isIsoTimestamp(stopped.stopped_at)) return false;
+    const { stopped_at: _stoppedAt, ...withoutStoppedAt } = stopped;
+    return samePersistedComparisonRecord(
+      { ...withoutStoppedAt, status: "running" },
+      running
+    );
   }
 
   private buildPaperTradingComparisonCheckpointTransitionHistories(
