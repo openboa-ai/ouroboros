@@ -6,12 +6,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
   PAPER_TRADING_COMPARISON_ZERO_SCORE,
+  paperTradingComparisonActivationOutcomeDigestInput,
   paperTradingComparisonActivationPolicyFor,
+  paperTradingComparisonCheckpointAttemptDigestInput,
+  paperTradingComparisonCheckpointOutcomeDigestInput,
+  paperTradingComparisonEvaluationRecordDigestInput,
+  paperTradingComparisonObservationChainDigestInput,
+  paperTradingComparisonPersistedRecordDigestInput,
+  paperTradingComparisonTickDigestInput,
   paperTradingEvaluationCommitmentDigestInput,
   type PaperTradingComparisonActivationAttemptRecord,
+  type PaperTradingComparisonActivationOutcomeRecord,
   type PaperTradingComparisonActivationRecord,
   type PaperTradingComparisonActivationSide,
+  type PaperTradingComparisonCheckpointAttemptRecord,
+  type PaperTradingComparisonCheckpointOutcomeRecord,
+  type PaperTradingComparisonCheckpointWriteContext,
   type PaperTradingComparisonRuntimeWriteContext,
+  type PaperTradingComparisonTickRecord,
   type PaperTradingEvaluationCommitmentRecord,
   type PaperTradingEvaluationRecord,
   type SandboxDetailReadModel,
@@ -19,7 +31,10 @@ import {
 } from "@ouroboros/domain";
 import { FIXTURE_CANDIDATE_ID, LocalStore } from "@ouroboros/local-store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
-import type { OuroborosStorePort } from "../../ports/store";
+import type {
+  OuroborosStorePort,
+  PreparedPaperTradingComparisonCheckpointSide
+} from "../../ports/store";
 import type { SandboxStartInput } from "../../ports/sandbox";
 import { initialPaperTradingEngineState, paperTradingScoreFromAccount } from "./engine";
 import { PaperTradingEvaluationRunner } from "./evaluation-runner";
@@ -768,6 +783,160 @@ describe("PaperTradingSessionService", () => {
     expect(fixture.effects).toMatchObject({ providerCloses: 1, sandboxStops: 1 });
   });
 
+  it("prepares one authorized first-checkpoint side without economic Store writes", async () => {
+    const fixture = await authorizedComparisonSessionFixture("checkpoint-prepare", {
+      checkpointLogLines: [checkpointOrderEventLine()]
+    });
+    await fixture.service.startComparisonSide({
+      side: fixture.side,
+      authority: fixture.startAuthority,
+      marketData: fixture.fixedMarketData,
+      deadlineAt: fixture.attempt.start_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+    const checkpoint = await fixture.authorizeCheckpoint();
+    const writesBefore = fixture.writes.length;
+    const fixedReadsBefore = fixture.effects.fixedMarketReads;
+
+    const prepared = await fixture.service.prepareComparisonCheckpointSide({
+      side: fixture.side,
+      authority: checkpoint.authority,
+      tick: checkpoint.tick,
+      deadlineAt: checkpoint.attempt.checkpoint_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+
+    expect(prepared).toMatchObject({
+      role: "challenger",
+      observation: {
+        status: "recorded",
+        paper_trading_comparison_tick_ref: checkpoint.attempt.tick_ref,
+        paper_trading_comparison_checkpoint_attempt_ref: {
+          id: checkpoint.attempt.paper_trading_comparison_checkpoint_attempt_id
+        }
+      },
+      evaluation: { observation_count: 1 },
+      consumed_event_count: 1,
+      provider_request_count_after: 3,
+      preparation_digest: expect.stringMatching(/^sha256:/)
+    });
+    expect(prepared.ledger_inputs).toHaveLength(1);
+    expect(prepared.ledger_outcomes).toHaveLength(1);
+    expect(fixture.effects).toMatchObject({
+      sandboxLogReads: 1,
+      fixedMarketReads: fixedReadsBefore,
+      underlyingMarketReads: 0
+    });
+    expect(fixture.writes.slice(writesBefore)).toEqual([{
+      kind: "sandbox-evidence",
+      authority: checkpoint.authority
+    }]);
+    await expect(fixture.store.listPaperTradingObservations(
+      fixture.side.paper_trading_evaluation_ref.id
+    )).resolves.toEqual([]);
+    await expect(fixture.store.getPaperTradingEvaluation(
+      fixture.side.paper_trading_evaluation_ref.id
+    )).resolves.toMatchObject({ observation_count: 0 });
+  });
+
+  it("rejects checkpoint preparation after the frozen provider request cap", async () => {
+    const fixture = await authorizedComparisonSessionFixture("checkpoint-request-cap", {
+      checkpointLogLines: [checkpointOrderEventLine()]
+    });
+    await fixture.service.startComparisonSide({
+      side: fixture.side,
+      authority: fixture.startAuthority,
+      marketData: fixture.fixedMarketData,
+      deadlineAt: fixture.attempt.start_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+    const checkpoint = await fixture.authorizeCheckpoint();
+
+    await expect(fixture.service.prepareComparisonCheckpointSide({
+      side: fixture.side,
+      authority: checkpoint.authority,
+      tick: checkpoint.tick,
+      deadlineAt: checkpoint.attempt.checkpoint_deadline_at,
+      maximumProviderRequestCount: 2,
+      signal: new AbortController().signal
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_provider_request_budget_exceeded"
+    });
+    expect(fixture.effects.sandboxLogReads).toBe(0);
+  });
+
+  it("rejects a mismatched checkpoint role before sandbox refresh", async () => {
+    const fixture = await authorizedComparisonSessionFixture("checkpoint-role", {
+      checkpointLogLines: [checkpointOrderEventLine()]
+    });
+    await fixture.service.startComparisonSide({
+      side: fixture.side,
+      authority: fixture.startAuthority,
+      marketData: fixture.fixedMarketData,
+      deadlineAt: fixture.attempt.start_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+    const checkpoint = await fixture.authorizeCheckpoint();
+
+    await expect(fixture.service.prepareComparisonCheckpointSide({
+      side: fixture.side,
+      authority: { ...checkpoint.authority, role: "champion" },
+      tick: checkpoint.tick,
+      deadlineAt: checkpoint.attempt.checkpoint_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    })).rejects.toMatchObject({
+      code: "paper_trading_comparison_checkpoint_write_context_mismatch"
+    });
+    expect(fixture.effects.sandboxLogReads).toBe(0);
+  });
+
+  it("stops after a paired checkpoint without erasing committed evidence", async () => {
+    const fixture = await authorizedComparisonSessionFixture("checkpoint-stop", {
+      checkpointLogLines: [checkpointOrderEventLine()]
+    });
+    await fixture.service.startComparisonSide({
+      side: fixture.side,
+      authority: fixture.startAuthority,
+      marketData: fixture.fixedMarketData,
+      deadlineAt: fixture.attempt.start_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+    const checkpoint = await fixture.authorizeCheckpoint();
+    const prepared = await fixture.service.prepareComparisonCheckpointSide({
+      side: fixture.side,
+      authority: checkpoint.authority,
+      tick: checkpoint.tick,
+      deadlineAt: checkpoint.attempt.checkpoint_deadline_at,
+      maximumProviderRequestCount: 7,
+      signal: new AbortController().signal
+    });
+    fixture.commitCheckpoint(prepared);
+
+    await expect(fixture.service.stopComparisonSide({
+      side: fixture.side,
+      authority: fixture.stopAuthority,
+      deadlineAt: new Date(Date.now() + 10_000).toISOString(),
+      reason: "handoff_cleanup"
+    })).resolves.toMatchObject({
+      runtime_lifecycle_status: "stopped",
+      evaluation_status: "stopped"
+    });
+    await expect(fixture.store.getPaperTradingEvaluation(
+      fixture.side.paper_trading_evaluation_ref.id
+    )).resolves.toMatchObject({
+      status: "stopped",
+      observation_count: 1,
+      processed_trading_system_event_ids:
+        prepared.evaluation.processed_trading_system_event_ids
+    });
+  });
+
   it("closes a comparison provider when aborted before the sandbox effect", async () => {
     const controller = new AbortController();
     const fixture = await authorizedComparisonSessionFixture("abort-provider", {
@@ -1018,6 +1187,7 @@ async function authorizedComparisonSessionFixture(
     onSandboxRecorded?: () => void;
     failSandboxPersistence?: boolean;
     failTransientSandboxStop?: boolean;
+    checkpointLogLines?: string[];
   } = {}
 ) {
   const backingStore = new LocalStore(path.join(tmpDir, `authorized-${suffix}`));
@@ -1061,6 +1231,51 @@ async function authorizedComparisonSessionFixture(
     release_policy: "sealed_until_adjudication"
   });
   const attemptedAt = new Date(Date.now() - 1_000).toISOString();
+  const tickDraft: PaperTradingComparisonTickRecord = {
+    record_kind: "paper_trading_comparison_tick",
+    version: 1,
+    paper_trading_comparison_tick_id: `session-comparison-tick-${suffix}`,
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: `session-comparison-${suffix}`
+    },
+    paper_trading_comparison_commitment_digest: `sha256:comparison-${suffix}`,
+    sequence: 1,
+    market_data_configuration_digest: prepared.commitment.data_identity
+      .market_data_configuration_digest,
+    market_snapshot: {
+      symbol: "BTCUSDT",
+      price: 60_000,
+      moving_average_fast: 60_100,
+      moving_average_slow: 59_900,
+      volatility: 0.01,
+      expected_direction: "long",
+      observed_at: attemptedAt,
+      source_kind: "binance_production_public_hybrid",
+      freshness: "fresh",
+      gap_detected: false,
+      authority_status: "read_only"
+    },
+    public_execution_snapshot: {
+      symbol: "BTCUSDT",
+      observed_at: attemptedAt,
+      source_kind: "binance_production_public_hybrid",
+      freshness: "fresh",
+      gap_detected: false,
+      stream_marker: `session-first-tick-${suffix}`,
+      agg_trades: [],
+      authority_status: "read_only"
+    },
+    observed_at: attemptedAt,
+    tick_digest: "",
+    authority_status: "not_live"
+  };
+  const tick: PaperTradingComparisonTickRecord = {
+    ...tickDraft,
+    tick_digest: comparisonFixtureDigest(
+      paperTradingComparisonTickDigestInput(tickDraft)
+    )
+  };
   const activation: PaperTradingComparisonActivationRecord = {
     record_kind: "paper_trading_comparison_activation",
     version: 1,
@@ -1072,9 +1287,9 @@ async function authorizedComparisonSessionFixture(
     paper_trading_comparison_commitment_digest: `sha256:comparison-${suffix}`,
     first_tick_ref: {
       record_kind: "paper_trading_comparison_tick",
-      id: `session-comparison-tick-${suffix}`
+      id: tick.paper_trading_comparison_tick_id
     },
-    first_tick_digest: `sha256:tick-${suffix}`,
+    first_tick_digest: tick.tick_digest,
     champion: {
       role: "champion",
       trading_run_ref: { record_kind: "trading_run", id: `champion-run-${suffix}` },
@@ -1133,6 +1348,10 @@ async function authorizedComparisonSessionFixture(
     order_submission_authority: false,
     authority_status: "not_live"
   };
+  let activationOutcome: PaperTradingComparisonActivationOutcomeRecord | undefined;
+  let checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord | undefined;
+  let checkpointOutcome: PaperTradingComparisonCheckpointOutcomeRecord | undefined;
+  let checkpointObservations: PreparedPaperTradingComparisonCheckpointSide["observation"][] = [];
   const startAuthority = comparisonSessionAuthority(attempt, "start");
   const stopAuthority = comparisonSessionAuthority(attempt, "stop");
   const effects = {
@@ -1140,6 +1359,7 @@ async function authorizedComparisonSessionFixture(
     providerCloses: 0,
     sandboxStarts: 0,
     sandboxStops: 0,
+    sandboxLogReads: 0,
     fixedMarketReads: 0,
     underlyingMarketReads: 0,
     maximumRequestCount: undefined as number | undefined,
@@ -1147,7 +1367,8 @@ async function authorizedComparisonSessionFixture(
   };
   const writes: Array<{
     kind: string;
-    authority: PaperTradingComparisonRuntimeWriteContext | undefined;
+    authority: PaperTradingComparisonRuntimeWriteContext |
+      PaperTradingComparisonCheckpointWriteContext | undefined;
   }> = [];
   let run: TradingRunRecord = structuredClone(storedRun);
   let evaluation: PaperTradingEvaluationRecord = structuredClone(prepared.evaluation);
@@ -1155,6 +1376,20 @@ async function authorizedComparisonSessionFixture(
 
   const store = new Proxy(backingStore as OuroborosStorePort, {
     get(target, property, receiver) {
+      if (property === "getCandidateForTradingRun") {
+        return async (id: string) => {
+          const candidate = await backingStore.getCandidateForTradingRun(id);
+          if (!candidate || id !== run.trading_run_id) return candidate;
+          return {
+            ...structuredClone(candidate),
+            runtime: {
+              ...structuredClone(candidate.runtime),
+              runtime_lifecycle_status: run.runtime_lifecycle_status,
+              ...(sandbox ? { sandbox: structuredClone(sandbox) } : {})
+            }
+          };
+        };
+      }
       if (property === "getTradingRun") {
         return async (id: string) => id === run.trading_run_id ? structuredClone(run) : undefined;
       }
@@ -1184,6 +1419,38 @@ async function authorizedComparisonSessionFixture(
       if (property === "listPaperTradingComparisonActivationAttempts") {
         return async () => [structuredClone(attempt)];
       }
+      if (property === "getPaperTradingComparisonTick") {
+        return async (id: string) => id === tick.paper_trading_comparison_tick_id
+          ? structuredClone(tick)
+          : undefined;
+      }
+      if (property === "getPaperTradingComparisonActivationOutcome") {
+        return async (id: string) =>
+          activationOutcome?.paper_trading_comparison_activation_outcome_id === id
+            ? structuredClone(activationOutcome)
+            : undefined;
+      }
+      if (property === "listPaperTradingComparisonActivationOutcomes") {
+        return async () => activationOutcome ? [structuredClone(activationOutcome)] : [];
+      }
+      if (property === "getPaperTradingComparisonCheckpointAttempt") {
+        return async (id: string) =>
+          checkpointAttempt?.paper_trading_comparison_checkpoint_attempt_id === id
+            ? structuredClone(checkpointAttempt)
+            : undefined;
+      }
+      if (property === "listPaperTradingComparisonCheckpointAttempts") {
+        return async () => checkpointAttempt ? [structuredClone(checkpointAttempt)] : [];
+      }
+      if (property === "listPaperTradingComparisonCheckpointOutcomes") {
+        return async () => checkpointOutcome ? [structuredClone(checkpointOutcome)] : [];
+      }
+      if (property === "getPaperTradingComparisonCheckpointOutcome") {
+        return async (id: string) =>
+          checkpointOutcome?.paper_trading_comparison_checkpoint_outcome_id === id
+            ? structuredClone(checkpointOutcome)
+            : undefined;
+      }
       if (property === "getSandbox") {
         return async (id: string) => sandbox?.sandbox_id === id
           ? structuredClone(sandbox)
@@ -1211,6 +1478,40 @@ async function authorizedComparisonSessionFixture(
           options.onSandboxRecorded?.();
           return { sandbox: structuredClone(sandbox) };
         };
+      }
+      if (property === "recordSandboxObservations") {
+        return async (
+          id: string,
+          observations: any,
+          authority?: PaperTradingComparisonCheckpointWriteContext
+        ) => {
+          if (!sandbox || sandbox.sandbox_id !== id) throw new Error("sandbox_not_found");
+          writes.push({
+            kind: "sandbox-evidence",
+            authority: structuredClone(authority)
+          });
+          sandbox = {
+            ...sandbox,
+            lifecycle_status: observations.lifecycle_status ?? sandbox.lifecycle_status,
+            logs: [
+              ...sandbox.logs,
+              ...(observations.logs ?? []).map((log: any) => ({
+                log_ref: { record_kind: "sandbox_log", id: log.sandbox_log_id },
+                captured_at: log.captured_at,
+                lines: structuredClone(log.lines)
+              }))
+            ]
+          };
+          return {
+            sandbox: structuredClone(sandbox),
+            logs: structuredClone(sandbox.logs),
+            heartbeats: structuredClone(sandbox.heartbeats),
+            command_evidence: structuredClone(sandbox.command_evidence)
+          };
+        };
+      }
+      if (property === "previewLedger") {
+        return async (input: any) => backingStore.previewLedger(input);
       }
       if (property === "recordRunControlAudit") {
         return async (input: any, authority?: PaperTradingComparisonRuntimeWriteContext) => {
@@ -1255,7 +1556,9 @@ async function authorizedComparisonSessionFixture(
           return { sandbox: structuredClone(sandbox) };
         };
       }
-      if (property === "listPaperTradingObservations") return async () => [];
+      if (property === "listPaperTradingObservations") {
+        return async () => structuredClone(checkpointObservations);
+      }
       const value = Reflect.get(target, property, receiver);
       return typeof value === "function" ? value.bind(target) : value;
     }
@@ -1334,6 +1637,22 @@ async function authorizedComparisonSessionFixture(
             command_evidence: []
           };
         },
+        async getArtifactInstanceLogs(instance: any) {
+          effects.sandboxLogReads += 1;
+          const capturedAt = new Date().toISOString();
+          return {
+            lifecycle_status: "running" as const,
+            logs: options.checkpointLogLines?.length ? [{
+              record_kind: "sandbox_log" as const,
+              version: 1,
+              sandbox_log_id: `${instance.sandbox_id}-checkpoint-log`,
+              sandbox_ref: { record_kind: "sandbox", id: instance.sandbox_id },
+              lines: structuredClone(options.checkpointLogLines),
+              captured_at: capturedAt,
+              authority_status: "trace_only" as const
+            }] : []
+          };
+        },
         async stopArtifactInstance() {
           effects.sandboxStops += 1;
           if (options.failTransientSandboxStop) {
@@ -1374,6 +1693,225 @@ async function authorizedComparisonSessionFixture(
       };
     }
   });
+  const authorizeCheckpoint = async () => {
+    const completedAt = new Date().toISOString();
+    const activationOutcomeDraft: PaperTradingComparisonActivationOutcomeRecord = {
+      record_kind: "paper_trading_comparison_activation_outcome",
+      version: 1,
+      paper_trading_comparison_activation_outcome_id:
+        `${attempt.paper_trading_comparison_activation_attempt_id}-both-running`,
+      paper_trading_comparison_activation_attempt_ref: {
+        record_kind: "paper_trading_comparison_activation_attempt",
+        id: attempt.paper_trading_comparison_activation_attempt_id
+      },
+      paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+      paper_trading_comparison_activation_ref: {
+        ...attempt.paper_trading_comparison_activation_ref
+      },
+      paper_trading_comparison_activation_digest:
+        attempt.paper_trading_comparison_activation_digest,
+      outcome_sequence: 1,
+      outcome_status: "both_running",
+      outcome_reason: "started_within_policy",
+      champion_latest_result_ref: {
+        record_kind: "paper_trading_comparison_activation_side_result",
+        id: `${attempt.paper_trading_comparison_activation_attempt_id}-champion-start`
+      },
+      challenger_latest_result_ref: {
+        record_kind: "paper_trading_comparison_activation_side_result",
+        id: `${attempt.paper_trading_comparison_activation_attempt_id}-challenger-start`
+      },
+      next_action: "capture_first_paired_checkpoint",
+      completed_at: completedAt,
+      outcome_digest: "",
+      live_exchange_authority: false,
+      order_submission_authority: false,
+      authority_status: "not_live"
+    };
+    activationOutcome = {
+      ...activationOutcomeDraft,
+      outcome_digest: comparisonFixtureDigest(
+        paperTradingComparisonActivationOutcomeDigestInput(activationOutcomeDraft)
+      )
+    };
+    const checkpointAttemptedAt = new Date(Date.parse(completedAt) + 1).toISOString();
+    const side = (role: "champion" | "challenger") => ({
+      role,
+      trading_run_ref: { ...attempt[role].trading_run_ref },
+      paper_trading_evaluation_ref: {
+        ...attempt[role].paper_trading_evaluation_ref
+      },
+      evaluation_record_digest: role === "challenger"
+        ? comparisonFixtureDigest(
+            paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+          )
+        : `sha256:champion-evaluation-${suffix}`,
+      observation_chain_digest: comparisonFixtureDigest(
+        paperTradingComparisonObservationChainDigestInput([])
+      ),
+      provider_request_count_before: 3
+    });
+    const checkpointDraft: PaperTradingComparisonCheckpointAttemptRecord = {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      version: 1,
+      paper_trading_comparison_checkpoint_attempt_id:
+        `${attempt.paper_trading_comparison_activation_attempt_id}-checkpoint-1`,
+      paper_trading_comparison_activation_ref: {
+        ...attempt.paper_trading_comparison_activation_ref
+      },
+      paper_trading_comparison_activation_digest:
+        attempt.paper_trading_comparison_activation_digest,
+      paper_trading_comparison_activation_attempt_ref: {
+        record_kind: "paper_trading_comparison_activation_attempt",
+        id: attempt.paper_trading_comparison_activation_attempt_id
+      },
+      paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+      activation_outcome_ref: {
+        record_kind: "paper_trading_comparison_activation_outcome",
+        id: activationOutcome.paper_trading_comparison_activation_outcome_id
+      },
+      activation_outcome_digest: activationOutcome.outcome_digest,
+      paper_trading_comparison_commitment_ref: {
+        ...attempt.paper_trading_comparison_commitment_ref
+      },
+      paper_trading_comparison_commitment_digest:
+        attempt.paper_trading_comparison_commitment_digest,
+      tick_ref: { ...attempt.first_tick_ref },
+      tick_digest: attempt.first_tick_digest,
+      checkpoint_sequence: 1,
+      champion: side("champion"),
+      challenger: side("challenger"),
+      attempted_at: checkpointAttemptedAt,
+      checkpoint_deadline_at: new Date(
+        Date.parse(checkpointAttemptedAt) + 60_000
+      ).toISOString(),
+      attempt_status: "preparing",
+      attempt_digest: "",
+      live_exchange_authority: false,
+      order_submission_authority: false,
+      authority_status: "not_live"
+    };
+    checkpointAttempt = {
+      ...checkpointDraft,
+      attempt_digest: comparisonFixtureDigest(
+        paperTradingComparisonCheckpointAttemptDigestInput(checkpointDraft)
+      )
+    };
+    const authority: PaperTradingComparisonCheckpointWriteContext = {
+      paper_trading_comparison_activation_ref: {
+        ...attempt.paper_trading_comparison_activation_ref
+      },
+      paper_trading_comparison_activation_digest:
+        attempt.paper_trading_comparison_activation_digest,
+      paper_trading_comparison_activation_attempt_ref: {
+        record_kind: "paper_trading_comparison_activation_attempt",
+        id: attempt.paper_trading_comparison_activation_attempt_id
+      },
+      paper_trading_comparison_activation_attempt_digest: attempt.attempt_digest,
+      activation_outcome_ref: {
+        record_kind: "paper_trading_comparison_activation_outcome",
+        id: activationOutcome.paper_trading_comparison_activation_outcome_id
+      },
+      activation_outcome_digest: activationOutcome.outcome_digest,
+      checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      },
+      checkpoint_attempt_digest: checkpointAttempt.attempt_digest,
+      role: "challenger",
+      operation: "refresh_sandbox_evidence"
+    };
+    return {
+      attempt: structuredClone(checkpointAttempt),
+      tick: structuredClone(tick),
+      outcome: structuredClone(activationOutcome),
+      authority
+    };
+  };
+  const commitCheckpoint = (
+    preparedSide: PreparedPaperTradingComparisonCheckpointSide
+  ): PaperTradingComparisonCheckpointOutcomeRecord => {
+    if (!checkpointAttempt) throw new Error("checkpoint attempt is not authorized");
+    evaluation = structuredClone(preparedSide.evaluation);
+    checkpointObservations = [structuredClone(preparedSide.observation)];
+    run = {
+      ...run,
+      order_request_refs: preparedSide.ledger_outcomes.map((ledger) => ({
+        record_kind: "order_request",
+        id: ledger.order_request.order_request_id
+      })),
+      gateway_result_refs: preparedSide.ledger_outcomes.map((ledger) => ({
+        record_kind: "gateway_result",
+        id: ledger.gateway_result.gateway_result_id
+      })),
+      execution_result_refs: preparedSide.ledger_outcomes.map((ledger) => ({
+        record_kind: "execution_result",
+        id: ledger.execution_result.execution_result_id
+      }))
+    };
+    const draft: PaperTradingComparisonCheckpointOutcomeRecord = {
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      version: 1,
+      paper_trading_comparison_checkpoint_outcome_id:
+        `${checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id}-outcome`,
+      checkpoint_attempt_ref: {
+        record_kind: "paper_trading_comparison_checkpoint_attempt",
+        id: checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      },
+      checkpoint_attempt_digest: checkpointAttempt.attempt_digest,
+      tick_ref: { ...checkpointAttempt.tick_ref },
+      tick_digest: checkpointAttempt.tick_digest,
+      checkpoint_sequence: 1,
+      outcome_status: "paired",
+      outcome_reason: "paired_checkpoint_recorded",
+      champion: {
+        role: "champion",
+        observation_ref: {
+          record_kind: "paper_trading_observation",
+          id: `champion-observation-${suffix}`
+        },
+        observation_record_digest: `sha256:champion-observation-${suffix}`,
+        evaluation_record_digest: `sha256:champion-evaluation-${suffix}`,
+        ledger_chain_refs: [],
+        observation_status: "no_order",
+        consumed_event_count: 0,
+        provider_request_count_after: 3
+      },
+      challenger: {
+        role: "challenger",
+        observation_ref: {
+          record_kind: "paper_trading_observation",
+          id: preparedSide.observation.paper_trading_observation_id
+        },
+        observation_record_digest: comparisonFixtureDigest(
+          paperTradingComparisonPersistedRecordDigestInput(preparedSide.observation)
+        ),
+        evaluation_record_digest: comparisonFixtureDigest(
+          paperTradingComparisonEvaluationRecordDigestInput(preparedSide.evaluation)
+        ),
+        ledger_chain_refs: preparedSide.ledger_outcomes.map((ledger) => ({
+          record_kind: "ledger_chain",
+          id: ledger.order_request.order_request_id
+        })),
+        observation_status: preparedSide.observation.status,
+        consumed_event_count: preparedSide.consumed_event_count,
+        provider_request_count_after: preparedSide.provider_request_count_after
+      },
+      next_action: "design_attributed_next_tick",
+      completed_at: new Date().toISOString(),
+      outcome_digest: "",
+      live_exchange_authority: false,
+      order_submission_authority: false,
+      authority_status: "not_live"
+    };
+    checkpointOutcome = {
+      ...draft,
+      outcome_digest: comparisonFixtureDigest(
+        paperTradingComparisonCheckpointOutcomeDigestInput(draft)
+      )
+    };
+    return structuredClone(checkpointOutcome);
+  };
   return {
     store,
     service,
@@ -1385,8 +1923,31 @@ async function authorizedComparisonSessionFixture(
     stopAuthority,
     fixedMarketData,
     effects,
-    writes
+    writes,
+    authorizeCheckpoint,
+    commitCheckpoint
   };
+}
+
+function comparisonFixtureDigest(input: string): string {
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+function checkpointOrderEventLine(): string {
+  return JSON.stringify({
+    event: "order_request",
+    event_id: "checkpoint-session-order-1",
+    instance_id: "checkpoint-session",
+    at: new Date().toISOString(),
+    authority_status: "trace_only",
+    intent_kind: "place_order",
+    symbol: "BTCUSDT",
+    side: "buy",
+    order_type: "limit",
+    quantity: "0.001",
+    limit_price: "60000",
+    reason: "candidate first checkpoint order"
+  });
 }
 
 function comparisonSessionAuthority(

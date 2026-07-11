@@ -54,6 +54,7 @@ import {
   paperTradingComparisonCheckpointAttemptHasRuntimeShape,
   paperTradingComparisonCheckpointOutcomeDigestInput,
   paperTradingComparisonCheckpointOutcomeHasRuntimeShape,
+  paperTradingComparisonCheckpointWriteContextHasRuntimeShape,
   paperTradingComparisonAdmissionDecisionDigestInput,
   paperTradingComparisonCandidateVersionDigestInput,
   paperTradingComparisonCandidateVersionPairKey,
@@ -173,6 +174,7 @@ import type {
   PaperTradingComparisonActivationSideResultRecord,
   PaperTradingComparisonCheckpointAttemptRecord,
   PaperTradingComparisonCheckpointOutcomeRecord,
+  PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
@@ -380,6 +382,10 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_paired_checkpoint_transaction_conflict"
   | "paper_trading_comparison_paired_checkpoint_transaction_reload_failed"
   | "paper_trading_comparison_paired_checkpoint_materialization_conflict"
+  | "invalid_paper_trading_comparison_checkpoint_write_context"
+  | "paper_trading_comparison_checkpoint_write_context_reference_not_found"
+  | "paper_trading_comparison_checkpoint_write_context_reference_mismatch"
+  | "paper_trading_comparison_checkpoint_write_state_conflict"
   | "invalid_paper_trading_comparison_runtime_write_context"
   | "paper_trading_comparison_runtime_write_context_reference_not_found"
   | "paper_trading_comparison_runtime_write_context_reference_mismatch"
@@ -506,6 +512,8 @@ export interface PreparedPaperTradingComparisonCheckpointSideInput {
   ledger_outcomes: LedgerWriteOutcome[];
   observation: PaperTradingObservationRecord;
   evaluation: PaperTradingEvaluationRecord;
+  consumed_event_count: number;
+  provider_request_count_after: number;
   preparation_digest: string;
 }
 
@@ -560,6 +568,7 @@ interface PaperTradingComparisonRuntimeSideState {
   commitment: PaperTradingEvaluationCommitmentRecord;
   evaluation: PaperTradingEvaluationRecord;
   baseline: PaperTradingEvaluationRecord;
+  evidenceState: "zero" | "paired_checkpoint";
   sandbox?: SandboxDetailReadModel;
 }
 
@@ -1547,7 +1556,8 @@ export class LocalStore {
       attempt,
       input.authority.role,
       closure.comparison,
-      "paper_trading_comparison_runtime_write_graph_invalid"
+      "paper_trading_comparison_runtime_write_graph_invalid",
+      { allowCommittedCheckpoint: input.authority.operation === "stop" }
     );
     if ((input.write.writer === "sandbox_stop" ||
       input.write.writer === "paper_trading_evaluation") &&
@@ -1927,11 +1937,20 @@ export class LocalStore {
       existing.status === "running" && state.sandbox !== undefined &&
         state.sandbox.lifecycle_status !== "stopped" &&
         state.sandbox.lifecycle_status !== "removed" ||
-      !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
-        evaluation,
-        state.baseline,
-        "stopped"
-      ) ||
+      (state.evidenceState === "zero"
+        ? !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+            evaluation,
+            state.baseline,
+            "stopped"
+          )
+        : !samePersistedComparisonRecord(
+            evaluation,
+            stripUndefined({
+              ...existing,
+              status: "stopped" as const,
+              stopped_at: evaluation.stopped_at
+            })
+          )) ||
       Date.parse(evaluation.stopped_at ?? "") < Date.parse(attempt.attempted_at)
     ) {
       throw new LocalStoreError(
@@ -3318,10 +3337,11 @@ export class LocalStore {
     observations: Omit<SandboxObservationInput, "instance"> & {
       lifecycle_status?: SandboxRecord["lifecycle_status"];
       last_heartbeat_at?: string;
-    }
+    },
+    authority?: PaperTradingComparisonCheckpointWriteContext
   ): Promise<SandboxLogsOutcome> {
     return this.withComparisonEvidenceWriteTransaction(
-      () => this.recordSandboxObservationsUnlocked(sandboxId, observations)
+      () => this.recordSandboxObservationsUnlocked(sandboxId, observations, authority)
     );
   }
 
@@ -3330,7 +3350,8 @@ export class LocalStore {
     observations: Omit<SandboxObservationInput, "instance"> & {
       lifecycle_status?: SandboxRecord["lifecycle_status"];
       last_heartbeat_at?: string;
-    }
+    },
+    authority?: PaperTradingComparisonCheckpointWriteContext
   ): Promise<SandboxLogsOutcome> {
     const instance = await this.readOptionalRecord<SandboxRecord>(
       "sandboxes",
@@ -3343,7 +3364,23 @@ export class LocalStore {
         { sandbox_id: sandboxId }
       );
     }
-    await this.assertNoPairBoundSideMutation({ runId: instance.runtime_ref?.id });
+    if (authority) {
+      if (observations.lifecycle_status !== undefined &&
+        observations.lifecycle_status !== instance.lifecycle_status ||
+        observations.stopped_at !== undefined ||
+        observations.removed_at !== undefined) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_checkpoint_write_state_conflict",
+          "paper comparison checkpoint evidence refresh cannot mutate sandbox lifecycle"
+        );
+      }
+      await this.assertPaperTradingComparisonCheckpointSandboxEvidenceWriteAllowed(
+        instance,
+        authority
+      );
+    } else {
+      await this.assertNoPairBoundSideMutation({ runId: instance.runtime_ref?.id });
+    }
 
     const latestHeartbeatAt = observations.last_heartbeat_at
       ?? latestObservedAt(observations.heartbeats)
@@ -3380,6 +3417,166 @@ export class LocalStore {
       heartbeats: sandbox.heartbeats,
       command_evidence: sandbox.command_evidence
     };
+  }
+
+  private async assertPaperTradingComparisonCheckpointSandboxEvidenceWriteAllowed(
+    sandbox: SandboxRecord,
+    authority: PaperTradingComparisonCheckpointWriteContext
+  ): Promise<void> {
+    if (!paperTradingComparisonCheckpointWriteContextHasRuntimeShape(authority) ||
+      authority.operation !== "refresh_sandbox_evidence") {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_checkpoint_write_context",
+        "paper comparison sandbox evidence refresh requires one valid checkpoint context"
+      );
+    }
+
+    let activation: PaperTradingComparisonActivationRecord | undefined;
+    let activationAttempt: PaperTradingComparisonActivationAttemptRecord | undefined;
+    let activationOutcome: PaperTradingComparisonActivationOutcomeRecord | undefined;
+    let checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord | undefined;
+    try {
+      [activation, activationAttempt, activationOutcome, checkpointAttempt] = await Promise.all([
+        this.getPaperTradingComparisonActivation(
+          authority.paper_trading_comparison_activation_ref.id
+        ),
+        this.getPaperTradingComparisonActivationAttempt(
+          authority.paper_trading_comparison_activation_attempt_ref.id
+        ),
+        this.getPaperTradingComparisonActivationOutcome(authority.activation_outcome_ref.id),
+        this.getPaperTradingComparisonCheckpointAttempt(authority.checkpoint_attempt_ref.id)
+      ]);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_write_state_conflict",
+        "paper comparison checkpoint write graph is unreadable"
+      );
+    }
+    if (!activation || !activationAttempt || !activationOutcome || !checkpointAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_write_context_reference_not_found",
+        "paper comparison checkpoint write context evidence was not found"
+      );
+    }
+
+    const checkpointSide = checkpointAttempt[authority.role];
+    if (
+      activation.paper_trading_comparison_activation_id !==
+        authority.paper_trading_comparison_activation_ref.id ||
+      activation.activation_digest !==
+        authority.paper_trading_comparison_activation_digest ||
+      activationAttempt.paper_trading_comparison_activation_attempt_id !==
+        authority.paper_trading_comparison_activation_attempt_ref.id ||
+      activationAttempt.attempt_digest !==
+        authority.paper_trading_comparison_activation_attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        activationAttempt.paper_trading_comparison_activation_ref,
+        authority.paper_trading_comparison_activation_ref
+      ) ||
+      activationAttempt.paper_trading_comparison_activation_digest !==
+        authority.paper_trading_comparison_activation_digest ||
+      activationOutcome.paper_trading_comparison_activation_outcome_id !==
+        authority.activation_outcome_ref.id ||
+      activationOutcome.outcome_digest !== authority.activation_outcome_digest ||
+      !paperTradingComparisonRefsEqual(
+        activationOutcome.paper_trading_comparison_activation_attempt_ref,
+        authority.paper_trading_comparison_activation_attempt_ref
+      ) ||
+      activationOutcome.paper_trading_comparison_activation_attempt_digest !==
+        authority.paper_trading_comparison_activation_attempt_digest ||
+      checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id !==
+        authority.checkpoint_attempt_ref.id ||
+      checkpointAttempt.attempt_digest !== authority.checkpoint_attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt.paper_trading_comparison_activation_ref,
+        authority.paper_trading_comparison_activation_ref
+      ) ||
+      checkpointAttempt.paper_trading_comparison_activation_digest !==
+        authority.paper_trading_comparison_activation_digest ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt.paper_trading_comparison_activation_attempt_ref,
+        authority.paper_trading_comparison_activation_attempt_ref
+      ) ||
+      checkpointAttempt.paper_trading_comparison_activation_attempt_digest !==
+        authority.paper_trading_comparison_activation_attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt.activation_outcome_ref,
+        authority.activation_outcome_ref
+      ) ||
+      checkpointAttempt.activation_outcome_digest !== authority.activation_outcome_digest ||
+      checkpointSide.role !== authority.role ||
+      !paperTradingComparisonRefsEqual(sandbox.runtime_ref, checkpointSide.trading_run_ref)
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_write_context_reference_mismatch",
+        "paper comparison checkpoint write context does not match the sandbox side"
+      );
+    }
+
+    let closure: Awaited<ReturnType<
+      LocalStore["loadPaperTradingComparisonActivationAttemptClosure"]
+    >>;
+    let state: PaperTradingComparisonRuntimeSideState;
+    let activationAttempts: PaperTradingComparisonActivationAttemptRecord[];
+    let activationOutcomes: PaperTradingComparisonActivationOutcomeRecord[];
+    let checkpointAttempts: PaperTradingComparisonCheckpointAttemptRecord[];
+    let checkpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[];
+    try {
+      closure = await this.loadPaperTradingComparisonActivationAttemptClosure(
+        activationAttempt
+      );
+      [state, activationAttempts, activationOutcomes, checkpointAttempts, checkpointOutcomes] =
+        await Promise.all([
+          this.loadPaperTradingComparisonRuntimeSideState(
+            activationAttempt,
+            authority.role,
+            closure.comparison,
+            "paper_trading_comparison_checkpoint_write_state_conflict"
+          ),
+          this.listPaperTradingComparisonActivationAttempts(
+            activation.paper_trading_comparison_activation_id
+          ),
+          this.listPaperTradingComparisonActivationOutcomes(
+            activationAttempt.paper_trading_comparison_activation_attempt_id
+          ),
+          this.listPaperTradingComparisonCheckpointAttempts(
+            activationAttempt.paper_trading_comparison_activation_attempt_id
+          ),
+          this.listPaperTradingComparisonCheckpointOutcomes(
+            checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+          )
+        ]);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_write_state_conflict",
+        "paper comparison checkpoint write graph is not open and consistent"
+      );
+    }
+    if (
+      activationAttempts.at(-1)?.paper_trading_comparison_activation_attempt_id !==
+        activationAttempt.paper_trading_comparison_activation_attempt_id ||
+      activationOutcomes.at(-1)?.paper_trading_comparison_activation_outcome_id !==
+        activationOutcome.paper_trading_comparison_activation_outcome_id ||
+      activationOutcome.outcome_status !== "both_running" ||
+      checkpointAttempts.at(-1)?.paper_trading_comparison_checkpoint_attempt_id !==
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+      checkpointOutcomes.length !== 0 ||
+      state.run.runtime_lifecycle_status !== "running" ||
+      state.evaluation.status !== "running" ||
+      state.sandbox?.sandbox_id !== sandbox.sandbox_id ||
+      state.sandbox.lifecycle_status !== "running" ||
+      checkpointSide.evaluation_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonEvaluationRecordDigestInput(state.evaluation)
+      ) ||
+      checkpointSide.observation_chain_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonObservationChainDigestInput([])
+      )
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_checkpoint_write_state_conflict",
+        "paper comparison checkpoint sandbox evidence refresh is no longer open"
+      );
+    }
   }
 
   async stopSandbox(
@@ -5413,7 +5610,8 @@ export class LocalStore {
       attempt,
       result.role,
       closure.comparison,
-      "paper_trading_comparison_activation_side_result_graph_invalid"
+      "paper_trading_comparison_activation_side_result_graph_invalid",
+      { allowCommittedCheckpoint: result.operation === "stop" }
     );
     if (
       result.runtime_lifecycle_status !== "unknown" &&
@@ -5553,7 +5751,8 @@ export class LocalStore {
     attempt: PaperTradingComparisonActivationAttemptRecord,
     role: "champion" | "challenger",
     comparison: PaperTradingComparisonCommitmentRecord,
-    errorCode: LocalStoreErrorCode
+    errorCode: LocalStoreErrorCode,
+    options: { allowCommittedCheckpoint?: boolean } = {}
   ): Promise<PaperTradingComparisonRuntimeSideState> {
     try {
       const activationSide = attempt[role];
@@ -5584,6 +5783,23 @@ export class LocalStore {
           record.paper_trading_evaluation_ref,
           activationSide.paper_trading_evaluation_ref
         ));
+      const hasZeroEvidenceState = expectedStatus !== undefined &&
+        paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+          evaluation,
+          baseline,
+          expectedStatus
+        ) && sideObservations.length === 0 &&
+        (run.order_request_refs?.length ?? 0) === 0 &&
+        (run.gateway_result_refs?.length ?? 0) === 0 &&
+        (run.execution_result_refs?.length ?? 0) === 0;
+      const hasCommittedCheckpointState = options.allowCommittedCheckpoint === true &&
+        await this.paperTradingComparisonRuntimeSideHasCommittedCheckpointState({
+          attempt,
+          role,
+          run,
+          evaluation,
+          observations: sideObservations
+        });
       if (
         run.record_kind !== "trading_run" ||
         run.version !== 1 ||
@@ -5625,16 +5841,7 @@ export class LocalStore {
           commitment.candidate_version_ref
         ) ||
         !paperTradingComparisonRefsEqual(run.system_code_ref, commitment.system_code_ref) ||
-        expectedStatus === undefined ||
-        !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
-          evaluation,
-          baseline,
-          expectedStatus
-        ) ||
-        sideObservations.length !== 0 ||
-        (run.order_request_refs?.length ?? 0) !== 0 ||
-        (run.gateway_result_refs?.length ?? 0) !== 0 ||
-        (run.execution_result_refs?.length ?? 0) !== 0
+        (!hasZeroEvidenceState && !hasCommittedCheckpointState)
       ) {
         throw new Error("side state mismatch");
       }
@@ -5654,13 +5861,89 @@ export class LocalStore {
           throw new Error("sandbox mismatch");
         }
       }
-      return { comparisonSide, run, commitment, evaluation, baseline, sandbox };
+      return {
+        comparisonSide,
+        run,
+        commitment,
+        evaluation,
+        baseline,
+        evidenceState: hasCommittedCheckpointState ? "paired_checkpoint" : "zero",
+        sandbox
+      };
     } catch (error) {
       if (error instanceof LocalStoreError && error.code === errorCode) throw error;
       throw new LocalStoreError(
         errorCode,
         `paper trading comparison runtime ${role} side is unreadable or inconsistent`
       );
+    }
+  }
+
+  private async paperTradingComparisonRuntimeSideHasCommittedCheckpointState(input: {
+    attempt: PaperTradingComparisonActivationAttemptRecord;
+    role: "champion" | "challenger";
+    run: TradingRunRecord;
+    evaluation: PaperTradingEvaluationRecord;
+    observations: PaperTradingObservationRecord[];
+  }): Promise<boolean> {
+    try {
+      const checkpointAttempts = await this.listPaperTradingComparisonCheckpointAttempts(
+        input.attempt.paper_trading_comparison_activation_attempt_id
+      );
+      const checkpointAttempt = checkpointAttempts.at(-1);
+      if (!checkpointAttempt || checkpointAttempts.length !== 1) return false;
+      const transaction = await this.getPaperTradingComparisonCheckpointTransaction(
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      );
+      if (!transaction ||
+        transaction.checkpoint_attempt_digest !== checkpointAttempt.attempt_digest ||
+        transaction.outcome.outcome_status !== "paired") {
+        return false;
+      }
+      const outcomes = await this.listPaperTradingComparisonCheckpointOutcomes(
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      );
+      if (outcomes.length !== 1 ||
+        !samePersistedComparisonRecord(outcomes[0], transaction.outcome)) {
+        return false;
+      }
+      const transactionSide = transaction[input.role];
+      const evidence = transaction.outcome[input.role];
+      const observation = input.observations[0];
+      if (!evidence || !observation || input.observations.length !== 1 ||
+        !samePersistedComparisonRecord(
+          observation,
+          transactionSide.prepared.observation
+        )) {
+        return false;
+      }
+      const committedEvaluation = transactionSide.prepared.evaluation;
+      const normalizedEvaluation = input.evaluation.status === "stopped" &&
+        committedEvaluation.status === "running"
+        ? stripUndefined({
+            ...input.evaluation,
+            status: "running" as const,
+            stopped_at: committedEvaluation.stopped_at
+          })
+        : input.evaluation;
+      return samePersistedComparisonRecord(normalizedEvaluation, committedEvaluation) &&
+        evidence.consumed_event_count ===
+          transactionSide.prepared.consumed_event_count &&
+        evidence.provider_request_count_after ===
+          transactionSide.prepared.provider_request_count_after &&
+        paperTradingComparisonRefsEqual(
+          observation.paper_trading_comparison_checkpoint_attempt_ref,
+          transaction.checkpoint_attempt_ref
+        ) &&
+        observation.paper_trading_comparison_checkpoint_attempt_digest ===
+          transaction.checkpoint_attempt_digest &&
+        input.run.trading_run_id === checkpointAttempt[input.role].trading_run_ref.id &&
+        samePersistedComparisonRecord(
+          (input.run.order_request_refs ?? []).map((ref) => ref.id),
+          evidence.ledger_chain_refs.map((ref) => ref.id)
+        );
+    } catch {
+      return false;
     }
   }
 
@@ -5798,13 +6081,15 @@ export class LocalStore {
         attempt,
         "champion",
         closure.comparison,
-        "paper_trading_comparison_activation_outcome_graph_invalid"
+        "paper_trading_comparison_activation_outcome_graph_invalid",
+        { allowCommittedCheckpoint: outcome.outcome_status !== "both_running" }
       ),
       this.loadPaperTradingComparisonRuntimeSideState(
         attempt,
         "challenger",
         closure.comparison,
-        "paper_trading_comparison_activation_outcome_graph_invalid"
+        "paper_trading_comparison_activation_outcome_graph_invalid",
+        { allowCommittedCheckpoint: outcome.outcome_status !== "both_running" }
       )
     ]);
     if (outcome.outcome_status === "both_running") {
@@ -6512,6 +6797,9 @@ export class LocalStore {
       !Array.isArray(side.ledger_outcomes) ||
       side.ledger_inputs.length !== side.ledger_outcomes.length ||
       !isPlainObject(side.observation) || !isPlainObject(side.evaluation) ||
+      !Number.isInteger(side.consumed_event_count) || side.consumed_event_count < 0 ||
+      !Number.isInteger(side.provider_request_count_after) ||
+      side.provider_request_count_after < 0 ||
       typeof side.preparation_digest !== "string" ||
       side.preparation_digest.length === 0) {
       return false;
@@ -6730,6 +7018,8 @@ export class LocalStore {
         paperTradingComparisonEvaluationRecordDigestInput(evaluation)
       ) ||
       evidence.observation_status !== observation.status ||
+      evidence.consumed_event_count !== prepared.consumed_event_count ||
+      evidence.provider_request_count_after !== prepared.provider_request_count_after ||
       evidence.provider_request_count_after <
         checkpointAttempt[role].provider_request_count_before ||
       evidence.provider_request_count_after >
@@ -7067,7 +7357,8 @@ export class LocalStore {
       (result.outcome === "succeeded" || result.outcome === "not_running") &&
       (state.run.runtime_lifecycle_status === "registered" ||
         state.run.runtime_lifecycle_status === "stopped") &&
-      (state.evaluation.status === "not_started" || state.evaluation.status === "stopped") &&
+      (state.evaluation.status === "not_started" || state.evaluation.status === "stopped" ||
+        state.evidenceState === "paired_checkpoint" && state.evaluation.status === "failed") &&
       inactiveSandbox;
   }
 

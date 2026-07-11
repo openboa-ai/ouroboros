@@ -50,6 +50,7 @@ import type {
   PaperTradingComparisonActivationSideResultRecord,
   PaperTradingComparisonCheckpointAttemptRecord,
   PaperTradingComparisonCheckpointOutcomeRecord,
+  PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonCommitmentRecord,
@@ -5929,7 +5930,7 @@ describe("LocalStore", () => {
     it.each([
       ["observation", "paper_trading_comparison_inert_graph_mutation_forbidden"],
       ["ledger", "paper_trading_comparison_inert_graph_mutation_forbidden"],
-      ["sandbox-observations", "paper_trading_comparison_inert_graph_mutation_forbidden"],
+      ["sandbox-observations", "invalid_paper_trading_comparison_checkpoint_write_context"],
       ["commitment", "paper_trading_evaluation_commitment_conflict"],
       ["system-code", "paper_trading_comparison_frozen_authority_write_conflict"],
       ["admission", "paper_trading_comparison_frozen_authority_write_conflict"],
@@ -6066,6 +6067,95 @@ describe("LocalStore", () => {
         .reason).toMatchObject({
           code: "paper_trading_comparison_checkpoint_attempt_state_conflict"
         });
+    });
+
+    it("allows only checkpoint-authorized sandbox evidence refresh", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const sandboxId = fixture.startResults.find((result) =>
+        result.role === "challenger"
+      )?.sandbox_ref?.id;
+      if (!sandboxId) throw new Error("missing challenger sandbox");
+      const evaluationBefore = await store.getPaperTradingEvaluation(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      );
+      const capturedAt = new Date(Date.parse(attempt.attempted_at) + 1_000)
+        .toISOString();
+
+      const refreshed = await Reflect.apply(store.recordSandboxObservations, store, [
+        sandboxId,
+        {
+          lifecycle_status: "running",
+          logs: [{
+            record_kind: "sandbox_log",
+            version: 1,
+            sandbox_log_id: `${sandboxId}-checkpoint-log`,
+            sandbox_ref: { record_kind: "sandbox", id: sandboxId },
+            lines: ["{\"event\":\"hold\",\"reason\":\"checkpoint\"}"],
+            captured_at: capturedAt,
+            authority_status: "trace_only"
+          }],
+          heartbeats: [],
+          command_evidence: []
+        },
+        checkpointWriteContext(fixture, attempt, "challenger")
+      ]);
+
+      expect(refreshed.logs).toHaveLength(1);
+      await expect(store.getPaperTradingEvaluation(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual(evaluationBefore);
+      await expect(store.listPaperTradingObservations(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toEqual([]);
+    });
+
+    it("rejects checkpoint sandbox evidence when authority targets the other role", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const sandboxId = fixture.startResults.find((result) =>
+        result.role === "challenger"
+      )?.sandbox_ref?.id;
+      if (!sandboxId) throw new Error("missing challenger sandbox");
+
+      await expectStoreError(
+        Reflect.apply(store.recordSandboxObservations, store, [
+          sandboxId,
+          { lifecycle_status: "running", logs: [], heartbeats: [], command_evidence: [] },
+          checkpointWriteContext(fixture, attempt, "champion")
+        ]),
+        "paper_trading_comparison_checkpoint_write_context_reference_mismatch"
+      );
+    });
+
+    it("rejects lifecycle mutation through checkpoint sandbox evidence authority", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const sandboxId = fixture.startResults.find((result) =>
+        result.role === "challenger"
+      )?.sandbox_ref?.id;
+      if (!sandboxId) throw new Error("missing challenger sandbox");
+
+      await expectStoreError(
+        store.recordSandboxObservations(
+          sandboxId,
+          { lifecycle_status: "stopped", logs: [], heartbeats: [], command_evidence: [] },
+          checkpointWriteContext(fixture, attempt, "challenger")
+        ),
+        "paper_trading_comparison_checkpoint_write_state_conflict"
+      );
+      await expect(store.getSandbox(sandboxId)).resolves.toMatchObject({
+        lifecycle_status: "running"
+      });
     });
 
     it("reserves paired outcome persistence for the atomic transaction", async () => {
@@ -6229,6 +6319,57 @@ describe("LocalStore", () => {
           id: input.champion.ledger_outcomes[0]?.order_request.order_request_id
         }
       ]);
+    });
+
+    it("keeps exact stop authority open after a paired checkpoint commit", async () => {
+      const store = new LocalStore(tmpDir);
+      await store.initialize();
+      const fixture = await storedBothRunningRuntimeActivationFixture(store);
+      const attempt = validCheckpointAttempt(fixture);
+      await store.recordPaperTradingComparisonCheckpointAttempt(attempt);
+      const input = await validPairedCheckpointTransactionInput(store, fixture, attempt);
+      await store.recordPaperTradingComparisonPairedCheckpoint(input);
+      const stopAuthority = runtimeActivationWriteContext(
+        fixture.attempt,
+        "challenger",
+        "stop"
+      );
+
+      await expect(store.recordRunControlAudit(
+        runtimeActivationRunControlInput(
+          fixture,
+          fixture.attempt,
+          "challenger",
+          "stop"
+        ),
+        stopAuthority
+      )).resolves.toMatchObject({
+        decision: { resulting_lifecycle_status: "stopped" }
+      });
+      await expect(store.getTradingRun(
+        attempt.challenger.trading_run_ref.id
+      )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+      const sandboxId = fixture.startResults.find((result) =>
+        result.role === "challenger"
+      )?.sandbox_ref?.id;
+      if (!sandboxId) throw new Error("missing challenger sandbox");
+      const stoppedAt = new Date(Date.parse(input.outcome.completed_at) + 1_000)
+        .toISOString();
+      await store.stopSandbox({ sandbox_id: sandboxId, stopped_at: stoppedAt }, {}, stopAuthority);
+      await store.recordPaperTradingEvaluation({
+        ...input.challenger.evaluation,
+        status: "stopped",
+        stopped_at: stoppedAt
+      }, stopAuthority);
+
+      await expect(store.getPaperTradingEvaluation(
+        attempt.challenger.paper_trading_evaluation_ref.id
+      )).resolves.toMatchObject({
+        status: "stopped",
+        observation_count: 1,
+        processed_trading_system_event_ids:
+          input.challenger.evaluation.processed_trading_system_event_ids
+      });
     });
 
     it("does not create a transaction bundle for invalid asymmetric input", async () => {
@@ -7381,6 +7522,37 @@ function validCheckpointAttempt(
   });
 }
 
+function checkpointWriteContext(
+  fixture: Awaited<ReturnType<typeof storedBothRunningRuntimeActivationFixture>>,
+  attempt: PaperTradingComparisonCheckpointAttemptRecord,
+  role: "champion" | "challenger"
+): PaperTradingComparisonCheckpointWriteContext {
+  return {
+    paper_trading_comparison_activation_ref: {
+      ...attempt.paper_trading_comparison_activation_ref
+    },
+    paper_trading_comparison_activation_digest:
+      attempt.paper_trading_comparison_activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      ...attempt.paper_trading_comparison_activation_attempt_ref
+    },
+    paper_trading_comparison_activation_attempt_digest:
+      attempt.paper_trading_comparison_activation_attempt_digest,
+    activation_outcome_ref: {
+      record_kind: "paper_trading_comparison_activation_outcome",
+      id: fixture.outcome.paper_trading_comparison_activation_outcome_id
+    },
+    activation_outcome_digest: fixture.outcome.outcome_digest,
+    checkpoint_attempt_ref: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: attempt.paper_trading_comparison_checkpoint_attempt_id
+    },
+    checkpoint_attempt_digest: attempt.attempt_digest,
+    role,
+    operation: "refresh_sandbox_evidence"
+  };
+}
+
 function withCheckpointAttemptDigest(
   attempt: PaperTradingComparisonCheckpointAttemptRecord
 ): PaperTradingComparisonCheckpointAttemptRecord {
@@ -7482,6 +7654,8 @@ interface PreparedCheckpointSideFixture {
   ledger_outcomes: LedgerWriteOutcome[];
   observation: PaperTradingObservationRecord;
   evaluation: PaperTradingEvaluationRecord;
+  consumed_event_count: number;
+  provider_request_count_after: number;
   preparation_digest: string;
 }
 
@@ -7622,6 +7796,8 @@ async function validPairedCheckpointTransactionInput(
       ledger_outcomes: ledgerOutcomes,
       observation,
       evaluation,
+      consumed_event_count: eventIds.length,
+      provider_request_count_after: attempt[role].provider_request_count_before,
       preparation_digest: ""
     });
   };

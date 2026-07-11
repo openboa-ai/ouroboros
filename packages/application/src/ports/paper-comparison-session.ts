@@ -1,13 +1,16 @@
 import type {
   PaperTradingComparisonActivationSide,
   PaperTradingComparisonActivationSideResultReason,
+  PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
+  PaperTradingComparisonTickRecord,
   PaperTradingEvaluationStatus,
   Ref,
   SandboxLifecycleStatus,
   TradingRunLifecycleStatus
 } from "@ouroboros/domain";
 import type { GatewayMarketDataPort } from "./market-data";
+import type { PreparedPaperTradingComparisonCheckpointSide } from "./store";
 
 export interface PaperTradingComparisonSessionSideStatus {
   role: "champion" | "challenger";
@@ -43,4 +46,12 @@ export interface PaperTradingComparisonSessionPort {
     side: PaperTradingComparisonActivationSide;
     authority: PaperTradingComparisonRuntimeWriteContext;
   }): Promise<PaperTradingComparisonSessionSideStatus>;
+  prepareComparisonCheckpointSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonCheckpointWriteContext;
+    tick: PaperTradingComparisonTickRecord;
+    deadlineAt: string;
+    maximumProviderRequestCount: number;
+    signal: AbortSignal;
+  }): Promise<PreparedPaperTradingComparisonCheckpointSide>;
 }

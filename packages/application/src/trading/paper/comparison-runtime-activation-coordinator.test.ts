@@ -649,6 +649,9 @@ function runtimeActivationFixture(options: RuntimeActivationFixtureOptions = {})
         return { ...inspected, provider_session_active: false };
       }
       return inspected;
+    },
+    async prepareComparisonCheckpointSide() {
+      throw new Error("unexpected checkpoint preparation in activation test");
     }
   };
   const createCoordinator = () =>

@@ -6,6 +6,8 @@ import type {
   PaperTradingAccountSnapshot,
   PaperTradingDecisionOrderRequestSummary,
   PaperTradingDecisionSummary,
+  PaperTradingComparisonCheckpointAttemptRecord,
+  PaperTradingComparisonTickRecord,
   PaperTradingEvaluationRecord,
   PaperTradingFillSummary,
   PaperTradingObservationRecord,
@@ -65,6 +67,151 @@ export interface RecordPaperTradingEvaluationObservationInput {
 export interface RecordPaperTradingEvaluationObservationResult {
   evaluation: PaperTradingEvaluationRecord;
   observation?: PaperTradingObservationRecord;
+}
+
+export interface PreparePaperTradingComparisonCheckpointEvidenceInput {
+  store: Pick<OuroborosStorePort, "previewLedger">;
+  role: "champion" | "challenger";
+  candidate: CandidateInspectReadModel;
+  evaluation: PaperTradingEvaluationRecord;
+  tick: PaperTradingComparisonTickRecord;
+  checkpointAttempt: PaperTradingComparisonCheckpointAttemptRecord;
+  gatewayRuntimeBinding: GatewayRuntimeBinding;
+  intervalMs: number;
+}
+
+export interface PreparedPaperTradingComparisonCheckpointEvidence {
+  ledger_inputs: LedgerInput[];
+  ledger_outcomes: LedgerWriteOutcome[];
+  observation: PaperTradingObservationRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  consumed_event_count: number;
+}
+
+export async function preparePaperTradingComparisonCheckpointEvidence(
+  input: PreparePaperTradingComparisonCheckpointEvidenceInput
+): Promise<PreparedPaperTradingComparisonCheckpointEvidence> {
+  const side = input.checkpointAttempt[input.role];
+  if (
+    input.checkpointAttempt.checkpoint_sequence !== 1 ||
+    input.tick.sequence !== 1 ||
+    input.tick.paper_trading_comparison_tick_id !==
+      input.checkpointAttempt.tick_ref.id ||
+    input.tick.tick_digest !== input.checkpointAttempt.tick_digest ||
+    input.evaluation.paper_trading_evaluation_id !==
+      side.paper_trading_evaluation_ref.id ||
+    input.evaluation.trading_run_ref.id !== side.trading_run_ref.id ||
+    input.evaluation.status !== "running" ||
+    input.evaluation.observation_count !== 0
+  ) {
+    throw new PaperTradingObservationError(
+      "paper_trading_comparison_checkpoint_state_mismatch",
+      "Paper comparison checkpoint preparation requires the exact running first-tick side."
+    );
+  }
+  const previousEngineState = engineStateFromEvaluation(input.evaluation);
+  const tradingSystemEvents = tradingSystemEventsFromCandidate(input.candidate)
+    .filter((event) =>
+      !previousEngineState.processedTradingSystemEventIds.includes(event.event_id)
+    );
+  const decision = await preparePaperTradingObservationDecision({
+    candidate: input.candidate,
+    tradingRunId: side.trading_run_ref.id,
+    gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+    observedAt: input.tick.observed_at,
+    tradingSystemEvents,
+    previewLedger: (ledgerInput) => input.store.previewLedger(ledgerInput)
+  });
+  const rejected = decision.engineEvents.some(isPaperTradingErrorEvent);
+  let engineResult: PaperTradingEngineCheckpointResult;
+  if (rejected) {
+    engineResult = paperTradingTerminalCheckpoint({
+      previous: previousEngineState,
+      score: input.evaluation.latest_score,
+      events: decision.engineEvents
+    });
+  } else {
+    engineResult = applyPaperTradingCheckpoint({
+      previous: previousEngineState,
+      marketPrice: input.tick.market_snapshot.price,
+      observedAt: input.tick.observed_at,
+      publicExecutionSnapshot: input.tick.public_execution_snapshot,
+      events: decision.engineEvents
+    });
+  }
+  const filled = engineResult.processedPublicTradeIds.length >
+      previousEngineState.processedPublicTradeIds.length ||
+    engineResult.latestFill?.fill_id !== previousEngineState.latestFill?.fill_id ||
+    Boolean(engineResult.latestFill &&
+      paperPositionChanged(previousEngineState, engineResult));
+  const canceled = decision.engineEvents.some((event) =>
+    event.event_kind === "cancel_order"
+  );
+  const latestLedger = decision.ledgerOutcomes.at(-1);
+  const observationStatus: PaperTradingObservationRecord["status"] = rejected
+    ? "failed"
+    : decision.ledgerOutcomes.length > 0 || filled || canceled
+      ? "recorded"
+      : "no_order";
+  const observation = paperTradingObservationRecord({
+    candidate: input.candidate,
+    evaluation: input.evaluation,
+    sequence: 1,
+    status: observationStatus,
+    observedAt: input.tick.observed_at,
+    marketSnapshot: structuredClone(input.tick.market_snapshot),
+    publicExecutionSnapshot: structuredClone(input.tick.public_execution_snapshot),
+    decision: decision.decision,
+    ledgerRef: latestLedger
+      ? {
+          record_kind: "ledger_chain",
+          id: latestLedger.order_request.order_request_id
+        }
+      : undefined,
+    paperAccountSnapshot: engineResult.account,
+    openOrders: engineResult.openOrders,
+    processedTradingSystemEventIds: engineResult.processedTradingSystemEventIds,
+    processedPublicTradeIds: engineResult.processedPublicTradeIds,
+    latestFill: engineResult.latestFill,
+    scoreDelta: engineResult.scoreDelta,
+    cumulativeScore: engineResult.score,
+    failureReason: rejected
+      ? decision.decision?.reason ?? "trading_system_event_rejected"
+      : undefined,
+    comparisonTickRef: {
+      record_kind: "paper_trading_comparison_tick",
+      id: input.tick.paper_trading_comparison_tick_id
+    },
+    comparisonTickDigest: input.tick.tick_digest,
+    checkpointAttemptRef: {
+      record_kind: "paper_trading_comparison_checkpoint_attempt",
+      id: input.checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+    },
+    checkpointAttemptDigest: input.checkpointAttempt.attempt_digest
+  });
+  const evaluation = paperTradingEvaluationUpdate({
+    evaluation: input.evaluation,
+    status: rejected ? "failed" : "running",
+    observedAt: input.tick.observed_at,
+    nextObservationAt: rejected
+      ? undefined
+      : new Date(Date.parse(input.tick.observed_at) + input.intervalMs).toISOString(),
+    latestScore: engineResult.score,
+    latestFailureReason: rejected ? observation.failure_reason : undefined,
+    latestPublicExecutionSnapshot: input.tick.public_execution_snapshot,
+    paperAccountSnapshot: engineResult.account,
+    openOrders: engineResult.openOrders,
+    processedTradingSystemEventIds: engineResult.processedTradingSystemEventIds,
+    processedPublicTradeIds: engineResult.processedPublicTradeIds,
+    latestFill: engineResult.latestFill
+  });
+  return {
+    ledger_inputs: decision.ledgerInputs,
+    ledger_outcomes: decision.ledgerOutcomes,
+    observation,
+    evaluation,
+    consumed_event_count: engineResult.processedEventIdsThisCheckpoint.length
+  };
 }
 
 export async function recordPaperTradingEvaluationObservation(
@@ -431,6 +578,110 @@ function recordPublicExecutionFailure(input: {
     .then(() => ({ evaluation, observation }));
 }
 
+async function preparePaperTradingObservationDecision(input: {
+  candidate: CandidateInspectReadModel;
+  tradingRunId: string;
+  gatewayRuntimeBinding: GatewayRuntimeBinding;
+  observedAt: string;
+  tradingSystemEvents: ParsedTradingSystemPaperEvent[];
+  previewLedger: (input: LedgerInput) => Promise<LedgerWriteOutcome>;
+}): Promise<{
+  decision?: PaperTradingDecisionSummary;
+  ledgerInputs: LedgerInput[];
+  ledgerOutcomes: LedgerWriteOutcome[];
+  engineEvents: PaperTradingSystemEvent[];
+}> {
+  if (!input.tradingSystemEvents.length) {
+    return { ledgerInputs: [], ledgerOutcomes: [], engineEvents: [] };
+  }
+  const protocolErrorEvents = input.tradingSystemEvents.filter(isPaperTradingErrorEvent);
+  if (protocolErrorEvents.length) {
+    const latestError = protocolErrorEvents.at(-1)!;
+    return {
+      decision: paperProtocolErrorDecision(latestError.observed_at, latestError.reason),
+      ledgerInputs: [],
+      ledgerOutcomes: [],
+      engineEvents: protocolErrorEvents.map((event) => ({
+        event_id: event.event_id,
+        event_kind: "error",
+        observed_at: event.observed_at,
+        reason: event.reason
+      }))
+    };
+  }
+  const candidateVersionId = input.candidate.candidate_version.candidate_version_id;
+  const ledgerInputs: LedgerInput[] = [];
+  const ledgerOutcomes: LedgerWriteOutcome[] = [];
+  const engineEvents: PaperTradingSystemEvent[] = [];
+  let latestDecision: PaperTradingDecisionSummary | undefined;
+  for (const event of input.tradingSystemEvents) {
+    if (event.event_kind === "order_request") {
+      const ledgerInput = await ledgerInputFromTradingSystemDecision({
+        candidateId: input.candidate.candidate_id,
+        candidateVersionId,
+        tradingRunId: input.tradingRunId,
+        gatewayRuntimeBinding: input.gatewayRuntimeBinding,
+        orderRequest: event.order_request,
+        sampleId: event.event_id,
+        observedAt: input.observedAt
+      });
+      const ledger = await input.previewLedger(ledgerInput);
+      ledgerInputs.push(ledgerInput);
+      ledgerOutcomes.push(ledger);
+      latestDecision = {
+        decision_kind: "order_request",
+        source_kind: "trading_system_decision",
+        reason: event.reason ?? "trading_system_order_request",
+        observed_at: event.observed_at,
+        order_request: event.order_request,
+        authority_status: "trace_only"
+      };
+      engineEvents.push({
+        event_id: event.event_id,
+        event_kind: "order_request",
+        observed_at: event.observed_at,
+        order_request: event.order_request,
+        ledger_ref: {
+          record_kind: "order_request",
+          id: ledger.order_request.order_request_id
+        },
+        gateway_outcome: ledger.gateway_result.decision_outcome
+      });
+      continue;
+    }
+    if (event.event_kind === "cancel_order") {
+      latestDecision = {
+        decision_kind: "cancel_order",
+        source_kind: "trading_system_decision",
+        reason: event.reason,
+        observed_at: event.observed_at,
+        authority_status: "trace_only"
+      };
+      engineEvents.push({
+        event_id: event.event_id,
+        event_kind: "cancel_order",
+        observed_at: event.observed_at,
+        order_id: event.order_id,
+        reason: event.reason
+      });
+      continue;
+    }
+    latestDecision = paperNoActionDecision(event.observed_at, event.reason);
+    engineEvents.push({
+      event_id: event.event_id,
+      event_kind: event.event_kind,
+      observed_at: event.observed_at,
+      reason: event.reason
+    });
+  }
+  return {
+    decision: latestDecision,
+    ledgerInputs,
+    ledgerOutcomes,
+    engineEvents
+  };
+}
+
 async function recordPaperTradingObservationDecision(input: {
   store: OuroborosStorePort;
   candidate: CandidateInspectReadModel;
@@ -673,6 +924,10 @@ function paperTradingObservationRecord(input: {
   scoreDelta: PaperTradingObservationRecord["score_delta"];
   cumulativeScore: PaperTradingObservationRecord["cumulative_score"];
   failureReason?: string;
+  comparisonTickRef?: Ref;
+  comparisonTickDigest?: string;
+  checkpointAttemptRef?: Ref;
+  checkpointAttemptDigest?: string;
 }): PaperTradingObservationRecord {
   return {
     record_kind: "paper_trading_observation",
@@ -688,6 +943,10 @@ function paperTradingObservationRecord(input: {
     },
     paper_trading_evaluation_commitment_ref:
       input.evaluation.paper_trading_evaluation_commitment_ref,
+    paper_trading_comparison_tick_ref: input.comparisonTickRef,
+    paper_trading_comparison_tick_digest: input.comparisonTickDigest,
+    paper_trading_comparison_checkpoint_attempt_ref: input.checkpointAttemptRef,
+    paper_trading_comparison_checkpoint_attempt_digest: input.checkpointAttemptDigest,
     candidate_ref: { record_kind: "trading_system_candidate", id: input.candidate.candidate_id },
     candidate_version_ref: {
       record_kind: "candidate_version",

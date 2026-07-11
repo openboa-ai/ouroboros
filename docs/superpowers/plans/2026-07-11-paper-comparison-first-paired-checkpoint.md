@@ -49,7 +49,7 @@ at commit `0188837`.
 - Produces: checkpoint digest-input and runtime-shape functions
 - Extends: `PaperTradingObservationRecord` with optional checkpoint/tick refs and digests
 
-- [ ] **Step 1: Write failing domain tests**
+- [x] **Step 1: Write failing domain tests**
 
 Add tests that construct canonical sequence-1 attempt and outcome records, hash them, and assert:
 
@@ -64,7 +64,7 @@ Use table cases to reject sequence `2`, mismatched side roles/refs, malformed IS
 deadline over 60 seconds, missing paired side evidence, side evidence on `incomplete`, duplicate
 cross-role observation refs, invalid provider counts, non-empty authority flags, and digest drift.
 
-- [ ] **Step 2: Run the domain test and verify RED**
+- [x] **Step 2: Run the domain test and verify RED**
 
 Run:
 
@@ -74,7 +74,7 @@ npx vitest run packages/domain/src/paper-trading-comparison-checkpoint.test.ts
 
 Expected: FAIL because checkpoint types and predicate exports do not exist.
 
-- [ ] **Step 3: Add exact domain records and digest functions**
+- [x] **Step 3: Add exact domain records and digest functions**
 
 Implement the design fields with these status unions:
 
@@ -103,7 +103,7 @@ paper_trading_comparison_checkpoint_attempt_ref?: Ref;
 paper_trading_comparison_checkpoint_attempt_digest?: string;
 ```
 
-- [ ] **Step 4: Run domain regression and typecheck**
+- [x] **Step 4: Run domain regression and typecheck**
 
 Run:
 
@@ -114,7 +114,7 @@ npm run typecheck --workspace @ouroboros/domain
 
 Expected: all selected tests and domain typecheck pass.
 
-- [ ] **Step 5: Commit the domain contract**
+- [x] **Step 5: Commit the domain contract**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-checkpoint.test.ts
@@ -134,7 +134,7 @@ git commit -m "feat: define paired paper checkpoint evidence"
 - Rule: direct outcome persistence admits only `incomplete`; `paired` is reserved for Task 3's
   transaction operation
 
-- [ ] **Step 1: Write failing LocalStore lifecycle tests**
+- [x] **Step 1: Write failing LocalStore lifecycle tests**
 
 Add tests proving:
 
@@ -150,7 +150,7 @@ Also assert exact replay, conflicting replay rejection, sequence-1-only admissio
 attempt, direct `paired` outcome rejection, valid `incomplete` append after cleanup, and corrupted
 persisted-record rejection.
 
-- [ ] **Step 2: Run the lifecycle tests and verify RED**
+- [x] **Step 2: Run the lifecycle tests and verify RED**
 
 Run:
 
@@ -160,7 +160,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "paper compariso
 
 Expected: FAIL because the Store port and LocalStore methods do not exist.
 
-- [ ] **Step 3: Add port methods and append-only LocalStore collections**
+- [x] **Step 3: Add port methods and append-only LocalStore collections**
 
 Add these methods to `OuroborosStorePort`:
 
@@ -178,7 +178,7 @@ complete comparison/activation graph, require the latest exact `both_running` ou
 ordinary `paired` outcome writes with
 `paper_trading_comparison_paired_checkpoint_transaction_required`.
 
-- [ ] **Step 4: Run lifecycle and existing activation persistence regressions**
+- [x] **Step 4: Run lifecycle and existing activation persistence regressions**
 
 Run:
 
@@ -189,7 +189,7 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: selected tests and LocalStore typecheck pass.
 
-- [ ] **Step 5: Commit lifecycle persistence**
+- [x] **Step 5: Commit lifecycle persistence**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
@@ -209,7 +209,7 @@ git commit -m "feat: persist paired checkpoint lifecycle"
 - Produces: `recordPaperTradingComparisonPairedCheckpoint(input)`
 - Produces: `recoverPaperTradingComparisonCheckpointTransactions()`
 
-- [ ] **Step 1: Write failing preview and transaction tests**
+- [x] **Step 1: Write failing preview and transaction tests**
 
 Prove that `previewLedger` returns the same deterministic IDs as `recordLedger` while leaving the
 order, Gateway, execution, run, and projection files unchanged.
@@ -233,7 +233,7 @@ Ledger/observation writes still fail, invalid side input creates no transaction 
 replay creates no duplicates. Delete selected materialized files after a successful call, create a
 new LocalStore, run transaction recovery, and assert exact rematerialization from the bundle.
 
-- [ ] **Step 2: Run transaction tests and verify RED**
+- [x] **Step 2: Run transaction tests and verify RED**
 
 Run:
 
@@ -243,7 +243,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "paired checkpoi
 
 Expected: FAIL because preview, paired commit, and transaction recovery are missing.
 
-- [ ] **Step 3: Refactor Ledger construction into a pure plan**
+- [x] **Step 3: Refactor Ledger construction into a pure plan**
 
 Extract the record construction inside `recordLedgerUnlocked` into a private builder returning:
 
@@ -258,7 +258,7 @@ interface LocalLedgerWritePlan {
 `previewLedger` validates and builds this plan but writes nothing. `recordLedgerUnlocked` persists
 the same plan, preserving all existing IDs and behavior.
 
-- [ ] **Step 4: Implement the single-file transaction commit point**
+- [x] **Step 4: Implement the single-file transaction commit point**
 
 Validate both complete side bundles in memory. Persist one self-digested adapter-internal bundle at:
 
@@ -271,7 +271,7 @@ paired outcome. Write it with existing temp-file rename before any normal collec
 Then materialize exact records idempotently and rebuild projections. On replay/recovery, validate the
 bundle digest and rematerialize missing exact records; reject any conflict.
 
-- [ ] **Step 5: Run transaction, Ledger, observation, and projection regressions**
+- [x] **Step 5: Run transaction, Ledger, observation, and projection regressions**
 
 Run:
 
@@ -282,7 +282,7 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: all selected tests and LocalStore typecheck pass.
 
-- [ ] **Step 6: Commit the atomic Store boundary**
+- [x] **Step 6: Commit the atomic Store boundary**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
@@ -307,7 +307,7 @@ git commit -m "feat: commit paired checkpoint evidence atomically"
 - Produces: checkpoint-scoped sandbox evidence refresh authority
 - Preserves: the existing public observation path and its outputs
 
-- [ ] **Step 1: Write failing pure-preparation tests**
+- [x] **Step 1: Write failing pure-preparation tests**
 
 Add focused cases using a stored first tick:
 
@@ -318,7 +318,7 @@ Add focused cases using a stored first tick:
 - a malformed/error event produces a failed observation with zero favorable score;
 - every observation contains exact tick/checkpoint refs and digests.
 
-- [ ] **Step 2: Run the preparation test and verify RED**
+- [x] **Step 2: Run the preparation test and verify RED**
 
 Run:
 
@@ -328,7 +328,7 @@ npx vitest run packages/application/src/trading/paper/comparison-checkpoint-prep
 
 Expected: FAIL because the side preparation API does not exist.
 
-- [ ] **Step 3: Extract a no-write observation preparation core**
+- [x] **Step 3: Extract a no-write observation preparation core**
 
 Refactor the event parsing, deterministic Ledger preview, paper-engine checkpoint, observation
 construction, and evaluation update from `observation.ts` into an exported preparation function.
@@ -336,7 +336,7 @@ The existing public path calls that function, persists its Ledger plans and audi
 observation exactly as before. The comparison path supplies the stored first tick and does not call
 market liveness or underlying market ports.
 
-- [ ] **Step 4: Write failing session boundary tests**
+- [x] **Step 4: Write failing session boundary tests**
 
 Assert `prepareComparisonCheckpointSide` independently reloads the exact running side, refreshes
 sandbox evidence with checkpoint context, invokes no market read, returns a canonical prepared
@@ -344,7 +344,7 @@ bundle, reports total provider requests, and rejects wrong role/context, non-lat
 non-`both_running` outcome, prior observation, stopped sandbox, deadline excess, and request-cap
 excess.
 
-- [ ] **Step 5: Add checkpoint session context and implementation**
+- [x] **Step 5: Add checkpoint session context and implementation**
 
 Add the method:
 
@@ -365,7 +365,7 @@ stop, run control, evaluation, observation, or Ledger through this context. Exte
 and inspect loading to accept either zero evidence or one exact committed paired checkpoint so
 restart cleanup remains possible after success.
 
-- [ ] **Step 6: Run application and Store regressions**
+- [x] **Step 6: Run application and Store regressions**
 
 Run:
 
@@ -377,7 +377,7 @@ npm run typecheck --workspace @ouroboros/local-store
 
 Expected: selected tests and both typechecks pass.
 
-- [ ] **Step 7: Commit side preparation**
+- [x] **Step 7: Commit side preparation**
 
 ```bash
 git add packages/application/src/ports/paper-comparison-session.ts packages/application/src/trading/paper/observation.ts packages/application/src/trading/paper/comparison-checkpoint-preparation.test.ts packages/application/src/trading/paper/session-service.ts packages/application/src/trading/paper/session-service.test.ts packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts

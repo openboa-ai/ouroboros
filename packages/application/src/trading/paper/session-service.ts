@@ -3,22 +3,31 @@ import {
   paperTradingComparisonBaselineEvaluation,
   paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
+  paperTradingComparisonCheckpointWriteContextHasRuntimeShape,
+  paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonRefsEqual,
   paperTradingComparisonRuntimeControlIdempotencyKey,
   paperTradingComparisonRuntimeWriteContextHasRuntimeShape,
   type CandidateInspectReadModel,
   type PaperTradingComparisonActivationAttemptRecord,
   type PaperTradingComparisonActivationSide,
+  type PaperTradingComparisonCheckpointWriteContext,
   type PaperTradingComparisonRuntimeWriteContext,
+  type PaperTradingComparisonTickRecord,
   type PaperTradingEvaluationCommitmentRecord,
   type PaperTradingEvaluationInvalidationReason,
   type PaperTradingEvaluationRecord,
   type PaperTradingEvidencePurpose,
+  type PaperTradingObservationRecord,
   type SandboxDetailReadModel,
   type SystemCodeRecord,
   type TradingRunRecord
 } from "@ouroboros/domain";
-import { FIXTURE_SYSTEM_CODE_ID, type OuroborosStorePort } from "../../ports/store";
+import {
+  FIXTURE_SYSTEM_CODE_ID,
+  type OuroborosStorePort,
+  type PreparedPaperTradingComparisonCheckpointSide
+} from "../../ports/store";
 import type { GatewayMarketDataPort } from "../../ports/market-data";
 import type {
   PaperTradingComparisonSessionPort,
@@ -50,6 +59,7 @@ import {
 } from "./commitment";
 import {
   recordPaperTradingEvaluationObservation,
+  preparePaperTradingComparisonCheckpointEvidence,
   type RecordPaperTradingEvaluationObservationResult,
   tradingRunLifecycleAuditInput
 } from "./observation";
@@ -90,6 +100,7 @@ interface LoadedPaperTradingComparisonSessionSide {
   commitment: PaperTradingEvaluationCommitmentRecord;
   evaluation: PaperTradingEvaluationRecord;
   baseline: PaperTradingEvaluationRecord;
+  evidenceState: "zero" | "paired_checkpoint";
   systemCode: SystemCodeRecord;
 }
 
@@ -506,7 +517,8 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     if ((loaded.run.runtime_lifecycle_status !== "registered" &&
       loaded.run.runtime_lifecycle_status !== "stopped") ||
       (loaded.evaluation.status !== "not_started" &&
-        loaded.evaluation.status !== "stopped")) {
+        loaded.evaluation.status !== "stopped") ||
+      loaded.evidenceState !== "zero") {
       throw new PaperTradingSessionError(
         "paper_trading_comparison_side_state_mismatch",
         "Paper comparison side is not in a startable zero-evidence state."
@@ -611,7 +623,11 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
   }): Promise<PaperTradingComparisonSessionSideStatus> {
     this.assertComparisonSessionInput(input.authority, input.side, "stop");
     this.assertComparisonDeadline(input.deadlineAt);
-    let loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    let loaded = await this.loadComparisonSessionSide(
+      input.side,
+      input.authority,
+      { allowCommittedCheckpoint: true }
+    );
     this.assertComparisonCleanupDeadline(loaded.attempt, input.deadlineAt);
     const sessionKey = comparisonSessionKey(input.authority);
     if (this.comparisonTransientCleanupFailures.has(sessionKey)) {
@@ -625,7 +641,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       : undefined;
     const sideInactive = (loaded.run.runtime_lifecycle_status === "registered" ||
         loaded.run.runtime_lifecycle_status === "stopped") &&
-      (loaded.evaluation.status === "not_started" || loaded.evaluation.status === "stopped") &&
+      (loaded.evaluation.status === "not_started" || loaded.evaluation.status === "stopped" ||
+        loaded.evidenceState === "paired_checkpoint" &&
+          loaded.evaluation.status === "failed") &&
       (!sandbox || sandbox.lifecycle_status === "stopped" ||
         sandbox.lifecycle_status === "removed");
     if (sideInactive) {
@@ -673,12 +691,18 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       }, observations, input.authority);
     }
     this.assertComparisonDeadline(input.deadlineAt);
-    loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    loaded = await this.loadComparisonSessionSide(
+      input.side,
+      input.authority,
+      { allowCommittedCheckpoint: true }
+    );
     this.assertComparisonDeadline(input.deadlineAt);
     if (loaded.run.runtime_lifecycle_status === "stopped" &&
       (loaded.evaluation.status === "running" || loaded.evaluation.status === "not_started")) {
       await this.options.store.recordPaperTradingEvaluation({
-        ...loaded.baseline,
+        ...(loaded.evidenceState === "paired_checkpoint"
+          ? loaded.evaluation
+          : loaded.baseline),
         status: "stopped",
         stopped_at: new Date().toISOString()
       }, input.authority);
@@ -701,7 +725,11 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       input.side,
       input.authority.operation
     );
-    const loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    const loaded = await this.loadComparisonSessionSide(
+      input.side,
+      input.authority,
+      { allowCommittedCheckpoint: true }
+    );
     const sandbox = loaded.run.sandbox_ref
       ? await this.options.store.getSandbox(loaded.run.sandbox_ref.id)
       : undefined;
@@ -722,6 +750,211 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       provider_session_active: provider !== undefined,
       observed_at: new Date().toISOString(),
       authority_status: "not_live"
+    };
+  }
+
+  async prepareComparisonCheckpointSide(input: {
+    side: PaperTradingComparisonActivationSide;
+    authority: PaperTradingComparisonCheckpointWriteContext;
+    tick: PaperTradingComparisonTickRecord;
+    deadlineAt: string;
+    maximumProviderRequestCount: number;
+    signal: AbortSignal;
+  }): Promise<PreparedPaperTradingComparisonCheckpointSide> {
+    this.assertComparisonCheckpointSessionInput(input.authority, input.side);
+    if (!Number.isInteger(input.maximumProviderRequestCount) ||
+      input.maximumProviderRequestCount <= 0) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_limit_invalid",
+        "Paper comparison provider request limit must be a positive integer."
+      );
+    }
+    this.assertComparisonCheckpointEffectOpen(input.signal, input.deadlineAt);
+    const loaded = await this.loadComparisonSessionSide(input.side, input.authority);
+    const [checkpointAttempt, activationOutcome, persistedTick, checkpointAttempts,
+      checkpointOutcomes, activationOutcomes] = await Promise.all([
+      this.options.store.getPaperTradingComparisonCheckpointAttempt(
+        input.authority.checkpoint_attempt_ref.id
+      ),
+      this.options.store.getPaperTradingComparisonActivationOutcome(
+        input.authority.activation_outcome_ref.id
+      ),
+      this.options.store.getPaperTradingComparisonTick(input.tick.paper_trading_comparison_tick_id),
+      this.options.store.listPaperTradingComparisonCheckpointAttempts(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonCheckpointOutcomes(
+        input.authority.checkpoint_attempt_ref.id
+      ),
+      this.options.store.listPaperTradingComparisonActivationOutcomes(
+        input.authority.paper_trading_comparison_activation_attempt_ref.id
+      )
+    ]);
+    if (!checkpointAttempt || !activationOutcome || !persistedTick) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_reference_not_found",
+        "Paper comparison checkpoint session references incomplete evidence."
+      );
+    }
+    const checkpointSide = checkpointAttempt[input.authority.role];
+    if (
+      input.deadlineAt !== checkpointAttempt.checkpoint_deadline_at ||
+      input.tick.paper_trading_comparison_tick_id !== checkpointAttempt.tick_ref.id ||
+      input.tick.tick_digest !== checkpointAttempt.tick_digest ||
+      paperTradingComparisonPersistedRecordDigestInput(input.tick) !==
+        paperTradingComparisonPersistedRecordDigestInput(persistedTick) ||
+      checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id !==
+        input.authority.checkpoint_attempt_ref.id ||
+      checkpointAttempt.attempt_digest !== input.authority.checkpoint_attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt.paper_trading_comparison_activation_ref,
+        input.authority.paper_trading_comparison_activation_ref
+      ) ||
+      checkpointAttempt.paper_trading_comparison_activation_digest !==
+        input.authority.paper_trading_comparison_activation_digest ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt.paper_trading_comparison_activation_attempt_ref,
+        input.authority.paper_trading_comparison_activation_attempt_ref
+      ) ||
+      checkpointAttempt.paper_trading_comparison_activation_attempt_digest !==
+        input.authority.paper_trading_comparison_activation_attempt_digest ||
+      !paperTradingComparisonRefsEqual(
+        checkpointAttempt.activation_outcome_ref,
+        input.authority.activation_outcome_ref
+      ) ||
+      checkpointAttempt.activation_outcome_digest !== input.authority.activation_outcome_digest ||
+      activationOutcome.paper_trading_comparison_activation_outcome_id !==
+        input.authority.activation_outcome_ref.id ||
+      activationOutcome.outcome_digest !== input.authority.activation_outcome_digest ||
+      activationOutcome.outcome_status !== "both_running" ||
+      checkpointSide.role !== input.side.role ||
+      !paperTradingComparisonRefsEqual(
+        checkpointSide.trading_run_ref,
+        input.side.trading_run_ref
+      ) ||
+      !paperTradingComparisonRefsEqual(
+        checkpointSide.paper_trading_evaluation_ref,
+        input.side.paper_trading_evaluation_ref
+      )
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_write_context_mismatch",
+        "Paper comparison checkpoint context does not match the frozen side and tick."
+      );
+    }
+    if (
+      checkpointAttempts.at(-1)?.paper_trading_comparison_checkpoint_attempt_id !==
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+      checkpointOutcomes.length !== 0 ||
+      activationOutcomes.at(-1)?.paper_trading_comparison_activation_outcome_id !==
+        activationOutcome.paper_trading_comparison_activation_outcome_id ||
+      loaded.evidenceState !== "zero" ||
+      loaded.run.runtime_lifecycle_status !== "running" ||
+      loaded.evaluation.status !== "running"
+    ) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_state_mismatch",
+        "Paper comparison checkpoint side is no longer open and running."
+      );
+    }
+    if (input.maximumProviderRequestCount >
+      loaded.attempt.activation_policy.maximum_provider_request_count_per_side) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_limit_mismatch",
+        "Paper comparison provider request limit exceeds the frozen attempt policy."
+      );
+    }
+
+    const sessionKey = comparisonSessionKey(input.authority);
+    const provider = this.comparisonApiProviderSessions.get(sessionKey);
+    const binding = this.comparisonGatewayBindings.get(sessionKey);
+    const providerRequestCountBefore = this.comparisonProviderRequestCount(sessionKey);
+    if (providerRequestCountBefore > input.maximumProviderRequestCount) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_budget_exceeded",
+        "Paper comparison provider request budget was exceeded before checkpoint preparation."
+      );
+    }
+    if (!provider || !binding ||
+      providerRequestCountBefore < checkpointSide.provider_request_count_before) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_state_mismatch",
+        "Paper comparison checkpoint provider session is missing or inconsistent."
+      );
+    }
+    const sandbox = loaded.run.sandbox_ref
+      ? await this.options.store.getSandbox(loaded.run.sandbox_ref.id)
+      : undefined;
+    if (!sandbox || sandbox.lifecycle_status !== "running") {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_state_mismatch",
+        "Paper comparison checkpoint requires its exact running sandbox."
+      );
+    }
+    const adapter = this.options.sandboxAdapters[sandbox.adapter_kind];
+    if (!adapter.getArtifactInstanceLogs) {
+      throw new PaperTradingSessionError(
+        "sandbox_adapter_method_not_supported",
+        "sandbox adapter does not support getArtifactInstanceLogs"
+      );
+    }
+
+    this.assertComparisonCheckpointEffectOpen(input.signal, input.deadlineAt);
+    const observations = await adapter.getArtifactInstanceLogs(sandbox);
+    this.assertComparisonCheckpointEffectOpen(input.signal, input.deadlineAt);
+    await this.options.store.recordSandboxObservations(
+      sandbox.sandbox_id,
+      observations,
+      input.authority
+    );
+    this.assertComparisonCheckpointEffectOpen(input.signal, input.deadlineAt);
+    const providerRequestCountAfterRefresh = this.comparisonProviderRequestCount(sessionKey);
+    if (providerRequestCountAfterRefresh > input.maximumProviderRequestCount) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_budget_exceeded",
+        "Paper comparison provider request budget was exceeded during checkpoint preparation."
+      );
+    }
+    const candidate = await this.options.store.getCandidateForTradingRun(
+      input.side.trading_run_ref.id
+    );
+    if (!candidate) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_side_reference_not_found",
+        "Paper comparison checkpoint candidate was not reloaded after sandbox refresh."
+      );
+    }
+    const prepared = await preparePaperTradingComparisonCheckpointEvidence({
+      store: this.options.store,
+      role: input.side.role,
+      candidate,
+      evaluation: loaded.evaluation,
+      tick: input.tick,
+      checkpointAttempt,
+      gatewayRuntimeBinding: binding,
+      intervalMs: this.intervalMs
+    });
+    this.assertComparisonCheckpointEffectOpen(input.signal, input.deadlineAt);
+    const providerRequestCountAfter = this.comparisonProviderRequestCount(sessionKey);
+    if (providerRequestCountAfter < providerRequestCountAfterRefresh ||
+      providerRequestCountAfter > input.maximumProviderRequestCount) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_provider_request_budget_exceeded",
+        "Paper comparison provider request total is invalid after checkpoint preparation."
+      );
+    }
+    const withoutDigest = {
+      role: input.side.role,
+      ledger_inputs: prepared.ledger_inputs,
+      ledger_outcomes: prepared.ledger_outcomes,
+      observation: prepared.observation,
+      evaluation: prepared.evaluation,
+      consumed_event_count: prepared.consumed_event_count,
+      provider_request_count_after: providerRequestCountAfter
+    };
+    return {
+      ...withoutDigest,
+      preparation_digest: comparisonCheckpointPreparationDigest(withoutDigest)
     };
   }
 
@@ -942,6 +1175,49 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
     }
   }
 
+  private assertComparisonCheckpointSessionInput(
+    authority: PaperTradingComparisonCheckpointWriteContext,
+    side: PaperTradingComparisonActivationSide
+  ): void {
+    if (!paperTradingComparisonCheckpointWriteContextHasRuntimeShape(authority)) {
+      throw new PaperTradingSessionError(
+        "invalid_paper_trading_comparison_checkpoint_write_context",
+        "Paper comparison checkpoint requires one valid write context."
+      );
+    }
+    if (authority.operation !== "refresh_sandbox_evidence" ||
+      authority.role !== side.role) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_write_context_mismatch",
+        "Paper comparison checkpoint context does not match its side operation."
+      );
+    }
+  }
+
+  private assertComparisonCheckpointEffectOpen(
+    signal: AbortSignal,
+    deadlineAt: string
+  ): void {
+    if (signal.aborted) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_aborted",
+        "Paper comparison checkpoint preparation was aborted."
+      );
+    }
+    if (!isExactIsoTimestamp(deadlineAt)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_deadline_invalid",
+        "Paper comparison checkpoint deadline must be an exact ISO timestamp."
+      );
+    }
+    if (Date.now() > Date.parse(deadlineAt)) {
+      throw new PaperTradingSessionError(
+        "paper_trading_comparison_checkpoint_deadline_exceeded",
+        "Paper comparison checkpoint deadline was exceeded."
+      );
+    }
+  }
+
   private assertComparisonEffectOpen(signal: AbortSignal, deadlineAt: string): void {
     if (signal.aborted) {
       throw new PaperTradingSessionError(
@@ -982,7 +1258,9 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
 
   private async loadComparisonSessionSide(
     side: PaperTradingComparisonActivationSide,
-    authority: PaperTradingComparisonRuntimeWriteContext
+    authority: PaperTradingComparisonRuntimeWriteContext |
+      PaperTradingComparisonCheckpointWriteContext,
+    options: { allowCommittedCheckpoint?: boolean } = {}
   ): Promise<LoadedPaperTradingComparisonSessionSide> {
     const [activation, attempt] = await Promise.all([
       this.options.store.getPaperTradingComparisonActivation(
@@ -1053,6 +1331,20 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       evaluation.status === "running" || evaluation.status === "stopped"
       ? evaluation.status
       : undefined;
+    const hasZeroEvidenceState = expectedStatus !== undefined &&
+      paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
+        evaluation,
+        baseline,
+        expectedStatus
+      );
+    const hasCommittedCheckpointState = options.allowCommittedCheckpoint === true &&
+      await this.comparisonSessionSideHasCommittedCheckpointState({
+        attempt,
+        side,
+        run,
+        evaluation,
+        baseline
+      });
     if (
       commitment.evidence_purpose !== "qualification" ||
       run.paper_evidence_purpose !== "qualification" ||
@@ -1078,19 +1370,93 @@ export class PaperTradingSessionService implements PaperTradingComparisonSession
       ) ||
       systemCode.system_code_id !== commitment.system_code_ref.id ||
       systemCode.artifact_digest !== commitment.system_code_artifact_digest ||
-      expectedStatus === undefined ||
-      !paperTradingComparisonEvaluationHasZeroEvidenceActivationState(
-        evaluation,
-        baseline,
-        expectedStatus
-      )
+      (!hasZeroEvidenceState && !hasCommittedCheckpointState)
     ) {
       throw new PaperTradingSessionError(
         "paper_trading_comparison_side_state_mismatch",
         "Paper comparison side runtime graph is not exact zero-evidence qualification state."
       );
     }
-    return { attempt, candidate, run, commitment, evaluation, baseline, systemCode };
+    return {
+      attempt,
+      candidate,
+      run,
+      commitment,
+      evaluation,
+      baseline,
+      evidenceState: hasCommittedCheckpointState ? "paired_checkpoint" : "zero",
+      systemCode
+    };
+  }
+
+  private async comparisonSessionSideHasCommittedCheckpointState(input: {
+    attempt: PaperTradingComparisonActivationAttemptRecord;
+    side: PaperTradingComparisonActivationSide;
+    run: TradingRunRecord;
+    evaluation: PaperTradingEvaluationRecord;
+    baseline: PaperTradingEvaluationRecord;
+  }): Promise<boolean> {
+    try {
+      const checkpointAttempts = await this.options.store
+        .listPaperTradingComparisonCheckpointAttempts(
+          input.attempt.paper_trading_comparison_activation_attempt_id
+        );
+      const checkpointAttempt = checkpointAttempts.at(-1);
+      if (!checkpointAttempt || checkpointAttempts.length !== 1) return false;
+      const outcomes = await this.options.store.listPaperTradingComparisonCheckpointOutcomes(
+        checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id
+      );
+      const outcome = outcomes[0];
+      const evidence = outcome?.[input.side.role];
+      const observations: PaperTradingObservationRecord[] = await this.options.store
+        .listPaperTradingObservations(input.side.paper_trading_evaluation_ref.id);
+      const observation = observations[0];
+      if (!outcome || outcomes.length !== 1 || outcome.outcome_status !== "paired" ||
+        !evidence || !observation || observations.length !== 1) {
+        return false;
+      }
+      const normalizedEvaluation = input.evaluation.status === "stopped" &&
+        observation.status !== "failed"
+        ? {
+            ...input.evaluation,
+            status: "running" as const,
+            stopped_at: undefined
+          }
+        : input.evaluation;
+      const consumedEventCount = (
+        normalizedEvaluation.processed_trading_system_event_ids?.length ?? 0
+      ) - (input.baseline.processed_trading_system_event_ids?.length ?? 0);
+      return outcome.checkpoint_attempt_ref.id ===
+          checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id &&
+        outcome.checkpoint_attempt_digest === checkpointAttempt.attempt_digest &&
+        outcome.tick_ref.id === checkpointAttempt.tick_ref.id &&
+        outcome.tick_digest === checkpointAttempt.tick_digest &&
+        checkpointAttempt[input.side.role].trading_run_ref.id === input.run.trading_run_id &&
+        checkpointAttempt[input.side.role].paper_trading_evaluation_ref.id ===
+          input.evaluation.paper_trading_evaluation_id &&
+        observation.sequence === 1 &&
+        observation.paper_trading_comparison_tick_ref?.id === checkpointAttempt.tick_ref.id &&
+        observation.paper_trading_comparison_tick_digest === checkpointAttempt.tick_digest &&
+        observation.paper_trading_comparison_checkpoint_attempt_ref?.id ===
+          checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id &&
+        observation.paper_trading_comparison_checkpoint_attempt_digest ===
+          checkpointAttempt.attempt_digest &&
+        evidence.observation_ref.id === observation.paper_trading_observation_id &&
+        evidence.observation_record_digest === comparisonDigest(
+          paperTradingComparisonPersistedRecordDigestInput(observation)
+        ) &&
+        evidence.evaluation_record_digest === comparisonDigest(
+          paperTradingComparisonEvaluationRecordDigestInput(normalizedEvaluation)
+        ) &&
+        evidence.observation_status === observation.status &&
+        evidence.consumed_event_count === consumedEventCount &&
+        sameStringIds(
+          input.run.order_request_refs?.map((ref) => ref.id) ?? [],
+          evidence.ledger_chain_refs.map((ref) => ref.id)
+        );
+    } catch {
+      return false;
+    }
   }
 
   private async ensureComparisonApiProviderSession(input: {
@@ -1543,12 +1909,25 @@ function comparisonActivationSidesEqual(
 }
 
 function comparisonSessionKey(
-  authority: PaperTradingComparisonRuntimeWriteContext
+  authority: PaperTradingComparisonRuntimeWriteContext |
+    PaperTradingComparisonCheckpointWriteContext
 ): string {
   return [
     authority.paper_trading_comparison_activation_attempt_ref.id,
     authority.role
   ].join(":");
+}
+
+function comparisonCheckpointPreparationDigest(value: unknown): string {
+  return comparisonDigest(paperTradingComparisonPersistedRecordDigestInput(value));
+}
+
+function comparisonDigest(input: string): string {
+  return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+function sameStringIds(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function comparisonRunControlAuditInput(

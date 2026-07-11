@@ -35,6 +35,7 @@ import type {
   PaperTradingComparisonActivationOutcomeRecord,
   PaperTradingComparisonCheckpointAttemptRecord,
   PaperTradingComparisonCheckpointOutcomeRecord,
+  PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
   LedgerInput,
   LedgerWriteOutcome,
@@ -62,6 +63,8 @@ export interface PreparedPaperTradingComparisonCheckpointSide {
   ledger_outcomes: LedgerWriteOutcome[];
   observation: PaperTradingObservationRecord;
   evaluation: PaperTradingEvaluationRecord;
+  consumed_event_count: number;
+  provider_request_count_after: number;
   preparation_digest: string;
 }
 
@@ -186,7 +189,8 @@ export interface OuroborosStorePort {
     observations: Omit<SandboxAdapterObservationResult, "instance"> & {
       lifecycle_status?: SandboxRecord["lifecycle_status"];
       last_heartbeat_at?: string;
-    }
+    },
+    authority?: PaperTradingComparisonCheckpointWriteContext
   ): Promise<SandboxLogsOutcome>;
   stopSandbox(
     input: StopSandboxInput,
