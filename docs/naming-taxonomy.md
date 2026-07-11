@@ -34,6 +34,7 @@ that pack every axis into one identifier.
 | `PaperTradingComparisonWindowDriver` | Internal application service that reconstructs one comparison from durable evidence and performs at most one legal transition toward its frozen maximum window. It is not evidence, a verdict, or a public command. |
 | `PaperTradingComparisonWindowRunner` | Process-local scheduler that invokes one WindowDriver without overlap for an owned activation attempt. It cannot resume or adopt provider identity after restart and grants no qualification or trading authority. |
 | `PaperTradingComparisonQualification` | Read-only paired evidence-quality decision over one cleanly stopped shared window, both canonical side qualifications, and exact run-specific Ledger sets. `qualified` permits only later adjudication and carries `not_verdict` authority. |
+| `PaperTradingComparisonVerdict` | Append-only external evaluation of one exact settled comparison window. It records qualified improvement, qualified non-improvement, or ineligible closure, remains sealed and promotion-ineligible, and releases only the experiment pair for another precommitted window. |
 | `PaperTradingEvidencePurpose` | Precommitted `research_feedback` or `qualification` purpose; one paper window cannot carry both or be upgraded after outcomes are known. |
 | `PaperTradingQualification` | Evidence-quality gate for an eligible qualification-purpose PaperTradingEvaluation; separate from paper rank and based on observation window, runner health, failure ratio, market data, and public fill evidence. |
 | `PaperTradingFailure` | Read-only paper failure classification with stable kind, raw reason, summary, and next action; not a promotion gate. |
@@ -108,6 +109,9 @@ standard term fits. Record that decision in repo docs and tests.
   comparison signal for improving CandidateArena autonomy.
 - Do not let `FindingCluster` become a rank metric, qualification gate, or Trading review blocker.
   It is read-only generation context for the next ResearchWorker.
+- Do not treat `PaperTradingComparisonVerdict.challenger_improved` as confirmation, statistical
+  significance, champion replacement, or promotion eligibility. Confirmation requires a campaign
+  committed before any campaign-bound outcome, and every reserved terminal result must count.
 - Do not attach Binance directly to TradingSystem. Public market data goes through Gateway
   `MarketDataPort`; private/live Binance authority remains outside the product loop.
 - Do not use compatibility nouns such as `Improvement` to name new CandidateArena primary workflow.

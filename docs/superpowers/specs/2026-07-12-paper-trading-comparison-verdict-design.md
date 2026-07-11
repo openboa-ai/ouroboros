@@ -1,7 +1,7 @@
 # Paper Trading Comparison Verdict Design
 
 **Date:** 2026-07-12
-**Status:** Approved by standing Goal authority; implementation not started
+**Status:** Implemented and repository-verified internally
 **Depends on:** Repository-verified paired paper comparison qualification
 
 ## Goal
@@ -218,9 +218,15 @@ outcomes.
 7. persists through `OuroborosStorePort.recordPaperTradingComparisonVerdict`;
 8. returns exact replay for an unchanged graph.
 
-The service clock owns `evaluated_at`. The deterministic verdict ID is derived from the comparison
-commitment and activation attempt, so one settled window has at most one verdict independent of
-caller retry keys.
+The service clock owns the initial `evaluated_at`. The deterministic verdict ID is derived from the
+comparison commitment and activation attempt, so one settled window has at most one verdict
+independent of caller retry keys. On replay, the service reassesses qualification, reloads exact
+evidence, and reuses the persisted `evaluated_at` to reproduce the sealed record even when the clock
+has advanced.
+
+`window_started_at` is the first shared tick's `observed_at`, and `window_ended_at` is the latest
+tick's `observed_at`. This market-evidence interval is distinct from paired qualification's elapsed
+minimum, which remains activation-attempt time through the latest tick.
 
 ## Store Authority
 
@@ -229,9 +235,8 @@ checkpoint closure, side identity, stopped evaluation state, and metric arithmet
 It allows exact replay and rejects any changed record under the same verdict ID. Missing or corrupt
 evidence cannot be closed by a verdict.
 
-`reservePaperTradingComparisonPreparation` currently treats every historical preparation as an
-active pair conflict. After this frontier, only a preparation whose comparison has no terminal
-verdict remains active. Any exact persisted verdict, including `comparison_ineligible` or
+`reservePaperTradingComparisonPreparation` now treats only a preparation whose comparison has no
+terminal verdict as active. Any exact persisted verdict, including `comparison_ineligible` or
 `challenger_not_improved`, releases the unordered candidate-version pair for a new precommitted
 window. Release permits another experiment; it does not count confirmation or select a winner.
 
@@ -255,6 +260,19 @@ regime robustness, champion replacement, or promotion eligibility.
 - Exact retries return the same verdict without duplicate writes.
 - A changed input under the same deterministic verdict ID conflicts.
 - Persistence failure leaves the prior comparison evidence intact and the pair active.
+
+## Implementation Evidence
+
+- Domain owns the qualification snapshot, verdict schema, runtime shape, and canonical digests.
+- Application owns the pure net-revenue decision and the qualification-first exact-evidence verdict
+  service.
+- LocalStore persists one append-only verdict per comparison, validates terminal graph identity,
+  and releases only verdict-terminated pairs.
+- The real sequence-3 comparison proves zero-score `challenger_not_improved`, exact retry, restart
+  replay after clock advance, and a fresh inert same-pair comparison with no new provider, sandbox,
+  market, decision, Ledger, observation, or score effect.
+- No app, controller, operator projection, Finding, Lineage, TradingPromotion, private, or live
+  composition is added.
 
 ## Acceptance
 

@@ -36,9 +36,10 @@ Current command groups:
   `trading_candidate.promote` rejects research-feedback, uncommitted, collecting, resume-needed,
   failed, invalidated, or quality-blocked evaluations with qualification reasons. A standalone
   `qualified` window is also rejected with `paper_trading_comparison_required`; no promotion record
-  is created until a persisted external comparison verdict is promotion eligible. Promotion is
-  deliberately unavailable until shared comparison evidence, adjudication, and promotion
-  integration exist. This command does not bind
+  is created until external comparison evidence is promotion eligible. Current single-window
+  `PaperTradingComparisonVerdict` records are deliberately `not_eligible`; promotion remains
+  unavailable until a precommitted confirmation campaign and promotion integration exist. This
+  command does not bind
   live authority, submit exchange orders, or bypass `PaperTradingQualification`.
 - `trading_run`: start, observe, stop paper trading runs through command dispatch. Product
   evaluation authority belongs here: selected candidates must accumulate continuous paper trading
@@ -88,9 +89,17 @@ Current command groups:
   and activation-to-latest-tick elapsed minimums, and exact equality between checkpoint-declared
   Ledger refs and complete chains from each additional qualification TradingRun. Its result carries
   `not_verdict`, performs no writes, and is not a command, score comparison, winner, release, or
-  promotion decision. Public composition, process resume, adjudication, confirmation, verdict,
-  evidence release, promotion, private access, and live authority remain pending and outside this
-  command contract.
+  promotion decision. An internal `PaperTradingComparisonVerdictService` reassesses qualification,
+  reloads the exact stopped graph, and persists one append-only external verdict. Qualified windows
+  compare only frozen paper `net_revenue_usdt` against the precommitted minimum lift; settled
+  unqualified windows persist `comparison_ineligible` without score fields. Every outcome is
+  `sealed`, `not_eligible`, and `not_live`. A terminal verdict releases only the candidate-version
+  experiment pair for another precommitted window; it does not count confirmation, select a
+  champion, release Finding/Lineage memory, or create TradingPromotion. The service and Store
+  methods remain uncomposed from apps, controllers, operator projections, and public
+  `OuroborosCommand`. Process resume, a precommitted confirmation campaign, evidence release,
+  promotion integration, private access, and live authority remain pending and outside this command
+  contract.
   The session stays running until `trading_run.stop`, process exit, crash, or runtime restart stops
   it; it is not a finite snapshot decision run.
   The runtime injects `TRADING_API_BASE_URL` for the sandbox so the `TradingSystem` can read
@@ -194,6 +203,15 @@ and exact run-specific Ledger set equality. A zero-chain LocalStore Ledger is va
 `has_activity=false`, `chain_count=0`, all latest records are null, and checkpoint-declared refs are
 also empty. The paired result is `not_verdict` and cannot affect rank, findings, release, or
 promotion.
+Single-window adjudication is a separate internal write boundary. It binds the exact comparison,
+activation attempt, final stopped outcome, ordered ticks/checkpoints, paired qualification, side
+evaluations, observation chains, and TradingRuns. `challenger_improved` requires a strictly positive
+lift meeting the frozen minimum; equal, negative, and below-threshold qualified windows are
+`challenger_not_improved`; settled unqualified windows are `comparison_ineligible` and expose no
+economic fields. `window_started_at` is the first shared tick time, while paired qualification's
+minimum elapsed interval remains activation-attempt time through the latest tick. Exact retries and
+restart reuse the sealed `evaluated_at`; changed evidence conflicts. No historical verdict can be
+retroactively selected as confirmation.
 When compacting this board into researcher context, do not invent runner authority: if the current
 process cannot see the in-memory runner, keep the paper status and score but mark runner state as
 unknown or omit the promotion gate instead of calling an active evaluation `needs_resume`. The

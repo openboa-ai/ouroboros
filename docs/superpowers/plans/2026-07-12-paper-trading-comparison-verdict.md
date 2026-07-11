@@ -52,7 +52,7 @@ records, existing paired qualification and comparison fixtures.
 - Produces: `paperTradingComparisonVerdictHasRuntimeShape`
 - Preserves: application exports of the moved qualification types
 
-- [ ] **Step 1: Write failing domain schema tests**
+- [x] **Step 1: Write failing domain schema tests**
 
 Create valid qualified-improved, qualified-not-improved, and ineligible verdict fixtures. Assert:
 
@@ -70,7 +70,7 @@ metric arithmetic drift, score-bearing ineligible record, score-less qualified r
 action, promotion eligibility other than `not_eligible`, non-sealed release, confirmation counted,
 private/live authority, reordered or unequal checkpoint ref/digest arrays, and non-canonical time.
 
-- [ ] **Step 2: Run the domain test and verify RED**
+- [x] **Step 2: Run the domain test and verify RED**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-verdict.test.ts
@@ -78,7 +78,7 @@ npx vitest run packages/domain/src/paper-trading-comparison-verdict.test.ts
 
 Expected: FAIL because the verdict exports do not exist.
 
-- [ ] **Step 3: Move the qualification result vocabulary into domain**
+- [x] **Step 3: Move the qualification result vocabulary into domain**
 
 Define the existing application result shape in `@ouroboros/domain` without changing field names:
 
@@ -114,7 +114,7 @@ export interface PaperTradingComparisonQualificationResult {
 Import and re-export these exact types from `comparison-qualification-decision.ts`; keep existing
 call sites source-compatible.
 
-- [ ] **Step 4: Implement verdict types, canonical digest inputs, and runtime shape**
+- [x] **Step 4: Implement verdict types, canonical digest inputs, and runtime shape**
 
 Implement the exact schema from the design. `paperTradingComparisonVerdictDigestInput` removes
 record kind, version, ID, and `verdict_digest`, then delegates to
@@ -134,7 +134,7 @@ Require a positive observed lift at or above minimum only for `challenger_improv
 qualified lifts map to `challenger_not_improved`. Require the outcome-specific confirmation
 disposition and next action from the design.
 
-- [ ] **Step 5: Run domain and existing qualification regressions**
+- [x] **Step 5: Run domain and existing qualification regressions**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-verdict.test.ts packages/application/src/trading/paper/comparison-qualification-decision.test.ts
@@ -144,7 +144,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: verdict schema tests and existing paired qualification tests pass; both typechecks pass.
 
-- [ ] **Step 6: Commit domain evidence**
+- [x] **Step 6: Commit domain evidence**
 
 ```bash
 git add packages/domain/src/index.ts packages/domain/src/paper-trading-comparison-verdict.test.ts packages/application/src/trading/paper/comparison-qualification-decision.ts packages/application/src/trading/paper/comparison-qualification-decision.test.ts
@@ -163,7 +163,7 @@ git commit -m "feat: define paper comparison verdict evidence"
 - Produces: `decidePaperTradingComparisonVerdict`
 - Produces: `PaperTradingComparisonVerdictDecision`
 
-- [ ] **Step 1: Write failing decision tests**
+- [x] **Step 1: Write failing decision tests**
 
 Use this input and result contract:
 
@@ -196,7 +196,7 @@ negative, a zero frozen threshold with equal scores, six-decimal rounding, quali
 non-qualified side, non-finite or negative minimum, missing qualified scores, score-bearing
 ineligible input, every ineligible reason, immutability, and deterministic replay.
 
-- [ ] **Step 2: Run the decision test and verify RED**
+- [x] **Step 2: Run the decision test and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-verdict-decision.test.ts
@@ -204,7 +204,7 @@ npx vitest run packages/application/src/trading/paper/comparison-verdict-decisio
 
 Expected: FAIL because the module does not exist.
 
-- [ ] **Step 3: Implement the pure decision**
+- [x] **Step 3: Implement the pure decision**
 
 For qualified evidence, round score values and:
 
@@ -217,7 +217,7 @@ Return `comparison_ineligible` without economic fields for any valid `not_qualif
 `PaperTradingComparisonVerdictDecisionError` with code
 `invalid_paper_trading_comparison_verdict_decision_input` for malformed combinations.
 
-- [ ] **Step 4: Run tests and application typecheck**
+- [x] **Step 4: Run tests and application typecheck**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-verdict-decision.test.ts packages/application/src/trading/paper/comparison-qualification-decision.test.ts
@@ -226,7 +226,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: all pure decision regressions and typecheck pass.
 
-- [ ] **Step 5: Commit the metric decision**
+- [x] **Step 5: Commit the metric decision**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-verdict-decision.ts packages/application/src/trading/paper/comparison-verdict-decision.test.ts
@@ -246,7 +246,7 @@ git commit -m "feat: decide paper comparison verdict"
 - Produces: `OuroborosStorePort.listPaperTradingComparisonVerdicts`
 - Changes: active pair means a preparation with no exact terminal verdict
 
-- [ ] **Step 1: Write failing LocalStore persistence tests**
+- [x] **Step 1: Write failing LocalStore persistence tests**
 
 Using a fully persisted stopped comparison fixture, assert:
 
@@ -268,7 +268,7 @@ wrong activation/attempt/final outcome, unstopped evaluations, side identity/dig
 arithmetic drift, changed replay, a second verdict for the same comparison, and a verdict whose
 qualification IDs/count disagree with Store evidence.
 
-- [ ] **Step 2: Run selected Store tests and verify RED**
+- [x] **Step 2: Run selected Store tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "comparison verdict|active pair"
@@ -276,7 +276,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "comparison verd
 
 Expected: FAIL because Store methods and terminal-pair semantics do not exist.
 
-- [ ] **Step 3: Add the Store port and LocalStore record family**
+- [x] **Step 3: Add the Store port and LocalStore record family**
 
 Add:
 
@@ -298,14 +298,14 @@ checkpoint outcomes, qualification snapshot IDs/count, both side identities/dige
 evaluations, and metric arithmetic. Exact replay returns the stored record; changed replay throws
 `paper_trading_comparison_verdict_conflict`.
 
-- [ ] **Step 4: Change active-pair conflict to terminal ownership**
+- [x] **Step 4: Change active-pair conflict to terminal ownership**
 
 In `reservePaperTradingComparisonPreparationUnlocked`, load existing verdicts once and build the set
 of terminated comparison IDs. A prior preparation conflicts only when its
 `paper_trading_comparison_commitment_id` is absent from that set. Do not infer termination from a
 stopped run, activation outcome, clock time, or qualification result alone.
 
-- [ ] **Step 5: Run all LocalStore tests and typechecks**
+- [x] **Step 5: Run all LocalStore tests and typechecks**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts
@@ -316,7 +316,7 @@ npm run typecheck --workspace @ouroboros/application
 Expected: new verdict/active-pair cases and every existing LocalStore test pass; both typechecks
 pass.
 
-- [ ] **Step 6: Commit persistence authority**
+- [x] **Step 6: Commit persistence authority**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts
@@ -335,7 +335,7 @@ git commit -m "feat: persist paper comparison verdicts"
 - Consumes: `decidePaperTradingComparisonVerdict`
 - Produces: `PaperTradingComparisonVerdictService.evaluate`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Define:
 
@@ -361,7 +361,7 @@ evaluations reject as not terminal; Store/qualification cause codes survive grap
 replay calls Store with a deeply equal record; `evaluated_at` comes only from the service clock; no
 provider, runner, command, promotion, or release method is called.
 
-- [ ] **Step 2: Run service tests and verify RED**
+- [x] **Step 2: Run service tests and verify RED**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-verdict-service.test.ts
@@ -369,7 +369,7 @@ npx vitest run packages/application/src/trading/paper/comparison-verdict-service
 
 Expected: FAIL because the service does not exist.
 
-- [ ] **Step 3: Implement strict evidence loading and record construction**
+- [x] **Step 3: Implement strict evidence loading and record construction**
 
 Normalize IDs, call qualification first, and reload exact evidence. Require final
 `stopped_cleanly`, both exact evaluations `stopped`, no open checkpoint attempt, and ordered
@@ -390,7 +390,7 @@ new PaperTradingComparisonVerdictServiceError(
 Return Store conflict and invalid-input errors with their stable codes; do not turn expected
 `comparison_ineligible` into an exception.
 
-- [ ] **Step 4: Run service, qualification, decision, and typecheck regressions**
+- [x] **Step 4: Run service, qualification, decision, and typecheck regressions**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-verdict-service.test.ts packages/application/src/trading/paper/comparison-verdict-decision.test.ts packages/application/src/trading/paper/comparison-qualification-service.test.ts packages/application/src/trading/paper/comparison-window-state.test.ts
@@ -399,7 +399,7 @@ npm run typecheck --workspace @ouroboros/application
 
 Expected: verdict service and upstream qualification/window contracts pass; typecheck passes.
 
-- [ ] **Step 5: Commit application adjudication**
+- [x] **Step 5: Commit application adjudication**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-verdict-service.ts packages/application/src/trading/paper/comparison-verdict-service.test.ts
@@ -415,7 +415,7 @@ git commit -m "feat: adjudicate paper comparison windows"
 - Consumes: Tasks 1-4
 - Produces: real LocalStore/session terminal verdict evidence
 
-- [ ] **Step 1: Extend the real sequence-3 integration**
+- [x] **Step 1: Extend the real sequence-3 integration**
 
 After the existing qualified zero-score sequence-3 window, evaluate and require:
 
@@ -440,14 +440,14 @@ Repeat evaluation and assert one stored verdict. Restart LocalStore, recompute q
 assert exact verdict replay without new provider, sandbox, decision, Ledger, observation, or score
 evidence.
 
-- [ ] **Step 2: Prove the terminal verdict releases only the experiment pair**
+- [x] **Step 2: Prove the terminal verdict releases only the experiment pair**
 
 Before verdict persistence, retain the existing active-pair conflict assertion. After verdict,
 prepare the same champion/challenger versions under a new idempotency key and assert new inert run,
 commitment, and evaluation IDs with zero provider/sandbox/market effects. Assert the old verdict is
 not referenced as confirmation and the new comparison remains unactivated.
 
-- [ ] **Step 3: Run real integration and full Store regressions**
+- [x] **Step 3: Run real integration and full Store regressions**
 
 ```bash
 npx vitest run packages/application/src/trading/paper/comparison-coordinator.test.ts -t "three paired checkpoints"
@@ -457,7 +457,7 @@ npx vitest run packages/local-store/test/local-store.test.ts
 Expected: real negative verdict, idempotency, restart parity, terminal pair release, and all Store
 tests pass.
 
-- [ ] **Step 4: Commit real verdict evidence**
+- [x] **Step 4: Commit real verdict evidence**
 
 ```bash
 git add packages/application/src/trading/paper/comparison-coordinator.test.ts
@@ -478,24 +478,24 @@ git commit -m "test: prove paper comparison verdict lifecycle"
 - Records: terminal single-window external verdict and pair release
 - Leaves closed: post-hoc confirmation, campaign, release, promotion, and public composition
 
-- [ ] **Step 1: Update canonical docs**
+- [x] **Step 1: Update canonical docs**
 
 Add `PaperTradingComparisonVerdict` as a sealed append-only external evidence decision. State that
 all outcomes remain promotion-ineligible, any terminal verdict frees only the experiment pair, and
 the next valid confirmation step is a campaign precommitted before outcomes. Preserve the explicit
 closure of Finding/Lineage release, TradingPromotion, private access, and live authority.
 
-- [ ] **Step 2: Verify no forbidden composition**
+- [x] **Step 2: Verify no forbidden composition**
 
 ```bash
 rg -n "PaperTradingComparisonVerdictService|recordPaperTradingComparisonVerdict" apps packages --glob '!**/*.test.ts'
-rg -n "promotion_eligibility: \"eligible\"|release_status: \"released\"|confirmation_count" packages/domain/src/index.ts packages/application/src/trading/paper/comparison-verdict-*.ts
+rg -n 'promotion_eligibility: "eligible"|release_status: "released"|"confirmation_count"' packages/domain/src/index.ts packages/application/src/trading/paper/comparison-verdict-*.ts
 ```
 
 Expected: domain, Store port/adapter, and internal application service only; no app/controller match
 and no eligible, released, or post-hoc confirmation output.
 
-- [ ] **Step 3: Run focused and repository-wide verification**
+- [x] **Step 3: Run focused and repository-wide verification**
 
 ```bash
 npx vitest run packages/domain/src/paper-trading-comparison-verdict.test.ts packages/application/src/trading/paper/comparison-verdict-decision.test.ts packages/application/src/trading/paper/comparison-verdict-service.test.ts packages/application/src/trading/paper/comparison-qualification-decision.test.ts packages/application/src/trading/paper/comparison-qualification-service.test.ts packages/application/src/trading/paper/comparison-window-state.test.ts packages/application/src/trading/paper/comparison-window-driver.test.ts packages/application/src/trading/paper/comparison-window-runner.test.ts packages/application/src/trading/paper/comparison-coordinator.test.ts packages/local-store/test/local-store.test.ts
@@ -508,7 +508,17 @@ git diff --check
 Expected: all focused tests, workspace typechecks, guards, full suite, and diff checks pass in the
 localhost/subprocess-capable environment.
 
-- [ ] **Step 4: Commit durable verdict truth**
+Verification evidence on 2026-07-12:
+
+- focused verdict/qualification/window/coordinator/Store suite: 10 files, 476 tests passed;
+- workspace `npm run typecheck`: all workspaces passed;
+- `npm run check:repo-guards`: docs, architecture, naming, environment, secrets, and diff passed;
+- final default `npm test`: 102 files, 1,556 tests passed;
+- an earlier default full run timed out once in an unchanged runtime smoke polling assertion; the
+  exact smoke passed in isolation and the same default full-suite command then passed, so no
+  unrelated runtime change was retained.
+
+- [x] **Step 4: Commit durable verdict truth**
 
 ```bash
 git add AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-12-paper-trading-comparison-verdict-design.md docs/superpowers/plans/2026-07-12-paper-trading-comparison-verdict.md

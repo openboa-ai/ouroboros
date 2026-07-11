@@ -87,14 +87,29 @@ both roles acknowledge the current tick, the next-tick coordinator can append on
 Gateway-owned tick. `beginNext` persists checkpoint attempt N before advancing both provider views;
 `completeNext` requires distinct exact acknowledgements for that tick and atomically commits both
 sides. Every newly consumed sequence-N event must echo its role's exact acknowledgement; no event
-is valid acknowledged silence. The implemented end-to-end proof reaches sequence 2 while the data
+is valid acknowledged silence. The implemented end-to-end proof reaches sequence 3 while the data
 and coordinator contracts are sequence-N. Startup, candidate input, account reads, order
 validation, and checkpoint preparation create no delivery or acknowledgement record. Those records
 are non-economic causal evidence only and grant no lifecycle, Ledger, evaluation, private,
 direct-order, verdict, promotion, or live authority. Restart rematerializes committed bundles,
 stops unowned sessions, and never fabricates view, delivery, acknowledgement, decision, or economic
-evidence. Automatic cadence, process-resume, minimum-window qualification, adjudication,
-confirmation, verdict, evidence release, and promotion remain pending.
+evidence. Internal bounded cadence through the frozen maximum, minimum-window paired qualification,
+and one single-window verdict are implemented. Process resume, production composition, a
+precommitted confirmation campaign, evidence release, and promotion remain pending.
+
+After a comparison settles, `PaperTradingComparisonVerdictService` first reruns paired
+qualification, reloads exact terminal evidence, and asks LocalStore to persist one append-only
+`PaperTradingComparisonVerdict`. A qualified verdict compares only both stopped evaluations'
+`net_revenue_usdt` after costs against the frozen minimum lift. A strictly positive lift meeting the
+minimum is `challenger_improved`; equal, negative, or below-threshold evidence is
+`challenger_not_improved`. A settled unqualified comparison is `comparison_ineligible` and carries
+no side score or metric fields. Every outcome is sealed, externally evaluated, promotion-ineligible,
+paper-only, and `not_live`. The record's window begins at the first shared tick and ends at the
+latest tick; the qualification elapsed minimum remains activation-attempt time through the latest
+tick. Exact replay, including after restart and clock advance, reuses the sealed evaluation time.
+Any terminal verdict releases only the experiment pair for a new precommitted comparison. It does
+not count confirmation, select a champion, release Finding/Lineage memory, create TradingPromotion,
+or enter a public/operator surface.
 
 ## Candidate Freeze
 
@@ -310,16 +325,19 @@ The following current surfaces require implementation work before P0 can pass:
   proven third checkpoint. Internal application-only driver/runner components can advance an owned
   graph to its frozen maximum boundary. A read-only paired qualification service now admits only a
   cleanly stopped window whose shared count/elapsed minimums, both canonical side qualifications,
-  and exact run-specific Ledger sets are complete. These components are not composed into a
-  production command or runtime, cannot resume provider processes after restart, and cannot
-  adjudicate superiority, release evidence, or promote a candidate.
+  and exact run-specific Ledger sets are complete. A separate internal service now persists one
+  exact positive, negative, or ineligible single-window verdict and releases the terminated pair
+  for another precommitted experiment. These components are not composed into a production command
+  or runtime, cannot resume provider processes after restart, and cannot run a confirmation
+  campaign, release evidence, select a champion, or promote a candidate.
 - No adjudicator releases a closed qualification result into later Finding and Lineage memory; the
   current information barrier therefore remains intentionally one-way.
 - `PaperTradingQualification` now verifies commitment, observation, provider, and fake-account score
-  integrity, including per-observation delta/account continuity. New promotion is fully closed until
-  a comparison verdict exists, and the future verdict path must also require run-specific Ledger
-  completeness. Candidate-level aggregate Ledger state is insufficient once one CandidateVersion
-  owns multiple TradingRuns.
+  integrity, including per-observation delta/account continuity. Paired qualification and the
+  single-window verdict require run-specific Ledger completeness. New promotion remains fully
+  closed because every current verdict is `not_eligible`; a future campaign must be committed before
+  any campaign-bound outcomes and count every reserved terminal result. Candidate-level aggregate
+  Ledger state is insufficient once one CandidateVersion owns multiple TradingRuns.
 - ResearchWorkers are tick-scoped invocations rather than durable long-lived workers with explicit
   budget, recovery, and causal memory ownership.
 - The full adversarial matrix for score probing, evaluator side channels, window cherry-picking,
@@ -349,10 +367,12 @@ through sequence 3 without provider or sandbox restart, a bounded internal runne
 reconstructible transition at a time, exact terminal successors survive transaction recovery, and
 restart rematerializes bundles without decision replay. The read-only paired qualification path
 then proves the clean stop, shared prospective minimums, both canonical side qualifications, exact
-additional TradingRun identity, and complete Ledger ref-set equality without writing evidence.
-This is repeated causal comparability and evidence-quality substrate, not production composition,
-champion/challenger superiority, confirmation, a verdict,
-post-adjudication release, promotion, or P0 completion.
+additional TradingRun identity, and complete Ledger ref-set equality without writing evidence. The
+external verdict path seals exact qualified improvement, qualified non-improvement, or ineligible
+closure, survives restart, and releases only the terminated experiment pair. This is repeated
+causal comparability plus one prospective-window decision, not production composition, statistical
+confirmation, champion replacement, post-adjudication Finding/Lineage release, promotion, or P0
+completion.
 
 ## Implementation Frontier Order
 
@@ -360,8 +380,8 @@ post-adjudication release, promotion, or P0 completion.
    comparison commitment graph, contiguous shared ticks, one effect-free activation authorization,
    bounded symmetric runtime activation/recovery, atomic paired checkpoints through sequence 3,
    role-bound delivery/acknowledgement evidence, and an internal bounded window runner are
-   implemented and validated; read-only paired qualification is also implemented internally, while
-   production composition and adjudication remain.
+   implemented and validated; read-only paired qualification and sealed single-window adjudication
+   are also implemented internally, while production composition and confirmation remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -370,17 +390,19 @@ post-adjudication release, promotion, or P0 completion.
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains
    intentionally unavailable, and the new authorization does not weaken those guards.
-5. **Implemented internally through paired qualification:** append-only activation,
+5. **Implemented internally through single-window verdict:** append-only activation,
    contiguous tick, and checkpoint intent/outcome evidence; symmetric start and view advance; hard
    provider-request caps; acknowledgement-required sequence-N preparation; recoverable atomic
    paired LocalStore bundles through sequence 3; one-step graph reconstruction; non-overlapping
    process-local scheduling; frozen maximum-bound stopping; symmetric cleanup; conservative restart
    recovery; read-only clean-stop, canonical-side, shared-minimum, and exact-run Ledger
-   qualification; and no public composition. **Next frontier:** a separately persisted external
-   comparison verdict over qualified evidence with exact input digests and non-overlapping
-   confirmation requirements. Production composition remains a later frontier.
+   qualification; append-only positive, negative, and ineligible verdicts; restart-stable exact
+   replay; terminal pair release; and no public composition. **Next frontier:** a confirmation
+   campaign committed before its first outcome, reserving non-overlapping windows and counting every
+   terminal result. Production composition remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
 7. **Partial:** restart, focused soak, interface parity, and repository guards exist; a bounded
-   three-checkpoint scientific-control window and its read-only qualification are proven internally,
-   while production composition, longer soak evidence, adjudication, and full P0 evidence remain.
+   three-checkpoint scientific-control window, read-only qualification, and sealed single-window
+   verdict are proven internally, while production composition, longer soak evidence, confirmation,
+   and full P0 evidence remain.
