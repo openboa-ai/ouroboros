@@ -1,7 +1,7 @@
 # Prospective Paper Comparison Design
 
 **Date:** 2026-07-10
-**Status:** Inert graph, first tick/fixed view, authorization, and bounded symmetric runtime activation/recovery implemented; consumption, later ticks, paired checkpoints, and verdict pending
+**Status:** Inert graph, first tick/fixed view, authorization, bounded symmetric runtime activation/recovery, and one atomic first paired checkpoint implemented; later ticks, repeated checkpoints, and verdict pending
 **Scope:** CandidateArena P0 prospective champion/challenger comparison
 **Depends on:** PaperTradingEvaluation commitments, candidate admission, and sealed ResearchPreflight
 
@@ -75,9 +75,10 @@ may prepare and verify a complete pair commitment, but it cannot start provider,
 Gateway, Ledger, observation, or lifecycle effects. A separate internal tick coordinator may now
 persist one eligible first shared public market checkpoint without changing that inert state. Later
 authorization and runtime-activation coordinators now persist bounded symmetric start/cleanup/
-recovery evidence without creating an observation. Side consumption, later ticks, paired
-checkpoints, adjudication, non-overlapping confirmation, a verdict, and promotion integration remain
-pending.
+recovery evidence. The first-checkpoint coordinator now consumes the exact first tick for both sides
+through no-write concurrent preparation and one atomic paired bundle. Later ticks, repeated
+checkpoints, resume, adjudication, non-overlapping confirmation, a verdict, and promotion integration
+remain pending.
 
 ## Commitment-Graph Frontier Status
 
@@ -117,8 +118,9 @@ runner, Gateway, Ledger, or observation effect. Each pair side binds the exact s
 commitment/evaluation chain for its qualification `TradingRun` and a zero-score,
 zero-observation, empty-account-activity baseline. Post-pair reload is read-only and fails closed on
 missing, changed, or malformed side records without repair or invalidation. Subsequent first-tick,
-authorization, and symmetric runtime-activation frontiers consume only this verified graph and still
-create no observation or economic evidence. Side observations, paired checkpoints,
+authorization, and symmetric runtime-activation frontiers consume only this verified graph without
+economic evidence. The implemented first-checkpoint frontier may then atomically commit one
+observation/evaluation transition per side against that exact tick. Later observations,
 verdict/adjudication, confirmations, and promotion integration remain pending.
 
 ## First Shared Tick Frontier Status
@@ -403,7 +405,10 @@ This design is intentionally split into independently reviewable frontiers:
    verified pair, sole first tick, exact side refs, and bounded derived policy without runtime effects.
 5. **Symmetric runtime activation:** append-only attempt, side-result, and outcome evidence,
    bounded parallel start, partial-start cleanup, and conservative restart recovery are implemented.
-6. **Pending:** a claimed first paired checkpoint, an advanceable shared view, later contiguous
-   ticks, paired observations, sealing, adjudication, confirmation, and promotion integration.
+6. **First paired checkpoint:** durable intent, concurrent no-write side preparation, atomic paired
+   Ledger/Observation/Evaluation commit, candidate-failure pairing, and restart rematerialization are
+   implemented for sequence 1 and the exact first tick.
+7. **Pending:** causal served-tick attribution, an advanceable shared view, later contiguous ticks,
+   repeated paired observations, sealing, adjudication, confirmation, and promotion integration.
 
 The second frontier must not begin by weakening the first frontier's identity or authority checks.

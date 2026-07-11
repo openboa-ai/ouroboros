@@ -57,6 +57,7 @@ import {
 import { PaperTradingComparisonActivationCoordinator } from "./comparison-activation-coordinator";
 import { PaperTradingComparisonTickCoordinator } from "./comparison-tick-coordinator";
 import { PaperTradingComparisonRuntimeActivationCoordinator } from "./comparison-runtime-activation-coordinator";
+import { PaperTradingComparisonCheckpointCoordinator } from "./comparison-checkpoint-coordinator";
 
 const comparisonPolicy: PaperTradingComparisonPolicy = {
   policy_version: "paper-comparison-v1",
@@ -244,7 +245,7 @@ describe("PaperTradingComparisonCoordinator", () => {
     expect(authorized.comparison.verification.activation_authority).toBe("not_granted");
   });
 
-  it("starts a real LocalStore pair and conservatively stops it after process restart", async () => {
+  it("commits the first paired checkpoint and recovers it without decision replay", async () => {
     const fixture = await comparisonFixture();
     const prepared = await fixture.coordinator.prepare(fixture.input);
     const captureMarketData = comparisonFirstTickMarketData(fixture.marketData);
@@ -270,10 +271,12 @@ describe("PaperTradingComparisonCoordinator", () => {
       providerCloses: 0,
       sandboxStarts: 0,
       sandboxStops: 0,
+      sandboxLogReads: 0,
       fixedMarketReads: 0
     };
-    const runtimeSessions = () => new PaperTradingSessionService({
-      store: fixture.store,
+    const runtimeSessions = (store: OuroborosStorePort = fixture.store) =>
+      new PaperTradingSessionService({
+      store,
       intervalMs: comparisonPolicy.interval_ms,
       marketData: fixture.marketData,
       artifactResolver: {
@@ -326,6 +329,10 @@ describe("PaperTradingComparisonCoordinator", () => {
               lifecycle_status: "stopped" as const,
               stopped_at: new Date().toISOString()
             };
+          },
+          async getArtifactInstanceLogs() {
+            runtimeEffects.sandboxLogReads += 1;
+            return { lifecycle_status: "running" as const, logs: [] };
           }
         }
       } as never,
@@ -349,9 +356,10 @@ describe("PaperTradingComparisonCoordinator", () => {
         };
       }
     });
+    const activeSessions = runtimeSessions();
     const runtime = new PaperTradingComparisonRuntimeActivationCoordinator({
       store: fixture.store,
-      sessions: runtimeSessions(),
+      sessions: activeSessions,
       marketData: captureMarketData
     });
 
@@ -377,36 +385,82 @@ describe("PaperTradingComparisonCoordinator", () => {
       prepared.challenger.evaluation.paper_trading_evaluation_id
     )).resolves.toEqual([]);
 
-    const restarted = new PaperTradingComparisonRuntimeActivationCoordinator({
+    const checkpoint = await new PaperTradingComparisonCheckpointCoordinator({
       store: fixture.store,
-      sessions: runtimeSessions(),
+      sessions: activeSessions,
+      activations: runtime
+    }).captureFirst({
+      activationId: authorized.activation.paper_trading_comparison_activation_id,
+      activationAttemptId:
+        started.attempt.paper_trading_comparison_activation_attempt_id,
+      idempotencyKey: "real-runtime-pair-checkpoint-1"
+    });
+
+    expect(checkpoint).toMatchObject({
+      outcome_status: "paired",
+      outcome_reason: "paired_checkpoint_recorded"
+    });
+    const championObservations = await fixture.store.listPaperTradingObservations(
+      prepared.champion.evaluation.paper_trading_evaluation_id
+    );
+    const challengerObservations = await fixture.store.listPaperTradingObservations(
+      prepared.challenger.evaluation.paper_trading_evaluation_id
+    );
+    expect(championObservations).toHaveLength(1);
+    expect(challengerObservations).toHaveLength(1);
+    expect(championObservations[0]?.paper_trading_comparison_tick_ref?.id)
+      .toBe(captured.tick.paper_trading_comparison_tick_id);
+    expect(challengerObservations[0]?.paper_trading_comparison_tick_ref?.id)
+      .toBe(captured.tick.paper_trading_comparison_tick_id);
+    await expect(fixture.store.getPaperTradingEvaluation(
+      prepared.champion.evaluation.paper_trading_evaluation_id
+    )).resolves.toMatchObject({ status: "running", observation_count: 1 });
+    await expect(fixture.store.getPaperTradingEvaluation(
+      prepared.challenger.evaluation.paper_trading_evaluation_id
+    )).resolves.toMatchObject({ status: "running", observation_count: 1 });
+
+    const restartedStore = new LocalStore(fixture.store.root());
+    await restartedStore.initialize();
+    const restartedSessions = runtimeSessions(restartedStore);
+    const restarted = new PaperTradingComparisonRuntimeActivationCoordinator({
+      store: restartedStore,
+      sessions: restartedSessions,
       marketData: captureMarketData
     });
-    const recovered = await restarted.recoverIncompleteActivations();
+    const recovered = await new PaperTradingComparisonCheckpointCoordinator({
+      store: restartedStore,
+      sessions: restartedSessions,
+      activations: restarted
+    }).recoverIncompleteCheckpoints();
 
-    expect(recovered).toHaveLength(1);
-    expect(recovered[0]).toMatchObject({
-      status: "stopped_cleanly",
-      outcome: {
+    expect(recovered).toEqual([checkpoint]);
+    await expect(restartedStore.getTradingRun(
+      prepared.champion.run.trading_run_id
+    )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+    await expect(restartedStore.getTradingRun(
+      prepared.challenger.run.trading_run_id
+    )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
+    await expect(restartedStore.getPaperTradingEvaluation(
+      prepared.champion.evaluation.paper_trading_evaluation_id
+    )).resolves.toMatchObject({ status: "stopped", observation_count: 1 });
+    await expect(restartedStore.getPaperTradingEvaluation(
+      prepared.challenger.evaluation.paper_trading_evaluation_id
+    )).resolves.toMatchObject({ status: "stopped", observation_count: 1 });
+    await expect(restartedStore.listPaperTradingComparisonActivationOutcomes(
+      started.attempt.paper_trading_comparison_activation_attempt_id
+    )).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
         outcome_sequence: 2,
         outcome_status: "stopped_cleanly",
         outcome_reason: "restart_cleanup"
-      }
-    });
-    await expect(fixture.store.getTradingRun(
-      prepared.champion.run.trading_run_id
-    )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
-    await expect(fixture.store.getTradingRun(
-      prepared.challenger.run.trading_run_id
-    )).resolves.toMatchObject({ runtime_lifecycle_status: "stopped" });
-    await expect(fixture.store.listPaperTradingComparisonActivationOutcomes(
-      started.attempt.paper_trading_comparison_activation_attempt_id
-    )).resolves.toHaveLength(2);
+      })
+    ]));
     expect(runtimeEffects).toEqual({
       providerStarts: 2,
       providerCloses: 0,
       sandboxStarts: 2,
       sandboxStops: 2,
+      sandboxLogReads: 2,
       fixedMarketReads: 2
     });
     expect(fixture.effects.marketReads).toBe(0);

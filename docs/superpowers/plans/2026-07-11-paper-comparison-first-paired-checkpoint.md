@@ -493,7 +493,7 @@ git commit -m "feat: coordinate first paired paper checkpoint"
 - Produces: real LocalStore/session integration evidence and historical implementation record
 - Leaves: all production/public composition closed
 
-- [ ] **Step 1: Write the failing real integration test**
+- [x] **Step 1: Write the failing real integration test**
 
 Extend the existing comparison integration to prepare an inert pair, capture the first tick,
 authorize and start both real qualification sessions, then call `captureFirst`. Assert:
@@ -510,7 +510,7 @@ expect(underlyingMarketReads).toBe(0);
 Recreate Store/session/coordinators, run checkpoint recovery before activation recovery, and assert
 the same transaction/evidence reloads exactly while both unowned runtimes stop.
 
-- [ ] **Step 2: Run integration and verify RED**
+- [x] **Step 2: Run integration and verify RED**
 
 Run:
 
@@ -520,19 +520,19 @@ npx vitest run packages/application/src/trading/paper/comparison-coordinator.tes
 
 Expected: FAIL until all real adapters are wired through the new internal ports.
 
-- [ ] **Step 3: Complete integration without production composition**
+- [x] **Step 3: Complete integration without production composition**
 
 Wire only the test composition. Search production imports and keep the checkpoint coordinator absent
 from runtime controllers, commands, operator read models, CLI, TUI, Web, and Desktop.
 
-- [ ] **Step 4: Update canonical docs and implementation status**
+- [x] **Step 4: Update canonical docs and implementation status**
 
 Add the three canonical checkpoint nouns, state that first-tick paired consumption is implemented,
 state that later ticks remain blocked on served-tick attribution, and preserve explicit closure of
 adjudication/verdict/promotion/live authority. Convert this plan to a compact implementation record
 with actual commit hashes and verification counts after code commits exist.
 
-- [ ] **Step 5: Run focused and repository-wide verification**
+- [x] **Step 5: Run focused and repository-wide verification**
 
 Run:
 
@@ -547,12 +547,27 @@ git diff --check
 Expected: every focused test, workspace typecheck, repo guard, and full test file passes. Run the full
 suite with localhost/IPC permission if the restricted sandbox reports `listen EPERM`.
 
-- [ ] **Step 6: Commit durable implementation evidence**
+- [x] **Step 6: Commit durable implementation evidence**
 
 ```bash
 git add AGENTS.md docs/candidate-arena-evaluation-protocol.md docs/api-command-contract.md docs/naming-taxonomy.md docs/superpowers/specs/2026-07-10-prospective-paper-comparison-design.md docs/superpowers/specs/2026-07-11-paper-comparison-first-paired-checkpoint-design.md docs/superpowers/plans/2026-07-11-paper-comparison-first-paired-checkpoint.md packages/application/src/trading/paper/comparison-coordinator.test.ts
 git commit -m "docs: record first paired paper checkpoint"
 ```
+
+## Implementation Record
+
+- Domain evidence contract: `d2d34e5`.
+- Checkpoint lifecycle persistence: `de031a6`.
+- Atomic paired transaction and Ledger preview: `902e372`.
+- No-write side preparation and post-commit cleanup: `0f9609b`.
+- Deterministic capture, handoff, candidate-failure closure, and restart recovery: `a98df74`.
+- Focused checkpoint path: 8 test files, 508 tests passed.
+- Full repository suite: 92 test files, 1,298 tests passed.
+- Full workspace typecheck passed, including Operator Desktop Rust build check.
+- Docs, architecture, naming, tracked-env, secret-scan, and diff guards passed.
+- Production controllers, commands, CLI, TUI, Web, and Desktop do not compose the internal
+  checkpoint coordinator.
+- Next frontier: causal served-tick attribution before later ticks, repeated checkpoints, or resume.
 
 ## Plan Self-Review
 

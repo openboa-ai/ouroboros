@@ -73,8 +73,13 @@ coordinator now persists one attempt before effects, starts both sides in parall
 first-tick view, records per-side start/stop results, enforces time, skew, and request bounds, and
 persists only `both_running`, `stopped_cleanly`, or `cleanup_required`. Restart recovery never
 resumes a side or claims a process-local provider survived; it stops both or leaves cleanup required.
-`both_running` is zero-observation operational evidence only. Side consumption, later ticks, paired
-checkpoints, qualification, verdicts, and promotion remain pending.
+`both_running` is zero-observation operational evidence only. The internal checkpoint coordinator
+now persists one first-checkpoint intent before side effects, prepares both sides concurrently
+against the exact stored first tick without economic writes, and commits both Ledger/Observation/
+Evaluation transitions plus one `paired` outcome through a single recoverable LocalStore bundle.
+Silence, `hold`, and `no_action` remain valid no-order continuity; malformed candidate events remain
+paired negative evidence. Later ticks, repeated checkpoints, resume, qualification, adjudication,
+verdicts, and promotion remain pending.
 
 ## Candidate Freeze
 
@@ -154,11 +159,13 @@ cleanup proves otherwise. Startup recovery treats every unclaimed `both_running`
 stops both sides. Public/default qualification activate, observe, schedule, stop, and recovery paths
 remain rejected or skipped.
 
-This boundary still does not consume a side decision, schedule an observation, advance the shared
-market view, append a later tick, record a paired checkpoint, create Ledger or economic evidence,
-adjudicate superiority, release qualification evidence, confirm a result, or authorize promotion.
-`both_running` proves only that both zero-observation runtimes met start policy at one reconciliation
-point.
+The first-checkpoint boundary consumes only events available at the exact stored first tick. It
+refreshes sandbox evidence under checkpoint-scoped authority, previews Ledger writes, and commits
+neither side unless one atomic bundle contains both sides and the paired outcome. A crash before the
+bundle leaves no economic write; a crash after it rematerializes the same records. Startup recovery
+never reconstructs a candidate decision and stops unowned sessions. This boundary still does not
+advance the shared view, append a later tick, schedule repeated observation, adjudicate superiority,
+release qualification evidence, confirm a result, authorize promotion, or expose public commands.
 
 ## Evaluator Information Barrier
 
@@ -295,16 +302,19 @@ Ledger summaries remain absent until they can be resolved by exact TradingRun. S
 qualification cannot create a new promotion. The first shared tick demonstrates only that a common
 immutable input is available. The activation authorization demonstrates only that one exact inert
 pair may enter the bounded paper-only start protocol. Symmetric activation evidence now demonstrates
-durable intent, bounded parallel start, partial cleanup, and conservative restart recovery, but not
-side consumption, prospective qualification, champion/challenger comparability, a paired checkpoint,
-a superiority verdict, post-adjudication release, promotion, or P0 completion.
+durable intent, bounded parallel start, partial cleanup, and conservative restart recovery. The
+implemented first paired checkpoint additionally proves both sides consumed one common opportunity
+through a single atomic evidence bundle. It does not prove prospective qualification,
+champion/challenger superiority, repeated comparability, a verdict, post-adjudication release,
+promotion, or P0 completion.
 
 ## Implementation Frontier Order
 
 1. **Partial:** evidence purpose, candidate freeze, admission, quarantine, the inert paired
    comparison commitment graph, exactly one first shared tick/fixed view, one effect-free activation
-   authorization, and bounded symmetric runtime activation/recovery are persisted and validated;
-   side consumption, later ticks, paired checkpoints, and adjudication remain.
+   authorization, bounded symmetric runtime activation/recovery, and one atomic first paired
+   checkpoint are persisted and validated; later ticks, repeated checkpoints, and adjudication
+   remain.
 2. **Implemented:** a dedicated admission policy gates candidate materialization after
    `ResearchPreflight`.
 3. **Partial:** sealed-preflight anti-hacking fixtures exist; evaluator-answer leakage removal and
@@ -313,11 +323,12 @@ a superiority verdict, post-adjudication release, promotion, or P0 completion.
    invalidation, restart, qualification ineligibility, and research projection sealing exist.
    Qualification-purpose creation is internal and inert; public/default session activation remains
    intentionally unavailable, and the new authorization does not weaken those guards.
-5. **Implemented activation boundary:** append-only attempt, side-result, and outcome evidence;
-   symmetric start; hard provider-request caps; partial-start cleanup; and conservative restart
-   recovery. **Next frontier:** one claimed first paired checkpoint on an advanceable shared public
-   market stream. Adjudication remains a later frontier.
+5. **Implemented first-checkpoint boundary:** append-only activation and checkpoint intent/outcome
+   evidence; symmetric start; hard provider-request caps; no-write concurrent side preparation; one
+   atomic paired LocalStore bundle; partial cleanup; and conservative restart recovery. **Next
+   frontier:** causal served-tick attribution before any later shared tick or repeated checkpoint.
+   Adjudication remains a later frontier.
 6. **Partial:** released research-feedback findings feed later workers and active qualification
    evidence is hidden; post-adjudication qualification release and durable ResearchWorkers remain.
-7. **Partial:** restart, focused soak, interface parity, and repository guards exist; paired
-   scientific-control and full P0 evidence remain.
+7. **Partial:** restart, focused soak, interface parity, and repository guards exist; first-tick
+   pairing is proven, while repeated scientific-control windows and full P0 evidence remain.

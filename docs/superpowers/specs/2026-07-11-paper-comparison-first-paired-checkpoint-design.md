@@ -1,7 +1,7 @@
 # Paper Comparison First Paired Checkpoint Design
 
 **Date:** 2026-07-11
-**Status:** Approved by standing goal authority; implementation not started
+**Status:** Implemented and integration-verified on 2026-07-11
 **Depends on:** Verified comparison commitment, sole first tick, authorized activation, and one
 owned `both_running` activation attempt
 
@@ -297,6 +297,16 @@ needed for recovery, never peer decisions, scores, account values, raw provider 
 11. Default/public qualification observe, schedule, Ledger, and observation writes remain blocked.
 12. No verdict, promotion, private/live authority, peer evidence exposure, or production composition
     is added.
+
+## Implementation Evidence
+
+- Domain checkpoint records and total predicates: `d2d34e5`.
+- Append-only checkpoint lifecycle: `de031a6`.
+- Atomic LocalStore bundle and Ledger preview: `902e372`.
+- No-write side preparation and post-commit cleanup preservation: `0f9609b`.
+- Deterministic coordination, handoff, candidate-failure closure, and restart recovery: `a98df74`.
+- Real LocalStore/session integration proves one paired first-tick observation per side, exact
+  rematerialization, zero decision replay, and conservative unowned-session cleanup.
 
 ## Next Frontier
 
