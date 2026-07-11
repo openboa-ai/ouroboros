@@ -28,6 +28,7 @@ import type {
   PaperTradingObservationRecord,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
+  PaperTradingComparisonTickRecord,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -190,6 +191,15 @@ export interface OuroborosStorePort {
     comparisonId: string
   ): Promise<PaperTradingComparisonCommitmentRecord | undefined>;
   listPaperTradingComparisonCommitments(): Promise<PaperTradingComparisonCommitmentRecord[]>;
+  recordPaperTradingComparisonTick(
+    tick: PaperTradingComparisonTickRecord
+  ): Promise<PaperTradingComparisonTickRecord>;
+  getPaperTradingComparisonTick(
+    tickId: string
+  ): Promise<PaperTradingComparisonTickRecord | undefined>;
+  listPaperTradingComparisonTicks(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonTickRecord[]>;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

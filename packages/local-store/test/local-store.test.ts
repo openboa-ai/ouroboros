@@ -46,6 +46,7 @@ import type {
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonSide,
+  PaperTradingComparisonTickRecord,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
@@ -78,6 +79,7 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPreparationDigestInput,
   paperTradingComparisonSystemCodeRecordDigestInput,
+  paperTradingComparisonTickDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
   paperTradingEvaluationCommitmentDigestInput
 } from "@ouroboros/domain";
@@ -4661,6 +4663,196 @@ describe("LocalStore", () => {
     await expect(store.listArtifactLineages()).resolves.toEqual(lineagesBefore);
     await expect(store.getSystemCode(frozenCode.system_code_id)).resolves.toEqual(frozenCode);
   });
+
+  it("records, reloads, lists, and exactly replays one paper comparison tick", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+
+    await expect(store.recordPaperTradingComparisonTick(tick)).resolves.toEqual(tick);
+    await expect(store.recordPaperTradingComparisonTick(tick)).resolves.toEqual(tick);
+    await expect(store.getPaperTradingComparisonTick(
+      tick.paper_trading_comparison_tick_id
+    )).resolves.toEqual(tick);
+    await expect(store.listPaperTradingComparisonTicks(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([tick]);
+  });
+
+  it.each([
+    ["digest", (tick: PaperTradingComparisonTickRecord) => ({
+      ...tick,
+      tick_digest: "sha256:wrong"
+    }), "paper_trading_comparison_tick_digest_mismatch"],
+    ["missing pair", (tick: PaperTradingComparisonTickRecord) => withTickDigest({
+      ...tick,
+      paper_trading_comparison_commitment_ref: {
+        record_kind: "paper_trading_comparison_commitment",
+        id: "missing-comparison"
+      }
+    }), "paper_trading_comparison_tick_reference_not_found"],
+    ["pair digest", (tick: PaperTradingComparisonTickRecord) => withTickDigest({
+      ...tick,
+      paper_trading_comparison_commitment_digest: "sha256:wrong-comparison"
+    }), "paper_trading_comparison_tick_reference_mismatch"],
+    ["market configuration", (tick: PaperTradingComparisonTickRecord) => withTickDigest({
+      ...tick,
+      market_data_configuration_digest: "sha256:wrong-market"
+    }), "paper_trading_comparison_tick_reference_mismatch"],
+    ["capture before commitment", (tick: PaperTradingComparisonTickRecord) => withTickDigest({
+      ...tick,
+      observed_at: "2026-07-09T23:59:59.999Z"
+    }), "paper_trading_comparison_tick_reference_mismatch"],
+    ["capture before source evidence", (tick: PaperTradingComparisonTickRecord) => withTickDigest({
+      ...tick,
+      observed_at: "2026-07-10T00:00:00.150Z"
+    }), "paper_trading_comparison_tick_reference_mismatch"]
+  ] as const)("rejects paper comparison tick %s mismatch", async (_label, mutate, code) => {
+    const store = new LocalStore(path.join(tmpDir, _label));
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(mutate(
+        validPaperTradingComparisonTick(fixture.comparison)
+      )),
+      code
+    );
+    await expect(store.listPaperTradingComparisonTicks(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([]);
+  });
+
+  it("rejects alternate and same-ID drifted paper comparison first ticks", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(withTickDigest({
+        ...tick,
+        paper_trading_comparison_tick_id: "paper-comparison-first-tick-alternate"
+      })),
+      "paper_trading_comparison_first_tick_conflict"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(withTickDigest({
+        ...tick,
+        market_snapshot: { ...tick.market_snapshot, price: 60_001 }
+      })),
+      "paper_trading_comparison_tick_conflict"
+    );
+    await expect(store.listPaperTradingComparisonTicks(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([tick]);
+  });
+
+  it("serializes concurrent alternate paper comparison first ticks", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const first = validPaperTradingComparisonTick(fixture.comparison);
+    const second = withTickDigest({
+      ...first,
+      paper_trading_comparison_tick_id: "paper-comparison-first-tick-concurrent"
+    });
+
+    const results = await Promise.allSettled([
+      store.recordPaperTradingComparisonTick(first),
+      store.recordPaperTradingComparisonTick(second)
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const [rejected] = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    expect(rejected?.reason).toMatchObject({
+      code: "paper_trading_comparison_first_tick_conflict"
+    });
+    await expect(store.listPaperTradingComparisonTicks(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toHaveLength(1);
+  });
+
+  it("fails closed on corrupt persisted paper comparison tick data", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const itemDir = path.join(store.root(), "paper-trading-comparison-ticks", "items");
+    await mkdir(itemDir, { recursive: true });
+    await writeFile(path.join(itemDir, "corrupt.json"), "{");
+
+    await expectStoreError(
+      store.listPaperTradingComparisonTicks(
+        fixture.comparison.paper_trading_comparison_commitment_id
+      ),
+      "paper_trading_comparison_tick_reload_failed"
+    );
+  });
+
+  it("fails closed on shape-valid persisted paper comparison tick digest drift", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    const tick = validPaperTradingComparisonTick(fixture.comparison);
+    await store.recordPaperTradingComparisonTick(tick);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-comparison-ticks",
+      tick.paper_trading_comparison_tick_id,
+      { ...tick, tick_digest: "sha256:persisted-drift" }
+    );
+
+    await expectStoreError(
+      store.getPaperTradingComparisonTick(tick.paper_trading_comparison_tick_id),
+      "paper_trading_comparison_tick_reload_failed"
+    );
+    await expectStoreError(
+      store.listPaperTradingComparisonTicks(
+        fixture.comparison.paper_trading_comparison_commitment_id
+      ),
+      "paper_trading_comparison_tick_reload_failed"
+    );
+  });
+
+  it("rejects a paper comparison tick when the persisted pair is no longer inert", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedComparisonFixture(store);
+    await store.recordPaperTradingComparisonCommitment(fixture.comparison);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-evaluations",
+      fixture.challengerEvaluation.paper_trading_evaluation_id,
+      {
+        ...fixture.challengerEvaluation,
+        latest_score: {
+          revenue_usdt: 1,
+          cost_usdt: 0,
+          net_revenue_usdt: 1,
+          net_return_pct: 0.01
+        }
+      }
+    );
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonTick(
+        validPaperTradingComparisonTick(fixture.comparison)
+      ),
+      "paper_trading_comparison_tick_graph_invalid"
+    );
+    await expect(store.listPaperTradingComparisonTicks(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([]);
+  });
 });
 
 interface ComparisonPreparationFixtureOptions {
@@ -5460,6 +5652,66 @@ function withComparisonDigest(
     ...comparison,
     commitment_digest: `sha256:${createHash("sha256")
       .update(paperTradingComparisonCommitmentDigestInput(comparison))
+      .digest("hex")}`
+  };
+}
+
+function validPaperTradingComparisonTick(
+  comparison: PaperTradingComparisonCommitmentRecord
+): PaperTradingComparisonTickRecord {
+  return withTickDigest({
+    record_kind: "paper_trading_comparison_tick",
+    version: 1,
+    paper_trading_comparison_tick_id: "paper-comparison-first-tick-store-001",
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: comparison.paper_trading_comparison_commitment_id
+    },
+    paper_trading_comparison_commitment_digest: comparison.commitment_digest,
+    sequence: 1,
+    market_data_configuration_digest: comparison.market_data_configuration_digest,
+    market_snapshot: {
+      symbol: "BTCUSDT",
+      price: 60_000,
+      moving_average_fast: 60_100,
+      moving_average_slow: 59_900,
+      volatility: 0.01,
+      expected_direction: "long",
+      observed_at: "2026-07-10T00:00:00.100Z",
+      source_kind: "binance_production_public_rest",
+      source_priority: "rest_fallback",
+      freshness: "fresh",
+      ws_connected: false,
+      rest_fallback_used: true,
+      gap_detected: false,
+      authority_status: "read_only"
+    },
+    public_execution_snapshot: {
+      symbol: "BTCUSDT",
+      observed_at: "2026-07-10T00:00:00.200Z",
+      source_kind: "binance_production_public_rest",
+      source_priority: "rest_fallback",
+      freshness: "fresh",
+      ws_connected: false,
+      rest_fallback_used: true,
+      gap_detected: false,
+      stream_marker: "paper-comparison-public-execution-001",
+      agg_trades: [],
+      authority_status: "read_only"
+    },
+    observed_at: "2026-07-10T00:00:01.000Z",
+    tick_digest: "",
+    authority_status: "not_live"
+  });
+}
+
+function withTickDigest(
+  tick: PaperTradingComparisonTickRecord
+): PaperTradingComparisonTickRecord {
+  return {
+    ...tick,
+    tick_digest: `sha256:${createHash("sha256")
+      .update(paperTradingComparisonTickDigestInput(tick))
       .digest("hex")}`
   };
 }

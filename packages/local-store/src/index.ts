@@ -55,6 +55,8 @@ import {
   paperTradingComparisonSideRecordsHaveInertShape,
   paperTradingComparisonStoppedQualificationClosureHasRuntimeShape,
   paperTradingComparisonSystemCodeRecordDigestInput,
+  paperTradingComparisonTickDigestInput,
+  paperTradingComparisonTickHasRuntimeShape,
   paperTradingComparisonTradingPromotionDigestInput,
   paperTradingEvaluationCommitmentDigestInput
 } from "@ouroboros/domain";
@@ -151,6 +153,7 @@ import type {
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonSide,
+  PaperTradingComparisonTickRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
   OrderRequestRecord,
@@ -280,6 +283,14 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_active_pair_conflict"
   | "paper_trading_comparison_frozen_authority_write_conflict"
   | "paper_trading_comparison_inert_graph_mutation_forbidden"
+  | "invalid_paper_trading_comparison_tick_input"
+  | "paper_trading_comparison_tick_digest_mismatch"
+  | "paper_trading_comparison_tick_conflict"
+  | "paper_trading_comparison_tick_reload_failed"
+  | "paper_trading_comparison_tick_reference_not_found"
+  | "paper_trading_comparison_tick_reference_mismatch"
+  | "paper_trading_comparison_first_tick_conflict"
+  | "paper_trading_comparison_tick_graph_invalid"
   | "authority_evidence_identity_conflict";
 
 export class LocalStoreError extends Error {
@@ -351,6 +362,7 @@ type Collection =
   | "paper-trading-observations"
   | "paper-trading-comparison-preparations"
   | "paper-trading-comparison-commitments"
+  | "paper-trading-comparison-ticks"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -876,6 +888,35 @@ export class LocalStore {
       throw new LocalStoreError(
         "invalid_paper_trading_comparison_commitment_input",
         "persisted paper comparison commitment has invalid runtime shape"
+      );
+    }
+  }
+
+  private assertPersistedComparisonTickShape(
+    value: unknown,
+    errorCode: LocalStoreErrorCode = "invalid_paper_trading_comparison_tick_input"
+  ): asserts value is PaperTradingComparisonTickRecord {
+    if (!paperTradingComparisonTickHasRuntimeShape(value)) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison tick has invalid runtime shape"
+      );
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = `sha256:${createHash("sha256")
+        .update(paperTradingComparisonTickDigestInput(value))
+        .digest("hex")}`;
+    } catch {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison tick is not canonically digestible"
+      );
+    }
+    if (value.tick_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        errorCode,
+        "persisted paper comparison tick digest does not match canonical content"
       );
     }
   }
@@ -3498,6 +3539,195 @@ export class LocalStore {
         right.paper_trading_comparison_commitment_id
       )
     );
+  }
+
+  async recordPaperTradingComparisonTick(
+    tick: PaperTradingComparisonTickRecord
+  ): Promise<PaperTradingComparisonTickRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonTickUnlocked(tick)
+    );
+  }
+
+  private async recordPaperTradingComparisonTickUnlocked(
+    tick: PaperTradingComparisonTickRecord
+  ): Promise<PaperTradingComparisonTickRecord> {
+    if (!paperTradingComparisonTickHasRuntimeShape(tick)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_tick_input",
+        "invalid paper trading comparison tick input"
+      );
+    }
+    const expectedDigest = `sha256:${createHash("sha256")
+      .update(paperTradingComparisonTickDigestInput(tick))
+      .digest("hex")}`;
+    if (tick.tick_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_digest_mismatch",
+        "paper trading comparison tick digest does not match canonical content"
+      );
+    }
+
+    const existing = await this.getPaperTradingComparisonTick(
+      tick.paper_trading_comparison_tick_id
+    );
+    if (existing && !sameJson(existing, tick)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_conflict",
+        "paper trading comparison tick is append-only"
+      );
+    }
+
+    await this.validatePaperTradingComparisonTickGraph(tick);
+    const comparisonId = tick.paper_trading_comparison_commitment_ref.id;
+    const ticks = await this.listPaperTradingComparisonTicks(comparisonId);
+    const alternate = ticks.find((record) =>
+      record.paper_trading_comparison_tick_id !==
+        tick.paper_trading_comparison_tick_id
+    );
+    if (alternate) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_first_tick_conflict",
+        "paper trading comparison already has a different first tick"
+      );
+    }
+    if (existing) {
+      return existing;
+    }
+
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-ticks",
+        tick.paper_trading_comparison_tick_id
+      ),
+      tick
+    );
+    return tick;
+  }
+
+  async getPaperTradingComparisonTick(
+    tickId: string
+  ): Promise<PaperTradingComparisonTickRecord | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-ticks",
+        tickId
+      );
+      if (record === undefined) {
+        return undefined;
+      }
+      this.assertPersistedComparisonTickShape(
+        record,
+        "paper_trading_comparison_tick_reload_failed"
+      );
+      return record;
+    } catch (error) {
+      if (
+        error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_tick_reload_failed"
+      ) {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_reload_failed",
+        "persisted paper trading comparison tick is unreadable or corrupt"
+      );
+    }
+  }
+
+  async listPaperTradingComparisonTicks(
+    comparisonId: string
+  ): Promise<PaperTradingComparisonTickRecord[]> {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-ticks"
+      );
+      const validated = records.map((record) => {
+        this.assertPersistedComparisonTickShape(
+          record,
+          "paper_trading_comparison_tick_reload_failed"
+        );
+        return record;
+      });
+      return validated
+        .filter((record) =>
+          record.paper_trading_comparison_commitment_ref.id === comparisonId
+        )
+        .sort((left, right) =>
+          left.sequence - right.sequence ||
+          left.paper_trading_comparison_tick_id.localeCompare(
+            right.paper_trading_comparison_tick_id
+          )
+        );
+    } catch (error) {
+      if (
+        error instanceof LocalStoreError &&
+        error.code === "paper_trading_comparison_tick_reload_failed"
+      ) {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_reload_failed",
+        "persisted paper trading comparison tick collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  private async validatePaperTradingComparisonTickGraph(
+    tick: PaperTradingComparisonTickRecord
+  ): Promise<void> {
+    let comparison: PaperTradingComparisonCommitmentRecord | undefined;
+    try {
+      comparison = await this.getPaperTradingComparisonCommitment(
+        tick.paper_trading_comparison_commitment_ref.id
+      );
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_graph_invalid",
+        "paper trading comparison graph is unreadable or corrupt"
+      );
+    }
+    if (!comparison) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_reference_not_found",
+        "paper trading comparison commitment was not found"
+      );
+    }
+    if (!paperTradingComparisonCommitmentHasRuntimeShape(comparison)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_graph_invalid",
+        "paper trading comparison commitment has invalid runtime shape"
+      );
+    }
+    const expectedComparisonDigest = `sha256:${createHash("sha256")
+      .update(paperTradingComparisonCommitmentDigestInput(comparison))
+      .digest("hex")}`;
+    if (
+      comparison.paper_trading_comparison_commitment_id !==
+        tick.paper_trading_comparison_commitment_ref.id ||
+      comparison.commitment_digest !== expectedComparisonDigest ||
+      tick.paper_trading_comparison_commitment_digest !==
+        comparison.commitment_digest ||
+      tick.market_data_configuration_digest !==
+        comparison.market_data_configuration_digest ||
+      Date.parse(tick.observed_at) < Date.parse(comparison.committed_at) ||
+      Date.parse(tick.observed_at) < Date.parse(tick.market_snapshot.observed_at) ||
+      Date.parse(tick.observed_at) <
+        Date.parse(tick.public_execution_snapshot.observed_at)
+    ) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_reference_mismatch",
+        "paper trading comparison tick does not match its frozen comparison"
+      );
+    }
+    try {
+      await this.validatePaperTradingComparisonCommitmentGraph(comparison);
+    } catch {
+      throw new LocalStoreError(
+        "paper_trading_comparison_tick_graph_invalid",
+        "paper trading comparison graph is not complete and inert"
+      );
+    }
   }
 
   private async readPaperTradingComparisonCollection(
