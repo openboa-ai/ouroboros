@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  paperTradingComparisonEvaluationRecordDigestInput,
   paperTradingComparisonRefsEqual,
   type CandidateInspectReadModel,
   type PaperTradingEvaluationCommitmentRecord,
@@ -219,6 +220,15 @@ export class PaperTradingSessionService {
     }
 
     if (exactEvaluation) {
+      if (
+        paperTradingComparisonEvaluationRecordDigestInput(exactEvaluation) !==
+        paperTradingComparisonEvaluationRecordDigestInput(this.notStartedEvaluation(exactCommitment!))
+      ) {
+        throw new PaperTradingSessionError(
+          "paper_trading_session_non_inert_evaluation_replay",
+          "Paper session preparation only reuses an exact inert evaluation."
+        );
+      }
       const resolved = await this.verifyExisting(candidate, exactEvaluation, binding);
       const verification = resolved.verification;
       if (verification.status !== "verified") {
@@ -268,15 +278,14 @@ export class PaperTradingSessionService {
       marketData: binding.marketData,
       intervalMs: this.intervalMs
     });
-    await this.options.store.recordPaperTradingEvaluation(evaluation);
     if (verification.status !== "verified") {
-      const invalidated = await this.persistInvalidation(candidate, evaluation, verification);
       throw new PaperTradingSessionError(
         "paper_trading_evaluation_invalidated",
         verification.diagnostic,
-        { paper_trading_evaluation: invalidated, reason: verification.reason }
+        { reason: verification.reason }
       );
     }
+    await this.options.store.recordPaperTradingEvaluation(evaluation);
     return { candidate, commitment, evaluation, verification, clock: input.clock };
   }
 
