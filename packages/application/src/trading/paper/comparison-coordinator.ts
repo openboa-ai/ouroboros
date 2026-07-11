@@ -38,6 +38,7 @@ import {
   type TradingRunRecord
 } from "@ouroboros/domain";
 import type { OuroborosStorePort } from "../../ports/store";
+import { paperTradingComparisonIdsForIdempotencyKey } from "./comparison-identity";
 import { qualifyPaperTradingEvaluation } from "./qualification";
 import type { PaperTradingSessionService } from "./session-service";
 
@@ -1452,20 +1453,18 @@ function comparisonIds(idempotencyKey: string): {
   preparationId: string;
   commitmentId: string;
 } {
-  if (!idempotencyKey.trim()) {
+  try {
+    const ids = paperTradingComparisonIdsForIdempotencyKey(idempotencyKey);
+    return {
+      preparationId: ids.preparation_id,
+      commitmentId: ids.comparison_commitment_id
+    };
+  } catch {
     throw new PaperTradingComparisonError(
       "invalid_paper_trading_comparison_input",
       "Paper comparison idempotency key is required."
     );
   }
-  const suffix = createHash("sha256")
-    .update(idempotencyKey)
-    .digest("hex")
-    .slice(0, 16);
-  return {
-    preparationId: `paper-trading-comparison-preparation-${suffix}`,
-    commitmentId: `paper-trading-comparison-${suffix}`
-  };
 }
 
 function isExactIsoTimestamp(value: unknown): value is string {

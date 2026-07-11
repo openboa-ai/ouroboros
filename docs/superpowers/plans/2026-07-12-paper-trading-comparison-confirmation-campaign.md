@@ -70,10 +70,12 @@ expect(paperTradingComparisonIdsForIdempotencyKey("paper-comparison-coordinator-
   });
 ```
 
-Build one valid campaign with two slots and valid confirmed/not-confirmed outcomes. Reject source
-verdict count inclusion, non-contiguous slots, changed derived IDs, duplicate slot IDs, count/policy
-drift, wrong source refs, non-canonical times, `eligible` campaign commitments, partial slot-result
-arrays, wrong counts, confirmed mixed outcomes, non-sealed release, and private/live authority.
+Build one valid campaign with two slots and valid confirmed/not-confirmed outcomes. Domain rejects
+non-contiguous slots, non-canonical key/ID format, duplicate slot IDs, count/policy drift, wrong
+source ref kinds, non-canonical times, `eligible` campaign commitments, partial slot-result arrays,
+wrong counts, confirmed mixed outcomes, non-sealed release, and private/live authority. Store Tasks 3
+and 4 reject hash-derivation drift and source-verdict inclusion because those checks require linked
+records.
 
 - [ ] **Step 2: Run the domain test and verify RED**
 
@@ -91,7 +93,7 @@ Implement:
 export function paperTradingComparisonIdsForIdempotencyKey(
   idempotencyKey: string
 ): PaperTradingComparisonIds {
-  if (!idempotencyKey || idempotencyKey.trim() !== idempotencyKey) {
+  if (!idempotencyKey.trim()) {
     throw new Error("invalid paper trading comparison idempotency key");
   }
   const suffix = createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 16);
@@ -110,8 +112,9 @@ persisted IDs or public input.
 - [ ] **Step 4: Implement campaign and outcome runtime contracts**
 
 Implement the exact records from the design, canonical digest inputs that remove record metadata,
-and strict runtime shapes. Campaign shape must derive every slot's key and IDs, require slot count
-equal to both campaign policy and comparison policy required count, and require
+and strict runtime shapes. Campaign shape must require canonical slot key/ID format, contiguous
+indices, uniqueness, slot count equal to both campaign policy and comparison policy required count,
+and require
 `maximum_slot_start_delay_ms === comparison_policy.maximum_elapsed_ms`.
 
 Outcome shape must require one ordered result per slot, exact count arithmetic, all improved for

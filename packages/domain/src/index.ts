@@ -2339,6 +2339,88 @@ export interface PaperTradingComparisonVerdictRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export interface PaperTradingComparisonConfirmationSlot {
+  slot_index: number;
+  comparison_idempotency_key: string;
+  paper_trading_comparison_preparation_id: string;
+  paper_trading_comparison_commitment_id: string;
+}
+
+export interface PaperTradingComparisonConfirmationCampaignPolicy {
+  policy_version: "paper-comparison-confirmation-v1";
+  required_window_count: number;
+  decision_rule: "all_reserved_windows_must_improve";
+  slot_order_policy: "strict_sequence";
+  non_overlap_policy: "strict";
+  maximum_slot_start_delay_ms: number;
+  missed_slot_policy: "campaign_not_confirmed";
+}
+
+export interface PaperTradingComparisonConfirmationCampaignRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_confirmation_campaign";
+  paper_trading_comparison_confirmation_campaign_id: string;
+  source_verdict_ref: Ref;
+  source_verdict_digest: string;
+  source_comparison_ref: Ref;
+  source_comparison_digest: string;
+  champion: PaperTradingComparisonCandidateSide;
+  challenger: PaperTradingComparisonCandidateSide;
+  champion_selection: PaperTradingComparisonChampionSelection;
+  comparison_policy: PaperTradingComparisonPolicy;
+  market_data_configuration_digest: string;
+  paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  campaign_policy: PaperTradingComparisonConfirmationCampaignPolicy;
+  slots: PaperTradingComparisonConfirmationSlot[];
+  committed_at: string;
+  campaign_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  promotion_eligibility: "not_eligible";
+  release_status: "sealed";
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
+export type PaperTradingComparisonConfirmationSlotResultStatus =
+  | "challenger_improved"
+  | "challenger_not_improved"
+  | "comparison_ineligible"
+  | "slot_expired";
+
+export interface PaperTradingComparisonConfirmationSlotResult {
+  slot_index: number;
+  paper_trading_comparison_commitment_ref: Ref;
+  status: PaperTradingComparisonConfirmationSlotResultStatus;
+  verdict_ref?: Ref;
+  verdict_digest?: string;
+  window_started_at?: string;
+  window_ended_at?: string;
+}
+
+export interface PaperTradingComparisonConfirmationCampaignOutcomeRecord
+  extends BaseRecord {
+  record_kind: "paper_trading_comparison_confirmation_campaign_outcome";
+  paper_trading_comparison_confirmation_campaign_outcome_id: string;
+  campaign_ref: Ref;
+  campaign_digest: string;
+  slot_results: PaperTradingComparisonConfirmationSlotResult[];
+  improved_count: number;
+  not_improved_count: number;
+  ineligible_count: number;
+  expired_count: number;
+  campaign_outcome: "confirmed_improvement" | "not_confirmed";
+  decision_rule: "all_reserved_windows_must_improve";
+  promotion_eligibility: "eligible" | "not_eligible";
+  release_status: "sealed";
+  next_action: "review_for_trading_promotion" | "return_to_candidate_arena";
+  evaluated_at: string;
+  outcome_digest: string;
+  evaluation_authority: "external_to_trading_systems";
+  live_exchange_authority: false;
+  order_submission_authority: false;
+  authority_status: "not_live";
+}
+
 export function paperTradingEvaluationCommitmentDigestInput(
   record: PaperTradingEvaluationCommitmentRecord
 ): string {
@@ -2634,6 +2716,32 @@ export function paperTradingComparisonVerdictDigestInput(
     version: _version,
     paper_trading_comparison_verdict_id: _id,
     verdict_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonConfirmationCampaignDigestInput(
+  record: PaperTradingComparisonConfirmationCampaignRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_confirmation_campaign_id: _id,
+    campaign_digest: _digest,
+    ...payload
+  } = record;
+  return paperTradingComparisonPersistedRecordDigestInput(payload);
+}
+
+export function paperTradingComparisonConfirmationCampaignOutcomeDigestInput(
+  record: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+): string {
+  const {
+    record_kind: _kind,
+    version: _version,
+    paper_trading_comparison_confirmation_campaign_outcome_id: _id,
+    outcome_digest: _digest,
     ...payload
   } = record;
   return paperTradingComparisonPersistedRecordDigestInput(payload);
@@ -2961,6 +3069,262 @@ export function paperTradingComparisonVerdictHasRuntimeShape(
     : value.verdict_outcome === "challenger_not_improved" &&
       value.confirmation_disposition === "not_applicable" &&
       value.next_action === "return_to_candidate_arena";
+}
+
+function paperTradingComparisonConfirmationCampaignPolicyHasRuntimeShape(
+  value: unknown,
+  comparisonPolicy: PaperTradingComparisonPolicy
+): value is PaperTradingComparisonConfirmationCampaignPolicy {
+  return comparisonObject(value) && comparisonHasExactKeys(value, [
+    "policy_version",
+    "required_window_count",
+    "decision_rule",
+    "slot_order_policy",
+    "non_overlap_policy",
+    "maximum_slot_start_delay_ms",
+    "missed_slot_policy"
+  ]) && value.policy_version === "paper-comparison-confirmation-v1" &&
+    comparisonPositive(value.required_window_count) &&
+    value.required_window_count === comparisonPolicy.required_confirmation_count &&
+    value.decision_rule === "all_reserved_windows_must_improve" &&
+    value.slot_order_policy === "strict_sequence" &&
+    value.non_overlap_policy === "strict" &&
+    comparisonPositive(value.maximum_slot_start_delay_ms) &&
+    value.maximum_slot_start_delay_ms === comparisonPolicy.maximum_elapsed_ms &&
+    value.missed_slot_policy === "campaign_not_confirmed";
+}
+
+function paperTradingComparisonConfirmationSlotHasRuntimeShape(
+  value: unknown,
+  campaignId: string,
+  slotIndex: number
+): value is PaperTradingComparisonConfirmationSlot {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "slot_index",
+    "comparison_idempotency_key",
+    "paper_trading_comparison_preparation_id",
+    "paper_trading_comparison_commitment_id"
+  ])) return false;
+  return value.slot_index === slotIndex &&
+    value.comparison_idempotency_key ===
+      `paper-comparison-confirmation:${campaignId}:slot:${slotIndex}` &&
+    typeof value.paper_trading_comparison_preparation_id === "string" &&
+    /^paper-trading-comparison-preparation-[a-f0-9]{16}$/.test(
+      value.paper_trading_comparison_preparation_id
+    ) && typeof value.paper_trading_comparison_commitment_id === "string" &&
+    /^paper-trading-comparison-[a-f0-9]{16}$/.test(
+      value.paper_trading_comparison_commitment_id
+    );
+}
+
+export function paperTradingComparisonConfirmationCampaignHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonConfirmationCampaignRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_confirmation_campaign_id",
+    "source_verdict_ref",
+    "source_verdict_digest",
+    "source_comparison_ref",
+    "source_comparison_digest",
+    "champion",
+    "challenger",
+    "champion_selection",
+    "comparison_policy",
+    "market_data_configuration_digest",
+    "paper_policy_identity",
+    "campaign_policy",
+    "slots",
+    "committed_at",
+    "campaign_digest",
+    "evaluation_authority",
+    "promotion_eligibility",
+    "release_status",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !== "paper_trading_comparison_confirmation_campaign" ||
+    value.version !== 1 ||
+    !comparisonString(value.paper_trading_comparison_confirmation_campaign_id) ||
+    !comparisonRef(value.source_verdict_ref, "paper_trading_comparison_verdict") ||
+    !comparisonDigest(value.source_verdict_digest) ||
+    !comparisonRef(
+      value.source_comparison_ref,
+      "paper_trading_comparison_commitment"
+    ) || !comparisonDigest(value.source_comparison_digest) ||
+    !paperTradingComparisonCandidateSideHasRuntimeShape(value.champion, "champion") ||
+    !paperTradingComparisonCandidateSideHasRuntimeShape(value.challenger, "challenger") ||
+    value.champion.candidate_version_ref.id ===
+      value.challenger.candidate_version_ref.id ||
+    !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy) ||
+    !paperTradingComparisonChampionSelectionHasRuntimeShape(
+      value.champion_selection,
+      value.comparison_policy.comparison_mode
+    ) || !comparisonDigest(value.market_data_configuration_digest) ||
+    !comparisonPolicyIdentity(value.paper_policy_identity) ||
+    !paperTradingComparisonConfirmationCampaignPolicyHasRuntimeShape(
+      value.campaign_policy,
+      value.comparison_policy
+    ) || !Array.isArray(value.slots) ||
+    value.slots.length !== value.campaign_policy.required_window_count ||
+    !comparisonIso(value.committed_at) || !comparisonDigest(value.campaign_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.promotion_eligibility !== "not_eligible" ||
+    value.release_status !== "sealed" || value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false || value.authority_status !== "not_live") {
+    return false;
+  }
+  const campaign = value as unknown as
+    PaperTradingComparisonConfirmationCampaignRecord;
+  const slots = campaign.slots;
+  if (!slots.every((slot, index) =>
+    paperTradingComparisonConfirmationSlotHasRuntimeShape(
+      slot,
+      campaign.paper_trading_comparison_confirmation_campaign_id,
+      index + 1
+    )) || slots.some((slot) =>
+      slot.paper_trading_comparison_commitment_id === campaign.source_comparison_ref.id)) {
+    return false;
+  }
+  return new Set(slots.map((slot) =>
+    slot.paper_trading_comparison_preparation_id)).size === slots.length &&
+    new Set(slots.map((slot) =>
+      slot.paper_trading_comparison_commitment_id)).size === slots.length;
+}
+
+function paperTradingComparisonConfirmationSlotResultHasRuntimeShape(
+  value: unknown,
+  slotIndex: number
+): value is PaperTradingComparisonConfirmationSlotResult {
+  if (!comparisonObject(value)) return false;
+  const expired = value.status === "slot_expired";
+  if (!comparisonHasExactKeys(value, [
+    "slot_index",
+    "paper_trading_comparison_commitment_ref",
+    "status",
+    ...(!expired ? [
+      "verdict_ref",
+      "verdict_digest",
+      "window_started_at",
+      "window_ended_at"
+    ] : [])
+  ]) || value.slot_index !== slotIndex || !comparisonRef(
+    value.paper_trading_comparison_commitment_ref,
+    "paper_trading_comparison_commitment"
+  )) return false;
+  if (expired) return true;
+  return [
+    "challenger_improved",
+    "challenger_not_improved",
+    "comparison_ineligible"
+  ].includes(value.status as string) &&
+    comparisonRef(value.verdict_ref, "paper_trading_comparison_verdict") &&
+    comparisonDigest(value.verdict_digest) &&
+    comparisonIso(value.window_started_at) && comparisonIso(value.window_ended_at) &&
+    Date.parse(value.window_ended_at) >= Date.parse(value.window_started_at);
+}
+
+export function paperTradingComparisonConfirmationCampaignOutcomeHasRuntimeShape(
+  value: unknown
+): value is PaperTradingComparisonConfirmationCampaignOutcomeRecord {
+  if (!comparisonObject(value) || !comparisonHasExactKeys(value, [
+    "record_kind",
+    "version",
+    "paper_trading_comparison_confirmation_campaign_outcome_id",
+    "campaign_ref",
+    "campaign_digest",
+    "slot_results",
+    "improved_count",
+    "not_improved_count",
+    "ineligible_count",
+    "expired_count",
+    "campaign_outcome",
+    "decision_rule",
+    "promotion_eligibility",
+    "release_status",
+    "next_action",
+    "evaluated_at",
+    "outcome_digest",
+    "evaluation_authority",
+    "live_exchange_authority",
+    "order_submission_authority",
+    "authority_status"
+  ]) || value.record_kind !==
+      "paper_trading_comparison_confirmation_campaign_outcome" ||
+    value.version !== 1 ||
+    !comparisonString(
+      value.paper_trading_comparison_confirmation_campaign_outcome_id
+    ) || !comparisonRef(
+      value.campaign_ref,
+      "paper_trading_comparison_confirmation_campaign"
+    ) || !comparisonDigest(value.campaign_digest) ||
+    !Array.isArray(value.slot_results) || value.slot_results.length === 0 ||
+    !value.slot_results.every((result, index) =>
+      paperTradingComparisonConfirmationSlotResultHasRuntimeShape(
+        result,
+        index + 1
+      )) || !comparisonNonNegative(value.improved_count) ||
+    !comparisonNonNegative(value.not_improved_count) ||
+    !comparisonNonNegative(value.ineligible_count) ||
+    !comparisonNonNegative(value.expired_count) ||
+    value.decision_rule !== "all_reserved_windows_must_improve" ||
+    value.release_status !== "sealed" || !comparisonIso(value.evaluated_at) ||
+    !comparisonDigest(value.outcome_digest) ||
+    value.evaluation_authority !== "external_to_trading_systems" ||
+    value.live_exchange_authority !== false ||
+    value.order_submission_authority !== false || value.authority_status !== "not_live") {
+    return false;
+  }
+  const outcome = value as unknown as
+    PaperTradingComparisonConfirmationCampaignOutcomeRecord;
+  const results = outcome.slot_results;
+  if (new Set(results.map((result) =>
+    result.paper_trading_comparison_commitment_ref.id)).size !== results.length ||
+    new Set(results.flatMap((result) =>
+      result.verdict_ref ? [result.verdict_ref.id] : [])).size !==
+      results.filter((result) => result.verdict_ref !== undefined).length) {
+    return false;
+  }
+  let previousWindowEndedAt: string | undefined;
+  let expiredSeen = false;
+  for (const result of results) {
+    if (result.status === "slot_expired") {
+      expiredSeen = true;
+      continue;
+    }
+    if (expiredSeen || previousWindowEndedAt !== undefined &&
+      Date.parse(result.window_started_at!) <= Date.parse(previousWindowEndedAt)) {
+      return false;
+    }
+    previousWindowEndedAt = result.window_ended_at;
+  }
+  const improvedCount = results.filter((result) =>
+    result.status === "challenger_improved").length;
+  const notImprovedCount = results.filter((result) =>
+    result.status === "challenger_not_improved").length;
+  const ineligibleCount = results.filter((result) =>
+    result.status === "comparison_ineligible").length;
+  const expiredCount = results.filter((result) =>
+    result.status === "slot_expired").length;
+  if (outcome.improved_count !== improvedCount ||
+    outcome.not_improved_count !== notImprovedCount ||
+    outcome.ineligible_count !== ineligibleCount ||
+    outcome.expired_count !== expiredCount ||
+    improvedCount + notImprovedCount + ineligibleCount + expiredCount !==
+      results.length || results.some((result) =>
+        result.window_ended_at !== undefined &&
+        Date.parse(outcome.evaluated_at) < Date.parse(result.window_ended_at))) {
+    return false;
+  }
+  const confirmed = improvedCount === results.length;
+  return confirmed
+    ? outcome.campaign_outcome === "confirmed_improvement" &&
+      outcome.promotion_eligibility === "eligible" &&
+      outcome.next_action === "review_for_trading_promotion"
+    : outcome.campaign_outcome === "not_confirmed" &&
+      outcome.promotion_eligibility === "not_eligible" &&
+      outcome.next_action === "return_to_candidate_arena";
 }
 
 export function paperTradingComparisonTradingPromotionHasRuntimeShape(value: unknown): value is TradingPromotionRecord {
