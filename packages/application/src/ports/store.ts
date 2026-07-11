@@ -43,6 +43,7 @@ import type {
   PaperTradingComparisonRuntimeWriteContext,
   PaperTradingComparisonConfirmationCampaignRecord,
   PaperTradingComparisonConfirmationCampaignOutcomeRecord,
+  PaperTradingComparisonResearchReleaseRecord,
   PaperTradingComparisonVerdictRecord,
   LedgerInput,
   LedgerWriteOutcome,
@@ -358,6 +359,18 @@ export interface OuroborosStorePort {
   listPaperTradingComparisonConfirmationCampaignOutcomes(
     campaignId?: string
   ): Promise<PaperTradingComparisonConfirmationCampaignOutcomeRecord[]>;
+  recordPaperTradingComparisonResearchRelease(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<PaperTradingComparisonResearchReleaseRecord>;
+  getPaperTradingComparisonResearchRelease(
+    releaseId: string
+  ): Promise<PaperTradingComparisonResearchReleaseRecord | undefined>;
+  listPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  >;
+  recoverPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  >;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

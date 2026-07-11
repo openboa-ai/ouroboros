@@ -64,6 +64,8 @@ import {
   paperTradingComparisonConfirmationCampaignHasRuntimeShape,
   paperTradingComparisonConfirmationCampaignOutcomeDigestInput,
   paperTradingComparisonConfirmationCampaignOutcomeHasRuntimeShape,
+  paperTradingComparisonResearchReleaseDigestInput,
+  paperTradingComparisonResearchReleaseHasRuntimeShape,
   paperTradingComparisonEvaluationCommitmentRecordDigestInput,
   paperTradingComparisonEvaluationHasZeroEvidenceActivationState,
   paperTradingComparisonEvaluationRecordDigestInput,
@@ -193,6 +195,8 @@ import type {
   PaperTradingComparisonCandidateSide,
   PaperTradingComparisonConfirmationCampaignRecord,
   PaperTradingComparisonConfirmationCampaignOutcomeRecord,
+  PaperTradingComparisonResearchReleaseKind,
+  PaperTradingComparisonResearchReleaseRecord,
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonSide,
@@ -445,6 +449,15 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_confirmation_campaign_outcome_reload_failed"
   | "paper_trading_comparison_confirmation_campaign_outcome_reference_not_found"
   | "paper_trading_comparison_confirmation_campaign_outcome_graph_invalid"
+  | "invalid_paper_trading_comparison_research_release_input"
+  | "paper_trading_comparison_research_release_digest_mismatch"
+  | "paper_trading_comparison_research_release_conflict"
+  | "paper_trading_comparison_research_release_outcome_conflict"
+  | "paper_trading_comparison_research_release_reload_failed"
+  | "paper_trading_comparison_research_release_reference_not_found"
+  | "paper_trading_comparison_research_release_graph_invalid"
+  | "paper_trading_comparison_research_release_materialization_conflict"
+  | "paper_trading_comparison_research_release_bound_record_conflict"
   | "invalid_paper_trading_comparison_checkpoint_write_context"
   | "paper_trading_comparison_checkpoint_write_context_reference_not_found"
   | "paper_trading_comparison_checkpoint_write_context_reference_mismatch"
@@ -540,6 +553,7 @@ type Collection =
   | "paper-trading-comparison-verdicts"
   | "paper-trading-comparison-confirmation-campaigns"
   | "paper-trading-comparison-confirmation-campaign-outcomes"
+  | "paper-trading-comparison-research-releases"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -2182,6 +2196,7 @@ export class LocalStore {
 
   async initialize(): Promise<void> {
     await this.seedFixture();
+    await this.recoverPaperTradingComparisonResearchReleases();
     await this.rebuildProjections();
   }
 
@@ -2916,6 +2931,14 @@ export class LocalStore {
   }
 
   async recordResearchFinding(finding: ResearchFindingRecord): Promise<ResearchFindingRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordResearchFindingUnlocked(finding)
+    );
+  }
+
+  private async recordResearchFindingUnlocked(
+    finding: ResearchFindingRecord
+  ): Promise<ResearchFindingRecord> {
     if (!isResearchFindingRecord(finding)) {
       throw new LocalStoreError(
         "invalid_research_finding_input",
@@ -2923,6 +2946,11 @@ export class LocalStore {
         { research_finding_id: (finding as Partial<ResearchFindingRecord> | undefined)?.research_finding_id }
       );
     }
+    await this.assertPaperTradingComparisonResearchReleaseBoundWriteAllowed(
+      "research_finding",
+      finding.research_finding_id,
+      finding
+    );
     await this.writeJson(this.itemPath("research-findings", finding.research_finding_id), finding);
     return finding;
   }
@@ -3027,6 +3055,14 @@ export class LocalStore {
   async recordArtifactLineage(
     lineage: ArtifactLineageRecord
   ): Promise<ArtifactLineageRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordArtifactLineageUnlocked(lineage)
+    );
+  }
+
+  private async recordArtifactLineageUnlocked(
+    lineage: ArtifactLineageRecord
+  ): Promise<ArtifactLineageRecord> {
     if (!isArtifactLineageRecord(lineage)) {
       throw new LocalStoreError(
         "invalid_artifact_lineage_input",
@@ -3037,6 +3073,11 @@ export class LocalStore {
         }
       );
     }
+    await this.assertPaperTradingComparisonResearchReleaseBoundWriteAllowed(
+      "artifact_lineage",
+      lineage.artifact_lineage_id,
+      lineage
+    );
     await this.assertArtifactLineageLinks(lineage);
     await this.writeJson(this.itemPath("artifact-lineages", lineage.artifact_lineage_id), lineage);
     return lineage;
@@ -9038,6 +9079,419 @@ export class LocalStore {
         );
       }
       applicableStart = verdict.evaluated_at;
+    }
+  }
+
+  async recordPaperTradingComparisonResearchRelease(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<PaperTradingComparisonResearchReleaseRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonResearchReleaseUnlocked(release)
+    );
+  }
+
+  private async recordPaperTradingComparisonResearchReleaseUnlocked(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<PaperTradingComparisonResearchReleaseRecord> {
+    if (!paperTradingComparisonResearchReleaseHasRuntimeShape(release)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_research_release_input",
+        "invalid paper trading comparison research release input"
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      paperTradingComparisonResearchReleaseDigestInput(release)
+    );
+    if (release.release_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_digest_mismatch",
+        "paper trading comparison research release digest does not match canonical content"
+      );
+    }
+    const existing = await this.getPaperTradingComparisonResearchRelease(
+      release.paper_trading_comparison_research_release_id
+    );
+    if (existing) {
+      if (!samePersistedComparisonRecord(existing, release)) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_research_release_conflict",
+          "paper trading comparison research release is append-only"
+        );
+      }
+      await this.validatePaperTradingComparisonResearchReleaseGraph(existing);
+      await this.materializePaperTradingComparisonResearchRelease(existing);
+      return existing;
+    }
+    if ((await this.listPaperTradingComparisonResearchReleases()).some((record) =>
+      record.campaign_outcome_ref.id === release.campaign_outcome_ref.id)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_outcome_conflict",
+        "one campaign outcome can have only one research release"
+      );
+    }
+    await this.validatePaperTradingComparisonResearchReleaseGraph(release);
+    await this.assertPaperTradingComparisonResearchReleaseMaterializationCompatible(
+      release
+    );
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-research-releases",
+        release.paper_trading_comparison_research_release_id
+      ),
+      release
+    );
+    await this.materializePaperTradingComparisonResearchRelease(release);
+    return release;
+  }
+
+  async getPaperTradingComparisonResearchRelease(
+    releaseId: string
+  ): Promise<PaperTradingComparisonResearchReleaseRecord | undefined> {
+    try {
+      const record = await this.readOptionalRecord<unknown>(
+        "paper-trading-comparison-research-releases",
+        releaseId
+      );
+      if (record === undefined) return undefined;
+      this.assertPersistedPaperTradingComparisonResearchRelease(record);
+      return record;
+    } catch (error) {
+      if (error instanceof LocalStoreError && error.code ===
+        "paper_trading_comparison_research_release_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_reload_failed",
+        "persisted paper trading comparison research release is unreadable or corrupt"
+      );
+    }
+  }
+
+  async listPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  > {
+    try {
+      const records = await this.readCollection<unknown>(
+        "paper-trading-comparison-research-releases"
+      );
+      return records.map((record) => {
+        this.assertPersistedPaperTradingComparisonResearchRelease(record);
+        return record;
+      }).sort((left, right) =>
+        left.released_at.localeCompare(right.released_at) ||
+        left.paper_trading_comparison_research_release_id.localeCompare(
+          right.paper_trading_comparison_research_release_id
+        ));
+    } catch (error) {
+      if (error instanceof LocalStoreError && error.code ===
+        "paper_trading_comparison_research_release_reload_failed") {
+        throw error;
+      }
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_reload_failed",
+        "persisted paper trading comparison research release collection is unreadable or corrupt"
+      );
+    }
+  }
+
+  async recoverPaperTradingComparisonResearchReleases(): Promise<
+    PaperTradingComparisonResearchReleaseRecord[]
+  > {
+    return this.withComparisonEvidenceWriteTransaction(async () => {
+      const releases = await this.listPaperTradingComparisonResearchReleases();
+      for (const release of releases) {
+        await this.validatePaperTradingComparisonResearchReleaseGraph(release);
+        await this.materializePaperTradingComparisonResearchRelease(release);
+      }
+      return releases;
+    });
+  }
+
+  private assertPersistedPaperTradingComparisonResearchRelease(
+    record: unknown
+  ): asserts record is PaperTradingComparisonResearchReleaseRecord {
+    if (!paperTradingComparisonResearchReleaseHasRuntimeShape(record) ||
+      record.release_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonResearchReleaseDigestInput(record)
+      )) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_reload_failed",
+        "persisted paper trading comparison research release is malformed or corrupt"
+      );
+    }
+  }
+
+  private async validatePaperTradingComparisonResearchReleaseGraph(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<void> {
+    const [campaign, outcome, candidate, candidateVersion, systemCode, sourceFinding,
+      sourceLineage] = await Promise.all([
+      this.getPaperTradingComparisonConfirmationCampaign(release.campaign_ref.id),
+      this.getPaperTradingComparisonConfirmationCampaignOutcome(
+        release.campaign_outcome_ref.id
+      ),
+      this.readOptionalRecord<TradingSystemCandidateRecord>(
+        "candidates",
+        release.candidate_ref.id
+      ),
+      this.getCandidateVersion(release.candidate_version_ref.id),
+      this.getSystemCode(release.system_code_ref.id),
+      this.readOptionalRecord<ResearchFindingRecord>(
+        "research-findings",
+        release.source_finding_ref.id
+      ),
+      this.readOptionalRecord<ArtifactLineageRecord>(
+        "artifact-lineages",
+        release.source_lineage_ref.id
+      )
+    ]);
+    if (!campaign || !outcome || !candidate || !candidateVersion || !systemCode ||
+      !sourceFinding || !sourceLineage) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_reference_not_found",
+        "paper trading comparison research release provenance was not found"
+      );
+    }
+    await this.validatePaperTradingComparisonConfirmationCampaignOutcomeGraph(outcome);
+    const admission = await this.getCandidateAdmissionDecision(
+      campaign.challenger.candidate_admission_decision_ref.id
+    );
+    const materializationAttempt = candidate.materialized_from_attempt_ref
+      ? await this.readOptionalRecord<CandidateMaterializationAttemptRecord>(
+          "candidate-materialization-attempts",
+          candidate.materialized_from_attempt_ref.id
+        )
+      : undefined;
+    if (!admission || !materializationAttempt) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_reference_not_found",
+        "paper trading comparison research release origin admission was not found"
+      );
+    }
+
+    const decision = localPaperTradingComparisonResearchReleaseDecision(outcome);
+    const expectedSupportingRefs: Ref[] = [
+      { ...release.source_finding_ref },
+      { ...release.campaign_ref },
+      { ...release.campaign_outcome_ref },
+      ...outcome.slot_results.flatMap((result) => result.verdict_ref
+        ? [{ ...result.verdict_ref }]
+        : [])
+    ];
+    const expectedFinding: ResearchFindingRecord = {
+      record_kind: "research_finding",
+      version: 1,
+      research_finding_id:
+        `${release.paper_trading_comparison_research_release_id}-finding`,
+      research_worker_ref: { ...sourceFinding.research_worker_ref },
+      research_direction_ref: { ...sourceFinding.research_direction_ref },
+      experiment_run_ref: { ...sourceFinding.experiment_run_ref },
+      trading_evaluation_result_ref: {
+        ...sourceFinding.trading_evaluation_result_ref
+      },
+      finding_kind: decision.findingKind,
+      summary: decision.summary,
+      supporting_record_refs: expectedSupportingRefs,
+      created_at: release.released_at,
+      authority_status: "research_trace_only"
+    };
+    const expectedLineage: ArtifactLineageRecord = {
+      record_kind: "artifact_lineage",
+      version: 1,
+      artifact_lineage_id:
+        `${release.paper_trading_comparison_research_release_id}-lineage`,
+      child_system_code_ref: { ...sourceLineage.child_system_code_ref },
+      ...(sourceLineage.parent_system_code_ref
+        ? { parent_system_code_ref: { ...sourceLineage.parent_system_code_ref } }
+        : {}),
+      source_finding_refs: [
+        ...sourceLineage.source_finding_refs.map((ref) => ({ ...ref })),
+        { record_kind: "research_finding", id: expectedFinding.research_finding_id }
+      ],
+      created_by_research_worker_ref: { ...sourceFinding.research_worker_ref },
+      created_at: release.released_at,
+      authority_status: "lineage_only"
+    };
+    const fullCycleLineage = materializationAttempt.full_cycle_lineage;
+    const sourceLineageCreator = sourceLineage.created_by_research_worker_ref;
+    const mismatchFields = [
+      release.campaign_digest !== campaign.campaign_digest
+        ? "campaign_digest" : undefined,
+      release.campaign_outcome_digest !== outcome.outcome_digest
+        ? "campaign_outcome_digest" : undefined,
+      outcome.campaign_ref.id !== campaign.paper_trading_comparison_confirmation_campaign_id ||
+        outcome.campaign_digest !== campaign.campaign_digest
+        ? "campaign_outcome_graph" : undefined,
+      !paperTradingComparisonRefsEqual(
+        release.candidate_ref,
+        campaign.challenger.candidate_ref
+      ) ? "candidate_ref" : undefined,
+      !paperTradingComparisonRefsEqual(
+        release.candidate_version_ref,
+        campaign.challenger.candidate_version_ref
+      ) ? "candidate_version_ref" : undefined,
+      !paperTradingComparisonRefsEqual(
+        release.system_code_ref,
+        campaign.challenger.system_code_ref
+      ) ? "system_code_ref" : undefined,
+      release.system_code_artifact_digest !==
+        campaign.challenger.system_code_artifact_digest
+        ? "system_code_artifact_digest" : undefined,
+      candidate.active_version_id !== candidateVersion.candidate_version_id
+        ? "candidate_version" : undefined,
+      candidateVersion.system_code_ref?.id !== systemCode.system_code_id
+        ? "candidate_version_system_code" : undefined,
+      systemCode.artifact_digest !== release.system_code_artifact_digest
+        ? "system_code_digest" : undefined,
+      admission.status !== "admitted" || admission.runnable_paper_handoff !== true
+        ? "admission_status" : undefined,
+      admission.system_code_ref.id !== systemCode.system_code_id ||
+        admission.submitted_artifact_digest !== systemCode.artifact_digest
+        ? "admission_system_code" : undefined,
+      admission.research_finding_ref.id !== sourceFinding.research_finding_id
+        ? "admission_source_finding" : undefined,
+      campaign.challenger.admission_decision_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonAdmissionDecisionDigestInput(admission)
+      ) ? "admission_digest" : undefined,
+      !paperTradingComparisonRefsEqual(
+        release.source_finding_ref,
+        admission.research_finding_ref
+      ) ? "source_finding_ref" : undefined,
+      release.source_finding_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(sourceFinding)
+      ) ? "source_finding_digest" : undefined,
+      sourceFinding.experiment_run_ref.id !== admission.experiment_run_ref.id ||
+        sourceFinding.trading_evaluation_result_ref.id !==
+          admission.trading_evaluation_result_ref.id
+        ? "source_finding_provenance" : undefined,
+      Date.parse(sourceFinding.created_at) > Date.parse(admission.decided_at)
+        ? "source_finding_time" : undefined,
+      release.source_lineage_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(sourceLineage)
+      ) ? "source_lineage_digest" : undefined,
+      sourceLineage.child_system_code_ref.id !== systemCode.system_code_id
+        ? "source_lineage_child" : undefined,
+      sourceLineage.parent_system_code_ref?.id !== admission.source_system_code_ref.id
+        ? "source_lineage_parent" : undefined,
+      !sourceLineage.source_finding_refs.some((ref) =>
+        paperTradingComparisonRefsEqual(ref, release.source_finding_ref))
+        ? "source_lineage_finding" : undefined,
+      Date.parse(sourceLineage.created_at) > Date.parse(admission.decided_at)
+        ? "source_lineage_time" : undefined,
+      sourceLineageCreator !== undefined && !paperTradingComparisonRefsEqual(
+        sourceLineageCreator,
+        sourceFinding.research_worker_ref
+      ) ? "source_lineage_creator" : undefined,
+      !fullCycleLineage ? "full_cycle_lineage" : undefined,
+      fullCycleLineage?.evaluation.direction_kind !== release.direction_kind
+        ? "direction_kind" : undefined,
+      fullCycleLineage?.generated.system_code_ref.id !== systemCode.system_code_id ||
+        fullCycleLineage?.generated.artifact_digest !== systemCode.artifact_digest
+        ? "full_cycle_generated" : undefined,
+      fullCycleLineage?.source.system_code_ref?.id !== admission.source_system_code_ref.id
+        ? "full_cycle_source" : undefined,
+      release.release_kind !== decision.releaseKind
+        ? "release_kind" : undefined,
+      release.next_research_focus !== decision.nextResearchFocus
+        ? "next_research_focus" : undefined,
+      Date.parse(release.released_at) <= Date.parse(outcome.evaluated_at)
+        ? "released_at" : undefined,
+      !samePersistedComparisonRecord(release.finding, expectedFinding)
+        ? "finding" : undefined,
+      release.finding_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(release.finding)
+      ) ? "finding_digest" : undefined,
+      !samePersistedComparisonRecord(release.lineage, expectedLineage)
+        ? "lineage" : undefined,
+      release.lineage_record_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonPersistedRecordDigestInput(release.lineage)
+      ) ? "lineage_digest" : undefined
+    ].filter((field): field is string => field !== undefined);
+    if (mismatchFields.length > 0) {
+      throw this.paperTradingComparisonResearchReleaseGraphInvalid(mismatchFields);
+    }
+  }
+
+  private paperTradingComparisonResearchReleaseGraphInvalid(
+    mismatchFields: string[] = []
+  ): LocalStoreError {
+    return new LocalStoreError(
+      "paper_trading_comparison_research_release_graph_invalid",
+      "paper trading comparison research release does not match exact origin evidence",
+      { mismatch_fields: mismatchFields }
+    );
+  }
+
+  private async assertPaperTradingComparisonResearchReleaseMaterializationCompatible(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<void> {
+    const [finding, lineage] = await Promise.all([
+      this.readOptionalRecord<ResearchFindingRecord>(
+        "research-findings",
+        release.finding.research_finding_id
+      ),
+      this.readOptionalRecord<ArtifactLineageRecord>(
+        "artifact-lineages",
+        release.lineage.artifact_lineage_id
+      )
+    ]);
+    if (finding && !samePersistedComparisonRecord(finding, release.finding) ||
+      lineage && !samePersistedComparisonRecord(lineage, release.lineage)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_materialization_conflict",
+        "paper trading comparison research release materialization is append-only"
+      );
+    }
+  }
+
+  private async materializePaperTradingComparisonResearchRelease(
+    release: PaperTradingComparisonResearchReleaseRecord
+  ): Promise<void> {
+    await this.assertPaperTradingComparisonResearchReleaseMaterializationCompatible(
+      release
+    );
+    const finding = await this.readOptionalRecord<ResearchFindingRecord>(
+      "research-findings",
+      release.finding.research_finding_id
+    );
+    if (!finding) {
+      await this.writeJson(
+        this.itemPath("research-findings", release.finding.research_finding_id),
+        release.finding
+      );
+    }
+    const lineage = await this.readOptionalRecord<ArtifactLineageRecord>(
+      "artifact-lineages",
+      release.lineage.artifact_lineage_id
+    );
+    if (!lineage) {
+      await this.assertArtifactLineageLinks(release.lineage);
+      await this.writeJson(
+        this.itemPath("artifact-lineages", release.lineage.artifact_lineage_id),
+        release.lineage
+      );
+    }
+  }
+
+  private async assertPaperTradingComparisonResearchReleaseBoundWriteAllowed(
+    recordKind: "research_finding" | "artifact_lineage",
+    id: string,
+    next: ResearchFindingRecord | ArtifactLineageRecord
+  ): Promise<void> {
+    const release = (await this.listPaperTradingComparisonResearchReleases()).find(
+      (candidate) => recordKind === "research_finding"
+        ? candidate.finding.research_finding_id === id
+        : candidate.lineage.artifact_lineage_id === id
+    );
+    if (!release) return;
+    const expected = recordKind === "research_finding"
+      ? release.finding
+      : release.lineage;
+    if (!samePersistedComparisonRecord(expected, next)) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_research_release_bound_record_conflict",
+        "release-bound research evidence is append-only"
+      );
     }
   }
 
@@ -15139,6 +15593,50 @@ function validateCandidateMaterializationInput(
 
 function comparisonExactRecordDigest(input: string): string {
   return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+function localPaperTradingComparisonResearchReleaseDecision(
+  outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord
+): {
+  releaseKind: PaperTradingComparisonResearchReleaseKind;
+  findingKind: ResearchFindingRecord["finding_kind"];
+  summary: string;
+  nextResearchFocus: string;
+} {
+  let releaseKind: PaperTradingComparisonResearchReleaseKind;
+  let findingKind: ResearchFindingRecord["finding_kind"];
+  let nextResearchFocus: string;
+  if (outcome.campaign_outcome === "confirmed_improvement") {
+    releaseKind = "confirmed_improvement";
+    findingKind = "positive_result";
+    nextResearchFocus =
+      "Preserve the confirmed artifact lineage and generate controlled variants under new prospective evidence.";
+  } else if (outcome.not_improved_count > 0) {
+    releaseKind = "challenger_not_reproduced";
+    findingKind = "negative_result";
+    nextResearchFocus =
+      "Explain non-reproduction, preserve the negative result, and generate differentiated candidates under new prospective evidence.";
+  } else if (outcome.ineligible_count > 0) {
+    releaseKind = "comparison_evidence_ineligible";
+    findingKind = "failure_analysis";
+    nextResearchFocus =
+      "Repair comparison evidence and protocol quality before making an economic interpretation.";
+  } else {
+    releaseKind = "campaign_slot_expired";
+    findingKind = "failure_analysis";
+    nextResearchFocus =
+      "Repair campaign scheduling and recovery before making an economic interpretation.";
+  }
+  return {
+    releaseKind,
+    findingKind,
+    summary: `Paper comparison confirmation campaign ${outcome.campaign_ref.id}: ` +
+      `improved=${outcome.improved_count}, ` +
+      `not_improved=${outcome.not_improved_count}, ` +
+      `ineligible=${outcome.ineligible_count}, ` +
+      `expired=${outcome.expired_count}; release=${releaseKind}.`,
+    nextResearchFocus
+  };
 }
 
 function paperTradingComparisonIdsForIdempotencyKey(idempotencyKey: string): {

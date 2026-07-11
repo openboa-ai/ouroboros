@@ -224,7 +224,7 @@ git commit -m "feat: classify paper comparison research release"
 - Adds: LocalStore release materialization recovery
 - Changes: release-bound ResearchFinding and ArtifactLineage become append-only
 
-- [ ] **Step 1: Write failing LocalStore graph and recovery tests**
+- [x] **Step 1: Write failing LocalStore graph and recovery tests**
 
 Seed one exact Arena-generated challenger origin graph plus terminal campaign outcome. Test:
 
@@ -245,7 +245,7 @@ escalation.
 Also assert direct `recordResearchFinding` or `recordArtifactLineage` calls cannot change a
 release-bound same-ID record, while exact replay remains accepted.
 
-- [ ] **Step 2: Run selected Store tests and verify RED**
+- [x] **Step 2: Run selected Store tests and verify RED**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts -t "comparison research release|release materialization|release-bound"
@@ -253,7 +253,7 @@ npx vitest run packages/local-store/test/local-store.test.ts -t "comparison rese
 
 Expected: FAIL because release Store methods do not exist.
 
-- [ ] **Step 3: Add Store methods and collection**
+- [x] **Step 3: Add Store methods and collection**
 
 Add to `OuroborosStorePort`:
 
@@ -272,7 +272,7 @@ listPaperTradingComparisonResearchReleases(): Promise<
 Persist under `paper-trading-comparison-research-releases/items`. LocalStore independently derives
 the deterministic release/finding/lineage IDs from outcome ID and recomputes every digest.
 
-- [ ] **Step 4: Implement graph validation and exact replay**
+- [x] **Step 4: Implement graph validation and exact replay**
 
 Under `withComparisonEvidenceWriteTransaction`, load campaign, outcome, challenger admission,
 source Finding, origin Lineage, candidate, CandidateVersion, and SystemCode. Recompute the pure
@@ -282,7 +282,7 @@ direction, the original Lineage time bound, exact supporting refs, and exact par
 Existing same-ID release must be deeply equal. A different release for the outcome or changed bytes
 must throw stable conflict codes before any materialized writer runs.
 
-- [ ] **Step 5: Materialize and recover exact embedded records**
+- [x] **Step 5: Materialize and recover exact embedded records**
 
 Write the accepted release bundle first. Then materialize Finding and Lineage only when missing or
 exactly equal. Add:
@@ -297,7 +297,7 @@ Call recovery from `LocalStore.initialize()` after collections exist. Freeze rel
 ordinary Finding/Lineage writers. Recovery of one corrupt bundle fails closed without rewriting
 source campaign evidence.
 
-- [ ] **Step 6: Run full LocalStore and typechecks**
+- [x] **Step 6: Run full LocalStore and typechecks**
 
 ```bash
 npx vitest run packages/local-store/test/local-store.test.ts
@@ -305,7 +305,7 @@ npm run typecheck --workspace @ouroboros/local-store
 npm run typecheck --workspace @ouroboros/application
 ```
 
-- [ ] **Step 7: Commit Store authority**
+- [x] **Step 7: Commit Store authority**
 
 ```bash
 git add packages/application/src/ports/store.ts packages/local-store/src/index.ts packages/local-store/test/local-store.test.ts

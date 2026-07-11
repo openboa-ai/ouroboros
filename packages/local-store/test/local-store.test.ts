@@ -26,6 +26,7 @@ import type {
   CandidateInspectReadModel,
   ImprovementProposalRecord,
   ResearchFindingRecord,
+  ResearchDirectionKind,
   ResearchOrchestrationRunRecord,
   ImprovementProposalMaterializationInput,
   ImprovementProposalProviderFailureInput,
@@ -63,6 +64,7 @@ import type {
   PaperTradingComparisonCommitmentRecord,
   PaperTradingComparisonPolicy,
   PaperTradingComparisonPreparationRecord,
+  PaperTradingComparisonResearchReleaseRecord,
   PaperTradingComparisonSide,
   PaperTradingComparisonTickRecord,
   PaperTradingComparisonVerdictRecord,
@@ -109,6 +111,7 @@ import {
   paperTradingComparisonObservationChainDigestInput,
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonPreparationDigestInput,
+  paperTradingComparisonResearchReleaseDigestInput,
   paperTradingComparisonRuntimeControlIdempotencyKey,
   paperTradingComparisonSystemCodeRecordDigestInput,
   paperTradingComparisonTickAcknowledgementDigestInput,
@@ -4199,6 +4202,240 @@ describe("LocalStore", () => {
     );
   });
 
+  it("persists, materializes, and exactly replays one comparison research release", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPaperTradingComparisonResearchReleaseFixture(store);
+
+    await expect(store.recordPaperTradingComparisonResearchRelease(fixture.release))
+      .resolves.toEqual(fixture.release);
+    await expect(store.recordPaperTradingComparisonResearchRelease(fixture.release))
+      .resolves.toEqual(fixture.release);
+    await expect(store.getPaperTradingComparisonResearchRelease(
+      fixture.release.paper_trading_comparison_research_release_id
+    )).resolves.toEqual(fixture.release);
+    await expect(store.listPaperTradingComparisonResearchReleases())
+      .resolves.toEqual([fixture.release]);
+    await expect(store.listResearchFindings()).resolves.toContainEqual(
+      fixture.release.finding
+    );
+    await expect(store.listArtifactLineages()).resolves.toContainEqual(
+      fixture.release.lineage
+    );
+
+    const reloaded = new LocalStore(tmpDir);
+    await reloaded.initialize();
+    await expect(reloaded.getPaperTradingComparisonResearchRelease(
+      fixture.release.paper_trading_comparison_research_release_id
+    )).resolves.toEqual(fixture.release);
+    expect((await reloaded.listResearchFindings()).filter((finding) =>
+      finding.research_finding_id === fixture.release.finding.research_finding_id
+    )).toHaveLength(1);
+    expect((await reloaded.listArtifactLineages()).filter((lineage) =>
+      lineage.artifact_lineage_id === fixture.release.lineage.artifact_lineage_id
+    )).toHaveLength(1);
+  });
+
+  it("recovers release materialization after a bundle-first crash", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPaperTradingComparisonResearchReleaseFixture(store);
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-comparison-research-releases",
+      fixture.release.paper_trading_comparison_research_release_id,
+      fixture.release
+    );
+
+    expect((await store.listResearchFindings()).some((finding) =>
+      finding.research_finding_id === fixture.release.finding.research_finding_id
+    )).toBe(false);
+    expect((await store.listArtifactLineages()).some((lineage) =>
+      lineage.artifact_lineage_id === fixture.release.lineage.artifact_lineage_id
+    )).toBe(false);
+
+    const reloaded = new LocalStore(tmpDir);
+    await reloaded.initialize();
+    await expect(reloaded.recoverPaperTradingComparisonResearchReleases())
+      .resolves.toEqual([fixture.release]);
+    expect((await reloaded.listResearchFindings()).filter((finding) =>
+      finding.research_finding_id === fixture.release.finding.research_finding_id
+    )).toHaveLength(1);
+    expect((await reloaded.listArtifactLineages()).filter((lineage) =>
+      lineage.artifact_lineage_id === fixture.release.lineage.artifact_lineage_id
+    )).toHaveLength(1);
+  });
+
+  it("rejects malformed, missing, late, and conflicting release authority", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPaperTradingComparisonResearchReleaseFixture(store);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease({
+        ...fixture.release,
+        promotion_authority: true
+      } as never),
+      "invalid_paper_trading_comparison_research_release_input"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease({
+        ...fixture.release,
+        release_digest: "sha256:stale-release"
+      }),
+      "paper_trading_comparison_research_release_digest_mismatch"
+    );
+
+    const outcomePath = path.join(
+      store.root(),
+      "paper-trading-comparison-confirmation-campaign-outcomes/items",
+      `${encodeURIComponent(
+        fixture.outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+      )}.json`
+    );
+    await rm(outcomePath);
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease(fixture.release),
+      "paper_trading_comparison_research_release_reference_not_found"
+    );
+    await overwriteComparisonFixtureRecord(
+      store,
+      "paper-trading-comparison-confirmation-campaign-outcomes",
+      fixture.outcome.paper_trading_comparison_confirmation_campaign_outcome_id,
+      fixture.outcome
+    );
+
+    const lateSourceLineage = {
+      ...fixture.sourceLineage,
+      created_at: new Date(
+        Date.parse(fixture.challengerAdmission.decided_at) + 1
+      ).toISOString()
+    };
+    await overwriteComparisonFixtureRecord(
+      store,
+      "artifact-lineages",
+      lateSourceLineage.artifact_lineage_id,
+      lateSourceLineage
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease(
+        withPaperTradingComparisonResearchReleaseDigests({
+          ...fixture.release,
+          source_lineage_record_digest: comparisonRecordDigest(
+            paperTradingComparisonPersistedRecordDigestInput(lateSourceLineage)
+          )
+        })
+      ),
+      "paper_trading_comparison_research_release_graph_invalid"
+    );
+    await overwriteComparisonFixtureRecord(
+      store,
+      "artifact-lineages",
+      fixture.sourceLineage.artifact_lineage_id,
+      fixture.sourceLineage
+    );
+
+    await store.recordResearchFinding({
+      ...fixture.release.finding,
+      summary: `${fixture.release.finding.summary} conflict`
+    });
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease(fixture.release),
+      "paper_trading_comparison_research_release_materialization_conflict"
+    );
+    await expect(store.getPaperTradingComparisonResearchRelease(
+      fixture.release.paper_trading_comparison_research_release_id
+    )).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["challenger identity", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.candidate_ref.id = "foreign-candidate";
+    }],
+    ["candidate direction", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.direction_kind = "trend_following";
+    }],
+    ["campaign digest", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.campaign_digest = "sha256:foreign-campaign";
+    }],
+    ["source finding digest", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.source_finding_record_digest = "sha256:foreign-finding";
+    }],
+    ["classification", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.release_kind = "challenger_not_reproduced";
+      value.finding.finding_kind = "negative_result";
+    }],
+    ["supporting refs", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.finding.supporting_record_refs.push({
+        record_kind: "paper_trading_comparison_verdict",
+        id: "foreign-verdict"
+      });
+    }],
+    ["lineage parent", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.lineage.parent_system_code_ref = {
+        record_kind: "system_code",
+        id: "foreign-parent"
+      };
+    }],
+    ["release timestamp", (value: PaperTradingComparisonResearchReleaseRecord) => {
+      value.released_at = "2026-07-09T00:00:00.000Z";
+      value.finding.created_at = value.released_at;
+      value.lineage.created_at = value.released_at;
+    }]
+  ])("rejects comparison research release %s drift", async (_label, mutate) => {
+    const store = new LocalStore(path.join(tmpDir, _label));
+    await store.initialize();
+    const fixture = await storedPaperTradingComparisonResearchReleaseFixture(store);
+    const release = structuredClone(fixture.release);
+    mutate(release);
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease(
+        withPaperTradingComparisonResearchReleaseDigests(release)
+      ),
+      _label === "challenger identity"
+        ? "paper_trading_comparison_research_release_reference_not_found"
+        : "paper_trading_comparison_research_release_graph_invalid"
+    );
+  });
+
+  it("freezes release-bound Finding and Lineage while accepting exact replay", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPaperTradingComparisonResearchReleaseFixture(store);
+    await store.recordPaperTradingComparisonResearchRelease(fixture.release);
+
+    await expect(store.recordResearchFinding(fixture.release.finding))
+      .resolves.toEqual(fixture.release.finding);
+    await expect(store.recordArtifactLineage(fixture.release.lineage))
+      .resolves.toEqual(fixture.release.lineage);
+    await expectStoreError(
+      store.recordResearchFinding({
+        ...fixture.release.finding,
+        summary: `${fixture.release.finding.summary} drift`
+      }),
+      "paper_trading_comparison_research_release_bound_record_conflict"
+    );
+    await expectStoreError(
+      store.recordArtifactLineage({
+        ...fixture.release.lineage,
+        parent_system_code_ref: {
+          record_kind: "system_code",
+          id: "foreign-parent"
+        }
+      }),
+      "paper_trading_comparison_research_release_bound_record_conflict"
+    );
+    const changedReplay = structuredClone(fixture.release);
+    changedReplay.next_research_focus = `${changedReplay.next_research_focus} drift`;
+    await expectStoreError(
+      store.recordPaperTradingComparisonResearchRelease(
+        withPaperTradingComparisonResearchReleaseDigests(changedReplay)
+      ),
+      "paper_trading_comparison_research_release_conflict"
+    );
+  });
+
   it.each(["evaluation-mutation", "observation-append"] as const)(
     "freezes selected paper comparison promotion evidence before any side write: %s",
     async (writer) => {
@@ -7911,7 +8148,13 @@ interface ComparisonPreparationFixtureOptions {
   duplicateChallengerSystemCode?: boolean;
   challengerSystemCode?: SystemCodeRecord;
   comparisonPolicy?: Partial<PaperTradingComparisonPolicy>;
+  challengerFullCycleDirection?: ResearchDirectionKind;
 }
+
+type ComparisonFlowFixtureOptions = {
+  comparisonPolicy?: Partial<PaperTradingComparisonPolicy>;
+  challengerFullCycleDirection?: ResearchDirectionKind;
+};
 
 async function overwriteComparisonFixtureRecord(
   store: LocalStore,
@@ -7983,7 +8226,32 @@ async function comparisonPreparationFixture(
     idempotency_key: "paper-comparison-challenger",
     system_code_ref: options.duplicateChallengerSystemCode
       ? { record_kind: "system_code", id: FIXTURE_SYSTEM_CODE_ID }
-      : { record_kind: "system_code", id: challengerCode.system_code_id }
+      : { record_kind: "system_code", id: challengerCode.system_code_id },
+    ...(options.challengerFullCycleDirection ? {
+      full_cycle_lineage: {
+        source: {
+          trading_system_id: champion.candidate_id,
+          candidate_version_id: champion.candidate_version.candidate_version_id,
+          system_code_ref: {
+            record_kind: "system_code",
+            id: "system-code-comparison-admission-source-challenger"
+          }
+        },
+        generated: {
+          system_code_ref: {
+            record_kind: "system_code",
+            id: challengerCode.system_code_id
+          },
+          artifact_digest: challengerCode.artifact_digest,
+          generated_by_agent: true
+        },
+        evaluation: {
+          status: "accepted",
+          score: 1,
+          direction_kind: options.challengerFullCycleDirection
+        }
+      }
+    } : {})
   };
   const challengerOutcome = await store.materializeCandidate(challengerMaterializationInput);
   if (challengerOutcome.status !== "materialized") {
@@ -8439,14 +8707,18 @@ async function storedComparisonFixture(
       | "side-time-before-preparation"
       | "run-time-before-preparation";
     comparisonPolicy?: Partial<PaperTradingComparisonPolicy>;
+    challengerFullCycleDirection?: ResearchDirectionKind;
   } = {}
 ) {
   const preparationFixture = await comparisonPreparationFixture(store, {
-    comparisonPolicy: input.comparisonPolicy
+    comparisonPolicy: input.comparisonPolicy,
+    challengerFullCycleDirection: input.challengerFullCycleDirection
   });
   const {
     champion,
     challenger,
+    championAdmission,
+    challengerAdmission,
     preparation,
     promotion,
     championPromotionEvidence,
@@ -8615,6 +8887,8 @@ async function storedComparisonFixture(
     challengerCommitment,
     championEvaluation,
     challengerEvaluation,
+    championAdmission,
+    challengerAdmission,
     preparation,
     promotion,
     championPromotionEvidence,
@@ -8822,7 +9096,7 @@ function withActivationDigest(
 
 async function storedRuntimeActivationFixture(
   store: LocalStore,
-  options: { comparisonPolicy?: Partial<PaperTradingComparisonPolicy> } = {}
+  options: ComparisonFlowFixtureOptions = {}
 ) {
   const fixture = await storedComparisonFixture(store, options);
   await store.recordPaperTradingComparisonCommitment(fixture.comparison);
@@ -8835,7 +9109,7 @@ async function storedRuntimeActivationFixture(
 
 async function storedBothRunningRuntimeActivationFixture(
   store: LocalStore,
-  options: { comparisonPolicy?: Partial<PaperTradingComparisonPolicy> } = {}
+  options: ComparisonFlowFixtureOptions = {}
 ) {
   const fixture = await storedRuntimeActivationFixture(store, options);
   const attempt = validRuntimeActivationAttempt(fixture.activation);
@@ -9324,7 +9598,7 @@ async function validPairedCheckpointTransactionInput(
 
 async function storedPairedCheckpointAttributionFixture(
   store: LocalStore,
-  options: { comparisonPolicy?: Partial<PaperTradingComparisonPolicy> } = {}
+  options: ComparisonFlowFixtureOptions = {}
 ) {
   const fixture = await storedBothRunningRuntimeActivationFixture(store, options);
   const checkpointAttempt = validCheckpointAttempt(fixture);
@@ -9485,7 +9759,8 @@ async function validIneligibleComparisonVerdict(
 
 async function storedQualifiedComparisonVerdictFixture(
   store: LocalStore,
-  minimumLiftUsdt = 0.5
+  minimumLiftUsdt = 0.5,
+  challengerFullCycleDirection?: ResearchDirectionKind
 ) {
   const comparisonPolicy: Partial<PaperTradingComparisonPolicy> = {
     minimum_observation_count: 2,
@@ -9495,7 +9770,8 @@ async function storedQualifiedComparisonVerdictFixture(
     required_confirmation_count: 2
   };
   const fixture = await storedRepeatedCheckpointIntentFixture(store, {
-    comparisonPolicy
+    comparisonPolicy,
+    challengerFullCycleDirection
   });
   const input = await validRepeatedPairedCheckpointTransactionInput(store, fixture);
   const profitableAccount: PaperTradingAccountSnapshot = {
@@ -10079,6 +10355,197 @@ function validConfirmationCampaignOutcome(
   };
 }
 
+async function storedPaperTradingComparisonResearchReleaseFixture(
+  store: LocalStore
+) {
+  const fixture = await storedQualifiedComparisonVerdictFixture(
+    store,
+    0.5,
+    "mean_reversion"
+  );
+  const sourceFinding = (await store.listResearchFindings()).find((finding) =>
+    finding.research_finding_id === fixture.challengerAdmission.research_finding_ref.id
+  );
+  if (!sourceFinding) throw new Error("missing challenger admission Finding");
+  const sourceLineage: ArtifactLineageRecord = {
+    record_kind: "artifact_lineage",
+    version: 1,
+    artifact_lineage_id: "artifact-lineage-comparison-release-origin",
+    child_system_code_ref: { ...fixture.challengerAdmission.system_code_ref },
+    parent_system_code_ref: { ...fixture.challengerAdmission.source_system_code_ref },
+    source_finding_refs: [{ ...fixture.challengerAdmission.research_finding_ref }],
+    created_by_research_worker_ref: { ...sourceFinding.research_worker_ref },
+    created_at: sourceFinding.created_at,
+    authority_status: "lineage_only"
+  };
+  await store.recordArtifactLineage(sourceLineage);
+
+  const campaign = validPaperTradingComparisonConfirmationCampaign(fixture);
+  await store.recordPaperTradingComparisonConfirmationCampaign(campaign);
+  await storedConfirmationSlotComparison(store, fixture, campaign, 1);
+  const first = await seedConfirmationSlotVerdict(
+    store,
+    fixture,
+    campaign,
+    1,
+    "challenger_improved"
+  );
+  await storedConfirmationSlotComparison(store, fixture, campaign, 2);
+  const second = await seedConfirmationSlotVerdict(
+    store,
+    fixture,
+    campaign,
+    2,
+    "challenger_improved"
+  );
+  const outcome = validConfirmationCampaignOutcome(campaign, [first, second]);
+  await store.recordPaperTradingComparisonConfirmationCampaignOutcome(outcome);
+  const release = validPaperTradingComparisonResearchRelease(
+    campaign,
+    outcome,
+    sourceFinding,
+    sourceLineage
+  );
+  return {
+    ...fixture,
+    campaign,
+    outcome,
+    sourceFinding,
+    sourceLineage,
+    release
+  };
+}
+
+function validPaperTradingComparisonResearchRelease(
+  campaign: PaperTradingComparisonConfirmationCampaignRecord,
+  outcome: PaperTradingComparisonConfirmationCampaignOutcomeRecord,
+  sourceFinding: ResearchFindingRecord,
+  sourceLineage: ArtifactLineageRecord
+): PaperTradingComparisonResearchReleaseRecord {
+  const releaseId =
+    `${outcome.paper_trading_comparison_confirmation_campaign_outcome_id}-research-release`;
+  const releasedAt = new Date(Date.parse(outcome.evaluated_at) + 1).toISOString();
+  const finding: ResearchFindingRecord = {
+    record_kind: "research_finding",
+    version: 1,
+    research_finding_id: `${releaseId}-finding`,
+    research_worker_ref: { ...sourceFinding.research_worker_ref },
+    research_direction_ref: { ...sourceFinding.research_direction_ref },
+    experiment_run_ref: { ...sourceFinding.experiment_run_ref },
+    trading_evaluation_result_ref: {
+      ...sourceFinding.trading_evaluation_result_ref
+    },
+    finding_kind: "positive_result",
+    summary: `Paper comparison confirmation campaign ${campaign.paper_trading_comparison_confirmation_campaign_id}: ` +
+      `improved=${outcome.improved_count}, ` +
+      `not_improved=${outcome.not_improved_count}, ` +
+      `ineligible=${outcome.ineligible_count}, ` +
+      `expired=${outcome.expired_count}; release=confirmed_improvement.`,
+    supporting_record_refs: [
+      { record_kind: "research_finding", id: sourceFinding.research_finding_id },
+      {
+        record_kind: "paper_trading_comparison_confirmation_campaign",
+        id: campaign.paper_trading_comparison_confirmation_campaign_id
+      },
+      {
+        record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+        id: outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+      },
+      ...outcome.slot_results.flatMap((result) => result.verdict_ref
+        ? [{ ...result.verdict_ref }]
+        : [])
+    ],
+    created_at: releasedAt,
+    authority_status: "research_trace_only"
+  };
+  const lineage: ArtifactLineageRecord = {
+    record_kind: "artifact_lineage",
+    version: 1,
+    artifact_lineage_id: `${releaseId}-lineage`,
+    child_system_code_ref: { ...sourceLineage.child_system_code_ref },
+    ...(sourceLineage.parent_system_code_ref
+      ? { parent_system_code_ref: { ...sourceLineage.parent_system_code_ref } }
+      : {}),
+    source_finding_refs: [
+      ...sourceLineage.source_finding_refs.map((ref) => ({ ...ref })),
+      { record_kind: "research_finding", id: finding.research_finding_id }
+    ],
+    created_by_research_worker_ref: { ...sourceFinding.research_worker_ref },
+    created_at: releasedAt,
+    authority_status: "lineage_only"
+  };
+  return withPaperTradingComparisonResearchReleaseDigests({
+    record_kind: "paper_trading_comparison_research_release",
+    version: 1,
+    paper_trading_comparison_research_release_id: releaseId,
+    campaign_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign",
+      id: campaign.paper_trading_comparison_confirmation_campaign_id
+    },
+    campaign_digest: campaign.campaign_digest,
+    campaign_outcome_ref: {
+      record_kind: "paper_trading_comparison_confirmation_campaign_outcome",
+      id: outcome.paper_trading_comparison_confirmation_campaign_outcome_id
+    },
+    campaign_outcome_digest: outcome.outcome_digest,
+    candidate_ref: { ...campaign.challenger.candidate_ref },
+    candidate_version_ref: { ...campaign.challenger.candidate_version_ref },
+    system_code_ref: { ...campaign.challenger.system_code_ref },
+    system_code_artifact_digest: campaign.challenger.system_code_artifact_digest,
+    source_finding_ref: {
+      record_kind: "research_finding",
+      id: sourceFinding.research_finding_id
+    },
+    source_finding_record_digest: comparisonRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(sourceFinding)
+    ),
+    source_lineage_ref: {
+      record_kind: "artifact_lineage",
+      id: sourceLineage.artifact_lineage_id
+    },
+    source_lineage_record_digest: comparisonRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(sourceLineage)
+    ),
+    direction_kind: "mean_reversion",
+    release_kind: "confirmed_improvement",
+    finding,
+    finding_record_digest: "sha256:pending",
+    lineage,
+    lineage_record_digest: "sha256:pending",
+    next_research_focus:
+      "Preserve the confirmed artifact lineage and generate controlled variants under new prospective evidence.",
+    released_at: releasedAt,
+    release_digest: "sha256:pending",
+    research_visibility: "released_to_research",
+    evaluation_authority: "external_to_trading_systems",
+    promotion_authority: false,
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "lineage_only"
+  });
+}
+
+function withPaperTradingComparisonResearchReleaseDigests(
+  release: PaperTradingComparisonResearchReleaseRecord
+): PaperTradingComparisonResearchReleaseRecord {
+  const withEmbeddedDigests = {
+    ...release,
+    finding_record_digest: comparisonRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(release.finding)
+    ),
+    lineage_record_digest: comparisonRecordDigest(
+      paperTradingComparisonPersistedRecordDigestInput(release.lineage)
+    ),
+    release_digest: "sha256:pending"
+  };
+  return {
+    ...withEmbeddedDigests,
+    release_digest: comparisonRecordDigest(
+      paperTradingComparisonResearchReleaseDigestInput(withEmbeddedDigests)
+    )
+  };
+}
+
 function validExpiredConfirmationCampaignOutcome(
   campaign: PaperTradingComparisonConfirmationCampaignRecord,
   completedVerdicts: PaperTradingComparisonVerdictRecord[]
@@ -10147,7 +10614,7 @@ function withComparisonVerdictDigest(
 
 async function storedAcknowledgedPairedCheckpointFixture(
   store: LocalStore,
-  options: { comparisonPolicy?: Partial<PaperTradingComparisonPolicy> } = {}
+  options: ComparisonFlowFixtureOptions = {}
 ) {
   const fixture = await storedPairedCheckpointAttributionFixture(store, options);
   const attribution = await seedComparisonTickAttribution(
@@ -10160,7 +10627,7 @@ async function storedAcknowledgedPairedCheckpointFixture(
 
 async function storedCapturedNextComparisonTickFixture(
   store: LocalStore,
-  options: { comparisonPolicy?: Partial<PaperTradingComparisonPolicy> } = {}
+  options: ComparisonFlowFixtureOptions = {}
 ) {
   const fixture = await storedAcknowledgedPairedCheckpointFixture(store, options);
   const nextTick = validNextPaperTradingComparisonTick(fixture);
@@ -10234,7 +10701,7 @@ async function validNextCheckpointAttempt(
 
 async function storedRepeatedCheckpointIntentFixture(
   store: LocalStore,
-  options: { comparisonPolicy?: Partial<PaperTradingComparisonPolicy> } = {}
+  options: ComparisonFlowFixtureOptions = {}
 ) {
   const fixture = await storedCapturedNextComparisonTickFixture(store, options);
   const nextCheckpointAttempt = await validNextCheckpointAttempt(store, fixture);
