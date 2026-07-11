@@ -4,7 +4,11 @@ import {
   decidePaperTradingQualification,
   paperTradingComparisonCandidateVersionPairKey,
   paperTradingComparisonAdmissionDecisionDigestInput,
+  paperTradingComparisonChampionSelectionHasRuntimeShape,
+  paperTradingComparisonCommitmentHasRuntimeShape,
   paperTradingComparisonEvaluationRecordDigestInput,
+  paperTradingComparisonPolicyHasRuntimeShape,
+  paperTradingComparisonPreparationHasRuntimeShape,
   paperTradingComparisonPersistedRecordDigestInput,
   paperTradingComparisonSideRecordsHaveInertShape,
   paperTradingComparisonStoppedQualificationClosureHasRuntimeShape,
@@ -51,6 +55,13 @@ describe("PaperTradingComparisonCommitment", () => {
 
     closure.commitment.runtime_identity.entrypoint = ["python3", "different.py"];
 
+    expect(paperTradingComparisonStoppedQualificationClosureHasRuntimeShape(closure)).toBe(false);
+  });
+
+  it("rejects stopped closures whose evaluation interval differs from the frozen commitment", () => {
+    const closure = stoppedClosure();
+    expect(paperTradingComparisonStoppedQualificationClosureHasRuntimeShape(closure)).toBe(true);
+    closure.evaluation.interval_ms = closure.commitment.window_policy.interval_ms + 1;
     expect(paperTradingComparisonStoppedQualificationClosureHasRuntimeShape(closure)).toBe(false);
   });
 
@@ -171,6 +182,38 @@ describe("PaperTradingComparisonCommitment", () => {
     expect(decidePaperTradingQualification({
       evaluation, commitment, observations, commitmentDigestVerified: true, runnerActive: false
     })).toMatchObject({ qualification_status: "blocked_by_quality", qualification_reasons: ["fill_public_execution_evidence_missing"] });
+  });
+
+  it.each([
+    ["inactive running evaluation", (commitment: any, evaluation: any) => { evaluation.status = "running"; }, "needs_resume", "runner_inactive_for_running_evaluation"],
+    ["failed evaluation", (_commitment: any, evaluation: any) => { evaluation.status = "failed"; }, "paper_failed", "paper_evaluation_failed"],
+    ["research feedback purpose", (commitment: any, _evaluation: any) => { commitment.evidence_purpose = "research_feedback"; commitment.window_policy.release_policy = "closed_observation"; }, "not_qualification_evidence", "evidence_purpose_not_qualification"],
+    ["ineligible provider", (commitment: any, _evaluation: any) => { commitment.provider_identity.qualification_eligible = false; }, "not_qualification_evidence", "provider_identity_not_qualification_eligible"],
+    ["invalidated evaluation", (_commitment: any, evaluation: any) => { evaluation.status = "invalidated"; }, "blocked_by_quality", "paper_evaluation_invalidated"]
+  ])("preserves qualification status and reason for %s", (_label, mutate, expectedStatus, expectedReason) => {
+    const commitment = qualificationCommitment();
+    const evaluation = qualificationEvaluation(commitment);
+    const observations = qualificationObservations(commitment, evaluation);
+    mutate(commitment, evaluation);
+    expect(decidePaperTradingQualification({
+      evaluation, commitment, observations, commitmentDigestVerified: true, runnerActive: false
+    })).toMatchObject({ qualification_status: expectedStatus, qualification_reasons: [expectedReason] });
+  });
+
+  it("validates complete comparison preparation and commitment shapes while rejecting invalid variants", () => {
+    const policy = comparisonPolicy();
+    const selection = { selection_kind: "bootstrap" } as const;
+    const preparation = comparisonPreparation(policy, selection);
+    const commitment = comparisonCommitment(policy, selection);
+
+    expect(paperTradingComparisonPolicyHasRuntimeShape(policy)).toBe(true);
+    expect(paperTradingComparisonChampionSelectionHasRuntimeShape(selection, "bootstrap")).toBe(true);
+    expect(paperTradingComparisonPreparationHasRuntimeShape(preparation)).toBe(true);
+    expect(paperTradingComparisonCommitmentHasRuntimeShape(commitment)).toBe(true);
+    expect(paperTradingComparisonPolicyHasRuntimeShape({ ...policy, minimum_observation_count: 0 })).toBe(false);
+    expect(paperTradingComparisonChampionSelectionHasRuntimeShape({ selection_kind: "trading_review" }, "champion_challenge")).toBe(false);
+    expect(paperTradingComparisonPreparationHasRuntimeShape({ ...preparation, champion_selection: null })).toBe(false);
+    expect(paperTradingComparisonCommitmentHasRuntimeShape({ ...commitment, challenger: { ...commitment.challenger, trading_run_ref: commitment.champion.trading_run_ref } })).toBe(false);
   });
 });
 
@@ -301,4 +344,22 @@ function reorderedAccount(account: any): any {
     key,
     key === "position" ? Object.fromEntries(Object.entries(value as object).reverse()) : value
   ]));
+}
+
+function comparisonPolicy(): any {
+  return { policy_version: "v1", comparison_mode: "bootstrap", symbol: "BTCUSDT", interval_ms: 60_000, minimum_observation_count: 30, minimum_elapsed_ms: 1_800_000, maximum_observation_count: 120, maximum_elapsed_ms: 7_200_000, maximum_start_skew_ms: 60_000, maximum_provider_request_count_per_side: 100, maximum_retry_count_per_side: 3, primary_metric: "net_revenue_usdt", minimum_net_revenue_lift_usdt: 0, required_confirmation_count: 1, require_non_overlapping_windows: true, require_both_qualified: true, release_policy: "sealed_until_adjudication" };
+}
+
+function comparisonCandidateSide(role: "champion" | "challenger", suffix: string): any {
+  return { role, candidate_ref: { record_kind: "trading_system_candidate", id: `candidate-${suffix}` }, candidate_version_ref: { record_kind: "candidate_version", id: `version-${suffix}` }, candidate_version_digest: `sha256:version-${suffix}`, system_code_ref: { record_kind: "system_code", id: `code-${suffix}` }, system_code_record_digest: `sha256:code-${suffix}`, system_code_artifact_digest: `sha256:artifact-${suffix}`, candidate_admission_decision_ref: { record_kind: "candidate_admission_decision", id: `admission-${suffix}` }, admission_decision_digest: `sha256:admission-${suffix}` };
+}
+
+function comparisonPreparation(policy: any, selection: any): any {
+  return { record_kind: "paper_trading_comparison_preparation", version: 1, paper_trading_comparison_preparation_id: "preparation", paper_trading_comparison_commitment_id: "commitment", champion: comparisonCandidateSide("champion", "champion"), challenger: comparisonCandidateSide("challenger", "challenger"), champion_selection: selection, comparison_policy: policy, market_data_configuration_digest: "sha256:market", paper_policy_identity: qualificationCommitment().policy_identity, committed_at: "2026-07-09T22:00:00.000Z", preparation_digest: "sha256:preparation", authority_status: "not_live" };
+}
+
+function comparisonCommitment(policy: any, selection: any): any {
+  const champion = { ...comparisonCandidateSide("champion", "champion"), trading_run_ref: { record_kind: "trading_run", id: "run-champion" }, paper_trading_evaluation_commitment_ref: { record_kind: "paper_trading_evaluation_commitment", id: "commitment-champion" }, paper_trading_evaluation_commitment_digest: "sha256:commitment-champion", paper_trading_evaluation_commitment_record_digest: "sha256:commitment-record-champion", paper_trading_evaluation_ref: { record_kind: "paper_trading_evaluation", id: "evaluation-champion" }, paper_trading_evaluation_record_digest: "sha256:evaluation-champion" };
+  const challenger = { ...comparisonCandidateSide("challenger", "challenger"), trading_run_ref: { record_kind: "trading_run", id: "run-challenger" }, paper_trading_evaluation_commitment_ref: { record_kind: "paper_trading_evaluation_commitment", id: "commitment-challenger" }, paper_trading_evaluation_commitment_digest: "sha256:commitment-challenger", paper_trading_evaluation_commitment_record_digest: "sha256:commitment-record-challenger", paper_trading_evaluation_ref: { record_kind: "paper_trading_evaluation", id: "evaluation-challenger" }, paper_trading_evaluation_record_digest: "sha256:evaluation-challenger" };
+  return { record_kind: "paper_trading_comparison_commitment", version: 1, paper_trading_comparison_commitment_id: "commitment", preparation_ref: { record_kind: "paper_trading_comparison_preparation", id: "preparation" }, champion, challenger, champion_selection: selection, comparison_policy: policy, market_data_configuration_digest: "sha256:market", paper_policy_identity: qualificationCommitment().policy_identity, committed_at: "2026-07-09T22:00:00.000Z", commitment_digest: "sha256:commitment", authority_status: "not_live" };
 }
