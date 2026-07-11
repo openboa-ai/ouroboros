@@ -3,9 +3,10 @@ import type {
   PrivateReadinessPolicyGateInput
 } from "./private-readiness-policy";
 import type { PrivateReadGateDecision } from "./private-read-gate";
-import type {
-  CandidateAdmissionDecisionRecord,
-  CandidateAdmissionReason
+import {
+  isCandidateAdmissionDecisionConsistent,
+  type CandidateAdmissionDecisionRecord,
+  type CandidateAdmissionReason
 } from "./candidate-admission-policy";
 
 export * from "./private-read-gate";
@@ -1766,6 +1767,116 @@ export interface PaperTradingEvaluationCommitmentRecord extends BaseRecord {
   authority_status: "not_live";
 }
 
+export interface PaperTradingComparisonCandidateSide {
+  role: "champion" | "challenger";
+  candidate_ref: Ref;
+  candidate_version_ref: Ref;
+  candidate_version_digest: string;
+  system_code_ref: Ref;
+  system_code_record_digest: string;
+  system_code_artifact_digest: string;
+  candidate_admission_decision_ref: Ref;
+  admission_decision_digest: string;
+}
+
+export interface PaperTradingComparisonSide extends PaperTradingComparisonCandidateSide {
+  trading_run_ref: Ref;
+  paper_trading_evaluation_commitment_ref: Ref;
+  paper_trading_evaluation_commitment_digest: string;
+  paper_trading_evaluation_commitment_record_digest: string;
+  paper_trading_evaluation_ref: Ref;
+  paper_trading_evaluation_record_digest: string;
+}
+
+export interface PaperTradingComparisonPolicy {
+  policy_version: string;
+  comparison_mode: "bootstrap" | "champion_challenge";
+  symbol: "BTCUSDT";
+  interval_ms: number;
+  minimum_observation_count: number;
+  minimum_elapsed_ms: number;
+  maximum_observation_count: number;
+  maximum_elapsed_ms: number;
+  maximum_start_skew_ms: number;
+  maximum_provider_request_count_per_side: number;
+  maximum_retry_count_per_side: number;
+  primary_metric: "net_revenue_usdt";
+  minimum_net_revenue_lift_usdt: number;
+  required_confirmation_count: number;
+  require_non_overlapping_windows: true;
+  require_both_qualified: true;
+  release_policy: "sealed_until_adjudication";
+}
+
+export type PaperTradingComparisonChampionSelection =
+  | { selection_kind: "bootstrap" }
+  | {
+      selection_kind: "trading_review";
+      trading_promotion_ref: Ref;
+      trading_promotion_digest: string;
+      paper_trading_evaluation_ref: Ref;
+      paper_trading_evaluation_record_digest: string;
+      paper_trading_evaluation_commitment_ref: Ref;
+      paper_trading_evaluation_commitment_record_digest: string;
+      paper_trading_observation_chain_digest: string;
+    };
+
+export interface PaperTradingComparisonPreparationRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_preparation";
+  paper_trading_comparison_preparation_id: string;
+  paper_trading_comparison_commitment_id: string;
+  champion: PaperTradingComparisonCandidateSide;
+  challenger: PaperTradingComparisonCandidateSide;
+  champion_selection: PaperTradingComparisonChampionSelection;
+  comparison_policy: PaperTradingComparisonPolicy;
+  market_data_configuration_digest: string;
+  paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  committed_at: string;
+  preparation_digest: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingComparisonCommitmentRecord extends BaseRecord {
+  record_kind: "paper_trading_comparison_commitment";
+  paper_trading_comparison_commitment_id: string;
+  preparation_ref: Ref;
+  champion: PaperTradingComparisonSide;
+  challenger: PaperTradingComparisonSide;
+  champion_selection: PaperTradingComparisonChampionSelection;
+  comparison_policy: PaperTradingComparisonPolicy;
+  market_data_configuration_digest: string;
+  paper_policy_identity: PaperTradingEvaluationPolicyIdentity;
+  committed_at: string;
+  commitment_digest: string;
+  authority_status: "not_live";
+}
+
+export interface PaperTradingQualificationPolicy {
+  minObservationCount: number;
+  minElapsedMs: number;
+  maxFailedObservationRatio: number;
+  assessRunnerHealth: boolean;
+}
+
+export interface PaperTradingQualificationEvidenceInput {
+  evaluation: PaperTradingEvaluationRecord;
+  commitment?: PaperTradingEvaluationCommitmentRecord;
+  observations: PaperTradingObservationRecord[];
+  commitmentDigestVerified: boolean;
+}
+
+export interface PaperTradingQualificationDecisionInput
+  extends PaperTradingQualificationEvidenceInput {
+  runnerActive: boolean;
+  policy?: Partial<PaperTradingQualificationPolicy>;
+}
+
+export interface PaperTradingQualificationResult {
+  qualification_status: PaperTradingQualificationStatus;
+  qualification_reasons: PaperTradingQualificationReason[];
+  evidence_window: PaperTradingEvidenceWindowReadModel;
+}
+
 export function paperTradingEvaluationCommitmentDigestInput(
   record: PaperTradingEvaluationCommitmentRecord
 ): string {
@@ -1807,6 +1918,203 @@ function canonicalPaperTradingCommitmentJson(value: unknown): string {
     }).join(",")}}`;
   }
   throw new Error("paper_trading_commitment_non_canonical_value");
+}
+
+export function paperTradingComparisonPersistedRecordDigestInput(value: unknown): string {
+  return canonicalPaperTradingComparisonPersistedRecordJson(value, new Set<object>());
+}
+
+function canonicalPaperTradingComparisonPersistedRecordJson(
+  value: unknown,
+  ancestors: Set<object>
+): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return JSON.stringify(value);
+    throw comparisonNonPersistable();
+  }
+  if (Array.isArray(value)) {
+    if (ancestors.has(value)) throw comparisonNonPersistable();
+    ancestors.add(value);
+    try {
+      return `[${Array.from({ length: value.length }, (_, index) => {
+        if (!Object.hasOwn(value, index) || value[index] === undefined) {
+          throw comparisonNonPersistable();
+        }
+        return canonicalPaperTradingComparisonPersistedRecordJson(value[index], ancestors);
+      }).join(",")}]`;
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+  if (value && typeof value === "object") {
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null ||
+      ancestors.has(value) || Reflect.ownKeys(value).some((key) => typeof key === "symbol")) {
+      throw comparisonNonPersistable();
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Object.values(descriptors).some((descriptor) => !descriptor.enumerable || !("value" in descriptor))) {
+      throw comparisonNonPersistable();
+    }
+    ancestors.add(value);
+    try {
+      return `{${Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => `${JSON.stringify(key)}:${canonicalPaperTradingComparisonPersistedRecordJson(item, ancestors)}`)
+        .join(",")}}`;
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+  throw comparisonNonPersistable();
+}
+
+function comparisonNonPersistable(): Error {
+  return new Error("paper_trading_comparison_non_persistable_record");
+}
+
+export const paperTradingComparisonCandidateVersionDigestInput = (
+  record: CandidateVersionRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonSystemCodeRecordDigestInput = (
+  record: SystemCodeRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonAdmissionDecisionDigestInput = (
+  record: CandidateAdmissionDecisionRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonTradingPromotionDigestInput = (
+  record: TradingPromotionRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonEvaluationCommitmentRecordDigestInput = (
+  record: PaperTradingEvaluationCommitmentRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+export const paperTradingComparisonEvaluationRecordDigestInput = (
+  record: PaperTradingEvaluationRecord
+): string => paperTradingComparisonPersistedRecordDigestInput(record);
+
+export function paperTradingComparisonObservationChainDigestInput(
+  records: readonly PaperTradingObservationRecord[]
+): string {
+  return paperTradingComparisonPersistedRecordDigestInput([...records].sort((left, right) =>
+    left.sequence - right.sequence ||
+    left.paper_trading_observation_id.localeCompare(right.paper_trading_observation_id)));
+}
+
+export function paperTradingComparisonCandidateVersionPairKey(leftId: string, rightId: string): string {
+  return canonicalPaperTradingCommitmentJson(leftId <= rightId ? [leftId, rightId] : [rightId, leftId]);
+}
+
+export function paperTradingComparisonPreparationDigestInput(
+  record: PaperTradingComparisonPreparationRecord
+): string {
+  const { record_kind: _kind, version: _version, paper_trading_comparison_preparation_id: _id,
+    preparation_digest: _digest, ...payload } = record;
+  return canonicalPaperTradingCommitmentJson(payload);
+}
+
+export function paperTradingComparisonCommitmentDigestInput(
+  record: PaperTradingComparisonCommitmentRecord
+): string {
+  const { record_kind: _kind, version: _version, paper_trading_comparison_commitment_id: _id,
+    committed_at: _committedAt, commitment_digest: _digest, ...payload } = record;
+  return canonicalPaperTradingCommitmentJson(payload);
+}
+
+export const PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT: PaperTradingAccountSnapshot = {
+  wallet_balance_usdt: "10000", available_balance_usdt: "10000", equity_usdt: "10000",
+  realized_pnl_usdt: "0", unrealized_pnl_usdt: "0", fee_paid_usdt: "0",
+  slippage_paid_usdt: "0", funding_paid_usdt: "0", margin_reserved_usdt: "0",
+  position: { symbol: "BTCUSDT", quantity: "0", side: "flat", mark_price: "0", notional_usdt: "0" },
+  open_order_count: 0, authority_status: "not_live"
+};
+export const PAPER_TRADING_COMPARISON_ZERO_SCORE: TradingProfitLossReadModel = {
+  revenue_usdt: 0, cost_usdt: 0, net_revenue_usdt: 0, net_return_pct: 0
+};
+
+export function paperTradingComparisonRefsEqual(left: unknown, right: unknown): boolean {
+  return comparisonRef(left) && comparisonRef(right) && left.record_kind === right.record_kind && left.id === right.id;
+}
+
+function comparisonObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function comparisonString(value: unknown): value is string { return typeof value === "string" && value.length > 0; }
+function comparisonRef(value: unknown, kind?: string): value is Ref {
+  return comparisonObject(value) && comparisonString(value.record_kind) && comparisonString(value.id) &&
+    (kind === undefined || value.record_kind === kind);
+}
+function comparisonIso(value: unknown): value is string {
+  return comparisonString(value) && Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+}
+function comparisonPositive(value: unknown): value is number { return Number.isInteger(value) && Number(value) > 0; }
+function comparisonNonNegative(value: unknown): value is number { return Number.isInteger(value) && Number(value) >= 0; }
+function comparisonFinite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
+function comparisonDigest(value: unknown): value is string { return comparisonString(value); }
+function comparisonPolicyIdentity(value: unknown): boolean {
+  return comparisonObject(value) && ["market_data_policy_version", "gateway_policy_version", "cost_policy_version", "funding_policy_version", "slippage_policy_version", "fill_policy_version", "risk_policy_version", "paper_account_policy_version", "decision_event_protocol_version", "persistent_state_boundary_version"].every((key) => comparisonString(value[key]));
+}
+
+export function paperTradingComparisonTradingPromotionHasRuntimeShape(value: unknown): value is TradingPromotionRecord {
+  return comparisonObject(value) && value.record_kind === "trading_promotion" && value.version === 1 &&
+    comparisonString(value.trading_promotion_id) && value.status === "promoted_for_trading_review" &&
+    comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") && comparisonIso(value.promoted_at) &&
+    (value.promoted_by_command_ref === undefined || comparisonRef(value.promoted_by_command_ref)) && value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonPolicyHasRuntimeShape(value: unknown): value is PaperTradingComparisonPolicy {
+  return comparisonObject(value) && comparisonString(value.policy_version) &&
+    (value.comparison_mode === "bootstrap" || value.comparison_mode === "champion_challenge") && value.symbol === "BTCUSDT" &&
+    comparisonPositive(value.interval_ms) && comparisonPositive(value.minimum_observation_count) && comparisonPositive(value.minimum_elapsed_ms) &&
+    comparisonPositive(value.maximum_observation_count) && comparisonPositive(value.maximum_elapsed_ms) && comparisonNonNegative(value.maximum_start_skew_ms) &&
+    comparisonPositive(value.maximum_provider_request_count_per_side) && comparisonNonNegative(value.maximum_retry_count_per_side) &&
+    value.minimum_observation_count <= value.maximum_observation_count && value.minimum_elapsed_ms <= value.maximum_elapsed_ms &&
+    value.maximum_start_skew_ms <= value.maximum_elapsed_ms && value.primary_metric === "net_revenue_usdt" &&
+    comparisonFinite(value.minimum_net_revenue_lift_usdt) && value.minimum_net_revenue_lift_usdt >= 0 && comparisonPositive(value.required_confirmation_count) &&
+    value.require_non_overlapping_windows === true && value.require_both_qualified === true && value.release_policy === "sealed_until_adjudication";
+}
+
+export function paperTradingComparisonCandidateSideHasRuntimeShape(value: unknown, role: "champion" | "challenger"): value is PaperTradingComparisonCandidateSide {
+  return comparisonObject(value) && value.role === role && comparisonRef(value.candidate_ref, "trading_system_candidate") &&
+    comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonDigest(value.candidate_version_digest) &&
+    comparisonRef(value.system_code_ref, "system_code") && comparisonDigest(value.system_code_record_digest) &&
+    comparisonDigest(value.system_code_artifact_digest) && comparisonRef(value.candidate_admission_decision_ref, "candidate_admission_decision") &&
+    comparisonDigest(value.admission_decision_digest);
+}
+
+export function paperTradingComparisonSideHasRuntimeShape(value: unknown, role: "champion" | "challenger"): value is PaperTradingComparisonSide {
+  if (!paperTradingComparisonCandidateSideHasRuntimeShape(value, role)) return false;
+  const runtimeSide = value as PaperTradingComparisonSide;
+  return comparisonRef(runtimeSide.trading_run_ref, "trading_run") &&
+    comparisonRef(runtimeSide.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && comparisonDigest(runtimeSide.paper_trading_evaluation_commitment_digest) &&
+    comparisonDigest(runtimeSide.paper_trading_evaluation_commitment_record_digest) && comparisonRef(runtimeSide.paper_trading_evaluation_ref, "paper_trading_evaluation") &&
+    comparisonDigest(runtimeSide.paper_trading_evaluation_record_digest);
+}
+
+export function paperTradingComparisonChampionSelectionHasRuntimeShape(value: unknown, mode: PaperTradingComparisonPolicy["comparison_mode"]): value is PaperTradingComparisonChampionSelection {
+  if (!comparisonObject(value)) return false;
+  if (mode === "bootstrap") return value.selection_kind === "bootstrap" && Object.keys(value).length === 1;
+  return value.selection_kind === "trading_review" && comparisonRef(value.trading_promotion_ref, "trading_promotion") && comparisonDigest(value.trading_promotion_digest) &&
+    comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") && comparisonDigest(value.paper_trading_evaluation_record_digest) &&
+    comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && comparisonDigest(value.paper_trading_evaluation_commitment_record_digest) && comparisonDigest(value.paper_trading_observation_chain_digest);
+}
+
+export function paperTradingComparisonPreparationHasRuntimeShape(value: unknown): value is PaperTradingComparisonPreparationRecord {
+  if (!comparisonObject(value) || !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy)) return false;
+  return value.record_kind === "paper_trading_comparison_preparation" && value.version === 1 && comparisonString(value.paper_trading_comparison_preparation_id) && comparisonString(value.paper_trading_comparison_commitment_id) &&
+    paperTradingComparisonCandidateSideHasRuntimeShape(value.champion, "champion") && paperTradingComparisonCandidateSideHasRuntimeShape(value.challenger, "challenger") &&
+    value.champion.candidate_version_ref.id !== value.challenger.candidate_version_ref.id && paperTradingComparisonChampionSelectionHasRuntimeShape(value.champion_selection, value.comparison_policy.comparison_mode) &&
+    comparisonDigest(value.market_data_configuration_digest) && comparisonPolicyIdentity(value.paper_policy_identity) && comparisonIso(value.committed_at) && comparisonDigest(value.preparation_digest) && value.authority_status === "not_live";
+}
+
+export function paperTradingComparisonCommitmentHasRuntimeShape(value: unknown): value is PaperTradingComparisonCommitmentRecord {
+  if (!comparisonObject(value) || !paperTradingComparisonPolicyHasRuntimeShape(value.comparison_policy)) return false;
+  return value.record_kind === "paper_trading_comparison_commitment" && value.version === 1 && comparisonString(value.paper_trading_comparison_commitment_id) && comparisonRef(value.preparation_ref, "paper_trading_comparison_preparation") &&
+    paperTradingComparisonSideHasRuntimeShape(value.champion, "champion") && paperTradingComparisonSideHasRuntimeShape(value.challenger, "challenger") &&
+    value.champion.candidate_version_ref.id !== value.challenger.candidate_version_ref.id && value.champion.trading_run_ref.id !== value.challenger.trading_run_ref.id &&
+    paperTradingComparisonChampionSelectionHasRuntimeShape(value.champion_selection, value.comparison_policy.comparison_mode) && comparisonDigest(value.market_data_configuration_digest) && comparisonPolicyIdentity(value.paper_policy_identity) && comparisonIso(value.committed_at) && comparisonDigest(value.commitment_digest) && value.authority_status === "not_live";
 }
 
 export interface PaperTradingEvaluationRecord extends BaseRecord {
@@ -1860,6 +2168,166 @@ export interface PaperTradingObservationRecord extends BaseRecord {
   failure_reason?: string;
   authority_status: "not_live";
 }
+
+export interface PaperTradingComparisonLoadedSideRecords {
+  candidate: CandidateInspectReadModel;
+  candidateVersion: CandidateVersionRecord;
+  admission: CandidateAdmissionDecisionRecord;
+  run: TradingRunRecord;
+  systemCode: SystemCodeRecord;
+  commitment: PaperTradingEvaluationCommitmentRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  observations: PaperTradingObservationRecord[];
+}
+
+export interface PaperTradingComparisonStoppedQualificationClosure {
+  systemCode: SystemCodeRecord;
+  admission: CandidateAdmissionDecisionRecord;
+  commitment: PaperTradingEvaluationCommitmentRecord;
+  evaluation: PaperTradingEvaluationRecord;
+  observations: PaperTradingObservationRecord[];
+  promotion: TradingPromotionRecord;
+  preparationCommittedAt: string;
+}
+
+export const DEFAULT_PAPER_TRADING_QUALIFICATION_POLICY: PaperTradingQualificationPolicy = {
+  minObservationCount: 30,
+  minElapsedMs: 30 * 60_000,
+  maxFailedObservationRatio: 0.1,
+  assessRunnerHealth: true
+};
+
+export function paperTradingEvidenceIntegrityReasons(input: PaperTradingQualificationEvidenceInput): PaperTradingQualificationReason[] {
+  if (!input.commitment || !input.commitmentDigestVerified || !qualificationCommitmentMatches(input.commitment, input.evaluation)) return ["paper_evaluation_commitment_missing"];
+  if (!qualificationObservationChain(input.evaluation, input.commitment, input.observations)) return ["paper_observation_chain_incomplete"];
+  if (!qualificationAccounting(input.evaluation, input.commitment, input.observations)) return ["paper_score_account_mismatch"];
+  return [];
+}
+
+export function decidePaperTradingQualification(input: PaperTradingQualificationDecisionInput): PaperTradingQualificationResult {
+  const policy = { ...DEFAULT_PAPER_TRADING_QUALIFICATION_POLICY, ...input.policy };
+  const observations = [...input.observations].sort((left, right) => left.sequence - right.sequence);
+  const failed = observations.filter((item) => item.status === "failed").length;
+  const last = observations.at(-1);
+  const started = Date.parse(input.evaluation.started_at);
+  const ended = last ? Date.parse(last.observed_at) : Number.NaN;
+  const elapsed = Number.isFinite(started) && Number.isFinite(ended) && ended >= started ? ended - started : 0;
+  const evidence_window = { observation_count: input.evaluation.observation_count, elapsed_ms: elapsed, failed_observation_count: failed, first_observed_at: observations[0]?.observed_at, last_observed_at: last?.observed_at ?? input.evaluation.last_observed_at };
+  const result = (qualification_status: PaperTradingQualificationStatus, qualification_reasons: PaperTradingQualificationReason[]): PaperTradingQualificationResult => ({ qualification_status, qualification_reasons, evidence_window });
+  if (input.evaluation.status === "invalidated") return result("blocked_by_quality", ["paper_evaluation_invalidated"]);
+  const commitment = input.commitment;
+  if (!commitment || !input.commitmentDigestVerified || !qualificationCommitmentMatches(commitment, input.evaluation)) return result("not_qualification_evidence", ["paper_evaluation_commitment_missing"]);
+  if (commitment.evidence_purpose !== "qualification") return result("not_qualification_evidence", ["evidence_purpose_not_qualification"]);
+  if (!commitment.provider_identity.qualification_eligible) return result("not_qualification_evidence", ["provider_identity_not_qualification_eligible"]);
+  if (input.evaluation.status === "failed") return result("paper_failed", ["paper_evaluation_failed"]);
+  const integrity = paperTradingEvidenceIntegrityReasons(input);
+  if (integrity.length) return result("blocked_by_quality", integrity);
+  const quality: PaperTradingQualificationReason[] = [];
+  if (policy.assessRunnerHealth && input.evaluation.status === "running" && !input.runnerActive) quality.push("runner_inactive_for_running_evaluation");
+  if (input.evaluation.observation_count > 0 && failed / input.evaluation.observation_count > policy.maxFailedObservationRatio) quality.push("failed_observation_ratio_exceeded");
+  if (input.evaluation.observation_count >= policy.minObservationCount && !observations.some((item) => item.market_snapshot !== undefined)) quality.push("latest_market_snapshot_missing");
+  if (!qualificationFillsHaveEvidence(input.evaluation, observations)) quality.push("fill_public_execution_evidence_missing");
+  if (quality.length) return result(quality.length === 1 && quality[0] === "runner_inactive_for_running_evaluation" ? "needs_resume" : "blocked_by_quality", quality);
+  const collecting: PaperTradingQualificationReason[] = [];
+  if (input.evaluation.observation_count < policy.minObservationCount) collecting.push("min_observation_count_not_met");
+  if (elapsed < policy.minElapsedMs) collecting.push("min_elapsed_ms_not_met");
+  return collecting.length ? result("collecting_evidence", collecting) : result("qualified", []);
+}
+
+function qualificationCommitmentMatches(commitment: PaperTradingEvaluationCommitmentRecord, evaluation: PaperTradingEvaluationRecord): boolean {
+  return paperTradingComparisonRefsEqual(evaluation.paper_trading_evaluation_commitment_ref, { record_kind: commitment.record_kind, id: commitment.paper_trading_evaluation_commitment_id }) &&
+    paperTradingComparisonRefsEqual(evaluation.candidate_ref, commitment.candidate_ref) && paperTradingComparisonRefsEqual(evaluation.candidate_version_ref, commitment.candidate_version_ref) && paperTradingComparisonRefsEqual(evaluation.trading_run_ref, commitment.trading_run_ref) &&
+    evaluation.interval_ms === commitment.window_policy.interval_ms && commitment.authority_status === "not_live" && evaluation.authority_status === "not_live";
+}
+
+function qualificationObservationChain(evaluation: PaperTradingEvaluationRecord, commitment: PaperTradingEvaluationCommitmentRecord, observations: PaperTradingObservationRecord[]): boolean {
+  return observations.length === evaluation.observation_count && [...observations].sort((left, right) => left.sequence - right.sequence).every((item, index) => item.sequence === index + 1 &&
+    paperTradingComparisonRefsEqual(item.paper_trading_evaluation_ref, { record_kind: evaluation.record_kind, id: evaluation.paper_trading_evaluation_id }) &&
+    paperTradingComparisonRefsEqual(item.paper_trading_evaluation_commitment_ref, evaluation.paper_trading_evaluation_commitment_ref) &&
+    paperTradingComparisonRefsEqual(item.candidate_ref, commitment.candidate_ref) && paperTradingComparisonRefsEqual(item.candidate_version_ref, commitment.candidate_version_ref) && paperTradingComparisonRefsEqual(item.trading_run_ref, commitment.trading_run_ref));
+}
+
+function qualificationScore(account: PaperTradingAccountSnapshot, initialEquity: number): TradingProfitLossReadModel {
+  const decimal = (value: string) => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const round = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
+  const revenue = decimal(account.realized_pnl_usdt) + decimal(account.unrealized_pnl_usdt);
+  const cost = decimal(account.fee_paid_usdt) + decimal(account.slippage_paid_usdt) + decimal(account.funding_paid_usdt);
+  const net = decimal(account.equity_usdt) - initialEquity;
+  return { revenue_usdt: round(revenue), cost_usdt: round(cost), net_revenue_usdt: round(net), net_return_pct: round(net / initialEquity * 100) };
+}
+function qualificationSameScore(left: TradingProfitLossReadModel, right: TradingProfitLossReadModel): boolean { return left.revenue_usdt === right.revenue_usdt && left.cost_usdt === right.cost_usdt && left.net_revenue_usdt === right.net_revenue_usdt && left.net_return_pct === right.net_return_pct; }
+function qualificationAccounting(evaluation: PaperTradingEvaluationRecord, commitment: PaperTradingEvaluationCommitmentRecord, observations: PaperTradingObservationRecord[]): boolean {
+  const initial = Number(commitment.initial_account_snapshot.equity_usdt);
+  if (!Number.isFinite(initial) || initial <= 0 || !qualificationSameScore(qualificationScore(commitment.initial_account_snapshot, initial), PAPER_TRADING_COMPARISON_ZERO_SCORE)) return false;
+  let prior = PAPER_TRADING_COMPARISON_ZERO_SCORE;
+  let account = commitment.initial_account_snapshot;
+  for (const item of [...observations].sort((left, right) => left.sequence - right.sequence)) {
+    const current = item.cumulative_score;
+    const delta = { revenue_usdt: Math.round((current.revenue_usdt - prior.revenue_usdt) * 1_000_000) / 1_000_000, cost_usdt: Math.round((current.cost_usdt - prior.cost_usdt) * 1_000_000) / 1_000_000, net_revenue_usdt: Math.round((current.net_revenue_usdt - prior.net_revenue_usdt) * 1_000_000) / 1_000_000, net_return_pct: Math.round((current.net_return_pct - prior.net_return_pct) * 1_000_000) / 1_000_000 };
+    if (![...Object.values(item.score_delta), ...Object.values(current)].every(Number.isFinite) || !qualificationSameScore(item.score_delta, delta)) return false;
+    if (item.paper_account_snapshot) { if (!qualificationSameScore(qualificationScore(item.paper_account_snapshot, initial), current)) return false; account = item.paper_account_snapshot; }
+    else if (!qualificationSameScore(current, prior)) return false;
+    prior = current;
+  }
+  return Boolean(evaluation.paper_account_snapshot) && qualificationSameScore(prior, evaluation.latest_score) && semanticEqual(account, evaluation.paper_account_snapshot);
+}
+function semanticEqual(left: unknown, right: unknown): boolean { try { return paperTradingComparisonPersistedRecordDigestInput(left) === paperTradingComparisonPersistedRecordDigestInput(right); } catch { return false; } }
+function qualificationFillsHaveEvidence(evaluation: PaperTradingEvaluationRecord, observations: PaperTradingObservationRecord[]): boolean {
+  const fills = [evaluation.latest_fill, ...observations.map((item) => item.latest_fill)].filter((item): item is PaperTradingFillSummary => Boolean(item));
+  const snapshots = [evaluation.latest_public_execution_snapshot, ...observations.map((item) => item.public_execution_snapshot)].filter(Boolean);
+  return fills.every((fill) => snapshots.some((snapshot) => !fill.source_trade_id || snapshot!.agg_trades.some((trade) => trade.trade_id === fill.source_trade_id) || snapshot!.stream_marker === fill.source_trade_id || fill.source_trade_id.startsWith(`${snapshot!.stream_marker}:`)));
+}
+
+export function paperTradingComparisonSideRecordsHaveInertShape(value: unknown): value is PaperTradingComparisonLoadedSideRecords {
+  if (!comparisonObject(value) || !comparisonObject(value.candidate) || !comparisonObject(value.candidateVersion) || !comparisonObject(value.admission) || !comparisonObject(value.run) || !comparisonObject(value.systemCode) || !comparisonObject(value.commitment) || !comparisonObject(value.evaluation) || !Array.isArray(value.observations)) return false;
+  const candidate = value.candidate;
+  const version = value.candidateVersion;
+  const admission = value.admission;
+  const run = value.run;
+  const code = value.systemCode;
+  const commitment = value.commitment;
+  const evaluation = value.evaluation;
+  if (!comparisonString(candidate.candidate_id) || !comparisonObject(candidate.runtime) || !comparisonObject(candidate.system_code) || !comparisonRef(candidate.runtime.ref, "trading_run") || !comparisonRef(candidate.system_code.ref, "system_code")) return false;
+  if (version.record_kind !== "candidate_version" || version.version !== 1 || !comparisonString(version.candidate_version_id) || version.candidate_id !== candidate.candidate_id || !comparisonRef(version.runtime_ref, "trading_run") || !comparisonRef(version.system_code_ref, "system_code") || !Array.isArray(version.capability_package_refs) || !version.capability_package_refs.every((item) => comparisonRef(item, "capability_package"))) return false;
+  if (run.record_kind !== "trading_run" || run.version !== 1 || !comparisonString(run.trading_run_id) || !comparisonRef(run.candidate_ref, "trading_system_candidate") || !comparisonRef(run.candidate_version_ref, "candidate_version") || !comparisonRef(run.system_code_ref, "system_code")) return false;
+  if (!comparisonSystemCode(code) || !comparisonAdmission(admission) || !comparisonInertCommitment(commitment) || !comparisonInertEvaluation(evaluation)) return false;
+  return paperTradingComparisonRefsEqual(candidate.runtime.ref, { record_kind: "trading_run", id: run.trading_run_id }) && paperTradingComparisonRefsEqual(candidate.system_code.ref, { record_kind: "system_code", id: code.system_code_id }) && version.runtime_ref.id !== run.trading_run_id && version.system_code_ref.id === code.system_code_id && admission.system_code_ref.id === code.system_code_id && admission.submitted_artifact_digest === code.artifact_digest && commitment.candidate_ref.id === run.candidate_ref.id && commitment.candidate_version_ref.id === run.candidate_version_ref.id && commitment.trading_run_ref.id === run.trading_run_id && commitment.system_code_ref.id === code.system_code_id && evaluation.candidate_ref.id === commitment.candidate_ref.id && evaluation.candidate_version_ref.id === commitment.candidate_version_ref.id && evaluation.trading_run_ref.id === commitment.trading_run_ref.id && evaluation.paper_trading_evaluation_commitment_ref?.id === commitment.paper_trading_evaluation_commitment_id && evaluation.interval_ms === commitment.window_policy.interval_ms && value.observations.length === 0;
+}
+
+export function paperTradingComparisonStoppedQualificationClosureHasRuntimeShape(value: unknown): value is PaperTradingComparisonStoppedQualificationClosure {
+  if (!comparisonObject(value) || !comparisonSystemCode(value.systemCode) || !comparisonAdmission(value.admission) || !comparisonStoppedCommitment(value.commitment) || !comparisonStoppedEvaluation(value.evaluation) || !Array.isArray(value.observations) || !value.observations.every(comparisonStoppedObservation) || !paperTradingComparisonTradingPromotionHasRuntimeShape(value.promotion) || !comparisonIso(value.preparationCommittedAt)) return false;
+  const { systemCode, admission, commitment, evaluation, promotion } = value;
+  const observations = [...value.observations].sort((left, right) => left.sequence - right.sequence);
+  if (admission.system_code_ref.id !== systemCode.system_code_id || admission.submitted_artifact_digest !== systemCode.artifact_digest || commitment.system_code_ref.id !== systemCode.system_code_id || commitment.system_code_artifact_digest !== systemCode.artifact_digest || commitment.capability_policy_ref.id !== systemCode.capability_policy_ref.id || commitment.secret_policy_ref.id !== systemCode.secret_policy_ref.id) return false;
+  if (evaluation.candidate_ref.id !== commitment.candidate_ref.id || evaluation.candidate_version_ref.id !== commitment.candidate_version_ref.id || evaluation.trading_run_ref.id !== commitment.trading_run_ref.id || evaluation.paper_trading_evaluation_commitment_ref?.id !== commitment.paper_trading_evaluation_commitment_id || promotion.candidate_ref.id !== commitment.candidate_ref.id || promotion.candidate_version_ref.id !== commitment.candidate_version_ref.id || promotion.paper_trading_evaluation_ref.id !== evaluation.paper_trading_evaluation_id) return false;
+  if (observations.length !== evaluation.observation_count || observations.some((item, index) => item.sequence !== index + 1 || item.paper_trading_evaluation_ref.id !== evaluation.paper_trading_evaluation_id || item.paper_trading_evaluation_commitment_ref?.id !== commitment.paper_trading_evaluation_commitment_id || item.candidate_ref.id !== commitment.candidate_ref.id || item.candidate_version_ref.id !== commitment.candidate_version_ref.id || item.trading_run_ref.id !== commitment.trading_run_ref.id || (index > 0 && item.observed_at < observations[index - 1]!.observed_at))) return false;
+  const first = observations[0]?.observed_at ?? evaluation.started_at;
+  const last = observations.at(-1)?.observed_at ?? evaluation.started_at;
+  return systemCode.created_at <= admission.decided_at && admission.decided_at <= commitment.committed_at && commitment.committed_at <= evaluation.started_at && evaluation.started_at <= first && last <= evaluation.stopped_at! && evaluation.stopped_at! <= promotion.promoted_at && promotion.promoted_at <= value.preparationCommittedAt;
+}
+
+function comparisonSystemCode(value: unknown): value is SystemCodeRecord {
+  return comparisonObject(value) && value.record_kind === "system_code" && value.version === 1 && comparisonString(value.system_code_id) && (value.artifact_kind === "python_file" ? value.runtime_kind === "python" && comparisonString(value.artifact_path) && value.image_ref === undefined : value.artifact_kind === "container_image" && value.runtime_kind === "container_image" && comparisonString(value.image_ref) && value.artifact_path === undefined) && comparisonString(value.artifact_digest) && Array.isArray(value.entrypoint) && value.entrypoint.length > 0 && value.entrypoint.every(comparisonString) && comparisonRef(value.capability_policy_ref, "capability_policy") && comparisonRef(value.secret_policy_ref, "secret_policy") && comparisonIso(value.created_at) && value.authority_status === "not_live";
+}
+function comparisonAdmission(value: unknown): value is CandidateAdmissionDecisionRecord {
+  if (!comparisonObject(value) || value.record_kind !== "candidate_admission_decision" || value.version !== 1 || !comparisonString(value.candidate_admission_decision_id) || !comparisonRef(value.system_code_ref, "system_code") || !comparisonString(value.submitted_artifact_digest) || !comparisonIso(value.decided_at) || value.authority_status !== "not_live") return false;
+  try { return isCandidateAdmissionDecisionConsistent(value as unknown as CandidateAdmissionDecisionRecord); } catch { return false; }
+}
+function comparisonAccount(value: unknown): value is PaperTradingAccountSnapshot {
+  return comparisonObject(value) && ["wallet_balance_usdt", "available_balance_usdt", "equity_usdt", "realized_pnl_usdt", "unrealized_pnl_usdt", "fee_paid_usdt", "slippage_paid_usdt", "funding_paid_usdt", "margin_reserved_usdt"].every((key) => comparisonString(value[key])) && comparisonObject(value.position) && value.position.symbol === "BTCUSDT" && comparisonString(value.position.quantity) && ["long", "short", "flat"].includes(value.position.side as string) && comparisonString(value.position.mark_price) && comparisonString(value.position.notional_usdt) && comparisonNonNegative(value.open_order_count) && value.authority_status === "not_live";
+}
+function comparisonProvider(value: unknown): boolean {
+  return comparisonObject(value) && typeof value.qualification_eligible === "boolean" && (value.runtime_provider_kind === "none" ? value.agent_profile_ref === undefined && value.model === undefined && value.provider_configuration_digest === undefined : value.runtime_provider_kind === "managed_agent" && comparisonRef(value.agent_profile_ref, "agent_profile") && comparisonString(value.model) && comparisonString(value.provider_configuration_digest));
+}
+function comparisonCommitmentBase(value: unknown, evidencePurpose?: PaperTradingEvidencePurpose): value is PaperTradingEvaluationCommitmentRecord {
+  return comparisonObject(value) && value.record_kind === "paper_trading_evaluation_commitment" && value.version === 1 && comparisonString(value.paper_trading_evaluation_commitment_id) && (evidencePurpose === undefined || value.evidence_purpose === evidencePurpose) && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonRef(value.system_code_ref, "system_code") && comparisonString(value.system_code_artifact_digest) && comparisonString(value.resolved_artifact_digest) && comparisonObject(value.runtime_identity) && Array.isArray(value.runtime_identity.entrypoint) && value.runtime_identity.entrypoint.length > 0 && value.runtime_identity.entrypoint.every(comparisonString) && comparisonProvider(value.provider_identity) && comparisonRef(value.capability_policy_ref, "capability_policy") && comparisonRef(value.secret_policy_ref, "secret_policy") && comparisonPolicyIdentity(value.policy_identity) && comparisonObject(value.data_identity) && value.data_identity.symbol === "BTCUSDT" && value.data_identity.market_data_port === "gateway_owned" && comparisonObject(value.window_policy) && comparisonPositive(value.window_policy.interval_ms) && comparisonString(value.window_policy.eligibility_policy_version) && comparisonAccount(value.initial_account_snapshot) && comparisonIso(value.committed_at) && comparisonString(value.commitment_digest) && value.authority_status === "not_live";
+}
+function comparisonInertCommitment(value: unknown): value is PaperTradingEvaluationCommitmentRecord { return comparisonCommitmentBase(value, "qualification") && value.window_policy.release_policy === "sealed_until_adjudication" && value.provider_identity.qualification_eligible === true && semanticEqual(value.initial_account_snapshot, PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT); }
+function comparisonStoppedCommitment(value: unknown): value is PaperTradingEvaluationCommitmentRecord { return comparisonCommitmentBase(value, "qualification") && value.window_policy.release_policy === "sealed_until_adjudication" && value.provider_identity.qualification_eligible === true; }
+function comparisonScore(value: unknown): value is TradingProfitLossReadModel { return comparisonObject(value) && ["revenue_usdt", "cost_usdt", "net_revenue_usdt", "net_return_pct"].every((key) => comparisonFinite(value[key])); }
+function comparisonInertEvaluation(value: unknown): value is PaperTradingEvaluationRecord { return comparisonObject(value) && value.record_kind === "paper_trading_evaluation" && value.version === 1 && comparisonString(value.paper_trading_evaluation_id) && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && value.status === "not_started" && comparisonPositive(value.interval_ms) && value.observation_count === 0 && comparisonIso(value.started_at) && comparisonScore(value.latest_score) && semanticEqual(value.latest_score, PAPER_TRADING_COMPARISON_ZERO_SCORE) && comparisonAccount(value.paper_account_snapshot) && semanticEqual(value.paper_account_snapshot, PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT) && Array.isArray(value.open_orders) && value.open_orders.length === 0 && Array.isArray(value.processed_trading_system_event_ids) && value.processed_trading_system_event_ids.length === 0 && Array.isArray(value.processed_public_trade_ids) && value.processed_public_trade_ids.length === 0 && value.last_observed_at === undefined && value.stopped_at === undefined && value.authority_status === "not_live"; }
+function comparisonStoppedEvaluation(value: unknown): value is PaperTradingEvaluationRecord { return comparisonObject(value) && value.record_kind === "paper_trading_evaluation" && value.version === 1 && comparisonString(value.paper_trading_evaluation_id) && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && value.status === "stopped" && comparisonPositive(value.interval_ms) && comparisonNonNegative(value.observation_count) && comparisonIso(value.started_at) && comparisonIso(value.last_observed_at) && comparisonIso(value.stopped_at) && comparisonScore(value.latest_score) && comparisonAccount(value.paper_account_snapshot) && Array.isArray(value.open_orders) && Array.isArray(value.processed_trading_system_event_ids) && Array.isArray(value.processed_public_trade_ids) && value.authority_status === "not_live"; }
+function comparisonStoppedObservation(value: unknown): value is PaperTradingObservationRecord { return comparisonObject(value) && value.record_kind === "paper_trading_observation" && value.version === 1 && comparisonString(value.paper_trading_observation_id) && comparisonRef(value.paper_trading_evaluation_ref, "paper_trading_evaluation") && comparisonRef(value.paper_trading_evaluation_commitment_ref, "paper_trading_evaluation_commitment") && comparisonRef(value.candidate_ref, "trading_system_candidate") && comparisonRef(value.candidate_version_ref, "candidate_version") && comparisonRef(value.trading_run_ref, "trading_run") && comparisonPositive(value.sequence) && ["recorded", "no_order", "failed"].includes(value.status as string) && comparisonIso(value.observed_at) && comparisonScore(value.score_delta) && comparisonScore(value.cumulative_score) && (value.paper_account_snapshot === undefined || comparisonAccount(value.paper_account_snapshot)) && value.authority_status === "not_live"; }
 
 export interface ResearchFindingRecord extends BaseRecord {
   record_kind: "research_finding";
@@ -3822,6 +4290,8 @@ export type FixtureRecord =
   | TradingEvaluationResultRecord
   | CandidateAdmissionDecisionRecord
   | PaperTradingEvaluationCommitmentRecord
+  | PaperTradingComparisonPreparationRecord
+  | PaperTradingComparisonCommitmentRecord
   | PaperTradingEvaluationRecord
   | PaperTradingObservationRecord
   | CandidateArenaTickRecord
