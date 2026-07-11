@@ -82,6 +82,9 @@ import {
   paperTradingComparisonTickHasRuntimeShape,
   paperTradingComparisonTickIOWriteContextHasRuntimeShape,
   paperTradingComparisonTradingPromotionDigestInput,
+  paperTradingComparisonQualificationResultDigestInput,
+  paperTradingComparisonVerdictDigestInput,
+  paperTradingComparisonVerdictHasRuntimeShape,
   paperTradingComparisonBaselineEvaluation,
   paperTradingEvaluationCommitmentDigestInput
 } from "@ouroboros/domain";
@@ -193,6 +196,7 @@ import type {
   PaperTradingComparisonTickIOOperation,
   PaperTradingComparisonTickIOWriteContext,
   PaperTradingComparisonTickRecord,
+  PaperTradingComparisonVerdictRecord,
   PublicMarketLivenessSurfaceReadModel,
   PublicMarketLivenessSurfaceRecord,
   OrderRequestRecord,
@@ -414,6 +418,10 @@ export type LocalStoreErrorCode =
   | "paper_trading_comparison_paired_checkpoint_transaction_conflict"
   | "paper_trading_comparison_paired_checkpoint_transaction_reload_failed"
   | "paper_trading_comparison_paired_checkpoint_materialization_conflict"
+  | "invalid_paper_trading_comparison_verdict_input"
+  | "paper_trading_comparison_verdict_digest_mismatch"
+  | "paper_trading_comparison_verdict_conflict"
+  | "paper_trading_comparison_verdict_graph_invalid"
   | "invalid_paper_trading_comparison_checkpoint_write_context"
   | "paper_trading_comparison_checkpoint_write_context_reference_not_found"
   | "paper_trading_comparison_checkpoint_write_context_reference_mismatch"
@@ -506,6 +514,7 @@ type Collection =
   | "paper-trading-comparison-checkpoint-attempts"
   | "paper-trading-comparison-checkpoint-outcomes"
   | "paper-trading-comparison-checkpoint-transactions"
+  | "paper-trading-comparison-verdicts"
   | "substrate-state-surfaces"
   | "private-readiness-postures"
   | "sandboxes"
@@ -4648,9 +4657,15 @@ export class LocalStore {
       preparation.champion.candidate_version_ref.id,
       preparation.challenger.candidate_version_ref.id
     );
+    const terminatedComparisonIds = new Set(
+      (await this.listPaperTradingComparisonVerdicts()).map((verdict) =>
+        verdict.paper_trading_comparison_commitment_ref.id)
+    );
     const activeConflict = (await this.listPaperTradingComparisonPreparations()).find((record) => {
       this.assertPersistedComparisonPreparationShape(record);
-      return paperTradingComparisonCandidateVersionPairKey(
+      return !terminatedComparisonIds.has(
+        record.paper_trading_comparison_commitment_id
+      ) && paperTradingComparisonCandidateVersionPairKey(
         record.champion.candidate_version_ref.id,
         record.challenger.candidate_version_ref.id
       ) === pairKey;
@@ -8114,6 +8129,289 @@ export class LocalStore {
         "persisted paper trading comparison checkpoint outcome collection is unreadable or corrupt"
       );
     }
+  }
+
+  async recordPaperTradingComparisonVerdict(
+    verdict: PaperTradingComparisonVerdictRecord
+  ): Promise<PaperTradingComparisonVerdictRecord> {
+    return this.withComparisonEvidenceWriteTransaction(
+      () => this.recordPaperTradingComparisonVerdictUnlocked(verdict)
+    );
+  }
+
+  private async recordPaperTradingComparisonVerdictUnlocked(
+    verdict: PaperTradingComparisonVerdictRecord
+  ): Promise<PaperTradingComparisonVerdictRecord> {
+    if (!paperTradingComparisonVerdictHasRuntimeShape(verdict)) {
+      throw new LocalStoreError(
+        "invalid_paper_trading_comparison_verdict_input",
+        "invalid paper trading comparison verdict input"
+      );
+    }
+    const expectedDigest = comparisonExactRecordDigest(
+      paperTradingComparisonVerdictDigestInput(verdict)
+    );
+    if (verdict.verdict_digest !== expectedDigest) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_verdict_digest_mismatch",
+        "paper trading comparison verdict digest does not match canonical content"
+      );
+    }
+    const existing = await this.getPaperTradingComparisonVerdict(
+      verdict.paper_trading_comparison_verdict_id
+    );
+    if (existing) {
+      if (!sameJson(existing, verdict)) {
+        throw new LocalStoreError(
+          "paper_trading_comparison_verdict_conflict",
+          "paper trading comparison verdict is append-only"
+        );
+      }
+      await this.validatePaperTradingComparisonVerdictGraph(existing);
+      return existing;
+    }
+    const comparisonConflict = (await this.listPaperTradingComparisonVerdicts()).find(
+      (record) => record.paper_trading_comparison_commitment_ref.id ===
+        verdict.paper_trading_comparison_commitment_ref.id
+    );
+    if (comparisonConflict) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_verdict_conflict",
+        "one paper trading comparison can have only one verdict"
+      );
+    }
+    await this.validatePaperTradingComparisonVerdictGraph(verdict);
+    await this.writeJson(
+      this.itemPath(
+        "paper-trading-comparison-verdicts",
+        verdict.paper_trading_comparison_verdict_id
+      ),
+      verdict
+    );
+    return verdict;
+  }
+
+  async getPaperTradingComparisonVerdict(
+    verdictId: string
+  ): Promise<PaperTradingComparisonVerdictRecord | undefined> {
+    const record = await this.readOptionalRecord<unknown>(
+      "paper-trading-comparison-verdicts",
+      verdictId
+    );
+    if (record === undefined) return undefined;
+    this.assertPersistedPaperTradingComparisonVerdict(record);
+    return record;
+  }
+
+  async listPaperTradingComparisonVerdicts(
+    comparisonId?: string
+  ): Promise<PaperTradingComparisonVerdictRecord[]> {
+    const records = await this.readCollection<unknown>(
+      "paper-trading-comparison-verdicts"
+    );
+    return records.map((record) => {
+      this.assertPersistedPaperTradingComparisonVerdict(record);
+      return record;
+    }).filter((record) => comparisonId === undefined ||
+      record.paper_trading_comparison_commitment_ref.id === comparisonId)
+      .sort((left, right) =>
+        left.evaluated_at.localeCompare(right.evaluated_at) ||
+        left.paper_trading_comparison_verdict_id.localeCompare(
+          right.paper_trading_comparison_verdict_id
+        ));
+  }
+
+  private assertPersistedPaperTradingComparisonVerdict(
+    record: unknown
+  ): asserts record is PaperTradingComparisonVerdictRecord {
+    if (!paperTradingComparisonVerdictHasRuntimeShape(record) ||
+      record.verdict_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonVerdictDigestInput(record)
+      )) {
+      throw new LocalStoreError(
+        "paper_trading_comparison_verdict_graph_invalid",
+        "persisted paper trading comparison verdict is malformed or corrupt"
+      );
+    }
+  }
+
+  private async validatePaperTradingComparisonVerdictGraph(
+    verdict: PaperTradingComparisonVerdictRecord
+  ): Promise<void> {
+    const [comparison, activation, attempt, finalOutcome, latestTick] =
+      await Promise.all([
+        this.getPaperTradingComparisonCommitment(
+          verdict.paper_trading_comparison_commitment_ref.id
+        ),
+        this.getPaperTradingComparisonActivation(
+          verdict.paper_trading_comparison_activation_ref.id
+        ),
+        this.getPaperTradingComparisonActivationAttempt(
+          verdict.paper_trading_comparison_activation_attempt_ref.id
+        ),
+        this.getPaperTradingComparisonActivationOutcome(
+          verdict.final_activation_outcome_ref.id
+        ),
+        this.getPaperTradingComparisonTick(verdict.latest_tick_ref.id)
+      ]);
+    if (!comparison || !activation || !attempt || !finalOutcome || !latestTick ||
+      comparison.commitment_digest !==
+        verdict.paper_trading_comparison_commitment_digest ||
+      activation.activation_digest !== verdict.paper_trading_comparison_activation_digest ||
+      attempt.attempt_digest !==
+        verdict.paper_trading_comparison_activation_attempt_digest ||
+      finalOutcome.outcome_digest !== verdict.final_activation_outcome_digest ||
+      latestTick.tick_digest !== verdict.latest_tick_digest ||
+      activation.paper_trading_comparison_commitment_ref.id !==
+        comparison.paper_trading_comparison_commitment_id ||
+      attempt.paper_trading_comparison_activation_ref.id !==
+        activation.paper_trading_comparison_activation_id ||
+      finalOutcome.paper_trading_comparison_activation_attempt_ref.id !==
+        attempt.paper_trading_comparison_activation_attempt_id ||
+      finalOutcome.outcome_status !== "stopped_cleanly" ||
+      latestTick.paper_trading_comparison_commitment_ref.id !==
+        comparison.paper_trading_comparison_commitment_id ||
+      verdict.pair_qualification.comparison_id !==
+        comparison.paper_trading_comparison_commitment_id ||
+      verdict.pair_qualification.activation_id !==
+        activation.paper_trading_comparison_activation_id ||
+      verdict.pair_qualification.activation_attempt_id !==
+        attempt.paper_trading_comparison_activation_attempt_id ||
+      verdict.pair_qualification_digest !== comparisonExactRecordDigest(
+        paperTradingComparisonQualificationResultDigestInput(
+          verdict.pair_qualification
+        )
+      )) {
+      throw this.paperTradingComparisonVerdictGraphInvalid();
+    }
+
+    const [ticks, checkpointAttempts] = await Promise.all([
+      this.listPaperTradingComparisonTicks(
+        comparison.paper_trading_comparison_commitment_id
+      ),
+      this.listPaperTradingComparisonCheckpointAttempts(
+        attempt.paper_trading_comparison_activation_attempt_id
+      )
+    ]);
+    if (ticks.length === 0 || ticks.at(-1)?.paper_trading_comparison_tick_id !==
+        latestTick.paper_trading_comparison_tick_id ||
+      checkpointAttempts.length !== verdict.checkpoint_outcome_refs.length) {
+      throw this.paperTradingComparisonVerdictGraphInvalid();
+    }
+    const checkpointOutcomes: PaperTradingComparisonCheckpointOutcomeRecord[] = [];
+    for (let index = 0; index < verdict.checkpoint_outcome_refs.length; index += 1) {
+      const checkpointAttempt = checkpointAttempts[index];
+      const outcome = await this.getPaperTradingComparisonCheckpointOutcome(
+        verdict.checkpoint_outcome_refs[index]!.id
+      );
+      if (!checkpointAttempt || !outcome || outcome.outcome_digest !==
+          verdict.checkpoint_outcome_digests[index] ||
+        checkpointAttempt.checkpoint_sequence !== index + 1 ||
+        checkpointAttempt.paper_trading_comparison_activation_attempt_ref.id !==
+          attempt.paper_trading_comparison_activation_attempt_id ||
+        checkpointAttempt.paper_trading_comparison_commitment_ref.id !==
+          comparison.paper_trading_comparison_commitment_id ||
+        checkpointAttempt.tick_ref.id !== ticks[index]?.paper_trading_comparison_tick_id ||
+        checkpointAttempt.tick_digest !== ticks[index]?.tick_digest ||
+        outcome.checkpoint_attempt_ref.id !==
+          checkpointAttempt.paper_trading_comparison_checkpoint_attempt_id ||
+        outcome.checkpoint_attempt_digest !== checkpointAttempt.attempt_digest ||
+        outcome.checkpoint_sequence !== index + 1 ||
+        outcome.tick_ref.id !== checkpointAttempt.tick_ref.id ||
+        outcome.tick_digest !== checkpointAttempt.tick_digest) {
+        throw this.paperTradingComparisonVerdictGraphInvalid();
+      }
+      checkpointOutcomes.push(outcome);
+    }
+    const pairedCount = checkpointOutcomes.filter((outcome) =>
+      outcome.outcome_status === "paired").length;
+    if (pairedCount !== verdict.pair_qualification.checkpoint_count ||
+      (verdict.pair_qualification.qualification_status === "qualified" &&
+        (pairedCount !== checkpointOutcomes.length ||
+          pairedCount !== latestTick.sequence)) ||
+      verdict.window_started_at !== ticks[0]?.observed_at ||
+      verdict.window_ended_at !== latestTick.observed_at ||
+      Date.parse(verdict.evaluated_at) < Date.parse(finalOutcome.completed_at)) {
+      throw this.paperTradingComparisonVerdictGraphInvalid();
+    }
+
+    for (const role of ["champion", "challenger"] as const) {
+      const verdictSide = verdict[role];
+      const comparisonSide = comparison[role];
+      const [commitment, evaluation, observations, run] = await Promise.all([
+        this.getPaperTradingEvaluationCommitment(
+          verdictSide.paper_trading_evaluation_commitment_ref.id
+        ),
+        this.getPaperTradingEvaluation(verdictSide.paper_trading_evaluation_ref.id),
+        this.listPaperTradingObservations(verdictSide.paper_trading_evaluation_ref.id),
+        this.getTradingRun(verdictSide.trading_run_ref.id)
+      ]);
+      const expectedQualification = commitment && evaluation
+        ? decidePaperTradingQualification({
+          commitment,
+          evaluation,
+          observations,
+          runnerActive: false,
+          policy: {
+            minObservationCount:
+              comparison.comparison_policy.minimum_observation_count,
+            minElapsedMs: comparison.comparison_policy.minimum_elapsed_ms
+          },
+          commitmentDigestVerified: commitment.commitment_digest ===
+            comparisonExactRecordDigest(
+              paperTradingEvaluationCommitmentDigestInput(commitment)
+            )
+        })
+        : undefined;
+      if (!commitment || !evaluation || !run || evaluation.status !== "stopped" ||
+        run.runtime_lifecycle_status !== "stopped" ||
+        !expectedQualification || !samePersistedComparisonRecord(
+          verdict.pair_qualification[role],
+          expectedQualification
+        ) ||
+        !paperTradingComparisonRefsEqual(
+          verdictSide.candidate_ref,
+          comparisonSide.candidate_ref
+        ) || !paperTradingComparisonRefsEqual(
+          verdictSide.candidate_version_ref,
+          comparisonSide.candidate_version_ref
+        ) || !paperTradingComparisonRefsEqual(
+          verdictSide.system_code_ref,
+          comparisonSide.system_code_ref
+        ) || verdictSide.system_code_artifact_digest !==
+          comparisonSide.system_code_artifact_digest ||
+        !paperTradingComparisonRefsEqual(
+          verdictSide.trading_run_ref,
+          comparisonSide.trading_run_ref
+        ) || !paperTradingComparisonRefsEqual(
+          verdictSide.paper_trading_evaluation_commitment_ref,
+          comparisonSide.paper_trading_evaluation_commitment_ref
+        ) || !paperTradingComparisonRefsEqual(
+          verdictSide.paper_trading_evaluation_ref,
+          comparisonSide.paper_trading_evaluation_ref
+        ) || verdictSide.paper_trading_evaluation_commitment_record_digest !==
+          comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationCommitmentRecordDigestInput(commitment)
+          ) || verdictSide.paper_trading_evaluation_record_digest !==
+          comparisonExactRecordDigest(
+            paperTradingComparisonEvaluationRecordDigestInput(evaluation)
+          ) || verdictSide.paper_trading_observation_chain_digest !==
+          comparisonExactRecordDigest(
+            paperTradingComparisonObservationChainDigestInput(observations)
+          ) || observations.length !== evaluation.observation_count ||
+        (verdict.pair_qualification.qualification_status === "qualified" &&
+          (verdictSide.net_revenue_usdt !== evaluation.latest_score.net_revenue_usdt ||
+            verdictSide.cost_usdt !== evaluation.latest_score.cost_usdt))) {
+        throw this.paperTradingComparisonVerdictGraphInvalid();
+      }
+    }
+  }
+
+  private paperTradingComparisonVerdictGraphInvalid(): LocalStoreError {
+    return new LocalStoreError(
+      "paper_trading_comparison_verdict_graph_invalid",
+      "paper trading comparison verdict does not match exact terminal evidence"
+    );
   }
 
   async recordPaperTradingComparisonPairedCheckpoint(

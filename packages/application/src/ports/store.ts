@@ -41,6 +41,7 @@ import type {
   PaperTradingComparisonCheckpointOutcomeRecord,
   PaperTradingComparisonCheckpointWriteContext,
   PaperTradingComparisonRuntimeWriteContext,
+  PaperTradingComparisonVerdictRecord,
   LedgerInput,
   LedgerWriteOutcome,
   PublicMarketLivenessSurfaceRecord,
@@ -328,6 +329,15 @@ export interface OuroborosStorePort {
   recoverPaperTradingComparisonCheckpointTransactions(): Promise<
     PaperTradingComparisonCheckpointOutcomeRecord[]
   >;
+  recordPaperTradingComparisonVerdict(
+    verdict: PaperTradingComparisonVerdictRecord
+  ): Promise<PaperTradingComparisonVerdictRecord>;
+  getPaperTradingComparisonVerdict(
+    verdictId: string
+  ): Promise<PaperTradingComparisonVerdictRecord | undefined>;
+  listPaperTradingComparisonVerdicts(
+    comparisonId?: string
+  ): Promise<PaperTradingComparisonVerdictRecord[]>;
   recordLedger(input: LedgerInput): Promise<LedgerWriteOutcome>;
 }
 

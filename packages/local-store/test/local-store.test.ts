@@ -61,6 +61,7 @@ import type {
   PaperTradingComparisonPreparationRecord,
   PaperTradingComparisonSide,
   PaperTradingComparisonTickRecord,
+  PaperTradingComparisonVerdictRecord,
   PaperTradingEvaluationCommitmentRecord,
   PaperTradingEvaluationRecord,
   PaperTradingObservationRecord,
@@ -86,6 +87,7 @@ import type {
 import {
   PAPER_TRADING_COMPARISON_NEUTRAL_ACCOUNT,
   PAPER_TRADING_COMPARISON_ZERO_SCORE,
+  decidePaperTradingQualification,
   paperTradingComparisonActivationDigestInput,
   paperTradingComparisonActivationAttemptDigestInput,
   paperTradingComparisonActivationOutcomeDigestInput,
@@ -107,6 +109,8 @@ import {
   paperTradingComparisonTickDeliveryDigestInput,
   paperTradingComparisonTickDigestInput,
   paperTradingComparisonTradingPromotionDigestInput,
+  paperTradingComparisonQualificationResultDigestInput,
+  paperTradingComparisonVerdictDigestInput,
   paperTradingEvaluationCommitmentDigestInput
 } from "@ouroboros/domain";
 
@@ -3502,6 +3506,180 @@ describe("LocalStore", () => {
       code: "paper_trading_comparison_active_pair_conflict"
     });
     await expect(store.listPaperTradingComparisonPreparations()).resolves.toHaveLength(1);
+  });
+
+  it("persists one exact terminal paper comparison verdict with idempotent replay", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPairedCheckpointAttributionFixture(store);
+    const finalOutcome = await stopBothRunningRuntimeActivation(store, fixture);
+    const verdict = await validIneligibleComparisonVerdict(
+      store,
+      fixture,
+      finalOutcome
+    );
+
+    const first = await store.recordPaperTradingComparisonVerdict(verdict);
+    const replay = await store.recordPaperTradingComparisonVerdict(verdict);
+
+    expect(first).toEqual(verdict);
+    expect(replay).toEqual(verdict);
+    await expect(store.getPaperTradingComparisonVerdict(
+      verdict.paper_trading_comparison_verdict_id
+    )).resolves.toEqual(verdict);
+    await expect(store.listPaperTradingComparisonVerdicts(
+      fixture.comparison.paper_trading_comparison_commitment_id
+    )).resolves.toEqual([verdict]);
+    const reloaded = new LocalStore(tmpDir);
+    await expect(reloaded.getPaperTradingComparisonVerdict(
+      verdict.paper_trading_comparison_verdict_id
+    )).resolves.toEqual(verdict);
+  });
+
+  it.each([
+    ["malformed-shape", "invalid_paper_trading_comparison_verdict_input", (value: any) => {
+      value.confirmation_count = 1;
+      return value;
+    }],
+    ["digest-drift", "paper_trading_comparison_verdict_digest_mismatch", (value: any) => ({
+      ...value,
+      verdict_digest: "sha256:stale"
+    })],
+    ["final-outcome-drift", "paper_trading_comparison_verdict_graph_invalid", (value: any) =>
+      withComparisonVerdictDigest({
+        ...value,
+        final_activation_outcome_ref: {
+          ...value.final_activation_outcome_ref,
+          id: "missing-final-outcome"
+        },
+        verdict_digest: ""
+      })],
+    ["side-digest-drift", "paper_trading_comparison_verdict_graph_invalid", (value: any) =>
+      withComparisonVerdictDigest({
+        ...value,
+        champion: {
+          ...value.champion,
+          paper_trading_evaluation_record_digest: "sha256:stale-evaluation"
+        },
+        verdict_digest: ""
+      })],
+    ["qualification-count-drift", "paper_trading_comparison_verdict_graph_invalid", (value: any) => {
+      const pairQualification = {
+        ...value.pair_qualification,
+        checkpoint_count: 0
+      };
+      return withComparisonVerdictDigest({
+        ...value,
+        pair_qualification: pairQualification,
+        pair_qualification_digest: comparisonRecordDigest(
+          paperTradingComparisonQualificationResultDigestInput(pairQualification)
+        ),
+        verdict_digest: ""
+      });
+    }],
+    ["qualification-evidence-drift", "paper_trading_comparison_verdict_graph_invalid", (value: any) => {
+      const pairQualification = {
+        ...value.pair_qualification,
+        champion: {
+          ...value.pair_qualification.champion,
+          evidence_window: {
+            ...value.pair_qualification.champion.evidence_window,
+            observation_count:
+              value.pair_qualification.champion.evidence_window.observation_count + 1
+          }
+        }
+      };
+      return withComparisonVerdictDigest({
+        ...value,
+        pair_qualification: pairQualification,
+        pair_qualification_digest: comparisonRecordDigest(
+          paperTradingComparisonQualificationResultDigestInput(pairQualification)
+        ),
+        verdict_digest: ""
+      });
+    }]
+  ])("rejects paper comparison verdict %s", async (_label, code, mutate) => {
+    const store = new LocalStore(path.join(tmpDir, _label));
+    await store.initialize();
+    const fixture = await storedPairedCheckpointAttributionFixture(store);
+    const finalOutcome = await stopBothRunningRuntimeActivation(store, fixture);
+    const verdict = await validIneligibleComparisonVerdict(
+      store,
+      fixture,
+      finalOutcome
+    );
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonVerdict(mutate(verdict)),
+      code
+    );
+  });
+
+  it("rejects changed replay and a second verdict for one comparison", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPairedCheckpointAttributionFixture(store);
+    const finalOutcome = await stopBothRunningRuntimeActivation(store, fixture);
+    const verdict = await validIneligibleComparisonVerdict(
+      store,
+      fixture,
+      finalOutcome
+    );
+    await store.recordPaperTradingComparisonVerdict(verdict);
+    const changedReplay = withComparisonVerdictDigest({
+      ...verdict,
+      evaluated_at: new Date(Date.parse(verdict.evaluated_at) + 1).toISOString(),
+      verdict_digest: ""
+    });
+    const secondVerdict = withComparisonVerdictDigest({
+      ...verdict,
+      paper_trading_comparison_verdict_id: `${verdict.paper_trading_comparison_verdict_id}-2`,
+      verdict_digest: ""
+    });
+
+    await expectStoreError(
+      store.recordPaperTradingComparisonVerdict(changedReplay),
+      "paper_trading_comparison_verdict_conflict"
+    );
+    await expectStoreError(
+      store.recordPaperTradingComparisonVerdict(secondVerdict),
+      "paper_trading_comparison_verdict_conflict"
+    );
+  });
+
+  it("releases an active candidate-version pair only after a terminal verdict", async () => {
+    const store = new LocalStore(tmpDir);
+    await store.initialize();
+    const fixture = await storedPairedCheckpointAttributionFixture(store);
+    const finalOutcome = await stopBothRunningRuntimeActivation(store, fixture);
+    const nextPreparation = withPreparationDigest({
+      ...fixture.preparation,
+      paper_trading_comparison_preparation_id:
+        "paper-comparison-preparation-after-verdict",
+      paper_trading_comparison_commitment_id: "paper-comparison-after-verdict",
+      committed_at: new Date(
+        Date.parse(finalOutcome.completed_at) + 1_000
+      ).toISOString(),
+      preparation_digest: ""
+    });
+
+    await expectStoreError(
+      store.reservePaperTradingComparisonPreparation(nextPreparation),
+      "paper_trading_comparison_active_pair_conflict"
+    );
+    const verdict = await validIneligibleComparisonVerdict(
+      store,
+      fixture,
+      finalOutcome
+    );
+    await store.recordPaperTradingComparisonVerdict(verdict);
+
+    await expect(store.reservePaperTradingComparisonPreparation(nextPreparation))
+      .resolves.toEqual(nextPreparation);
+    await expect(store.listPaperTradingComparisonPreparations()).resolves.toEqual([
+      fixture.preparation,
+      nextPreparation
+    ]);
   });
 
   it.each(["evaluation-mutation", "observation-append"] as const)(
@@ -8604,6 +8782,162 @@ async function storedPairedCheckpointAttributionFixture(store: LocalStore) {
   );
   await store.recordPaperTradingComparisonPairedCheckpoint(checkpoint);
   return { ...fixture, checkpointAttempt, checkpoint };
+}
+
+async function validIneligibleComparisonVerdict(
+  store: LocalStore,
+  fixture: Awaited<ReturnType<typeof storedPairedCheckpointAttributionFixture>>,
+  finalOutcome: PaperTradingComparisonActivationOutcomeRecord
+): Promise<PaperTradingComparisonVerdictRecord> {
+  const loaded = {} as Record<"champion" | "challenger", {
+    commitment: PaperTradingEvaluationCommitmentRecord;
+    evaluation: PaperTradingEvaluationRecord;
+    observations: PaperTradingObservationRecord[];
+  }>;
+  for (const role of ["champion", "challenger"] as const) {
+    const [commitment, evaluation] = await Promise.all([
+      store.getPaperTradingEvaluationCommitment(
+        fixture.attempt[role].paper_trading_evaluation_commitment_ref.id
+      ),
+      store.getPaperTradingEvaluation(
+        fixture.attempt[role].paper_trading_evaluation_ref.id
+      )
+    ]);
+    if (!commitment || !evaluation) {
+      throw new Error(`missing ${role} verdict qualification evidence`);
+    }
+    loaded[role] = {
+      commitment,
+      evaluation,
+      observations: await store.listPaperTradingObservations(
+        evaluation.paper_trading_evaluation_id
+      )
+    };
+  }
+  const sideQualification = (role: "champion" | "challenger") =>
+    decidePaperTradingQualification({
+      commitment: loaded[role].commitment,
+      evaluation: loaded[role].evaluation,
+      observations: loaded[role].observations,
+      runnerActive: false,
+      policy: {
+        minObservationCount:
+          fixture.comparison.comparison_policy.minimum_observation_count,
+        minElapsedMs: fixture.comparison.comparison_policy.minimum_elapsed_ms
+      },
+      commitmentDigestVerified: loaded[role].commitment.commitment_digest ===
+        comparisonRecordDigest(
+          paperTradingEvaluationCommitmentDigestInput(loaded[role].commitment)
+        )
+    });
+  const pairQualification = {
+    comparison_id: fixture.comparison.paper_trading_comparison_commitment_id,
+    activation_id: fixture.activation.paper_trading_comparison_activation_id,
+    activation_attempt_id:
+      fixture.attempt.paper_trading_comparison_activation_attempt_id,
+    qualification_status: "not_qualified" as const,
+    qualification_reasons: [
+      "comparison_window_not_completed_normally" as const,
+      "comparison_minimum_observation_count_not_met" as const,
+      "comparison_minimum_elapsed_not_met" as const,
+      "champion_not_qualified" as const,
+      "challenger_not_qualified" as const
+    ],
+    checkpoint_count: 1,
+    champion: sideQualification("champion"),
+    challenger: sideQualification("challenger"),
+    authority_status: "not_verdict" as const
+  };
+  const side = (role: "champion" | "challenger") => ({
+    role,
+    candidate_ref: { ...fixture.comparison[role].candidate_ref },
+    candidate_version_ref: { ...fixture.comparison[role].candidate_version_ref },
+    system_code_ref: { ...fixture.comparison[role].system_code_ref },
+    system_code_artifact_digest:
+      fixture.comparison[role].system_code_artifact_digest,
+    trading_run_ref: { ...fixture.comparison[role].trading_run_ref },
+    paper_trading_evaluation_commitment_ref: {
+      ...fixture.comparison[role].paper_trading_evaluation_commitment_ref
+    },
+    paper_trading_evaluation_commitment_record_digest:
+      fixture.comparison[role].paper_trading_evaluation_commitment_record_digest,
+    paper_trading_evaluation_ref: {
+      ...fixture.comparison[role].paper_trading_evaluation_ref
+    },
+    paper_trading_evaluation_record_digest: comparisonRecordDigest(
+      paperTradingComparisonEvaluationRecordDigestInput(loaded[role].evaluation)
+    ),
+    paper_trading_observation_chain_digest: comparisonRecordDigest(
+      paperTradingComparisonObservationChainDigestInput(loaded[role].observations)
+    )
+  });
+  return withComparisonVerdictDigest({
+    record_kind: "paper_trading_comparison_verdict",
+    version: 1,
+    paper_trading_comparison_verdict_id:
+      `${fixture.comparison.paper_trading_comparison_commitment_id}-verdict`,
+    paper_trading_comparison_commitment_ref: {
+      record_kind: "paper_trading_comparison_commitment",
+      id: fixture.comparison.paper_trading_comparison_commitment_id
+    },
+    paper_trading_comparison_commitment_digest: fixture.comparison.commitment_digest,
+    paper_trading_comparison_activation_ref: {
+      record_kind: "paper_trading_comparison_activation",
+      id: fixture.activation.paper_trading_comparison_activation_id
+    },
+    paper_trading_comparison_activation_digest: fixture.activation.activation_digest,
+    paper_trading_comparison_activation_attempt_ref: {
+      record_kind: "paper_trading_comparison_activation_attempt",
+      id: fixture.attempt.paper_trading_comparison_activation_attempt_id
+    },
+    paper_trading_comparison_activation_attempt_digest: fixture.attempt.attempt_digest,
+    final_activation_outcome_ref: {
+      record_kind: "paper_trading_comparison_activation_outcome",
+      id: finalOutcome.paper_trading_comparison_activation_outcome_id
+    },
+    final_activation_outcome_digest: finalOutcome.outcome_digest,
+    latest_tick_ref: {
+      record_kind: "paper_trading_comparison_tick",
+      id: fixture.tick.paper_trading_comparison_tick_id
+    },
+    latest_tick_digest: fixture.tick.tick_digest,
+    checkpoint_outcome_refs: [{
+      record_kind: "paper_trading_comparison_checkpoint_outcome",
+      id: fixture.checkpoint.outcome.paper_trading_comparison_checkpoint_outcome_id
+    }],
+    checkpoint_outcome_digests: [fixture.checkpoint.outcome.outcome_digest],
+    pair_qualification: pairQualification,
+    pair_qualification_digest: comparisonRecordDigest(
+      paperTradingComparisonQualificationResultDigestInput(pairQualification)
+    ),
+    champion: side("champion"),
+    challenger: side("challenger"),
+    verdict_outcome: "comparison_ineligible",
+    window_started_at: fixture.tick.observed_at,
+    window_ended_at: fixture.tick.observed_at,
+    evaluator_policy_version: "paper-comparison-verdict-v1",
+    evaluation_authority: "external_to_trading_systems",
+    confirmation_disposition: "not_applicable",
+    promotion_eligibility: "not_eligible",
+    release_status: "sealed",
+    next_action: "repair_evidence_or_rerun_comparison",
+    evaluated_at: finalOutcome.completed_at,
+    verdict_digest: "",
+    live_exchange_authority: false,
+    order_submission_authority: false,
+    authority_status: "not_live"
+  });
+}
+
+function withComparisonVerdictDigest(
+  verdict: PaperTradingComparisonVerdictRecord
+): PaperTradingComparisonVerdictRecord {
+  return {
+    ...verdict,
+    verdict_digest: comparisonRecordDigest(
+      paperTradingComparisonVerdictDigestInput(verdict)
+    )
+  };
 }
 
 async function storedAcknowledgedPairedCheckpointFixture(store: LocalStore) {
