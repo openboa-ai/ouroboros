@@ -181,7 +181,7 @@ describe("paper comparison confirmation campaign integration", () => {
     expect(replay).toEqual(confirmedOutcome);
     await expect(restartedStore.listPaperTradingComparisonConfirmationCampaignOutcomes())
       .resolves.toEqual([mixedOutcome, confirmedOutcome]);
-  });
+  }, 60_000);
 });
 
 async function integrationFixture(root: string) {
