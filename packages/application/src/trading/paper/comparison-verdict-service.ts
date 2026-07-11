@@ -85,7 +85,17 @@ export class PaperTradingComparisonVerdictService {
     try {
       const qualification = await this.options.qualifications.assess(normalized);
       const evidence = await this.loadEvidence(normalized, qualification);
-      verdict = buildVerdict(qualification, evidence, this.now());
+      const existing = await this.options.store.getPaperTradingComparisonVerdict(
+        verdictId(
+          evidence.comparison.paper_trading_comparison_commitment_id,
+          evidence.attempt.paper_trading_comparison_activation_attempt_id
+        )
+      );
+      verdict = buildVerdict(
+        qualification,
+        evidence,
+        existing?.evaluated_at ?? this.now()
+      );
     } catch (error) {
       if (error instanceof PaperTradingComparisonVerdictServiceError) throw error;
       throw graphInvalid(error);

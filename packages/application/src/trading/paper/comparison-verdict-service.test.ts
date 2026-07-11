@@ -121,6 +121,19 @@ describe("paper trading comparison verdict service", () => {
     expect(paperTradingComparisonVerdictHasRuntimeShape(verdict)).toBe(true);
   });
 
+  it("replays the sealed evaluation time after the service clock advances", async () => {
+    const harness = verdictHarness();
+    let current = "2026-07-12T00:03:00.000Z";
+    harness.now = () => current;
+    const first = await harness.service.evaluate(validInput());
+    current = "2026-07-13T00:03:00.000Z";
+
+    const replay = await harness.service.evaluate(validInput());
+
+    expect(replay).toEqual(first);
+    expect(replay.evaluated_at).toBe("2026-07-12T00:03:00.000Z");
+  });
+
   it("persists equal qualified scores as sealed not-improved evidence", async () => {
     const graph = verdictGraph();
     graph.challenger.evaluation.latest_score = score(1, 1);
@@ -247,6 +260,7 @@ function verdictHarness(
   const state: {
     qualificationError?: unknown;
     storeError?: unknown;
+    existing?: PaperTradingComparisonVerdictRecord;
     now: () => string;
   } = {
     now: () => "2026-07-12T00:03:00.000Z"
@@ -322,11 +336,21 @@ function verdictHarness(
       "getTradingRun",
       (id: string) => sideBy("run", id)?.run
     ),
+    getPaperTradingComparisonVerdict: read(
+      "getPaperTradingComparisonVerdict",
+      () => state.existing
+    ),
     recordPaperTradingComparisonVerdict: async (
       verdict: PaperTradingComparisonVerdictRecord
     ) => {
       calls.push("store.recordPaperTradingComparisonVerdict");
       if (state.storeError) throw state.storeError;
+      if (state.existing && JSON.stringify(state.existing) !== JSON.stringify(verdict)) {
+        throw Object.assign(new Error("changed replay"), {
+          code: "paper_trading_comparison_verdict_conflict"
+        });
+      }
+      state.existing ??= structuredClone(verdict);
       recorded.push(structuredClone(verdict));
       return structuredClone(verdict);
     }
